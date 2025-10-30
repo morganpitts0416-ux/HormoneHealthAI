@@ -1,5 +1,6 @@
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
 
 // Lab Values Schema - Complete Men's Clinic Panel
 export const labValuesSchema = z.object({
@@ -93,3 +94,43 @@ export type InterpretLabsRequest = z.infer<typeof interpretLabsRequestSchema>;
 
 export const interpretLabsResponseSchema = interpretationResultSchema;
 export type InterpretLabsResponse = z.infer<typeof interpretLabsResponseSchema>;
+
+// Database Tables
+export const patients = pgTable("patients", {
+  id: serial("id").primaryKey(),
+  firstName: varchar("first_name", { length: 100 }).notNull(),
+  lastName: varchar("last_name", { length: 100 }).notNull(),
+  dateOfBirth: timestamp("date_of_birth"),
+  mrn: varchar("mrn", { length: 50 }).unique(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const labResults = pgTable("lab_results", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  labDate: timestamp("lab_date").notNull(),
+  labValues: jsonb("lab_values").$type<LabValues>().notNull(),
+  interpretationResult: jsonb("interpretation_result").$type<InterpretationResult>(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertPatientSchema = createInsertSchema(patients).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertPatient = z.infer<typeof insertPatientSchema>;
+export type Patient = typeof patients.$inferSelect;
+
+export const insertLabResultSchema = createInsertSchema(labResults).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertLabResult = z.infer<typeof insertLabResultSchema>;
+export type LabResult = typeof labResults.$inferSelect;
