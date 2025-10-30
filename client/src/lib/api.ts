@@ -3,6 +3,9 @@ import { apiRequest } from "./queryClient";
 
 export const labsApi = {
   interpretLabs: async (labValues: LabValues): Promise<InterpretationResult> => {
-    return apiRequest("POST", "/api/interpret-labs", labValues);
+    console.log('[API Client] interpretLabs called with:', labValues);
+    const result = await apiRequest("POST", "/api/interpret-labs", labValues);
+    console.log('[API Client] interpretLabs result:', result);
+    return result;
   },
 };

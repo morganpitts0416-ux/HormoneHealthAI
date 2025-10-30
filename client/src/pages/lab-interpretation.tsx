@@ -20,13 +20,19 @@ export default function LabInterpretation() {
   const interpretMutation = useMutation({
     mutationFn: labsApi.interpretLabs,
     onSuccess: (data) => {
+      console.log('[Frontend] Interpretation successful:', data);
       setInterpretationResult(data);
       setActiveTab("results");
+    },
+    onError: (error) => {
+      console.error('[Frontend] Interpretation error:', error);
     },
   });
 
   const handleSubmit = (values: LabValues) => {
+    console.log('[Frontend] handleSubmit called with values:', values);
     setLabValues(values);
+    console.log('[Frontend] Calling interpretMutation.mutate');
     interpretMutation.mutate(values);
   };
 
@@ -91,26 +97,34 @@ export default function LabInterpretation() {
           </TabsContent>
 
           <TabsContent value="results" className="space-y-6">
-            {interpretationResult && (
+            {interpretationResult ? (
               <>
                 {/* Red Flags - Most Prominent */}
-                {interpretationResult.redFlags.length > 0 && (
+                {interpretationResult.redFlags?.length > 0 && (
                   <RedFlagAlert redFlags={interpretationResult.redFlags} />
                 )}
 
                 {/* Lab Results */}
                 <ResultsDisplay 
-                  interpretations={interpretationResult.interpretations}
-                  aiRecommendations={interpretationResult.aiRecommendations}
-                  recheckWindow={interpretationResult.recheckWindow}
+                  interpretations={interpretationResult.interpretations || []}
+                  aiRecommendations={interpretationResult.aiRecommendations || ''}
+                  recheckWindow={interpretationResult.recheckWindow || ''}
                 />
 
                 {/* Patient Summary */}
-                <PatientSummary 
-                  summary={interpretationResult.patientSummary}
-                  labValues={labValues}
-                />
+                {interpretationResult.patientSummary && (
+                  <PatientSummary 
+                    summary={interpretationResult.patientSummary}
+                    labValues={labValues}
+                  />
+                )}
               </>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  <p>No interpretation results yet. Enter lab values to get started.</p>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
         </Tabs>
