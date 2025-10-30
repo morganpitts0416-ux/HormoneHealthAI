@@ -3,13 +3,14 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LabInputForm } from "@/components/lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { PatientSummary } from "@/components/patient-summary";
 import { labsApi } from "@/lib/api";
+import { generateLabReportPDF } from "@/lib/pdf-export";
 import type { LabValues, InterpretationResult } from "@shared/schema";
 
 export default function LabInterpretation() {
@@ -42,6 +43,12 @@ export default function LabInterpretation() {
     setActiveTab("input");
   };
 
+  const handleExportPDF = () => {
+    if (interpretationResult) {
+      generateLabReportPDF(labValues, interpretationResult);
+    }
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -54,14 +61,24 @@ export default function LabInterpretation() {
             </div>
             <div className="flex items-center gap-4">
               {interpretationResult && (
-                <Button 
-                  variant="outline" 
-                  onClick={handleReset}
-                  data-testid="button-reset"
-                >
-                  <FileText className="w-4 h-4 mr-2" />
-                  New Interpretation
-                </Button>
+                <>
+                  <Button 
+                    variant="default" 
+                    onClick={handleExportPDF}
+                    data-testid="button-export-pdf"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Export PDF
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleReset}
+                    data-testid="button-reset"
+                  >
+                    <FileText className="w-4 h-4 mr-2" />
+                    New Interpretation
+                  </Button>
+                </>
               )}
             </div>
           </div>
