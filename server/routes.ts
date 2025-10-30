@@ -7,6 +7,8 @@ import { AIService } from "./ai-service";
 export async function registerRoutes(app: Express): Promise<Server> {
   // Lab interpretation endpoint
   app.post("/api/interpret-labs", async (req, res) => {
+    console.log('[API] POST /api/interpret-labs - Received request');
+    console.log('[API] Request body:', JSON.stringify(req.body, null, 2));
     try {
       // Validate request body
       const parseResult = interpretLabsRequestSchema.safeParse(req.body);
@@ -54,6 +56,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientSummary,
         recheckWindow,
       };
+
+      console.log('[API] Response summary:');
+      console.log('  - Red flags:', redFlags.length);
+      console.log('  - Interpretations:', interpretations.length);
+      console.log('  - AI recommendations length:', aiRecommendations.length);
+      console.log('  - Patient summary length:', patientSummary.length);
+      console.log('  - Recheck window:', recheckWindow);
 
       res.json(result);
     } catch (error) {
