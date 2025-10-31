@@ -4,7 +4,7 @@
 import OpenAI from "openai";
 import type { LabValues, RedFlag, LabInterpretation } from "@shared/schema";
 
-// the newest OpenAI model is "gpt-5" which was released August 7, 2025. do not change this unless explicitly requested by the user
+// Using gpt-5-mini for faster responses - smaller model but still capable
 const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
   apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
@@ -22,8 +22,12 @@ export class AIService {
     const prompt = this.buildRecommendationPrompt(labs, redFlags, interpretations);
 
     try {
+      console.log('[AI Service] Generating AI recommendations with prompt length:', prompt.length);
+      console.log('[AI Service] Red flags count:', redFlags.length);
+      console.log('[AI Service] Interpretations count:', interpretations.length);
+      
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
@@ -43,12 +47,19 @@ Guidelines:
             content: prompt
           }
         ],
-        max_completion_tokens: 2000,
+        max_completion_tokens: 4000,
       });
 
-      return response.choices[0]?.message?.content || "Unable to generate recommendations. Please review lab findings manually.";
+      const recommendations = response.choices[0]?.message?.content;
+      console.log('[AI Service] AI recommendations generated, length:', recommendations?.length || 0);
+      
+      return recommendations || "Unable to generate recommendations. Please review lab findings manually.";
     } catch (error) {
       console.error("Error generating AI recommendations:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message);
+        console.error("Error stack:", error.stack);
+      }
       return "AI recommendations temporarily unavailable. Please apply clinical protocols manually based on the lab interpretations provided.";
     }
   }
@@ -61,81 +72,98 @@ Guidelines:
     interpretations: LabInterpretation[],
     hasRedFlags: boolean
   ): Promise<string> {
-    // Build a detailed context with actual lab values
-    const labContext = Object.entries(labs)
-      .filter(([_, value]) => value !== undefined)
-      .map(([key, value]) => `- ${key}: ${value}`)
-      .join('\n');
-
     // Categorize findings
     const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
     const borderlineFindings = interpretations.filter(i => i.status === 'borderline');
     const normalFindings = interpretations.filter(i => i.status === 'normal');
 
-    const prompt = `Create a personalized, informative patient communication summary for lab results from a men's hormone clinic.
+    // Build specific findings with values
+    const buildFindingsList = (findings: LabInterpretation[]) => {
+      return findings.map(f => `${f.category}: ${f.value} ${f.unit} (${f.interpretation})`).join('\n');
+    };
 
-ACTUAL LAB VALUES:
-${labContext}
+    const prompt = `Write a patient communication summary for these lab results. Use SPECIFIC values and ACTIONABLE recommendations.
 
-CLINICAL INTERPRETATIONS:
-${abnormalFindings.length > 0 ? `\nAreas Needing Attention:\n${abnormalFindings.map(i => 
-  `- ${i.category}: ${i.value} ${i.unit} - ${i.interpretation}`
-).join('\n')}` : ''}
+CRITICAL FINDINGS:
+${abnormalFindings.length > 0 ? buildFindingsList(abnormalFindings) : 'None'}
 
-${borderlineFindings.length > 0 ? `\nBorderline Results:\n${borderlineFindings.map(i => 
-  `- ${i.category}: ${i.value} ${i.unit} - ${i.interpretation}`
-).join('\n')}` : ''}
+BORDERLINE FINDINGS:
+${borderlineFindings.length > 0 ? buildFindingsList(borderlineFindings) : 'None'}
 
-${normalFindings.length > 0 ? `\nHealthy Results:\n${normalFindings.map(i => 
-  `- ${i.category}: ${i.value} ${i.unit}`
-).join('\n')}` : ''}
+NORMAL FINDINGS:
+${normalFindings.length > 0 ? buildFindingsList(normalFindings) : 'None'}
 
-${hasRedFlags ? '\nIMPORTANT: Include a note that the physician will personally review critical findings before any changes.' : ''}
+${hasRedFlags ? 'NOTE: Critical values require physician review before changes.\n' : ''}
 
-CRITICAL REQUIREMENTS FOR THE SUMMARY:
-1. Reference SPECIFIC lab values (e.g., "Your LDL cholesterol is 145 mg/dL" not just "Your cholesterol is elevated")
-2. Provide PERSONALIZED, ACTIONABLE lifestyle recommendations based on their actual results:
-   - If cholesterol is elevated: Specific dietary changes (e.g., increase fiber, reduce saturated fat, add omega-3s)
-   - If blood pressure/metabolic markers affected: Exercise recommendations with specifics
-   - If liver markers elevated: Alcohol/supplement guidance
-   - If kidney markers affected: Hydration and diet tips
-   - If testosterone suboptimal: Lifestyle factors that affect testosterone
-3. Make recommendations PRACTICAL and SPECIFIC (not vague like "eat healthy" but "add 2-3 servings of fatty fish per week")
-4. Avoid repetitive phrasing - each section should add new, useful information
-5. Make it encouraging and empowering about improvements they can make
-6. Use simple language but be informative and specific
-7. Structure: Brief greeting → Highlight positive findings → Address areas for improvement with SPECIFIC values and actions → Clear next steps
-8. Length: 300-450 words (enough to be informative without overwhelming)
+MANDATORY REQUIREMENTS:
+1. ALWAYS mention specific numeric values (e.g., "Your LDL cholesterol is 160 mg/dL" NOT "Your cholesterol is high")
+2. Give CONCRETE lifestyle actions based on actual results:
+   
+   FOR CHOLESTEROL (if LDL >130 or HDL <40 or TG >150):
+   - "Add 25-30g fiber daily: oatmeal for breakfast, beans with lunch, vegetables at dinner"
+   - "Include 2-3 servings fatty fish weekly (salmon, mackerel, sardines) for omega-3s"
+   - "Reduce saturated fat: choose lean meats, limit butter and cheese"
+   - "Daily exercise: 30 minutes brisk walking or equivalent"
+   
+   FOR BLOOD SUGAR (if A1c >5.6):
+   - "Reduce refined carbs: swap white bread for whole grain, limit sugary drinks"
+   - "Include protein with each meal to stabilize blood sugar"
+   - "Walk 10-15 minutes after meals"
+   
+   FOR LIVER MARKERS (if AST/ALT elevated):
+   - "Limit alcohol to <2 drinks per week"
+   - "Review supplements/medications that may stress liver"
+   - "Maintain healthy weight through balanced diet"
+   
+   FOR TESTOSTERONE (if suboptimal):
+   - "Prioritize 7-8 hours quality sleep"
+   - "Include strength training 2-3x weekly"
+   - "Manage stress through exercise, meditation, or hobbies"
 
-Write a patient-friendly summary that treats the patient as an active participant in their health with actionable steps they can take TODAY:`;
+3. Structure (300-400 words):
+   - Greeting + overall assessment
+   - Positive findings (be specific about normal values)
+   - Areas to improve (cite exact values + concrete actions)
+   - Next steps and timeline
+   
+4. Use encouraging, empowering tone
+5. Avoid medical jargon - explain in plain English
+
+Write the summary now:`;
 
     try {
+      console.log('[AI Service] Generating patient summary with prompt length:', prompt.length);
+      
       const response = await openai.chat.completions.create({
-        model: "gpt-5",
+        model: "gpt-5-mini",
         messages: [
           {
             role: "system",
-            content: `You are a compassionate healthcare communicator specializing in patient education and empowerment. Your summaries help patients understand their specific lab results and take actionable steps to improve their health.
-
-Key principles:
-- Always reference specific lab values, not vague generalizations
-- Provide concrete, practical lifestyle recommendations tailored to their results
-- Be encouraging about what they can control and improve
-- Use clear, simple language while being informative
-- Make every sentence add value - avoid repetitive phrasing
-- Focus on actionable steps they can take immediately`
+            content: "You are writing a patient-friendly lab results summary for a men's health clinic. Always mention specific numeric values and give concrete, actionable lifestyle recommendations."
           },
           {
             role: "user",
             content: prompt
           }
         ],
-        max_completion_tokens: 1200,
+        max_completion_tokens: 2500,
       });
 
-      return response.choices[0]?.message?.content || this.getDefaultPatientSummary();
+      console.log('[AI Service] Response object:', JSON.stringify(response, null, 2));
+      console.log('[AI Service] Choices array:', response.choices);
+      console.log('[AI Service] First choice:', response.choices[0]);
+      
+      const summary = response.choices[0]?.message?.content;
+      console.log('[AI Service] Patient summary generated, length:', summary?.length || 0);
+      console.log('[AI Service] Patient summary content:', summary);
+      
+      return summary || this.getDefaultPatientSummary();
     } catch (error) {
       console.error("Error generating patient summary:", error);
+      if (error instanceof Error) {
+        console.error("Error details:", error.message);
+        console.error("Error stack:", error.stack);
+      }
       return this.getDefaultPatientSummary();
     }
   }
