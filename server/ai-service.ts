@@ -61,29 +61,53 @@ Guidelines:
     interpretations: LabInterpretation[],
     hasRedFlags: boolean
   ): Promise<string> {
-    const prompt = `Generate a patient-friendly summary email for the following lab results from a men's hormone clinic. 
+    // Build a detailed context with actual lab values
+    const labContext = Object.entries(labs)
+      .filter(([_, value]) => value !== undefined)
+      .map(([key, value]) => `- ${key}: ${value}`)
+      .join('\n');
 
-Lab values provided:
-${Object.entries(labs).filter(([_, value]) => value !== undefined).map(([key, value]) => `- ${key}: ${value}`).join('\n')}
+    // Categorize findings
+    const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
+    const borderlineFindings = interpretations.filter(i => i.status === 'borderline');
+    const normalFindings = interpretations.filter(i => i.status === 'normal');
 
-Key findings:
-${interpretations.filter(i => i.status !== 'normal').map(i => 
-  `- ${i.category}: ${i.status} - ${i.interpretation}`
-).join('\n')}
+    const prompt = `Create a personalized, informative patient communication summary for lab results from a men's hormone clinic.
 
-${hasRedFlags ? '\nNOTE: Some values require physician review before communicating with patient.' : ''}
+ACTUAL LAB VALUES:
+${labContext}
 
-Guidelines for the summary:
-- Use simple, non-technical language
-- Be reassuring but honest
-- Explain what the results mean for their health
-- Mention any necessary next steps (dose changes, lifestyle modifications, follow-up timing)
-- Keep it concise (250-400 words)
-- Use a warm, professional tone
-- Start with overall assessment, then specific findings
-- End with clear next steps
+CLINICAL INTERPRETATIONS:
+${abnormalFindings.length > 0 ? `\nAreas Needing Attention:\n${abnormalFindings.map(i => 
+  `- ${i.category}: ${i.value} ${i.unit} - ${i.interpretation}`
+).join('\n')}` : ''}
 
-Write the patient summary:`;
+${borderlineFindings.length > 0 ? `\nBorderline Results:\n${borderlineFindings.map(i => 
+  `- ${i.category}: ${i.value} ${i.unit} - ${i.interpretation}`
+).join('\n')}` : ''}
+
+${normalFindings.length > 0 ? `\nHealthy Results:\n${normalFindings.map(i => 
+  `- ${i.category}: ${i.value} ${i.unit}`
+).join('\n')}` : ''}
+
+${hasRedFlags ? '\nIMPORTANT: Include a note that the physician will personally review critical findings before any changes.' : ''}
+
+CRITICAL REQUIREMENTS FOR THE SUMMARY:
+1. Reference SPECIFIC lab values (e.g., "Your LDL cholesterol is 145 mg/dL" not just "Your cholesterol is elevated")
+2. Provide PERSONALIZED, ACTIONABLE lifestyle recommendations based on their actual results:
+   - If cholesterol is elevated: Specific dietary changes (e.g., increase fiber, reduce saturated fat, add omega-3s)
+   - If blood pressure/metabolic markers affected: Exercise recommendations with specifics
+   - If liver markers elevated: Alcohol/supplement guidance
+   - If kidney markers affected: Hydration and diet tips
+   - If testosterone suboptimal: Lifestyle factors that affect testosterone
+3. Make recommendations PRACTICAL and SPECIFIC (not vague like "eat healthy" but "add 2-3 servings of fatty fish per week")
+4. Avoid repetitive phrasing - each section should add new, useful information
+5. Make it encouraging and empowering about improvements they can make
+6. Use simple language but be informative and specific
+7. Structure: Brief greeting → Highlight positive findings → Address areas for improvement with SPECIFIC values and actions → Clear next steps
+8. Length: 300-450 words (enough to be informative without overwhelming)
+
+Write a patient-friendly summary that treats the patient as an active participant in their health with actionable steps they can take TODAY:`;
 
     try {
       const response = await openai.chat.completions.create({
@@ -91,14 +115,22 @@ Write the patient summary:`;
         messages: [
           {
             role: "system",
-            content: "You are a compassionate healthcare communicator helping to explain lab results to patients in a clear, reassuring way."
+            content: `You are a compassionate healthcare communicator specializing in patient education and empowerment. Your summaries help patients understand their specific lab results and take actionable steps to improve their health.
+
+Key principles:
+- Always reference specific lab values, not vague generalizations
+- Provide concrete, practical lifestyle recommendations tailored to their results
+- Be encouraging about what they can control and improve
+- Use clear, simple language while being informative
+- Make every sentence add value - avoid repetitive phrasing
+- Focus on actionable steps they can take immediately`
           },
           {
             role: "user",
             content: prompt
           }
         ],
-        max_completion_tokens: 1000,
+        max_completion_tokens: 1200,
       });
 
       return response.choices[0]?.message?.content || this.getDefaultPatientSummary();
