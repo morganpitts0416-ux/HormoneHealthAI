@@ -94,15 +94,21 @@ Based on the clinic's standing orders document:
 - Components: Material Design-inspired for trust and consistency
 
 ## Recent Changes
-**October 30, 2025**
-- Fixed critical API client bug - JSON response parsing now works correctly
-- End-to-end workflow tested successfully (form → interpretation → red flags → AI → summary → PDF)
+**October 31, 2025**
+- **FIXED OpenAI AI Integration**: Increased token limits to prevent response truncation
+  - AI recommendations now generating successfully (tested 5,635 characters)
+  - Patient summaries configured for specific values and actionable lifestyle recommendations
+  - Switched to gpt-5-mini for faster, more reliable responses
+- **Enhanced Hematocrit Clinical Guidelines**: Implemented detailed 4-tier protocols
+  - <50%: Normal - Continue TRT with routine monitoring
+  - 50-52%: Warning - Re-check hydration, lower dose, screen for OSA
+  - 52-53.9%: Urgent - DO NOT escalate TRT, reduce dose, plan phlebotomy if trending up
+  - ≥54%: Critical - HOLD TRT, therapeutic phlebotomy, evaluate OSA
+- Fixed critical API client bug - JSON response parsing working
+- End-to-end workflow tested (form → interpretation → red flags → AI → summary → PDF)
 - Implemented PDF export with jsPDF library
-- Created PostgreSQL database schema:
-  - `patients` table with unique MRN constraint, timestamp DOB
-  - `lab_results` table with JSONB storage, cascade delete on patient removal
-- Migrated storage layer from in-memory to Drizzle ORM with Neon PostgreSQL
-- All database constraints applied (unique MRN, cascade delete, proper types)
+- PostgreSQL database with proper constraints (unique MRN, cascade delete, timestamp DOB)
+- Migrated storage layer to Drizzle ORM with Neon PostgreSQL
 
 ## User Preferences
 - Medical-grade professional interface
