@@ -28,6 +28,12 @@ A clinical lab interpretation tool designed for men's hormone and primary care c
 - ✅ PDF export functionality with jsPDF
 - ✅ PostgreSQL database with patients and lab_results tables
 - ✅ Database storage layer with Drizzle ORM
+- ✅ **AI-powered PDF upload** - Automatically extract lab values from Pathgroup and hospital PDFs
+  - Frontend upload UI with drag-and-drop support
+  - Backend endpoint with multer for file handling
+  - OpenAI integration for intelligent text extraction and field mapping
+  - Auto-fills form fields for staff review before submission
+  - Supports up to 10MB PDF files
 
 ### In Progress
 - Patient database integration with CRUD operations
@@ -95,6 +101,13 @@ Based on the clinic's standing orders document:
 
 ## Recent Changes
 **October 31, 2025**
+- **COMPLETED: AI-Powered PDF Lab Upload Feature**
+  - Implemented complete PDF upload workflow using pdf-parse v2 and OpenAI
+  - Backend: multer for file handling (10MB limit), PDF text extraction, AI-powered field mapping
+  - Frontend: Upload button with loading states, success indicators, auto-fill form fields
+  - Users can now upload Pathgroup or hospital lab PDFs for automatic data extraction
+  - Staff can review and edit extracted values before submitting for interpretation
+  - Added proper TypeScript types and error handling throughout
 - **FIXED OpenAI AI Integration**: Increased token limits to prevent response truncation
   - AI recommendations now generating successfully (tested 5,635 characters)
   - Patient summaries configured for specific values and actionable lifestyle recommendations
