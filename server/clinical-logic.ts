@@ -21,15 +21,22 @@ export class ClinicalLogicEngine {
       redFlags.push({
         category: "Erythrocytosis - Critical Hematocrit",
         severity: 'critical',
-        message: `Hematocrit is ${labs.hematocrit}% (≥54% threshold). Immediate action required.`,
-        action: "HOLD or REDUCE testosterone 20-30%. Therapeutic phlebotomy 500 mL required. Recheck CBC in 4-8 weeks.",
+        message: `Hematocrit is ${labs.hematocrit}% (≥54% threshold). Immediate action required for hyperviscosity risk.`,
+        action: "HOLD TRT and perform therapeutic phlebotomy (or arrange blood donation if eligible). Evaluate for hypoxia/OSA. Once Hct is back in safe range, restart at lower dose or different route (e.g., transdermal).",
       });
-    } else if (labs.hematocrit !== undefined && labs.hematocrit >= 50 && labs.hematocrit < 54) {
+    } else if (labs.hematocrit !== undefined && labs.hematocrit >= 52 && labs.hematocrit < 54) {
       redFlags.push({
-        category: "Erythrocytosis - Elevated Hematocrit",
+        category: "Erythrocytosis - High Hematocrit (52-53.9%)",
         severity: 'urgent',
-        message: `Hematocrit is ${labs.hematocrit}% (50-53.9% range). Preventive measures needed.`,
-        action: "Reduce testosterone dose 10-20% or split frequency. Encourage hydration. Recheck in 6-8 weeks.",
+        message: `Hematocrit is ${labs.hematocrit}% (52-53.9% range). DO NOT escalate TRT.`,
+        action: "Reduce dose/extend interval or change formulation. Treat contributing factors (OSA, smoking). Recheck in 2-4 weeks. If trending upward despite adjustments, plan phlebotomy/donation.",
+      });
+    } else if (labs.hematocrit !== undefined && labs.hematocrit >= 50 && labs.hematocrit < 52) {
+      redFlags.push({
+        category: "Erythrocytosis - Elevated Hematocrit (50-52%)",
+        severity: 'warning',
+        message: `Hematocrit is ${labs.hematocrit}% (50-52% range). Preventive measures needed.`,
+        action: "Re-check hydration status. Draw labs mid-interval (avoid post-injection peaks). Lower dose or split injections weekly, or switch to transdermal (lower erythrocytosis risk). Screen for OSA and other causes. Recheck CBC in 4-8 weeks.",
       });
     }
 
@@ -255,22 +262,28 @@ export class ClinicalLogicEngine {
 
       if (labs.hematocrit >= 54) {
         status = 'critical';
-        interpretation = 'Critical hematocrit elevation (≥54%). Safety threshold exceeded.';
-        recommendation = 'HOLD or reduce testosterone 20-30%. Increase injection frequency. Therapeutic phlebotomy 500 mL.';
-        recheckTiming = '4-8 weeks';
-      } else if (labs.hematocrit >= 50 && labs.hematocrit < 54) {
+        interpretation = 'Critical hematocrit (≥54%). Hyperviscosity risk with potential for headache, dizziness, vision changes.';
+        recommendation = 'HOLD TRT. Therapeutic phlebotomy or blood donation required. Evaluate for hypoxia/OSA. Restart at lower dose or transdermal route once safe.';
+        recheckTiming = 'After phlebotomy, then 2-4 weeks';
+      } else if (labs.hematocrit >= 52 && labs.hematocrit < 54) {
+        status = 'abnormal';
+        interpretation = 'Hematocrit 52-53.9%. DO NOT escalate TRT. High risk zone.';
+        recommendation = 'Reduce dose/extend interval or change formulation (transdermal has lower erythrocytosis risk). Treat OSA/smoking. Plan phlebotomy if trending up.';
+        recheckTiming = '2-4 weeks';
+      } else if (labs.hematocrit >= 50 && labs.hematocrit < 52) {
         status = 'borderline';
-        interpretation = 'Hematocrit in warning zone (50-53.9%). Approaching safety threshold.';
-        recommendation = 'Reduce dose 10-20% or split frequency. Encourage hydration.';
-        recheckTiming = '6-8 weeks';
-      } else if (labs.hematocrit >= 38 && labs.hematocrit < 52) {
+        interpretation = 'Hematocrit 50-52%. Elevated but manageable with interventions.';
+        recommendation = 'Re-check hydration. Draw labs mid-interval (avoid post-injection peaks). Lower dose, split weekly injections, or switch to transdermal. Screen for OSA.';
+        recheckTiming = '4-8 weeks';
+      } else if (labs.hematocrit >= 38 && labs.hematocrit < 50) {
         status = 'normal';
-        interpretation = 'Hematocrit within target range (<52%).';
-        recommendation = 'Continue current regimen. Routine monitoring.';
+        interpretation = 'Hematocrit <50%. Within safe range for TRT continuation.';
+        recommendation = 'Continue TRT with routine monitoring per protocol.';
+        recheckTiming = 'Per standard monitoring schedule';
       } else {
         status = 'abnormal';
-        interpretation = 'Low hematocrit may indicate anemia or hemodilution.';
-        recommendation = 'Evaluate for underlying causes.';
+        interpretation = 'Low hematocrit (<38%). May indicate anemia or hemodilution.';
+        recommendation = 'Evaluate for underlying causes (iron deficiency, chronic disease, recent blood loss).';
         recheckTiming = '4-6 weeks';
       }
 
@@ -279,7 +292,7 @@ export class ClinicalLogicEngine {
         value: labs.hematocrit,
         unit: '%',
         status,
-        referenceRange: '<52% (goal), <54% (safety threshold)',
+        referenceRange: '<50% (target), 50-52% (caution), 52-54% (high risk), ≥54% (critical)',
         interpretation,
         recommendation,
         recheckTiming,
