@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle, Download } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LabInputForm } from "@/components/lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
@@ -11,12 +11,16 @@ import { RedFlagAlert } from "@/components/red-flag-alert";
 import { PatientSummary } from "@/components/patient-summary";
 import { labsApi } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
+import { useToast } from "@/hooks/use-toast";
 import type { LabValues, InterpretationResult } from "@shared/schema";
 
 export default function LabInterpretation() {
   const [labValues, setLabValues] = useState<LabValues>({});
   const [interpretationResult, setInterpretationResult] = useState<InterpretationResult | null>(null);
   const [activeTab, setActiveTab] = useState<string>("input");
+  const [pdfFileName, setPdfFileName] = useState<string | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const { toast } = useToast();
 
   const interpretMutation = useMutation({
     mutationFn: labsApi.interpretLabs,
@@ -27,6 +31,26 @@ export default function LabInterpretation() {
     },
     onError: (error) => {
       console.error('[Frontend] Interpretation error:', error);
+    },
+  });
+
+  const pdfExtractMutation = useMutation({
+    mutationFn: labsApi.extractPdfLabs,
+    onSuccess: (data) => {
+      console.log('[Frontend] PDF extraction successful:', data);
+      setLabValues(prev => ({ ...prev, ...data }));
+      toast({
+        title: "PDF Extracted Successfully",
+        description: "Lab values have been auto-filled. Please review and edit as needed before submitting.",
+      });
+    },
+    onError: (error) => {
+      console.error('[Frontend] PDF extraction error:', error);
+      toast({
+        variant: "destructive",
+        title: "PDF Extraction Failed",
+        description: error instanceof Error ? error.message : "Failed to extract lab values from PDF",
+      });
     },
   });
 
@@ -41,12 +65,26 @@ export default function LabInterpretation() {
     setLabValues({});
     setInterpretationResult(null);
     setActiveTab("input");
+    setPdfFileName(null);
   };
 
   const handleExportPDF = () => {
     if (interpretationResult) {
       generateLabReportPDF(labValues, interpretationResult);
     }
+  };
+
+  const handlePdfUpload = (event: React.ChangeEvent<HTMLInputElement>) => {
+    const file = event.target.files?.[0];
+    if (file) {
+      console.log('[Frontend] PDF file selected:', file.name);
+      setPdfFileName(file.name);
+      pdfExtractMutation.mutate(file);
+    }
+  };
+
+  const handleUploadClick = () => {
+    fileInputRef.current?.click();
   };
 
   return (
@@ -96,11 +134,66 @@ export default function LabInterpretation() {
           </TabsList>
 
           <TabsContent value="input" className="space-y-6">
+            {/* PDF Upload Section */}
             <Card>
               <CardHeader>
-                <CardTitle>Enter Lab Values</CardTitle>
+                <div className="flex items-center gap-2">
+                  <Sparkles className="w-5 h-5 text-primary" />
+                  <CardTitle>AI-Powered PDF Upload</CardTitle>
+                </div>
                 <CardDescription>
-                  Input the lab results from the standard men's clinic panel. Leave fields blank if not available.
+                  Upload a Pathgroup or hospital lab report PDF. AI will automatically extract and fill in lab values for you to review.
+                </CardDescription>
+              </CardHeader>
+              <CardContent>
+                <div className="flex flex-col gap-4">
+                  <div className="flex items-center gap-4">
+                    <input
+                      ref={fileInputRef}
+                      type="file"
+                      accept=".pdf"
+                      onChange={handlePdfUpload}
+                      className="hidden"
+                      data-testid="input-pdf-file"
+                    />
+                    <Button
+                      onClick={handleUploadClick}
+                      disabled={pdfExtractMutation.isPending}
+                      variant="default"
+                      className="gap-2"
+                      data-testid="button-upload-pdf"
+                    >
+                      <Upload className="w-4 h-4" />
+                      {pdfExtractMutation.isPending ? 'Extracting...' : 'Upload PDF'}
+                    </Button>
+                    {pdfFileName && (
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground">
+                        <CheckCircle2 className="w-4 h-4 text-green-600" />
+                        <span>{pdfFileName}</span>
+                      </div>
+                    )}
+                  </div>
+                  {pdfExtractMutation.isPending && (
+                    <Alert>
+                      <Sparkles className="w-4 h-4" />
+                      <AlertTitle>Processing PDF</AlertTitle>
+                      <AlertDescription>
+                        AI is extracting lab values from your PDF. This may take a few moments...
+                      </AlertDescription>
+                    </Alert>
+                  )}
+                </div>
+              </CardContent>
+            </Card>
+
+            {/* Manual Entry Form */}
+            <Card>
+              <CardHeader>
+                <CardTitle>Enter or Review Lab Values</CardTitle>
+                <CardDescription>
+                  {pdfFileName 
+                    ? 'Review the auto-filled values below and make any necessary corrections.'
+                    : 'Input the lab results from the standard men\'s clinic panel. Leave fields blank if not available.'}
                 </CardDescription>
               </CardHeader>
               <CardContent>
