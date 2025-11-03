@@ -1,5 +1,6 @@
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
+import { useEffect } from "react";
 import { labValuesSchema, type LabValues } from "@shared/schema";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -18,6 +19,11 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
     resolver: zodResolver(labValuesSchema),
     defaultValues: initialValues,
   });
+
+  // Reset form when initialValues change (e.g., after PDF extraction)
+  useEffect(() => {
+    form.reset(initialValues);
+  }, [initialValues]);
 
   return (
     <Form {...form}>

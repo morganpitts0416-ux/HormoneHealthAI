@@ -100,6 +100,14 @@ Based on the clinic's standing orders document:
 - Components: Material Design-inspired for trust and consistency
 
 ## Recent Changes
+**November 3, 2025**
+- **FIXED: PDF Upload Form Integration**
+  - Fixed critical bug where form fields weren't updating after PDF extraction
+  - Added useEffect hook to reset form when initialValues change
+  - PDF-extracted values now properly populate form fields for review
+  - Results display now shows complete "Lab Results Summary" after PDF upload submission
+  - End-to-end tested and verified working
+
 **October 31, 2025**
 - **COMPLETED: AI-Powered PDF Lab Upload Feature**
   - Implemented complete PDF upload workflow using pdf-parse v2 and OpenAI
