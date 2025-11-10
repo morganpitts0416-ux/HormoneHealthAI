@@ -2,8 +2,36 @@ import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
 import { pgTable, serial, varchar, text, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
 
+// Patient Demographics & ASCVD Risk Factors Schema
+export const patientDemographicsSchema = z.object({
+  age: z.number().min(20).max(120).optional(),
+  sex: z.enum(['male', 'female']).optional(),
+  race: z.enum(['african_american', 'white', 'other']).optional(),
+  systolicBP: z.number().min(70).max(250).optional(),
+  onBPMeds: z.boolean().optional(),
+  diabetic: z.boolean().optional(),
+  smoker: z.boolean().optional(),
+});
+
+export type PatientDemographics = z.infer<typeof patientDemographicsSchema>;
+
+// ASCVD Risk Result Schema
+export const ascvdRiskResultSchema = z.object({
+  tenYearRisk: z.number(),
+  riskCategory: z.enum(['low', 'borderline', 'intermediate', 'high']),
+  riskPercentage: z.string(),
+  recommendations: z.string(),
+  statinRecommendation: z.string().optional(),
+  ldlGoal: z.string().optional(),
+});
+
+export type ASCVDRiskResult = z.infer<typeof ascvdRiskResultSchema>;
+
 // Lab Values Schema - Complete Men's Clinic Panel
 export const labValuesSchema = z.object({
+  // Patient Demographics & ASCVD Risk Factors (for cardiovascular risk assessment)
+  demographics: patientDemographicsSchema.optional(),
+  
   // CBC Values (Complete Blood Count)
   hemoglobin: z.number().optional(),
   hematocrit: z.number().optional(),
@@ -84,6 +112,7 @@ export const interpretationResultSchema = z.object({
   aiRecommendations: z.string(),
   patientSummary: z.string(),
   recheckWindow: z.string(),
+  ascvdRisk: ascvdRiskResultSchema.optional(),
 });
 
 export type InterpretationResult = z.infer<typeof interpretationResultSchema>;
