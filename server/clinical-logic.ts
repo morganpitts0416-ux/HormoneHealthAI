@@ -308,27 +308,27 @@ export class ClinicalLogicEngine {
 
       if (labs.testosterone > 900) {
         status = 'abnormal';
-        interpretation = 'Testosterone trough significantly above target range.';
-        recommendation = 'Lower dose 10-20% or lengthen injection interval to avoid supraphysiologic levels.';
+        interpretation = 'Testosterone level above target range - dose adjustment recommended.';
+        recommendation = 'Provider recommendation: Lower dose 10-20% or lengthen injection interval to avoid supraphysiologic levels.';
         recheckTiming = '8 weeks';
       } else if (labs.testosterone >= 700 && labs.testosterone <= 900) {
         status = 'borderline';
-        interpretation = 'Testosterone trough at upper end of target. Consider if symptomatic (anxiety, irritability, acne).';
-        recommendation = 'If asymptomatic, maintain dose. If symptomatic, reduce 10%.';
+        interpretation = 'Testosterone at upper end of target range - consider symptoms.';
+        recommendation = 'Provider recommendation: If asymptomatic, maintain dose. If symptomatic (anxiety, irritability, acne), reduce 10%.';
         recheckTiming = '8-12 weeks';
       } else if (labs.testosterone >= 400 && labs.testosterone < 700) {
         status = 'normal';
-        interpretation = 'Testosterone trough in optimal range (400-700 ng/dL).';
+        interpretation = 'Testosterone in optimal therapeutic range (400-700 ng/dL).';
         recommendation = 'Maintain current dose if patient reports symptom relief.';
       } else if (labs.testosterone >= 300 && labs.testosterone < 400) {
         status = 'borderline';
-        interpretation = 'Testosterone trough below target but may be adequate if asymptomatic.';
-        recommendation = 'If symptomatic (fatigue, low libido), increase dose 20-30%.';
+        interpretation = 'Testosterone below target range but may be adequate if asymptomatic.';
+        recommendation = 'Provider recommendation: If symptomatic (fatigue, low libido), increase dose 20-30%.';
         recheckTiming = '8-12 weeks';
       } else {
         status = 'abnormal';
-        interpretation = 'Testosterone trough suboptimal (<350 ng/dL).';
-        recommendation = 'Increase dose 20-30% if symptomatic. Verify timing of trough draw.';
+        interpretation = 'Testosterone below target range - dose optimization needed.';
+        recommendation = 'Provider recommendation: Increase dose 20-30% if symptomatic. Verify timing of trough draw and adherence.';
         recheckTiming = '8-12 weeks';
       }
 
