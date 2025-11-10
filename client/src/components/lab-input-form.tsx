@@ -5,8 +5,10 @@ import { labValuesSchema, type LabValues } from "@shared/schema";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Sparkles } from "lucide-react";
+import { Sparkles, User } from "lucide-react";
 
 interface LabInputFormProps {
   onSubmit: (values: LabValues) => void;
