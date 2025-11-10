@@ -17,14 +17,34 @@ interface LabInputFormProps {
 }
 
 export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }: LabInputFormProps) {
+  // Merge initialValues with default booleans to ensure ASCVD calculator always receives defined values
+  const defaultValues: LabValues = {
+    demographics: {
+      onBPMeds: false,
+      diabetic: false,
+      smoker: false,
+      ...initialValues.demographics,
+    },
+    ...initialValues,
+  };
+
   const form = useForm<LabValues>({
     resolver: zodResolver(labValuesSchema),
-    defaultValues: initialValues,
+    defaultValues,
   });
 
   // Reset form when initialValues change (e.g., after PDF extraction)
   useEffect(() => {
-    form.reset(initialValues);
+    const mergedValues: LabValues = {
+      demographics: {
+        onBPMeds: false,
+        diabetic: false,
+        smoker: false,
+        ...initialValues.demographics,
+      },
+      ...initialValues,
+    };
+    form.reset(mergedValues);
   }, [initialValues]);
 
   return (
@@ -154,6 +174,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
                         <FormLabel className="text-xs font-medium uppercase">
                           Currently on Blood Pressure Medication
                         </FormLabel>
+                        <p className="text-xs text-muted-foreground">Leave unchecked if not on BP meds</p>
                       </div>
                     </FormItem>
                   )}
@@ -175,6 +196,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
                         <FormLabel className="text-xs font-medium uppercase">
                           History of Diabetes
                         </FormLabel>
+                        <p className="text-xs text-muted-foreground">Leave unchecked if no diabetes</p>
                       </div>
                     </FormItem>
                   )}
@@ -196,6 +218,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
                         <FormLabel className="text-xs font-medium uppercase">
                           Current Smoker
                         </FormLabel>
+                        <p className="text-xs text-muted-foreground">Leave unchecked if non-smoker</p>
                       </div>
                     </FormItem>
                   )}

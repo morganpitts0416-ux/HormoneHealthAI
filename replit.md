@@ -108,6 +108,14 @@ Based on the clinic's standing orders document:
 
 ## Recent Changes
 **November 10, 2025** (Latest)
+- **FIXED: ASCVD Not Displaying When Risk Factor Checkboxes Unchecked**
+  - **Problem**: ASCVD risk wasn't calculating when users left BP medications/diabetes/smoking checkboxes unchecked for healthy patients
+  - **Root Cause**: Unchecked boxes sent `undefined` instead of explicit `false`, causing validation to reject data as "missing"
+  - **Solution**: 
+    - Updated schema to use `.default(false)` for onBPMeds, diabetic, smoker boolean fields
+    - Form now explicitly initializes all three checkboxes to `false` in defaultValues
+    - Added helper text: "Leave unchecked if not on BP meds", "Leave unchecked if no diabetes", "Leave unchecked if non-smoker"
+  - **Verification**: Tested healthy 55yo patient (no risk factors, all boxes unchecked) - ASCVD calculated 4.1% LOW RISK and displayed correctly
 - **ENHANCED: Clinical Clarity and ASCVD Integration Improvements**
   - **Testosterone Language Clarification**: Updated testosterone interpretation language to clearly distinguish actionable findings from life-threatening critical situations
     - Changed "suboptimal" to "below target range - dose optimization needed"

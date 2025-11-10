@@ -8,9 +8,9 @@ export const patientDemographicsSchema = z.object({
   sex: z.enum(['male', 'female']).optional(),
   race: z.enum(['african_american', 'white', 'other']).optional(),
   systolicBP: z.number().min(70).max(250).optional(),
-  onBPMeds: z.boolean().optional(),
-  diabetic: z.boolean().optional(),
-  smoker: z.boolean().optional(),
+  onBPMeds: z.boolean().default(false),
+  diabetic: z.boolean().default(false),
+  smoker: z.boolean().default(false),
 });
 
 export type PatientDemographics = z.infer<typeof patientDemographicsSchema>;
