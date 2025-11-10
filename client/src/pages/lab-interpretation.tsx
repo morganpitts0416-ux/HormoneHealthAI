@@ -39,8 +39,15 @@ export default function LabInterpretation() {
     mutationFn: labsApi.extractPdfLabs,
     onSuccess: (data) => {
       console.log('[Frontend] PDF extraction successful:', data);
-      const mergedValues = { ...labValues, ...data };
-      setLabValues(mergedValues);
+      // Use functional update to preserve any demographics user has already entered
+      setLabValues(prev => {
+        const merged = { ...prev, ...data };
+        // Safely merge demographics, preserving existing values and handling undefined
+        const incomingDemo = data.demographics ?? {};
+        merged.demographics = { ...(prev.demographics ?? {}), ...incomingDemo };
+        console.log('[Frontend] Merged PDF data with existing values:', merged);
+        return merged;
+      });
       setIsPdfPendingReview(true);
       
       toast({

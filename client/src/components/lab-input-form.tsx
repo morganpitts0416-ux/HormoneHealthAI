@@ -39,6 +39,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
   });
 
   // Reset form when initialValues change (e.g., after PDF extraction)
+  // Use keepDirtyValues to preserve any fields the user has already edited
   useEffect(() => {
     const mergedValues: LabValues = {
       demographics: {
@@ -54,7 +55,9 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
       },
       ...initialValues,
     };
-    form.reset(mergedValues);
+    // keepDirtyValues: true preserves any fields the user has already changed
+    // This prevents wiping demographics when PDF extraction completes
+    form.reset(mergedValues, { keepDirtyValues: true });
   }, [initialValues]);
 
   return (
