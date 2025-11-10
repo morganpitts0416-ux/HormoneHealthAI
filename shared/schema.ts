@@ -11,6 +11,13 @@ export const patientDemographicsSchema = z.object({
   onBPMeds: z.boolean().default(false),
   diabetic: z.boolean().default(false),
   smoker: z.boolean().default(false),
+  
+  // STOP-BANG Sleep Apnea Screening
+  snoring: z.boolean().default(false),
+  tiredness: z.boolean().default(false),
+  observedApnea: z.boolean().default(false),
+  bmiOver35: z.boolean().default(false),
+  neckCircOver40cm: z.boolean().default(false),
 });
 
 export type PatientDemographics = z.infer<typeof patientDemographicsSchema>;
