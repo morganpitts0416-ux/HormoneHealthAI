@@ -32,3 +32,38 @@ The application features a comprehensive lab input form, a results display with 
 -   **Shadcn UI**: A collection of re-usable components.
 -   **TanStack Query**: For data fetching, caching, and state management.
 -   **Zod**: For schema declaration and validation.
+
+## Recent Changes
+
+**November 10, 2025** (Latest)
+- **FIXED: PDF Auto-Analysis Before Demographics Entry**
+  - **Problem**: PDF upload was automatically analyzing labs immediately after value extraction, BEFORE staff could enter patient demographics or STOP-BANG answers. This prevented ASCVD and STOP-BANG from calculating on the first analysis, forcing users to re-enter data and re-analyze.
+  - **Root Cause**: `pdfExtractMutation.onSuccess` callback was calling `interpretMutation.mutate()` immediately after PDF extraction.
+  - **Solution - Two-Phase Workflow**: 
+    - **Phase 1 (Extract)**: PDF upload → AI extracts values → Form auto-filled → Guidance alert appears
+    - **Phase 2 (Review & Analyze)**: User enters demographics → User completes STOP-BANG → User clicks "Interpret Labs" → Single analysis with complete data
+  - **Implementation Details**:
+    - Added `isPdfPendingReview` state flag to track extraction completion
+    - Removed automatic `interpretMutation.mutate()` call from PDF extraction success handler
+    - Updated toast message: "Lab values filled. Please enter patient demographics and STOP-BANG data, then click 'Interpret Labs'."
+    - Added guidance alert with step-by-step workflow instructions
+    - Clear previous results when new PDF uploaded to prevent confusion
+  - **Result**: Users can now upload PDF, enter demographics once, and get complete ASCVD + STOP-BANG calculations on first analysis
+
+- **COMPLETED: STOP-BANG Sleep Apnea Screening Integration**
+  - Implemented validated STOP-BANG questionnaire for obstructive sleep apnea (OSA) risk assessment
+  - 8-component screening (Snoring, Tiredness, Observed apnea, Pressure, BMI, Age, Neck circumference, Gender)
+  - Automated scoring (0-8 points) with risk stratification (Low 0-2, Intermediate 3-4, High 5-8)
+  - Displays in main interpretations table with color-coded badges (Low=green, Intermediate=orange, High=red critical)
+  - Sleep study referral recommendations for intermediate/high risk patients
+  - Clinical context for TRT patients (OSA can worsen erythrocytosis and cardiovascular risk)
+
+- **FIXED: ASCVD Not Displaying When Risk Factor Checkboxes Unchecked**
+  - Updated schema to use `.default(false)` for onBPMeds, diabetic, smoker boolean fields
+  - Form explicitly initializes all checkboxes to `false` in defaultValues
+  - Healthy patients (no risk factors) now calculate ASCVD correctly
+
+- **ENHANCED: Clinical Clarity and ASCVD Integration**
+  - Updated testosterone interpretation language to distinguish routine dose adjustments from emergencies
+  - Added "Provider recommendation:" prefix to testosterone recommendations
+  - ASCVD cardiovascular risk now appears in Complete Lab Results Overview table alongside other labs
