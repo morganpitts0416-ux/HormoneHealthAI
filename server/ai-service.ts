@@ -2,7 +2,7 @@
 // Using Replit AI Integrations (blueprint:javascript_openai_ai_integrations)
 
 import OpenAI from "openai";
-import type { LabValues, RedFlag, LabInterpretation } from "@shared/schema";
+import type { LabValues, RedFlag, LabInterpretation, ASCVDRiskResult } from "@shared/schema";
 
 // Using gpt-5-mini for faster responses - smaller model but still capable
 const openai = new OpenAI({
@@ -78,7 +78,8 @@ Guidelines:
   static async generatePatientSummary(
     labs: LabValues,
     interpretations: LabInterpretation[],
-    hasRedFlags: boolean
+    hasRedFlags: boolean,
+    ascvdRisk?: ASCVDRiskResult | null
   ): Promise<string> {
     // Categorize findings
     const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
@@ -90,6 +91,15 @@ Guidelines:
       return findings.map(f => `${f.category}: ${f.value} ${f.unit} (${f.interpretation})`).join('\n');
     };
 
+    // Build ASCVD section if available
+    const ascvdSection = ascvdRisk ? `
+CARDIOVASCULAR RISK ASSESSMENT:
+10-Year Risk of Heart Attack/Stroke: ${ascvdRisk.riskPercentage}
+Risk Category: ${ascvdRisk.riskCategory.toUpperCase()}
+${ascvdRisk.ldlGoal ? `LDL Cholesterol Goal: ${ascvdRisk.ldlGoal}` : ''}
+${ascvdRisk.statinRecommendation ? `Statin Recommendation: ${ascvdRisk.statinRecommendation}` : ''}
+` : '';
+
     const prompt = `Write a patient communication summary for these lab results. Use SPECIFIC values and ACTIONABLE recommendations.
 
 CRITICAL FINDINGS:
@@ -100,7 +110,7 @@ ${borderlineFindings.length > 0 ? buildFindingsList(borderlineFindings) : 'None'
 
 NORMAL FINDINGS:
 ${normalFindings.length > 0 ? buildFindingsList(normalFindings) : 'None'}
-
+${ascvdSection}
 ${hasRedFlags ? 'NOTE: Critical values require physician review before changes.\n' : ''}
 
 MANDATORY REQUIREMENTS:
@@ -127,8 +137,33 @@ MANDATORY REQUIREMENTS:
    - "Prioritize 7-8 hours quality sleep"
    - "Include strength training 2-3x weekly"
    - "Manage stress through exercise, meditation, or hobbies"
+   
+   FOR CARDIOVASCULAR RISK (if ASCVD risk is present):
+   
+   IF BORDERLINE RISK (5-7.4%):
+   - "Aim for 150 minutes moderate aerobic activity weekly: brisk walking, cycling, or swimming"
+   - "Mediterranean diet: emphasize vegetables, whole grains, olive oil, fish, nuts"
+   - "Limit processed foods and added sugars"
+   - "Target LDL based on your specific goal mentioned above"
+   
+   IF INTERMEDIATE RISK (7.5-19.9%):
+   - "Increase to 200-300 minutes aerobic exercise weekly plus strength training 2x/week"
+   - "Focus on heart-healthy fats: avocados, nuts, olive oil, fatty fish 3x weekly"
+   - "Reduce sodium to <2,300mg daily: avoid processed foods, choose fresh ingredients"
+   - "Strongly consider quitting smoking if applicable - reduces risk by 50% within 1 year"
+   - "Work toward LDL goal through diet changes and discuss statin therapy with your provider"
+   
+   IF HIGH RISK (≥20%):
+   - "Daily exercise is critical: 30-60 minutes moderate activity most days of the week"
+   - "Strict Mediterranean or DASH diet - consult with provider about nutrition counseling"
+   - "If smoking: Quit immediately - single most important action to reduce heart attack risk"
+   - "Achieve and maintain healthy weight (BMI <25)"
+   - "Stress management: proven techniques like meditation, yoga, or cardiac rehab programs"
+   - "Medication adherence is essential - discuss statin therapy and blood pressure control with provider"
 
-3. Start with: "Here is a copy of your recent lab results, along with the recommendations."
+3. If ASCVD risk is included, ALWAYS incorporate the cardiovascular lifestyle modifications above based on risk category. Be specific about the risk percentage and explain what it means in plain English.
+
+4. Start with: "Here is a copy of your recent lab results, along with the recommendations."
 
 4. Structure (300-400 words):
    - Opening sentence (required): "Here is a copy of your recent lab results, along with the recommendations."
