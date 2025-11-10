@@ -94,7 +94,7 @@ export class ASCVDCalculator {
   }
 
   /**
-   * African American Female equation
+   * African American Female equation (2013 ACC/AHA Pooled Cohort Equations)
    */
   private static calculateAfricanAmericanFemaleRisk(
     age: number,
@@ -108,22 +108,18 @@ export class ASCVDCalculator {
     const lnAge = Math.log(age);
     const lnTotalChol = Math.log(totalChol);
     const lnHDL = Math.log(hdl);
-    const lnSBPTreated = onBPMeds ? Math.log(sbp) : 0;
-    const lnSBPNotTreated = !onBPMeds ? Math.log(sbp) : 0;
+    const lnSBP = Math.log(sbp);
     const diabetes = diabetic ? 1 : 0;
     const smoking = smoker ? 1 : 0;
 
     const indSum = 
       17.1141 * lnAge +
-      0.94060 * lnTotalChol +
+      0.9396 * lnTotalChol +
       -18.9196 * lnHDL +
-      4.47660 * lnAge * lnHDL +
-      29.2907 * lnSBPTreated +
-      -6.43200 * lnAge * lnSBPTreated +
-      27.8197 * lnSBPNotTreated +
-      -6.08700 * lnAge * lnSBPNotTreated +
-      0.87400 * diabetes +
-      0.69200 * smoking;
+      4.4748 * lnAge * lnHDL +
+      (onBPMeds ? (29.2907 * lnSBP + -6.4321 * lnAge * lnSBP) : (27.8197 * lnSBP + -6.0873 * lnAge * lnSBP)) +
+      0.6908 * smoking +
+      0.8738 * diabetes;
 
     const meanCoef = 86.6081;
     const baselineSurvival = 0.9533;
@@ -133,7 +129,7 @@ export class ASCVDCalculator {
   }
 
   /**
-   * African American Male equation
+   * African American Male equation (2013 ACC/AHA Pooled Cohort Equations)
    */
   private static calculateAfricanAmericanMaleRisk(
     age: number,
@@ -147,8 +143,7 @@ export class ASCVDCalculator {
     const lnAge = Math.log(age);
     const lnTotalChol = Math.log(totalChol);
     const lnHDL = Math.log(hdl);
-    const lnSBPTreated = onBPMeds ? Math.log(sbp) : 0;
-    const lnSBPNotTreated = !onBPMeds ? Math.log(sbp) : 0;
+    const lnSBP = Math.log(sbp);
     const diabetes = diabetic ? 1 : 0;
     const smoking = smoker ? 1 : 0;
 
@@ -156,20 +151,19 @@ export class ASCVDCalculator {
       2.469 * lnAge +
       0.302 * lnTotalChol +
       -0.307 * lnHDL +
-      1.916 * lnSBPTreated +
-      1.809 * lnSBPNotTreated +
+      (onBPMeds ? (1.916 * lnSBP + 0.307 * lnAge * lnSBP) : 1.809 * lnSBP) +
       0.549 * smoking +
       0.645 * diabetes;
 
-    const meanCoef = 19.54;
-    const baselineSurvival = 0.8954;
+    const meanCoef = 19.5425;
+    const baselineSurvival = 0.89536;
 
     const risk = (1 - Math.pow(baselineSurvival, Math.exp(indSum - meanCoef))) * 100;
     return Math.max(0, Math.min(100, risk));
   }
 
   /**
-   * White Female equation
+   * White Female equation (2013 ACC/AHA Pooled Cohort Equations)
    */
   private static calculateWhiteFemaleRisk(
     age: number,
@@ -183,21 +177,23 @@ export class ASCVDCalculator {
     const lnAge = Math.log(age);
     const lnTotalChol = Math.log(totalChol);
     const lnHDL = Math.log(hdl);
-    const lnSBPTreated = onBPMeds ? Math.log(sbp) : 0;
-    const lnSBPNotTreated = !onBPMeds ? Math.log(sbp) : 0;
+    const lnSBP = Math.log(sbp);
     const diabetes = diabetic ? 1 : 0;
     const smoking = smoker ? 1 : 0;
 
     const indSum = 
-      2.32888 * lnAge +
-      1.20904 * lnTotalChol +
-      -0.70833 * lnHDL +
-      2.76157 * lnSBPTreated +
-      2.82263 * lnSBPNotTreated +
-      0.52873 * smoking +
-      0.69154 * diabetes;
+      -29.799 * lnAge +
+      4.884 * lnAge * lnAge +
+      13.540 * lnTotalChol +
+      -3.114 * lnAge * lnTotalChol +
+      -13.578 * lnHDL +
+      3.149 * lnAge * lnHDL +
+      (onBPMeds ? 2.019 * lnSBP : 1.957 * lnSBP) +
+      7.574 * smoking +
+      -1.665 * lnAge * smoking +
+      0.661 * diabetes;
 
-    const meanCoef = 26.1931;
+    const meanCoef = -29.18;
     const baselineSurvival = 0.9665;
 
     const risk = (1 - Math.pow(baselineSurvival, Math.exp(indSum - meanCoef))) * 100;
@@ -205,7 +201,7 @@ export class ASCVDCalculator {
   }
 
   /**
-   * White Male equation
+   * White Male equation (2013 ACC/AHA Pooled Cohort Equations)
    */
   private static calculateWhiteMaleRisk(
     age: number,
@@ -219,8 +215,7 @@ export class ASCVDCalculator {
     const lnAge = Math.log(age);
     const lnTotalChol = Math.log(totalChol);
     const lnHDL = Math.log(hdl);
-    const lnSBPTreated = onBPMeds ? Math.log(sbp) : 0;
-    const lnSBPNotTreated = !onBPMeds ? Math.log(sbp) : 0;
+    const lnSBP = Math.log(sbp);
     const diabetes = diabetic ? 1 : 0;
     const smoking = smoker ? 1 : 0;
 
@@ -230,8 +225,7 @@ export class ASCVDCalculator {
       -2.664 * lnAge * lnTotalChol +
       -7.990 * lnHDL +
       1.769 * lnAge * lnHDL +
-      1.797 * lnSBPTreated +
-      1.764 * lnSBPNotTreated +
+      (onBPMeds ? 1.797 * lnSBP : 1.764 * lnSBP) +
       7.837 * smoking +
       -1.795 * lnAge * smoking +
       0.658 * diabetes;
