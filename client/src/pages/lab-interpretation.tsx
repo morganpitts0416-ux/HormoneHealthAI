@@ -226,6 +226,7 @@ export default function LabInterpretation() {
                   aiRecommendations={interpretationResult.aiRecommendations || ''}
                   recheckWindow={interpretationResult.recheckWindow || ''}
                   redFlags={interpretationResult.redFlags || []}
+                  ascvdAssessment={interpretationResult.ascvdRisk || null}
                 />
 
                 {/* Patient Summary */}

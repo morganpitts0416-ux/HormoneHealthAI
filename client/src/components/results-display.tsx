@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon } from "lucide-react";
-import type { LabInterpretation, RedFlag } from "@shared/schema";
+import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Activity } from "lucide-react";
+import type { LabInterpretation, RedFlag, ASCVDRiskResult } from "@shared/schema";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -10,9 +10,25 @@ interface ResultsDisplayProps {
   aiRecommendations: string;
   recheckWindow: string;
   redFlags?: RedFlag[];
+  ascvdAssessment?: ASCVDRiskResult | null;
 }
 
-export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [] }: ResultsDisplayProps) {
+export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [], ascvdAssessment = null }: ResultsDisplayProps) {
+  const getRiskBadge = (category: string) => {
+    switch (category) {
+      case 'low':
+        return <Badge variant="outline" className="bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800" data-testid="badge-risk-low">Low Risk</Badge>;
+      case 'borderline':
+        return <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800" data-testid="badge-risk-borderline">Borderline</Badge>;
+      case 'intermediate':
+        return <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800" data-testid="badge-risk-intermediate">Intermediate Risk</Badge>;
+      case 'high':
+        return <Badge variant="destructive" data-testid="badge-risk-high">High Risk</Badge>;
+      default:
+        return <Badge variant="outline" data-testid="badge-risk-unknown">Unknown</Badge>;
+    }
+  };
+
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'normal':
@@ -137,6 +153,67 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
           </div>
         </CardContent>
       </Card>
+
+      {/* ASCVD Cardiovascular Risk Assessment */}
+      {ascvdAssessment && (
+        <Card data-testid="card-ascvd-assessment">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-primary" />
+                <CardTitle>Cardiovascular Risk Assessment</CardTitle>
+              </div>
+              {getRiskBadge(ascvdAssessment.riskCategory)}
+            </div>
+            <CardDescription>
+              10-year ASCVD risk based on 2013 ACC/AHA Pooled Cohort Equations
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
+              <div className="space-y-2">
+                <p className="text-sm font-medium text-muted-foreground" data-testid="label-10year-risk">10-Year Risk of Heart Attack or Stroke</p>
+                <div className="flex items-baseline gap-2">
+                  <span className="text-4xl font-bold font-mono" data-testid="text-ascvd-risk">
+                    {ascvdAssessment.riskPercentage}
+                  </span>
+                </div>
+              </div>
+              
+              {ascvdAssessment.ldlGoal && (
+                <div className="space-y-2">
+                  <p className="text-sm font-medium text-muted-foreground" data-testid="label-ldl-goal">LDL Cholesterol Goal</p>
+                  <div className="flex items-baseline gap-2">
+                    <span className="text-2xl font-semibold font-mono" data-testid="text-ldl-goal">
+                      {ascvdAssessment.ldlGoal}
+                    </span>
+                  </div>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              {ascvdAssessment.statinRecommendation && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-muted-foreground" data-testid="label-statin-recommendation">Statin Therapy Recommendation</p>
+                  <p className="text-sm bg-muted/50 p-3 rounded-md" data-testid="text-statin-recommendation">
+                    {ascvdAssessment.statinRecommendation}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase text-muted-foreground" data-testid="label-clinical-recommendations">Clinical Recommendations</p>
+                <p className="text-sm leading-relaxed" data-testid="text-ascvd-recommendations">
+                  {ascvdAssessment.recommendations}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
 
       {/* Lab Results Grid */}
       <Card data-testid="card-lab-results">
