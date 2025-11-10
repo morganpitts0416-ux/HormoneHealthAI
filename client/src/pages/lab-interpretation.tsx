@@ -19,6 +19,7 @@ export default function LabInterpretation() {
   const [interpretationResult, setInterpretationResult] = useState<InterpretationResult | null>(null);
   const [activeTab, setActiveTab] = useState<string>("input");
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
+  const [isPdfPendingReview, setIsPdfPendingReview] = useState(false);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
@@ -40,15 +41,13 @@ export default function LabInterpretation() {
       console.log('[Frontend] PDF extraction successful:', data);
       const mergedValues = { ...labValues, ...data };
       setLabValues(mergedValues);
+      setIsPdfPendingReview(true);
       
       toast({
         title: "PDF Extracted Successfully",
-        description: "Analyzing lab values now...",
+        description: "Lab values filled. Please enter patient demographics and STOP-BANG data, then click 'Interpret Labs'.",
+        duration: 8000,
       });
-      
-      // Automatically interpret the extracted lab values
-      console.log('[Frontend] Auto-submitting PDF-extracted values for interpretation');
-      interpretMutation.mutate(mergedValues);
     },
     onError: (error) => {
       console.error('[Frontend] PDF extraction error:', error);
@@ -63,6 +62,7 @@ export default function LabInterpretation() {
   const handleSubmit = (values: LabValues) => {
     console.log('[Frontend] handleSubmit called with values:', values);
     setLabValues(values);
+    setIsPdfPendingReview(false);
     console.log('[Frontend] Calling interpretMutation.mutate');
     interpretMutation.mutate(values);
   };
@@ -72,6 +72,7 @@ export default function LabInterpretation() {
     setInterpretationResult(null);
     setActiveTab("input");
     setPdfFileName(null);
+    setIsPdfPendingReview(false);
   };
 
   const handleExportPDF = () => {
@@ -85,6 +86,8 @@ export default function LabInterpretation() {
     if (file) {
       console.log('[Frontend] PDF file selected:', file.name);
       setPdfFileName(file.name);
+      setInterpretationResult(null);
+      setActiveTab("input");
       pdfExtractMutation.mutate(file);
     }
   };
@@ -191,6 +194,23 @@ export default function LabInterpretation() {
                 </div>
               </CardContent>
             </Card>
+
+            {/* PDF Review Guidance */}
+            {isPdfPendingReview && (
+              <Alert data-testid="alert-pdf-review-guidance">
+                <AlertCircle className="w-4 h-4" />
+                <AlertTitle>Next Steps: Complete Demographics & STOP-BANG</AlertTitle>
+                <AlertDescription>
+                  Lab values have been auto-filled from your PDF. To calculate ASCVD cardiovascular risk and STOP-BANG sleep apnea screening:
+                  <ol className="list-decimal list-inside mt-2 space-y-1">
+                    <li>Open the "Patient Demographics & Cardiovascular Risk Factors" section below</li>
+                    <li>Enter age, sex, race, blood pressure, and risk factors (diabetes, smoking, BP medications)</li>
+                    <li>Complete the STOP-BANG Sleep Apnea Screening checkboxes</li>
+                    <li>Review auto-filled lab values and click "Interpret Labs"</li>
+                  </ol>
+                </AlertDescription>
+              </Alert>
+            )}
 
             {/* Manual Entry Form */}
             <Card>
