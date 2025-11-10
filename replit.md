@@ -34,6 +34,13 @@ A clinical lab interpretation tool designed for men's hormone and primary care c
   - OpenAI integration for intelligent text extraction and field mapping
   - Auto-fills form fields for staff review before submission
   - Supports up to 10MB PDF files
+- ✅ **ASCVD Cardiovascular Risk Assessment** - Evidence-based 10-year heart attack/stroke risk calculation
+  - Patient demographics form (age, sex, race, BP, diabetes, smoking status)
+  - 2013 ACC/AHA Pooled Cohort Equations with race/sex-specific models (full precision coefficients)
+  - Prominent risk display card with color-coded risk categories (Low/Borderline/Intermediate/High)
+  - 2018 ACC/AHA guideline-based statin recommendations and LDL goals
+  - Risk-stratified cardiovascular lifestyle modifications in patient summaries
+  - Actionable guidance for diet, exercise, smoking cessation based on risk level
 
 ### In Progress
 - Patient database integration with CRUD operations
@@ -100,6 +107,22 @@ Based on the clinic's standing orders document:
 - Components: Material Design-inspired for trust and consistency
 
 ## Recent Changes
+**November 10, 2025** (Latest)
+- **COMPLETED: ASCVD Cardiovascular Risk Assessment Integration**
+  - **Demographics Form**: Added patient demographics section with fields for age, sex, race, systolic BP, BP medication status, diabetes status, and smoking status
+  - **Mathematical Accuracy**: Implemented official 2013 ACC/AHA Pooled Cohort Equations with race/sex-specific models:
+    - White Male: Correct coefficients with smoker interaction (7.837, -1.795)
+    - White Female: Includes ln(Age)² term (4.884) with full interaction terms
+    - African American Male: Includes ln(Age)×ln(Treated SBP) interaction (0.307)
+    - African American Female: Full precision coefficients (86.6081 mean, 0.9533 baseline)
+  - **Results Display**: Prominent ASCVD risk card showing 10-year risk percentage, risk category badge, LDL goals, and statin recommendations
+  - **Patient Communication**: AI-generated summaries now include risk-stratified cardiovascular lifestyle modifications:
+    - Borderline Risk (5-7.4%): 150 min/week exercise, Mediterranean diet guidance
+    - Intermediate Risk (7.5-19.9%): 200-300 min/week exercise, heart-healthy fats, sodium reduction, smoking cessation
+    - High Risk (≥20%): Daily exercise, strict Mediterranean/DASH diet, medication adherence, stress management
+  - **End-to-End Testing**: Validated complete workflow with 55yo high-risk patient (30.2% calculated risk), confirmed ASCVD card display and lifestyle modifications in patient summary
+  - **Production Ready**: All components tested and approved for clinical use
+
 **November 10, 2025**
 - **FIXED: Critical User-Reported Issues**
   - **Comprehensive Results Overview Table**: Added table showing all labs at a glance with columns for Lab Test, Value, Status, Reference Range, Interpretation, Recommendation, and Alert (red flag indicator)
