@@ -42,9 +42,23 @@ export default function LabInterpretation() {
       // Use functional update to preserve any demographics user has already entered
       setLabValues(prev => {
         const merged = { ...prev, ...data };
-        // Safely merge demographics, preserving existing values and handling undefined
-        const incomingDemo = data.demographics ?? {};
-        merged.demographics = { ...(prev.demographics ?? {}), ...incomingDemo };
+        // Safely merge demographics with schema defaults to satisfy TypeScript
+        // Start with defaults, then overlay prev (user entries), then data (PDF extraction)
+        const demographicsDefaults = {
+          onBPMeds: false,
+          diabetic: false,
+          smoker: false,
+          snoring: false,
+          tiredness: false,
+          observedApnea: false,
+          bmiOver35: false,
+          neckCircOver40cm: false,
+        };
+        merged.demographics = {
+          ...demographicsDefaults,
+          ...(prev.demographics ?? {}),
+          ...(data.demographics ?? {}),
+        };
         console.log('[Frontend] Merged PDF data with existing values:', merged);
         return merged;
       });
