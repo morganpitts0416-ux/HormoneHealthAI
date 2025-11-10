@@ -36,19 +36,25 @@ The application features a comprehensive lab input form, a results display with 
 ## Recent Changes
 
 **November 10, 2025** (Latest)
-- **FIXED: PDF Auto-Analysis Before Demographics Entry**
-  - **Problem**: PDF upload was automatically analyzing labs immediately after value extraction, BEFORE staff could enter patient demographics or STOP-BANG answers. This prevented ASCVD and STOP-BANG from calculating on the first analysis, forcing users to re-enter data and re-analyze.
-  - **Root Cause**: `pdfExtractMutation.onSuccess` callback was calling `interpretMutation.mutate()` immediately after PDF extraction.
-  - **Solution - Two-Phase Workflow**: 
+- **FIXED: PDF Auto-Analysis Before Demographics Entry + Demographics Preservation**
+  - **Problem 1**: PDF upload was automatically analyzing labs immediately after value extraction, BEFORE staff could enter patient demographics or STOP-BANG answers. This prevented ASCVD and STOP-BANG from calculating on the first analysis, forcing users to re-enter data and re-analyze.
+  - **Problem 2**: When PDF extraction completed while user was entering demographics, it wiped out any demographics already entered, preventing ASCVD and STOP-BANG calculations.
+  - **Root Causes**: 
+    - `pdfExtractMutation.onSuccess` callback was calling `interpretMutation.mutate()` immediately after PDF extraction
+    - State update used stale closure `{...labValues, ...data}` which wiped demographics
+    - Form reset didn't preserve "dirty" (user-edited) fields
+  - **Solution - Two-Phase Workflow + State Preservation**: 
     - **Phase 1 (Extract)**: PDF upload → AI extracts values → Form auto-filled → Guidance alert appears
     - **Phase 2 (Review & Analyze)**: User enters demographics → User completes STOP-BANG → User clicks "Interpret Labs" → Single analysis with complete data
   - **Implementation Details**:
     - Added `isPdfPendingReview` state flag to track extraction completion
     - Removed automatic `interpretMutation.mutate()` call from PDF extraction success handler
+    - **State Preservation**: Changed to functional update `setLabValues(prev => {...})` with safe demographics merging using default boolean values
+    - **Form Preservation**: Added `keepDirtyValues: true` to form.reset() to preserve user-edited fields during PDF extraction
     - Updated toast message: "Lab values filled. Please enter patient demographics and STOP-BANG data, then click 'Interpret Labs'."
     - Added guidance alert with step-by-step workflow instructions
     - Clear previous results when new PDF uploaded to prevent confusion
-  - **Result**: Users can now upload PDF, enter demographics once, and get complete ASCVD + STOP-BANG calculations on first analysis
+  - **Result**: Users can enter demographics before or during PDF extraction, and those values are preserved. Single click on "Interpret Labs" produces complete ASCVD + STOP-BANG calculations on first try.
 
 - **COMPLETED: STOP-BANG Sleep Apnea Screening Integration**
   - Implemented validated STOP-BANG questionnaire for obstructive sleep apnea (OSA) risk assessment
