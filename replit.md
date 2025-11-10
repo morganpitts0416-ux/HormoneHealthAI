@@ -108,6 +108,22 @@ Based on the clinic's standing orders document:
 
 ## Recent Changes
 **November 10, 2025** (Latest)
+- **ENHANCED: Clinical Clarity and ASCVD Integration Improvements**
+  - **Testosterone Language Clarification**: Updated testosterone interpretation language to clearly distinguish actionable findings from life-threatening critical situations
+    - Changed "suboptimal" to "below target range - dose optimization needed"
+    - Added "Provider recommendation:" prefix to all testosterone recommendations
+    - Emphasizes dose adjustments are routine therapy management, not emergencies
+    - Maintains 'abnormal' status (orange badge) distinct from 'critical' (red badge) for true emergencies
+  - **ASCVD in Main Interpretations Table**: ASCVD cardiovascular risk now appears alongside other lab results in the Complete Lab Results Overview table
+    - Displays 10-year risk percentage (e.g., "30.2%") and category (LOW/BORDERLINE/INTERMEDIATE/HIGH RISK)
+    - Badge color reflects risk level: Low=green, Borderline=yellow, Intermediate=orange, High=red
+    - Positioned after lipid panel for clinical context
+    - Shows interpretation: "10-year risk of heart attack or stroke: 30.2% (HIGH RISK)"
+    - Includes cardiovascular recommendations and annual recheck timing
+    - Separate detailed ASCVD card remains for comprehensive guidance (LDL goals, statin therapy, lifestyle modifications)
+  - **End-to-End Testing**: Validated both improvements with high-risk patient scenario, confirmed correct badge colors and placement
+
+**November 10, 2025**
 - **COMPLETED: ASCVD Cardiovascular Risk Assessment Integration**
   - **Demographics Form**: Added patient demographics section with fields for age, sex, race, systolic BP, BP medication status, diabetes status, and smoking status
   - **Mathematical Accuracy**: Implemented official 2013 ACC/AHA Pooled Cohort Equations with race/sex-specific models:
