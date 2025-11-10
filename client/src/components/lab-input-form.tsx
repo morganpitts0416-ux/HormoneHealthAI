@@ -17,12 +17,17 @@ interface LabInputFormProps {
 }
 
 export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }: LabInputFormProps) {
-  // Merge initialValues with default booleans to ensure ASCVD calculator always receives defined values
+  // Merge initialValues with default booleans to ensure calculators always receive defined values
   const defaultValues: LabValues = {
     demographics: {
       onBPMeds: false,
       diabetic: false,
       smoker: false,
+      snoring: false,
+      tiredness: false,
+      observedApnea: false,
+      bmiOver35: false,
+      neckCircOver40cm: false,
       ...initialValues.demographics,
     },
     ...initialValues,
@@ -40,6 +45,11 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
         onBPMeds: false,
         diabetic: false,
         smoker: false,
+        snoring: false,
+        tiredness: false,
+        observedApnea: false,
+        bmiOver35: false,
+        neckCircOver40cm: false,
         ...initialValues.demographics,
       },
       ...initialValues,
@@ -223,6 +233,126 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
                     </FormItem>
                   )}
                 />
+              </div>
+
+              {/* STOP-BANG Sleep Apnea Screening */}
+              <div className="mt-6 pt-6 border-t">
+                <h4 className="text-sm font-semibold mb-4 text-primary">STOP-BANG Sleep Apnea Screening</h4>
+                <p className="text-xs text-muted-foreground mb-4">
+                  Optional screening for obstructive sleep apnea risk. Age, sex, and blood pressure are already captured above.
+                </p>
+                
+                <div className="grid grid-cols-1 gap-4">
+                  <FormField
+                    control={form.control}
+                    name="demographics.snoring"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value ?? false}
+                            onCheckedChange={field.onChange}
+                            data-testid="checkbox-snoring"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="text-xs font-medium uppercase">
+                            Snoring (loud enough to be heard through closed door)
+                          </FormLabel>
+                          <p className="text-xs text-muted-foreground">Leave unchecked if no loud snoring</p>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="demographics.tiredness"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value ?? false}
+                            onCheckedChange={field.onChange}
+                            data-testid="checkbox-tiredness"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="text-xs font-medium uppercase">
+                            Tiredness (excessive daytime sleepiness or fatigue)
+                          </FormLabel>
+                          <p className="text-xs text-muted-foreground">Leave unchecked if no excessive tiredness</p>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="demographics.observedApnea"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value ?? false}
+                            onCheckedChange={field.onChange}
+                            data-testid="checkbox-observed-apnea"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="text-xs font-medium uppercase">
+                            Observed Apnea (witnessed breathing pauses during sleep)
+                          </FormLabel>
+                          <p className="text-xs text-muted-foreground">Leave unchecked if no witnessed apneas</p>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="demographics.bmiOver35"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value ?? false}
+                            onCheckedChange={field.onChange}
+                            data-testid="checkbox-bmi-over-35"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="text-xs font-medium uppercase">
+                            BMI Greater Than 35 kg/m²
+                          </FormLabel>
+                          <p className="text-xs text-muted-foreground">Leave unchecked if BMI ≤35</p>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+
+                  <FormField
+                    control={form.control}
+                    name="demographics.neckCircOver40cm"
+                    render={({ field }) => (
+                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                        <FormControl>
+                          <Checkbox
+                            checked={field.value ?? false}
+                            onCheckedChange={field.onChange}
+                            data-testid="checkbox-neck-circ-over-40"
+                          />
+                        </FormControl>
+                        <div className="space-y-1 leading-none">
+                          <FormLabel className="text-xs font-medium uppercase">
+                            Neck Circumference Greater Than 40cm (16 inches)
+                          </FormLabel>
+                          <p className="text-xs text-muted-foreground">Leave unchecked if neck circumference ≤40cm</p>
+                        </div>
+                      </FormItem>
+                    )}
+                  />
+                </div>
               </div>
             </AccordionContent>
           </AccordionItem>

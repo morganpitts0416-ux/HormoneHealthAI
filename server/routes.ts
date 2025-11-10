@@ -6,6 +6,7 @@ import { ClinicalLogicEngine } from "./clinical-logic";
 import { AIService } from "./ai-service";
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
+import { StopBangCalculator } from "./stopbang-calculator";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Lab interpretation endpoint
@@ -80,6 +81,58 @@ export async function registerRoutes(app: Express): Promise<Server> {
           interpretations.splice(lipidEndIndex + 1, 0, ascvdInterpretation);
         } else {
           interpretations.push(ascvdInterpretation);
+        }
+      }
+
+      // Step 3b: Calculate STOP-BANG sleep apnea risk if demographics data available
+      const stopBangRisk = StopBangCalculator.calculateRisk(labs) || undefined;
+      console.log('[API] STOP-BANG calculation result:', stopBangRisk ? `Score: ${stopBangRisk.score}/8, Risk: ${stopBangRisk.riskCategory}` : 'Not calculated (missing demographics data)');
+
+      // Step 3c: Add STOP-BANG to interpretations if calculated
+      if (stopBangRisk) {
+        console.log('[API] Adding STOP-BANG to interpretations array');
+        // Map STOP-BANG risk category to interpretation status
+        const getStopBangStatus = (category: string): 'normal' | 'borderline' | 'abnormal' | 'critical' => {
+          switch (category.toLowerCase()) {
+            case 'low': return 'normal';
+            case 'intermediate': return 'abnormal';
+            case 'high': return 'critical'; // High OSA risk is critical due to CV/erythrocytosis complications
+            default: return 'abnormal';
+          }
+        };
+
+        const stopBangInterpretation = {
+          category: 'Sleep Apnea Risk (STOP-BANG)',
+          value: stopBangRisk.score,
+          unit: 'points',
+          status: getStopBangStatus(stopBangRisk.riskCategory),
+          referenceRange: 'Low 0-2, Intermediate 3-4, High 5-8',
+          interpretation: stopBangRisk.riskDescription,
+          recommendation: stopBangRisk.recommendations,
+          recheckTiming: stopBangRisk.riskCategory === 'low' ? 'Annual' : 'Follow-up in 1-3 months after sleep study',
+        };
+
+        // Insert after ASCVD if it exists, otherwise after lipid panel, otherwise at end
+        const ascvdIndex = interpretations.findIndex(interp => interp.category === 'ASCVD Cardiovascular Risk');
+        if (ascvdIndex !== -1) {
+          interpretations.splice(ascvdIndex + 1, 0, stopBangInterpretation);
+        } else {
+          const lipidEndIndex = interpretations.findIndex((interp, idx, arr) => 
+            (interp.category.toLowerCase().includes('cholesterol') || 
+             interp.category.toLowerCase().includes('triglyceride') ||
+             interp.category.toLowerCase().includes('ldl') ||
+             interp.category.toLowerCase().includes('hdl')) &&
+            (!arr[idx + 1] || 
+             (!arr[idx + 1].category.toLowerCase().includes('cholesterol') &&
+              !arr[idx + 1].category.toLowerCase().includes('triglyceride') &&
+              !arr[idx + 1].category.toLowerCase().includes('ldl') &&
+              !arr[idx + 1].category.toLowerCase().includes('hdl')))
+          );
+          if (lipidEndIndex !== -1) {
+            interpretations.splice(lipidEndIndex + 1, 0, stopBangInterpretation);
+          } else {
+            interpretations.push(stopBangInterpretation);
+          }
         }
       }
 
