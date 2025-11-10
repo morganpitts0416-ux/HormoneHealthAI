@@ -1,16 +1,18 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertTriangle, AlertCircle, Info } from "lucide-react";
-import type { LabInterpretation } from "@shared/schema";
+import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon } from "lucide-react";
+import type { LabInterpretation, RedFlag } from "@shared/schema";
 import { Separator } from "@/components/ui/separator";
+import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
 interface ResultsDisplayProps {
   interpretations: LabInterpretation[];
   aiRecommendations: string;
   recheckWindow: string;
+  redFlags?: RedFlag[];
 }
 
-export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow }: ResultsDisplayProps) {
+export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [] }: ResultsDisplayProps) {
   const getStatusIcon = (status: string) => {
     switch (status) {
       case 'normal':
@@ -45,8 +47,97 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
   const normalResults = interpretations.filter(i => i.status === 'normal');
   const abnormalResults = interpretations.filter(i => i.status !== 'normal');
 
+  // Helper to check if a lab has a red flag
+  const hasRedFlag = (category: string) => {
+    return redFlags.some(flag => 
+      flag.category.toLowerCase().includes(category.toLowerCase()) || 
+      category.toLowerCase().includes(flag.category.toLowerCase())
+    );
+  };
+
   return (
     <div className="space-y-6">
+      {/* Comprehensive Results Overview Table */}
+      <Card data-testid="card-results-overview">
+        <CardHeader>
+          <CardTitle>Complete Lab Results Overview</CardTitle>
+          <CardDescription>
+            All lab values with status, interpretation, and clinical recommendations
+          </CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="rounded-md border">
+            <Table>
+              <TableHeader>
+                <TableRow>
+                  <TableHead className="w-[180px]">Lab Test</TableHead>
+                  <TableHead className="w-[120px]">Value</TableHead>
+                  <TableHead className="w-[100px]">Status</TableHead>
+                  <TableHead className="w-[140px]">Reference Range</TableHead>
+                  <TableHead>Interpretation</TableHead>
+                  <TableHead>Recommendation</TableHead>
+                  <TableHead className="w-[80px] text-center">Alert</TableHead>
+                </TableRow>
+              </TableHeader>
+              <TableBody>
+                {interpretations.length === 0 ? (
+                  <TableRow>
+                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                      No lab results to display
+                    </TableCell>
+                  </TableRow>
+                ) : (
+                  interpretations.map((interp, index) => {
+                    const isRedFlag = hasRedFlag(interp.category);
+                    return (
+                      <TableRow 
+                        key={index} 
+                        data-testid={`table-row-${index}`}
+                        className={isRedFlag ? "bg-destructive/5" : ""}
+                      >
+                        <TableCell className="font-semibold">
+                          <div className="flex items-center gap-2">
+                            {getStatusIcon(interp.status)}
+                            {interp.category}
+                          </div>
+                        </TableCell>
+                        <TableCell>
+                          {interp.value !== undefined ? (
+                            <span className="font-mono font-semibold">
+                              {interp.value} <span className="text-xs text-muted-foreground">{interp.unit}</span>
+                            </span>
+                          ) : (
+                            <span className="text-xs text-muted-foreground italic">Not provided</span>
+                          )}
+                        </TableCell>
+                        <TableCell>{getStatusBadge(interp.status)}</TableCell>
+                        <TableCell className="text-xs text-muted-foreground">
+                          {interp.referenceRange}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {interp.interpretation}
+                        </TableCell>
+                        <TableCell className="text-sm">
+                          {interp.recommendation}
+                        </TableCell>
+                        <TableCell className="text-center">
+                          {isRedFlag && (
+                            <AlertOctagon 
+                              className="w-5 h-5 text-destructive inline-block" 
+                              data-testid={`red-flag-${index}`}
+                            />
+                          )}
+                        </TableCell>
+                      </TableRow>
+                    );
+                  })
+                )}
+              </TableBody>
+            </Table>
+          </div>
+        </CardContent>
+      </Card>
+
       {/* Lab Results Grid */}
       <Card data-testid="card-lab-results">
         <CardHeader>
