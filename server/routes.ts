@@ -33,6 +33,55 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Step 3: Calculate ASCVD risk if demographics and lipid data are available
       const ascvdRisk = ASCVDCalculator.calculateRisk(labs) || undefined;
+      console.log('[API] ASCVD calculation result:', ascvdRisk ? `Risk: ${ascvdRisk.riskPercentage}, Category: ${ascvdRisk.riskCategory}` : 'Not calculated (missing required fields)');
+
+      // Step 3a: Add ASCVD to interpretations if calculated (displayed in main results table)
+      if (ascvdRisk) {
+        console.log('[API] Adding ASCVD to interpretations array');
+        // Map ASCVD risk category to interpretation status
+        const getRiskStatus = (category: string): 'normal' | 'borderline' | 'abnormal' | 'critical' => {
+          switch (category.toLowerCase()) {
+            case 'low': return 'normal';
+            case 'borderline': return 'borderline';
+            case 'intermediate': return 'abnormal';
+            case 'high': return 'critical';
+            default: return 'abnormal';
+          }
+        };
+
+        // Find the index after lipid panel interpretations to insert ASCVD
+        const lipidEndIndex = interpretations.findIndex((interp, idx, arr) => 
+          // Find last lipid-related interpretation
+          (interp.category.toLowerCase().includes('cholesterol') || 
+           interp.category.toLowerCase().includes('triglyceride') ||
+           interp.category.toLowerCase().includes('ldl') ||
+           interp.category.toLowerCase().includes('hdl')) &&
+          // Check if next item is not lipid-related
+          (!arr[idx + 1] || 
+           (!arr[idx + 1].category.toLowerCase().includes('cholesterol') &&
+            !arr[idx + 1].category.toLowerCase().includes('triglyceride') &&
+            !arr[idx + 1].category.toLowerCase().includes('ldl') &&
+            !arr[idx + 1].category.toLowerCase().includes('hdl')))
+        );
+
+        const ascvdInterpretation = {
+          category: 'ASCVD Cardiovascular Risk',
+          value: parseFloat(ascvdRisk.riskPercentage.replace('%', '')),
+          unit: '%',
+          status: getRiskStatus(ascvdRisk.riskCategory),
+          referenceRange: 'Low <5%, Borderline 5-7.4%, Intermediate 7.5-19.9%, High ≥20%',
+          interpretation: `10-year risk of heart attack or stroke: ${ascvdRisk.riskPercentage} (${ascvdRisk.riskCategory.toUpperCase()} RISK)`,
+          recommendation: ascvdRisk.recommendations,
+          recheckTiming: 'Annual',
+        };
+
+        // Insert after lipid panel if found, otherwise append at end
+        if (lipidEndIndex !== -1) {
+          interpretations.splice(lipidEndIndex + 1, 0, ascvdInterpretation);
+        } else {
+          interpretations.push(ascvdInterpretation);
+        }
+      }
 
       // Step 4: Generate AI-powered recommendations
       const aiRecommendations = await AIService.generateRecommendations(
