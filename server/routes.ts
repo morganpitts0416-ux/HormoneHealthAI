@@ -31,28 +31,29 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 2: Generate detailed interpretations
       const interpretations = ClinicalLogicEngine.interpretLabValues(labs);
 
-      // Step 3: Generate AI-powered recommendations
+      // Step 3: Calculate ASCVD risk if demographics and lipid data are available
+      const ascvdRisk = ASCVDCalculator.calculateRisk(labs) || undefined;
+
+      // Step 4: Generate AI-powered recommendations
       const aiRecommendations = await AIService.generateRecommendations(
         labs,
         redFlags,
         interpretations
       );
 
-      // Step 4: Generate patient-friendly summary
+      // Step 5: Generate patient-friendly summary (includes ASCVD-based lifestyle modifications)
       const patientSummary = await AIService.generatePatientSummary(
         labs,
         interpretations,
-        redFlags.length > 0
+        redFlags.length > 0,
+        ascvdRisk
       );
 
-      // Step 5: Determine recheck window
+      // Step 6: Determine recheck window
       const recheckWindow = ClinicalLogicEngine.determineRecheckWindow(
         redFlags,
         interpretations
       );
-
-      // Step 6: Calculate ASCVD risk if demographics and lipid data are available
-      const ascvdRisk = ASCVDCalculator.calculateRisk(labs) || undefined;
 
       // Construct response
       const result: InterpretationResult = {
