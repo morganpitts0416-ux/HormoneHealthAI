@@ -100,6 +100,14 @@ Based on the clinic's standing orders document:
 - Components: Material Design-inspired for trust and consistency
 
 ## Recent Changes
+**November 10, 2025**
+- **FIXED: Critical User-Reported Issues**
+  - **Comprehensive Results Overview Table**: Added table showing all labs at a glance with columns for Lab Test, Value, Status, Reference Range, Interpretation, Recommendation, and Alert (red flag indicator)
+  - **Staff-Facing AI Recommendations**: Updated AI prompts to be strictly clinical and professional for staff - removed all emojis, added specific guidance for dose adjustments, follow-up timing, physician notifications
+  - **Patient-Friendly Summaries**: Patient Communication Summary now always starts with "Here is a copy of your recent lab results, along with the recommendations" and uses plain language suitable for direct patient communication
+  - **Partial Lab Data Handling**: System gracefully handles missing lab values by displaying "Not provided" instead of breaking - supports workflows where not all patients have hormone panels
+  - **PDF Auto-Analysis Fix**: PDF upload now automatically triggers lab interpretation - users no longer need to click "Interpret Labs" a second time after PDF extraction completes
+
 **November 3, 2025**
 - **FIXED: PDF Upload Form Integration**
   - Fixed critical bug where form fields weren't updating after PDF extraction
