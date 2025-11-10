@@ -38,11 +38,17 @@ export default function LabInterpretation() {
     mutationFn: labsApi.extractPdfLabs,
     onSuccess: (data) => {
       console.log('[Frontend] PDF extraction successful:', data);
-      setLabValues(prev => ({ ...prev, ...data }));
+      const mergedValues = { ...labValues, ...data };
+      setLabValues(mergedValues);
+      
       toast({
         title: "PDF Extracted Successfully",
-        description: "Lab values have been auto-filled. Please review and edit as needed before submitting.",
+        description: "Analyzing lab values now...",
       });
+      
+      // Automatically interpret the extracted lab values
+      console.log('[Frontend] Auto-submitting PDF-extracted values for interpretation');
+      interpretMutation.mutate(mergedValues);
     },
     onError: (error) => {
       console.error('[Frontend] PDF extraction error:', error);
