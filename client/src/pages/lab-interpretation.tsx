@@ -219,6 +219,7 @@ export default function LabInterpretation() {
                   interpretations={interpretationResult.interpretations || []}
                   aiRecommendations={interpretationResult.aiRecommendations || ''}
                   recheckWindow={interpretationResult.recheckWindow || ''}
+                  redFlags={interpretationResult.redFlags || []}
                 />
 
                 {/* Patient Summary */}
