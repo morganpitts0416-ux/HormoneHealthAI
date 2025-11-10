@@ -5,6 +5,7 @@ import { interpretLabsRequestSchema, type InterpretationResult } from "@shared/s
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { AIService } from "./ai-service";
 import { PDFExtractionService } from "./pdf-extraction";
+import { ASCVDCalculator } from "./ascvd-calculator";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Lab interpretation endpoint
@@ -50,6 +51,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interpretations
       );
 
+      // Step 6: Calculate ASCVD risk if demographics and lipid data are available
+      const ascvdRisk = ASCVDCalculator.calculateRisk(labs) || undefined;
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -57,6 +61,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aiRecommendations,
         patientSummary,
         recheckWindow,
+        ascvdRisk,
       };
 
       console.log('[API] Response summary:');
