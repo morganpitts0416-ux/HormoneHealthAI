@@ -30,7 +30,180 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Accordion type="multiple" defaultValue={["cbc", "hormones", "lipids", "other"]} className="space-y-4">
+        <Accordion type="multiple" defaultValue={["demographics", "cbc", "hormones", "lipids", "other"]} className="space-y-4">
+          {/* Patient Demographics & ASCVD Risk Factors */}
+          <AccordionItem value="demographics" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-demographics">
+              <div className="flex items-center gap-2">
+                <User className="w-4 h-4 text-primary" />
+                <span className="font-semibold">Patient Demographics & Cardiovascular Risk Factors</span>
+                <span className="text-xs text-muted-foreground ml-2">(Required for ASCVD risk calculation)</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="demographics.age"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Age</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            placeholder="45"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-age"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">years</span>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.sex"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Sex</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-sex">
+                            <SelectValue placeholder="Select sex" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="male">Male</SelectItem>
+                          <SelectItem value="female">Female</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.race"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Race</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-race">
+                            <SelectValue placeholder="Select race" />
+                          </SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="white">White</SelectItem>
+                          <SelectItem value="african_american">African American</SelectItem>
+                          <SelectItem value="other">Other (uses White equation)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <p className="text-xs text-muted-foreground mt-1">Note: "Other" uses the non-Black pooled cohort equation</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.systolicBP"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Systolic Blood Pressure</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            placeholder="120"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-systolic-bp"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">mmHg</span>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.onBPMeds"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value ?? false}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-bp-meds"
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel className="text-xs font-medium uppercase">
+                          Currently on Blood Pressure Medication
+                        </FormLabel>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.diabetic"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value ?? false}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-diabetic"
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel className="text-xs font-medium uppercase">
+                          History of Diabetes
+                        </FormLabel>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.smoker"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox
+                          checked={field.value ?? false}
+                          onCheckedChange={field.onChange}
+                          data-testid="checkbox-smoker"
+                        />
+                      </FormControl>
+                      <div className="space-y-1 leading-none">
+                        <FormLabel className="text-xs font-medium uppercase">
+                          Current Smoker
+                        </FormLabel>
+                      </div>
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
           {/* CBC Panel */}
           <AccordionItem value="cbc" className="border rounded-md px-4">
             <AccordionTrigger className="hover:no-underline" data-testid="accordion-cbc">
