@@ -38,10 +38,13 @@ The application features a comprehensive lab input form, a results display with 
 **November 11, 2025** (Latest)
 - **FIXED: PDF Export Letter Spacing**
   - **Problem**: Downloaded PDFs had excessive letter spacing - text appeared like "K e y  a b n o r m a l  r e s u l t s" with wide gaps between letters
-  - **Root Cause**: jsPDF default character spacing rendering issue
-  - **Solution**: Applied `charSpace: -0.2` parameter to all `.text()` calls throughout PDF generation
-  - **Implementation**: Based on jsPDF documentation, negative charSpace values reduce letter spacing. Applied to all text elements: headers, body text, red flags, recommendations, and summaries
-  - **Result**: PDF text now renders with normal, professional letter spacing that fits properly on the page
+  - **Root Cause**: jsPDF's Helvetica font doesn't support Unicode symbols (●/⚠/▲/▼), causing fallback to a renderer that expands glyph widths throughout the entire document
+  - **Solution**: Replaced Unicode symbols with ASCII text equivalents to prevent font encoding issues
+  - **Implementation**: 
+    - Changed status symbols from Unicode to ASCII: `[!]` for critical, `[HIGH]` for abnormal, `[BORDERLINE]` for borderline, `[NORMAL]` for normal
+    - Removed ineffective `charSpace` parameters that didn't address root cause
+    - All text now uses ASCII characters fully supported by Helvetica font
+  - **Result**: PDF should render with normal letter spacing since jsPDF no longer falls back to problematic encoder
 
 **November 10, 2025**
 - **FIXED: PDF Auto-Analysis Before Demographics Entry + Demographics Preservation**
