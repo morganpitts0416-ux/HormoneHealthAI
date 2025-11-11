@@ -35,7 +35,15 @@ The application features a comprehensive lab input form, a results display with 
 
 ## Recent Changes
 
-**November 10, 2025** (Latest)
+**November 11, 2025** (Latest)
+- **FIXED: PDF Export Letter Spacing**
+  - **Problem**: Downloaded PDFs had excessive letter spacing - text appeared like "K e y  a b n o r m a l  r e s u l t s" with wide gaps between letters
+  - **Root Cause**: jsPDF default character spacing rendering issue
+  - **Solution**: Applied `charSpace: -0.2` parameter to all `.text()` calls throughout PDF generation
+  - **Implementation**: Based on jsPDF documentation, negative charSpace values reduce letter spacing. Applied to all text elements: headers, body text, red flags, recommendations, and summaries
+  - **Result**: PDF text now renders with normal, professional letter spacing that fits properly on the page
+
+**November 10, 2025**
 - **FIXED: PDF Auto-Analysis Before Demographics Entry + Demographics Preservation**
   - **Problem 1**: PDF upload was automatically analyzing labs immediately after value extraction, BEFORE staff could enter patient demographics or STOP-BANG answers. This prevented ASCVD and STOP-BANG from calculating on the first analysis, forcing users to re-enter data and re-analyze.
   - **Problem 2**: When PDF extraction completed while user was entering demographics, it wiped out any demographics already entered, preventing ASCVD and STOP-BANG calculations.

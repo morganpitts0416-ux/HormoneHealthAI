@@ -7,45 +7,52 @@ export function generateLabReportPDF(
   interpretation: InterpretationResult,
   patientName?: string
 ): void {
-  const doc = new jsPDF();
+  const doc = new jsPDF({
+    orientation: 'portrait',
+    unit: 'mm',
+    format: 'letter',
+    compress: true,
+  });
+  
   const pageWidth = doc.internal.pageSize.getWidth();
   let yPosition = 20;
 
-  doc.setFontSize(18);
+  doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('Lab Interpretation Report', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 10;
+  doc.text('Lab Interpretation Report', pageWidth / 2, yPosition, { align: 'center', charSpace: -0.2 });
+  yPosition += 8;
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text("Men's Hormone & Primary Care Clinic", pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 15;
+  doc.text("Men's Hormone & Primary Care Clinic", pageWidth / 2, yPosition, { align: 'center', charSpace: -0.2 });
+  yPosition += 12;
 
   if (patientName) {
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Patient: ${patientName}`, 14, yPosition);
+    doc.text(`Patient: ${patientName}`, 14, yPosition, { charSpace: -0.2 });
     yPosition += 6;
   }
 
   doc.setFont('helvetica', 'normal');
-  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, yPosition);
-  yPosition += 15;
+  doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, yPosition, { charSpace: -0.2 });
+  yPosition += 12;
 
   if (interpretation.redFlags && interpretation.redFlags.length > 0) {
     doc.setFillColor(220, 38, 38);
-    doc.rect(14, yPosition - 5, pageWidth - 28, 8, 'F');
+    doc.rect(14, yPosition - 5, pageWidth - 28, 7, 'F');
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(12);
+    doc.setFontSize(11);
     doc.setFont('helvetica', 'bold');
-    doc.text('⚠ CRITICAL RED FLAGS - PHYSICIAN NOTIFICATION REQUIRED', pageWidth / 2, yPosition, {
+    doc.text('CRITICAL RED FLAGS - PHYSICIAN NOTIFICATION REQUIRED', pageWidth / 2, yPosition, {
       align: 'center',
+      charSpace: -0.2,
     });
     doc.setTextColor(0, 0, 0);
-    yPosition += 12;
+    yPosition += 10;
 
     interpretation.redFlags.forEach((flag) => {
-      doc.setFontSize(10);
+      doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
       
       let severityColor: [number, number, number] = [0, 0, 0];
@@ -54,18 +61,18 @@ export function generateLabReportPDF(
       else severityColor = [234, 179, 8];
       
       doc.setTextColor(...severityColor);
-      doc.text(`${flag.severity.toUpperCase()}: ${flag.category}`, 14, yPosition);
+      doc.text(`${flag.severity.toUpperCase()}: ${flag.category}`, 14, yPosition, { charSpace: -0.2 });
       doc.setTextColor(0, 0, 0);
       yPosition += 5;
 
       doc.setFont('helvetica', 'normal');
-      const messageLines = doc.splitTextToSize(flag.message, pageWidth - 32);
-      doc.text(messageLines, 18, yPosition);
+      const messageLines = doc.splitTextToSize(flag.message, pageWidth - 28);
+      doc.text(messageLines, 18, yPosition, { charSpace: -0.2 });
       yPosition += messageLines.length * 4 + 1;
 
-      const actionLines = doc.splitTextToSize(`Action: ${flag.action}`, pageWidth - 32);
-      doc.text(actionLines, 18, yPosition);
-      yPosition += actionLines.length * 4 + 8;
+      const actionLines = doc.splitTextToSize(`Action: ${flag.action}`, pageWidth - 28);
+      doc.text(actionLines, 18, yPosition, { charSpace: -0.2 });
+      yPosition += actionLines.length * 4 + 6;
 
       if (yPosition > 270) {
         doc.addPage();
@@ -80,10 +87,10 @@ export function generateLabReportPDF(
       yPosition = 20;
     }
 
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Lab Results Summary', 14, yPosition);
-    yPosition += 8;
+    doc.text('Lab Results Summary', 14, yPosition, { charSpace: -0.2 });
+    yPosition += 7;
 
     const tableData = interpretation.interpretations.map((interp) => {
       let statusSymbol = '●';
@@ -106,8 +113,16 @@ export function generateLabReportPDF(
       head: [['Lab', 'Value', 'Reference', 'Status', 'Interpretation', 'Recommendation']],
       body: tableData,
       theme: 'striped',
-      headStyles: { fillColor: [37, 99, 235], fontSize: 9, fontStyle: 'bold' },
-      bodyStyles: { fontSize: 8 },
+      headStyles: { 
+        fillColor: [37, 99, 235], 
+        fontSize: 9, 
+        fontStyle: 'bold',
+        font: 'helvetica',
+      },
+      bodyStyles: { 
+        fontSize: 8,
+        font: 'helvetica',
+      },
       columnStyles: {
         0: { cellWidth: 28 },
         1: { cellWidth: 22 },
@@ -119,6 +134,7 @@ export function generateLabReportPDF(
       styles: {
         overflow: 'linebreak',
         cellPadding: 2,
+        font: 'helvetica',
       },
       didParseCell: (data) => {
         if (data.section === 'body' && data.column.index === 3) {
@@ -140,16 +156,16 @@ export function generateLabReportPDF(
       yPosition = 20;
     }
 
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('AI-Powered Clinical Recommendations', 14, yPosition);
-    yPosition += 8;
+    doc.text('AI-Powered Clinical Recommendations', 14, yPosition, { charSpace: -0.2 });
+    yPosition += 7;
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     const recLines = doc.splitTextToSize(interpretation.aiRecommendations, pageWidth - 28);
-    doc.text(recLines, 14, yPosition);
-    yPosition += recLines.length * 4 + 10;
+    doc.text(recLines, 14, yPosition, { charSpace: -0.2 });
+    yPosition += recLines.length * 4 + 8;
   }
 
   if (interpretation.patientSummary) {
@@ -158,16 +174,16 @@ export function generateLabReportPDF(
       yPosition = 20;
     }
 
-    doc.setFontSize(14);
+    doc.setFontSize(12);
     doc.setFont('helvetica', 'bold');
-    doc.text('Patient-Friendly Summary', 14, yPosition);
-    yPosition += 8;
+    doc.text('Patient-Friendly Summary', 14, yPosition, { charSpace: -0.2 });
+    yPosition += 7;
 
     doc.setFontSize(9);
     doc.setFont('helvetica', 'normal');
     const summaryLines = doc.splitTextToSize(interpretation.patientSummary, pageWidth - 28);
-    doc.text(summaryLines, 14, yPosition);
-    yPosition += summaryLines.length * 4 + 10;
+    doc.text(summaryLines, 14, yPosition, { charSpace: -0.2 });
+    yPosition += summaryLines.length * 4 + 8;
   }
 
   if (interpretation.recheckWindow) {
@@ -176,9 +192,9 @@ export function generateLabReportPDF(
       yPosition = 20;
     }
 
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(`Recommended Recheck Window: ${interpretation.recheckWindow}`, 14, yPosition);
+    doc.text(`Recommended Recheck Window: ${interpretation.recheckWindow}`, 14, yPosition, { charSpace: -0.2 });
   }
 
   const timestamp = new Date().toISOString().split('T')[0];
