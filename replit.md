@@ -41,9 +41,11 @@ The application features a comprehensive lab input form, a results display with 
   - **Root Cause**: jsPDF's Helvetica font doesn't support Unicode symbols (●/⚠/▲/▼), causing fallback to a renderer that expands glyph widths throughout the entire document
   - **Solution**: Replaced Unicode symbols with ASCII text equivalents to prevent font encoding issues
   - **Implementation**: 
+    - Created `sanitizeForPdf()` function that converts all Unicode characters to ASCII equivalents
+    - Applied to ALL text: table data (lab values, units, ranges, interpretations), AI recommendations, patient summaries, red flags, patient names, recheck windows
     - Changed status symbols from Unicode to ASCII: `[!]` for critical, `[HIGH]` for abnormal, `[BORDERLINE]` for borderline, `[NORMAL]` for normal
-    - Removed ineffective `charSpace` parameters that didn't address root cause
-    - All text now uses ASCII characters fully supported by Helvetica font
+    - Medical symbol conversions: µ → u (so "µIU/mL" becomes "uIU/mL"), ≥/≤ → >=/<,  ± → +/-, ° → deg
+    - Fixed pagination for long text sections to prevent cutoff
   - **Result**: PDF should render with normal letter spacing since jsPDF no longer falls back to problematic encoder
 
 **November 10, 2025**
