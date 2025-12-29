@@ -259,27 +259,48 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // Estradiol - Phase-dependent interpretation
+    // Estradiol - Phase-dependent interpretation with HRT-specific goals
     if (labs.estradiol !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
       let referenceRange = '';
+      const onHRT = labs.onHRT === true;
 
-      if (phase === 'postmenopausal') {
-        referenceRange = '<20 pg/mL (postmenopausal)';
-        if (labs.estradiol > 20 && !labs.onHRT) {
+      if (onHRT) {
+        // HRT patient - Provider goal: 60-100 pg/mL, minimum >40 for bone health
+        referenceRange = '60-100 pg/mL (HRT goal, >40 for bone)';
+        if (labs.estradiol < 40) {
+          status = 'abnormal';
+          interpretation = 'Estradiol below bone protection threshold (<40 pg/mL). Bone resorption increases below 40-60 pg/mL.';
+          recommendation = 'Provider recommendation: Increase estrogen dose. Target 60-100 pg/mL. Current level inadequate for bone protection.';
+        } else if (labs.estradiol >= 40 && labs.estradiol < 60) {
+          status = 'borderline';
+          interpretation = 'Estradiol at minimum bone protection level (40-60 pg/mL) but below optimal HRT goal.';
+          recommendation = 'Provider recommendation: Consider increasing estrogen dose. Target 60-100 pg/mL for optimized symptom relief.';
+        } else if (labs.estradiol >= 60 && labs.estradiol <= 100) {
+          status = 'normal';
+          interpretation = 'Estradiol at optimal HRT goal (60-100 pg/mL).';
+          recommendation = 'Provider recommendation: Optimal level for HRT. Maintain current dosing. Bone protection achieved.';
+        } else if (labs.estradiol > 100 && labs.estradiol <= 150) {
+          status = 'borderline';
+          interpretation = 'Estradiol above HRT optimization goal (60-100 pg/mL).';
+          recommendation = 'Provider recommendation: Consider reducing estrogen dose slightly if no symptoms warrant higher levels.';
+        } else {
+          status = 'abnormal';
+          interpretation = 'Estradiol elevated above typical HRT range.';
+          recommendation = 'Provider recommendation: Evaluate estrogen dose. Monitor for estrogen excess symptoms.';
+        }
+      } else if (phase === 'postmenopausal') {
+        referenceRange = '<20 pg/mL (postmenopausal without HRT)';
+        if (labs.estradiol > 20) {
           status = 'borderline';
           interpretation = 'Estradiol elevated for postmenopausal status without HRT.';
-          recommendation = 'Evaluate for exogenous estrogen source or ovarian pathology.';
-        } else if (labs.onHRT) {
-          status = 'normal';
-          interpretation = 'Estradiol level consistent with HRT use.';
-          recommendation = 'Continue monitoring HRT effectiveness and side effects.';
+          recommendation = 'Evaluate for exogenous estrogen source or ovarian pathology. Consider HRT if symptomatic.';
         } else {
           status = 'normal';
           interpretation = 'Estradiol appropriate for postmenopausal status.';
-          recommendation = 'Consider HRT if symptomatic for vasomotor symptoms.';
+          recommendation = 'Consider HRT if symptomatic for vasomotor symptoms, bone health, or quality of life.';
         }
       } else if (phase === 'follicular') {
         referenceRange = '20-150 pg/mL (follicular phase)';
@@ -340,14 +361,39 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // Progesterone - Phase-dependent interpretation
+    // Progesterone - Phase-dependent interpretation with HRT-specific goals
     if (labs.progesterone !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
       let referenceRange = '';
+      const onHRT = labs.onHRT === true;
 
-      if (phase === 'follicular' || phase === 'ovulatory') {
+      if (onHRT) {
+        // HRT patient - Provider goal: 8-10 ng/mL
+        referenceRange = '8-10 ng/mL (HRT goal)';
+        if (labs.progesterone < 5) {
+          status = 'abnormal';
+          interpretation = 'Progesterone below HRT therapeutic range.';
+          recommendation = 'Provider recommendation: Increase progesterone dose. Target 8-10 ng/mL for optimal endometrial protection.';
+        } else if (labs.progesterone >= 5 && labs.progesterone < 8) {
+          status = 'borderline';
+          interpretation = 'Progesterone below optimal HRT goal (8-10 ng/mL).';
+          recommendation = 'Provider recommendation: Consider increasing progesterone dose slightly. Target 8-10 ng/mL.';
+        } else if (labs.progesterone >= 8 && labs.progesterone <= 10) {
+          status = 'normal';
+          interpretation = 'Progesterone at optimal HRT goal (8-10 ng/mL).';
+          recommendation = 'Provider recommendation: Optimal level for HRT. Maintain current dosing.';
+        } else if (labs.progesterone > 10 && labs.progesterone <= 15) {
+          status = 'borderline';
+          interpretation = 'Progesterone slightly above HRT optimization goal.';
+          recommendation = 'Provider recommendation: Acceptable level. May reduce if side effects present.';
+        } else {
+          status = 'abnormal';
+          interpretation = 'Progesterone elevated above typical HRT range.';
+          recommendation = 'Provider recommendation: Consider reducing progesterone dose. Evaluate for side effects.';
+        }
+      } else if (phase === 'follicular' || phase === 'ovulatory') {
         referenceRange = '<1.5 ng/mL (pre-ovulation)';
         if (labs.progesterone > 1.5) {
           status = 'borderline';
@@ -488,28 +534,51 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // Testosterone - Female ranges (much lower than male)
+    // Testosterone - Female ranges with HRT-specific goals
     if (labs.testosterone !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
+      const onHRT = labs.onHRT === true;
 
-      if (labs.testosterone > 70) {
-        status = 'abnormal';
-        interpretation = 'Elevated testosterone for females.';
-        recommendation = 'Evaluate for PCOS, adrenal hyperplasia, or androgen-secreting tumor.';
-      } else if (labs.testosterone > 50 && labs.testosterone <= 70) {
-        status = 'borderline';
-        interpretation = 'Upper normal testosterone - may be elevated.';
-        recommendation = 'Correlate with clinical signs (hirsutism, acne). Consider PCOS workup.';
-      } else if (labs.testosterone >= 15 && labs.testosterone <= 50) {
-        status = 'normal';
-        interpretation = 'Testosterone within normal female range.';
-        recommendation = 'No intervention needed.';
+      if (onHRT) {
+        // HRT patient - Provider goal: 75-125 ng/dL for optimized results
+        if (labs.testosterone > 125) {
+          status = 'abnormal';
+          interpretation = 'Testosterone above HRT optimization goal (75-125 ng/dL).';
+          recommendation = 'Provider recommendation: Consider reducing testosterone dose. Monitor for androgenic side effects.';
+        } else if (labs.testosterone >= 75 && labs.testosterone <= 125) {
+          status = 'normal';
+          interpretation = 'Testosterone at optimal HRT goal (75-125 ng/dL).';
+          recommendation = 'Provider recommendation: Optimal level for HRT. Maintain current dosing.';
+        } else if (labs.testosterone >= 50 && labs.testosterone < 75) {
+          status = 'borderline';
+          interpretation = 'Testosterone below optimal HRT goal (75-125 ng/dL).';
+          recommendation = 'Provider recommendation: Consider increasing testosterone dose for optimized results if symptomatic.';
+        } else {
+          status = 'abnormal';
+          interpretation = 'Low testosterone despite HRT.';
+          recommendation = 'Provider recommendation: Increase testosterone dose. Target 75-125 ng/dL for optimal results.';
+        }
       } else {
-        status = 'borderline';
-        interpretation = 'Low testosterone.';
-        recommendation = 'May contribute to low libido or fatigue. Consider HRT discussion.';
+        // Non-HRT patient - standard female ranges
+        if (labs.testosterone > 70) {
+          status = 'abnormal';
+          interpretation = 'Elevated testosterone for females.';
+          recommendation = 'Evaluate for PCOS, adrenal hyperplasia, or androgen-secreting tumor.';
+        } else if (labs.testosterone > 50 && labs.testosterone <= 70) {
+          status = 'borderline';
+          interpretation = 'Upper normal testosterone - may be elevated.';
+          recommendation = 'Correlate with clinical signs (hirsutism, acne). Consider PCOS workup.';
+        } else if (labs.testosterone >= 15 && labs.testosterone <= 50) {
+          status = 'normal';
+          interpretation = 'Testosterone within normal female range.';
+          recommendation = 'No intervention needed.';
+        } else {
+          status = 'borderline';
+          interpretation = 'Low testosterone.';
+          recommendation = 'May contribute to low libido or fatigue. Consider HRT discussion.';
+        }
       }
 
       interpretations.push({
@@ -517,7 +586,7 @@ export class FemaleClinicalLogicEngine {
         value: labs.testosterone,
         unit: 'ng/dL',
         status,
-        referenceRange: '15-70 ng/dL',
+        referenceRange: onHRT ? '75-125 ng/dL (HRT goal)' : '15-70 ng/dL',
         interpretation,
         recommendation,
       });
@@ -663,24 +732,39 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // Ferritin
+    // Ferritin - Provider-specific iron treatment guidelines
     if (labs.ferritin !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
 
+      // Check for functional iron deficiency indicators
+      const hasElevatedTIBC = labs.tibc !== undefined && labs.tibc > 450;
+      const hasLowSerumIron = labs.iron !== undefined && labs.iron < 40;
+      const hasFunctionalDeficiency = hasElevatedTIBC || hasLowSerumIron;
+
       if (labs.ferritin < 10) {
         status = 'critical';
         interpretation = 'Severely depleted iron stores.';
-        recommendation = 'Iron replacement therapy. Evaluate for blood loss (menorrhagia, GI).';
-      } else if (labs.ferritin < 30) {
+        recommendation = 'Provider recommendation: Treat with 65mg elemental iron. Evaluate for blood loss (menorrhagia, GI).';
+      } else if (labs.ferritin <= 30) {
         status = 'abnormal';
-        interpretation = 'Low ferritin - iron deficiency.';
-        recommendation = 'Oral iron supplementation. Evaluate for heavy menstrual bleeding.';
-      } else if (labs.ferritin >= 30 && labs.ferritin <= 150) {
+        interpretation = 'Low ferritin - iron deficiency. Treat all patients at this level.';
+        recommendation = 'Provider recommendation: Treat with 65mg elemental iron. Evaluate for heavy menstrual bleeding or GI loss.';
+      } else if (labs.ferritin > 30 && labs.ferritin <= 50) {
+        if (hasFunctionalDeficiency) {
+          status = 'borderline';
+          interpretation = 'Ferritin 31-50 with functional iron deficiency indicators (elevated TIBC or low serum iron).';
+          recommendation = 'Provider recommendation: Treat with 65mg elemental iron if symptomatic (fatigue, hair loss, restless legs). Evaluate other iron studies.';
+        } else {
+          status = 'borderline';
+          interpretation = 'Ferritin in lower optimal range (31-50).';
+          recommendation = 'Consider 65mg elemental iron if symptomatic (fatigue, hair loss, restless legs, exercise intolerance).';
+        }
+      } else if (labs.ferritin > 50 && labs.ferritin <= 150) {
         status = 'normal';
-        interpretation = 'Ferritin within normal range.';
-        recommendation = 'Adequate iron stores.';
+        interpretation = 'Ferritin within optimal range.';
+        recommendation = 'Adequate iron stores. No supplementation needed.';
       } else {
         status = 'borderline';
         interpretation = 'Elevated ferritin.';
@@ -692,7 +776,7 @@ export class FemaleClinicalLogicEngine {
         value: labs.ferritin,
         unit: 'ng/mL',
         status,
-        referenceRange: '30-150 ng/mL',
+        referenceRange: '30-150 ng/mL (optimal >50)',
         interpretation,
         recommendation,
       });
