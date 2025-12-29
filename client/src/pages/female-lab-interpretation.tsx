@@ -260,21 +260,7 @@ export default function FemaleLabInterpretation() {
               <>
                 {/* Red Flags */}
                 {interpretationResult.redFlags.length > 0 && (
-                  <Card className="border-red-200 bg-red-50/50">
-                    <CardHeader>
-                      <CardTitle className="text-red-600">Critical Red Flags</CardTitle>
-                      <CardDescription>
-                        The following findings require immediate physician notification
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {interpretationResult.redFlags.map((flag, index) => (
-                          <RedFlagAlert key={index} flag={flag} />
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+                  <RedFlagAlert redFlags={interpretationResult.redFlags} />
                 )}
 
                 {/* Results Table */}
@@ -286,7 +272,12 @@ export default function FemaleLabInterpretation() {
                     </CardDescription>
                   </CardHeader>
                   <CardContent>
-                    <ResultsDisplay interpretations={interpretationResult.interpretations} />
+                    <ResultsDisplay 
+                      interpretations={interpretationResult.interpretations}
+                      aiRecommendations={interpretationResult.aiRecommendations}
+                      recheckWindow={interpretationResult.recheckWindow}
+                      redFlags={interpretationResult.redFlags}
+                    />
                   </CardContent>
                 </Card>
 
@@ -310,8 +301,71 @@ export default function FemaleLabInterpretation() {
                   </CardContent>
                 </Card>
 
+                {/* Supplement Recommendations */}
+                {interpretationResult.supplements && interpretationResult.supplements.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <CheckCircle2 className="w-5 h-5 text-green-600" />
+                        <CardTitle>Supplement Recommendations</CardTitle>
+                      </div>
+                      <CardDescription>
+                        Personalized supplement suggestions based on lab results
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {interpretationResult.supplements.map((supp, index) => (
+                          <div 
+                            key={index} 
+                            className={`p-4 rounded-lg border ${
+                              supp.priority === 'high' ? 'border-red-200 bg-red-50/50' :
+                              supp.priority === 'medium' ? 'border-amber-200 bg-amber-50/50' :
+                              'border-gray-200 bg-gray-50/50'
+                            }`}
+                            data-testid={`supplement-recommendation-${index}`}
+                          >
+                            <div className="flex items-start justify-between gap-4">
+                              <div className="flex-1">
+                                <div className="flex items-center gap-2 mb-1">
+                                  <h4 className="font-semibold text-base">{supp.name}</h4>
+                                  <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                    supp.priority === 'high' ? 'bg-red-100 text-red-700' :
+                                    supp.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
+                                    'bg-gray-100 text-gray-700'
+                                  }`}>
+                                    {supp.priority} priority
+                                  </span>
+                                  <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                                    {supp.category}
+                                  </span>
+                                </div>
+                                <p className="text-sm font-medium text-primary mb-1">
+                                  Dose: {supp.dose}
+                                </p>
+                                <p className="text-sm text-muted-foreground mb-1">
+                                  <span className="font-medium">Indication:</span> {supp.indication}
+                                </p>
+                                <p className="text-sm text-muted-foreground mb-1">
+                                  {supp.rationale}
+                                </p>
+                                {supp.caution && (
+                                  <p className="text-sm text-amber-700 mt-2 flex items-start gap-1">
+                                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
+                                    <span><span className="font-medium">Caution:</span> {supp.caution}</span>
+                                  </p>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Patient Summary */}
-                <PatientSummary summary={interpretationResult.patientSummary} />
+                <PatientSummary summary={interpretationResult.patientSummary} labValues={labValues as any} />
 
                 {/* Recheck Window */}
                 <Card>
