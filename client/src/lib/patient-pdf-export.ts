@@ -31,6 +31,289 @@ interface WellnessPlan {
   educationalContent: string;
 }
 
+function getLabInsight(category: string, value: number | string, status: string, referenceRange?: string): string {
+  const cat = category.toLowerCase();
+  const val = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
+  
+  const determineDirection = (category: string, value: number, refRange?: string): 'low' | 'high' | 'normal' => {
+    if (status === 'normal') return 'normal';
+    
+    if (refRange) {
+      const rangeParts = refRange.match(/([\d.]+)\s*[-–]\s*([\d.]+)/);
+      if (rangeParts) {
+        const lowBound = parseFloat(rangeParts[1]);
+        const highBound = parseFloat(rangeParts[2]);
+        if (value < lowBound) return 'low';
+        if (value > highBound) return 'high';
+      }
+    }
+    
+    const thresholds: Record<string, { low: number; high: number }> = {
+      hemoglobin: { low: 12, high: 16 },
+      hematocrit: { low: 36, high: 44 },
+      ferritin: { low: 30, high: 150 },
+      tsh: { low: 0.45, high: 4.5 },
+      "free t4": { low: 0.9, high: 1.7 },
+      "free t3": { low: 2.3, high: 4.2 },
+      "vitamin d": { low: 30, high: 100 },
+      "vitamin b12": { low: 200, high: 900 },
+      ldl: { low: 0, high: 100 },
+      hdl: { low: 50, high: 200 },
+      triglycerides: { low: 0, high: 150 },
+      "total cholesterol": { low: 0, high: 200 },
+      glucose: { low: 70, high: 100 },
+      "a1c": { low: 0, high: 5.7 },
+      creatinine: { low: 0.5, high: 1.1 },
+      egfr: { low: 60, high: 200 },
+      alt: { low: 0, high: 32 },
+      ast: { low: 0, high: 32 },
+      estradiol: { low: 30, high: 400 },
+      progesterone: { low: 1, high: 20 },
+      testosterone: { low: 15, high: 70 },
+      fsh: { low: 2, high: 25 },
+      amh: { low: 1, high: 5 },
+      "hs-crp": { low: 0, high: 2 },
+      "lp(a)": { low: 0, high: 50 },
+      "apolipoprotein b": { low: 0, high: 90 },
+      platelets: { low: 150, high: 400 },
+      wbc: { low: 4, high: 11 },
+      iron: { low: 60, high: 170 },
+      folate: { low: 3, high: 20 },
+      magnesium: { low: 1.7, high: 2.3 },
+    };
+    
+    for (const key of Object.keys(thresholds)) {
+      if (cat.includes(key) || key.includes(cat)) {
+        const threshold = thresholds[key];
+        if (value < threshold.low) return 'low';
+        if (value > threshold.high) return 'high';
+        return 'normal';
+      }
+    }
+    
+    return 'high';
+  };
+
+  const direction = determineDirection(cat, val, referenceRange);
+  
+  const insights: Record<string, { what: string; normal: string; low: string; high: string }> = {
+    hemoglobin: {
+      what: "Hemoglobin carries oxygen in your blood to all your organs and tissues.",
+      normal: "Your oxygen-carrying capacity is healthy, supporting good energy levels.",
+      low: "Lower hemoglobin may cause fatigue and shortness of breath. Iron-rich foods and supplements can help.",
+      high: "Elevated levels may indicate dehydration or other conditions worth monitoring."
+    },
+    hematocrit: {
+      what: "Hematocrit measures the percentage of red blood cells in your blood.",
+      normal: "Your red blood cell percentage is balanced, supporting healthy circulation.",
+      low: "Lower levels may indicate anemia. Focus on iron, B12, and folate intake.",
+      high: "Higher levels may suggest dehydration or need further evaluation."
+    },
+    ferritin: {
+      what: "Ferritin reflects your body's iron stores, essential for energy and immunity.",
+      normal: "Your iron stores are adequate for energy production and immune function.",
+      low: "Low iron stores can cause fatigue, hair loss, and weakened immunity. Iron supplementation may help.",
+      high: "Elevated ferritin may indicate inflammation or excess iron intake."
+    },
+    tsh: {
+      what: "TSH controls your thyroid, which regulates metabolism, energy, and weight.",
+      normal: "Your thyroid function appears balanced, supporting healthy metabolism.",
+      low: "Lower TSH may indicate an overactive thyroid, which can cause weight loss and anxiety.",
+      high: "Higher TSH may indicate an underactive thyroid, which can cause fatigue and weight gain."
+    },
+    "free t4": {
+      what: "Free T4 is your main thyroid hormone that controls energy and metabolism.",
+      normal: "Your active thyroid hormone level supports normal energy and metabolism.",
+      low: "Lower levels may contribute to fatigue, cold intolerance, and weight gain.",
+      high: "Higher levels may cause anxiety, rapid heartbeat, and weight loss."
+    },
+    "free t3": {
+      what: "Free T3 is your most active thyroid hormone affecting every cell in your body.",
+      normal: "Your active thyroid hormone is at a healthy level for cellular function.",
+      low: "Lower T3 can contribute to fatigue, brain fog, and difficulty losing weight.",
+      high: "Higher T3 may cause anxiety, tremors, and rapid heart rate."
+    },
+    "vitamin d": {
+      what: "Vitamin D supports bone health, immune function, and mood regulation.",
+      normal: "Your vitamin D level supports strong bones, immunity, and positive mood.",
+      low: "Low vitamin D is linked to fatigue, weakened bones, and increased illness. Supplementation is often helpful.",
+      high: "Vitamin D levels above optimal range - discuss with your provider."
+    },
+    "vitamin b12": {
+      what: "Vitamin B12 is essential for nerve function, energy, and red blood cell production.",
+      normal: "Your B12 level supports healthy nerves, energy production, and blood cells.",
+      low: "Low B12 can cause fatigue, numbness, and memory issues. B12 supplementation is often beneficial.",
+      high: "B12 levels are elevated - typically not harmful but worth monitoring."
+    },
+    ldl: {
+      what: "LDL is 'bad' cholesterol that can build up in artery walls over time.",
+      normal: "Your LDL is in a healthy range, reducing heart disease risk.",
+      low: "Lower LDL levels are generally heart-protective.",
+      high: "Higher LDL increases cardiovascular risk. Diet changes and exercise can help lower it."
+    },
+    hdl: {
+      what: "HDL is 'good' cholesterol that helps remove bad cholesterol from your arteries.",
+      normal: "Your HDL level provides good protection for your heart and arteries.",
+      low: "Lower HDL reduces heart protection. Exercise and healthy fats can help raise it.",
+      high: "Higher HDL is generally protective for heart health."
+    },
+    triglycerides: {
+      what: "Triglycerides are blood fats that can contribute to artery disease when elevated.",
+      normal: "Your triglyceride level supports healthy arteries and heart function.",
+      low: "Lower triglycerides are generally healthy for your cardiovascular system.",
+      high: "Elevated triglycerides increase heart risk. Reducing sugar, alcohol, and refined carbs helps."
+    },
+    "total cholesterol": {
+      what: "Total cholesterol is the sum of all cholesterol types in your blood.",
+      normal: "Your overall cholesterol balance supports cardiovascular health.",
+      low: "Lower total cholesterol is generally heart-healthy.",
+      high: "Elevated total cholesterol may require diet and lifestyle modifications."
+    },
+    glucose: {
+      what: "Glucose is blood sugar, your body's main energy source.",
+      normal: "Your blood sugar regulation is healthy, supporting steady energy levels.",
+      low: "Lower glucose may cause fatigue and shakiness. Regular balanced meals help.",
+      high: "Higher glucose may indicate prediabetes. Diet and exercise are key interventions."
+    },
+    "a1c": {
+      what: "A1C reflects your average blood sugar over the past 2-3 months.",
+      normal: "Your long-term blood sugar control is excellent, reducing diabetes risk.",
+      low: "Lower A1C indicates good blood sugar control.",
+      high: "Elevated A1C suggests higher blood sugar levels. Lifestyle changes can significantly improve this."
+    },
+    creatinine: {
+      what: "Creatinine is a waste product that indicates how well your kidneys are filtering.",
+      normal: "Your kidney filtration function appears healthy.",
+      low: "Lower creatinine is typically not concerning and may reflect lower muscle mass.",
+      high: "Elevated creatinine may indicate kidney stress. Hydration and reducing certain supplements may help."
+    },
+    egfr: {
+      what: "eGFR estimates how well your kidneys filter waste from your blood.",
+      normal: "Your kidney function is in the healthy range, effectively filtering waste.",
+      low: "Lower eGFR suggests reduced kidney function. Discuss with your provider for monitoring.",
+      high: "Higher eGFR indicates good kidney filtration capacity."
+    },
+    alt: {
+      what: "ALT is a liver enzyme that can indicate liver health status.",
+      normal: "Your liver enzyme levels suggest healthy liver function.",
+      low: "Lower ALT is typically not concerning.",
+      high: "Elevated ALT may indicate liver stress. Reducing alcohol and certain medications may help."
+    },
+    ast: {
+      what: "AST is an enzyme found in your liver and muscles indicating tissue health.",
+      normal: "Your AST level suggests healthy liver and muscle tissue.",
+      low: "Lower AST is typically not concerning.",
+      high: "Elevated AST may indicate liver or muscle stress. Worth monitoring."
+    },
+    estradiol: {
+      what: "Estradiol is your primary estrogen, vital for bone health, mood, and heart protection.",
+      normal: "Your estrogen level is appropriate for your cycle phase and overall health.",
+      low: "Lower estrogen may cause hot flashes, mood changes, and bone loss. HRT may be beneficial.",
+      high: "Higher estrogen levels should be discussed with your provider in context of your cycle."
+    },
+    progesterone: {
+      what: "Progesterone balances estrogen and is essential for cycle regularity and sleep.",
+      normal: "Your progesterone level is appropriate for your cycle phase.",
+      low: "Lower progesterone may cause PMS, irregular cycles, and sleep issues. Supplementation may help.",
+      high: "Higher progesterone is normal in the luteal phase; otherwise, discuss with your provider."
+    },
+    testosterone: {
+      what: "Testosterone in women supports energy, libido, muscle strength, and mood.",
+      normal: "Your testosterone level supports healthy energy, mood, and muscle function.",
+      low: "Lower testosterone may cause fatigue, low libido, and decreased muscle mass.",
+      high: "Higher testosterone may cause acne or hair changes. Worth discussing with your provider."
+    },
+    fsh: {
+      what: "FSH controls ovarian function and egg development.",
+      normal: "Your FSH level is appropriate for your cycle phase and reproductive status.",
+      low: "Lower FSH may indicate pituitary issues or early pregnancy.",
+      high: "Higher FSH may indicate perimenopause or reduced ovarian reserve."
+    },
+    amh: {
+      what: "AMH reflects your ovarian reserve - the number of eggs remaining in your ovaries.",
+      normal: "Your ovarian reserve appears appropriate for your age.",
+      low: "Lower AMH suggests diminished ovarian reserve, important for fertility planning.",
+      high: "Higher AMH may indicate polycystic ovary syndrome (PCOS) or good ovarian reserve."
+    },
+    "hs-crp": {
+      what: "hs-CRP measures inflammation in your body, linked to heart disease risk.",
+      normal: "Your inflammation level is low, which is protective for your heart.",
+      low: "Lower inflammation is excellent for cardiovascular and overall health.",
+      high: "Higher inflammation increases health risks. Anti-inflammatory diet and lifestyle changes help."
+    },
+    "lp(a)": {
+      what: "Lp(a) is an inherited cholesterol particle that increases heart disease risk.",
+      normal: "Your Lp(a) is in a favorable range for heart health.",
+      low: "Lower Lp(a) is protective for cardiovascular health.",
+      high: "Elevated Lp(a) is genetic and increases heart risk. Aggressive lifestyle measures are important."
+    },
+    "apolipoprotein b": {
+      what: "ApoB counts the number of harmful cholesterol particles in your blood.",
+      normal: "Your ApoB level suggests a healthy number of cholesterol particles.",
+      low: "Lower ApoB is protective for your arteries and heart.",
+      high: "Elevated ApoB increases plaque buildup risk. Diet, exercise, and possibly medication can help."
+    },
+    platelets: {
+      what: "Platelets help your blood clot to stop bleeding when you're injured.",
+      normal: "Your platelet count supports healthy blood clotting.",
+      low: "Lower platelets may increase bleeding risk and should be monitored.",
+      high: "Higher platelets may indicate inflammation or a clotting disorder. Further evaluation may be needed."
+    },
+    wbc: {
+      what: "White blood cells fight infections and are part of your immune system.",
+      normal: "Your immune cell count is in the healthy range for fighting infections.",
+      low: "Lower WBC may indicate weakened immunity. Worth monitoring.",
+      high: "Higher WBC may indicate infection or inflammation in your body."
+    },
+    iron: {
+      what: "Iron is essential for oxygen transport, energy, and healthy hair and skin.",
+      normal: "Your iron level supports healthy oxygen delivery and energy production.",
+      low: "Lower iron may cause fatigue and weakness. Iron-rich foods and supplements can help.",
+      high: "Higher iron may indicate excess intake or a storage disorder."
+    },
+    folate: {
+      what: "Folate is essential for cell division, DNA synthesis, and preventing birth defects.",
+      normal: "Your folate level supports healthy cell function and DNA synthesis.",
+      low: "Lower folate may cause fatigue and is important to address, especially before pregnancy.",
+      high: "Higher folate is generally safe from food sources."
+    },
+    magnesium: {
+      what: "Magnesium supports over 300 reactions including muscle function, sleep, and mood.",
+      normal: "Your magnesium level supports healthy muscles, nerves, and sleep.",
+      low: "Lower magnesium may cause muscle cramps, anxiety, and poor sleep. Supplementation often helps.",
+      high: "Higher magnesium is rare from diet alone and usually not concerning."
+    }
+  };
+
+  let matchedKey = '';
+  for (const key of Object.keys(insights)) {
+    if (cat.includes(key) || key.includes(cat)) {
+      matchedKey = key;
+      break;
+    }
+  }
+
+  if (!matchedKey) {
+    if (status === 'normal') return "This result is within the healthy reference range.";
+    if (status === 'borderline') return "This value is near the edge of normal. Lifestyle changes may help optimize it.";
+    if (status === 'abnormal' || status === 'critical') return "This result is outside the optimal range. Please discuss with your provider.";
+    return "Your provider can explain this result in the context of your overall health.";
+  }
+
+  const insight = insights[matchedKey];
+  let explanation = insight.what + " ";
+  
+  if (direction === 'normal') {
+    explanation += insight.normal;
+  } else if (direction === 'low') {
+    explanation += insight.low;
+  } else {
+    explanation += insight.high;
+  }
+
+  return explanation;
+}
+
 export async function generatePatientWellnessPDF(
   labValues: FemaleLabValues,
   interpretation: InterpretationResult,
@@ -145,27 +428,24 @@ export async function generatePatientWellnessPDF(
   if (interpretation.interpretations && interpretation.interpretations.length > 0) {
     const tableData = interpretation.interpretations.map((interp: LabInterpretation) => {
       let statusText = '';
-      let statusExplanation = '';
       if (interp.status === 'critical') {
         statusText = 'Needs Attention';
-        statusExplanation = 'Please discuss with your provider';
       } else if (interp.status === 'abnormal') {
         statusText = 'Outside Range';
-        statusExplanation = 'Room for improvement';
       } else if (interp.status === 'borderline') {
         statusText = 'Borderline';
-        statusExplanation = 'Worth monitoring';
       } else {
         statusText = 'Optimal';
-        statusExplanation = 'Great job!';
       }
+
+      const healthInsight = getLabInsight(interp.category, interp.value ?? 0, interp.status, interp.referenceRange);
 
       return [
         sanitizeForPdf(interp.category),
         sanitizeForPdf(`${interp.value} ${interp.unit}`),
         sanitizeForPdf(interp.referenceRange || 'N/A'),
         statusText,
-        statusExplanation,
+        sanitizeForPdf(healthInsight),
       ];
     });
 
@@ -187,11 +467,11 @@ export async function generatePatientWellnessPDF(
         textColor: textColor,
       },
       columnStyles: {
-        0: { cellWidth: 32 },
-        1: { cellWidth: 28 },
-        2: { cellWidth: 30 },
-        3: { cellWidth: 28 },
-        4: { cellWidth: 60 },
+        0: { cellWidth: 28 },
+        1: { cellWidth: 22 },
+        2: { cellWidth: 26 },
+        3: { cellWidth: 22 },
+        4: { cellWidth: 80 },
       },
       styles: {
         overflow: 'linebreak',
