@@ -129,6 +129,11 @@ export const femaleLabValuesSchema = z.object({
   apoB: z.number().optional(), // Apolipoprotein B
   lpa: z.number().optional(), // Lipoprotein(a)
   
+  // Cardiovascular Assessment
+  cacScore: z.number().optional(), // Coronary Artery Calcium score (if available)
+  knownASCVD: z.boolean().optional(), // Known atherosclerotic cardiovascular disease
+  statinHesitant: z.boolean().optional(), // Patient hesitant about statin therapy
+  
   // Female Hormones
   estradiol: z.number().optional(),
   progesterone: z.number().optional(),
@@ -232,6 +237,36 @@ export const cardiovascularRiskFlagsSchema = z.object({
 
 export type CardiovascularRiskFlags = z.infer<typeof cardiovascularRiskFlagsSchema>;
 
+// CAC and Statin Recommendations Schema
+export const cacStatinRecommendationSchema = z.object({
+  cacRecommendation: z.object({
+    recommended: z.boolean(),
+    priority: z.enum(['none', 'consider', 'recommend', 'strongly_recommend']),
+    rationale: z.string(),
+    contraindicated: z.boolean().optional(),
+    contraindicationReason: z.string().optional(),
+  }),
+  statinDiscussion: z.object({
+    indicated: z.boolean(),
+    strength: z.enum(['none', 'consider', 'generally_recommended', 'strongly_indicated']),
+    rationale: z.string(),
+    additionalNotes: z.string().optional(),
+  }),
+  cacInterpretation: z.object({
+    score: z.number().optional(),
+    interpretation: z.string(),
+    clinicalImplication: z.string(),
+  }).optional(),
+  triglycerideMgmt: z.object({
+    elevated: z.boolean(),
+    severity: z.enum(['normal', 'borderline', 'high', 'very_high']),
+    recommendation: z.string(),
+  }).optional(),
+  lpaWarning: z.string().optional(),
+});
+
+export type CacStatinRecommendation = z.infer<typeof cacStatinRecommendationSchema>;
+
 // Complete Interpretation Result
 export const interpretationResultSchema = z.object({
   redFlags: z.array(redFlagSchema),
@@ -242,6 +277,7 @@ export const interpretationResultSchema = z.object({
   ascvdRisk: ascvdRiskResultSchema.optional(),
   supplements: z.array(supplementRecommendationSchema).optional(),
   cvRiskFlags: cardiovascularRiskFlagsSchema.optional(),
+  cacStatinRec: cacStatinRecommendationSchema.optional(),
 });
 
 export type InterpretationResult = z.infer<typeof interpretationResultSchema>;

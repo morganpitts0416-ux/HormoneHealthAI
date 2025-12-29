@@ -1,5 +1,5 @@
 // Female Clinical Logic Engine - Women's Hormone Clinic Standing Orders
-import type { FemaleLabValues, RedFlag, LabInterpretation, CardiovascularRiskFlags } from "@shared/schema";
+import type { FemaleLabValues, RedFlag, LabInterpretation, CardiovascularRiskFlags, CacStatinRecommendation } from "@shared/schema";
 
 const ULN = {
   AST: 32, // U/L - lower for women
@@ -1449,5 +1449,300 @@ export class FemaleClinicalLogicEngine {
     }
 
     return flags;
+  }
+
+  /**
+   * Generate CAC and Statin recommendations based on clinical guidelines
+   * Implements 2018 ACC/AHA guidelines for CAC scoring and statin decision-making
+   */
+  static generateCacStatinRecommendations(labs: FemaleLabValues, cvFlags: CardiovascularRiskFlags): CacStatinRecommendation {
+    const age = labs.demographics?.age;
+    const ldl = labs.ldl;
+    const apoB = labs.apoB;
+    const lpa = labs.lpa;
+    const tg = labs.triglycerides;
+    const hdl = labs.hdl;
+    const tc = labs.totalCholesterol;
+    const cacScore = labs.cacScore;
+    const knownASCVD = labs.knownASCVD === true;
+    const statinHesitant = labs.statinHesitant === true;
+    const familyHistory = cvFlags.family_history;
+    const diabetes = cvFlags.diabetes;
+    const prediabetes = cvFlags.prediabetes;
+    
+    // Calculate non-HDL if we have the values
+    const nonHDL = (tc !== undefined && hdl !== undefined) ? tc - hdl : undefined;
+    
+    // Count risk enhancers
+    const riskEnhancers: string[] = [];
+    if (familyHistory) riskEnhancers.push('family history of premature ASCVD');
+    if (cvFlags.hsCRP_high) riskEnhancers.push('elevated hs-CRP');
+    if (cvFlags.CKD) riskEnhancers.push('chronic kidney disease');
+    if (cvFlags.low_HDL) riskEnhancers.push('low HDL');
+    if (cvFlags.high_TG) riskEnhancers.push('elevated triglycerides');
+    if (prediabetes) riskEnhancers.push('prediabetes/metabolic syndrome');
+    if (lpa !== undefined && lpa >= 50) riskEnhancers.push('elevated Lp(a)');
+    if (apoB !== undefined && apoB >= 90) riskEnhancers.push('elevated ApoB');
+    
+    // Initialize result
+    const result: CacStatinRecommendation = {
+      cacRecommendation: {
+        recommended: false,
+        priority: 'none',
+        rationale: '',
+      },
+      statinDiscussion: {
+        indicated: false,
+        strength: 'none',
+        rationale: '',
+      },
+    };
+    
+    // ============================================
+    // CAC RECOMMENDATION LOGIC
+    // ============================================
+    
+    // Don't recommend CAC if known ASCVD (treat aggressively, CAC not needed)
+    if (knownASCVD) {
+      result.cacRecommendation = {
+        recommended: false,
+        priority: 'none',
+        rationale: 'CAC not indicated - patient has known ASCVD. Treat aggressively per secondary prevention guidelines.',
+        contraindicated: true,
+        contraindicationReason: 'Known ASCVD - treat aggressively; CAC is not needed for "proof".',
+      };
+    }
+    // Age <40: Generally less informative unless extreme circumstances
+    else if (age !== undefined && age < 40) {
+      // Exception: extreme family history + very high Lp(a)
+      if (familyHistory && lpa !== undefined && lpa >= 180) {
+        result.cacRecommendation = {
+          recommended: true,
+          priority: 'consider',
+          rationale: `Despite age <40, CAC may be informative given extreme family history combined with very high Lp(a) (${lpa} mg/dL). Early detection of subclinical atherosclerosis could guide aggressive prevention.`,
+        };
+      } else {
+        result.cacRecommendation = {
+          recommended: false,
+          priority: 'none',
+          rationale: 'CAC generally less informative under age 40. Consider if extreme family history with very high Lp(a).',
+        };
+      }
+    }
+    // Age ≥40: Apply standard CAC decision logic
+    else if (age !== undefined && age >= 40) {
+      const meetsLipidCriteria = (ldl !== undefined && ldl >= 70) || 
+                                  (apoB !== undefined && apoB >= 80) || 
+                                  (nonHDL !== undefined && nonHDL >= 100);
+      
+      // Strongly recommend CAC if Lp(a) ≥50 (especially ≥180)
+      if (lpa !== undefined && lpa >= 180) {
+        result.cacRecommendation = {
+          recommended: true,
+          priority: 'strongly_recommend',
+          rationale: `Very high Lp(a) of ${lpa} mg/dL represents extreme genetic cardiovascular risk. CAC highly recommended to assess subclinical atherosclerosis burden and guide aggressive prevention strategy.`,
+        };
+      } else if (lpa !== undefined && lpa >= 50) {
+        result.cacRecommendation = {
+          recommended: true,
+          priority: 'strongly_recommend',
+          rationale: `Elevated Lp(a) of ${lpa} mg/dL is a genetic risk marker. CAC strongly recommended to assess arterial calcium burden and inform treatment intensity.`,
+        };
+      }
+      // Strong family history + multiple risk enhancers
+      else if (familyHistory && riskEnhancers.length >= 2) {
+        result.cacRecommendation = {
+          recommended: true,
+          priority: 'recommend',
+          rationale: `Strong family history of premature ASCVD with multiple risk enhancers (${riskEnhancers.join(', ')}). CAC recommended to clarify risk and guide statin decision.`,
+        };
+      }
+      // Metabolic syndrome/prediabetes with mixed lipids
+      else if ((prediabetes || diabetes) && (cvFlags.high_TG || cvFlags.low_HDL)) {
+        result.cacRecommendation = {
+          recommended: true,
+          priority: 'recommend',
+          rationale: 'Metabolic syndrome pattern (prediabetes/diabetes with dyslipidemia). CAC recommended to assess cardiovascular risk and guide therapy intensity.',
+        };
+      }
+      // Standard CAC criteria: Age ≥40 AND lipid criteria AND (hesitant or uncertain risk)
+      else if (meetsLipidCriteria && statinHesitant) {
+        result.cacRecommendation = {
+          recommended: true,
+          priority: 'recommend',
+          rationale: 'Patient age ≥40 with lipid levels meeting treatment thresholds but hesitant about statin therapy. CAC can help clarify individual risk and inform shared decision-making.',
+        };
+      }
+      // Borderline risk with multiple enhancers
+      else if (meetsLipidCriteria && riskEnhancers.length >= 2) {
+        result.cacRecommendation = {
+          recommended: true,
+          priority: 'consider',
+          rationale: `Borderline lipid levels with multiple risk enhancers (${riskEnhancers.join(', ')}). Consider CAC to refine risk assessment.`,
+        };
+      }
+      else if (meetsLipidCriteria) {
+        result.cacRecommendation = {
+          recommended: false,
+          priority: 'consider',
+          rationale: 'Lipid levels meet threshold for CAC consideration. CAC may be useful if risk level is uncertain or patient is hesitant about statin.',
+        };
+      }
+    }
+    
+    // ============================================
+    // STATIN DISCUSSION LOGIC
+    // ============================================
+    
+    // LDL ≥190 (or familial pattern) → "strongly indicated"
+    if (ldl !== undefined && ldl >= 190) {
+      result.statinDiscussion = {
+        indicated: true,
+        strength: 'strongly_indicated',
+        rationale: `LDL-C ≥190 mg/dL (${ldl} mg/dL). High-intensity statin therapy strongly indicated per ACC/AHA guidelines. Consider familial hypercholesterolemia evaluation.`,
+        additionalNotes: familyHistory ? 'Strong family history further supports aggressive lipid lowering.' : undefined,
+      };
+    }
+    // Diabetes age 40-75 with LDL ≥70 → "generally recommended"
+    else if (diabetes && age !== undefined && age >= 40 && age <= 75 && ldl !== undefined && ldl >= 70) {
+      result.statinDiscussion = {
+        indicated: true,
+        strength: 'generally_recommended',
+        rationale: `Diabetes with age 40-75 and LDL-C ≥70 mg/dL (${ldl} mg/dL). Moderate-to-high intensity statin generally recommended per guidelines.`,
+        additionalNotes: riskEnhancers.length > 0 ? `Additional risk enhancers present: ${riskEnhancers.join(', ')}. Consider high-intensity statin.` : undefined,
+      };
+    }
+    // CAC ≥100 → strong statin indication
+    else if (cacScore !== undefined && cacScore >= 100) {
+      result.statinDiscussion = {
+        indicated: true,
+        strength: 'strongly_indicated',
+        rationale: `CAC score ≥100 (${cacScore}) indicates significant coronary atherosclerosis. Strong indication for statin therapy plus intensive risk factor modification.`,
+      };
+    }
+    // CAC 1-99 → favors statin
+    else if (cacScore !== undefined && cacScore >= 1 && cacScore < 100) {
+      const ageNote = age !== undefined && age > 55 ? ' especially given age >55' : '';
+      result.statinDiscussion = {
+        indicated: true,
+        strength: 'generally_recommended',
+        rationale: `CAC score 1-99 (${cacScore}) indicates presence of coronary atherosclerosis. Statin therapy favored${ageNote}.`,
+        additionalNotes: riskEnhancers.length > 0 ? `Risk enhancers present: ${riskEnhancers.join(', ')}.` : undefined,
+      };
+    }
+    // CAC = 0 interpretation
+    else if (cacScore !== undefined && cacScore === 0) {
+      if (lpa !== undefined && lpa >= 50) {
+        result.statinDiscussion = {
+          indicated: false,
+          strength: 'consider',
+          rationale: `CAC = 0 supports deferring statin in low-intermediate risk, but elevated Lp(a) (${lpa} mg/dL) is a genetic risk factor not reflected by CAC. Close follow-up warranted.`,
+          additionalNotes: 'High Lp(a) patients can develop ASCVD despite CAC = 0. Consider lifestyle optimization and reassess periodically.',
+        };
+      } else {
+        result.statinDiscussion = {
+          indicated: false,
+          strength: 'none',
+          rationale: 'CAC = 0 supports deferring statin therapy short-term in selected low-intermediate risk patients. Reassess risk factors in 5-10 years.',
+        };
+      }
+    }
+    // ApoB ≥90 with risk enhancers
+    else if (apoB !== undefined && apoB >= 90 && riskEnhancers.length > 0) {
+      result.statinDiscussion = {
+        indicated: true,
+        strength: 'generally_recommended',
+        rationale: `ApoB ≥90 mg/dL (${apoB} mg/dL) with risk enhancers (${riskEnhancers.join(', ')}). Statin discussion recommended.`,
+      };
+    }
+    // non-HDL ≥160 persistent
+    else if (nonHDL !== undefined && nonHDL >= 160) {
+      result.statinDiscussion = {
+        indicated: true,
+        strength: 'generally_recommended',
+        rationale: `Persistent non-HDL ≥160 mg/dL (${nonHDL} mg/dL) indicates elevated atherogenic lipoprotein burden. Statin discussion recommended.`,
+      };
+    }
+    // Lp(a) ≥50 + ApoB/non-HDL above goal
+    else if (lpa !== undefined && lpa >= 50 && ((apoB !== undefined && apoB >= 90) || (nonHDL !== undefined && nonHDL >= 130))) {
+      result.statinDiscussion = {
+        indicated: true,
+        strength: 'generally_recommended',
+        rationale: `Elevated Lp(a) (${lpa} mg/dL) combined with elevated ApoB/non-HDL. Statin therapy recommended to reduce overall atherogenic burden.`,
+        additionalNotes: 'While statins do not lower Lp(a), reducing LDL/ApoB provides cardiovascular benefit.',
+      };
+    }
+    
+    // ============================================
+    // CAC INTERPRETATION (if score provided)
+    // ============================================
+    if (cacScore !== undefined) {
+      if (cacScore === 0) {
+        result.cacInterpretation = {
+          score: cacScore,
+          interpretation: 'CAC = 0: No detectable coronary artery calcium.',
+          clinicalImplication: 'Supports deferring statin short-term in selected patients. However, high Lp(a) still warrants close follow-up as it reflects genetic risk not captured by CAC.',
+        };
+      } else if (cacScore >= 1 && cacScore < 100) {
+        result.cacInterpretation = {
+          score: cacScore,
+          interpretation: `CAC 1-99 (${cacScore}): Mild coronary atherosclerosis detected.`,
+          clinicalImplication: 'Favors statin therapy, especially if age >55 or risk enhancers present. Indicates presence of subclinical disease.',
+        };
+      } else if (cacScore >= 100) {
+        result.cacInterpretation = {
+          score: cacScore,
+          interpretation: `CAC ≥100 (${cacScore}): Significant coronary atherosclerosis.`,
+          clinicalImplication: 'Strong indication for statin therapy plus intensive cardiovascular risk reduction. Consider aspirin if appropriate.',
+        };
+      }
+    }
+    
+    // ============================================
+    // TRIGLYCERIDE MANAGEMENT
+    // ============================================
+    if (tg !== undefined) {
+      if (tg >= 500) {
+        result.triglycerideMgmt = {
+          elevated: true,
+          severity: 'very_high',
+          recommendation: `Triglycerides ≥500 mg/dL (${tg} mg/dL) - URGENT: High risk for pancreatitis. Fibrate therapy indicated. Rule out secondary causes (diabetes, alcohol, medications).`,
+        };
+      } else if (tg >= 200) {
+        let rec = `Triglycerides 200-499 mg/dL (${tg} mg/dL). Recommend intensive lifestyle modification first. Rule out secondary causes (diabetes, hypothyroidism, medications, alcohol).`;
+        // If on statin and TG persists, discuss omega-3
+        if (result.statinDiscussion.indicated || knownASCVD) {
+          rec += ' If on statin and TG persists ≥150, consider prescription omega-3 (icosapent ethyl) for patients with established ASCVD or diabetes with additional risk factors.';
+        }
+        result.triglycerideMgmt = {
+          elevated: true,
+          severity: 'high',
+          recommendation: rec,
+        };
+      } else if (tg >= 150) {
+        result.triglycerideMgmt = {
+          elevated: true,
+          severity: 'borderline',
+          recommendation: `Triglycerides 150-199 mg/dL (${tg} mg/dL). Lifestyle modifications recommended (weight loss, exercise, reduce refined carbs/alcohol).`,
+        };
+      } else {
+        result.triglycerideMgmt = {
+          elevated: false,
+          severity: 'normal',
+          recommendation: 'Triglycerides within normal range.',
+        };
+      }
+    }
+    
+    // ============================================
+    // Lp(a) WARNING MESSAGE
+    // ============================================
+    if (lpa !== undefined && lpa >= 180) {
+      result.lpaWarning = `Very high Lp(a) of ${lpa} mg/dL detected. Even if LDL appears "okay," overall inherited cardiovascular risk is high. Lp(a) is a genetic, largely non-modifiable risk factor. Lowering ApoB/LDL through statin therapy is one of the best available strategies to mitigate this risk. Consider referral to lipid specialist.`;
+    } else if (lpa !== undefined && lpa >= 50) {
+      result.lpaWarning = `Elevated Lp(a) of ${lpa} mg/dL is a genetic cardiovascular risk marker. This level is associated with increased ASCVD risk independent of LDL. Since Lp(a) cannot be significantly lowered, focus on aggressive LDL/ApoB reduction and lifestyle optimization.`;
+    }
+    
+    return result;
   }
 }

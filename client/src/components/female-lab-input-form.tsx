@@ -566,11 +566,43 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                     <FormLabel className="text-xs font-medium uppercase">Lp(a)</FormLabel>
                     <div className="flex items-center gap-2">
                       <FormControl><Input type="number" step="1" placeholder="30" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-lpa-female" /></FormControl>
-                      <span className="text-sm text-muted-foreground">nmol/L</span>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
                     </div>
-                    <p className="text-xs text-muted-foreground">&lt;75 nmol/L</p>
+                    <p className="text-xs text-muted-foreground">&lt;50 mg/dL optimal</p>
                   </FormItem>
                 )} />
+              </div>
+              
+              {/* CAC Score and CV Assessment */}
+              <div className="mt-4 pt-4 border-t">
+                <h4 className="text-sm font-semibold mb-4 text-primary">Cardiovascular Assessment</h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <FormField control={form.control} name="cacScore" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">CAC Score (if available)</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl><Input type="number" step="1" placeholder="0" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-cac-score" /></FormControl>
+                        <span className="text-sm text-muted-foreground">Agatston</span>
+                      </div>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="knownASCVD" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-known-ascvd" />
+                      </FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Known ASCVD</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="statinHesitant" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-statin-hesitant" />
+                      </FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Hesitant About Statin</FormLabel>
+                    </FormItem>
+                  )} />
+                </div>
               </div>
             </AccordionContent>
           </AccordionItem>

@@ -328,6 +328,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cvRiskFlags = FemaleClinicalLogicEngine.computeCardiovascularRiskFlags(labs);
       console.log('[API] CV Risk Flags:', JSON.stringify(cvRiskFlags, null, 2));
 
+      // Step 9: Generate CAC and statin recommendations
+      const cacStatinRec = FemaleClinicalLogicEngine.generateCacStatinRecommendations(labs, cvRiskFlags);
+      console.log('[API] CAC/Statin Recommendations generated');
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -338,6 +342,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ascvdRisk,
         supplements,
         cvRiskFlags,
+        cacStatinRec,
       };
 
       console.log('[API] Female interpretation response summary:');
