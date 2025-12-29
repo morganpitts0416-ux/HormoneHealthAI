@@ -6,7 +6,7 @@ interface SupplementRule {
 }
 
 const supplementRules: SupplementRule[] = [
-  // HEMAGENICS - Red Blood Cell Support (replaces generic iron)
+  // HEMAGENICS - Functional Iron Deficiency / Iron Deficiency Without Anemia
   {
     supplement: {
       name: "Hemagenics® Red Blood Cell Support",
@@ -16,26 +16,26 @@ const supplementRules: SupplementRule[] = [
       caution: "Contains iron, folate, and B12 for comprehensive RBC support. Avoid with calcium-rich foods. May cause mild GI upset initially."
     },
     evaluate: (labs) => {
-      if (labs.ferritin === undefined) return null;
-      
       const hasElevatedTIBC = labs.tibc !== undefined && labs.tibc > 450;
-      const hasLowSerumIron = labs.iron !== undefined && labs.iron < 40;
-      const hasFunctionalDeficiency = hasElevatedTIBC || hasLowSerumIron;
-      const lowHemoglobin = labs.hemoglobin !== undefined && labs.hemoglobin < 12;
+      const hasLowSerumIron = labs.iron !== undefined && labs.iron < 60;
+      const lowFerritin = labs.ferritin !== undefined && labs.ferritin <= 50;
+      const normalHemoglobin = labs.hemoglobin === undefined || labs.hemoglobin >= 12;
       
-      if (labs.ferritin <= 30 || lowHemoglobin) {
+      const functionalIronDeficiency = hasElevatedTIBC || hasLowSerumIron || lowFerritin;
+      const ironDeficiencyWithoutAnemia = lowFerritin && normalHemoglobin;
+      
+      if (functionalIronDeficiency || ironDeficiencyWithoutAnemia) {
+        let indications: string[] = [];
+        if (labs.ferritin !== undefined && labs.ferritin <= 50) indications.push(`Ferritin ${labs.ferritin} ng/mL`);
+        if (hasLowSerumIron) indications.push(`Serum iron ${labs.iron} µg/dL`);
+        if (hasElevatedTIBC) indications.push(`TIBC ${labs.tibc} µg/dL`);
+        
+        const indicationType = ironDeficiencyWithoutAnemia ? "Iron deficiency without anemia" : "Functional iron deficiency";
+        
         return {
           shouldRecommend: true,
-          indication: `Ferritin ${labs.ferritin} ng/mL${lowHemoglobin ? `, Hemoglobin ${labs.hemoglobin} g/dL` : ''}`,
-          rationale: "Hemagenics provides comprehensive red blood cell support with iron, folate, and B12 in highly absorbable forms. Indicated for ferritin ≤30 or anemia."
-        };
-      }
-      
-      if (labs.ferritin > 30 && labs.ferritin <= 50 && hasFunctionalDeficiency) {
-        return {
-          shouldRecommend: true,
-          indication: `Ferritin ${labs.ferritin} ng/mL with functional iron deficiency markers`,
-          rationale: "Hemagenics supports iron stores and RBC production. Consider for symptomatic patients with ferritin 31-50 and functional deficiency signs."
+          indication: `${indicationType}: ${indications.join(', ')}`,
+          rationale: "Hemagenics provides comprehensive red blood cell support with highly absorbable iron, folate, and B12. Indicated for functional iron deficiency or iron deficiency without anemia."
         };
       }
       
@@ -186,7 +186,7 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // NUTRAGEN CoQ10 300mg
+  // NUTRAGEN CoQ10 300mg - Cardiovascular Risk
   {
     supplement: {
       name: "NutraGems® CoQ10 300",
@@ -196,21 +196,27 @@ const supplementRules: SupplementRule[] = [
       caution: "High-potency CoQ10 in absorbable form. Take with fatty meal for best absorption. Essential for statin users."
     },
     evaluate: (labs) => {
-      const highLDL = labs.ldl !== undefined && labs.ldl > 130;
-      const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
-      const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
-      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
+      const hypercholesterolemia = (labs.totalCholesterol !== undefined && labs.totalCholesterol > 200) || 
+                                    (labs.ldl !== undefined && labs.ldl > 130);
+      const elevatedLpa = labs.lpa !== undefined && labs.lpa > 50;
+      const elevatedCRP = labs.hsCRP !== undefined && labs.hsCRP > 2;
+      const elevatedFerritinInflammatory = labs.ferritin !== undefined && labs.ferritin > 150 && 
+                                            labs.hsCRP !== undefined && labs.hsCRP > 1;
       
-      if ((highLDL || highTriglycerides) || (postmenopausal && lowFerritin)) {
-        let indication = '';
-        if (highLDL) indication = `LDL ${labs.ldl} mg/dL`;
-        if (highTriglycerides) indication += indication ? `, TG ${labs.triglycerides} mg/dL` : `TG ${labs.triglycerides} mg/dL`;
-        if (!indication && postmenopausal) indication = "Postmenopausal energy support";
+      if (hypercholesterolemia || elevatedLpa || elevatedCRP || elevatedFerritinInflammatory) {
+        let indications: string[] = [];
+        if (hypercholesterolemia) {
+          if (labs.totalCholesterol !== undefined && labs.totalCholesterol > 200) indications.push(`TC ${labs.totalCholesterol} mg/dL`);
+          if (labs.ldl !== undefined && labs.ldl > 130) indications.push(`LDL ${labs.ldl} mg/dL`);
+        }
+        if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa} nmol/L`);
+        if (elevatedCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/L`);
+        if (elevatedFerritinInflammatory) indications.push(`Ferritin ${labs.ferritin} ng/mL (inflammatory)`);
         
         return {
           shouldRecommend: true,
-          indication: indication,
-          rationale: "NutraGems CoQ10 300 provides high-dose ubiquinone for cardiovascular support, cellular energy, and antioxidant protection. Critical if on statin therapy."
+          indication: indications.join(', '),
+          rationale: "NutraGems CoQ10 300 provides high-dose ubiquinone for cardiovascular protection, reducing oxidative stress and supporting healthy lipid metabolism. Critical for statin users."
         };
       }
       
