@@ -504,21 +504,214 @@ export async function generatePatientWellnessPDF(
   addHeader();
   yPosition = 45;
 
+  // Parse and format nutrition plan into structured format
+  const parseNutritionPlan = (text: string): string[][] => {
+    const lines = text.split('\n').filter(l => l.trim());
+    const rows: string[][] = [];
+    let currentCategory = '';
+    
+    for (const line of lines) {
+      const trimmed = line.trim();
+      if (trimmed.match(/^(day\s*\d|breakfast|lunch|dinner|snack|morning|afternoon|evening)/i)) {
+        currentCategory = trimmed.replace(/[:\-]/g, '').trim();
+      } else if (trimmed.length > 5 && currentCategory) {
+        rows.push([currentCategory, trimmed.replace(/^[-•*]\s*/, '')]);
+        currentCategory = '';
+      } else if (trimmed.length > 10 && !trimmed.match(/^(focus|goal|tip|note)/i)) {
+        rows.push(['Recommendation', trimmed.replace(/^[-•*]\s*/, '')]);
+      }
+    }
+    
+    if (rows.length < 3) {
+      const simpleLines = text.split(/[.\n]/).filter(l => l.trim().length > 15).slice(0, 8);
+      return simpleLines.map((l, i) => [`Tip ${i + 1}`, sanitizeForPdf(l.trim())]);
+    }
+    return rows.slice(0, 12).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1])]);
+  };
+
   yPosition = addSectionHeader('YOUR PERSONALIZED NUTRITION PLAN', yPosition);
-  yPosition = addTextSection(wellnessPlan.dietPlan, yPosition, contentWidth);
-  yPosition += 8;
+  
+  const nutritionData = parseNutritionPlan(wellnessPlan.dietPlan);
+  if (nutritionData.length > 0) {
+    autoTable(doc, {
+      startY: yPosition,
+      head: [['Meal/Category', 'Recommendation']],
+      body: nutritionData,
+      theme: 'striped',
+      headStyles: {
+        fillColor: brandColor,
+        fontSize: 9,
+        fontStyle: 'bold',
+        textColor: [255, 255, 255],
+      },
+      bodyStyles: {
+        fontSize: 8,
+        textColor: textColor,
+      },
+      columnStyles: {
+        0: { cellWidth: 35, fontStyle: 'bold' },
+        1: { cellWidth: contentWidth - 35 },
+      },
+      styles: {
+        overflow: 'linebreak',
+        cellPadding: 3,
+      },
+      alternateRowStyles: {
+        fillColor: lightBg,
+      },
+    });
+    yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
+  } else {
+    yPosition = addTextSection(wellnessPlan.dietPlan, yPosition, contentWidth);
+  }
+  yPosition += 10;
+
+  // Parse and format supplement protocol into table
+  const parseSupplements = (text: string): string[][] => {
+    const lines = text.split('\n').filter(l => l.trim());
+    const rows: string[][] = [];
+    
+    for (const line of lines) {
+      const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
+      
+      // Look for patterns like "Vitamin D: 2000 IU daily" or "Vitamin D 2000 IU - take with food"
+      const match = trimmed.match(/^([A-Za-z0-9\s\-\(\)]+?)[\s:]+(\d+[\w\s\/\-]+?)[\s,\-]+(.*)/i) ||
+                   trimmed.match(/^([A-Za-z0-9\s\-\(\)]+?)[\s:]+(\d+.*?)(morning|evening|daily|with|before|after|$)/i);
+      
+      if (match) {
+        const supplement = match[1].trim();
+        const dose = match[2].trim();
+        const timing = match[3]?.trim() || 'As directed';
+        if (supplement.length > 2 && dose.length > 1) {
+          rows.push([supplement, dose, timing.length > 2 ? timing : 'Daily']);
+        }
+      } else if (trimmed.length > 10 && trimmed.match(/vitamin|magnesium|iron|omega|probiotic|zinc|b12|folate|d3|k2|fish oil/i)) {
+        rows.push([trimmed.substring(0, 30), 'See label', 'As directed']);
+      }
+    }
+    
+    if (rows.length < 2) {
+      const simpleLines = text.split(/[.\n]/).filter(l => l.trim().length > 10).slice(0, 6);
+      return simpleLines.map(l => [sanitizeForPdf(l.trim().substring(0, 35)), 'As recommended', 'Daily']);
+    }
+    return rows.slice(0, 10).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1]), sanitizeForPdf(r[2])]);
+  };
 
   yPosition = addSectionHeader('YOUR SUPPLEMENT PROTOCOL', yPosition);
-  yPosition = addTextSection(wellnessPlan.supplementProtocol, yPosition, contentWidth);
-  yPosition += 8;
+  
+  const supplementData = parseSupplements(wellnessPlan.supplementProtocol);
+  if (supplementData.length > 0) {
+    autoTable(doc, {
+      startY: yPosition,
+      head: [['Supplement', 'Dose', 'When to Take']],
+      body: supplementData,
+      theme: 'striped',
+      headStyles: {
+        fillColor: brandColor,
+        fontSize: 9,
+        fontStyle: 'bold',
+        textColor: [255, 255, 255],
+      },
+      bodyStyles: {
+        fontSize: 8,
+        textColor: textColor,
+      },
+      columnStyles: {
+        0: { cellWidth: 50, fontStyle: 'bold' },
+        1: { cellWidth: 45 },
+        2: { cellWidth: contentWidth - 95 },
+      },
+      styles: {
+        overflow: 'linebreak',
+        cellPadding: 3,
+      },
+      alternateRowStyles: {
+        fillColor: lightBg,
+      },
+    });
+    yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
+  } else {
+    yPosition = addTextSection(wellnessPlan.supplementProtocol, yPosition, contentWidth);
+  }
+  yPosition += 10;
 
   doc.addPage();
   addHeader();
   yPosition = 45;
 
+  // Parse lifestyle recommendations into categorized format
+  const parseLifestyle = (text: string): string[][] => {
+    const lines = text.split('\n').filter(l => l.trim());
+    const rows: string[][] = [];
+    let currentCategory = 'General';
+    
+    const categoryPatterns = [
+      { pattern: /sleep|rest|bedtime/i, category: 'Sleep' },
+      { pattern: /stress|relax|mindful|meditat/i, category: 'Stress Management' },
+      { pattern: /exercise|movement|activity|walk|workout/i, category: 'Physical Activity' },
+      { pattern: /hydrat|water|drink/i, category: 'Hydration' },
+      { pattern: /social|connect|relation/i, category: 'Social Wellness' },
+    ];
+    
+    for (const line of lines) {
+      const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
+      if (trimmed.length < 10) continue;
+      
+      for (const { pattern, category } of categoryPatterns) {
+        if (pattern.test(trimmed)) {
+          currentCategory = category;
+          break;
+        }
+      }
+      
+      if (trimmed.length > 15) {
+        rows.push([currentCategory, trimmed]);
+      }
+    }
+    
+    if (rows.length < 3) {
+      const simpleLines = text.split(/[.\n]/).filter(l => l.trim().length > 15).slice(0, 8);
+      return simpleLines.map(l => ['Recommendation', sanitizeForPdf(l.trim())]);
+    }
+    return rows.slice(0, 12).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1])]);
+  };
+
   yPosition = addSectionHeader('LIFESTYLE RECOMMENDATIONS', yPosition);
-  yPosition = addTextSection(wellnessPlan.lifestyleRecommendations, yPosition, contentWidth);
-  yPosition += 8;
+  
+  const lifestyleData = parseLifestyle(wellnessPlan.lifestyleRecommendations);
+  if (lifestyleData.length > 0) {
+    autoTable(doc, {
+      startY: yPosition,
+      head: [['Focus Area', 'Recommendation']],
+      body: lifestyleData,
+      theme: 'striped',
+      headStyles: {
+        fillColor: brandColor,
+        fontSize: 9,
+        fontStyle: 'bold',
+        textColor: [255, 255, 255],
+      },
+      bodyStyles: {
+        fontSize: 8,
+        textColor: textColor,
+      },
+      columnStyles: {
+        0: { cellWidth: 35, fontStyle: 'bold' },
+        1: { cellWidth: contentWidth - 35 },
+      },
+      styles: {
+        overflow: 'linebreak',
+        cellPadding: 3,
+      },
+      alternateRowStyles: {
+        fillColor: lightBg,
+      },
+    });
+    yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
+  } else {
+    yPosition = addTextSection(wellnessPlan.lifestyleRecommendations, yPosition, contentWidth);
+  }
+  yPosition += 10;
 
   yPosition = addSectionHeader('UNDERSTANDING YOUR RESULTS', yPosition);
   yPosition = addTextSection(wellnessPlan.educationalContent, yPosition, contentWidth);
