@@ -2,7 +2,7 @@
 // Using Replit AI Integrations (blueprint:javascript_openai_ai_integrations)
 
 import OpenAI from "openai";
-import type { LabValues, RedFlag, LabInterpretation, ASCVDRiskResult } from "@shared/schema";
+import type { LabValues, FemaleLabValues, RedFlag, LabInterpretation, ASCVDRiskResult } from "@shared/schema";
 
 // Using gpt-5-mini for faster responses - smaller model but still capable
 const openai = new OpenAI({
@@ -15,23 +15,26 @@ export class AIService {
    * Generate comprehensive AI-powered clinical recommendations
    */
   static async generateRecommendations(
-    labs: LabValues,
+    labs: LabValues | FemaleLabValues,
     redFlags: RedFlag[],
-    interpretations: LabInterpretation[]
+    interpretations: LabInterpretation[],
+    gender: 'male' | 'female' = 'male'
   ): Promise<string> {
-    const prompt = this.buildRecommendationPrompt(labs, redFlags, interpretations);
+    const prompt = this.buildRecommendationPrompt(labs, redFlags, interpretations, gender);
+    const clinicType = gender === 'female' ? "women's hormone and primary care clinic" : "men's hormone and primary care clinic";
 
     try {
       console.log('[AI Service] Generating AI recommendations with prompt length:', prompt.length);
       console.log('[AI Service] Red flags count:', redFlags.length);
       console.log('[AI Service] Interpretations count:', interpretations.length);
+      console.log('[AI Service] Gender context:', gender);
       
       const response = await openai.chat.completions.create({
         model: "gpt-5-mini",
         messages: [
           {
             role: "system",
-            content: `You are a clinical decision support assistant for a men's hormone and primary care clinic. Your role is to synthesize lab findings and provide clear, actionable, STAFF-FACING recommendations based on established clinical protocols.
+            content: `You are a clinical decision support assistant for a ${clinicType}. Your role is to synthesize lab findings and provide clear, actionable, STAFF-FACING recommendations based on established clinical protocols.
 
 CRITICAL: These recommendations are FOR CLINIC STAFF ONLY - not for patients.
 
@@ -46,6 +49,9 @@ Guidelines:
   * Physician notification requirements
   * Patient education points to cover
   * Lifestyle interventions to recommend
+${gender === 'female' ? `- Consider menstrual cycle phase when interpreting hormone levels
+- Address female-specific concerns: iron deficiency from menstruation, thyroid issues, fertility markers
+- Note HRT or birth control interactions where relevant` : ''}
 - Do not diagnose - provide clinical guidance for staff review
 - NO EMOJIS - use professional medical terminology only
 - Format as clear bullet points or numbered list`
@@ -76,10 +82,11 @@ Guidelines:
    * Generate patient-friendly summary for communication
    */
   static async generatePatientSummary(
-    labs: LabValues,
+    labs: LabValues | FemaleLabValues,
     interpretations: LabInterpretation[],
     hasRedFlags: boolean,
-    ascvdRisk?: ASCVDRiskResult | null
+    ascvdRisk?: ASCVDRiskResult | null,
+    gender: 'male' | 'female' = 'male'
   ): Promise<string> {
     // Categorize findings
     const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
@@ -179,13 +186,16 @@ Write the summary now:`;
 
     try {
       console.log('[AI Service] Generating patient summary with prompt length:', prompt.length);
+      console.log('[AI Service] Gender context:', gender);
+      
+      const clinicType = gender === 'female' ? "women's health clinic" : "men's health clinic";
       
       const response = await openai.chat.completions.create({
         model: "gpt-5-mini",
         messages: [
           {
             role: "system",
-            content: "You are writing a patient-friendly lab results summary for a men's health clinic. Always mention specific numeric values and give concrete, actionable lifestyle recommendations."
+            content: `You are writing a patient-friendly lab results summary for a ${clinicType}. Always mention specific numeric values and give concrete, actionable lifestyle recommendations.${gender === 'female' ? ' Consider menstrual cycle phase when discussing hormone results. Address female-specific health concerns like iron status, thyroid function, and bone health.' : ''}`
           },
           {
             role: "user",
@@ -215,11 +225,13 @@ Write the summary now:`;
   }
 
   private static buildRecommendationPrompt(
-    labs: LabValues,
+    labs: LabValues | FemaleLabValues,
     redFlags: RedFlag[],
-    interpretations: LabInterpretation[]
+    interpretations: LabInterpretation[],
+    gender: 'male' | 'female' = 'male'
   ): string {
-    let prompt = "Analyze these lab results from a men's hormone clinic patient and provide synthesized clinical recommendations:\n\n";
+    const patientType = gender === 'female' ? "women's hormone clinic patient" : "men's hormone clinic patient";
+    let prompt = `Analyze these lab results from a ${patientType} and provide synthesized clinical recommendations:\n\n`;
 
     // Add red flags if any
     if (redFlags.length > 0) {
