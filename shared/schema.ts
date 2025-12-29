@@ -185,6 +185,19 @@ export const labInterpretationSchema = z.object({
 
 export type LabInterpretation = z.infer<typeof labInterpretationSchema>;
 
+// Supplement Recommendation Schema
+export const supplementRecommendationSchema = z.object({
+  name: z.string(),
+  dose: z.string(),
+  indication: z.string(),
+  rationale: z.string(),
+  priority: z.enum(['high', 'medium', 'low']),
+  category: z.enum(['iron', 'vitamin', 'mineral', 'hormone-support', 'cardiovascular', 'thyroid', 'bone', 'general']),
+  caution: z.string().optional(),
+});
+
+export type SupplementRecommendation = z.infer<typeof supplementRecommendationSchema>;
+
 // Complete Interpretation Result
 export const interpretationResultSchema = z.object({
   redFlags: z.array(redFlagSchema),
@@ -193,6 +206,7 @@ export const interpretationResultSchema = z.object({
   patientSummary: z.string(),
   recheckWindow: z.string(),
   ascvdRisk: ascvdRiskResultSchema.optional(),
+  supplements: z.array(supplementRecommendationSchema).optional(),
 });
 
 export type InterpretationResult = z.infer<typeof interpretationResultSchema>;

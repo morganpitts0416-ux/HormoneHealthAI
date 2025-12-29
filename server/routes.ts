@@ -8,6 +8,7 @@ import { AIService } from "./ai-service";
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
+import { evaluateSupplements } from "./supplements-female";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Lab interpretation endpoint
@@ -319,6 +320,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 6: Determine recheck window using female-specific logic
       const recheckWindow = FemaleClinicalLogicEngine.determineRecheckWindow(labs, redFlags);
 
+      // Step 7: Evaluate supplement recommendations based on lab values
+      const supplements = evaluateSupplements(labs);
+      console.log('[API] Supplement recommendations:', supplements.length);
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -327,6 +332,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientSummary,
         recheckWindow,
         ascvdRisk,
+        supplements,
       };
 
       console.log('[API] Female interpretation response summary:');
@@ -335,6 +341,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - AI recommendations length:', aiRecommendations.length);
       console.log('  - Patient summary length:', patientSummary.length);
       console.log('  - Recheck window:', recheckWindow);
+      console.log('  - Supplements:', supplements.length);
 
       res.json(result);
     } catch (error) {
