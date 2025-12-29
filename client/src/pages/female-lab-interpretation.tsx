@@ -3,14 +3,15 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2 } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Heart } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { FemaleLabInputForm } from "@/components/female-lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { PatientSummary } from "@/components/patient-summary";
-import { femaleLabsApi } from "@/lib/api";
+import { femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
+import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import type { FemaleLabValues, InterpretationResult, LabValues } from "@shared/schema";
@@ -79,6 +80,37 @@ export default function FemaleLabInterpretation() {
     },
   });
 
+  const wellnessPlanMutation = useMutation({
+    mutationFn: () => {
+      if (!interpretationResult) throw new Error('No interpretation result');
+      return femaleLabsApi.generateWellnessPlan(
+        labValues,
+        interpretationResult.interpretations,
+        interpretationResult.supplements,
+        interpretationResult.ascvdRisk
+      );
+    },
+    onSuccess: async (wellnessPlan) => {
+      console.log('[Frontend] Wellness plan generated:', wellnessPlan);
+      if (interpretationResult) {
+        const patientName = labValues.demographics?.patientName || undefined;
+        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName);
+        toast({
+          title: "Patient Report Generated",
+          description: "The personalized wellness report has been downloaded.",
+        });
+      }
+    },
+    onError: (error) => {
+      console.error('[Frontend] Wellness plan error:', error);
+      toast({
+        variant: "destructive",
+        title: "Report Generation Failed",
+        description: error instanceof Error ? error.message : "Failed to generate wellness plan",
+      });
+    },
+  });
+
   const handleSubmit = (values: FemaleLabValues) => {
     console.log('[Frontend] handleSubmit called with values:', values);
     setLabValues(values);
@@ -98,6 +130,12 @@ export default function FemaleLabInterpretation() {
   const handleExportPDF = () => {
     if (interpretationResult) {
       generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, "Women's Hormone & Primary Care Clinic");
+    }
+  };
+
+  const handlePatientReport = () => {
+    if (interpretationResult) {
+      wellnessPlanMutation.mutate();
     }
   };
 
@@ -136,11 +174,20 @@ export default function FemaleLabInterpretation() {
                 <>
                   <Button 
                     variant="default" 
+                    onClick={handlePatientReport}
+                    disabled={wellnessPlanMutation.isPending}
+                    data-testid="button-patient-report-female"
+                  >
+                    <Heart className="w-4 h-4 mr-2" />
+                    {wellnessPlanMutation.isPending ? 'Generating...' : 'Patient Report'}
+                  </Button>
+                  <Button 
+                    variant="outline" 
                     onClick={handleExportPDF}
                     data-testid="button-export-pdf-female"
                   >
                     <Download className="w-4 h-4 mr-2" />
-                    Export PDF
+                    Provider PDF
                   </Button>
                   <Button 
                     variant="outline" 

@@ -31,6 +31,13 @@ export const labsApi = {
   },
 };
 
+export interface WellnessPlan {
+  dietPlan: string;
+  supplementProtocol: string;
+  lifestyleRecommendations: string;
+  educationalContent: string;
+}
+
 export const femaleLabsApi = {
   interpretLabs: async (labValues: FemaleLabValues): Promise<InterpretationResult> => {
     console.log('[API Client] interpretLabsFemale called with:', labValues);
@@ -58,5 +65,23 @@ export const femaleLabsApi = {
     const result = await response.json();
     console.log('[API Client] extractPdfLabsFemale result:', result);
     return result.data;
+  },
+
+  generateWellnessPlan: async (
+    labs: FemaleLabValues,
+    interpretations: InterpretationResult['interpretations'],
+    supplements: InterpretationResult['supplements'],
+    ascvdRisk: InterpretationResult['ascvdRisk']
+  ): Promise<WellnessPlan> => {
+    console.log('[API Client] generateWellnessPlan called');
+    const response = await apiRequest("POST", "/api/generate-wellness-plan", {
+      labs,
+      interpretations,
+      supplements,
+      ascvdRisk,
+    });
+    const result = await response.json();
+    console.log('[API Client] generateWellnessPlan result:', result);
+    return result.wellnessPlan;
   },
 };
