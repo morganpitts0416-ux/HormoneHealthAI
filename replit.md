@@ -1,7 +1,7 @@
 # Lab Interpretation Tool - Men's & Women's Clinics
 
 ## Overview
-This tool is a clinical lab interpretation application for both men's and women's hormone and primary care clinic staff. Its core purpose is to efficiently interpret standard lab panels, apply clinical protocols, generate AI-powered recommendations, and identify critical "red flag" values requiring immediate physician attention. The project supports gender-specific lab interpretation with separate workflows for men's and women's clinics, including female-specific reference ranges and menstrual phase context for hormone interpretation.
+This tool is a clinical lab interpretation application designed for staff in men's and women's hormone and primary care clinics. Its primary function is to efficiently interpret standard lab panels, apply clinical protocols, generate AI-powered recommendations, and identify critical "red flag" values requiring immediate physician attention. The project supports gender-specific lab interpretation, including female-specific reference ranges and menstrual phase context for hormone interpretation, aiming to improve diagnostic accuracy and patient care.
 
 ## User Preferences
 - Medical-grade professional interface
@@ -11,155 +11,26 @@ This tool is a clinical lab interpretation application for both men's and women'
 - Easy-to-read monospace fonts for numerical lab values
 
 ## System Architecture
-The application features a comprehensive lab input form, a results display with color-coded status indicators, a red flag alert system, and an AI-powered recommendations display. It also includes a patient summary generator with editing and copy functionality, and a professional medical UI design with Inter/JetBrains Mono fonts and responsive layouts. Key features include:
+The application features a comprehensive lab input form, a results display with color-coded status indicators, a red flag alert system, and an AI-powered recommendations display. It also includes a patient summary generator with editing and copy functionality, and a professional medical UI design with Inter/JetBrains Mono fonts and responsive layouts. Key architectural decisions and features include:
 
--   **AI-Powered PDF Upload**: Allows staff to upload Pathgroup and hospital PDFs for automatic lab value extraction and form pre-filling using OpenAI, supporting files up to 10MB.
--   **ASCVD Cardiovascular Risk Assessment**: Calculates 10-year heart attack/stroke risk using the 2013 ACC/AHA Pooled Cohort Equations with race/sex-specific models, providing risk display, statin recommendations, and risk-stratified lifestyle modifications.
+-   **AI-Powered PDF Upload**: Automatic lab value extraction and form pre-filling from Pathgroup and hospital PDFs using OpenAI, supporting files up to 10MB.
+-   **ASCVD Cardiovascular Risk Assessment**: Calculates 10-year heart attack/stroke risk using the 2013 ACC/AHA Pooled Cohort Equations, providing risk display, statin recommendations, and risk-stratified lifestyle modifications. Includes CAC scoring recommendations based on ACC/AHA guidelines and statin discussion triggers.
 -   **STOP-BANG Sleep Apnea Screening**: Integrates an 8-component validated questionnaire for Obstructive Sleep Apnea (OSA) risk assessment, providing automated scoring, risk stratification, and clinical guidance.
--   **Clinical Logic Engine**: Implements standing orders for erythrocytosis management, testosterone optimization, lipid management, liver/kidney function monitoring, PSA tracking, glycemic control, and hormonal assessment.
+-   **Clinical Logic Engine**: Implements standing orders and red flag thresholds for various conditions including erythrocytosis, testosterone optimization, lipid management, liver/kidney function, PSA tracking, glycemic control, and hormonal assessment, with gender-specific logic. Includes detailed platelet interpretation logic.
+-   **Female-Specific Workflow**: Dedicated `/female` route with female-specific reference ranges, menstrual phase context for hormone interpretation (Follicular, Ovulatory, Luteal, Postmenopausal), and specific lab markers like AMH, Ferritin, Vitamin D, and B12.
 -   **Frontend**: Built with React, TypeScript, Wouter for routing, Shadcn UI components, TanStack Query for data fetching, Tailwind CSS, and form validation using React Hook Form and Zod.
--   **Backend**: Uses Express.js, integrates with OpenAI for AI recommendations, and employs TypeScript.
--   **Database**: Utilizes PostgreSQL with Drizzle ORM for data persistence, including patient and lab results tables.
+-   **Backend**: Uses Express.js and integrates with OpenAI for AI recommendations.
+-   **Database**: PostgreSQL with Drizzle ORM for data persistence.
 -   **Design System**: Employs Inter and JetBrains Mono fonts, a professional blue color scheme with medical-grade status colors, and Material Design-inspired components.
+-   **Patient Wellness PDF Report (Women's Clinic)**: Generates comprehensive patient-facing wellness PDFs with AI-powered personalized diet, supplement, and lifestyle recommendations, and educational content.
 
 ## External Dependencies
--   **OpenAI**: Used for AI-powered recommendations, intelligent text extraction from PDFs, and generating patient-friendly summaries.
+-   **OpenAI**: Used for AI-powered recommendations, intelligent text extraction from PDFs, and generating patient-friendly summaries and wellness plans.
 -   **PostgreSQL**: The primary database for storing patient and lab result data.
 -   **Drizzle ORM**: Used for interacting with the PostgreSQL database.
--   **multer**: A Node.js middleware for handling `multipart/form-data`, used for PDF file uploads.
--   **jsPDF**: A client-side JavaScript library for generating PDF documents, used for exporting lab reports.
--   **Wouter**: A lightweight client-side router for React.
--   **Shadcn UI**: A collection of re-usable components.
+-   **multer**: Node.js middleware for handling `multipart/form-data` for PDF uploads.
+-   **jsPDF**: Client-side JavaScript library for generating PDF documents, used for exporting reports.
+-   **Wouter**: Lightweight client-side router for React.
+-   **Shadcn UI**: A collection of re-usable UI components.
 -   **TanStack Query**: For data fetching, caching, and state management.
 -   **Zod**: For schema declaration and validation.
-
-## Recent Changes
-
-**December 29, 2025** (Latest)
-- **NEW: Platelet Interpretation Logic (Women's Labs)**
-  - Platelet elevation categories: Mild (400-450), Moderate (450-600), High (>600)
-  - Reactive pattern detection: flags "likely reactive" if elevated platelets AND:
-    - TSAT <20% (calculated from Iron/TIBC) or low/borderline ferritin (iron restriction)
-    - Elevated hs-CRP ≥2.0 (inflammation/infection)
-    - Current smoker
-  - Recheck recommendations: Mild = repeat CBC in 4-8 weeks; Moderate = repeat in 2-4 weeks + iron/inflammation workup
-  - Escalation criteria: Platelets ≥450 persistent >3 months, >600, or concerning features (abnormal WBC/Hgb)
-  - Red flags: Critical for >600, urgent for <100 (thrombocytopenia)
-  - Hematology referral guidance: "Discuss further evaluation (smear +/- JAK2/CALR/MPL) if persistent"
-  - Important: Does not diagnose ET/MPN - recommends specialist evaluation
-
-- **NEW: CAC and Statin Recommendation Engine**
-  - Coronary Artery Calcium (CAC) scoring recommendations based on ACC/AHA guidelines:
-    - Recommend CAC if: Age ≥40 + (LDL ≥70 OR ApoB ≥80 OR non-HDL ≥100) + statin hesitant
-    - Strongly recommend CAC if: Lp(a) ≥50 mg/dL (especially ≥180)
-    - Consider CAC for: Strong family history + risk enhancers, metabolic syndrome with mixed lipids
-    - Don't recommend CAC if: Age <40 (unless extreme FH + Lp(a)) or known ASCVD (treat aggressively)
-  - Statin discussion triggers with strength ratings (none/consider/generally_recommended/strongly_indicated):
-    - LDL ≥190 → strongly indicated
-    - Diabetes age 40-75 with LDL ≥70 → generally recommended
-    - CAC ≥100 → strongly indicated; CAC 1-99 → generally recommended
-    - CAC = 0 → supports deferring (but high Lp(a) still warrants follow-up)
-    - ApoB ≥90 with risk enhancers, non-HDL ≥160, Lp(a) ≥50 + elevated ApoB/non-HDL
-  - CAC interpretation statements for scores 0, 1-99, and ≥100
-  - Triglyceride management: TG 200-499 recommends lifestyle + rule out secondary causes; omega-3 discussion if on statin
-  - Lp(a) ≥180 warning: "Even if LDL looks okay, overall inherited risk is high"
-  - New form fields: CAC Score input, Known ASCVD checkbox, Hesitant About Statin checkbox
-
-- **NEW: Cardiovascular Risk Stratification Flags**
-  - Boolean flags computed from lab values for clinical decision support:
-    - high_Lp_a (≥50 mg/dL), very_high_Lp_a (≥180 mg/dL) - genetic CV risk marker
-    - high_ApoB (≥90 mg/dL), very_high_ApoB (≥120 mg/dL) - atherogenic particle count
-    - high_nonHDL (≥130 mg/dL), very_high_nonHDL (≥160 mg/dL) - calculated from TC-HDL
-    - high_TG (≥150 mg/dL), very_high_TG (≥200 mg/dL) - triglyceride thresholds
-    - low_HDL (<50 female, <40 male) - cardioprotective marker
-    - hsCRP_high (≥2.0 mg/L) - inflammation risk enhancer
-    - CKD (eGFR <60) - chronic kidney disease
-    - family_history - premature ASCVD in 1st degree relatives (<55 male, <65 female)
-    - diabetes (A1c ≥6.5%), prediabetes (A1c 5.7-6.4%)
-  - Flags returned in cvRiskFlags field of interpretation results
-  - Family History checkbox added to demographics section of form
-
-- **ENHANCED: PDF Extraction for Female Labs**
-  - Added 30+ lab value mappings including vitamins, iron studies, female hormones, thyroid panel
-  - Vitamin B12, Folate, Vitamin D, Iron, TIBC, Ferritin, Iron Saturation
-  - Progesterone, FSH, AMH, DHEA-S, Free T4, Free T3, TPO Antibodies
-  - hs-CRP, Apolipoprotein B, Lipoprotein(a), Magnesium
-
-- **NEW: Women's Lab Interpretation Page**
-  - Added `/female` route for women's hormone clinic lab interpretation
-  - Complete separation from men's workflow - no cross-contamination of settings or data
-  - Female-specific reference ranges: hemoglobin 12-16 g/dL, hematocrit 36-44%, HDL >50 mg/dL, liver enzymes <32 U/L
-  - Navigation: Switch between Men's and Women's labs via header buttons
-
-- **NEW: Menstrual Phase Context for Hormone Interpretation**
-  - Dropdown to select menstrual phase: Follicular, Ovulatory, Luteal, Postmenopausal, Unknown
-  - Phase-dependent reference ranges for estradiol, progesterone, FSH, and LH
-  - HRT and birth control status checkboxes affect interpretation context
-
-- **NEW: Female-Specific Lab Markers**
-  - AMH (Anti-Mullerian Hormone) for ovarian reserve assessment
-  - Ferritin with female-specific optimal ranges (30-150 ng/mL) and iron deficiency alerts
-  - Vitamin D and B12 status monitoring
-  - Free T4, Free T3, and TPO Antibodies for comprehensive thyroid panel
-
-- **NEW: Female Clinical Logic Engine**
-  - Separate clinical-logic-female.ts with female-specific red flag thresholds
-  - Iron deficiency detection critical for menstruating women
-  - Phase-appropriate hormone interpretation
-  - ASCVD and STOP-BANG integrate with female sex parameter
-
-- **ENHANCED: AI Service Gender Context**
-  - AI recommendations now receive gender parameter for appropriate clinical context
-  - Patient summaries tailored for women's health concerns (iron status, thyroid, bone health)
-
-**November 11, 2025**
-- **FIXED: PDF Export Letter Spacing**
-  - **Problem**: Downloaded PDFs had excessive letter spacing - text appeared like "K e y  a b n o r m a l  r e s u l t s" with wide gaps between letters
-  - **Root Cause**: jsPDF's Helvetica font doesn't support Unicode symbols (●/⚠/▲/▼), causing fallback to a renderer that expands glyph widths throughout the entire document
-  - **Solution**: Replaced Unicode symbols with ASCII text equivalents to prevent font encoding issues
-  - **Implementation**: 
-    - Created `sanitizeForPdf()` function that converts all Unicode characters to ASCII equivalents
-    - Applied to ALL text: table data (lab values, units, ranges, interpretations), AI recommendations, patient summaries, red flags, patient names, recheck windows
-    - Changed status symbols from Unicode to ASCII: `[!]` for critical, `[HIGH]` for abnormal, `[BORDERLINE]` for borderline, `[NORMAL]` for normal
-    - Medical symbol conversions: µ → u (so "µIU/mL" becomes "uIU/mL"), ≥/≤ → >=/<,  ± → +/-, ° → deg
-    - Fixed pagination for long text sections to prevent cutoff
-  - **Result**: PDF should render with normal letter spacing since jsPDF no longer falls back to problematic encoder
-
-**November 10, 2025**
-- **FIXED: PDF Auto-Analysis Before Demographics Entry + Demographics Preservation**
-  - **Problem 1**: PDF upload was automatically analyzing labs immediately after value extraction, BEFORE staff could enter patient demographics or STOP-BANG answers. This prevented ASCVD and STOP-BANG from calculating on the first analysis, forcing users to re-enter data and re-analyze.
-  - **Problem 2**: When PDF extraction completed while user was entering demographics, it wiped out any demographics already entered, preventing ASCVD and STOP-BANG calculations.
-  - **Root Causes**: 
-    - `pdfExtractMutation.onSuccess` callback was calling `interpretMutation.mutate()` immediately after PDF extraction
-    - State update used stale closure `{...labValues, ...data}` which wiped demographics
-    - Form reset didn't preserve "dirty" (user-edited) fields
-  - **Solution - Two-Phase Workflow + State Preservation**: 
-    - **Phase 1 (Extract)**: PDF upload → AI extracts values → Form auto-filled → Guidance alert appears
-    - **Phase 2 (Review & Analyze)**: User enters demographics → User completes STOP-BANG → User clicks "Interpret Labs" → Single analysis with complete data
-  - **Implementation Details**:
-    - Added `isPdfPendingReview` state flag to track extraction completion
-    - Removed automatic `interpretMutation.mutate()` call from PDF extraction success handler
-    - **State Preservation**: Changed to functional update `setLabValues(prev => {...})` with safe demographics merging using default boolean values
-    - **Form Preservation**: Added `keepDirtyValues: true` to form.reset() to preserve user-edited fields during PDF extraction
-    - Updated toast message: "Lab values filled. Please enter patient demographics and STOP-BANG data, then click 'Interpret Labs'."
-    - Added guidance alert with step-by-step workflow instructions
-    - Clear previous results when new PDF uploaded to prevent confusion
-  - **Result**: Users can enter demographics before or during PDF extraction, and those values are preserved. Single click on "Interpret Labs" produces complete ASCVD + STOP-BANG calculations on first try.
-
-- **COMPLETED: STOP-BANG Sleep Apnea Screening Integration**
-  - Implemented validated STOP-BANG questionnaire for obstructive sleep apnea (OSA) risk assessment
-  - 8-component screening (Snoring, Tiredness, Observed apnea, Pressure, BMI, Age, Neck circumference, Gender)
-  - Automated scoring (0-8 points) with risk stratification (Low 0-2, Intermediate 3-4, High 5-8)
-  - Displays in main interpretations table with color-coded badges (Low=green, Intermediate=orange, High=red critical)
-  - Sleep study referral recommendations for intermediate/high risk patients
-  - Clinical context for TRT patients (OSA can worsen erythrocytosis and cardiovascular risk)
-
-- **FIXED: ASCVD Not Displaying When Risk Factor Checkboxes Unchecked**
-  - Updated schema to use `.default(false)` for onBPMeds, diabetic, smoker boolean fields
-  - Form explicitly initializes all checkboxes to `false` in defaultValues
-  - Healthy patients (no risk factors) now calculate ASCVD correctly
-
-- **ENHANCED: Clinical Clarity and ASCVD Integration**
-  - Updated testosterone interpretation language to distinguish routine dose adjustments from emergencies
-  - Added "Provider recommendation:" prefix to testosterone recommendations
-  - ASCVD cardiovascular risk now appears in Complete Lab Results Overview table alongside other labs
