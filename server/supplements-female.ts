@@ -1,14 +1,4 @@
-import type { FemaleLabValues } from "@shared/schema";
-
-export interface SupplementRecommendation {
-  name: string;
-  dose: string;
-  indication: string;
-  rationale: string;
-  priority: 'high' | 'medium' | 'low';
-  category: 'iron' | 'vitamin' | 'mineral' | 'hormone-support' | 'cardiovascular' | 'thyroid' | 'bone' | 'general';
-  caution?: string;
-}
+import type { FemaleLabValues, SupplementRecommendation } from "@shared/schema";
 
 interface SupplementRule {
   supplement: Omit<SupplementRecommendation, 'indication' | 'rationale'>;
@@ -360,27 +350,33 @@ const supplementRules: SupplementRule[] = [
 ];
 
 export function evaluateSupplements(labs: FemaleLabValues): SupplementRecommendation[] {
-  const recommendations: SupplementRecommendation[] = [];
-  const seenSupplements = new Set<string>();
+  const supplementMap = new Map<string, SupplementRecommendation>();
+  const priorityOrder: Record<string, number> = { high: 0, medium: 1, low: 2 };
   
   for (const rule of supplementRules) {
     const result = rule.evaluate(labs);
     
     if (result && result.shouldRecommend) {
-      const key = `${rule.supplement.name}-${rule.supplement.dose}`;
-      if (!seenSupplements.has(key)) {
-        seenSupplements.add(key);
-        recommendations.push({
-          ...rule.supplement,
-          indication: result.indication,
-          rationale: result.rationale
-        });
+      const key = rule.supplement.name;
+      const existing = supplementMap.get(key);
+      
+      const newRecommendation: SupplementRecommendation = {
+        ...rule.supplement,
+        indication: result.indication,
+        rationale: result.rationale
+      };
+      
+      if (!existing) {
+        supplementMap.set(key, newRecommendation);
+      } else {
+        if (priorityOrder[newRecommendation.priority] < priorityOrder[existing.priority]) {
+          supplementMap.set(key, newRecommendation);
+        }
       }
     }
   }
   
-  // Sort by priority: high first, then medium, then low
-  const priorityOrder = { high: 0, medium: 1, low: 2 };
+  const recommendations = Array.from(supplementMap.values());
   recommendations.sort((a, b) => priorityOrder[a.priority] - priorityOrder[b.priority]);
   
   return recommendations;
