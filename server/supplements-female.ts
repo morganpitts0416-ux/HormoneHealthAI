@@ -6,14 +6,14 @@ interface SupplementRule {
 }
 
 const supplementRules: SupplementRule[] = [
-  // IRON SUPPLEMENTS
+  // HEMAGENICS - Red Blood Cell Support (replaces generic iron)
   {
     supplement: {
-      name: "Ferrous Sulfate (Iron)",
-      dose: "65mg elemental iron daily",
+      name: "Hemagenics® Red Blood Cell Support",
+      dose: "1 tablet twice daily with meals",
       priority: 'high',
       category: 'iron',
-      caution: "Take with vitamin C for better absorption. Avoid with calcium, coffee, or tea. May cause GI upset - take with food if needed."
+      caution: "Contains iron, folate, and B12 for comprehensive RBC support. Avoid with calcium-rich foods. May cause mild GI upset initially."
     },
     evaluate: (labs) => {
       if (labs.ferritin === undefined) return null;
@@ -21,20 +21,21 @@ const supplementRules: SupplementRule[] = [
       const hasElevatedTIBC = labs.tibc !== undefined && labs.tibc > 450;
       const hasLowSerumIron = labs.iron !== undefined && labs.iron < 40;
       const hasFunctionalDeficiency = hasElevatedTIBC || hasLowSerumIron;
+      const lowHemoglobin = labs.hemoglobin !== undefined && labs.hemoglobin < 12;
       
-      if (labs.ferritin <= 30) {
+      if (labs.ferritin <= 30 || lowHemoglobin) {
         return {
           shouldRecommend: true,
-          indication: `Ferritin ${labs.ferritin} ng/mL (depleted iron stores)`,
-          rationale: "Iron deficiency confirmed. 65mg elemental iron recommended for all patients with ferritin ≤30."
+          indication: `Ferritin ${labs.ferritin} ng/mL${lowHemoglobin ? `, Hemoglobin ${labs.hemoglobin} g/dL` : ''}`,
+          rationale: "Hemagenics provides comprehensive red blood cell support with iron, folate, and B12 in highly absorbable forms. Indicated for ferritin ≤30 or anemia."
         };
       }
       
       if (labs.ferritin > 30 && labs.ferritin <= 50 && hasFunctionalDeficiency) {
         return {
           shouldRecommend: true,
-          indication: `Ferritin ${labs.ferritin} ng/mL with functional iron deficiency`,
-          rationale: "Ferritin 31-50 with elevated TIBC or low serum iron suggests functional deficiency. Consider supplementation if symptomatic."
+          indication: `Ferritin ${labs.ferritin} ng/mL with functional iron deficiency markers`,
+          rationale: "Hemagenics supports iron stores and RBC production. Consider for symptomatic patients with ferritin 31-50 and functional deficiency signs."
         };
       }
       
@@ -42,14 +43,14 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // VITAMIN D
+  // D3 10000 + K - Severe Vitamin D Deficiency
   {
     supplement: {
-      name: "Vitamin D3 (Cholecalciferol)",
-      dose: "5,000 IU daily",
+      name: "D3 10,000 + K",
+      dose: "1 softgel daily with meal",
       priority: 'high',
       category: 'vitamin',
-      caution: "Recheck levels in 8-12 weeks. High doses may require monitoring of calcium levels."
+      caution: "High-dose repletion therapy. Recheck vitamin D levels in 8-12 weeks. Contains vitamin K2 for calcium metabolism."
     },
     evaluate: (labs) => {
       if (labs.vitaminD === undefined) return null;
@@ -57,21 +58,23 @@ const supplementRules: SupplementRule[] = [
       if (labs.vitaminD < 20) {
         return {
           shouldRecommend: true,
-          indication: `Vitamin D ${labs.vitaminD} ng/mL (deficiency)`,
-          rationale: "Vitamin D deficiency. Higher dose supplementation needed for repletion."
+          indication: `Vitamin D ${labs.vitaminD} ng/mL (deficiency <20)`,
+          rationale: "D3 10,000 + K provides high-dose vitamin D3 with K2 for efficient repletion. K2 ensures proper calcium utilization and bone health."
         };
       }
       
       return null;
     }
   },
+
+  // D3 5000 + K - Moderate Vitamin D Insufficiency
   {
     supplement: {
-      name: "Vitamin D3 (Cholecalciferol)",
-      dose: "2,000 IU daily",
+      name: "D3 5,000 + K",
+      dose: "1 softgel daily with meal",
       priority: 'medium',
       category: 'vitamin',
-      caution: "Maintenance dose. Recheck annually."
+      caution: "Maintenance/repletion dose. Contains vitamin K2 for optimal calcium metabolism. Recheck levels annually."
     },
     evaluate: (labs) => {
       if (labs.vitaminD === undefined) return null;
@@ -79,8 +82,8 @@ const supplementRules: SupplementRule[] = [
       if (labs.vitaminD >= 20 && labs.vitaminD < 30) {
         return {
           shouldRecommend: true,
-          indication: `Vitamin D ${labs.vitaminD} ng/mL (insufficiency)`,
-          rationale: "Vitamin D insufficiency. Moderate supplementation recommended."
+          indication: `Vitamin D ${labs.vitaminD} ng/mL (insufficiency 20-30)`,
+          rationale: "D3 5,000 + K provides vitamin D3 with K2 for moderate insufficiency. K2 supports bone health and cardiovascular function."
         };
       }
       
@@ -88,23 +91,33 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // VITAMIN B12
+  // INTRINSI B12-FOLATE - Combined B12 and Folate
   {
     supplement: {
-      name: "Vitamin B12 (Methylcobalamin)",
-      dose: "1,000 mcg daily sublingual or oral",
+      name: "Intrinsi B12-Folate™",
+      dose: "1 tablet daily",
       priority: 'high',
       category: 'vitamin',
-      caution: "Sublingual form may have better absorption. Consider B12 injections if malabsorption suspected."
+      caution: "Contains intrinsic factor for enhanced B12 absorption. Ideal for patients with absorption concerns or vegetarian/vegan diets."
     },
     evaluate: (labs) => {
-      if (labs.vitaminB12 === undefined) return null;
+      const lowB12 = labs.vitaminB12 !== undefined && labs.vitaminB12 < 400;
+      const lowFolate = labs.folate !== undefined && labs.folate < 5;
       
-      if (labs.vitaminB12 < 300) {
+      if (lowB12 || lowFolate) {
+        let indication = '';
+        if (lowB12 && lowFolate) {
+          indication = `B12 ${labs.vitaminB12} pg/mL, Folate ${labs.folate} ng/mL`;
+        } else if (lowB12) {
+          indication = `B12 ${labs.vitaminB12} pg/mL (suboptimal <400)`;
+        } else {
+          indication = `Folate ${labs.folate} ng/mL (low)`;
+        }
+        
         return {
           shouldRecommend: true,
-          indication: `Vitamin B12 ${labs.vitaminB12} pg/mL (low/suboptimal)`,
-          rationale: "B12 below optimal range. Supplementation recommended, especially for fatigue, cognitive symptoms, or vegetarian/vegan diet."
+          indication: indication,
+          rationale: "Intrinsi B12-Folate provides methylated B12 and folate with intrinsic factor for superior absorption. Supports energy, cognition, and methylation."
         };
       }
       
@@ -112,53 +125,92 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // FOLATE
+  // OMEGAGENICS FISH OIL EPA-DHA 1000mg
   {
     supplement: {
-      name: "Methylfolate (5-MTHF)",
-      dose: "800-1000 mcg daily",
-      priority: 'medium',
-      category: 'vitamin',
-      caution: "Preferred form over folic acid for better bioavailability. Important if planning pregnancy."
-    },
-    evaluate: (labs) => {
-      if (labs.folate === undefined) return null;
-      
-      if (labs.folate < 5) {
-        return {
-          shouldRecommend: true,
-          indication: `Folate ${labs.folate} ng/mL (low)`,
-          rationale: "Low folate levels. Supplementation recommended."
-        };
-      }
-      
-      return null;
-    }
-  },
-
-  // OMEGA-3 FOR CARDIOVASCULAR
-  {
-    supplement: {
-      name: "Omega-3 Fish Oil (EPA/DHA)",
-      dose: "2-4g EPA+DHA daily",
+      name: "OmegaGenics® Fish Oil EPA-DHA 1000",
+      dose: "1-2 softgels twice daily with meals",
       priority: 'medium',
       category: 'cardiovascular',
-      caution: "Choose high-quality, purified fish oil. May have mild blood-thinning effect."
+      caution: "Pharmaceutical-grade fish oil. Take with food to minimize fishy aftertaste. May have mild blood-thinning effect."
     },
     evaluate: (labs) => {
       const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
       const highHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 2;
       const elevatedLpa = labs.lpa !== undefined && labs.lpa > 50;
+      const suboptimalHDL = labs.hdl !== undefined && labs.hdl < 50;
       
-      if (highTriglycerides || (highHsCRP && elevatedLpa)) {
+      if (highTriglycerides || highHsCRP || elevatedLpa || suboptimalHDL) {
+        let indications: string[] = [];
+        if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
+        if (highHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/L`);
+        if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa} nmol/L`);
+        if (suboptimalHDL) indications.push(`HDL ${labs.hdl} mg/dL`);
+        
+        return {
+          shouldRecommend: true,
+          indication: indications.join(', '),
+          rationale: "OmegaGenics EPA-DHA 1000 provides concentrated omega-3s to reduce triglycerides, lower inflammation, and support cardiovascular health."
+        };
+      }
+      
+      return null;
+    }
+  },
+
+  // MAGTEIN MAGNESIUM L-THREONATE
+  {
+    supplement: {
+      name: "Magtein® Magnesium L-Threonate",
+      dose: "2 capsules daily (1 morning, 1 evening)",
+      priority: 'medium',
+      category: 'mineral',
+      caution: "L-Threonate form crosses blood-brain barrier for cognitive support. Well-tolerated; gentle on GI system."
+    },
+    evaluate: (labs) => {
+      const hasThyroidIssues = labs.tsh !== undefined && (labs.tsh > 4.5 || labs.tsh < 0.4);
+      const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
+      const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
+      const onHRT = labs.onHRT === true;
+      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
+      
+      if (hasThyroidIssues || onHRT || postmenopausal || (lowFerritin && lowVitD)) {
+        return {
+          shouldRecommend: true,
+          indication: "Cognitive and metabolic support",
+          rationale: "Magtein is the only magnesium form shown to effectively cross the blood-brain barrier. Supports memory, sleep, stress resilience, and metabolic function."
+        };
+      }
+      
+      return null;
+    }
+  },
+
+  // NUTRAGEN CoQ10 300mg
+  {
+    supplement: {
+      name: "NutraGems® CoQ10 300",
+      dose: "1 chewable softgel daily",
+      priority: 'medium',
+      category: 'cardiovascular',
+      caution: "High-potency CoQ10 in absorbable form. Take with fatty meal for best absorption. Essential for statin users."
+    },
+    evaluate: (labs) => {
+      const highLDL = labs.ldl !== undefined && labs.ldl > 130;
+      const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
+      const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
+      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
+      
+      if ((highLDL || highTriglycerides) || (postmenopausal && lowFerritin)) {
         let indication = '';
-        if (highTriglycerides) indication = `Triglycerides ${labs.triglycerides} mg/dL`;
-        if (highHsCRP) indication += indication ? `, hs-CRP ${labs.hsCRP} mg/L` : `hs-CRP ${labs.hsCRP} mg/L`;
+        if (highLDL) indication = `LDL ${labs.ldl} mg/dL`;
+        if (highTriglycerides) indication += indication ? `, TG ${labs.triglycerides} mg/dL` : `TG ${labs.triglycerides} mg/dL`;
+        if (!indication && postmenopausal) indication = "Postmenopausal energy support";
         
         return {
           shouldRecommend: true,
           indication: indication,
-          rationale: "Omega-3 fatty acids help reduce triglycerides and inflammation markers."
+          rationale: "NutraGems CoQ10 300 provides high-dose ubiquinone for cardiovascular support, cellular energy, and antioxidant protection. Critical if on statin therapy."
         };
       }
       
@@ -166,26 +218,32 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // MAGNESIUM
+  // ULTRAFLORA COMPLETE PROBIOTIC
   {
     supplement: {
-      name: "Magnesium Glycinate",
-      dose: "200-400mg daily (at bedtime)",
-      priority: 'medium',
-      category: 'mineral',
-      caution: "Glycinate form is gentle on stomach and promotes relaxation. Start with lower dose."
+      name: "UltraFlora® Complete",
+      dose: "1 capsule daily",
+      priority: 'low',
+      category: 'general',
+      caution: "Multi-strain probiotic. Store refrigerated for optimal potency. May cause temporary bloating when starting."
     },
     evaluate: (labs) => {
-      const hasThyroidIssues = labs.tsh !== undefined && (labs.tsh > 4.5 || labs.tsh < 0.4);
-      const hasFatigue = labs.ferritin !== undefined && labs.ferritin < 50;
-      const hasMuscleCramps = labs.vitaminD !== undefined && labs.vitaminD < 30;
       const onHRT = labs.onHRT === true;
+      const hasInflammation = labs.hsCRP !== undefined && labs.hsCRP > 2;
+      const onBirthControl = labs.onBirthControl === true;
+      const thyroidIssues = labs.tsh !== undefined && (labs.tsh > 4.5 || labs.tsh < 0.4);
       
-      if (hasThyroidIssues || (onHRT && (hasFatigue || hasMuscleCramps))) {
+      if (onHRT || hasInflammation || onBirthControl || thyroidIssues) {
+        let indication = '';
+        if (onHRT) indication = "HRT hormone metabolism support";
+        else if (hasInflammation) indication = `Elevated hs-CRP (${labs.hsCRP} mg/L)`;
+        else if (onBirthControl) indication = "Oral contraceptive support";
+        else if (thyroidIssues) indication = "Gut-thyroid axis support";
+        
         return {
           shouldRecommend: true,
-          indication: "General wellness support",
-          rationale: "Magnesium supports thyroid function, energy production, muscle function, and sleep quality. Most women are deficient."
+          indication: indication,
+          rationale: "UltraFlora Complete provides comprehensive probiotic support for gut health, hormone metabolism, immune function, and inflammation modulation."
         };
       }
       
@@ -193,25 +251,91 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // CALCIUM + VITAMIN D FOR BONE HEALTH
+  // HERWELLNESS ESTROVERA - Menopause Support
   {
     supplement: {
-      name: "Calcium Citrate",
-      dose: "500-600mg twice daily with meals",
+      name: "HerWellness™ Estrovera®",
+      dose: "1 tablet daily",
       priority: 'medium',
-      category: 'bone',
-      caution: "Take separately from iron supplements (2+ hours apart). Citrate form absorbs better than carbonate."
+      category: 'hormone-support',
+      caution: "Rhubarb extract for menopausal symptom relief. Non-hormonal option. Effects typically noticed within 4 weeks."
     },
     evaluate: (labs) => {
       const postmenopausal = labs.menstrualPhase === 'postmenopausal';
-      const lowEstradiol = labs.estradiol !== undefined && labs.estradiol < 40 && labs.onHRT;
-      const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
+      const lowEstradiol = labs.estradiol !== undefined && labs.estradiol < 30;
+      const notOnHRT = labs.onHRT !== true;
       
-      if (postmenopausal || lowEstradiol) {
+      if ((postmenopausal || lowEstradiol) && notOnHRT) {
         return {
           shouldRecommend: true,
-          indication: postmenopausal ? "Postmenopausal bone protection" : `Low estradiol (${labs.estradiol} pg/mL)`,
-          rationale: "Calcium is essential for bone health, especially with low estrogen states. Combine with vitamin D for optimal absorption."
+          indication: postmenopausal ? "Postmenopausal symptom support" : `Low estradiol (${labs.estradiol} pg/mL)`,
+          rationale: "Estrovera provides clinically studied ERr 731® rhubarb extract for relief of menopausal symptoms including hot flashes, sleep disturbances, and mood changes without hormones."
+        };
+      }
+      
+      return null;
+    }
+  },
+
+  // ADRESET - Adrenal/Stress Support
+  {
+    supplement: {
+      name: "Adreset®",
+      dose: "2 capsules twice daily",
+      priority: 'medium',
+      category: 'hormone-support',
+      caution: "Adaptogenic formula with ginseng, rhodiola, and cordyceps. Best taken earlier in day. May take 2-4 weeks for full effect."
+    },
+    evaluate: (labs) => {
+      const lowDHEAS = labs.dheas !== undefined && labs.dheas < 100;
+      const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
+      const thyroidStress = labs.tsh !== undefined && labs.tsh > 3.5 && labs.freeT4 !== undefined && labs.freeT4 < 1.0;
+      const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
+      
+      if (lowDHEAS || (lowFerritin && thyroidStress) || (lowFerritin && lowVitD)) {
+        let indication = '';
+        if (lowDHEAS) indication = `DHEA-S ${labs.dheas} µg/dL (low)`;
+        else indication = "Fatigue pattern with suboptimal labs";
+        
+        return {
+          shouldRecommend: true,
+          indication: indication,
+          rationale: "Adreset combines adaptogenic herbs to support healthy adrenal function, stress resilience, and energy. Helps restore HPA axis balance."
+        };
+      }
+      
+      return null;
+    }
+  },
+
+  // EXHILARIN - Mood and Energy Support
+  {
+    supplement: {
+      name: "Exhilarin®",
+      dose: "1 tablet twice daily",
+      priority: 'medium',
+      category: 'general',
+      caution: "Ayurvedic adaptogenic formula. Supports mental clarity and emotional well-being. Takes 2-4 weeks for optimal benefits."
+    },
+    evaluate: (labs) => {
+      const lowB12 = labs.vitaminB12 !== undefined && labs.vitaminB12 < 400;
+      const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
+      const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
+      const suboptimalThyroid = labs.tsh !== undefined && labs.tsh > 3.0 && labs.tsh <= 4.5;
+      
+      const fatigueFactorCount = [lowB12, lowVitD, lowFerritin, suboptimalThyroid].filter(Boolean).length;
+      
+      if (fatigueFactorCount >= 2) {
+        let factors: string[] = [];
+        if (lowB12) factors.push(`B12 ${labs.vitaminB12}`);
+        if (lowVitD) factors.push(`Vit D ${labs.vitaminD}`);
+        if (lowFerritin) factors.push(`Ferritin ${labs.ferritin}`);
+        if (suboptimalThyroid) factors.push(`TSH ${labs.tsh}`);
+        
+        return {
+          shouldRecommend: true,
+          indication: `Multiple fatigue factors: ${factors.join(', ')}`,
+          rationale: "Exhilarin provides adaptogenic support for mental energy, mood, and stress resilience. Complements nutrient repletion for comprehensive fatigue management."
         };
       }
       
@@ -223,10 +347,10 @@ const supplementRules: SupplementRule[] = [
   {
     supplement: {
       name: "Selenium",
-      dose: "200mcg daily",
+      dose: "200 mcg daily",
       priority: 'medium',
       category: 'thyroid',
-      caution: "Do not exceed 400mcg daily. Brazil nuts are a good food source (1-2 nuts = ~100mcg)."
+      caution: "Do not exceed 400 mcg daily from all sources. Supports thyroid hormone conversion and reduces antibodies."
     },
     evaluate: (labs) => {
       const hasThyroidIssue = labs.tsh !== undefined && (labs.tsh > 4.5 || labs.tsh < 0.4);
@@ -235,12 +359,12 @@ const supplementRules: SupplementRule[] = [
       if (hasThyroidIssue || hasTPOAntibodies) {
         let indication = '';
         if (hasTPOAntibodies) indication = `TPO antibodies elevated (${labs.tpoAntibodies} IU/mL)`;
-        else if (hasThyroidIssue) indication = `TSH abnormal (${labs.tsh} mIU/L)`;
+        else indication = `TSH abnormal (${labs.tsh} mIU/L)`;
         
         return {
           shouldRecommend: true,
           indication: indication,
-          rationale: "Selenium supports thyroid function and may help reduce thyroid antibodies in autoimmune thyroiditis."
+          rationale: "Selenium is essential for thyroid hormone production and conversion. Studies show it can reduce TPO antibodies in autoimmune thyroiditis."
         };
       }
       
@@ -248,24 +372,25 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // ZINC FOR THYROID AND IMMUNITY
+  // ZINC FOR THYROID SUPPORT
   {
     supplement: {
-      name: "Zinc Picolinate",
-      dose: "15-30mg daily",
+      name: "Zinc A.G.™",
+      dose: "1 tablet daily with meal",
       priority: 'low',
       category: 'mineral',
-      caution: "Take with food to avoid nausea. Long-term high-dose zinc may deplete copper."
+      caution: "Zinc arginate/glycinate chelate for enhanced absorption. Take with food. Long-term use may require copper monitoring."
     },
     evaluate: (labs) => {
       const lowThyroid = labs.tsh !== undefined && labs.tsh > 4.5;
       const lowFreeT3 = labs.freeT3 !== undefined && labs.freeT3 < 2.3;
+      const lowDHEAS = labs.dheas !== undefined && labs.dheas < 100;
       
-      if (lowThyroid || lowFreeT3) {
+      if (lowThyroid || lowFreeT3 || lowDHEAS) {
         return {
           shouldRecommend: true,
-          indication: "Thyroid support",
-          rationale: "Zinc is required for T4 to T3 conversion and optimal thyroid function."
+          indication: "Thyroid and hormone support",
+          rationale: "Zinc A.G. provides highly absorbable zinc for T4 to T3 conversion, immune function, and hormone production."
         };
       }
       
@@ -273,74 +398,25 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // CoQ10 FOR STATIN USERS OR FATIGUE
+  // CALCIUM FOR BONE HEALTH (Postmenopausal)
   {
     supplement: {
-      name: "CoQ10 (Ubiquinol)",
-      dose: "100-200mg daily",
+      name: "Cal Apatite Bone Builder®",
+      dose: "2 tablets twice daily with meals",
       priority: 'medium',
-      category: 'cardiovascular',
-      caution: "Ubiquinol form is better absorbed than ubiquinone. Take with fatty meal."
+      category: 'bone',
+      caution: "MCHC calcium for bone support. Take separately from iron (2+ hours). Best taken in divided doses."
     },
     evaluate: (labs) => {
-      const highLDL = labs.ldl !== undefined && labs.ldl > 130;
-      const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
-      const lowEnergy = labs.ferritin !== undefined && labs.ferritin < 50;
+      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
+      const lowEstradiol = labs.estradiol !== undefined && labs.estradiol < 40 && labs.onHRT === true;
+      const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
       
-      if ((highLDL || highTriglycerides) && lowEnergy) {
+      if (postmenopausal || (lowEstradiol && lowVitD)) {
         return {
           shouldRecommend: true,
-          indication: "Cardiovascular and energy support",
-          rationale: "CoQ10 supports heart function and energy production. Essential if on statin therapy."
-        };
-      }
-      
-      return null;
-    }
-  },
-
-  // DHEA FOR LOW DHEA-S
-  {
-    supplement: {
-      name: "DHEA",
-      dose: "10-25mg daily (start low)",
-      priority: 'medium',
-      category: 'hormone-support',
-      caution: "Monitor with labs. May cause acne or hair changes. Discuss with provider before starting."
-    },
-    evaluate: (labs) => {
-      if (labs.dheas === undefined) return null;
-      
-      if (labs.dheas < 65) {
-        return {
-          shouldRecommend: true,
-          indication: `DHEA-S ${labs.dheas} µg/dL (low)`,
-          rationale: "Low DHEA-S may contribute to fatigue, low libido, and decreased sense of wellbeing. Low-dose supplementation may help."
-        };
-      }
-      
-      return null;
-    }
-  },
-
-  // PROBIOTICS FOR GENERAL WELLNESS
-  {
-    supplement: {
-      name: "Probiotic (Multi-strain)",
-      dose: "25-50 billion CFU daily",
-      priority: 'low',
-      category: 'general',
-      caution: "Choose refrigerated, multi-strain formula. May cause temporary bloating initially."
-    },
-    evaluate: (labs) => {
-      const onHRT = labs.onHRT === true;
-      const hasInflammation = labs.hsCRP !== undefined && labs.hsCRP > 2;
-      
-      if (onHRT || hasInflammation) {
-        return {
-          shouldRecommend: true,
-          indication: onHRT ? "HRT hormone metabolism support" : `Elevated hs-CRP (${labs.hsCRP} mg/L)`,
-          rationale: "Probiotics support gut health, hormone metabolism, and may help reduce systemic inflammation."
+          indication: postmenopausal ? "Postmenopausal bone protection" : `Low estradiol with vitamin D insufficiency`,
+          rationale: "Cal Apatite Bone Builder provides microcrystalline hydroxyapatite (MCHC) - the form of calcium found in bone - for comprehensive skeletal support."
         };
       }
       
