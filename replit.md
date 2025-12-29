@@ -36,6 +36,18 @@ The application features a comprehensive lab input form, a results display with 
 ## Recent Changes
 
 **December 29, 2025** (Latest)
+- **NEW: Platelet Interpretation Logic (Women's Labs)**
+  - Platelet elevation categories: Mild (400-450), Moderate (450-600), High (>600)
+  - Reactive pattern detection: flags "likely reactive" if elevated platelets AND:
+    - TSAT <20% (calculated from Iron/TIBC) or low/borderline ferritin (iron restriction)
+    - Elevated hs-CRP ≥2.0 (inflammation/infection)
+    - Current smoker
+  - Recheck recommendations: Mild = repeat CBC in 4-8 weeks; Moderate = repeat in 2-4 weeks + iron/inflammation workup
+  - Escalation criteria: Platelets ≥450 persistent >3 months, >600, or concerning features (abnormal WBC/Hgb)
+  - Red flags: Critical for >600, urgent for <100 (thrombocytopenia)
+  - Hematology referral guidance: "Discuss further evaluation (smear +/- JAK2/CALR/MPL) if persistent"
+  - Important: Does not diagnose ET/MPN - recommends specialist evaluation
+
 - **NEW: CAC and Statin Recommendation Engine**
   - Coronary Artery Calcium (CAC) scoring recommendations based on ACC/AHA guidelines:
     - Recommend CAC if: Age ≥40 + (LDL ≥70 OR ApoB ≥80 OR non-HDL ≥100) + statin hesitant

@@ -182,6 +182,25 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
+    // 12. Platelets - Significant thrombocytosis or thrombocytopenia
+    if (labs.platelets !== undefined) {
+      if (labs.platelets > 600) {
+        redFlags.push({
+          category: "Platelets - Significant Thrombocytosis",
+          severity: 'critical',
+          message: `Platelet count is ${labs.platelets} K/uL (>600 threshold).`,
+          action: "Consider hematology referral. Discuss further evaluation including peripheral smear +/- JAK2/CALR/MPL testing. Do not diagnose ET/MPN without specialist evaluation.",
+        });
+      } else if (labs.platelets < 100) {
+        redFlags.push({
+          category: "Platelets - Significant Thrombocytopenia",
+          severity: 'urgent',
+          message: `Platelet count is ${labs.platelets} K/uL (<100 threshold).`,
+          action: "Evaluate for causes including medications, infections, autoimmune conditions. Consider hematology referral if persistent.",
+        });
+      }
+    }
+
     return redFlags;
   }
 
@@ -254,6 +273,140 @@ export class FemaleClinicalLogicEngine {
         unit: '%',
         status,
         referenceRange: '36-44%',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Platelets - Thrombocytosis evaluation with reactive pattern detection
+    if (labs.platelets !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+      const platelets = labs.platelets;
+
+      // Determine elevation category
+      let elevationCategory: 'none' | 'mild' | 'moderate' | 'high' = 'none';
+      if (platelets > 600) {
+        elevationCategory = 'high';
+      } else if (platelets > 450) {
+        elevationCategory = 'moderate';
+      } else if (platelets >= 400) {
+        elevationCategory = 'mild';
+      }
+
+      // Check for reactive patterns (iron restriction, inflammation, etc.)
+      const reactivePatterns: string[] = [];
+      
+      // Iron restriction: Calculate TSAT from iron and TIBC, or check ferritin low/borderline
+      // TSAT = (Iron / TIBC) × 100
+      const ferritin = labs.ferritin;
+      let calculatedTsat: number | undefined;
+      if (labs.iron !== undefined && labs.tibc !== undefined && labs.tibc > 0) {
+        calculatedTsat = (labs.iron / labs.tibc) * 100;
+      }
+      if (calculatedTsat !== undefined && calculatedTsat < 20) {
+        reactivePatterns.push('iron restriction (low iron saturation)');
+      }
+      if (ferritin !== undefined && ferritin < 30) {
+        reactivePatterns.push('low ferritin suggesting iron deficiency');
+      } else if (ferritin !== undefined && ferritin >= 30 && ferritin < 50) {
+        reactivePatterns.push('borderline ferritin');
+      }
+
+      // Inflammation: hs-CRP elevated
+      if (labs.hsCRP !== undefined && labs.hsCRP >= 2.0) {
+        reactivePatterns.push('elevated hs-CRP (inflammation/infection)');
+      }
+
+      // Smoking status (from demographics)
+      if (labs.demographics?.smoker === true) {
+        reactivePatterns.push('smoking');
+      }
+
+      // Check for concerning features that may warrant hematology referral
+      const concerningFeatures: string[] = [];
+      
+      // WBC abnormal (low <4.0 or high >11.0)
+      if (labs.wbc !== undefined) {
+        if (labs.wbc < 4.0) {
+          concerningFeatures.push('low WBC');
+        } else if (labs.wbc > 11.0) {
+          concerningFeatures.push('elevated WBC');
+        }
+      }
+
+      // Hemoglobin abnormal without explanation
+      if (labs.hemoglobin !== undefined) {
+        if (labs.hemoglobin < 12.0) {
+          concerningFeatures.push('low hemoglobin');
+        } else if (labs.hemoglobin > 16.0) {
+          concerningFeatures.push('elevated hemoglobin');
+        }
+      }
+
+      // Low platelets (thrombocytopenia)
+      if (platelets < 150) {
+        status = 'abnormal';
+        interpretation = 'Low platelet count (thrombocytopenia). Evaluate for causes including medications, viral infections, autoimmune conditions, or bone marrow disorders.';
+        recommendation = 'Repeat CBC to confirm. Consider hematology referral if persistent or symptomatic.';
+      } else if (platelets >= 150 && platelets < 400) {
+        // Normal range
+        status = 'normal';
+        interpretation = 'Platelet count within normal range.';
+        recommendation = 'Continue routine monitoring.';
+      } else if (elevationCategory === 'mild') {
+        // Mild elevation: 400-450
+        status = 'borderline';
+        const isLikelyReactive = reactivePatterns.length > 0;
+        
+        if (isLikelyReactive) {
+          interpretation = `Mild platelet elevation (400-450), likely reactive. Identified factors: ${reactivePatterns.join(', ')}. Iron restriction is a frequent cause in menstruating women.`;
+          recommendation = 'Address underlying cause (especially iron deficiency). Repeat CBC in 4-8 weeks.';
+        } else {
+          interpretation = 'Mild platelet elevation (400-450). Commonly reactive to iron deficiency, inflammation, or infection.';
+          recommendation = 'Check iron studies and inflammatory markers. Repeat CBC in 4-8 weeks.';
+        }
+      } else if (elevationCategory === 'moderate') {
+        // Moderate elevation: 450-600
+        status = 'abnormal';
+        const isLikelyReactive = reactivePatterns.length > 0;
+        
+        if (isLikelyReactive) {
+          interpretation = `Moderate platelet elevation (450-600), likely reactive. Identified factors: ${reactivePatterns.join(', ')}.`;
+          recommendation = 'Address underlying cause. Repeat CBC in 2-4 weeks with iron studies and inflammatory workup.';
+        } else {
+          interpretation = 'Moderate platelet elevation (450-600). Requires evaluation for reactive vs. primary thrombocytosis.';
+          recommendation = 'Repeat CBC in 2-4 weeks. Complete iron/inflammation evaluation. If >=450 persists over 3 months, discuss further evaluation (smear +/- JAK2/CALR/MPL testing).';
+        }
+
+        // Add concerning features if present
+        if (concerningFeatures.length > 0) {
+          interpretation += ` Additional concerns: ${concerningFeatures.join(', ')}.`;
+          recommendation = 'Consider hematology referral given concerning features. Discuss further evaluation (smear +/- JAK2/CALR/MPL) if persistent.';
+        }
+      } else if (elevationCategory === 'high') {
+        // High elevation: >600
+        status = 'critical';
+        interpretation = `Significant platelet elevation (>600). While reactive causes are still possible, this level warrants evaluation for myeloproliferative neoplasm.`;
+        
+        if (reactivePatterns.length > 0) {
+          interpretation += ` Possible reactive factors identified: ${reactivePatterns.join(', ')}.`;
+        }
+        
+        if (concerningFeatures.length > 0) {
+          interpretation += ` Additional concerns: ${concerningFeatures.join(', ')}.`;
+        }
+
+        recommendation = 'Consider hematology referral. Discuss further evaluation including peripheral blood smear +/- JAK2/CALR/MPL testing. Do not diagnose ET/MPN without specialist evaluation.';
+      }
+
+      interpretations.push({
+        category: 'Platelets',
+        value: labs.platelets,
+        unit: 'K/uL',
+        status,
+        referenceRange: '150-400 K/uL',
         interpretation,
         recommendation,
       });
