@@ -5,18 +5,18 @@ import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2 } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
-import { LabInputForm } from "@/components/lab-input-form";
+import { FemaleLabInputForm } from "@/components/female-lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { PatientSummary } from "@/components/patient-summary";
-import { labsApi } from "@/lib/api";
+import { femaleLabsApi } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import type { LabValues, InterpretationResult } from "@shared/schema";
+import type { FemaleLabValues, InterpretationResult, LabValues } from "@shared/schema";
 
-export default function LabInterpretation() {
-  const [labValues, setLabValues] = useState<LabValues>({});
+export default function FemaleLabInterpretation() {
+  const [labValues, setLabValues] = useState<FemaleLabValues>({});
   const [interpretationResult, setInterpretationResult] = useState<InterpretationResult | null>(null);
   const [activeTab, setActiveTab] = useState<string>("input");
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
@@ -25,26 +25,23 @@ export default function LabInterpretation() {
   const { toast } = useToast();
 
   const interpretMutation = useMutation({
-    mutationFn: labsApi.interpretLabs,
+    mutationFn: femaleLabsApi.interpretLabs,
     onSuccess: (data) => {
-      console.log('[Frontend] Interpretation successful:', data);
+      console.log('[Frontend] Female interpretation successful:', data);
       setInterpretationResult(data);
       setActiveTab("results");
     },
     onError: (error) => {
-      console.error('[Frontend] Interpretation error:', error);
+      console.error('[Frontend] Female interpretation error:', error);
     },
   });
 
   const pdfExtractMutation = useMutation({
-    mutationFn: labsApi.extractPdfLabs,
+    mutationFn: femaleLabsApi.extractPdfLabs,
     onSuccess: (data) => {
       console.log('[Frontend] PDF extraction successful:', data);
-      // Use functional update to preserve any demographics user has already entered
       setLabValues(prev => {
         const merged = { ...prev, ...data };
-        // Safely merge demographics with schema defaults to satisfy TypeScript
-        // Start with defaults, then overlay prev (user entries), then data (PDF extraction)
         const demographicsDefaults = {
           onBPMeds: false,
           diabetic: false,
@@ -67,7 +64,7 @@ export default function LabInterpretation() {
       
       toast({
         title: "PDF Extracted Successfully",
-        description: "Lab values filled. Please enter patient demographics and STOP-BANG data, then click 'Interpret Labs'.",
+        description: "Lab values filled. Please enter patient demographics and menstrual phase, then click 'Interpret Labs'.",
         duration: 8000,
       });
     },
@@ -81,7 +78,7 @@ export default function LabInterpretation() {
     },
   });
 
-  const handleSubmit = (values: LabValues) => {
+  const handleSubmit = (values: FemaleLabValues) => {
     console.log('[Frontend] handleSubmit called with values:', values);
     setLabValues(values);
     setIsPdfPendingReview(false);
@@ -99,7 +96,7 @@ export default function LabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues, interpretationResult);
+      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, "Women's Hormone & Primary Care Clinic");
     }
   };
 
@@ -126,12 +123,12 @@ export default function LabInterpretation() {
           <div className="flex items-center justify-between">
             <div>
               <h1 className="text-2xl font-semibold text-foreground">Lab Interpretation Tool</h1>
-              <p className="text-sm text-muted-foreground">Men's Hormone & Primary Care Clinic</p>
+              <p className="text-sm text-muted-foreground">Women's Hormone & Primary Care Clinic</p>
             </div>
             <div className="flex items-center gap-4">
-              <Link href="/female">
-                <Button variant="outline" data-testid="link-to-womens-labs">
-                  Switch to Women's Labs
+              <Link href="/">
+                <Button variant="outline" data-testid="link-to-mens-labs">
+                  Switch to Men's Labs
                 </Button>
               </Link>
               {interpretationResult && (
@@ -139,7 +136,7 @@ export default function LabInterpretation() {
                   <Button 
                     variant="default" 
                     onClick={handleExportPDF}
-                    data-testid="button-export-pdf"
+                    data-testid="button-export-pdf-female"
                   >
                     <Download className="w-4 h-4 mr-2" />
                     Export PDF
@@ -147,7 +144,7 @@ export default function LabInterpretation() {
                   <Button 
                     variant="outline" 
                     onClick={handleReset}
-                    data-testid="button-reset"
+                    data-testid="button-reset-female"
                   >
                     <FileText className="w-4 h-4 mr-2" />
                     New Interpretation
@@ -162,9 +159,9 @@ export default function LabInterpretation() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2" data-testid="tabs-navigation">
-            <TabsTrigger value="input" data-testid="tab-input">Lab Entry</TabsTrigger>
-            <TabsTrigger value="results" disabled={!interpretationResult} data-testid="tab-results">
+          <TabsList className="grid w-full max-w-md grid-cols-2" data-testid="tabs-navigation-female">
+            <TabsTrigger value="input" data-testid="tab-input-female">Lab Entry</TabsTrigger>
+            <TabsTrigger value="results" disabled={!interpretationResult} data-testid="tab-results-female">
               Results & Recommendations
             </TabsTrigger>
           </TabsList>
@@ -178,7 +175,7 @@ export default function LabInterpretation() {
                   <CardTitle>AI-Powered PDF Upload</CardTitle>
                 </div>
                 <CardDescription>
-                  Upload a Pathgroup or hospital lab report PDF. AI will automatically extract and fill in lab values for you to review.
+                  Upload a lab report PDF. AI will automatically extract and fill in lab values for you to review.
                 </CardDescription>
               </CardHeader>
               <CardContent>
@@ -190,14 +187,14 @@ export default function LabInterpretation() {
                       accept=".pdf"
                       onChange={handlePdfUpload}
                       className="hidden"
-                      data-testid="input-pdf-file"
+                      data-testid="input-pdf-file-female"
                     />
                     <Button
                       onClick={handleUploadClick}
                       disabled={pdfExtractMutation.isPending}
                       variant="default"
                       className="gap-2"
-                      data-testid="button-upload-pdf"
+                      data-testid="button-upload-pdf-female"
                     >
                       <Upload className="w-4 h-4" />
                       {pdfExtractMutation.isPending ? 'Extracting...' : 'Upload PDF'}
@@ -224,34 +221,33 @@ export default function LabInterpretation() {
 
             {/* PDF Review Guidance */}
             {isPdfPendingReview && (
-              <Alert data-testid="alert-pdf-review-guidance">
+              <Alert data-testid="alert-pdf-review-guidance-female">
                 <AlertCircle className="w-4 h-4" />
-                <AlertTitle>Next Steps: Complete Demographics & STOP-BANG</AlertTitle>
+                <AlertTitle>Next Steps: Complete Demographics & Menstrual Phase</AlertTitle>
                 <AlertDescription>
-                  Lab values have been auto-filled from your PDF. To calculate ASCVD cardiovascular risk and STOP-BANG sleep apnea screening:
+                  Lab values have been auto-filled from your PDF. To calculate ASCVD cardiovascular risk and get accurate hormone interpretations:
                   <ol className="list-decimal list-inside mt-2 space-y-1">
-                    <li>Open the "Patient Demographics & Cardiovascular Risk Factors" section below</li>
-                    <li>Enter age, sex, race, blood pressure, and risk factors (diabetes, smoking, BP medications)</li>
-                    <li>Complete the STOP-BANG Sleep Apnea Screening checkboxes</li>
-                    <li>Review auto-filled lab values and click "Interpret Labs"</li>
+                    <li>Enter patient Age, Race, and Systolic Blood Pressure</li>
+                    <li>Select current Menstrual Phase (affects hormone reference ranges)</li>
+                    <li>Check any applicable boxes (HRT, Birth Control, Risk Factors)</li>
+                    <li>Complete STOP-BANG screening questions</li>
+                    <li>Click "Interpret Labs" to analyze</li>
                   </ol>
                 </AlertDescription>
               </Alert>
             )}
 
-            {/* Manual Entry Form */}
+            {/* Lab Input Form */}
             <Card>
               <CardHeader>
-                <CardTitle>Enter or Review Lab Values</CardTitle>
+                <CardTitle>Enter Lab Values</CardTitle>
                 <CardDescription>
-                  {pdfFileName 
-                    ? 'Review the auto-filled values below and make any necessary corrections.'
-                    : 'Input the lab results from the standard men\'s clinic panel. Leave fields blank if not available.'}
+                  Enter female patient lab values for interpretation. Reference ranges are adjusted for women.
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <LabInputForm 
-                  onSubmit={handleSubmit} 
+                <FemaleLabInputForm
+                  onSubmit={handleSubmit}
                   isLoading={interpretMutation.isPending}
                   initialValues={labValues}
                 />
@@ -260,79 +256,76 @@ export default function LabInterpretation() {
           </TabsContent>
 
           <TabsContent value="results" className="space-y-6">
-            {interpretationResult ? (
+            {interpretationResult && (
               <>
-                {/* Red Flags - Most Prominent */}
-                {interpretationResult.redFlags?.length > 0 && (
-                  <RedFlagAlert redFlags={interpretationResult.redFlags} />
+                {/* Red Flags */}
+                {interpretationResult.redFlags.length > 0 && (
+                  <Card className="border-red-200 bg-red-50/50">
+                    <CardHeader>
+                      <CardTitle className="text-red-600">Critical Red Flags</CardTitle>
+                      <CardDescription>
+                        The following findings require immediate physician notification
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-4">
+                        {interpretationResult.redFlags.map((flag, index) => (
+                          <RedFlagAlert key={index} flag={flag} />
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
                 )}
 
-                {/* Lab Results */}
-                <ResultsDisplay 
-                  interpretations={interpretationResult.interpretations || []}
-                  aiRecommendations={interpretationResult.aiRecommendations || ''}
-                  recheckWindow={interpretationResult.recheckWindow || ''}
-                  redFlags={interpretationResult.redFlags || []}
-                  ascvdAssessment={interpretationResult.ascvdRisk || null}
-                />
+                {/* Results Table */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Complete Lab Results Overview</CardTitle>
+                    <CardDescription>
+                      Detailed interpretation of all lab values with female-specific reference ranges
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <ResultsDisplay interpretations={interpretationResult.interpretations} />
+                  </CardContent>
+                </Card>
+
+                {/* AI Recommendations */}
+                <Card>
+                  <CardHeader>
+                    <div className="flex items-center gap-2">
+                      <Sparkles className="w-5 h-5 text-primary" />
+                      <CardTitle>AI-Powered Clinical Recommendations</CardTitle>
+                    </div>
+                    <CardDescription>
+                      Synthesized recommendations based on clinical protocols (Staff-facing)
+                    </CardDescription>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="prose prose-sm max-w-none">
+                      <pre className="whitespace-pre-wrap font-sans text-sm">
+                        {interpretationResult.aiRecommendations}
+                      </pre>
+                    </div>
+                  </CardContent>
+                </Card>
 
                 {/* Patient Summary */}
-                {interpretationResult.patientSummary && (
-                  <PatientSummary 
-                    summary={interpretationResult.patientSummary}
-                    labValues={labValues}
-                  />
-                )}
+                <PatientSummary summary={interpretationResult.patientSummary} />
+
+                {/* Recheck Window */}
+                <Card>
+                  <CardHeader>
+                    <CardTitle>Recommended Recheck Window</CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-lg font-medium">{interpretationResult.recheckWindow}</p>
+                  </CardContent>
+                </Card>
               </>
-            ) : (
-              <Card>
-                <CardContent className="py-12 text-center text-muted-foreground">
-                  <p>No interpretation results yet. Enter lab values to get started.</p>
-                </CardContent>
-              </Card>
             )}
           </TabsContent>
         </Tabs>
-
-        {/* Loading State */}
-        {interpretMutation.isPending && (
-          <Card className="mt-6">
-            <CardContent className="py-12">
-              <div className="flex flex-col items-center justify-center space-y-4">
-                <div className="relative">
-                  <Sparkles className="w-12 h-12 text-primary animate-pulse" />
-                </div>
-                <div className="text-center space-y-2">
-                  <h3 className="text-lg font-semibold">Analyzing Lab Results...</h3>
-                  <p className="text-sm text-muted-foreground">
-                    Applying clinical protocols and generating AI-powered recommendations
-                  </p>
-                </div>
-              </div>
-            </CardContent>
-          </Card>
-        )}
-
-        {/* Error State */}
-        {interpretMutation.isError && (
-          <Alert variant="destructive" className="mt-6">
-            <AlertCircle className="h-5 w-5" />
-            <AlertTitle>Interpretation Failed</AlertTitle>
-            <AlertDescription>
-              {interpretMutation.error instanceof Error 
-                ? interpretMutation.error.message 
-                : "Failed to interpret lab results. Please try again or contact support if the problem persists."}
-            </AlertDescription>
-            <Button 
-              onClick={() => interpretMutation.reset()} 
-              variant="outline" 
-              className="mt-4"
-              data-testid="button-retry"
-            >
-              Try Again
-            </Button>
-          </Alert>
-        )}
       </main>
     </div>
   );

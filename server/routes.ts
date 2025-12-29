@@ -1,8 +1,9 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
-import { interpretLabsRequestSchema, type InterpretationResult } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult } from "@shared/schema";
 import { ClinicalLogicEngine } from "./clinical-logic";
+import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
@@ -177,6 +178,167 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(result);
     } catch (error) {
       console.error("Error interpreting labs:", error);
+      res.status(500).json({ 
+        error: "Failed to interpret lab results", 
+        message: error instanceof Error ? error.message : "Unknown error" 
+      });
+    }
+  });
+
+  // Female lab interpretation endpoint
+  app.post("/api/interpret-labs-female", async (req, res) => {
+    console.log('[API] POST /api/interpret-labs-female - Received request');
+    console.log('[API] Request body:', JSON.stringify(req.body, null, 2));
+    try {
+      // Validate request body
+      const parseResult = femaleLabValuesSchema.safeParse(req.body);
+      
+      if (!parseResult.success) {
+        return res.status(400).json({ 
+          error: "Invalid lab values", 
+          details: parseResult.error.errors 
+        });
+      }
+
+      const labs = parseResult.data;
+
+      // Step 1: Detect red flags using female-specific logic
+      const redFlags = FemaleClinicalLogicEngine.detectRedFlags(labs);
+
+      // Step 2: Generate detailed interpretations with female reference ranges
+      const interpretations = FemaleClinicalLogicEngine.interpretLabValues(labs);
+
+      // Step 3: Calculate ASCVD risk if demographics and lipid data are available
+      // Note: ASCVD calculator already handles sex-specific equations
+      const ascvdLabData = {
+        ...labs,
+        demographics: labs.demographics ? { ...labs.demographics, sex: 'female' as const } : undefined
+      };
+      const ascvdRisk = ASCVDCalculator.calculateRisk(ascvdLabData) || undefined;
+      console.log('[API] Female ASCVD calculation result:', ascvdRisk ? `Risk: ${ascvdRisk.riskPercentage}, Category: ${ascvdRisk.riskCategory}` : 'Not calculated');
+
+      // Step 3a: Add ASCVD to interpretations if calculated
+      if (ascvdRisk) {
+        console.log('[API] Adding ASCVD to female interpretations array');
+        const getRiskStatus = (category: string): 'normal' | 'borderline' | 'abnormal' | 'critical' => {
+          switch (category.toLowerCase()) {
+            case 'low': return 'normal';
+            case 'borderline': return 'borderline';
+            case 'intermediate': return 'abnormal';
+            case 'high': return 'critical';
+            default: return 'abnormal';
+          }
+        };
+
+        const lipidEndIndex = interpretations.findIndex((interp, idx, arr) => 
+          (interp.category.toLowerCase().includes('cholesterol') || 
+           interp.category.toLowerCase().includes('triglyceride') ||
+           interp.category.toLowerCase().includes('ldl') ||
+           interp.category.toLowerCase().includes('hdl')) &&
+          (!arr[idx + 1] || 
+           (!arr[idx + 1].category.toLowerCase().includes('cholesterol') &&
+            !arr[idx + 1].category.toLowerCase().includes('triglyceride') &&
+            !arr[idx + 1].category.toLowerCase().includes('ldl') &&
+            !arr[idx + 1].category.toLowerCase().includes('hdl')))
+        );
+
+        const ascvdInterpretation = {
+          category: 'ASCVD Cardiovascular Risk',
+          value: parseFloat(ascvdRisk.riskPercentage.replace('%', '')),
+          unit: '%',
+          status: getRiskStatus(ascvdRisk.riskCategory),
+          referenceRange: 'Low <5%, Borderline 5-7.4%, Intermediate 7.5-19.9%, High ≥20%',
+          interpretation: `10-year risk of heart attack or stroke: ${ascvdRisk.riskPercentage} (${ascvdRisk.riskCategory.toUpperCase()} RISK)`,
+          recommendation: ascvdRisk.recommendations,
+          recheckTiming: 'Annual',
+        };
+
+        if (lipidEndIndex !== -1) {
+          interpretations.splice(lipidEndIndex + 1, 0, ascvdInterpretation);
+        } else {
+          interpretations.push(ascvdInterpretation);
+        }
+      }
+
+      // Step 3b: Calculate STOP-BANG sleep apnea risk (female-adjusted - no automatic male point)
+      // For females, we don't add the automatic "male gender" point
+      const stopBangRisk = StopBangCalculator.calculateRisk({
+        ...labs,
+        demographics: labs.demographics ? { ...labs.demographics, sex: 'female' as const } : undefined
+      }) || undefined;
+      console.log('[API] Female STOP-BANG calculation result:', stopBangRisk ? `Score: ${stopBangRisk.score}/8, Risk: ${stopBangRisk.riskCategory}` : 'Not calculated');
+
+      // Step 3c: Add STOP-BANG to interpretations if calculated
+      if (stopBangRisk) {
+        console.log('[API] Adding STOP-BANG to female interpretations array');
+        const getStopBangStatus = (category: string): 'normal' | 'borderline' | 'abnormal' | 'critical' => {
+          switch (category.toLowerCase()) {
+            case 'low': return 'normal';
+            case 'intermediate': return 'abnormal';
+            case 'high': return 'critical';
+            default: return 'abnormal';
+          }
+        };
+
+        const stopBangInterpretation = {
+          category: 'Sleep Apnea Risk (STOP-BANG)',
+          value: stopBangRisk.score,
+          unit: 'points',
+          status: getStopBangStatus(stopBangRisk.riskCategory),
+          referenceRange: 'Low 0-2, Intermediate 3-4, High 5-8',
+          interpretation: stopBangRisk.riskDescription,
+          recommendation: stopBangRisk.recommendations,
+          recheckTiming: stopBangRisk.riskCategory === 'low' ? 'Annual' : 'Follow-up in 1-3 months after sleep study',
+        };
+
+        const ascvdIndex = interpretations.findIndex(interp => interp.category === 'ASCVD Cardiovascular Risk');
+        if (ascvdIndex !== -1) {
+          interpretations.splice(ascvdIndex + 1, 0, stopBangInterpretation);
+        } else {
+          interpretations.push(stopBangInterpretation);
+        }
+      }
+
+      // Step 4: Generate AI-powered recommendations with female context
+      const aiRecommendations = await AIService.generateRecommendations(
+        labs,
+        redFlags,
+        interpretations,
+        'female'
+      );
+
+      // Step 5: Generate patient-friendly summary
+      const patientSummary = await AIService.generatePatientSummary(
+        labs,
+        interpretations,
+        redFlags.length > 0,
+        ascvdRisk,
+        'female'
+      );
+
+      // Step 6: Determine recheck window using female-specific logic
+      const recheckWindow = FemaleClinicalLogicEngine.determineRecheckWindow(labs, redFlags);
+
+      // Construct response
+      const result: InterpretationResult = {
+        redFlags,
+        interpretations,
+        aiRecommendations,
+        patientSummary,
+        recheckWindow,
+        ascvdRisk,
+      };
+
+      console.log('[API] Female interpretation response summary:');
+      console.log('  - Red flags:', redFlags.length);
+      console.log('  - Interpretations:', interpretations.length);
+      console.log('  - AI recommendations length:', aiRecommendations.length);
+      console.log('  - Patient summary length:', patientSummary.length);
+      console.log('  - Recheck window:', recheckWindow);
+
+      res.json(result);
+    } catch (error) {
+      console.error("Error interpreting female labs:", error);
       res.status(500).json({ 
         error: "Failed to interpret lab results", 
         message: error instanceof Error ? error.message : "Unknown error" 

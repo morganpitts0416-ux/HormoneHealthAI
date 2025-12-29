@@ -1,7 +1,7 @@
-# Lab Interpretation Tool - Men's Clinic
+# Lab Interpretation Tool - Men's & Women's Clinics
 
 ## Overview
-This tool is a clinical lab interpretation application for men's hormone and primary care clinic staff. Its core purpose is to efficiently interpret standard lab panels, apply clinical protocols, generate AI-powered recommendations, and identify critical "red flag" values requiring immediate physician attention. The project aims to enhance clinical decision-making, streamline patient communication, and integrate advanced features like AI-powered PDF lab result extraction and comprehensive cardiovascular risk assessment.
+This tool is a clinical lab interpretation application for both men's and women's hormone and primary care clinic staff. Its core purpose is to efficiently interpret standard lab panels, apply clinical protocols, generate AI-powered recommendations, and identify critical "red flag" values requiring immediate physician attention. The project supports gender-specific lab interpretation with separate workflows for men's and women's clinics, including female-specific reference ranges and menstrual phase context for hormone interpretation.
 
 ## User Preferences
 - Medical-grade professional interface
@@ -35,7 +35,35 @@ The application features a comprehensive lab input form, a results display with 
 
 ## Recent Changes
 
-**November 11, 2025** (Latest)
+**December 29, 2025** (Latest)
+- **NEW: Women's Lab Interpretation Page**
+  - Added `/female` route for women's hormone clinic lab interpretation
+  - Complete separation from men's workflow - no cross-contamination of settings or data
+  - Female-specific reference ranges: hemoglobin 12-16 g/dL, hematocrit 36-44%, HDL >50 mg/dL, liver enzymes <32 U/L
+  - Navigation: Switch between Men's and Women's labs via header buttons
+
+- **NEW: Menstrual Phase Context for Hormone Interpretation**
+  - Dropdown to select menstrual phase: Follicular, Ovulatory, Luteal, Postmenopausal, Unknown
+  - Phase-dependent reference ranges for estradiol, progesterone, FSH, and LH
+  - HRT and birth control status checkboxes affect interpretation context
+
+- **NEW: Female-Specific Lab Markers**
+  - AMH (Anti-Mullerian Hormone) for ovarian reserve assessment
+  - Ferritin with female-specific optimal ranges (30-150 ng/mL) and iron deficiency alerts
+  - Vitamin D and B12 status monitoring
+  - Free T4, Free T3, and TPO Antibodies for comprehensive thyroid panel
+
+- **NEW: Female Clinical Logic Engine**
+  - Separate clinical-logic-female.ts with female-specific red flag thresholds
+  - Iron deficiency detection critical for menstruating women
+  - Phase-appropriate hormone interpretation
+  - ASCVD and STOP-BANG integrate with female sex parameter
+
+- **ENHANCED: AI Service Gender Context**
+  - AI recommendations now receive gender parameter for appropriate clinical context
+  - Patient summaries tailored for women's health concerns (iron status, thyroid, bone health)
+
+**November 11, 2025**
 - **FIXED: PDF Export Letter Spacing**
   - **Problem**: Downloaded PDFs had excessive letter spacing - text appeared like "K e y  a b n o r m a l  r e s u l t s" with wide gaps between letters
   - **Root Cause**: jsPDF's Helvetica font doesn't support Unicode symbols (●/⚠/▲/▼), causing fallback to a renderer that expands glyph widths throughout the entire document

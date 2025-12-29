@@ -86,6 +86,74 @@ export const labValuesSchema = z.object({
   monthsSinceLastPsa: z.number().optional(),
 });
 
+// Female-specific Lab Values Schema
+export const femaleLabValuesSchema = z.object({
+  // Patient Demographics & ASCVD Risk Factors
+  demographics: patientDemographicsSchema.optional(),
+  
+  // Menstrual Phase Context (affects hormone interpretation)
+  menstrualPhase: z.enum(['follicular', 'ovulatory', 'luteal', 'postmenopausal', 'unknown']).optional(),
+  lastMenstrualPeriod: z.string().optional(),
+  onHRT: z.boolean().optional(), // Hormone Replacement Therapy
+  onBirthControl: z.boolean().optional(),
+  
+  // CBC Values (Complete Blood Count) - Female reference ranges differ
+  hemoglobin: z.number().optional(),
+  hematocrit: z.number().optional(),
+  rbc: z.number().optional(),
+  wbc: z.number().optional(),
+  platelets: z.number().optional(),
+  
+  // CMP Values (Comprehensive Metabolic Panel)
+  ast: z.number().optional(),
+  alt: z.number().optional(),
+  bilirubin: z.number().optional(),
+  creatinine: z.number().optional(),
+  egfr: z.number().optional(),
+  bun: z.number().optional(),
+  sodium: z.number().optional(),
+  potassium: z.number().optional(),
+  chloride: z.number().optional(),
+  co2: z.number().optional(),
+  glucose: z.number().optional(),
+  calcium: z.number().optional(),
+  albumin: z.number().optional(),
+  totalProtein: z.number().optional(),
+  
+  // Lipid Panel
+  ldl: z.number().optional(),
+  hdl: z.number().optional(),
+  totalCholesterol: z.number().optional(),
+  triglycerides: z.number().optional(),
+  
+  // Female Hormones
+  estradiol: z.number().optional(),
+  progesterone: z.number().optional(),
+  fsh: z.number().optional(), // Follicle Stimulating Hormone
+  lh: z.number().optional(),
+  prolactin: z.number().optional(),
+  testosterone: z.number().optional(), // Total testosterone (lower ranges for women)
+  freeTestosterone: z.number().optional(),
+  dheas: z.number().optional(), // DHEA-Sulfate
+  shbg: z.number().optional(),
+  amh: z.number().optional(), // Anti-Mullerian Hormone (fertility marker)
+  
+  // Thyroid
+  tsh: z.number().optional(),
+  freeT4: z.number().optional(),
+  freeT3: z.number().optional(),
+  tpoAntibodies: z.number().optional(), // Thyroid Peroxidase Antibodies
+  
+  // Other
+  a1c: z.number().optional(),
+  vitaminD: z.number().optional(),
+  ferritin: z.number().optional(),
+  iron: z.number().optional(),
+  vitaminB12: z.number().optional(),
+});
+
+export type FemaleLabValues = z.infer<typeof femaleLabValuesSchema>;
+
 export type LabValues = z.infer<typeof labValuesSchema>;
 
 // Red Flag Schema
