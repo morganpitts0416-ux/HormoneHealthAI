@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Sparkles, User, Heart, Droplet, Activity, TestTube } from "lucide-react";
+import { Sparkles, User, Heart, Droplet, Activity, TestTube, Beaker } from "lucide-react";
 
 interface FemaleLabInputFormProps {
   onSubmit: (values: FemaleLabValues) => void;
@@ -62,7 +62,7 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Accordion type="multiple" defaultValue={["demographics", "menstrual", "hormones", "cbc", "thyroid", "lipids", "vitamins"]} className="space-y-4">
+        <Accordion type="multiple" defaultValue={["demographics", "menstrual", "cbc", "cmp", "lipids", "thyroid", "hormones", "iron", "vitamins", "inflammation"]} className="space-y-4">
           
           {/* Patient Demographics & ASCVD Risk Factors */}
           <AccordionItem value="demographics" className="border rounded-md px-4">
@@ -153,15 +153,9 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                   render={({ field }) => (
                     <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
                       <FormControl>
-                        <Checkbox
-                          checked={field.value ?? false}
-                          onCheckedChange={field.onChange}
-                          data-testid="checkbox-bp-meds-female"
-                        />
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-bp-meds-female" />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel className="text-xs font-medium uppercase">On Blood Pressure Medication</FormLabel>
-                      </div>
+                      <FormLabel className="text-xs font-medium uppercase">On Blood Pressure Medication</FormLabel>
                     </FormItem>
                   )}
                 />
@@ -172,15 +166,9 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                   render={({ field }) => (
                     <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
                       <FormControl>
-                        <Checkbox
-                          checked={field.value ?? false}
-                          onCheckedChange={field.onChange}
-                          data-testid="checkbox-diabetic-female"
-                        />
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-diabetic-female" />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel className="text-xs font-medium uppercase">History of Diabetes</FormLabel>
-                      </div>
+                      <FormLabel className="text-xs font-medium uppercase">History of Diabetes</FormLabel>
                     </FormItem>
                   )}
                 />
@@ -191,15 +179,9 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                   render={({ field }) => (
                     <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
                       <FormControl>
-                        <Checkbox
-                          checked={field.value ?? false}
-                          onCheckedChange={field.onChange}
-                          data-testid="checkbox-smoker-female"
-                        />
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-smoker-female" />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel className="text-xs font-medium uppercase">Current Smoker</FormLabel>
-                      </div>
+                      <FormLabel className="text-xs font-medium uppercase">Current Smoker</FormLabel>
                     </FormItem>
                   )}
                 />
@@ -208,101 +190,37 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
               {/* STOP-BANG Sleep Apnea Screening */}
               <div className="mt-6 pt-6 border-t">
                 <h4 className="text-sm font-semibold mb-4 text-primary">STOP-BANG Sleep Apnea Screening</h4>
-                <div className="grid grid-cols-1 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="demographics.snoring"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-snoring-female"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">Snoring (loud)</FormLabel>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="demographics.tiredness"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-tiredness-female"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">Excessive Daytime Tiredness</FormLabel>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="demographics.observedApnea"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-observed-apnea-female"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">Observed Breathing Pauses</FormLabel>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="demographics.bmiOver35"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-bmi-over-35-female"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">BMI &gt; 35 kg/m²</FormLabel>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="demographics.neckCircOver40cm"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-neck-circ-female"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">Neck Circumference &gt; 40 cm</FormLabel>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="demographics.snoring" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-snoring-female" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Snoring (loud)</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="demographics.tiredness" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-tiredness-female" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Excessive Daytime Tiredness</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="demographics.observedApnea" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-observed-apnea-female" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Observed Breathing Pauses</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="demographics.bmiOver35" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-bmi-over-35-female" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">BMI &gt; 35 kg/m²</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="demographics.neckCircOver40cm" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-neck-circ-female" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Neck Circumference &gt; 40 cm</FormLabel>
+                    </FormItem>
+                  )} />
                 </div>
               </div>
             </AccordionContent>
@@ -317,7 +235,7 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField
                   control={form.control}
                   name="menstrualPhase"
@@ -338,491 +256,235 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                           <SelectItem value="unknown">Unknown</SelectItem>
                         </SelectContent>
                       </Select>
-                      <p className="text-xs text-muted-foreground mt-1">Hormone reference ranges vary by cycle phase</p>
+                      <p className="text-xs text-muted-foreground mt-1">Hormone ranges vary by phase</p>
                       <FormMessage />
                     </FormItem>
                   )}
                 />
-
-                <FormField
-                  control={form.control}
-                  name="onHRT"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value ?? false}
-                          onCheckedChange={field.onChange}
-                          data-testid="checkbox-hrt"
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel className="text-xs font-medium uppercase">On Hormone Replacement Therapy (HRT)</FormLabel>
-                      </div>
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="onBirthControl"
-                  render={({ field }) => (
-                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                      <FormControl>
-                        <Checkbox
-                          checked={field.value ?? false}
-                          onCheckedChange={field.onChange}
-                          data-testid="checkbox-birth-control"
-                        />
-                      </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel className="text-xs font-medium uppercase">On Hormonal Birth Control</FormLabel>
-                      </div>
-                    </FormItem>
-                  )}
-                />
+                <FormField control={form.control} name="onHRT" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-hrt" /></FormControl>
+                    <FormLabel className="text-xs font-medium uppercase">On HRT</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="onBirthControl" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-birth-control" /></FormControl>
+                    <FormLabel className="text-xs font-medium uppercase">On Birth Control</FormLabel>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>
 
-          {/* Female Hormones */}
-          <AccordionItem value="hormones" className="border rounded-md px-4">
-            <AccordionTrigger className="hover:no-underline" data-testid="accordion-hormones-female">
-              <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-purple-500" />
-                <span className="font-semibold">Female Hormones</span>
-              </div>
-            </AccordionTrigger>
-            <AccordionContent className="pt-4 pb-2">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="estradiol"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Estradiol</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="100"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-estradiol-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">pg/mL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="progesterone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Progesterone</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="10"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-progesterone"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/mL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="fsh"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">FSH</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="7"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-fsh"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mIU/mL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="lh"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">LH</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="5"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-lh-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mIU/mL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="prolactin"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Prolactin</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="15"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-prolactin-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/mL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="testosterone"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Testosterone (Total)</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="30"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-testosterone-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/dL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="dheas"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">DHEA-S</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="200"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-dheas"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">µg/dL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="amh"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">AMH (Anti-Mullerian Hormone)</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="2.5"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-amh"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/mL</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Ovarian reserve marker</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-              </div>
-            </AccordionContent>
-          </AccordionItem>
-
-          {/* CBC - Female Ranges */}
+          {/* CBC - Complete Blood Count */}
           <AccordionItem value="cbc" className="border rounded-md px-4">
             <AccordionTrigger className="hover:no-underline" data-testid="accordion-cbc-female">
               <div className="flex items-center gap-2">
                 <Droplet className="w-4 h-4 text-red-500" />
-                <span className="font-semibold">Complete Blood Count (CBC)</span>
+                <span className="font-semibold">CBC (Complete Blood Count)</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="hemoglobin"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Hemoglobin</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="13.5"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-hemoglobin-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">g/dL</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Female range: 12-16 g/dL</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="hematocrit"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Hematocrit</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="40"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-hematocrit-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">%</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Female range: 36-44%</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="wbc"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">WBC</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="7"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-wbc-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">K/µL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="platelets"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Platelets</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="250"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-platelets-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">K/µL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <FormField control={form.control} name="hemoglobin" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Hemoglobin</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="13.5" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-hemoglobin-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">g/dL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">12-16 g/dL</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="hematocrit" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Hematocrit</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="40" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-hematocrit-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">36-44%</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="rbc" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">RBC</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.01" placeholder="4.5" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-rbc-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">M/uL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="wbc" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">WBC</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="7" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-wbc-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">K/uL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="platelets" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Platelets</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="250" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-platelets-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">K/uL</span>
+                    </div>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>
 
-          {/* Thyroid Panel */}
-          <AccordionItem value="thyroid" className="border rounded-md px-4">
-            <AccordionTrigger className="hover:no-underline" data-testid="accordion-thyroid">
+          {/* CMP - Comprehensive Metabolic Panel */}
+          <AccordionItem value="cmp" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-cmp-female">
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-blue-500" />
-                <span className="font-semibold">Thyroid Panel</span>
+                <Beaker className="w-4 h-4 text-blue-500" />
+                <span className="font-semibold">CMP (Comprehensive Metabolic Panel)</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="tsh"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">TSH</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="2.5"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-tsh-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mIU/L</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="freeT4"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Free T4</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="1.2"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-free-t4"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/dL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="freeT3"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Free T3</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="3.0"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-free-t3"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">pg/mL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="tpoAntibodies"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">TPO Antibodies</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="10"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-tpo-antibodies"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">IU/mL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <FormField control={form.control} name="glucose" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Glucose (Fasting)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="90" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-glucose-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="bun" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">BUN</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="15" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-bun-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="creatinine" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Creatinine</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="0.9" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-creatinine-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="egfr" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">eGFR</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="90" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-egfr-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mL/min</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="sodium" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Sodium</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="140" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-sodium-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mEq/L</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="potassium" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Potassium</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="4.0" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-potassium-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mEq/L</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="chloride" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Chloride</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="100" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-chloride-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mEq/L</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="co2" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">CO2</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="24" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-co2-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mEq/L</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="calcium" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Calcium</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="9.5" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-calcium-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="albumin" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Albumin</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="4.0" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-albumin-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">g/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="totalProtein" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Total Protein</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="7.0" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-total-protein-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">g/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="bilirubin" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Bilirubin (Total)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="0.8" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-bilirubin-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="ast" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">AST</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="25" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-ast-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">U/L</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">&lt;32 U/L</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="alt" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">ALT</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="22" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-alt-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">U/L</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">&lt;32 U/L</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="a1c" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Hemoglobin A1c</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="5.4" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-a1c-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -836,374 +498,316 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
-              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
-                <FormField
-                  control={form.control}
-                  name="totalCholesterol"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Total Cholesterol</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="180"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-total-cholesterol-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mg/dL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="ldl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">LDL Cholesterol</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="100"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-ldl-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mg/dL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="hdl"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">HDL Cholesterol</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="55"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-hdl-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mg/dL</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Female optimal: &gt;50 mg/dL</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="triglycerides"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Triglycerides</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="120"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-triglycerides-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mg/dL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField control={form.control} name="totalCholesterol" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Total Cholesterol</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="180" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-total-cholesterol-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="ldl" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">LDL Cholesterol</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="100" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-ldl-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="hdl" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">HDL Cholesterol</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="55" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-hdl-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">&gt;50 mg/dL optimal</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="triglycerides" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Triglycerides</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="120" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-triglycerides-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="apoB" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Apo B</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="90" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-apob-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">&lt;90 mg/dL optimal</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="lpa" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Lp(a)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="30" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-lpa-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">nmol/L</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">&lt;75 nmol/L</p>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>
 
-          {/* Vitamins & Iron */}
+          {/* Thyroid Panel */}
+          <AccordionItem value="thyroid" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-thyroid">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-blue-500" />
+                <span className="font-semibold">Thyroid Panel</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-2">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <FormField control={form.control} name="tsh" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">TSH</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.01" placeholder="2.5" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-tsh-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mIU/L</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="freeT4" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Free T4</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.01" placeholder="1.2" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-free-t4" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="freeT3" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Free T3</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.01" placeholder="3.0" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-free-t3" /></FormControl>
+                      <span className="text-sm text-muted-foreground">pg/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="tpoAntibodies" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">TPO Antibodies</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="10" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-tpo-antibodies" /></FormControl>
+                      <span className="text-sm text-muted-foreground">IU/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Female Hormones */}
+          <AccordionItem value="hormones" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-hormones-female">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-purple-500" />
+                <span className="font-semibold">Hormones</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-2">
+              <div className="grid grid-cols-1 md:grid-cols-4 gap-4">
+                <FormField control={form.control} name="fsh" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">FSH</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="7" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-fsh" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mIU/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="estradiol" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Estradiol</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="100" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-estradiol-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">pg/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="progesterone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Progesterone</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="10" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-progesterone" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="testosterone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Testosterone (Total)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="30" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-testosterone-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/dL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">15-70 ng/dL</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="lh" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">LH</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="5" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-lh-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mIU/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="prolactin" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Prolactin</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="15" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-prolactin-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="dheas" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">DHEA-S</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="200" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-dheas" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ug/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="amh" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">AMH</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="2.5" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-amh" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/mL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Ovarian reserve</p>
+                  </FormItem>
+                )} />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Iron Studies */}
+          <AccordionItem value="iron" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-iron">
+              <div className="flex items-center gap-2">
+                <Droplet className="w-4 h-4 text-orange-500" />
+                <span className="font-semibold">Iron Studies</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-2">
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField control={form.control} name="ferritin" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Ferritin</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="50" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-ferritin" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/mL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">30-150 ng/mL optimal</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="iron" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Iron</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="80" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-iron" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ug/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="tibc" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">TIBC (Iron Binding Capacity)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="300" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-tibc" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ug/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Vitamins */}
           <AccordionItem value="vitamins" className="border rounded-md px-4">
             <AccordionTrigger className="hover:no-underline" data-testid="accordion-vitamins">
               <div className="flex items-center gap-2">
                 <TestTube className="w-4 h-4 text-green-500" />
-                <span className="font-semibold">Vitamins & Iron Status</span>
+                <span className="font-semibold">Vitamins</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="ferritin"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Ferritin</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="50"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-ferritin"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/mL</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Optimal: 30-150 ng/mL</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="vitaminD"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Vitamin D (25-OH)</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="40"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-vitamin-d"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/mL</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Optimal: 30-80 ng/mL</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="vitaminB12"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Vitamin B12</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="500"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-vitamin-b12"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">pg/mL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+                <FormField control={form.control} name="vitaminD" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Vitamin D (25-OH)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="40" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-vitamin-d" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/mL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">30-80 ng/mL</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="vitaminB12" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Vitamin B12</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="500" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-vitamin-b12" /></FormControl>
+                      <span className="text-sm text-muted-foreground">pg/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="folate" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Folate</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="10" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-folate" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/mL</span>
+                    </div>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>
 
-          {/* Metabolic Panel */}
-          <AccordionItem value="metabolic" className="border rounded-md px-4">
-            <AccordionTrigger className="hover:no-underline" data-testid="accordion-metabolic-female">
+          {/* Inflammation Markers */}
+          <AccordionItem value="inflammation" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-inflammation">
               <div className="flex items-center gap-2">
-                <Activity className="w-4 h-4 text-orange-500" />
-                <span className="font-semibold">Metabolic Panel</span>
+                <Activity className="w-4 h-4 text-yellow-500" />
+                <span className="font-semibold">Inflammation Markers</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
-                <FormField
-                  control={form.control}
-                  name="glucose"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Glucose (Fasting)</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="90"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-glucose-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mg/dL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="a1c"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Hemoglobin A1c</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="5.4"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-a1c-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">%</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="creatinine"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Creatinine</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.1"
-                            placeholder="0.9"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-creatinine-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mg/dL</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Female range: ≤1.0 mg/dL</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="egfr"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">eGFR</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="90"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-egfr-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mL/min</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="ast"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">AST</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="25"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-ast-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">U/L</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Female range: &lt;32 U/L</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
-                  name="alt"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">ALT</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="1"
-                            placeholder="22"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-alt-female"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">U/L</span>
-                      </div>
-                      <p className="text-xs text-muted-foreground mt-1">Female range: &lt;32 U/L</p>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField control={form.control} name="hsCRP" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">hs-CRP (High-Sensitivity CRP)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="1.0" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-hscrp" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mg/L</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">&lt;1 low risk, 1-3 moderate, &gt;3 high risk</p>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>
         </Accordion>
 
-        <Button
-          type="submit"
-          className="w-full gap-2"
-          disabled={isLoading}
-          data-testid="button-interpret-labs-female"
-        >
+        <Button type="submit" className="w-full gap-2" disabled={isLoading} data-testid="button-interpret-labs-female">
           <Sparkles className="w-4 h-4" />
           {isLoading ? 'Interpreting Labs...' : 'Interpret Labs'}
         </Button>

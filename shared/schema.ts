@@ -125,6 +125,8 @@ export const femaleLabValuesSchema = z.object({
   hdl: z.number().optional(),
   totalCholesterol: z.number().optional(),
   triglycerides: z.number().optional(),
+  apoB: z.number().optional(), // Apolipoprotein B
+  lpa: z.number().optional(), // Lipoprotein(a)
   
   // Female Hormones
   estradiol: z.number().optional(),
@@ -149,7 +151,10 @@ export const femaleLabValuesSchema = z.object({
   vitaminD: z.number().optional(),
   ferritin: z.number().optional(),
   iron: z.number().optional(),
+  tibc: z.number().optional(), // Total Iron Binding Capacity
   vitaminB12: z.number().optional(),
+  folate: z.number().optional(),
+  hsCRP: z.number().optional(), // High-Sensitivity C-Reactive Protein
 });
 
 export type FemaleLabValues = z.infer<typeof femaleLabValuesSchema>;

@@ -1039,6 +1039,196 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
+    // Apo B
+    if (labs.apoB !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.apoB >= 130) {
+        status = 'abnormal';
+        interpretation = 'Elevated Apo B - increased cardiovascular risk.';
+        recommendation = 'Consider statin therapy. Intensive lifestyle modifications.';
+      } else if (labs.apoB >= 90 && labs.apoB < 130) {
+        status = 'borderline';
+        interpretation = 'Borderline elevated Apo B.';
+        recommendation = 'Lifestyle modifications. Consider pharmacotherapy if high ASCVD risk.';
+      } else {
+        status = 'normal';
+        interpretation = 'Apo B at optimal level.';
+        recommendation = 'Continue current lifestyle.';
+      }
+
+      interpretations.push({
+        category: 'Apolipoprotein B',
+        value: labs.apoB,
+        unit: 'mg/dL',
+        status,
+        referenceRange: '<90 mg/dL optimal',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Lp(a)
+    if (labs.lpa !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.lpa >= 125) {
+        status = 'abnormal';
+        interpretation = 'Significantly elevated Lp(a) - high cardiovascular risk.';
+        recommendation = 'Genetic cardiovascular risk factor. Consider aggressive LDL lowering.';
+      } else if (labs.lpa >= 75 && labs.lpa < 125) {
+        status = 'borderline';
+        interpretation = 'Moderately elevated Lp(a).';
+        recommendation = 'Lifestyle optimization. Lower other modifiable risk factors.';
+      } else {
+        status = 'normal';
+        interpretation = 'Lp(a) within acceptable range.';
+        recommendation = 'Routine monitoring.';
+      }
+
+      interpretations.push({
+        category: 'Lipoprotein(a)',
+        value: labs.lpa,
+        unit: 'nmol/L',
+        status,
+        referenceRange: '<75 nmol/L',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // TIBC
+    if (labs.tibc !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.tibc > 450) {
+        status = 'abnormal';
+        interpretation = 'Elevated TIBC - suggestive of iron deficiency.';
+        recommendation = 'Evaluate iron stores. Check ferritin, serum iron.';
+      } else if (labs.tibc < 250) {
+        status = 'borderline';
+        interpretation = 'Low TIBC - possible iron overload or chronic disease.';
+        recommendation = 'Evaluate for hemochromatosis or chronic inflammation.';
+      } else {
+        status = 'normal';
+        interpretation = 'TIBC within normal limits.';
+        recommendation = 'Routine monitoring.';
+      }
+
+      interpretations.push({
+        category: 'TIBC (Iron Binding Capacity)',
+        value: labs.tibc,
+        unit: 'ug/dL',
+        status,
+        referenceRange: '250-450 ug/dL',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Serum Iron
+    if (labs.iron !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.iron < 40) {
+        status = 'abnormal';
+        interpretation = 'Low serum iron - iron deficiency.';
+        recommendation = 'Iron supplementation. Evaluate for blood loss.';
+      } else if (labs.iron > 170) {
+        status = 'borderline';
+        interpretation = 'Elevated serum iron.';
+        recommendation = 'Evaluate for hemochromatosis. Check ferritin.';
+      } else {
+        status = 'normal';
+        interpretation = 'Serum iron within normal limits.';
+        recommendation = 'Routine monitoring.';
+      }
+
+      interpretations.push({
+        category: 'Serum Iron',
+        value: labs.iron,
+        unit: 'ug/dL',
+        status,
+        referenceRange: '40-170 ug/dL',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Folate
+    if (labs.folate !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.folate < 3) {
+        status = 'abnormal';
+        interpretation = 'Folate deficiency.';
+        recommendation = 'Folate supplementation. Critical if planning pregnancy.';
+      } else if (labs.folate < 5) {
+        status = 'borderline';
+        interpretation = 'Low-normal folate.';
+        recommendation = 'Consider supplementation, especially if planning pregnancy.';
+      } else {
+        status = 'normal';
+        interpretation = 'Folate within normal limits.';
+        recommendation = 'Continue folic acid if reproductive age.';
+      }
+
+      interpretations.push({
+        category: 'Folate',
+        value: labs.folate,
+        unit: 'ng/mL',
+        status,
+        referenceRange: '>5 ng/mL',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // hs-CRP
+    if (labs.hsCRP !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.hsCRP > 10) {
+        status = 'critical';
+        interpretation = 'Markedly elevated hs-CRP - acute inflammation.';
+        recommendation = 'Evaluate for infection or inflammatory condition.';
+      } else if (labs.hsCRP > 3) {
+        status = 'abnormal';
+        interpretation = 'Elevated hs-CRP - high cardiovascular risk.';
+        recommendation = 'Aggressive cardiovascular risk factor modification.';
+      } else if (labs.hsCRP >= 1 && labs.hsCRP <= 3) {
+        status = 'borderline';
+        interpretation = 'Moderate cardiovascular inflammation risk.';
+        recommendation = 'Lifestyle modifications. Consider repeat in 2-4 weeks.';
+      } else {
+        status = 'normal';
+        interpretation = 'Low cardiovascular inflammation risk.';
+        recommendation = 'Continue healthy lifestyle.';
+      }
+
+      interpretations.push({
+        category: 'hs-CRP',
+        value: labs.hsCRP,
+        unit: 'mg/L',
+        status,
+        referenceRange: '<1 low risk, 1-3 moderate, >3 high risk',
+        interpretation,
+        recommendation,
+      });
+    }
+
     return interpretations;
   }
 
