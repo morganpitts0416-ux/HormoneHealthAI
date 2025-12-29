@@ -293,4 +293,253 @@ If you have any questions about your results, please don't hesitate to contact o
 
 Thank you for trusting us with your care.`;
   }
+
+  /**
+   * Generate comprehensive patient wellness plan for patient PDF
+   * Includes personalized diet with meal examples, supplement protocols with dosing,
+   * and detailed lifestyle recommendations based on lab results
+   */
+  static async generatePatientWellnessPlan(
+    labs: FemaleLabValues,
+    interpretations: LabInterpretation[],
+    supplements: Array<{ name: string; dose: string; reason: string }>,
+    ascvdRisk?: ASCVDRiskResult | null
+  ): Promise<{
+    dietPlan: string;
+    supplementProtocol: string;
+    lifestyleRecommendations: string;
+    educationalContent: string;
+  }> {
+    const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
+    const borderlineFindings = interpretations.filter(i => i.status === 'borderline');
+
+    const buildFindingsList = (findings: LabInterpretation[]) => {
+      return findings.map(f => `${f.category}: ${f.value} ${f.unit} - ${f.interpretation}`).join('\n');
+    };
+
+    const supplementsList = supplements.map(s => `${s.name} (${s.dose}) - ${s.reason}`).join('\n');
+
+    const ascvdSection = ascvdRisk ? `
+CARDIOVASCULAR RISK:
+10-Year Risk: ${ascvdRisk.riskPercentage}
+Category: ${ascvdRisk.riskCategory}
+${ascvdRisk.ldlGoal ? `LDL Goal: ${ascvdRisk.ldlGoal}` : ''}` : '';
+
+    const prompt = `Create a comprehensive personalized wellness plan for a female patient based on her lab results.
+
+ABNORMAL FINDINGS:
+${abnormalFindings.length > 0 ? buildFindingsList(abnormalFindings) : 'None'}
+
+BORDERLINE FINDINGS:
+${borderlineFindings.length > 0 ? buildFindingsList(borderlineFindings) : 'None'}
+
+RECOMMENDED SUPPLEMENTS:
+${supplementsList || 'None specified'}
+${ascvdSection}
+
+KEY LAB VALUES:
+- Hemoglobin: ${labs.hemoglobin || 'not tested'} g/dL
+- Ferritin: ${labs.ferritin || 'not tested'} ng/mL
+- Vitamin D: ${labs.vitaminD || 'not tested'} ng/mL
+- Vitamin B12: ${labs.vitaminB12 || 'not tested'} pg/mL
+- TSH: ${labs.tsh || 'not tested'} mIU/L
+- LDL: ${labs.ldl || 'not tested'} mg/dL
+- HDL: ${labs.hdl || 'not tested'} mg/dL
+- Triglycerides: ${labs.triglycerides || 'not tested'} mg/dL
+- A1c: ${labs.a1c || 'not tested'}%
+- hs-CRP: ${labs.hsCRP || 'not tested'} mg/L
+- Estradiol: ${labs.estradiol || 'not tested'} pg/mL
+- Progesterone: ${labs.progesterone || 'not tested'} ng/mL
+
+Please generate FOUR separate sections. Each section should be thorough, educational, and actionable.
+
+SECTION 1 - PERSONALIZED NUTRITION PLAN (400-500 words):
+Based on the specific lab findings, create a detailed diet plan including:
+- Overall dietary approach (e.g., Mediterranean, anti-inflammatory, heart-healthy)
+- Specific foods to emphasize based on their lab needs
+- Foods to limit or avoid
+- Sample 3-day meal plan with specific meals:
+  * Day 1: Breakfast, Lunch, Dinner, Snacks
+  * Day 2: Breakfast, Lunch, Dinner, Snacks
+  * Day 3: Breakfast, Lunch, Dinner, Snacks
+- Include portion guidance where helpful
+- Address any deficiencies with food-first approach
+
+SECTION 2 - SUPPLEMENT PROTOCOL (300-400 words):
+Based on the recommended supplements and lab findings, provide:
+- Each supplement with exact dosing and timing
+- When to take each supplement (morning, with food, at bedtime, etc.)
+- Expected benefits and timeline for improvement
+- Any interactions to be aware of
+- Tips for optimal absorption
+- Format as a clear daily schedule
+
+SECTION 3 - LIFESTYLE RECOMMENDATIONS (300-400 words):
+Provide personalized lifestyle guidance including:
+- Exercise recommendations specific to their needs (type, frequency, duration)
+- Sleep optimization strategies
+- Stress management techniques
+- Hydration goals
+- Any specific activities to support their health concerns
+- Habits to build and habits to break
+
+SECTION 4 - EDUCATIONAL CONTENT (300-400 words):
+Help the patient understand their results:
+- What their key lab values mean in plain language
+- Why certain values are important for women's health
+- How the recommended changes will help improve their numbers
+- What to expect at their next lab check
+- Signs of improvement to watch for
+- When to contact the clinic
+
+IMPORTANT FORMATTING:
+- Use clear headers and bullet points
+- Write in warm, encouraging, patient-friendly language
+- Be specific with numbers, portions, and timing
+- Avoid medical jargon - explain everything clearly
+- Make it feel personalized to THEIR results
+- NO EMOJIS
+
+Respond with exactly four clearly labeled sections:
+[DIET PLAN]
+(content)
+
+[SUPPLEMENT PROTOCOL]
+(content)
+
+[LIFESTYLE RECOMMENDATIONS]
+(content)
+
+[EDUCATIONAL CONTENT]
+(content)`;
+
+    try {
+      console.log('[AI Service] Generating comprehensive patient wellness plan');
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a women's wellness expert creating personalized health plans. Write in a warm, encouraging, educational tone. Be specific with actionable recommendations. Focus on practical, achievable steps. Always connect recommendations back to their specific lab results.`
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_completion_tokens: 6000,
+      });
+
+      const content = response.choices[0]?.message?.content || '';
+      console.log('[AI Service] Wellness plan generated, length:', content.length);
+
+      // Parse the sections
+      const dietMatch = content.match(/\[DIET PLAN\]([\s\S]*?)(?=\[SUPPLEMENT PROTOCOL\]|$)/i);
+      const supplementMatch = content.match(/\[SUPPLEMENT PROTOCOL\]([\s\S]*?)(?=\[LIFESTYLE RECOMMENDATIONS\]|$)/i);
+      const lifestyleMatch = content.match(/\[LIFESTYLE RECOMMENDATIONS\]([\s\S]*?)(?=\[EDUCATIONAL CONTENT\]|$)/i);
+      const educationalMatch = content.match(/\[EDUCATIONAL CONTENT\]([\s\S]*?)$/i);
+
+      return {
+        dietPlan: dietMatch?.[1]?.trim() || this.getDefaultDietPlan(),
+        supplementProtocol: supplementMatch?.[1]?.trim() || this.getDefaultSupplementProtocol(supplements),
+        lifestyleRecommendations: lifestyleMatch?.[1]?.trim() || this.getDefaultLifestyleRecommendations(),
+        educationalContent: educationalMatch?.[1]?.trim() || this.getDefaultEducationalContent(),
+      };
+    } catch (error) {
+      console.error("Error generating patient wellness plan:", error);
+      return {
+        dietPlan: this.getDefaultDietPlan(),
+        supplementProtocol: this.getDefaultSupplementProtocol(supplements),
+        lifestyleRecommendations: this.getDefaultLifestyleRecommendations(),
+        educationalContent: this.getDefaultEducationalContent(),
+      };
+    }
+  }
+
+  private static getDefaultDietPlan(): string {
+    return `Your Personalized Nutrition Plan
+
+Based on your lab results, we recommend focusing on a balanced, nutrient-rich diet that supports your overall health and addresses any areas needing attention.
+
+Key Dietary Focus:
+- Emphasize whole, unprocessed foods
+- Include lean proteins at every meal
+- Choose colorful fruits and vegetables daily
+- Select whole grains over refined options
+- Include healthy fats from nuts, seeds, and olive oil
+
+Sample Meal Ideas:
+Breakfast: Greek yogurt with berries and a sprinkle of nuts, or eggs with spinach and whole grain toast
+Lunch: Large salad with grilled chicken, mixed greens, vegetables, and olive oil dressing
+Dinner: Baked salmon with roasted vegetables and quinoa
+Snacks: Apple with almond butter, hummus with vegetables, or a handful of mixed nuts
+
+Please discuss specific dietary modifications with your healthcare provider based on your individual needs.`;
+  }
+
+  private static getDefaultSupplementProtocol(supplements: Array<{ name: string; dose: string; reason: string }>): string {
+    if (supplements.length === 0) {
+      return `Supplement Recommendations
+
+Based on your lab results, your healthcare provider may recommend specific supplements at your follow-up visit. General wellness supplements to discuss include a high-quality multivitamin and vitamin D if levels are suboptimal.
+
+Always consult with your healthcare provider before starting any new supplements.`;
+    }
+
+    let protocol = `Your Supplement Protocol\n\n`;
+    supplements.forEach(s => {
+      protocol += `${s.name}\n`;
+      protocol += `  Dose: ${s.dose}\n`;
+      protocol += `  Why: ${s.reason}\n\n`;
+    });
+    protocol += `\nTake supplements as directed. If you experience any side effects, contact the clinic.`;
+    return protocol;
+  }
+
+  private static getDefaultLifestyleRecommendations(): string {
+    return `Lifestyle Recommendations for Optimal Health
+
+Exercise:
+- Aim for 150 minutes of moderate activity weekly (brisk walking, swimming, cycling)
+- Include strength training 2-3 times per week
+- Find activities you enjoy to stay consistent
+
+Sleep:
+- Target 7-8 hours of quality sleep nightly
+- Maintain consistent sleep and wake times
+- Create a relaxing bedtime routine
+
+Stress Management:
+- Practice deep breathing or meditation for 10 minutes daily
+- Take regular breaks during your workday
+- Connect with friends and family for emotional support
+
+Hydration:
+- Drink at least 8 glasses of water daily
+- Limit caffeine to 2-3 cups before noon
+- Reduce alcohol consumption
+
+These recommendations support your overall wellness and help optimize your lab values over time.`;
+  }
+
+  private static getDefaultEducationalContent(): string {
+    return `Understanding Your Results
+
+Your lab tests provide valuable insights into your overall health and help us create a personalized wellness plan just for you.
+
+Why These Tests Matter:
+Regular monitoring allows us to track your progress, identify areas for improvement, and ensure your treatment plan is working effectively.
+
+What to Expect:
+As you implement the dietary, supplement, and lifestyle changes recommended in this report, you may begin to notice improvements in your energy levels, mood, and overall well-being within 4-8 weeks. Lab values typically improve over 2-3 months with consistent effort.
+
+Your Next Steps:
+1. Review this wellness plan and start implementing changes gradually
+2. Schedule your follow-up lab work as recommended by your provider
+3. Contact the clinic if you have any questions or concerns
+
+We're Here for You:
+Our team is dedicated to supporting your health journey. Don't hesitate to reach out if you need guidance or have questions about your wellness plan.`;
+  }
 }

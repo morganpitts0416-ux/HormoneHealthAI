@@ -46,6 +46,7 @@ export default function FemaleLabInterpretation() {
           onBPMeds: false,
           diabetic: false,
           smoker: false,
+          familyHistory: false,
           snoring: false,
           tiredness: false,
           observedApnea: false,
