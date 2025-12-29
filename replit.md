@@ -36,6 +36,23 @@ The application features a comprehensive lab input form, a results display with 
 ## Recent Changes
 
 **December 29, 2025** (Latest)
+- **NEW: CAC and Statin Recommendation Engine**
+  - Coronary Artery Calcium (CAC) scoring recommendations based on ACC/AHA guidelines:
+    - Recommend CAC if: Age ≥40 + (LDL ≥70 OR ApoB ≥80 OR non-HDL ≥100) + statin hesitant
+    - Strongly recommend CAC if: Lp(a) ≥50 mg/dL (especially ≥180)
+    - Consider CAC for: Strong family history + risk enhancers, metabolic syndrome with mixed lipids
+    - Don't recommend CAC if: Age <40 (unless extreme FH + Lp(a)) or known ASCVD (treat aggressively)
+  - Statin discussion triggers with strength ratings (none/consider/generally_recommended/strongly_indicated):
+    - LDL ≥190 → strongly indicated
+    - Diabetes age 40-75 with LDL ≥70 → generally recommended
+    - CAC ≥100 → strongly indicated; CAC 1-99 → generally recommended
+    - CAC = 0 → supports deferring (but high Lp(a) still warrants follow-up)
+    - ApoB ≥90 with risk enhancers, non-HDL ≥160, Lp(a) ≥50 + elevated ApoB/non-HDL
+  - CAC interpretation statements for scores 0, 1-99, and ≥100
+  - Triglyceride management: TG 200-499 recommends lifestyle + rule out secondary causes; omega-3 discussion if on statin
+  - Lp(a) ≥180 warning: "Even if LDL looks okay, overall inherited risk is high"
+  - New form fields: CAC Score input, Known ASCVD checkbox, Hesitant About Statin checkbox
+
 - **NEW: Cardiovascular Risk Stratification Flags**
   - Boolean flags computed from lab values for clinical decision support:
     - high_Lp_a (≥50 mg/dL), very_high_Lp_a (≥180 mg/dL) - genetic CV risk marker
