@@ -324,6 +324,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const supplements = evaluateSupplements(labs);
       console.log('[API] Supplement recommendations:', supplements.length);
 
+      // Step 8: Compute cardiovascular risk stratification flags
+      const cvRiskFlags = FemaleClinicalLogicEngine.computeCardiovascularRiskFlags(labs);
+      console.log('[API] CV Risk Flags:', JSON.stringify(cvRiskFlags, null, 2));
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -333,6 +337,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recheckWindow,
         ascvdRisk,
         supplements,
+        cvRiskFlags,
       };
 
       console.log('[API] Female interpretation response summary:');
@@ -342,6 +347,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - Patient summary length:', patientSummary.length);
       console.log('  - Recheck window:', recheckWindow);
       console.log('  - Supplements:', supplements.length);
+      console.log('  - CV Risk Flags computed');
 
       res.json(result);
     } catch (error) {

@@ -22,6 +22,7 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
       onBPMeds: false,
       diabetic: false,
       smoker: false,
+      familyHistory: false,
       snoring: false,
       tiredness: false,
       observedApnea: false,
@@ -45,6 +46,7 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
         onBPMeds: false,
         diabetic: false,
         smoker: false,
+        familyHistory: false,
         snoring: false,
         tiredness: false,
         observedApnea: false,
@@ -182,6 +184,19 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                         <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-smoker-female" />
                       </FormControl>
                       <FormLabel className="text-xs font-medium uppercase">Current Smoker</FormLabel>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.familyHistory"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-family-history-female" />
+                      </FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Family Hx Premature ASCVD</FormLabel>
                     </FormItem>
                   )}
                 />

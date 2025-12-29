@@ -11,6 +11,7 @@ export const patientDemographicsSchema = z.object({
   onBPMeds: z.boolean().default(false),
   diabetic: z.boolean().default(false),
   smoker: z.boolean().default(false),
+  familyHistory: z.boolean().default(false), // Premature ASCVD in 1st degree relatives (<55 male, <65 female)
   
   // STOP-BANG Sleep Apnea Screening
   snoring: z.boolean().default(false),
@@ -198,6 +199,39 @@ export const supplementRecommendationSchema = z.object({
 
 export type SupplementRecommendation = z.infer<typeof supplementRecommendationSchema>;
 
+// Cardiovascular Risk Flags Schema - Boolean flags for risk stratification
+export const cardiovascularRiskFlagsSchema = z.object({
+  // Lipoprotein(a) - genetic risk marker
+  high_Lp_a: z.boolean().default(false), // Lp(a) ≥50 mg/dL (or ≥125 nmol/L)
+  very_high_Lp_a: z.boolean().default(false), // Lp(a) ≥180 mg/dL (extreme/genetic-equivalent)
+  
+  // Apolipoprotein B - atherogenic particle count
+  high_ApoB: z.boolean().default(false), // ApoB ≥90 mg/dL (risk enhancer)
+  very_high_ApoB: z.boolean().default(false), // ApoB ≥120 mg/dL
+  
+  // Lipid abnormalities
+  high_nonHDL: z.boolean().default(false), // non-HDL ≥130 mg/dL
+  very_high_nonHDL: z.boolean().default(false), // non-HDL ≥160 mg/dL
+  high_TG: z.boolean().default(false), // Triglycerides ≥150 mg/dL
+  very_high_TG: z.boolean().default(false), // Triglycerides ≥200 mg/dL (marked)
+  low_HDL: z.boolean().default(false), // HDL <50 female / <40 male
+  
+  // Inflammation
+  hsCRP_high: z.boolean().default(false), // hs-CRP ≥2.0 mg/L (risk enhancer)
+  
+  // Kidney function
+  CKD: z.boolean().default(false), // eGFR <60 mL/min
+  
+  // Family history
+  family_history: z.boolean().default(false), // Premature ASCVD in 1st degree relatives
+  
+  // Glycemic status
+  diabetes: z.boolean().default(false), // A1c ≥6.5%
+  prediabetes: z.boolean().default(false), // A1c 5.7-6.4%
+});
+
+export type CardiovascularRiskFlags = z.infer<typeof cardiovascularRiskFlagsSchema>;
+
 // Complete Interpretation Result
 export const interpretationResultSchema = z.object({
   redFlags: z.array(redFlagSchema),
@@ -207,6 +241,7 @@ export const interpretationResultSchema = z.object({
   recheckWindow: z.string(),
   ascvdRisk: ascvdRiskResultSchema.optional(),
   supplements: z.array(supplementRecommendationSchema).optional(),
+  cvRiskFlags: cardiovascularRiskFlagsSchema.optional(),
 });
 
 export type InterpretationResult = z.infer<typeof interpretationResultSchema>;

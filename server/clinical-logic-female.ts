@@ -1,5 +1,5 @@
 // Female Clinical Logic Engine - Women's Hormone Clinic Standing Orders
-import type { FemaleLabValues, RedFlag, LabInterpretation } from "@shared/schema";
+import type { FemaleLabValues, RedFlag, LabInterpretation, CardiovascularRiskFlags } from "@shared/schema";
 
 const ULN = {
   AST: 32, // U/L - lower for women
@@ -1336,5 +1336,118 @@ export class FemaleClinicalLogicEngine {
     }
     
     return '3-6 months (routine follow-up)';
+  }
+
+  /**
+   * Compute cardiovascular risk stratification flags based on lab values
+   * These flags are used to identify risk enhancers for ASCVD and treatment decisions
+   */
+  static computeCardiovascularRiskFlags(labs: FemaleLabValues): CardiovascularRiskFlags {
+    const flags: CardiovascularRiskFlags = {
+      high_Lp_a: false,
+      very_high_Lp_a: false,
+      high_ApoB: false,
+      very_high_ApoB: false,
+      high_nonHDL: false,
+      very_high_nonHDL: false,
+      high_TG: false,
+      very_high_TG: false,
+      low_HDL: false,
+      hsCRP_high: false,
+      CKD: false,
+      family_history: false,
+      diabetes: false,
+      prediabetes: false,
+    };
+
+    // Lipoprotein(a) - Lp(a) thresholds
+    // ≥50 mg/dL (or ≥125 nmol/L) = high risk
+    // ≥180 mg/dL = very high / genetic-equivalent risk
+    if (labs.lpa !== undefined) {
+      if (labs.lpa >= 180) {
+        flags.high_Lp_a = true;
+        flags.very_high_Lp_a = true;
+      } else if (labs.lpa >= 50) {
+        flags.high_Lp_a = true;
+      }
+    }
+
+    // Apolipoprotein B thresholds
+    // ≥90 mg/dL = risk enhancer zone
+    // ≥120 mg/dL = very high (corresponds to LDL ~160+)
+    if (labs.apoB !== undefined) {
+      if (labs.apoB >= 120) {
+        flags.high_ApoB = true;
+        flags.very_high_ApoB = true;
+      } else if (labs.apoB >= 90) {
+        flags.high_ApoB = true;
+      }
+    }
+
+    // Non-HDL Cholesterol = Total Cholesterol - HDL
+    // ≥130 mg/dL = high
+    // ≥160 mg/dL = very high
+    if (labs.totalCholesterol !== undefined && labs.hdl !== undefined) {
+      const nonHDL = labs.totalCholesterol - labs.hdl;
+      if (nonHDL >= 160) {
+        flags.high_nonHDL = true;
+        flags.very_high_nonHDL = true;
+      } else if (nonHDL >= 130) {
+        flags.high_nonHDL = true;
+      }
+    }
+
+    // Triglycerides thresholds
+    // ≥150 mg/dL = high (borderline)
+    // ≥200 mg/dL = marked elevation
+    if (labs.triglycerides !== undefined) {
+      if (labs.triglycerides >= 200) {
+        flags.high_TG = true;
+        flags.very_high_TG = true;
+      } else if (labs.triglycerides >= 150) {
+        flags.high_TG = true;
+      }
+    }
+
+    // Low HDL - sex-specific
+    // Female: <50 mg/dL
+    // Male: <40 mg/dL
+    // For female labs page, we use female threshold
+    if (labs.hdl !== undefined && labs.hdl < 50) {
+      flags.low_HDL = true;
+    }
+
+    // hs-CRP ≥2.0 mg/L = cardiovascular risk enhancer
+    if (labs.hsCRP !== undefined && labs.hsCRP >= 2.0) {
+      flags.hsCRP_high = true;
+    }
+
+    // CKD: eGFR <60 mL/min (Stage 3+)
+    if (labs.egfr !== undefined && labs.egfr < 60) {
+      flags.CKD = true;
+    }
+
+    // Family history from demographics
+    if (labs.demographics?.familyHistory === true) {
+      flags.family_history = true;
+    }
+
+    // Glycemic status from A1c
+    // ≥6.5% = diabetes
+    // 5.7-6.4% = prediabetes
+    if (labs.a1c !== undefined) {
+      if (labs.a1c >= 6.5) {
+        flags.diabetes = true;
+      } else if (labs.a1c >= 5.7) {
+        flags.prediabetes = true;
+      }
+    }
+
+    // Also check demographics.diabetic checkbox
+    if (labs.demographics?.diabetic === true) {
+      flags.diabetes = true;
+    }
+
+    return flags;
   }
 }

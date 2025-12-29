@@ -36,6 +36,26 @@ The application features a comprehensive lab input form, a results display with 
 ## Recent Changes
 
 **December 29, 2025** (Latest)
+- **NEW: Cardiovascular Risk Stratification Flags**
+  - Boolean flags computed from lab values for clinical decision support:
+    - high_Lp_a (≥50 mg/dL), very_high_Lp_a (≥180 mg/dL) - genetic CV risk marker
+    - high_ApoB (≥90 mg/dL), very_high_ApoB (≥120 mg/dL) - atherogenic particle count
+    - high_nonHDL (≥130 mg/dL), very_high_nonHDL (≥160 mg/dL) - calculated from TC-HDL
+    - high_TG (≥150 mg/dL), very_high_TG (≥200 mg/dL) - triglyceride thresholds
+    - low_HDL (<50 female, <40 male) - cardioprotective marker
+    - hsCRP_high (≥2.0 mg/L) - inflammation risk enhancer
+    - CKD (eGFR <60) - chronic kidney disease
+    - family_history - premature ASCVD in 1st degree relatives (<55 male, <65 female)
+    - diabetes (A1c ≥6.5%), prediabetes (A1c 5.7-6.4%)
+  - Flags returned in cvRiskFlags field of interpretation results
+  - Family History checkbox added to demographics section of form
+
+- **ENHANCED: PDF Extraction for Female Labs**
+  - Added 30+ lab value mappings including vitamins, iron studies, female hormones, thyroid panel
+  - Vitamin B12, Folate, Vitamin D, Iron, TIBC, Ferritin, Iron Saturation
+  - Progesterone, FSH, AMH, DHEA-S, Free T4, Free T3, TPO Antibodies
+  - hs-CRP, Apolipoprotein B, Lipoprotein(a), Magnesium
+
 - **NEW: Women's Lab Interpretation Page**
   - Added `/female` route for women's hormone clinic lab interpretation
   - Complete separation from men's workflow - no cross-contamination of settings or data
