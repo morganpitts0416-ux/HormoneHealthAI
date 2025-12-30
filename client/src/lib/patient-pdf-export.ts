@@ -791,78 +791,109 @@ export async function generatePatientWellnessPDF(
   addHeader();
   yPosition = 45;
 
-  // Parse lifestyle recommendations into categorized format
-  const parseLifestyle = (text: string): string[][] => {
+  // Parse lifestyle recommendations into four categories
+  const parseLifestyle = (text: string): { activity: string; sleep: string; stress: string; hydration: string } => {
     const lines = text.split('\n').filter(l => l.trim());
-    const rows: string[][] = [];
-    let currentCategory = 'General';
-    
-    const categoryPatterns = [
-      { pattern: /sleep|rest|bedtime/i, category: 'Sleep' },
-      { pattern: /stress|relax|mindful|meditat/i, category: 'Stress Management' },
-      { pattern: /exercise|movement|activity|walk|workout/i, category: 'Physical Activity' },
-      { pattern: /hydrat|water|drink/i, category: 'Hydration' },
-      { pattern: /social|connect|relation/i, category: 'Social Wellness' },
-    ];
+    let activity = '';
+    let sleep = '';
+    let stress = '';
+    let hydration = '';
+    let currentCategory = '';
     
     for (const line of lines) {
       const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
-      if (trimmed.length < 10) continue;
+      const lowerLine = trimmed.toLowerCase();
       
-      for (const { pattern, category } of categoryPatterns) {
-        if (pattern.test(trimmed)) {
-          currentCategory = category;
-          break;
-        }
+      // Detect category headers
+      if (lowerLine.match(/^(physical activity|exercise|movement|workout)/)) {
+        currentCategory = 'activity';
+        continue;
+      } else if (lowerLine.match(/^(sleep|rest|bedtime)/)) {
+        currentCategory = 'sleep';
+        continue;
+      } else if (lowerLine.match(/^(stress|relax|mindful|mental)/)) {
+        currentCategory = 'stress';
+        continue;
+      } else if (lowerLine.match(/^(hydrat|water|fluid)/)) {
+        currentCategory = 'hydration';
+        continue;
       }
       
-      if (trimmed.length > 15) {
-        rows.push([currentCategory, trimmed]);
+      // Categorize by content if no explicit header
+      if (trimmed.length > 10) {
+        if (currentCategory === 'activity' || (!currentCategory && lowerLine.match(/exercise|walk|gym|cardio|strength|yoga|stretch|active|steps/))) {
+          activity += (activity ? ' ' : '') + trimmed;
+          currentCategory = 'activity';
+        } else if (currentCategory === 'sleep' || (!currentCategory && lowerLine.match(/sleep|bed|rest|hour|night|wake|melatonin/))) {
+          sleep += (sleep ? ' ' : '') + trimmed;
+          currentCategory = 'sleep';
+        } else if (currentCategory === 'stress' || (!currentCategory && lowerLine.match(/stress|relax|meditat|breath|mindful|calm|anxiety/))) {
+          stress += (stress ? ' ' : '') + trimmed;
+          currentCategory = 'stress';
+        } else if (currentCategory === 'hydration' || (!currentCategory && lowerLine.match(/water|hydrat|drink|fluid|oz|liter/))) {
+          hydration += (hydration ? ' ' : '') + trimmed;
+          currentCategory = 'hydration';
+        }
       }
     }
     
-    if (rows.length < 3) {
-      const simpleLines = text.split(/[.\n]/).filter(l => l.trim().length > 15).slice(0, 8);
-      return simpleLines.map(l => ['Recommendation', sanitizeForPdf(l.trim())]);
+    // Provide defaults based on general wellness guidelines
+    if (!activity) {
+      activity = 'Aim for 150 minutes of moderate activity weekly. Include a mix of cardio (walking, swimming) and strength training 2-3x per week. Start with 10-minute walks and gradually increase.';
     }
-    return rows.slice(0, 12).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1])]);
+    if (!sleep) {
+      sleep = 'Target 7-9 hours nightly. Create a consistent bedtime routine. Avoid screens 1 hour before bed. Keep bedroom cool (65-68F) and dark.';
+    }
+    if (!stress) {
+      stress = 'Practice 5-10 minutes of deep breathing or meditation daily. Take short breaks throughout the day. Consider journaling or gentle yoga for relaxation.';
+    }
+    if (!hydration) {
+      hydration = 'Drink at least 64 oz (8 cups) of water daily. Increase intake with exercise or hot weather. Limit caffeine and alcohol which can dehydrate.';
+    }
+    
+    return {
+      activity: sanitizeForPdf(activity),
+      sleep: sanitizeForPdf(sleep),
+      stress: sanitizeForPdf(stress),
+      hydration: sanitizeForPdf(hydration)
+    };
   };
 
   yPosition = addSectionHeader('LIFESTYLE RECOMMENDATIONS', yPosition);
   
-  const lifestyleData = parseLifestyle(wellnessPlan.lifestyleRecommendations);
-  if (lifestyleData.length > 0) {
-    autoTable(doc, {
-      startY: yPosition,
-      head: [['Focus Area', 'Recommendation']],
-      body: lifestyleData,
-      theme: 'striped',
-      headStyles: {
-        fillColor: brandColor,
-        fontSize: 9,
-        fontStyle: 'bold',
-        textColor: [255, 255, 255],
-      },
-      bodyStyles: {
-        fontSize: 8,
-        textColor: textColor,
-      },
-      columnStyles: {
-        0: { cellWidth: 35, fontStyle: 'bold' },
-        1: { cellWidth: contentWidth - 35 },
-      },
-      styles: {
-        overflow: 'linebreak',
-        cellPadding: 3,
-      },
-      alternateRowStyles: {
-        fillColor: lightBg,
-      },
-    });
-    yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
-  } else {
-    yPosition = addTextSection(wellnessPlan.lifestyleRecommendations, yPosition, contentWidth);
-  }
+  const lifestyle = parseLifestyle(wellnessPlan.lifestyleRecommendations);
+  
+  // Create horizontal layout with four columns
+  autoTable(doc, {
+    startY: yPosition,
+    head: [['Physical Activity', 'Sleep', 'Stress Management', 'Hydration']],
+    body: [[lifestyle.activity, lifestyle.sleep, lifestyle.stress, lifestyle.hydration]],
+    theme: 'grid',
+    headStyles: {
+      fillColor: brandColor,
+      fontSize: 9,
+      fontStyle: 'bold',
+      textColor: [255, 255, 255],
+      halign: 'center',
+    },
+    bodyStyles: {
+      fontSize: 8,
+      textColor: textColor,
+      valign: 'top',
+    },
+    columnStyles: {
+      0: { cellWidth: contentWidth / 4 },
+      1: { cellWidth: contentWidth / 4 },
+      2: { cellWidth: contentWidth / 4 },
+      3: { cellWidth: contentWidth / 4 },
+    },
+    styles: {
+      overflow: 'linebreak',
+      cellPadding: 4,
+      minCellHeight: 40,
+    },
+  });
+  yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
   yPosition += 10;
 
   yPosition = addSectionHeader('UNDERSTANDING YOUR RESULTS', yPosition);
