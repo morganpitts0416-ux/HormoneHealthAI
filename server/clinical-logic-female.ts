@@ -1510,60 +1510,145 @@ export class FemaleClinicalLogicEngine {
     }
 
     // ============================================================
-    // COMBINED HORMONE PATTERN EVALUATION
+    // COMBINED HORMONE PATTERN EVALUATION (Women 35+)
     // These patterns identify clinically significant hormone imbalances
     // that may not be apparent from individual lab values alone
+    // Only applied to patients age 35 and older
     // ============================================================
-
-    // Pattern 1: Estrogen Spike + Progesterone Mismatch
-    // E2 ≥ 250 pg/mL AND P4 < 3 ng/mL
-    // Associated symptoms: insomnia/3am waking, anxiety, breast tenderness, migraines, heavy/short cycles
-    if (labs.estradiol !== undefined && labs.progesterone !== undefined) {
-      if (labs.estradiol >= 250 && labs.progesterone < 3) {
-        interpretations.push({
-          category: 'Hormone Pattern: Estrogen Dominance',
-          value: labs.estradiol,
-          unit: 'pg/mL E2 / ng/mL P4',
-          status: 'abnormal',
-          referenceRange: 'E2:P4 ratio should be balanced',
-          interpretation: `Estrogen spike (${labs.estradiol} pg/mL) with low progesterone (${labs.progesterone} ng/mL) detected. This pattern indicates estrogen dominance/unopposed estrogen. Associated symptoms include: insomnia or 3am waking, anxiety, breast tenderness, migraines, and heavy or short menstrual cycles.`,
-          recommendation: `PROVIDER RECOMMENDATION: If insomnia/anxiety prominent, consider micronized progesterone at bedtime. Continuous dosing: 100 mg nightly. If vasomotor symptoms (VMS) also present, consider low-dose transdermal estradiol patch + progesterone (if uterus intact). PATIENT EDUCATION: This hormone imbalance may cause sleep disruption, mood changes, and menstrual irregularities. Progesterone supplementation can help restore balance and improve symptoms.`,
-        });
+    
+    const patientAge = labs.demographics?.age;
+    const isAge35Plus = patientAge !== undefined && patientAge >= 35;
+    
+    if (isAge35Plus) {
+      // Pattern 1: Estrogen Dominance (Estrogen Spike + Progesterone Mismatch)
+      // E2 ≥ 250 pg/mL AND P4 < 3 ng/mL
+      // Associated symptoms: insomnia/3am waking, anxiety, breast tenderness, migraines, heavy/short cycles
+      if (labs.estradiol !== undefined && labs.progesterone !== undefined) {
+        if (labs.estradiol >= 250 && labs.progesterone < 3) {
+          interpretations.push({
+            category: 'Hormone Pattern: Estrogen Dominance',
+            value: labs.estradiol,
+            unit: 'pg/mL E2 / ng/mL P4',
+            status: 'abnormal',
+            referenceRange: 'E2:P4 ratio should be balanced',
+            interpretation: `Estrogen spike (${labs.estradiol} pg/mL) with low progesterone (${labs.progesterone} ng/mL) detected. This pattern indicates estrogen dominance/unopposed estrogen. Associated symptoms include: insomnia or 3am waking, anxiety, breast tenderness, migraines, and heavy or short menstrual cycles.`,
+            recommendation: `PROVIDER RECOMMENDATION: If insomnia/anxiety prominent, consider micronized progesterone at bedtime. Continuous dosing: 100 mg nightly. If vasomotor symptoms (VMS) also present, consider low-dose transdermal estradiol patch + progesterone (if uterus intact). PATIENT EDUCATION: This hormone imbalance may cause sleep disruption, mood changes, and menstrual irregularities. Progesterone supplementation can help restore balance and improve symptoms.`,
+          });
+        }
       }
-    }
 
-    // Pattern 2: Low Progesterone - Anovulatory/Follicular Timing + Sleep Disruption
-    // P4 < 1.0 ng/mL with symptoms of sleep fragmentation/anxiety/PMS
-    // Timing may be follicular or anovulatory cycle
-    if (labs.progesterone !== undefined && labs.progesterone < 1.0) {
-      const currentPhase = labs.menstrualPhase || 'unknown';
-      // Only flag if not in expected low-progesterone phase (follicular is expected low)
-      // But still provide guidance if symptoms present
-      if (currentPhase === 'luteal' || currentPhase === 'postmenopausal') {
-        // Definitely abnormal - should have higher progesterone in luteal phase or on HRT
-        interpretations.push({
-          category: 'Hormone Pattern: Low Progesterone',
-          value: labs.progesterone,
-          unit: 'ng/mL',
-          status: 'abnormal',
-          referenceRange: '>1 ng/mL expected outside follicular phase',
-          interpretation: `Very low progesterone (${labs.progesterone} ng/mL) detected in ${currentPhase} phase. Progesterone effect likely minimal - may indicate anovulatory cycle. This pattern is associated with sleep fragmentation, anxiety, and PMS symptoms.`,
-          recommendation: `PROVIDER RECOMMENDATION: If symptoms match (sleep disruption, anxiety, PMS) and no contraindications, consider progesterone-first trial: Micronized progesterone 100 mg nightly at bedtime. PATIENT EDUCATION: Progesterone has calming, sleep-promoting effects. Low levels can contribute to difficulty staying asleep, anxiety, and premenstrual symptoms. Supplementation may help restore restful sleep and reduce anxiety.`,
-        });
-      } else if (currentPhase === 'unknown') {
-        // Unknown phase - still note the finding for provider consideration
-        interpretations.push({
-          category: 'Hormone Pattern: Low Progesterone (Phase Unknown)',
-          value: labs.progesterone,
-          unit: 'ng/mL',
-          status: 'borderline',
-          referenceRange: 'Varies by cycle phase',
-          interpretation: `Progesterone is very low (${labs.progesterone} ng/mL). Without cycle phase documentation, this may reflect follicular timing (expected) or anovulatory cycle. If symptoms of sleep fragmentation, anxiety, or PMS are present, this finding is clinically relevant.`,
-          recommendation: `PROVIDER RECOMMENDATION: Document cycle phase for accurate interpretation. If patient reports sleep disruption, anxiety, or PMS symptoms, consider trial of micronized progesterone 100 mg nightly. PATIENT EDUCATION: Progesterone levels naturally vary throughout your cycle. If you're experiencing sleep problems or anxiety, discuss progesterone supplementation with your provider.`,
-        });
+      // Pattern 2: Low Progesterone - Anovulatory Pattern
+      // P4 < 1.0 ng/mL with symptoms of sleep fragmentation/anxiety/PMS
+      if (labs.progesterone !== undefined && labs.progesterone < 1.0) {
+        const currentPhase = labs.menstrualPhase || 'unknown';
+        if (currentPhase === 'luteal' || currentPhase === 'postmenopausal') {
+          interpretations.push({
+            category: 'Hormone Pattern: Low Progesterone',
+            value: labs.progesterone,
+            unit: 'ng/mL',
+            status: 'abnormal',
+            referenceRange: '>1 ng/mL expected outside follicular phase',
+            interpretation: `Very low progesterone (${labs.progesterone} ng/mL) detected in ${currentPhase} phase. Progesterone effect likely minimal - may indicate anovulatory cycle. This pattern is associated with sleep fragmentation, anxiety, and PMS symptoms.`,
+            recommendation: `PROVIDER RECOMMENDATION: If symptoms match (sleep disruption, anxiety, PMS) and no contraindications, consider progesterone-first trial: Micronized progesterone 100 mg nightly at bedtime. PATIENT EDUCATION: Progesterone has calming, sleep-promoting effects. Low levels can contribute to difficulty staying asleep, anxiety, and premenstrual symptoms. Supplementation may help restore restful sleep and reduce anxiety.`,
+          });
+        } else if (currentPhase === 'unknown') {
+          interpretations.push({
+            category: 'Hormone Pattern: Low Progesterone (Phase Unknown)',
+            value: labs.progesterone,
+            unit: 'ng/mL',
+            status: 'borderline',
+            referenceRange: 'Varies by cycle phase',
+            interpretation: `Progesterone is very low (${labs.progesterone} ng/mL). Without cycle phase documentation, this may reflect follicular timing (expected) or anovulatory cycle. If symptoms of sleep fragmentation, anxiety, or PMS are present, this finding is clinically relevant.`,
+            recommendation: `PROVIDER RECOMMENDATION: Document cycle phase for accurate interpretation. If patient reports sleep disruption, anxiety, or PMS symptoms, consider trial of micronized progesterone 100 mg nightly. PATIENT EDUCATION: Progesterone levels naturally vary throughout your cycle. If you're experiencing sleep problems or anxiety, discuss progesterone supplementation with your provider.`,
+          });
+        }
       }
-      // Note: follicular and ovulatory phases with low P4 are expected, so no flag needed
-    }
+
+      // Pattern 3: Hypoestrogen Symptom Pattern
+      // E2 < 30 pg/mL (postmenopausal range) AND ≥1 symptom: hot flashes, night sweats, vaginal dryness, frequent UTIs, joint aches, sleep disruption
+      if (labs.estradiol !== undefined && labs.estradiol < 30) {
+        const hasHypoEstrogenSymptoms = 
+          labs.hotFlashes === true || 
+          labs.nightSweats === true || 
+          labs.vaginalDryness === true || 
+          labs.frequentUTIs === true || 
+          labs.jointAches === true || 
+          labs.sleepDisruption === true;
+        
+        if (hasHypoEstrogenSymptoms) {
+          const symptomsPresent: string[] = [];
+          if (labs.hotFlashes) symptomsPresent.push('hot flashes');
+          if (labs.nightSweats) symptomsPresent.push('night sweats');
+          if (labs.vaginalDryness) symptomsPresent.push('vaginal dryness');
+          if (labs.frequentUTIs) symptomsPresent.push('frequent UTIs');
+          if (labs.jointAches) symptomsPresent.push('joint aches');
+          if (labs.sleepDisruption) symptomsPresent.push('sleep disruption');
+          
+          interpretations.push({
+            category: 'Hormone Pattern: Hypoestrogen State',
+            value: labs.estradiol,
+            unit: 'pg/mL',
+            status: 'abnormal',
+            referenceRange: 'Provider target: 60-100 pg/mL (>40 minimum)',
+            interpretation: `Low estradiol (${labs.estradiol} pg/mL) with symptomatic presentation: ${symptomsPresent.join(', ')}. This pattern is consistent with a low estrogen state, especially in late perimenopause or postmenopause.`,
+            recommendation: `PROVIDER RECOMMENDATION: Consider transdermal estradiol initiation (product dependent). Add micronized progesterone 100 mg nightly if patient has uterus. Monitor symptoms and estradiol levels. PATIENT EDUCATION: Low estrogen can cause the symptoms you're experiencing. Hormone replacement therapy (HRT) with estradiol can help relieve these symptoms and protect bone and cardiovascular health.`,
+          });
+        }
+      }
+
+      // Pattern 4: Vasomotor Symptoms with Any Estradiol Level
+      // Patient reports moderate–severe VMS (hot flashes/night sweats) AND E2 anywhere (including "normal/high")
+      // In perimenopause, E2 can be spiky; symptoms can still reflect hormonal instability
+      const hasVasomotorSymptoms = labs.hotFlashes === true || labs.nightSweats === true;
+      if (hasVasomotorSymptoms && labs.estradiol !== undefined) {
+        // Only flag if E2 is not already low (Pattern 3 would catch that)
+        if (labs.estradiol >= 30) {
+          const vmsSymptoms: string[] = [];
+          if (labs.hotFlashes) vmsSymptoms.push('hot flashes');
+          if (labs.nightSweats) vmsSymptoms.push('night sweats');
+          
+          interpretations.push({
+            category: 'Hormone Pattern: Vasomotor Symptoms with Fluctuating Estrogen',
+            value: labs.estradiol,
+            unit: 'pg/mL',
+            status: 'borderline',
+            referenceRange: 'Symptoms indicate hormonal instability despite E2 level',
+            interpretation: `Vasomotor symptoms (${vmsSymptoms.join(', ')}) present despite estradiol level of ${labs.estradiol} pg/mL. In perimenopause, estrogen can be spiky and fluctuating, causing vasomotor symptoms even when levels appear normal or high at time of draw.`,
+            recommendation: `PROVIDER RECOMMENDATION: Consider steady delivery: transdermal estradiol patch starting at 0.0375 mg/day (common starting dose for twice-weekly systems). Add micronized progesterone 100 mg nightly if patient has uterus. Goal is symptom control through stable hormone delivery. PATIENT EDUCATION: Your hot flashes and night sweats may be caused by fluctuating hormone levels rather than consistently low estrogen. A steady-release estrogen patch can help stabilize your levels and reduce symptoms.`,
+          });
+        }
+      }
+
+      // Pattern 5: High SHBG → Low Free Hormone Availability
+      // SHBG ≥ 120 nmol/L AND symptoms (low libido, low energy, low motivation) AND/OR free T below normal
+      if (labs.shbg !== undefined && labs.shbg >= 120) {
+        const hasLowHormoneSymptoms = 
+          labs.lowLibido === true || 
+          labs.lowEnergy === true || 
+          labs.lowMotivation === true;
+        
+        // Check if free testosterone is low (typical female lower limit ~0.3 pg/mL or varies by lab)
+        const hasLowFreeT = labs.freeTestosterone !== undefined && labs.freeTestosterone < 1.0;
+        
+        if (hasLowHormoneSymptoms || hasLowFreeT) {
+          const symptomsPresent: string[] = [];
+          if (labs.lowLibido) symptomsPresent.push('low libido');
+          if (labs.lowEnergy) symptomsPresent.push('low energy');
+          if (labs.lowMotivation) symptomsPresent.push('low motivation');
+          if (hasLowFreeT) symptomsPresent.push(`low free testosterone (${labs.freeTestosterone} pg/mL)`);
+          
+          interpretations.push({
+            category: 'Hormone Pattern: High SHBG / Low Bioavailable Hormones',
+            value: labs.shbg,
+            unit: 'nmol/L',
+            status: 'abnormal',
+            referenceRange: 'SHBG <120 nmol/L preferred for optimal bioavailability',
+            interpretation: `Elevated SHBG (${labs.shbg} nmol/L) with symptoms of low bioavailable hormones: ${symptomsPresent.join(', ')}. High SHBG can reduce bioavailable testosterone even when total testosterone looks "fine." This pattern often presents with symptoms of androgen insufficiency.`,
+            recommendation: `PROVIDER RECOMMENDATION: Check for drivers of elevated SHBG: oral contraceptive pill (OCP) use, thyroid medication dosing (thyroid hormone increases SHBG), and estrogen route/dose (oral estrogen raises SHBG more than transdermal). If considering testosterone therapy, emphasize evidence-based indication is HSDD (Hypoactive Sexual Desire Disorder). Monitor levels and side effects carefully. PATIENT EDUCATION: A protein in your blood (SHBG) is binding up your hormones, making less available for your body to use. This can cause low energy, low libido, and other symptoms. Identifying the cause and potentially adjusting your current medications may help.`,
+          });
+        }
+      }
+    } // End of age 35+ hormone patterns
 
     return interpretations;
   }

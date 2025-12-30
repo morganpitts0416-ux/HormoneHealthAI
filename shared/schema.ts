@@ -161,6 +161,17 @@ export const femaleLabValuesSchema = z.object({
   vitaminB12: z.number().optional(),
   folate: z.number().optional(),
   hsCRP: z.number().optional(), // High-Sensitivity C-Reactive Protein
+  
+  // Symptom Assessment (for hormone pattern detection in women 35+)
+  hotFlashes: z.boolean().optional(),
+  nightSweats: z.boolean().optional(),
+  vaginalDryness: z.boolean().optional(),
+  frequentUTIs: z.boolean().optional(),
+  jointAches: z.boolean().optional(),
+  sleepDisruption: z.boolean().optional(),
+  lowLibido: z.boolean().optional(),
+  lowEnergy: z.boolean().optional(),
+  lowMotivation: z.boolean().optional(),
 });
 
 export type FemaleLabValues = z.infer<typeof femaleLabValuesSchema>;
