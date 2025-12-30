@@ -706,12 +706,27 @@ export async function generatePatientWellnessPDF(
   };
 
   // Parse and format supplement protocol into table with descriptions
-  const parseSupplements = (text: string): string[][] => {
+  // Returns { supplements: string[][], redFlags: string[] }
+  const parseSupplements = (text: string, patientAge?: number): { supplements: string[][]; redFlags: string[] } => {
     const lines = text.split('\n').filter(l => l.trim());
     const rows: string[][] = [];
+    const redFlags: string[] = [];
     
     for (const line of lines) {
       const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
+      const lowerLine = trimmed.toLowerCase();
+      
+      // Detect red flags / warnings / important notes - extract them separately
+      if (lowerLine.includes('red flag') || lowerLine.includes('warning') || 
+          lowerLine.includes('caution') || lowerLine.includes('important:') ||
+          lowerLine.includes('alert') || lowerLine.includes('critical') ||
+          lowerLine.includes('physician') || lowerLine.includes('provider review') ||
+          lowerLine.includes('monitor') || lowerLine.includes('consult')) {
+        if (trimmed.length > 15) {
+          redFlags.push(trimmed);
+        }
+        continue;
+      }
       
       // Look for patterns like "Vitamin D: 2000 IU daily" or "Vitamin D 2000 IU - take with food"
       const match = trimmed.match(/^([A-Za-z0-9\s\-\(\)®]+?)[\s:]+(\d+[\w\s\/\-\.]+?)[\s,\-]+(.*)/i) ||
@@ -753,14 +768,30 @@ export async function generatePatientWellnessPDF(
       }
     }
     
+    // Add Omegagenics for patients over 35 if not already included
+    if (patientAge && patientAge > 35) {
+      const hasOmega = rows.some(r => r[0].toLowerCase().includes('omega') || r[0].toLowerCase().includes('fish oil'));
+      if (!hasOmega) {
+        rows.push([
+          'Omegagenics EPA-DHA',
+          'High-quality omega-3 for cardiovascular health, joint comfort, cognitive function, and healthy aging. Recommended for patients over 35.',
+          '1-2 softgels daily with food'
+        ]);
+      }
+    }
+    
     if (rows.length < 2) {
       const simpleLines = text.split(/[.\n]/).filter(l => l.trim().length > 10).slice(0, 6);
-      return simpleLines.map(l => {
+      const supplements = simpleLines.map(l => {
         const name = sanitizeForPdf(l.trim().substring(0, 30));
         return [name, 'Supports overall health and wellness.', 'As directed'];
       });
+      return { supplements, redFlags };
     }
-    return rows.slice(0, 10).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1]), sanitizeForPdf(r[2])]);
+    return { 
+      supplements: rows.slice(0, 10).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1]), sanitizeForPdf(r[2])]),
+      redFlags 
+    };
   };
 
   // Start supplement section on new page only if not enough room
@@ -772,7 +803,8 @@ export async function generatePatientWellnessPDF(
 
   yPosition = addSectionHeader('YOUR SUPPLEMENT PROTOCOL', yPosition);
   
-  const supplementData = parseSupplements(wellnessPlan.supplementProtocol);
+  const patientAge = labValues.demographics?.age;
+  const { supplements: supplementData, redFlags } = parseSupplements(wellnessPlan.supplementProtocol, patientAge);
   if (supplementData.length > 0) {
     autoTable(doc, {
       startY: yPosition,
@@ -803,6 +835,27 @@ export async function generatePatientWellnessPDF(
       },
     });
     yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
+    
+    // Display red flags below the table with star markers
+    if (redFlags.length > 0) {
+      yPosition += 6;
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(180, 50, 50);
+      for (const flag of redFlags) {
+        if (yPosition > pageHeight - 30) {
+          doc.addPage();
+          addHeader();
+          yPosition = 45;
+        }
+        const flagText = `* ${sanitizeForPdf(flag)}`;
+        const lines = doc.splitTextToSize(flagText, contentWidth);
+        doc.text(lines, margin, yPosition);
+        yPosition += lines.length * 4 + 2;
+      }
+      doc.setTextColor(...textColor);
+      doc.setFont('helvetica', 'normal');
+    }
   } else {
     yPosition = addTextSection(wellnessPlan.supplementProtocol, yPosition, contentWidth);
   }
