@@ -880,11 +880,14 @@ export async function generatePatientWellnessPDF(
       fontStyle: 'bold',
       textColor: [255, 255, 255],
       halign: 'center',
+      cellPadding: 3,
+      minCellHeight: 8,
     },
     bodyStyles: {
       fontSize: 8,
       textColor: textColor,
       valign: 'top',
+      minCellHeight: 30,
     },
     columnStyles: {
       0: { cellWidth: contentWidth / 4 },
@@ -895,7 +898,6 @@ export async function generatePatientWellnessPDF(
     styles: {
       overflow: 'linebreak',
       cellPadding: 4,
-      minCellHeight: 40,
     },
   });
   yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
