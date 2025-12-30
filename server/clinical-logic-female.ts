@@ -177,8 +177,8 @@ export class FemaleClinicalLogicEngine {
       redFlags.push({
         category: "Vitamin D - Severe Deficiency",
         severity: 'warning',
-        message: `Vitamin D is ${labs.vitaminD} ng/mL (<10 threshold).`,
-        action: "High-dose vitamin D supplementation recommended. Screen for malabsorption.",
+        message: `Vitamin D is ${labs.vitaminD} ng/mL (<10 threshold). Goal is 60-80 ng/mL.`,
+        action: "Provider protocol: 10,000 IU D3+K daily OR weekly prescription of 50,000 IU D3. Screen for malabsorption.",
       });
     }
 
@@ -935,32 +935,36 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // Vitamin D
+    // Vitamin D - Provider protocol: Goal 60-80 ng/mL
     if (labs.vitaminD !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
 
-      if (labs.vitaminD < 10) {
-        status = 'critical';
-        interpretation = 'Severe vitamin D deficiency.';
-        recommendation = 'High-dose vitamin D (50,000 IU weekly). Screen for malabsorption.';
-      } else if (labs.vitaminD < 20) {
+      if (labs.vitaminD <= 30) {
         status = 'abnormal';
-        interpretation = 'Vitamin D deficiency.';
-        recommendation = 'Vitamin D3 supplementation 2,000-4,000 IU daily.';
-      } else if (labs.vitaminD < 30) {
+        interpretation = 'Vitamin D deficiency (≤30 ng/mL). Goal is 60-80 ng/mL.';
+        recommendation = 'Provider protocol: 10,000 IU D3+K daily OR weekly prescription of 50,000 IU D3. Recheck in 8-12 weeks.';
+      } else if (labs.vitaminD <= 40) {
         status = 'borderline';
-        interpretation = 'Vitamin D insufficiency.';
-        recommendation = 'Moderate supplementation (1,000-2,000 IU daily).';
-      } else if (labs.vitaminD >= 30 && labs.vitaminD <= 80) {
+        interpretation = 'Vitamin D insufficiency (≤40 ng/mL). Goal is 60-80 ng/mL.';
+        recommendation = 'Provider protocol: 5,000 IU D3+K daily. Recheck in 8-12 weeks.';
+      } else if (labs.vitaminD < 60) {
+        status = 'borderline';
+        interpretation = 'Vitamin D suboptimal. Goal is 60-80 ng/mL.';
+        recommendation = 'Consider 2,000-5,000 IU D3+K daily to reach optimal range of 60-80 ng/mL.';
+      } else if (labs.vitaminD >= 60 && labs.vitaminD <= 80) {
         status = 'normal';
-        interpretation = 'Optimal vitamin D level.';
-        recommendation = 'Maintain with 1,000 IU daily or sun exposure.';
+        interpretation = 'Optimal vitamin D level (60-80 ng/mL).';
+        recommendation = 'Maintain with 1,000-2,000 IU D3+K daily.';
+      } else if (labs.vitaminD > 80 && labs.vitaminD <= 100) {
+        status = 'borderline';
+        interpretation = 'Vitamin D above optimal range.';
+        recommendation = 'Reduce supplementation to maintenance dose. Goal is 60-80 ng/mL.';
       } else {
         status = 'abnormal';
-        interpretation = 'Elevated vitamin D - possible toxicity if >100.';
-        recommendation = 'Reduce supplementation. Monitor calcium levels.';
+        interpretation = 'Elevated vitamin D - possible toxicity risk if >100.';
+        recommendation = 'Hold supplementation. Monitor calcium levels. Recheck in 4-6 weeks.';
       }
 
       interpretations.push({
@@ -968,7 +972,7 @@ export class FemaleClinicalLogicEngine {
         value: labs.vitaminD,
         unit: 'ng/mL',
         status,
-        referenceRange: '30-80 ng/mL',
+        referenceRange: '60-80 ng/mL (optimal)',
         interpretation,
         recommendation,
       });
