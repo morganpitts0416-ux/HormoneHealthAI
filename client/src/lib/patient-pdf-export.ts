@@ -934,7 +934,54 @@ export async function generatePatientWellnessPDF(
     yPosition += 7;
   });
 
-  yPosition += 10;
+  yPosition += 12;
+
+  // Additional Recommendations section (for provider to write in)
+  doc.setTextColor(...brandColor);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Additional Recommendations:', margin, yPosition);
+  yPosition += 6;
+  
+  doc.setDrawColor(200, 200, 200);
+  doc.setLineWidth(0.3);
+  for (let i = 0; i < 4; i++) {
+    doc.line(margin, yPosition, margin + contentWidth, yPosition);
+    yPosition += 8;
+  }
+  
+  yPosition += 8;
+
+  // Follow-Up Plan section (for provider to write in)
+  doc.setTextColor(...brandColor);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Your Follow-Up Plan:', margin, yPosition);
+  yPosition += 6;
+  
+  // Create a structured follow-up box
+  doc.setFillColor(...lightBg);
+  doc.roundedRect(margin, yPosition, contentWidth, 50, 2, 2, 'F');
+  
+  doc.setTextColor(...textColor);
+  doc.setFontSize(8);
+  doc.setFont('helvetica', 'normal');
+  
+  const followUpLabels = [
+    { label: 'Next Appointment:', y: yPosition + 8 },
+    { label: 'Repeat Labs:', y: yPosition + 20 },
+    { label: 'Additional Testing:', y: yPosition + 32 },
+    { label: 'Notes:', y: yPosition + 44 },
+  ];
+  
+  followUpLabels.forEach(item => {
+    doc.setFont('helvetica', 'bold');
+    doc.text(item.label, margin + 4, item.y);
+    doc.setDrawColor(180, 180, 180);
+    doc.line(margin + 35, item.y, margin + contentWidth - 4, item.y);
+  });
+  
+  yPosition += 58;
 
   doc.setFillColor(...lightBg);
   doc.roundedRect(margin, yPosition, contentWidth, 30, 3, 3, 'F');
