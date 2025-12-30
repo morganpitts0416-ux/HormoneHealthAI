@@ -763,10 +763,12 @@ export async function generatePatientWellnessPDF(
     return rows.slice(0, 10).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1]), sanitizeForPdf(r[2])]);
   };
 
-  // Start supplement section on new page for clean layout
-  doc.addPage();
-  addHeader();
-  yPosition = 45;
+  // Start supplement section on new page only if not enough room
+  if (yPosition > pageHeight - 100) {
+    doc.addPage();
+    addHeader();
+    yPosition = 45;
+  }
 
   yPosition = addSectionHeader('YOUR SUPPLEMENT PROTOCOL', yPosition);
   
@@ -806,10 +808,12 @@ export async function generatePatientWellnessPDF(
   }
   yPosition += 10;
 
-  // Start lifestyle section on new page for clean layout
-  doc.addPage();
-  addHeader();
-  yPosition = 45;
+  // Start lifestyle section on new page only if not enough room
+  if (yPosition > pageHeight - 80) {
+    doc.addPage();
+    addHeader();
+    yPosition = 45;
+  }
 
   // Parse lifestyle recommendations into four categories
   const parseLifestyle = (text: string): { activity: string; sleep: string; stress: string; hydration: string } => {
