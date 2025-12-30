@@ -381,13 +381,19 @@ Based on the recommended supplements and lab findings, provide:
 - Format as a clear daily schedule
 
 SECTION 3 - LIFESTYLE RECOMMENDATIONS (300-400 words):
-Provide personalized lifestyle guidance including:
-- Exercise recommendations specific to their needs (type, frequency, duration)
-- Sleep optimization strategies
-- Stress management techniques
-- Hydration goals
-- Any specific activities to support their health concerns
-- Habits to build and habits to break
+Structure this section with FOUR specific categories. Personalize each recommendation based on the patient's age and lab findings:
+
+PHYSICAL ACTIVITY:
+Recommend specific exercise types, frequency, and duration appropriate for this patient. Consider their energy levels, any fatigue indicators, and cardiovascular health from labs.
+
+SLEEP:
+Provide sleep optimization strategies including hours needed, bedtime routine tips, and any supplements or habits that could help based on their specific situation.
+
+STRESS MANAGEMENT:
+Suggest stress reduction techniques appropriate for this patient. Include specific practices (meditation, breathing, journaling) with timing and frequency.
+
+HYDRATION:
+Give specific daily water intake goals in ounces. Adjust based on activity level and any relevant lab findings. Include tips for meeting hydration goals.
 
 SECTION 4 - EDUCATIONAL CONTENT (300-400 words):
 Help the patient understand their results:
