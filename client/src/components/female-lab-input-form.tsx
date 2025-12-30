@@ -8,7 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Sparkles, User, Heart, Droplet, Activity, TestTube, Beaker } from "lucide-react";
+import { Sparkles, User, Heart, Droplet, Activity, TestTube, Beaker, Thermometer } from "lucide-react";
 
 interface FemaleLabInputFormProps {
   onSubmit: (values: FemaleLabValues) => void;
@@ -32,6 +32,15 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
     },
     onHRT: false,
     onBirthControl: false,
+    hotFlashes: false,
+    nightSweats: false,
+    vaginalDryness: false,
+    frequentUTIs: false,
+    jointAches: false,
+    sleepDisruption: false,
+    lowLibido: false,
+    lowEnergy: false,
+    lowMotivation: false,
     ...initialValues,
   };
 
@@ -56,6 +65,15 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
       },
       onHRT: false,
       onBirthControl: false,
+      hotFlashes: false,
+      nightSweats: false,
+      vaginalDryness: false,
+      frequentUTIs: false,
+      jointAches: false,
+      sleepDisruption: false,
+      lowLibido: false,
+      lowEnergy: false,
+      lowMotivation: false,
       ...initialValues,
     };
     form.reset(mergedValues, { keepDirtyValues: true });
@@ -64,7 +82,7 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Accordion type="multiple" defaultValue={["demographics", "menstrual", "cbc", "cmp", "lipids", "thyroid", "hormones", "iron", "vitamins", "inflammation"]} className="space-y-4">
+        <Accordion type="multiple" defaultValue={["demographics", "menstrual", "symptoms", "cbc", "cmp", "lipids", "thyroid", "hormones", "iron", "vitamins", "inflammation"]} className="space-y-4">
           
           {/* Patient Demographics & ASCVD Risk Factors */}
           <AccordionItem value="demographics" className="border rounded-md px-4">
@@ -286,6 +304,75 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                   <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
                     <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-birth-control" /></FormControl>
                     <FormLabel className="text-xs font-medium uppercase">On Birth Control</FormLabel>
+                  </FormItem>
+                )} />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Symptom Assessment - For hormone pattern detection in women 35+ */}
+          <AccordionItem value="symptoms" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-symptoms-female">
+              <div className="flex items-center gap-2">
+                <Thermometer className="w-4 h-4 text-orange-500" />
+                <span className="font-semibold">Symptom Assessment (Women 35+)</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-2">
+              <p className="text-xs text-muted-foreground mb-4">Check any symptoms the patient is currently experiencing. These help identify hormone patterns for women 35 and older.</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField control={form.control} name="hotFlashes" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-hot-flashes" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Hot Flashes</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="nightSweats" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-night-sweats" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Night Sweats</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="sleepDisruption" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-sleep-disruption" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Sleep Disruption</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="vaginalDryness" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-vaginal-dryness" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Vaginal Dryness</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="frequentUTIs" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-frequent-utis" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Frequent UTIs</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="jointAches" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-joint-aches" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Joint Aches</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="lowLibido" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-low-libido" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Low Libido</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="lowEnergy" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-low-energy" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Low Energy</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="lowMotivation" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-low-motivation" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Low Motivation</FormLabel>
                   </FormItem>
                 )} />
               </div>
