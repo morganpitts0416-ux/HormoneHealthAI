@@ -651,7 +651,41 @@ export async function generatePatientWellnessPDF(
   yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
   yPosition += 10;
 
-  // Parse and format supplement protocol into table
+  // Metagenics supplement descriptions database
+  const supplementDescriptions: Record<string, string> = {
+    'magtein': 'Brain-focused magnesium (L-threonate) that crosses the blood-brain barrier to support sleep quality, relaxation, stress resilience, and cognitive function/brain fog.',
+    'magnesium l-threonate': 'Brain-focused magnesium that crosses the blood-brain barrier to support sleep quality, relaxation, stress resilience, and cognitive function/brain fog.',
+    'magnesium': 'Essential mineral supporting over 300 enzyme reactions including muscle function, nerve signaling, sleep quality, and stress response.',
+    'adreset': 'Daytime resilience adaptogen formula with Cordyceps, Panax ginseng, and Rhodiola to support energy, stamina, and stress tolerance.',
+    'exhilarin': 'Stress tolerance and cognitive support blend with holy basil, ashwagandha, amla, and bacopa for mood, brain fog, and sleep quality.',
+    'coq10': 'Mitochondrial energy and antioxidant support for cellular energy production, cardiovascular health, and fatigue/low stamina.',
+    'nutragems coq10': 'Mitochondrial energy and antioxidant support in chewable form for cardiovascular health, statin users, and migraine-prone patients.',
+    'omega-3': 'Essential fatty acids (EPA/DHA) for brain function, mood support, cardiovascular health, and reducing inflammation.',
+    'omegagenics': 'High DHA/EPA fish oil for brain function, cognition, mood support, and cardiovascular health.',
+    'fish oil': 'Essential omega-3 fatty acids supporting brain function, heart health, joint comfort, and healthy inflammatory response.',
+    'vitamin d3': 'Essential for bone health, immune function, mood regulation, and hormone balance. Works synergistically with vitamin K.',
+    'vitamin d3 10000': 'High-potency vitamin D repletion with vitamin K for bone and vascular health, used for documented deficiency under provider monitoring.',
+    'vitamin d': 'Supports bone health, immune function, mood, energy, and hormone balance. Most adults are deficient.',
+    'vitamin k2': 'Directs calcium to bones and away from arteries, supporting bone density and cardiovascular health.',
+    'vitamin b12': 'Essential for energy production, nerve function, red blood cell formation, and cognitive health.',
+    'methylcobalamin': 'Active form of B12 for optimal absorption, supporting energy, nerve function, and methylation.',
+    'folate': 'Essential B vitamin for cell division, DNA synthesis, mood support, and preventing neural tube defects.',
+    'methylfolate': 'Active form of folate for those with MTHFR variations, supporting mood, energy, and cellular health.',
+    'iron': 'Essential mineral for oxygen transport, energy production, and preventing fatigue from iron deficiency.',
+    'ferritin': 'Iron storage protein - supplementing iron helps replenish ferritin stores for sustained energy.',
+    'probiotic': 'Beneficial bacteria supporting gut health, immune function, nutrient absorption, and mood balance.',
+    'ultraflora': 'Targeted probiotic strains for digestive health, immune support, and maintaining healthy gut microbiome.',
+    'zinc': 'Essential mineral for immune function, wound healing, hormone production, and taste/smell.',
+    'selenium': 'Trace mineral supporting thyroid function, antioxidant defenses, and immune health.',
+    'ashwagandha': 'Adaptogenic herb supporting stress resilience, calm energy, thyroid function, and hormone balance.',
+    'rhodiola': 'Adaptogen supporting mental clarity, physical endurance, stress resilience, and fatigue reduction.',
+    'curcumin': 'Powerful anti-inflammatory from turmeric supporting joint comfort, brain health, and healthy aging.',
+    'berberine': 'Plant compound supporting healthy blood sugar, cholesterol metabolism, and metabolic health.',
+    'dhea': 'Precursor hormone supporting energy, mood, bone health, and overall hormone balance.',
+    'pregnenolone': 'Master precursor hormone supporting cognitive function, memory, mood, and hormone production.',
+  };
+
+  // Parse and format supplement protocol into table with descriptions
   const parseSupplements = (text: string): string[][] => {
     const lines = text.split('\n').filter(l => l.trim());
     const rows: string[][] = [];
@@ -660,27 +694,59 @@ export async function generatePatientWellnessPDF(
       const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
       
       // Look for patterns like "Vitamin D: 2000 IU daily" or "Vitamin D 2000 IU - take with food"
-      const match = trimmed.match(/^([A-Za-z0-9\s\-\(\)]+?)[\s:]+(\d+[\w\s\/\-]+?)[\s,\-]+(.*)/i) ||
-                   trimmed.match(/^([A-Za-z0-9\s\-\(\)]+?)[\s:]+(\d+.*?)(morning|evening|daily|with|before|after|$)/i);
+      const match = trimmed.match(/^([A-Za-z0-9\s\-\(\)®]+?)[\s:]+(\d+[\w\s\/\-\.]+?)[\s,\-]+(.*)/i) ||
+                   trimmed.match(/^([A-Za-z0-9\s\-\(\)®]+?)[\s:]+(\d+.*?)(morning|evening|daily|with|before|after|$)/i);
       
       if (match) {
-        const supplement = match[1].trim();
+        const supplementName = match[1].trim();
         const dose = match[2].trim();
-        const timing = match[3]?.trim() || 'As directed';
-        if (supplement.length > 2 && dose.length > 1) {
-          rows.push([supplement, dose, timing.length > 2 ? timing : 'Daily']);
+        const timing = match[3]?.trim() || 'Daily';
+        
+        if (supplementName.length > 2 && dose.length > 1) {
+          // Find description from database
+          const lowerName = supplementName.toLowerCase().replace(/[®™]/g, '');
+          let description = 'Supports overall health and wellness.';
+          
+          for (const [key, desc] of Object.entries(supplementDescriptions)) {
+            if (lowerName.includes(key) || key.includes(lowerName.split(' ')[0])) {
+              description = desc;
+              break;
+            }
+          }
+          
+          const doseAndTiming = timing.length > 2 ? `${dose} - ${timing}` : `${dose} daily`;
+          rows.push([supplementName, description, doseAndTiming]);
         }
-      } else if (trimmed.length > 10 && trimmed.match(/vitamin|magnesium|iron|omega|probiotic|zinc|b12|folate|d3|k2|fish oil/i)) {
-        rows.push([trimmed.substring(0, 30), 'See label', 'As directed']);
+      } else if (trimmed.length > 10 && trimmed.match(/vitamin|magnesium|iron|omega|probiotic|zinc|b12|folate|d3|k2|fish oil|coq10|ashwagandha/i)) {
+        const lowerTrimmed = trimmed.toLowerCase();
+        let description = 'Supports overall health and wellness.';
+        let name = trimmed.substring(0, 30);
+        
+        for (const [key, desc] of Object.entries(supplementDescriptions)) {
+          if (lowerTrimmed.includes(key)) {
+            description = desc;
+            break;
+          }
+        }
+        
+        rows.push([name, description, 'As directed by provider']);
       }
     }
     
     if (rows.length < 2) {
       const simpleLines = text.split(/[.\n]/).filter(l => l.trim().length > 10).slice(0, 6);
-      return simpleLines.map(l => [sanitizeForPdf(l.trim().substring(0, 35)), 'As recommended', 'Daily']);
+      return simpleLines.map(l => {
+        const name = sanitizeForPdf(l.trim().substring(0, 30));
+        return [name, 'Supports overall health and wellness.', 'As directed'];
+      });
     }
     return rows.slice(0, 10).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1]), sanitizeForPdf(r[2])]);
   };
+
+  // Start supplement section on new page for clean layout
+  doc.addPage();
+  addHeader();
+  yPosition = 45;
 
   yPosition = addSectionHeader('YOUR SUPPLEMENT PROTOCOL', yPosition);
   
@@ -688,7 +754,7 @@ export async function generatePatientWellnessPDF(
   if (supplementData.length > 0) {
     autoTable(doc, {
       startY: yPosition,
-      head: [['Supplement', 'Dose', 'When to Take']],
+      head: [['Supplement', 'What It Does', 'Dose & Timing']],
       body: supplementData,
       theme: 'striped',
       headStyles: {
@@ -702,9 +768,9 @@ export async function generatePatientWellnessPDF(
         textColor: textColor,
       },
       columnStyles: {
-        0: { cellWidth: 50, fontStyle: 'bold' },
-        1: { cellWidth: 45 },
-        2: { cellWidth: contentWidth - 95 },
+        0: { cellWidth: 35, fontStyle: 'bold' },
+        1: { cellWidth: 95 },
+        2: { cellWidth: contentWidth - 130 },
       },
       styles: {
         overflow: 'linebreak',
@@ -720,6 +786,7 @@ export async function generatePatientWellnessPDF(
   }
   yPosition += 10;
 
+  // Start lifestyle section on new page for clean layout
   doc.addPage();
   addHeader();
   yPosition = 45;
