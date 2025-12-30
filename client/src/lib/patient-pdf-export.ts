@@ -586,33 +586,37 @@ export async function generatePatientWellnessPDF(
   
   const nutritionParsed = parseNutritionPlan(wellnessPlan.dietPlan);
   
-  // Goal section
+  // Goal section - dynamically sized
+  doc.setFontSize(9);
+  const goalLines = doc.splitTextToSize(nutritionParsed.goal, contentWidth - 10);
+  const goalBoxHeight = 14 + (goalLines.length * 4);
   doc.setFillColor(...lightBg);
-  doc.roundedRect(margin, yPosition, contentWidth, 18, 2, 2, 'F');
+  doc.roundedRect(margin, yPosition, contentWidth, goalBoxHeight, 2, 2, 'F');
   doc.setTextColor(...brandColor);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('Your Nutrition Goal', margin + 4, yPosition + 6);
+  doc.text('Your Nutrition Goal', margin + 4, yPosition + 7);
   doc.setTextColor(...textColor);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const goalLines = doc.splitTextToSize(nutritionParsed.goal, contentWidth - 8);
-  doc.text(goalLines, margin + 4, yPosition + 12);
-  yPosition += 22;
+  doc.text(goalLines, margin + 4, yPosition + 14);
+  yPosition += goalBoxHeight + 4;
 
-  // Diet section
+  // Diet section - dynamically sized
+  doc.setFontSize(9);
+  const dietLines = doc.splitTextToSize(nutritionParsed.diet, contentWidth - 10);
+  const dietBoxHeight = 14 + (dietLines.length * 4);
   doc.setFillColor(...lightBg);
-  doc.roundedRect(margin, yPosition, contentWidth, 18, 2, 2, 'F');
+  doc.roundedRect(margin, yPosition, contentWidth, dietBoxHeight, 2, 2, 'F');
   doc.setTextColor(...brandColor);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
-  doc.text('Recommended Diet', margin + 4, yPosition + 6);
+  doc.text('Recommended Diet', margin + 4, yPosition + 7);
   doc.setTextColor(...textColor);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const dietLines = doc.splitTextToSize(nutritionParsed.diet, contentWidth - 8);
-  doc.text(dietLines, margin + 4, yPosition + 12);
-  yPosition += 22;
+  doc.text(dietLines, margin + 4, yPosition + 14);
+  yPosition += dietBoxHeight + 6;
 
   // Foods To Emphasize table
   doc.setTextColor(...brandColor);
@@ -635,14 +639,15 @@ export async function generatePatientWellnessPDF(
     bodyStyles: {
       fontSize: 8,
       textColor: textColor,
+      valign: 'top',
     },
     columnStyles: {
-      0: { cellWidth: 45, fontStyle: 'bold' },
-      1: { cellWidth: contentWidth - 45 },
+      0: { cellWidth: 55, fontStyle: 'bold' },
+      1: { cellWidth: contentWidth - 55 },
     },
     styles: {
       overflow: 'linebreak',
-      cellPadding: 3,
+      cellPadding: 4,
     },
     alternateRowStyles: {
       fillColor: lightBg,
