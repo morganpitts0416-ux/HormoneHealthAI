@@ -504,66 +504,151 @@ export async function generatePatientWellnessPDF(
   addHeader();
   yPosition = 45;
 
-  // Parse and format nutrition plan into structured format
-  const parseNutritionPlan = (text: string): string[][] => {
+  // Parse nutrition plan into Goal, Diet, and Foods To Emphasize structure
+  const parseNutritionPlan = (text: string): { goal: string; diet: string; foods: string[][] } => {
     const lines = text.split('\n').filter(l => l.trim());
-    const rows: string[][] = [];
-    let currentCategory = '';
+    let goal = '';
+    let diet = '';
+    const foods: string[][] = [];
+    let currentSection = '';
     
     for (const line of lines) {
-      const trimmed = line.trim();
-      if (trimmed.match(/^(day\s*\d|breakfast|lunch|dinner|snack|morning|afternoon|evening)/i)) {
-        currentCategory = trimmed.replace(/[:\-]/g, '').trim();
-      } else if (trimmed.length > 5 && currentCategory) {
-        rows.push([currentCategory, trimmed.replace(/^[-•*]\s*/, '')]);
-        currentCategory = '';
-      } else if (trimmed.length > 10 && !trimmed.match(/^(focus|goal|tip|note)/i)) {
-        rows.push(['Recommendation', trimmed.replace(/^[-•*]\s*/, '')]);
+      const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
+      const lowerLine = trimmed.toLowerCase();
+      
+      // Detect section headers
+      if (lowerLine.match(/^(goal|objective|aim|focus|purpose)/)) {
+        currentSection = 'goal';
+        const colonIdx = trimmed.indexOf(':');
+        if (colonIdx > 0 && colonIdx < trimmed.length - 5) {
+          goal = trimmed.substring(colonIdx + 1).trim();
+        }
+        continue;
+      } else if (lowerLine.match(/^(diet|eating pattern|nutrition approach|recommended diet)/)) {
+        currentSection = 'diet';
+        const colonIdx = trimmed.indexOf(':');
+        if (colonIdx > 0 && colonIdx < trimmed.length - 5) {
+          diet = trimmed.substring(colonIdx + 1).trim();
+        }
+        continue;
+      } else if (lowerLine.match(/^(foods? to emphasize|key foods|focus foods|beneficial foods|foods? to include)/)) {
+        currentSection = 'foods';
+        continue;
+      }
+      
+      // Add content to current section
+      if (trimmed.length > 10) {
+        if (currentSection === 'goal' && !goal) {
+          goal = trimmed;
+        } else if (currentSection === 'diet' && !diet) {
+          diet = trimmed;
+        } else if (currentSection === 'foods') {
+          // Try to parse "Food - reason" or "Food: reason" format
+          const separatorMatch = trimmed.match(/^([^:\-–]+)[\s:\-–]+(.+)/);
+          if (separatorMatch && separatorMatch[1].length < 40) {
+            foods.push([separatorMatch[1].trim(), separatorMatch[2].trim()]);
+          } else {
+            foods.push([trimmed.substring(0, 30), trimmed.length > 30 ? trimmed.substring(30) : 'Supports overall health']);
+          }
+        } else if (!goal && lowerLine.includes('goal')) {
+          goal = trimmed;
+        } else if (!diet && (lowerLine.includes('diet') || lowerLine.includes('eating'))) {
+          diet = trimmed;
+        } else if (foods.length < 8 && trimmed.length > 15) {
+          // Fallback: treat as food recommendation
+          const parts = trimmed.split(/[-–:]/);
+          if (parts.length >= 2) {
+            foods.push([parts[0].trim(), parts.slice(1).join(' ').trim()]);
+          }
+        }
       }
     }
     
-    if (rows.length < 3) {
-      const simpleLines = text.split(/[.\n]/).filter(l => l.trim().length > 15).slice(0, 8);
-      return simpleLines.map((l, i) => [`Tip ${i + 1}`, sanitizeForPdf(l.trim())]);
+    // Fallbacks if sections weren't found
+    if (!goal) {
+      goal = "Optimize your nutrition to support energy, hormone balance, and overall wellness based on your lab results.";
     }
-    return rows.slice(0, 12).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1])]);
+    if (!diet) {
+      const dietLine = lines.find(l => l.toLowerCase().includes('mediterranean') || l.toLowerCase().includes('anti-inflammatory') || l.toLowerCase().includes('whole food'));
+      diet = dietLine ? sanitizeForPdf(dietLine.replace(/^[-•*\d.]+\s*/, '').trim()) : "A balanced whole-foods approach emphasizing nutrient-dense options tailored to your health needs.";
+    }
+    if (foods.length === 0) {
+      foods.push(['Leafy Greens', 'Rich in iron, folate, and magnesium for energy and hormone support']);
+      foods.push(['Fatty Fish', 'Omega-3s reduce inflammation and support heart and brain health']);
+      foods.push(['Berries', 'Antioxidants protect cells and support healthy aging']);
+      foods.push(['Nuts & Seeds', 'Healthy fats, fiber, and minerals for sustained energy']);
+    }
+    
+    return { goal: sanitizeForPdf(goal), diet: sanitizeForPdf(diet), foods: foods.slice(0, 8).map(f => [sanitizeForPdf(f[0]), sanitizeForPdf(f[1])]) };
   };
 
   yPosition = addSectionHeader('YOUR PERSONALIZED NUTRITION PLAN', yPosition);
   
-  const nutritionData = parseNutritionPlan(wellnessPlan.dietPlan);
-  if (nutritionData.length > 0) {
-    autoTable(doc, {
-      startY: yPosition,
-      head: [['Meal/Category', 'Recommendation']],
-      body: nutritionData,
-      theme: 'striped',
-      headStyles: {
-        fillColor: brandColor,
-        fontSize: 9,
-        fontStyle: 'bold',
-        textColor: [255, 255, 255],
-      },
-      bodyStyles: {
-        fontSize: 8,
-        textColor: textColor,
-      },
-      columnStyles: {
-        0: { cellWidth: 35, fontStyle: 'bold' },
-        1: { cellWidth: contentWidth - 35 },
-      },
-      styles: {
-        overflow: 'linebreak',
-        cellPadding: 3,
-      },
-      alternateRowStyles: {
-        fillColor: lightBg,
-      },
-    });
-    yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
-  } else {
-    yPosition = addTextSection(wellnessPlan.dietPlan, yPosition, contentWidth);
-  }
+  const nutritionParsed = parseNutritionPlan(wellnessPlan.dietPlan);
+  
+  // Goal section
+  doc.setFillColor(...lightBg);
+  doc.roundedRect(margin, yPosition, contentWidth, 18, 2, 2, 'F');
+  doc.setTextColor(...brandColor);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Your Nutrition Goal', margin + 4, yPosition + 6);
+  doc.setTextColor(...textColor);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  const goalLines = doc.splitTextToSize(nutritionParsed.goal, contentWidth - 8);
+  doc.text(goalLines, margin + 4, yPosition + 12);
+  yPosition += 22;
+
+  // Diet section
+  doc.setFillColor(...lightBg);
+  doc.roundedRect(margin, yPosition, contentWidth, 18, 2, 2, 'F');
+  doc.setTextColor(...brandColor);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Recommended Diet', margin + 4, yPosition + 6);
+  doc.setTextColor(...textColor);
+  doc.setFontSize(9);
+  doc.setFont('helvetica', 'normal');
+  const dietLines = doc.splitTextToSize(nutritionParsed.diet, contentWidth - 8);
+  doc.text(dietLines, margin + 4, yPosition + 12);
+  yPosition += 22;
+
+  // Foods To Emphasize table
+  doc.setTextColor(...brandColor);
+  doc.setFontSize(10);
+  doc.setFont('helvetica', 'bold');
+  doc.text('Foods To Emphasize', margin, yPosition + 4);
+  yPosition += 8;
+
+  autoTable(doc, {
+    startY: yPosition,
+    head: [['Food', 'Why It Helps You']],
+    body: nutritionParsed.foods,
+    theme: 'striped',
+    headStyles: {
+      fillColor: brandColor,
+      fontSize: 9,
+      fontStyle: 'bold',
+      textColor: [255, 255, 255],
+    },
+    bodyStyles: {
+      fontSize: 8,
+      textColor: textColor,
+    },
+    columnStyles: {
+      0: { cellWidth: 45, fontStyle: 'bold' },
+      1: { cellWidth: contentWidth - 45 },
+    },
+    styles: {
+      overflow: 'linebreak',
+      cellPadding: 3,
+    },
+    alternateRowStyles: {
+      fillColor: lightBg,
+    },
+  });
+  yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
   yPosition += 10;
 
   // Parse and format supplement protocol into table
