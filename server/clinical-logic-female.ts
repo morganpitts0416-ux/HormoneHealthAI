@@ -163,12 +163,29 @@ export class FemaleClinicalLogicEngine {
     }
 
     // 10. Iron/Ferritin - Severe deficiency
+    const hasAnemia = labs.hemoglobin !== undefined && labs.hemoglobin < 12;
     if (labs.ferritin !== undefined && labs.ferritin < 10) {
+      if (hasAnemia) {
+        redFlags.push({
+          category: "Iron - Severe Deficiency WITH Anemia",
+          severity: 'critical',
+          message: `Ferritin is ${labs.ferritin} ng/mL (<10) with hemoglobin ${labs.hemoglobin} g/dL (<12).`,
+          action: "CONSIDER IV IRON INFUSION for rapid repletion. If oral: Prescription 65mg Elemental Iron every other day. Evaluate for blood loss (menorrhagia, GI).",
+        });
+      } else {
+        redFlags.push({
+          category: "Iron - Severe Deficiency",
+          severity: 'urgent',
+          message: `Ferritin is ${labs.ferritin} ng/mL (<10 threshold).`,
+          action: "Metagenics Hemagenics OR Prescription 65mg Elemental Iron. Evaluate for occult blood loss.",
+        });
+      }
+    } else if (labs.ferritin !== undefined && labs.ferritin <= 30 && hasAnemia) {
       redFlags.push({
-        category: "Iron - Severe Deficiency",
+        category: "Iron Deficiency WITH Anemia",
         severity: 'urgent',
-        message: `Ferritin is ${labs.ferritin} ng/mL (<10 threshold).`,
-        action: "Evaluate for occult blood loss. Initiate iron replacement therapy.",
+        message: `Ferritin is ${labs.ferritin} ng/mL (≤30) with hemoglobin ${labs.hemoglobin} g/dL (<12).`,
+        action: "Prescription 65mg Elemental Iron (every other day, empty stomach). Evaluate for heavy menstrual bleeding or GI loss.",
       });
     }
 
@@ -891,32 +908,54 @@ export class FemaleClinicalLogicEngine {
       let interpretation = '';
       let recommendation = '';
 
+      // Check for anemia (hemoglobin < 12 for women)
+      const hasAnemia = labs.hemoglobin !== undefined && labs.hemoglobin < 12;
+      
       // Check for functional iron deficiency indicators
       const hasElevatedTIBC = labs.tibc !== undefined && labs.tibc > 450;
       const hasLowSerumIron = labs.iron !== undefined && labs.iron < 40;
       const hasFunctionalDeficiency = hasElevatedTIBC || hasLowSerumIron;
 
+      // Critical: Consider iron infusion
       if (labs.ferritin < 10) {
         status = 'critical';
-        interpretation = 'Severely depleted iron stores.';
-        recommendation = 'Provider recommendation: Treat with 65mg elemental iron. Evaluate for blood loss (menorrhagia, GI).';
-      } else if (labs.ferritin <= 30) {
+        if (hasAnemia) {
+          interpretation = 'Severely depleted iron stores WITH anemia. Consider iron infusion.';
+          recommendation = 'CRITICAL: Consider IV iron infusion for rapid repletion. If oral therapy: Prescription 65mg Elemental Iron (take every other day, on empty stomach, avoid caffeine and dairy 2 hours before/after). Evaluate for blood loss (menorrhagia, GI).';
+        } else {
+          interpretation = 'Severely depleted iron stores without anemia.';
+          recommendation = 'Provider protocol: Metagenics Hemagenics OR Prescription 65mg Elemental Iron (take every other day, on empty stomach, avoid caffeine and dairy 2 hours before/after). Evaluate for blood loss.';
+        }
+      } 
+      // Deficient: ≤30
+      else if (labs.ferritin <= 30) {
         status = 'abnormal';
-        interpretation = 'Low ferritin - iron deficiency. Treat all patients at this level.';
-        recommendation = 'Provider recommendation: Treat with 65mg elemental iron. Evaluate for heavy menstrual bleeding or GI loss.';
-      } else if (labs.ferritin > 30 && labs.ferritin <= 50) {
-        if (hasFunctionalDeficiency) {
+        if (hasAnemia) {
+          interpretation = 'Iron deficiency WITH anemia (ferritin ≤30).';
+          recommendation = 'Provider protocol: Prescription 65mg Elemental Iron (take every other day, on empty stomach, avoid caffeine and dairy 2 hours before/after). Evaluate for heavy menstrual bleeding or GI loss.';
+        } else {
+          interpretation = 'Iron deficiency without anemia (ferritin ≤30).';
+          recommendation = 'Provider protocol: Metagenics Hemagenics OR Prescription 65mg Elemental Iron (take every other day, on empty stomach, avoid caffeine and dairy 2 hours before/after).';
+        }
+      } 
+      // Insufficient: 31-50
+      else if (labs.ferritin > 30 && labs.ferritin <= 50) {
+        if (hasAnemia) {
+          status = 'abnormal';
+          interpretation = 'Iron insufficiency WITH anemia (ferritin 31-50).';
+          recommendation = 'Provider protocol: Prescription 65mg Elemental Iron (take every other day, on empty stomach, avoid caffeine and dairy 2 hours before/after).';
+        } else if (hasFunctionalDeficiency) {
           status = 'borderline';
-          interpretation = 'Ferritin 31-50 with functional iron deficiency indicators (elevated TIBC or low serum iron).';
-          recommendation = 'Provider recommendation: Treat with 65mg elemental iron if symptomatic (fatigue, hair loss, restless legs). Evaluate other iron studies.';
+          interpretation = 'Iron insufficiency with functional deficiency indicators (ferritin 31-50, elevated TIBC or low serum iron).';
+          recommendation = 'Provider protocol: Metagenics Hemagenics. If symptomatic (fatigue, hair loss, restless legs), consider Prescription 65mg Elemental Iron.';
         } else {
           status = 'borderline';
-          interpretation = 'Ferritin in lower optimal range (31-50).';
-          recommendation = 'Consider 65mg elemental iron if symptomatic (fatigue, hair loss, restless legs, exercise intolerance).';
+          interpretation = 'Iron insufficiency (ferritin 31-50). Optimal is >50.';
+          recommendation = 'Provider protocol: Metagenics Hemagenics if symptomatic (fatigue, hair loss, restless legs, exercise intolerance).';
         }
       } else if (labs.ferritin > 50 && labs.ferritin <= 150) {
         status = 'normal';
-        interpretation = 'Ferritin within optimal range.';
+        interpretation = 'Ferritin within optimal range (>50).';
         recommendation = 'Adequate iron stores. No supplementation needed.';
       } else {
         status = 'borderline';
@@ -929,7 +968,7 @@ export class FemaleClinicalLogicEngine {
         value: labs.ferritin,
         unit: 'ng/mL',
         status,
-        referenceRange: '30-150 ng/mL (optimal >50)',
+        referenceRange: '>50 ng/mL (optimal)',
         interpretation,
         recommendation,
       });
