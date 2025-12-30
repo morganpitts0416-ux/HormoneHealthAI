@@ -907,9 +907,12 @@ export async function generatePatientWellnessPDF(
   yPosition = addTextSection(wellnessPlan.educationalContent, yPosition, contentWidth);
   yPosition += 8;
 
-  doc.addPage();
-  addHeader();
-  yPosition = 45;
+  // Only add new page if not enough room for Action Checklist (need ~120mm for checklist + recommendations)
+  if (yPosition > pageHeight - 130) {
+    doc.addPage();
+    addHeader();
+    yPosition = 45;
+  }
 
   yPosition = addSectionHeader('YOUR ACTION CHECKLIST', yPosition);
 
