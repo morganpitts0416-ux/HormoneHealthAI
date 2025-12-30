@@ -354,16 +354,22 @@ KEY LAB VALUES:
 Please generate FOUR separate sections. Each section should be thorough, educational, and actionable.
 
 SECTION 1 - PERSONALIZED NUTRITION PLAN (400-500 words):
-Based on the specific lab findings, create a detailed diet plan including:
-- Overall dietary approach (e.g., Mediterranean, anti-inflammatory, heart-healthy)
-- Specific foods to emphasize based on their lab needs
-- Foods to limit or avoid
-- Sample 3-day meal plan with specific meals:
-  * Day 1: Breakfast, Lunch, Dinner, Snacks
-  * Day 2: Breakfast, Lunch, Dinner, Snacks
-  * Day 3: Breakfast, Lunch, Dinner, Snacks
-- Include portion guidance where helpful
-- Address any deficiencies with food-first approach
+Based on the specific lab findings, structure this section with these three subsections:
+
+GOAL:
+Write 2-3 sentences explaining the patient's personalized nutrition goal based on their lab results. What are we trying to achieve? (e.g., "Your goal is to optimize iron levels and reduce inflammation to boost energy and support hormone balance.")
+
+DIET:
+Recommend a specific named diet approach that fits their needs (e.g., Mediterranean, Anti-Inflammatory, Heart-Healthy, Iron-Rich). Explain in 2-3 sentences why this diet is ideal for their specific situation.
+
+FOODS TO EMPHASIZE:
+List 6-8 specific foods with explanations of why each food will help THIS patient. Format each as:
+Food Name - reason it helps their specific condition
+
+Example format:
+- Salmon - Rich in omega-3s to lower your elevated triglycerides and reduce inflammation
+- Spinach - High in iron and folate to address your low ferritin levels
+- Blueberries - Antioxidants support healthy aging and reduce oxidative stress
 
 SECTION 2 - SUPPLEMENT PROTOCOL (300-400 words):
 Based on the recommended supplements and lab findings, provide:
