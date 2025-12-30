@@ -1509,6 +1509,62 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
+    // ============================================================
+    // COMBINED HORMONE PATTERN EVALUATION
+    // These patterns identify clinically significant hormone imbalances
+    // that may not be apparent from individual lab values alone
+    // ============================================================
+
+    // Pattern 1: Estrogen Spike + Progesterone Mismatch
+    // E2 ≥ 250 pg/mL AND P4 < 3 ng/mL
+    // Associated symptoms: insomnia/3am waking, anxiety, breast tenderness, migraines, heavy/short cycles
+    if (labs.estradiol !== undefined && labs.progesterone !== undefined) {
+      if (labs.estradiol >= 250 && labs.progesterone < 3) {
+        interpretations.push({
+          category: 'Hormone Pattern: Estrogen Dominance',
+          value: labs.estradiol,
+          unit: 'pg/mL E2 / ng/mL P4',
+          status: 'abnormal',
+          referenceRange: 'E2:P4 ratio should be balanced',
+          interpretation: `Estrogen spike (${labs.estradiol} pg/mL) with low progesterone (${labs.progesterone} ng/mL) detected. This pattern indicates estrogen dominance/unopposed estrogen. Associated symptoms include: insomnia or 3am waking, anxiety, breast tenderness, migraines, and heavy or short menstrual cycles.`,
+          recommendation: `PROVIDER RECOMMENDATION: If insomnia/anxiety prominent, consider micronized progesterone at bedtime. Continuous dosing: 100 mg nightly. If vasomotor symptoms (VMS) also present, consider low-dose transdermal estradiol patch + progesterone (if uterus intact). PATIENT EDUCATION: This hormone imbalance may cause sleep disruption, mood changes, and menstrual irregularities. Progesterone supplementation can help restore balance and improve symptoms.`,
+        });
+      }
+    }
+
+    // Pattern 2: Low Progesterone - Anovulatory/Follicular Timing + Sleep Disruption
+    // P4 < 1.0 ng/mL with symptoms of sleep fragmentation/anxiety/PMS
+    // Timing may be follicular or anovulatory cycle
+    if (labs.progesterone !== undefined && labs.progesterone < 1.0) {
+      const currentPhase = labs.menstrualPhase || 'unknown';
+      // Only flag if not in expected low-progesterone phase (follicular is expected low)
+      // But still provide guidance if symptoms present
+      if (currentPhase === 'luteal' || currentPhase === 'postmenopausal') {
+        // Definitely abnormal - should have higher progesterone in luteal phase or on HRT
+        interpretations.push({
+          category: 'Hormone Pattern: Low Progesterone',
+          value: labs.progesterone,
+          unit: 'ng/mL',
+          status: 'abnormal',
+          referenceRange: '>1 ng/mL expected outside follicular phase',
+          interpretation: `Very low progesterone (${labs.progesterone} ng/mL) detected in ${currentPhase} phase. Progesterone effect likely minimal - may indicate anovulatory cycle. This pattern is associated with sleep fragmentation, anxiety, and PMS symptoms.`,
+          recommendation: `PROVIDER RECOMMENDATION: If symptoms match (sleep disruption, anxiety, PMS) and no contraindications, consider progesterone-first trial: Micronized progesterone 100 mg nightly at bedtime. PATIENT EDUCATION: Progesterone has calming, sleep-promoting effects. Low levels can contribute to difficulty staying asleep, anxiety, and premenstrual symptoms. Supplementation may help restore restful sleep and reduce anxiety.`,
+        });
+      } else if (currentPhase === 'unknown') {
+        // Unknown phase - still note the finding for provider consideration
+        interpretations.push({
+          category: 'Hormone Pattern: Low Progesterone (Phase Unknown)',
+          value: labs.progesterone,
+          unit: 'ng/mL',
+          status: 'borderline',
+          referenceRange: 'Varies by cycle phase',
+          interpretation: `Progesterone is very low (${labs.progesterone} ng/mL). Without cycle phase documentation, this may reflect follicular timing (expected) or anovulatory cycle. If symptoms of sleep fragmentation, anxiety, or PMS are present, this finding is clinically relevant.`,
+          recommendation: `PROVIDER RECOMMENDATION: Document cycle phase for accurate interpretation. If patient reports sleep disruption, anxiety, or PMS symptoms, consider trial of micronized progesterone 100 mg nightly. PATIENT EDUCATION: Progesterone levels naturally vary throughout your cycle. If you're experiencing sleep problems or anxiety, discuss progesterone supplementation with your provider.`,
+        });
+      }
+      // Note: follicular and ovulatory phases with low P4 are expected, so no flag needed
+    }
+
     return interpretations;
   }
 
