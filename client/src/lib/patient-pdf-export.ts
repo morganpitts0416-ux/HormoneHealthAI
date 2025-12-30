@@ -543,12 +543,27 @@ export async function generatePatientWellnessPDF(
         } else if (currentSection === 'diet' && !diet) {
           diet = trimmed;
         } else if (currentSection === 'foods') {
-          // Try to parse "Food - reason" or "Food: reason" format
-          const separatorMatch = trimmed.match(/^([^:\-–]+)[\s:\-–]+(.+)/);
-          if (separatorMatch && separatorMatch[1].length < 40) {
-            foods.push([separatorMatch[1].trim(), separatorMatch[2].trim()]);
+          // Parse food entries - extract clean food name, put serving info + explanation in column 2
+          // Handle formats like: "Salmon (2 servings/week) - Rich in omega-3s..."
+          // or "Leafy greens (spinach, Swiss chard) - Provide non-heme iron..."
+          
+          // First, try to extract food name before parenthesis or first dash/colon
+          const nameMatch = trimmed.match(/^([A-Za-z][A-Za-z\s&,]+?)(?:\s*[\(\-–:])/);
+          if (nameMatch && nameMatch[1].length >= 3 && nameMatch[1].length <= 35) {
+            const foodName = nameMatch[1].trim();
+            const restOfLine = trimmed.substring(nameMatch[0].length - 1).trim(); // Keep the separator for context
+            foods.push([foodName, restOfLine]);
           } else {
-            foods.push([trimmed.substring(0, 30), trimmed.length > 30 ? trimmed.substring(30) : 'Supports overall health']);
+            // Fallback: try simpler "Food - reason" split
+            const simpleSplit = trimmed.match(/^([^:\-–]{3,30})[\s:\-–]+(.+)/);
+            if (simpleSplit) {
+              foods.push([simpleSplit[1].trim(), simpleSplit[2].trim()]);
+            } else {
+              // Last resort: first 25 chars as name, rest as description
+              const name = trimmed.substring(0, 25).replace(/[\(\-–:].*/,'').trim();
+              const desc = trimmed.substring(name.length).replace(/^[\s\(\-–:]+/, '').trim() || 'Supports overall health';
+              foods.push([name, desc]);
+            }
           }
         } else if (!goal && lowerLine.includes('goal')) {
           goal = trimmed;
