@@ -137,7 +137,7 @@ function getLabInsight(category: string, value: number | string, status: string,
       what: "Vitamin D supports bone health, immune function, and mood regulation.",
       normal: "Your vitamin D level supports strong bones, immunity, and positive mood.",
       low: "Low vitamin D is linked to fatigue, weakened bones, and increased illness. Supplementation is often helpful.",
-      high: "Vitamin D levels above optimal range - discuss with your provider."
+      high: "Vitamin D levels above optimal range - monitoring recommended."
     },
     "vitamin b12": {
       what: "Vitamin B12 is essential for nerve function, energy, and red blood cell production.",
@@ -190,7 +190,7 @@ function getLabInsight(category: string, value: number | string, status: string,
     egfr: {
       what: "eGFR estimates how well your kidneys filter waste from your blood.",
       normal: "Your kidney function is in the healthy range, effectively filtering waste.",
-      low: "Lower eGFR suggests reduced kidney function. Discuss with your provider for monitoring.",
+      low: "Lower eGFR suggests reduced kidney function. Continued monitoring is recommended.",
       high: "Higher eGFR indicates good kidney filtration capacity."
     },
     alt: {
@@ -209,19 +209,19 @@ function getLabInsight(category: string, value: number | string, status: string,
       what: "Estradiol is your primary estrogen, vital for bone health, mood, and heart protection.",
       normal: "Your estrogen level is appropriate for your cycle phase and overall health.",
       low: "Lower estrogen may cause hot flashes, mood changes, and bone loss. HRT may be beneficial.",
-      high: "Higher estrogen levels should be discussed with your provider in context of your cycle."
+      high: "Higher estrogen levels should be interpreted in context of your cycle phase."
     },
     progesterone: {
       what: "Progesterone balances estrogen and is essential for cycle regularity and sleep.",
       normal: "Your progesterone level is appropriate for your cycle phase.",
       low: "Lower progesterone may cause PMS, irregular cycles, and sleep issues. Supplementation may help.",
-      high: "Higher progesterone is normal in the luteal phase; otherwise, discuss with your provider."
+      high: "Higher progesterone is normal in the luteal phase and typically not concerning."
     },
     testosterone: {
       what: "Testosterone in women supports energy, libido, muscle strength, and mood.",
       normal: "Your testosterone level supports healthy energy, mood, and muscle function.",
       low: "Lower testosterone may cause fatigue, low libido, and decreased muscle mass.",
-      high: "Higher testosterone may cause acne or hair changes. Worth discussing with your provider."
+      high: "Higher testosterone may cause acne or hair changes. This will be addressed in your treatment plan."
     },
     fsh: {
       what: "FSH controls ovarian function and egg development.",
@@ -296,8 +296,8 @@ function getLabInsight(category: string, value: number | string, status: string,
   if (!matchedKey) {
     if (status === 'normal') return "This result is within the healthy reference range.";
     if (status === 'borderline') return "This value is near the edge of normal. Lifestyle changes may help optimize it.";
-    if (status === 'abnormal' || status === 'critical') return "This result is outside the optimal range. Please discuss with your provider.";
-    return "Your provider can explain this result in the context of your overall health.";
+    if (status === 'abnormal' || status === 'critical') return "This result is outside the optimal range and is addressed in your treatment plan.";
+    return "This result has been reviewed in the context of your overall health.";
   }
 
   const insight = insights[matchedKey];
@@ -684,7 +684,7 @@ export async function generatePatientWellnessPDF(
     'omegagenics': 'High DHA/EPA fish oil for brain function, cognition, mood support, and cardiovascular health.',
     'fish oil': 'Essential omega-3 fatty acids supporting brain function, heart health, joint comfort, and healthy inflammatory response.',
     'vitamin d3': 'Essential for bone health, immune function, mood regulation, and hormone balance. Works synergistically with vitamin K.',
-    'vitamin d3 10000': 'High-potency vitamin D repletion with vitamin K for bone and vascular health, used for documented deficiency under provider monitoring.',
+    'vitamin d3 10000': 'High-potency vitamin D repletion with vitamin K for bone and vascular health, used for documented deficiency.',
     'vitamin d': 'Supports bone health, immune function, mood, energy, and hormone balance. Most adults are deficient.',
     'vitamin k2': 'Directs calcium to bones and away from arteries, supporting bone density and cardiovascular health.',
     'vitamin b12': 'Essential for energy production, nerve function, red blood cell formation, and cognitive health.',
@@ -716,12 +716,16 @@ export async function generatePatientWellnessPDF(
       const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
       const lowerLine = trimmed.toLowerCase();
       
-      // Detect red flags / warnings / important notes - extract them separately
+      // Detect red flags / warnings / important notes / follow-up instructions - extract them separately
       if (lowerLine.includes('red flag') || lowerLine.includes('warning') || 
           lowerLine.includes('caution') || lowerLine.includes('important:') ||
           lowerLine.includes('alert') || lowerLine.includes('critical') ||
-          lowerLine.includes('physician') || lowerLine.includes('provider review') ||
-          lowerLine.includes('monitor') || lowerLine.includes('consult')) {
+          lowerLine.includes('physician') || lowerLine.includes('provider') ||
+          lowerLine.includes('clinician') || lowerLine.includes('check with') ||
+          lowerLine.includes('monitor') || lowerLine.includes('consult') ||
+          lowerLine.includes('recheck') || lowerLine.includes('follow-up') ||
+          lowerLine.includes('follow up') || lowerLine.includes('repeat labs') ||
+          lowerLine.includes('schedule') || lowerLine.includes('discuss')) {
         if (trimmed.length > 15) {
           redFlags.push(trimmed);
         }
@@ -764,7 +768,7 @@ export async function generatePatientWellnessPDF(
           }
         }
         
-        rows.push([name, description, 'As directed by provider']);
+        rows.push([name, description, 'As directed']);
       }
     }
     
@@ -1000,7 +1004,7 @@ export async function generatePatientWellnessPDF(
     'Create a weekly meal prep plan using the meal ideas provided',
     'Schedule time for exercise - even 10 minutes daily makes a difference',
     'Track your progress - energy levels, sleep quality, mood',
-    'Schedule your follow-up lab work as recommended by your provider',
+    'Schedule your follow-up lab work as discussed during your visit',
     'Reach out to our clinic with any questions - we are here to help!',
   ];
 
