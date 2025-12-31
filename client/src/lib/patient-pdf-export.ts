@@ -705,138 +705,200 @@ export async function generatePatientWellnessPDF(
     'pregnenolone': 'Master precursor hormone supporting cognitive function, memory, mood, and hormone production.',
   };
 
-  // Parse and format supplement protocol into table with descriptions
-  // Returns { supplements: string[][], redFlags: string[] }
+  // Metagenics product catalog - canonical products with aliases for normalization
+  const metagenicsProducts: Array<{
+    name: string;
+    aliases: string[];
+    description: string;
+    defaultDose: string;
+    category: string;
+  }> = [
+    {
+      name: 'Magtein',
+      aliases: ['magnesium', 'mag', 'magtein', 'l-threonate', 'magnesium glycinate', 'magnesium citrate', 'magnesium oxide'],
+      description: 'Brain-focused magnesium (L-threonate) that crosses the blood-brain barrier to support sleep quality, relaxation, stress resilience, and cognitive function.',
+      defaultDose: '1-2 capsules at bedtime',
+      category: 'magnesium'
+    },
+    {
+      name: 'NutraGems CoQ10 300',
+      aliases: ['coq10', 'nutragems', 'ubiquinone', 'ubiquinol', 'coenzyme q10'],
+      description: 'Mitochondrial energy and antioxidant support for cellular energy production, cardiovascular health, and fatigue/low stamina.',
+      defaultDose: '1 softgel daily with breakfast',
+      category: 'coq10'
+    },
+    {
+      name: 'Omegagenics EPA-DHA',
+      aliases: ['omega', 'fish oil', 'epa', 'dha', 'omega-3', 'omega 3', 'omegagenics'],
+      description: 'High-quality omega-3 for cardiovascular health, joint comfort, cognitive function, and healthy aging.',
+      defaultDose: '1-2 softgels daily with food',
+      category: 'omega'
+    },
+    {
+      name: 'D3 5000 with K',
+      aliases: ['vitamin d', 'd3', 'cholecalciferol', 'vitamin d3'],
+      description: 'Essential for bone health, immune function, mood regulation, and hormone balance. Works synergistically with vitamin K.',
+      defaultDose: '1 capsule daily with food',
+      category: 'vitamind'
+    },
+    {
+      name: 'Adreset',
+      aliases: ['adreset', 'adrenal', 'adaptogen', 'cortisol'],
+      description: 'Daytime resilience adaptogen formula with Cordyceps, Panax ginseng, and Rhodiola to support energy, stamina, and stress tolerance.',
+      defaultDose: '2 capsules daily in morning',
+      category: 'adrenal'
+    },
+    {
+      name: 'Exhilarin',
+      aliases: ['exhilarin', 'ashwagandha', 'holy basil', 'bacopa', 'rhodiola'],
+      description: 'Stress tolerance and cognitive support blend with adaptogens for mood, brain fog relief, and sleep quality.',
+      defaultDose: '2 capsules daily',
+      category: 'mood'
+    },
+    {
+      name: 'UltraFlora Balance',
+      aliases: ['probiotic', 'ultraflora', 'lactobacillus', 'bifidobacterium', 'gut health'],
+      description: 'Targeted probiotic strains for digestive health, immune support, and maintaining healthy gut microbiome.',
+      defaultDose: '1 capsule daily',
+      category: 'probiotic'
+    },
+    {
+      name: 'Methyl B12',
+      aliases: ['b12', 'methylcobalamin', 'cobalamin', 'vitamin b12'],
+      description: 'Active form of B12 for optimal absorption, supporting energy, nerve function, and methylation.',
+      defaultDose: '1 tablet daily',
+      category: 'b12'
+    },
+    {
+      name: 'Folate 5-MTHF',
+      aliases: ['folate', 'methylfolate', 'folic acid', '5-mthf'],
+      description: 'Active form of folate for those with MTHFR variations, supporting mood, energy, and cellular health.',
+      defaultDose: '1 capsule daily',
+      category: 'folate'
+    },
+    {
+      name: 'Iron Bisglycinate',
+      aliases: ['iron', 'ferrous', 'ferritin'],
+      description: 'Gentle, highly absorbable iron for oxygen transport, energy production, and preventing fatigue from iron deficiency.',
+      defaultDose: '1 capsule daily with vitamin C',
+      category: 'iron'
+    },
+    {
+      name: 'Psyllium Fiber',
+      aliases: ['psyllium', 'fiber', 'soluble fiber', 'husk'],
+      description: 'Soluble fiber for digestive regularity, cholesterol support, and blood sugar balance.',
+      defaultDose: '5g mixed in water daily',
+      category: 'fiber'
+    },
+    {
+      name: 'Zinc A.G.',
+      aliases: ['zinc', 'zinc picolinate'],
+      description: 'Essential mineral for immune function, wound healing, hormone production, and taste/smell.',
+      defaultDose: '1 tablet daily with food',
+      category: 'zinc'
+    },
+    {
+      name: 'Selenium',
+      aliases: ['selenium', 'selenomethionine'],
+      description: 'Trace mineral supporting thyroid function, antioxidant defenses, and immune health.',
+      defaultDose: '1 capsule daily',
+      category: 'selenium'
+    },
+    {
+      name: 'Curcumin',
+      aliases: ['curcumin', 'turmeric'],
+      description: 'Powerful anti-inflammatory from turmeric supporting joint comfort, brain health, and healthy aging.',
+      defaultDose: '2 capsules daily with food',
+      category: 'curcumin'
+    },
+    {
+      name: 'Berberine',
+      aliases: ['berberine'],
+      description: 'Plant compound supporting healthy blood sugar, cholesterol metabolism, and metabolic health.',
+      defaultDose: '500mg twice daily with meals',
+      category: 'berberine'
+    },
+  ];
+
+  // Parse and format supplement protocol into table with Metagenics products
   const parseSupplements = (text: string, patientAge?: number): { supplements: string[][]; redFlags: string[] } => {
     const lines = text.split('\n').filter(l => l.trim());
-    const rows: string[][] = [];
-    const redFlags: string[] = [];
+    const matchedProducts = new Map<string, { name: string; description: string; dose: string }>();
     
-    // Supplement keywords to detect supplement lines
-    const supplementKeywords = [
-      'vitamin', 'magnesium', 'iron', 'omega', 'probiotic', 'zinc', 'b12', 'folate', 
-      'd3', 'k2', 'fish oil', 'coq10', 'ashwagandha', 'psyllium', 'fiber', 'nutragems',
-      'omegagenics', 'adreset', 'exhilarin', 'ultraflora', 'metagenics', 'rhodiola',
-      'curcumin', 'berberine', 'dhea', 'pregnenolone', 'selenium', 'magtein', 'cholecalciferol',
-      'epa', 'dha', 'methylcobalamin', 'methylfolate', 'softgel', 'capsule', 'tablet', 'chewable'
+    // Instruction patterns to skip (not supplement names)
+    const instructionPatterns = [
+      /^continue\s/i, /^spread\s/i, /^take\s/i, /^if\s/i, /^when\s/i,
+      /^optional\s/i, /^always\s/i, /^consider\s/i, /^add\s/i,
+      /recheck/i, /follow.?up/i, /monitoring/i, /schedule/i, /clinician/i,
+      /provider/i, /physician/i, /statin/i, /check-in/i, /timeline/i,
+      /interaction/i, /absorption/i, /expected benefit/i
     ];
     
     for (const line of lines) {
       const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
       const lowerLine = trimmed.toLowerCase();
       
-      // Skip section headers like "Daily schedule:" or "Check-ins and monitoring:"
-      if (lowerLine.endsWith(':') && trimmed.length < 50) {
-        continue;
-      }
+      // Skip section headers
+      if (lowerLine.endsWith(':') && trimmed.length < 50) continue;
       
-      // Check if this line contains a supplement keyword
-      const isSupplementLine = supplementKeywords.some(kw => lowerLine.includes(kw));
+      // Skip pure instruction lines
+      if (instructionPatterns.some(p => p.test(trimmed))) continue;
       
-      // If it's not a supplement line, check if it's a follow-up/monitoring instruction
-      if (!isSupplementLine) {
-        if (lowerLine.includes('recheck') || lowerLine.includes('follow-up') ||
-            lowerLine.includes('follow up') || lowerLine.includes('repeat labs') ||
-            lowerLine.includes('statin') || lowerLine.includes('check-in') ||
-            lowerLine.includes('monitoring') || lowerLine.includes('schedule') ||
-            (lowerLine.includes('clinician') && !isSupplementLine) ||
-            (lowerLine.includes('recommended by') && !isSupplementLine)) {
-          // These are follow-up instructions, skip them entirely (don't add to redFlags either)
-          continue;
-        }
-        continue; // Skip non-supplement lines
-      }
-      
-      // Extract supplement name and dose from lines like:
-      // "NutraGems CoQ10 300 mg chewable softgel - 1 softgel daily with breakfast"
-      // "Vitamin D3 5,000 IU - 1 capsule/tablet daily with breakfast"
-      
-      // Try to extract name (before the dose number) and dosing info
-      const doseMatch = trimmed.match(/^(.+?)\s+(\d+[\d,]*\s*(?:mg|iu|mcg|g|softgel|capsule|tablet)s?)\b/i);
-      
-      let supplementName = '';
-      let doseTiming = '';
-      
-      if (doseMatch) {
-        supplementName = doseMatch[1].trim();
-        // Get dosing instructions - look for patterns like "1 softgel daily" or "1 capsule/tablet daily"
-        const timingMatch = trimmed.match(/(\d+\s*(?:softgel|capsule|tablet|scoop|tsp|g)s?\s*(?:daily|twice daily|with breakfast|with dinner|with food|in morning|at night|before bed|weekly)?)/i);
-        if (timingMatch) {
-          doseTiming = timingMatch[1].trim();
-        } else {
-          doseTiming = doseMatch[2].trim() + ' daily';
-        }
-      } else {
-        // Fallback: try to get just the supplement name
-        for (const kw of supplementKeywords) {
-          if (lowerLine.includes(kw)) {
-            // Find the word containing the keyword and nearby words
-            const words = trimmed.split(/\s+/);
-            const keywordIdx = words.findIndex(w => w.toLowerCase().includes(kw));
-            if (keywordIdx >= 0) {
-              supplementName = words.slice(Math.max(0, keywordIdx - 1), keywordIdx + 2).join(' ');
+      // Try to match against Metagenics products
+      for (const product of metagenicsProducts) {
+        // Check if any alias matches this line
+        const hasMatch = product.aliases.some(alias => lowerLine.includes(alias));
+        
+        if (hasMatch && !matchedProducts.has(product.category)) {
+          // Extract dosing if present in the line
+          let dose = product.defaultDose;
+          
+          // Look for specific dose patterns
+          const dosePatterns = [
+            /(\d+[\d,]*\s*(?:mg|iu|mcg|g))/i,
+            /(\d+\s*(?:softgel|capsule|tablet|scoop)s?\s*(?:daily|twice daily|with (?:breakfast|dinner|food)|in morning|at night|before bed|weekly)?)/i,
+            /(\d+\s*g\s*(?:mixed in water|daily)?)/i,
+          ];
+          
+          for (const pattern of dosePatterns) {
+            const match = trimmed.match(pattern);
+            if (match) {
+              dose = match[1].trim();
+              // Append timing if not already present
+              if (!dose.match(/daily|weekly|morning|night|breakfast|dinner|food/i)) {
+                dose += ' daily';
+              }
               break;
             }
           }
+          
+          matchedProducts.set(product.category, {
+            name: product.name,
+            description: product.description,
+            dose: dose
+          });
         }
-        doseTiming = 'As directed';
-      }
-      
-      // Clean up supplement name (remove parenthetical notes)
-      supplementName = supplementName.replace(/\([^)]*\)/g, '').trim();
-      if (supplementName.length > 35) {
-        supplementName = supplementName.substring(0, 35);
-      }
-      
-      if (supplementName.length < 3) continue;
-      
-      // Find description from database
-      const lowerName = supplementName.toLowerCase().replace(/[®™]/g, '');
-      let description = 'Supports overall health and wellness.';
-      
-      for (const [key, desc] of Object.entries(supplementDescriptions)) {
-        if (lowerName.includes(key) || key.includes(lowerName.split(' ')[0])) {
-          description = desc;
-          break;
-        }
-      }
-      
-      // Check for duplicates
-      const isDuplicate = rows.some(r => r[0].toLowerCase().includes(lowerName.split(' ')[0]) || 
-                                         lowerName.includes(r[0].toLowerCase().split(' ')[0]));
-      if (!isDuplicate) {
-        rows.push([supplementName, description, doseTiming]);
       }
     }
     
     // Add Omegagenics for patients over 35 if not already included
-    if (patientAge && patientAge > 35) {
-      const hasOmega = rows.some(r => r[0].toLowerCase().includes('omega') || r[0].toLowerCase().includes('fish oil') || r[0].toLowerCase().includes('epa') || r[0].toLowerCase().includes('dha'));
-      if (!hasOmega) {
-        rows.push([
-          'Omegagenics EPA-DHA',
-          'High-quality omega-3 for cardiovascular health, joint comfort, cognitive function, and healthy aging.',
-          '1-2 softgels daily with food'
-        ]);
-      }
+    if (patientAge && patientAge > 35 && !matchedProducts.has('omega')) {
+      const omegaProduct = metagenicsProducts.find(p => p.category === 'omega')!;
+      matchedProducts.set('omega', {
+        name: omegaProduct.name,
+        description: omegaProduct.description,
+        dose: omegaProduct.defaultDose
+      });
     }
     
-    if (rows.length < 2) {
-      // Fallback parsing for simpler formats
-      const simpleLines = text.split(/[.\n]/).filter(l => {
-        const lower = l.toLowerCase();
-        return l.trim().length > 10 && supplementKeywords.some(kw => lower.includes(kw));
-      }).slice(0, 6);
-      const supplements = simpleLines.map(l => {
-        const name = sanitizeForPdf(l.trim().substring(0, 30));
-        return [name, 'Supports overall health and wellness.', 'As directed'];
-      });
-      return { supplements, redFlags: [] };
-    }
-    return { 
-      supplements: rows.slice(0, 10).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1]), sanitizeForPdf(r[2])]),
-      redFlags: [] // Don't show red flags below table - they clutter the report
-    };
+    // Convert to array format for table
+    const rows = Array.from(matchedProducts.values()).map(p => [
+      sanitizeForPdf(p.name),
+      sanitizeForPdf(p.description),
+      sanitizeForPdf(p.dose)
+    ]);
+    
+    return { supplements: rows.slice(0, 10), redFlags: [] };
   };
 
   // Start supplement section on new page only if not enough room
