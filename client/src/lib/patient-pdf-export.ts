@@ -712,89 +712,130 @@ export async function generatePatientWellnessPDF(
     const rows: string[][] = [];
     const redFlags: string[] = [];
     
+    // Supplement keywords to detect supplement lines
+    const supplementKeywords = [
+      'vitamin', 'magnesium', 'iron', 'omega', 'probiotic', 'zinc', 'b12', 'folate', 
+      'd3', 'k2', 'fish oil', 'coq10', 'ashwagandha', 'psyllium', 'fiber', 'nutragems',
+      'omegagenics', 'adreset', 'exhilarin', 'ultraflora', 'metagenics', 'rhodiola',
+      'curcumin', 'berberine', 'dhea', 'pregnenolone', 'selenium', 'magtein', 'cholecalciferol',
+      'epa', 'dha', 'methylcobalamin', 'methylfolate', 'softgel', 'capsule', 'tablet', 'chewable'
+    ];
+    
     for (const line of lines) {
       const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
       const lowerLine = trimmed.toLowerCase();
       
-      // Detect red flags / warnings / important notes / follow-up instructions - extract them separately
-      if (lowerLine.includes('red flag') || lowerLine.includes('warning') || 
-          lowerLine.includes('caution') || lowerLine.includes('important:') ||
-          lowerLine.includes('alert') || lowerLine.includes('critical') ||
-          lowerLine.includes('physician') || lowerLine.includes('provider') ||
-          lowerLine.includes('clinician') || lowerLine.includes('check with') ||
-          lowerLine.includes('monitor') || lowerLine.includes('consult') ||
-          lowerLine.includes('recheck') || lowerLine.includes('follow-up') ||
-          lowerLine.includes('follow up') || lowerLine.includes('repeat labs') ||
-          lowerLine.includes('schedule') || lowerLine.includes('discuss')) {
-        if (trimmed.length > 15) {
-          redFlags.push(trimmed);
-        }
+      // Skip section headers like "Daily schedule:" or "Check-ins and monitoring:"
+      if (lowerLine.endsWith(':') && trimmed.length < 50) {
         continue;
       }
       
-      // Look for patterns like "Vitamin D: 2000 IU daily" or "Vitamin D 2000 IU - take with food"
-      const match = trimmed.match(/^([A-Za-z0-9\s\-\(\)®]+?)[\s:]+(\d+[\w\s\/\-\.]+?)[\s,\-]+(.*)/i) ||
-                   trimmed.match(/^([A-Za-z0-9\s\-\(\)®]+?)[\s:]+(\d+.*?)(morning|evening|daily|with|before|after|$)/i);
+      // Check if this line contains a supplement keyword
+      const isSupplementLine = supplementKeywords.some(kw => lowerLine.includes(kw));
       
-      if (match) {
-        const supplementName = match[1].trim();
-        const dose = match[2].trim();
-        const timing = match[3]?.trim() || 'Daily';
-        
-        if (supplementName.length > 2 && dose.length > 1) {
-          // Find description from database
-          const lowerName = supplementName.toLowerCase().replace(/[®™]/g, '');
-          let description = 'Supports overall health and wellness.';
-          
-          for (const [key, desc] of Object.entries(supplementDescriptions)) {
-            if (lowerName.includes(key) || key.includes(lowerName.split(' ')[0])) {
-              description = desc;
+      // If it's not a supplement line, check if it's a follow-up/monitoring instruction
+      if (!isSupplementLine) {
+        if (lowerLine.includes('recheck') || lowerLine.includes('follow-up') ||
+            lowerLine.includes('follow up') || lowerLine.includes('repeat labs') ||
+            lowerLine.includes('statin') || lowerLine.includes('check-in') ||
+            lowerLine.includes('monitoring') || lowerLine.includes('schedule') ||
+            (lowerLine.includes('clinician') && !isSupplementLine) ||
+            (lowerLine.includes('recommended by') && !isSupplementLine)) {
+          // These are follow-up instructions, skip them entirely (don't add to redFlags either)
+          continue;
+        }
+        continue; // Skip non-supplement lines
+      }
+      
+      // Extract supplement name and dose from lines like:
+      // "NutraGems CoQ10 300 mg chewable softgel - 1 softgel daily with breakfast"
+      // "Vitamin D3 5,000 IU - 1 capsule/tablet daily with breakfast"
+      
+      // Try to extract name (before the dose number) and dosing info
+      const doseMatch = trimmed.match(/^(.+?)\s+(\d+[\d,]*\s*(?:mg|iu|mcg|g|softgel|capsule|tablet)s?)\b/i);
+      
+      let supplementName = '';
+      let doseTiming = '';
+      
+      if (doseMatch) {
+        supplementName = doseMatch[1].trim();
+        // Get dosing instructions - look for patterns like "1 softgel daily" or "1 capsule/tablet daily"
+        const timingMatch = trimmed.match(/(\d+\s*(?:softgel|capsule|tablet|scoop|tsp|g)s?\s*(?:daily|twice daily|with breakfast|with dinner|with food|in morning|at night|before bed|weekly)?)/i);
+        if (timingMatch) {
+          doseTiming = timingMatch[1].trim();
+        } else {
+          doseTiming = doseMatch[2].trim() + ' daily';
+        }
+      } else {
+        // Fallback: try to get just the supplement name
+        for (const kw of supplementKeywords) {
+          if (lowerLine.includes(kw)) {
+            // Find the word containing the keyword and nearby words
+            const words = trimmed.split(/\s+/);
+            const keywordIdx = words.findIndex(w => w.toLowerCase().includes(kw));
+            if (keywordIdx >= 0) {
+              supplementName = words.slice(Math.max(0, keywordIdx - 1), keywordIdx + 2).join(' ');
               break;
             }
           }
-          
-          const doseAndTiming = timing.length > 2 ? `${dose} - ${timing}` : `${dose} daily`;
-          rows.push([supplementName, description, doseAndTiming]);
         }
-      } else if (trimmed.length > 10 && trimmed.match(/vitamin|magnesium|iron|omega|probiotic|zinc|b12|folate|d3|k2|fish oil|coq10|ashwagandha/i)) {
-        const lowerTrimmed = trimmed.toLowerCase();
-        let description = 'Supports overall health and wellness.';
-        let name = trimmed.substring(0, 30);
-        
-        for (const [key, desc] of Object.entries(supplementDescriptions)) {
-          if (lowerTrimmed.includes(key)) {
-            description = desc;
-            break;
-          }
+        doseTiming = 'As directed';
+      }
+      
+      // Clean up supplement name (remove parenthetical notes)
+      supplementName = supplementName.replace(/\([^)]*\)/g, '').trim();
+      if (supplementName.length > 35) {
+        supplementName = supplementName.substring(0, 35);
+      }
+      
+      if (supplementName.length < 3) continue;
+      
+      // Find description from database
+      const lowerName = supplementName.toLowerCase().replace(/[®™]/g, '');
+      let description = 'Supports overall health and wellness.';
+      
+      for (const [key, desc] of Object.entries(supplementDescriptions)) {
+        if (lowerName.includes(key) || key.includes(lowerName.split(' ')[0])) {
+          description = desc;
+          break;
         }
-        
-        rows.push([name, description, 'As directed']);
+      }
+      
+      // Check for duplicates
+      const isDuplicate = rows.some(r => r[0].toLowerCase().includes(lowerName.split(' ')[0]) || 
+                                         lowerName.includes(r[0].toLowerCase().split(' ')[0]));
+      if (!isDuplicate) {
+        rows.push([supplementName, description, doseTiming]);
       }
     }
     
     // Add Omegagenics for patients over 35 if not already included
     if (patientAge && patientAge > 35) {
-      const hasOmega = rows.some(r => r[0].toLowerCase().includes('omega') || r[0].toLowerCase().includes('fish oil'));
+      const hasOmega = rows.some(r => r[0].toLowerCase().includes('omega') || r[0].toLowerCase().includes('fish oil') || r[0].toLowerCase().includes('epa') || r[0].toLowerCase().includes('dha'));
       if (!hasOmega) {
         rows.push([
           'Omegagenics EPA-DHA',
-          'High-quality omega-3 for cardiovascular health, joint comfort, cognitive function, and healthy aging. Recommended for patients over 35.',
+          'High-quality omega-3 for cardiovascular health, joint comfort, cognitive function, and healthy aging.',
           '1-2 softgels daily with food'
         ]);
       }
     }
     
     if (rows.length < 2) {
-      const simpleLines = text.split(/[.\n]/).filter(l => l.trim().length > 10).slice(0, 6);
+      // Fallback parsing for simpler formats
+      const simpleLines = text.split(/[.\n]/).filter(l => {
+        const lower = l.toLowerCase();
+        return l.trim().length > 10 && supplementKeywords.some(kw => lower.includes(kw));
+      }).slice(0, 6);
       const supplements = simpleLines.map(l => {
         const name = sanitizeForPdf(l.trim().substring(0, 30));
         return [name, 'Supports overall health and wellness.', 'As directed'];
       });
-      return { supplements, redFlags };
+      return { supplements, redFlags: [] };
     }
     return { 
       supplements: rows.slice(0, 10).map(r => [sanitizeForPdf(r[0]), sanitizeForPdf(r[1]), sanitizeForPdf(r[2])]),
-      redFlags 
+      redFlags: [] // Don't show red flags below table - they clutter the report
     };
   };
 
