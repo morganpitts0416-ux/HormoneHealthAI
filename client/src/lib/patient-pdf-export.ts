@@ -544,25 +544,49 @@ export async function generatePatientWellnessPDF(
           diet = trimmed;
         } else if (currentSection === 'foods') {
           // Parse food entries - extract clean food name, put serving info + explanation in column 2
-          // Handle formats like: "Salmon (2 servings/week) - Rich in omega-3s..."
-          // or "Leafy greens (spinach, Swiss chard) - Provide non-heme iron..."
+          // Handle formats like: 
+          // "Salmon (2 servings/week) - Rich in omega-3s..."
+          // "Leafy greens (spinach, Swiss chard) - Provide non-heme iron..."
+          // "Extra-Virgin Olive Oil - Replaces saturated fats..."
           
-          // First, try to extract food name before parenthesis or first dash/colon
-          const nameMatch = trimmed.match(/^([A-Za-z][A-Za-z\s&,]+?)(?:\s*[\(\-–:])/);
-          if (nameMatch && nameMatch[1].length >= 3 && nameMatch[1].length <= 35) {
-            const foodName = nameMatch[1].trim();
-            const restOfLine = trimmed.substring(nameMatch[0].length - 1).trim(); // Keep the separator for context
-            foods.push([foodName, restOfLine]);
-          } else {
-            // Fallback: try simpler "Food - reason" split
-            const simpleSplit = trimmed.match(/^([^:\-–]{3,30})[\s:\-–]+(.+)/);
-            if (simpleSplit) {
-              foods.push([simpleSplit[1].trim(), simpleSplit[2].trim()]);
+          // Split on " - " (dash with spaces) or " – " (en-dash) to preserve compound names
+          const dashSplit = trimmed.split(/\s+[-–]\s+/);
+          if (dashSplit.length >= 2) {
+            // First part is food name (may include parenthetical examples)
+            let foodName = dashSplit[0].trim();
+            const description = dashSplit.slice(1).join(' - ').trim();
+            
+            // If food name has parenthetical, keep it short and move details to description
+            const parenMatch = foodName.match(/^([A-Za-z][A-Za-z\-\s&]+?)(\s*\([^)]+\))/);
+            if (parenMatch) {
+              foodName = parenMatch[1].trim();
+              const parenContent = parenMatch[2].trim();
+              foods.push([foodName, parenContent + ' - ' + description]);
             } else {
-              // Last resort: first 25 chars as name, rest as description
-              const name = trimmed.substring(0, 25).replace(/[\(\-–:].*/,'').trim();
-              const desc = trimmed.substring(name.length).replace(/^[\s\(\-–:]+/, '').trim() || 'Supports overall health';
-              foods.push([name, desc]);
+              // Clean up food name - limit length
+              if (foodName.length > 35) {
+                foodName = foodName.substring(0, 35).trim();
+              }
+              foods.push([foodName, description]);
+            }
+          } else {
+            // No " - " separator found, try colon separator
+            const colonSplit = trimmed.split(/:\s+/);
+            if (colonSplit.length >= 2 && colonSplit[0].length <= 40) {
+              let foodName = colonSplit[0].trim();
+              const description = colonSplit.slice(1).join(': ').trim();
+              foods.push([foodName, description]);
+            } else {
+              // Last resort: look for parenthetical as start of description
+              const parenMatch = trimmed.match(/^([A-Za-z][A-Za-z\-\s&]+?)(\s*\(.+)/);
+              if (parenMatch && parenMatch[1].length >= 3 && parenMatch[1].length <= 40) {
+                foods.push([parenMatch[1].trim(), parenMatch[2].trim()]);
+              } else {
+                // Very last resort: take first 30 chars as name
+                const name = trimmed.substring(0, 30).trim();
+                const desc = trimmed.substring(30).trim() || 'Supports overall health';
+                foods.push([name, desc]);
+              }
             }
           }
         } else if (!goal && lowerLine.includes('goal')) {
