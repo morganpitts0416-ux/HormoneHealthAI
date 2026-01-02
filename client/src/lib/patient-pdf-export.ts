@@ -934,8 +934,58 @@ export async function generatePatientWellnessPDF(
 
   yPosition = addSectionHeader('YOUR SUPPLEMENT PROTOCOL', yPosition);
   
+  // Use supplements directly from the interpretation (same as staff-facing view)
+  // This ensures patient PDF matches the Complete Lab Review recommendations
   const patientAge = labValues.demographics?.age;
-  const { supplements: supplementData, redFlags } = parseSupplements(wellnessPlan.supplementProtocol, patientAge);
+  
+  // Build supplement table from interpretation.supplements (the authoritative source)
+  const buildSupplementTable = (): string[][] => {
+    if (interpretation.supplements && interpretation.supplements.length > 0) {
+      // Use the actual supplements from clinical logic (same as staff view)
+      return interpretation.supplements.map(s => {
+        // Find matching Metagenics product for better description
+        const lowerName = s.name.toLowerCase();
+        let description = s.rationale || s.indication || 'Supports overall health and wellness.';
+        
+        // Match to our Metagenics catalog for consistent descriptions
+        for (const product of metagenicsProducts) {
+          if (product.aliases.some(alias => lowerName.includes(alias) || alias.includes(lowerName.split(' ')[0]))) {
+            description = product.description;
+            break;
+          }
+        }
+        
+        return [
+          sanitizeForPdf(s.name),
+          sanitizeForPdf(description),
+          sanitizeForPdf(s.dose || 'As directed')
+        ];
+      });
+    }
+    
+    // Fallback: parse AI-generated text if no supplements in interpretation
+    const { supplements: parsed } = parseSupplements(wellnessPlan.supplementProtocol, patientAge);
+    return parsed;
+  };
+  
+  const supplementData = buildSupplementTable();
+  
+  // Add Omegagenics for patients over 35 if not already included
+  if (patientAge && patientAge > 35) {
+    const hasOmega = supplementData.some(r => {
+      const name = r[0].toLowerCase();
+      return name.includes('omega') || name.includes('fish oil') || name.includes('epa') || name.includes('dha');
+    });
+    if (!hasOmega) {
+      const omegaProduct = metagenicsProducts.find(p => p.category === 'omega')!;
+      supplementData.push([
+        omegaProduct.name,
+        omegaProduct.description,
+        omegaProduct.defaultDose
+      ]);
+    }
+  }
+  
   if (supplementData.length > 0) {
     autoTable(doc, {
       startY: yPosition,
@@ -966,27 +1016,6 @@ export async function generatePatientWellnessPDF(
       },
     });
     yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
-    
-    // Display red flags below the table with star markers
-    if (redFlags.length > 0) {
-      yPosition += 6;
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'bold');
-      doc.setTextColor(180, 50, 50);
-      for (const flag of redFlags) {
-        if (yPosition > pageHeight - 30) {
-          doc.addPage();
-          addHeader();
-          yPosition = 45;
-        }
-        const flagText = `* ${sanitizeForPdf(flag)}`;
-        const lines = doc.splitTextToSize(flagText, contentWidth);
-        doc.text(lines, margin, yPosition);
-        yPosition += lines.length * 4 + 2;
-      }
-      doc.setTextColor(...textColor);
-      doc.setFont('helvetica', 'normal');
-    }
   } else {
     yPosition = addTextSection(wellnessPlan.supplementProtocol, yPosition, contentWidth);
   }
