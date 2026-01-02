@@ -1350,32 +1350,35 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // Lp(a)
+    // Lp(a) - Using mg/dL thresholds per clinic protocol
+    // <30 mg/dL = normal
+    // 30-50 mg/dL = intermediate risk
+    // >50 mg/dL = risk enhancing factor
     if (labs.lpa !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
 
-      if (labs.lpa >= 125) {
+      if (labs.lpa > 50) {
         status = 'abnormal';
-        interpretation = 'Significantly elevated Lp(a) - high cardiovascular risk.';
-        recommendation = 'Genetic cardiovascular risk factor. Consider aggressive LDL lowering.';
-      } else if (labs.lpa >= 75 && labs.lpa < 125) {
+        interpretation = 'Elevated Lp(a) - cardiovascular risk enhancing factor.';
+        recommendation = 'Genetic cardiovascular risk factor. Consider aggressive LDL lowering and lifestyle optimization.';
+      } else if (labs.lpa >= 30 && labs.lpa <= 50) {
         status = 'borderline';
-        interpretation = 'Moderately elevated Lp(a).';
-        recommendation = 'Lifestyle optimization. Lower other modifiable risk factors.';
+        interpretation = 'Intermediate Lp(a) - moderate cardiovascular risk.';
+        recommendation = 'Lifestyle optimization. Monitor and lower other modifiable risk factors.';
       } else {
         status = 'normal';
-        interpretation = 'Lp(a) within acceptable range.';
-        recommendation = 'Routine monitoring.';
+        interpretation = 'Lp(a) within optimal range.';
+        recommendation = 'Continue current lifestyle. Routine monitoring.';
       }
 
       interpretations.push({
         category: 'Lipoprotein(a)',
         value: labs.lpa,
-        unit: 'nmol/L',
+        unit: 'mg/dL',
         status,
-        referenceRange: '<75 nmol/L',
+        referenceRange: '<30 mg/dL optimal',
         interpretation,
         recommendation,
       });
@@ -1697,14 +1700,16 @@ export class FemaleClinicalLogicEngine {
       prediabetes: false,
     };
 
-    // Lipoprotein(a) - Lp(a) thresholds
-    // ≥50 mg/dL (or ≥125 nmol/L) = high risk
+    // Lipoprotein(a) - Lp(a) thresholds per clinic protocol
+    // <30 mg/dL = normal
+    // 30-50 mg/dL = intermediate risk (borderline flag)
+    // >50 mg/dL = risk enhancing factor (high_Lp_a flag)
     // ≥180 mg/dL = very high / genetic-equivalent risk
     if (labs.lpa !== undefined) {
       if (labs.lpa >= 180) {
         flags.high_Lp_a = true;
         flags.very_high_Lp_a = true;
-      } else if (labs.lpa >= 50) {
+      } else if (labs.lpa > 50) {
         flags.high_Lp_a = true;
       }
     }
