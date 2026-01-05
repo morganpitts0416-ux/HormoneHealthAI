@@ -24,6 +24,22 @@ The application features a comprehensive lab input form, a results display with 
 -   **Design System**: Employs Inter and JetBrains Mono fonts, a professional blue color scheme with medical-grade status colors, and Material Design-inspired components.
 -   **Patient Wellness PDF Report (Women's Clinic)**: Generates comprehensive patient-facing wellness PDFs with AI-powered personalized diet, supplement, and lifestyle recommendations, and educational content.
 
+## Metagenics Supplement Catalog (Clinic Inventory)
+The following 10 Metagenics products are configured in the system. These are the only products that will be recommended:
+
+1. **HerWellness Estrovera** - Hormone-free menopause relief with ERr 731 rhubarb extract (1 tablet daily)
+2. **Hemagenics** - Non-constipating iron with B12, B6, folate for red blood cell support (1 tablet daily)
+3. **Intrinsi B12-Folate** - Methylcobalamin + folate with intrinsic factor for enhanced absorption (1 tablet daily)
+4. **HerWellness Rapid Stress Relief** - Fast-acting L-Theanine + Lactium stress support chews (1 chew as needed)
+5. **Vitamin D3 10,000 + K** - High-dose vitamin D with K2 for deficiency repletion (1 softgel daily)
+6. **Vitamin D3 5,000 + K** - Maintenance vitamin D with K2 for bone/immune support (1 softgel daily)
+7. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for cognitive support (3 capsules daily, divided)
+8. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal support (2 capsules twice daily)
+9. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
+10. **UltraFlora Complete Women's Probiotic** - 5-in-1 probiotic for vaginal, urinary, digestive health (1 capsule daily)
+
+**Note**: To add new Metagenics products, update both `server/supplements-female.ts` (clinical logic) and `client/src/lib/patient-pdf-export.ts` (PDF display).
+
 ## External Dependencies
 -   **OpenAI**: Used for AI-powered recommendations, intelligent text extraction from PDFs, and generating patient-friendly summaries and wellness plans.
 -   **PostgreSQL**: The primary database for storing patient and lab result data.
