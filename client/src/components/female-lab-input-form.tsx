@@ -96,6 +96,26 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}
+                  name="patientName"
+                  render={({ field }) => (
+                    <FormItem className="md:col-span-2">
+                      <FormLabel className="text-xs font-medium uppercase">Patient Name</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="text"
+                          placeholder="Enter patient name"
+                          {...field}
+                          value={field.value ?? ''}
+                          data-testid="input-patient-name-female"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+                
+                <FormField
+                  control={form.control}
                   name="demographics.age"
                   render={({ field }) => (
                     <FormItem>

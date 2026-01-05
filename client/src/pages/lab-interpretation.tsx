@@ -3,17 +3,19 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2 } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LabInputForm } from "@/components/lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { PatientSummary } from "@/components/patient-summary";
+import { SavedInterpretations } from "@/components/saved-interpretations";
 import { labsApi } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
-import type { LabValues, InterpretationResult } from "@shared/schema";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { LabValues, InterpretationResult, FemaleLabValues } from "@shared/schema";
 
 export default function LabInterpretation() {
   const [labValues, setLabValues] = useState<LabValues>({});
@@ -118,6 +120,52 @@ export default function LabInterpretation() {
     fileInputRef.current?.click();
   };
 
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      if (!interpretationResult) throw new Error('No interpretation to save');
+      const patientName = labValues.patientName || 'Unknown Patient';
+      return apiRequest('POST', '/api/saved-interpretations', {
+        patientName,
+        gender: 'male',
+        labValues,
+        interpretation: interpretationResult,
+        labDate: new Date().toISOString(),
+      });
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/saved-interpretations'] });
+      toast({
+        title: "Saved",
+        description: "Interpretation saved to history.",
+      });
+    },
+    onError: (error) => {
+      toast({
+        variant: "destructive",
+        title: "Save Failed",
+        description: error instanceof Error ? error.message : "Failed to save interpretation",
+      });
+    },
+  });
+
+  const handleSave = () => {
+    if (!labValues.patientName) {
+      toast({
+        variant: "destructive",
+        title: "Patient Name Required",
+        description: "Please enter a patient name before saving.",
+      });
+      return;
+    }
+    saveMutation.mutate();
+  };
+
+  const handleLoadInterpretation = (loadedLabValues: LabValues | FemaleLabValues, loadedInterpretation: InterpretationResult) => {
+    setLabValues(loadedLabValues as LabValues);
+    setInterpretationResult(loadedInterpretation);
+    setActiveTab("results");
+  };
+
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
@@ -146,6 +194,15 @@ export default function LabInterpretation() {
                   </Button>
                   <Button 
                     variant="outline" 
+                    onClick={handleSave}
+                    disabled={saveMutation.isPending}
+                    data-testid="button-save-interpretation"
+                  >
+                    <Save className="w-4 h-4 mr-2" />
+                    {saveMutation.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button 
+                    variant="outline" 
                     onClick={handleReset}
                     data-testid="button-reset"
                   >
@@ -162,10 +219,14 @@ export default function LabInterpretation() {
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
-          <TabsList className="grid w-full max-w-md grid-cols-2" data-testid="tabs-navigation">
+          <TabsList className="grid w-full max-w-lg grid-cols-3" data-testid="tabs-navigation">
             <TabsTrigger value="input" data-testid="tab-input">Lab Entry</TabsTrigger>
             <TabsTrigger value="results" disabled={!interpretationResult} data-testid="tab-results">
-              Results & Recommendations
+              Results
+            </TabsTrigger>
+            <TabsTrigger value="history" data-testid="tab-history">
+              <History className="w-4 h-4 mr-1" />
+              History
             </TabsTrigger>
           </TabsList>
 
@@ -291,6 +352,13 @@ export default function LabInterpretation() {
                 </CardContent>
               </Card>
             )}
+          </TabsContent>
+
+          <TabsContent value="history" className="space-y-6">
+            <SavedInterpretations 
+              gender="male" 
+              onLoadInterpretation={handleLoadInterpretation}
+            />
           </TabsContent>
         </Tabs>
 
