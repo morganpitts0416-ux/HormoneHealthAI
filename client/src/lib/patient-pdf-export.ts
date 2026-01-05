@@ -840,6 +840,13 @@ export async function generatePatientWellnessPDF(
       defaultDose: '1 chewable gel daily',
       category: 'cardiovascular'
     },
+    {
+      name: 'OmegaGenics Fish Oil Neuro 1000',
+      aliases: ['omegagenics', 'fish oil', 'omega-3', 'omega 3', 'dha', 'epa', 'neuro 1000'],
+      description: 'High-DHA omega-3 fish oil (750mg DHA, 250mg EPA) for brain health, cognitive function, mood balance, and cardiovascular support. Lemon-flavored with no fishy taste. Non-GMO, gluten-free.',
+      defaultDose: '1 softgel 1-2 times daily',
+      category: 'cardiovascular'
+    },
   ];
 
   // Parse and format supplement protocol into table with Metagenics products

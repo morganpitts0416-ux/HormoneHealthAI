@@ -300,6 +300,52 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
+  // OMEGAGENICS FISH OIL NEURO 1000 - Brain, Cardiovascular, and Joint Support
+  {
+    supplement: {
+      name: "OmegaGenics® Fish Oil Neuro 1000",
+      dose: "1 softgel 1-2 times daily",
+      priority: 'medium',
+      category: 'cardiovascular',
+      caution: "High-DHA omega-3 (750mg DHA, 250mg EPA) for brain and heart health. Lemon-flavored, no fishy taste. Contains calamari - avoid if shellfish allergy."
+    },
+    evaluate: (labs) => {
+      // Abnormal lipid findings
+      const highLDL = labs.ldl !== undefined && labs.ldl > 100;
+      const lowHDL = labs.hdl !== undefined && labs.hdl < 50;
+      const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
+      const highTotalCholesterol = labs.totalCholesterol !== undefined && labs.totalCholesterol > 200;
+      const abnormalLipids = highLDL || lowHDL || highTriglycerides || highTotalCholesterol;
+      
+      // Elevated cardiovascular risk markers
+      const elevatedLpa = labs.lpa !== undefined && labs.lpa > 30;
+      const elevatedApoB = labs.apoB !== undefined && labs.apoB > 90;
+      const elevatedHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 2;
+      const elevatedCVRisk = elevatedLpa || elevatedApoB || elevatedHsCRP;
+      
+      // Joint aches symptom
+      const hasJointAches = labs.jointAches === true;
+      
+      if (abnormalLipids || elevatedCVRisk || hasJointAches) {
+        let indications: string[] = [];
+        if (hasJointAches) indications.push("Joint discomfort");
+        if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
+        if (highLDL) indications.push(`LDL ${labs.ldl} mg/dL`);
+        if (lowHDL) indications.push(`HDL ${labs.hdl} mg/dL (low)`);
+        if (elevatedHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/L`);
+        if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa} nmol/L`);
+        
+        return {
+          shouldRecommend: true,
+          indication: indications.join(', '),
+          rationale: "OmegaGenics Fish Oil Neuro 1000 provides concentrated DHA and EPA to reduce triglycerides, support brain function, cardiovascular health, and reduce inflammation for joint comfort."
+        };
+      }
+      
+      return null;
+    }
+  },
+
   // NUTRAGEMS CoQ10 300 - Cardiovascular and Lipid Support
   {
     supplement: {
