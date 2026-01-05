@@ -759,10 +759,17 @@ export async function generatePatientWellnessPDF(
       category: 'omega'
     },
     {
-      name: 'D3 5000 with K',
-      aliases: ['vitamin d', 'd3', 'cholecalciferol', 'vitamin d3'],
+      name: 'D3 10,000 + K',
+      aliases: ['d3 10000', 'd3 10,000', 'vitamin d 10000'],
+      description: 'High-dose vitamin D repletion with vitamin K for bone and vascular health. Used for documented vitamin D deficiency.',
+      defaultDose: '1 softgel daily with meal',
+      category: 'vitamind-high'
+    },
+    {
+      name: 'D3 5,000 + K',
+      aliases: ['vitamin d', 'd3', 'd3 5000', 'd3 5,000', 'cholecalciferol', 'vitamin d3'],
       description: 'Essential for bone health, immune function, mood regulation, and hormone balance. Works synergistically with vitamin K.',
-      defaultDose: '1 capsule daily with food',
+      defaultDose: '1 softgel daily with meal',
       category: 'vitamind'
     },
     {
@@ -781,17 +788,31 @@ export async function generatePatientWellnessPDF(
     },
     {
       name: 'UltraFlora Balance',
-      aliases: ['probiotic', 'ultraflora', 'lactobacillus', 'bifidobacterium', 'gut health'],
+      aliases: ['ultraflora balance'],
       description: 'Targeted probiotic strains for digestive health, immune support, and maintaining healthy gut microbiome.',
+      defaultDose: '1 capsule daily',
+      category: 'probiotic-balance'
+    },
+    {
+      name: 'UltraFlora Complete',
+      aliases: ['ultraflora complete', 'ultraflora', 'probiotic', 'lactobacillus', 'bifidobacterium', 'gut health'],
+      description: 'Comprehensive multi-strain probiotic supporting gut health, hormone metabolism, immune function, and inflammation modulation.',
       defaultDose: '1 capsule daily',
       category: 'probiotic'
     },
     {
       name: 'Methyl B12',
-      aliases: ['b12', 'methylcobalamin', 'cobalamin', 'vitamin b12'],
+      aliases: ['methyl b12', 'methylcobalamin', 'cobalamin', 'b12', 'vitamin b12'],
       description: 'Active form of B12 for optimal absorption, supporting energy, nerve function, and methylation.',
       defaultDose: '1 tablet daily',
       category: 'b12'
+    },
+    {
+      name: 'Intrinsi B12-Folate',
+      aliases: ['intrinsi', 'b12-folate', 'b12 folate', 'intrinsic factor'],
+      description: 'Methylated B12 and folate with intrinsic factor for superior absorption. Supports energy, cognition, and methylation.',
+      defaultDose: '1 tablet daily',
+      category: 'b12-folate'
     },
     {
       name: 'Folate 5-MTHF',
@@ -801,11 +822,18 @@ export async function generatePatientWellnessPDF(
       category: 'folate'
     },
     {
+      name: 'Hemagenics',
+      aliases: ['hemagenics', 'red blood cell', 'rbc support', 'iron folate b12'],
+      description: 'Comprehensive red blood cell support with highly absorbable iron, folate, and B12. Supports energy, prevents fatigue, and addresses iron deficiency without anemia.',
+      defaultDose: '1 tablet twice daily with meals',
+      category: 'iron'
+    },
+    {
       name: 'Iron Bisglycinate',
-      aliases: ['iron', 'ferrous', 'ferritin'],
+      aliases: ['iron bisglycinate', 'ferrous bisglycinate', 'iron', 'ferrous', 'ferritin'],
       description: 'Gentle, highly absorbable iron for oxygen transport, energy production, and preventing fatigue from iron deficiency.',
       defaultDose: '1 capsule daily with vitamin C',
-      category: 'iron'
+      category: 'iron-generic'
     },
     {
       name: 'Psyllium Fiber',
@@ -841,6 +869,20 @@ export async function generatePatientWellnessPDF(
       description: 'Plant compound supporting healthy blood sugar, cholesterol metabolism, and metabolic health.',
       defaultDose: '500mg twice daily with meals',
       category: 'berberine'
+    },
+    {
+      name: 'HerWellness Estrovera',
+      aliases: ['estrovera', 'herwellness', 'err 731', 'rhubarb extract', 'menopause'],
+      description: 'Clinically studied ERr 731 rhubarb extract for relief of menopausal symptoms including hot flashes, sleep disturbances, and mood changes without hormones.',
+      defaultDose: '1 tablet daily',
+      category: 'menopause'
+    },
+    {
+      name: 'Cal Apatite Bone Builder',
+      aliases: ['cal apatite', 'bone builder', 'mchc', 'calcium', 'bone support'],
+      description: 'Microcrystalline hydroxyapatite (MCHC) - the form of calcium found in bone - for comprehensive skeletal support and bone density.',
+      defaultDose: '2 tablets twice daily with meals',
+      category: 'bone'
     },
   ];
 
@@ -940,19 +982,36 @@ export async function generatePatientWellnessPDF(
   
   // Build supplement table from interpretation.supplements (the authoritative source)
   const buildSupplementTable = (): string[][] => {
+    // Helper to normalize names for comparison (strip trademarks, extra spaces, punctuation)
+    const normalizeName = (name: string): string => 
+      name.toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ').trim();
+    
     if (interpretation.supplements && interpretation.supplements.length > 0) {
       // Use the actual supplements from clinical logic (same as staff view)
       return interpretation.supplements.map(s => {
         // Find matching Metagenics product for better description
-        const lowerName = s.name.toLowerCase();
+        const normalizedName = normalizeName(s.name);
         let description = s.rationale || s.indication || 'Supports overall health and wellness.';
         
         // Match to our Metagenics catalog for consistent descriptions
-        for (const product of metagenicsProducts) {
-          if (product.aliases.some(alias => lowerName.includes(alias) || alias.includes(lowerName.split(' ')[0]))) {
-            description = product.description;
-            break;
-          }
+        // Priority 1: Exact product name match (normalized, case-insensitive)
+        let matchedProduct = metagenicsProducts.find(product => {
+          const normalizedProduct = normalizeName(product.name);
+          return normalizedName.includes(normalizedProduct) || 
+                 normalizedProduct.includes(normalizedName.split(' ').slice(0, 2).join(' '));
+        });
+        
+        // Priority 2: Specific alias match (alias must be 3+ chars to avoid false positives)
+        if (!matchedProduct) {
+          matchedProduct = metagenicsProducts.find(product =>
+            product.aliases.some(alias => 
+              alias.length >= 3 && normalizedName.includes(alias)
+            )
+          );
+        }
+        
+        if (matchedProduct) {
+          description = matchedProduct.description;
         }
         
         return [
