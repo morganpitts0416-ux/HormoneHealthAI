@@ -125,27 +125,33 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // MAGTEIN MAGNESIUM L-THREONATE
+  // MAGTEIN MAGNESIUM L-THREONATE - For sleep disturbances or low energy
   {
     supplement: {
       name: "Magtein® Magnesium L-Threonate",
-      dose: "2 capsules daily (1 morning, 1 evening)",
+      dose: "3 capsules daily (divided doses)",
       priority: 'medium',
       category: 'mineral',
-      caution: "L-Threonate form crosses blood-brain barrier for cognitive support. Well-tolerated; gentle on GI system."
+      caution: "L-Threonate form crosses blood-brain barrier for cognitive and sleep support. Well-tolerated; gentle on GI system."
     },
     evaluate: (labs) => {
-      const hasThyroidIssues = labs.tsh !== undefined && (labs.tsh > 4.5 || labs.tsh < 0.4);
-      const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
-      const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
-      const onHRT = labs.onHRT === true;
-      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
+      const hasSleepDisturbances = labs.sleepDisruption === true;
+      const hasLowEnergy = labs.lowEnergy === true;
       
-      if (hasThyroidIssues || onHRT || postmenopausal || (lowFerritin && lowVitD)) {
+      if (hasSleepDisturbances || hasLowEnergy) {
+        let indication = '';
+        if (hasSleepDisturbances && hasLowEnergy) {
+          indication = "Sleep disturbances and low energy";
+        } else if (hasSleepDisturbances) {
+          indication = "Sleep disturbances";
+        } else {
+          indication = "Low energy";
+        }
+        
         return {
           shouldRecommend: true,
-          indication: "Cognitive and metabolic support",
-          rationale: "Magtein is the only magnesium form shown to effectively cross the blood-brain barrier. Supports memory, sleep, stress resilience, and metabolic function."
+          indication: indication,
+          rationale: "Magtein is the only magnesium form shown to effectively cross the blood-brain barrier. Supports quality sleep, cognitive function, and energy levels."
         };
       }
       
@@ -153,7 +159,7 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // ULTRAFLORA COMPLETE WOMEN'S PROBIOTIC
+  // ULTRAFLORA COMPLETE WOMEN'S PROBIOTIC - Recommended for ALL female patients
   {
     supplement: {
       name: "UltraFlora® Complete Women's Probiotic",
@@ -162,29 +168,13 @@ const supplementRules: SupplementRule[] = [
       category: 'general',
       caution: "5-in-1 multi-benefit probiotic with Lactobacillus GR-1 and RC-14 for vaginal and urinary health. Increase to 2 daily for urogenital irritation."
     },
-    evaluate: (labs) => {
-      const onHRT = labs.onHRT === true;
-      const hasInflammation = labs.hsCRP !== undefined && labs.hsCRP > 2;
-      const onBirthControl = labs.onBirthControl === true;
-      const thyroidIssues = labs.tsh !== undefined && (labs.tsh > 4.5 || labs.tsh < 0.4);
-      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
-      
-      if (onHRT || hasInflammation || onBirthControl || thyroidIssues || postmenopausal) {
-        let indication = '';
-        if (onHRT) indication = "HRT hormone metabolism support";
-        else if (postmenopausal) indication = "Postmenopausal vaginal and urinary health";
-        else if (hasInflammation) indication = `Elevated hs-CRP (${labs.hsCRP} mg/L)`;
-        else if (onBirthControl) indication = "Oral contraceptive support";
-        else if (thyroidIssues) indication = "Gut-thyroid axis support";
-        
-        return {
-          shouldRecommend: true,
-          indication: indication,
-          rationale: "UltraFlora Complete Women's provides 5-in-1 support for vaginal, urinary, digestive, and immune health with Lactobacillus GR-1 and RC-14."
-        };
-      }
-      
-      return null;
+    evaluate: (_labs) => {
+      // Recommended for ALL female patients
+      return {
+        shouldRecommend: true,
+        indication: "Women's health foundation",
+        rationale: "UltraFlora Complete Women's provides 5-in-1 support for vaginal, urinary, digestive, and immune health with Lactobacillus GR-1 and RC-14 strains."
+      };
     }
   },
   
