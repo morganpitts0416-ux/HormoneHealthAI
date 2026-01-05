@@ -428,7 +428,20 @@ export async function generatePatientWellnessPDF(
   if (interpretation.interpretations && interpretation.interpretations.length > 0) {
     const tableData = interpretation.interpretations.map((interp: LabInterpretation) => {
       let statusText = '';
-      if (interp.status === 'critical') {
+      
+      // Special handling for ferritin with clinical thresholds
+      const catLower = interp.category.toLowerCase();
+      if (catLower === 'ferritin' && interp.value !== undefined) {
+        if (interp.value <= 30) {
+          statusText = 'Iron deficiency without anemia';
+        } else if (interp.value <= 50) {
+          statusText = 'Insufficient';
+        } else if (interp.value <= 150) {
+          statusText = 'Optimal';
+        } else {
+          statusText = 'Elevated';
+        }
+      } else if (interp.status === 'critical') {
         statusText = 'Needs Attention';
       } else if (interp.status === 'abnormal') {
         statusText = 'Outside Range';
@@ -481,13 +494,13 @@ export async function generatePatientWellnessPDF(
       didParseCell: (data) => {
         if (data.section === 'body' && data.column.index === 3) {
           const status = data.cell.raw as string;
-          if (status === 'Needs Attention') {
+          if (status === 'Needs Attention' || status === 'Iron deficiency without anemia') {
             data.cell.styles.textColor = [220, 38, 38];
             data.cell.styles.fontStyle = 'bold';
-          } else if (status === 'Outside Range') {
+          } else if (status === 'Outside Range' || status === 'Elevated') {
             data.cell.styles.textColor = [234, 88, 12];
             data.cell.styles.fontStyle = 'bold';
-          } else if (status === 'Borderline') {
+          } else if (status === 'Borderline' || status === 'Insufficient') {
             data.cell.styles.textColor = [180, 130, 20];
           } else {
             data.cell.styles.textColor = [34, 139, 34];
