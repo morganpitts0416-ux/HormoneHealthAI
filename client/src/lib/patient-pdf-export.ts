@@ -136,7 +136,7 @@ function getLabInsight(category: string, value: number | string, status: string,
     "vitamin d": {
       what: "Vitamin D supports bone health, immune function, and mood regulation.",
       normal: "Your vitamin D level supports strong bones, immunity, and positive mood.",
-      low: "Low vitamin D is linked to fatigue, weakened bones, and increased illness. Supplementation is often helpful.",
+      low: "Low vitamin D is linked to fatigue, weakened bones, and increased illness. Vitamin D3 with K2 supplementation is recommended.",
       high: "Vitamin D levels above optimal range - monitoring recommended."
     },
     "vitamin b12": {
@@ -441,6 +441,19 @@ export async function generatePatientWellnessPDF(
         } else {
           statusText = 'Elevated';
         }
+      } else if ((catLower.includes('vitamin d') || catLower === 'vitamin d (25-oh)') && interp.value !== undefined) {
+        // Special handling for Vitamin D with clinical thresholds
+        if (interp.value <= 30) {
+          statusText = 'Deficient';
+        } else if (interp.value <= 40) {
+          statusText = 'Insufficient';
+        } else if (interp.value >= 60 && interp.value <= 80) {
+          statusText = 'Optimal';
+        } else if (interp.value > 80) {
+          statusText = 'Elevated';
+        } else {
+          statusText = 'Suboptimal';
+        }
       } else if (interp.status === 'critical') {
         statusText = 'Needs Attention';
       } else if (interp.status === 'abnormal') {
@@ -494,13 +507,13 @@ export async function generatePatientWellnessPDF(
       didParseCell: (data) => {
         if (data.section === 'body' && data.column.index === 3) {
           const status = data.cell.raw as string;
-          if (status === 'Needs Attention' || status === 'Iron deficiency without anemia') {
+          if (status === 'Needs Attention' || status === 'Iron deficiency without anemia' || status === 'Deficient') {
             data.cell.styles.textColor = [220, 38, 38];
             data.cell.styles.fontStyle = 'bold';
           } else if (status === 'Outside Range' || status === 'Elevated') {
             data.cell.styles.textColor = [234, 88, 12];
             data.cell.styles.fontStyle = 'bold';
-          } else if (status === 'Borderline' || status === 'Insufficient') {
+          } else if (status === 'Borderline' || status === 'Insufficient' || status === 'Suboptimal') {
             data.cell.styles.textColor = [180, 130, 20];
           } else {
             data.cell.styles.textColor = [34, 139, 34];

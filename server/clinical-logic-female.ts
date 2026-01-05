@@ -983,11 +983,11 @@ export class FemaleClinicalLogicEngine {
       if (labs.vitaminD <= 30) {
         status = 'abnormal';
         interpretation = 'Vitamin D deficiency (≤30 ng/mL). Goal is 60-80 ng/mL.';
-        recommendation = 'Provider protocol: 10,000 IU D3+K daily OR weekly prescription of 50,000 IU D3. Recheck in 8-12 weeks.';
+        recommendation = 'Metagenics Vitamin D3 10,000 + K: 1 softgel daily with meal. OR weekly prescription of 50,000 IU D3. Recheck in 8-12 weeks.';
       } else if (labs.vitaminD <= 40) {
         status = 'borderline';
-        interpretation = 'Vitamin D insufficiency (≤40 ng/mL). Goal is 60-80 ng/mL.';
-        recommendation = 'Provider protocol: 5,000 IU D3+K daily. Recheck in 8-12 weeks.';
+        interpretation = 'Vitamin D insufficiency (31-40 ng/mL). Goal is 60-80 ng/mL.';
+        recommendation = 'Metagenics Vitamin D3 5,000 + K: 1 softgel daily with meal. Recheck in 8-12 weeks.';
       } else if (labs.vitaminD < 60) {
         status = 'borderline';
         interpretation = 'Vitamin D suboptimal. Goal is 60-80 ng/mL.';
