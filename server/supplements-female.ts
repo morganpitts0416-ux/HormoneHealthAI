@@ -125,39 +125,6 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // OMEGAGENICS FISH OIL EPA-DHA 1000mg
-  {
-    supplement: {
-      name: "OmegaGenics® Fish Oil EPA-DHA 1000",
-      dose: "1-2 softgels twice daily with meals",
-      priority: 'medium',
-      category: 'cardiovascular',
-      caution: "Pharmaceutical-grade fish oil. Take with food to minimize fishy aftertaste. May have mild blood-thinning effect."
-    },
-    evaluate: (labs) => {
-      const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
-      const highHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 2;
-      const elevatedLpa = labs.lpa !== undefined && labs.lpa > 50;
-      const suboptimalHDL = labs.hdl !== undefined && labs.hdl < 50;
-      
-      if (highTriglycerides || highHsCRP || elevatedLpa || suboptimalHDL) {
-        let indications: string[] = [];
-        if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
-        if (highHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/L`);
-        if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa} nmol/L`);
-        if (suboptimalHDL) indications.push(`HDL ${labs.hdl} mg/dL`);
-        
-        return {
-          shouldRecommend: true,
-          indication: indications.join(', '),
-          rationale: "OmegaGenics EPA-DHA 1000 provides concentrated omega-3s to reduce triglycerides, lower inflammation, and support cardiovascular health."
-        };
-      }
-      
-      return null;
-    }
-  },
-
   // MAGTEIN MAGNESIUM L-THREONATE
   {
     supplement: {
@@ -186,62 +153,26 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // NUTRAGEN CoQ10 300mg - Cardiovascular Risk
+  // ULTRAFLORA COMPLETE WOMEN'S PROBIOTIC
   {
     supplement: {
-      name: "NutraGems® CoQ10 300",
-      dose: "1 chewable softgel daily",
-      priority: 'medium',
-      category: 'cardiovascular',
-      caution: "High-potency CoQ10 in absorbable form. Take with fatty meal for best absorption. Essential for statin users."
-    },
-    evaluate: (labs) => {
-      const hypercholesterolemia = (labs.totalCholesterol !== undefined && labs.totalCholesterol > 200) || 
-                                    (labs.ldl !== undefined && labs.ldl > 130);
-      const elevatedLpa = labs.lpa !== undefined && labs.lpa > 50;
-      const elevatedCRP = labs.hsCRP !== undefined && labs.hsCRP > 2;
-      const elevatedFerritinInflammatory = labs.ferritin !== undefined && labs.ferritin > 150 && 
-                                            labs.hsCRP !== undefined && labs.hsCRP > 1;
-      
-      if (hypercholesterolemia || elevatedLpa || elevatedCRP || elevatedFerritinInflammatory) {
-        let indications: string[] = [];
-        if (hypercholesterolemia) {
-          if (labs.totalCholesterol !== undefined && labs.totalCholesterol > 200) indications.push(`TC ${labs.totalCholesterol} mg/dL`);
-          if (labs.ldl !== undefined && labs.ldl > 130) indications.push(`LDL ${labs.ldl} mg/dL`);
-        }
-        if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa} nmol/L`);
-        if (elevatedCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/L`);
-        if (elevatedFerritinInflammatory) indications.push(`Ferritin ${labs.ferritin} ng/mL (inflammatory)`);
-        
-        return {
-          shouldRecommend: true,
-          indication: indications.join(', '),
-          rationale: "NutraGems CoQ10 300 provides high-dose ubiquinone for cardiovascular protection, reducing oxidative stress and supporting healthy lipid metabolism. Critical for statin users."
-        };
-      }
-      
-      return null;
-    }
-  },
-
-  // ULTRAFLORA COMPLETE PROBIOTIC
-  {
-    supplement: {
-      name: "UltraFlora® Complete",
+      name: "UltraFlora® Complete Women's Probiotic",
       dose: "1 capsule daily",
       priority: 'low',
       category: 'general',
-      caution: "Multi-strain probiotic. Store refrigerated for optimal potency. May cause temporary bloating when starting."
+      caution: "5-in-1 multi-benefit probiotic with Lactobacillus GR-1 and RC-14 for vaginal and urinary health. Increase to 2 daily for urogenital irritation."
     },
     evaluate: (labs) => {
       const onHRT = labs.onHRT === true;
       const hasInflammation = labs.hsCRP !== undefined && labs.hsCRP > 2;
       const onBirthControl = labs.onBirthControl === true;
       const thyroidIssues = labs.tsh !== undefined && (labs.tsh > 4.5 || labs.tsh < 0.4);
+      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
       
-      if (onHRT || hasInflammation || onBirthControl || thyroidIssues) {
+      if (onHRT || hasInflammation || onBirthControl || thyroidIssues || postmenopausal) {
         let indication = '';
         if (onHRT) indication = "HRT hormone metabolism support";
+        else if (postmenopausal) indication = "Postmenopausal vaginal and urinary health";
         else if (hasInflammation) indication = `Elevated hs-CRP (${labs.hsCRP} mg/L)`;
         else if (onBirthControl) indication = "Oral contraceptive support";
         else if (thyroidIssues) indication = "Gut-thyroid axis support";
@@ -249,7 +180,37 @@ const supplementRules: SupplementRule[] = [
         return {
           shouldRecommend: true,
           indication: indication,
-          rationale: "UltraFlora Complete provides comprehensive probiotic support for gut health, hormone metabolism, immune function, and inflammation modulation."
+          rationale: "UltraFlora Complete Women's provides 5-in-1 support for vaginal, urinary, digestive, and immune health with Lactobacillus GR-1 and RC-14."
+        };
+      }
+      
+      return null;
+    }
+  },
+  
+  // HERWELLNESS RAPID STRESS RELIEF - Fast-Acting Stress Support
+  {
+    supplement: {
+      name: "HerWellness™ Rapid Stress Relief",
+      dose: "1 soft chew during times of stress",
+      priority: 'medium',
+      category: 'hormone-support',
+      caution: "Fast-acting L-Theanine and Lactium formula. Non-drowsy. Promotes calm within 1 hour. Contains milk."
+    },
+    evaluate: (labs) => {
+      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
+      const lowDHEAS = labs.dheas !== undefined && labs.dheas < 100;
+      const suboptimalThyroid = labs.tsh !== undefined && labs.tsh > 3.0;
+      const lowB12 = labs.vitaminB12 !== undefined && labs.vitaminB12 < 400;
+      const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
+      
+      const stressFactors = [postmenopausal, lowDHEAS, suboptimalThyroid, lowB12, lowFerritin].filter(Boolean).length;
+      
+      if (stressFactors >= 2) {
+        return {
+          shouldRecommend: true,
+          indication: "Multiple stress/fatigue indicators present",
+          rationale: "HerWellness Rapid Stress Relief provides fast-acting stress support with L-Theanine (200mg) and Lactium. Promotes calm within 1 hour without drowsiness."
         };
       }
       
@@ -318,7 +279,7 @@ const supplementRules: SupplementRule[] = [
   {
     supplement: {
       name: "Exhilarin®",
-      dose: "1 tablet twice daily",
+      dose: "2 tablets daily",
       priority: 'medium',
       category: 'general',
       caution: "Ayurvedic adaptogenic formula. Supports mental clarity and emotional well-being. Takes 2-4 weeks for optimal benefits."
@@ -349,86 +310,6 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // SELENIUM FOR THYROID
-  {
-    supplement: {
-      name: "Selenium",
-      dose: "200 mcg daily",
-      priority: 'medium',
-      category: 'thyroid',
-      caution: "Do not exceed 400 mcg daily from all sources. Supports thyroid hormone conversion and reduces antibodies."
-    },
-    evaluate: (labs) => {
-      const hasThyroidIssue = labs.tsh !== undefined && (labs.tsh > 4.5 || labs.tsh < 0.4);
-      const hasTPOAntibodies = labs.tpoAntibodies !== undefined && labs.tpoAntibodies > 34;
-      
-      if (hasThyroidIssue || hasTPOAntibodies) {
-        let indication = '';
-        if (hasTPOAntibodies) indication = `TPO antibodies elevated (${labs.tpoAntibodies} IU/mL)`;
-        else indication = `TSH abnormal (${labs.tsh} mIU/L)`;
-        
-        return {
-          shouldRecommend: true,
-          indication: indication,
-          rationale: "Selenium is essential for thyroid hormone production and conversion. Studies show it can reduce TPO antibodies in autoimmune thyroiditis."
-        };
-      }
-      
-      return null;
-    }
-  },
-
-  // ZINC FOR THYROID SUPPORT
-  {
-    supplement: {
-      name: "Zinc A.G.™",
-      dose: "1 tablet daily with meal",
-      priority: 'low',
-      category: 'mineral',
-      caution: "Zinc arginate/glycinate chelate for enhanced absorption. Take with food. Long-term use may require copper monitoring."
-    },
-    evaluate: (labs) => {
-      const lowThyroid = labs.tsh !== undefined && labs.tsh > 4.5;
-      const lowFreeT3 = labs.freeT3 !== undefined && labs.freeT3 < 2.3;
-      const lowDHEAS = labs.dheas !== undefined && labs.dheas < 100;
-      
-      if (lowThyroid || lowFreeT3 || lowDHEAS) {
-        return {
-          shouldRecommend: true,
-          indication: "Thyroid and hormone support",
-          rationale: "Zinc A.G. provides highly absorbable zinc for T4 to T3 conversion, immune function, and hormone production."
-        };
-      }
-      
-      return null;
-    }
-  },
-
-  // CALCIUM FOR BONE HEALTH (Postmenopausal)
-  {
-    supplement: {
-      name: "Cal Apatite Bone Builder®",
-      dose: "2 tablets twice daily with meals",
-      priority: 'medium',
-      category: 'bone',
-      caution: "MCHC calcium for bone support. Take separately from iron (2+ hours). Best taken in divided doses."
-    },
-    evaluate: (labs) => {
-      const postmenopausal = labs.menstrualPhase === 'postmenopausal';
-      const lowEstradiol = labs.estradiol !== undefined && labs.estradiol < 40 && labs.onHRT === true;
-      const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
-      
-      if (postmenopausal || (lowEstradiol && lowVitD)) {
-        return {
-          shouldRecommend: true,
-          indication: postmenopausal ? "Postmenopausal bone protection" : `Low estradiol with vitamin D insufficiency`,
-          rationale: "Cal Apatite Bone Builder provides microcrystalline hydroxyapatite (MCHC) - the form of calcium found in bone - for comprehensive skeletal support."
-        };
-      }
-      
-      return null;
-    }
-  }
 ];
 
 export function evaluateSupplements(labs: FemaleLabValues): SupplementRecommendation[] {

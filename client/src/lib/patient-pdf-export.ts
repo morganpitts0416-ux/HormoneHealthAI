@@ -729,7 +729,7 @@ export async function generatePatientWellnessPDF(
     'pregnenolone': 'Master precursor hormone supporting cognitive function, memory, mood, and hormone production.',
   };
 
-  // Metagenics product catalog - canonical products with aliases for normalization
+  // Metagenics product catalog - Your clinic's inventory with official descriptions from Metagenics website
   const metagenicsProducts: Array<{
     name: string;
     aliases: string[];
@@ -738,151 +738,74 @@ export async function generatePatientWellnessPDF(
     category: string;
   }> = [
     {
-      name: 'Magtein',
-      aliases: ['magnesium', 'mag', 'magtein', 'l-threonate', 'magnesium glycinate', 'magnesium citrate', 'magnesium oxide'],
-      description: 'Brain-focused magnesium (L-threonate) that crosses the blood-brain barrier to support sleep quality, relaxation, stress resilience, and cognitive function.',
-      defaultDose: '1-2 capsules at bedtime',
-      category: 'magnesium'
+      name: 'HerWellness Estrovera',
+      aliases: ['estrovera', 'herwellness estrovera', 'err 731', 'rhubarb', 'menopause', 'hot flash', 'night sweat'],
+      description: 'Hormone-free, plant-based menopause relief featuring ERr 731 Siberian rhubarb extract. Clinically proven to relieve hot flashes, night sweats, sleep disturbances, and mood changes in 1-4 weeks.',
+      defaultDose: '1 tablet daily with food',
+      category: 'menopause'
     },
     {
-      name: 'NutraGems CoQ10 300',
-      aliases: ['coq10', 'nutragems', 'ubiquinone', 'ubiquinol', 'coenzyme q10'],
-      description: 'Mitochondrial energy and antioxidant support for cellular energy production, cardiovascular health, and fatigue/low stamina.',
-      defaultDose: '1 softgel daily with breakfast',
-      category: 'coq10'
+      name: 'Hemagenics',
+      aliases: ['hemagenics', 'iron b12', 'red blood cell', 'rbc', 'iron folate'],
+      description: 'Non-constipating iron formula with B12, B6, and folate for red blood cell formation. Supports energy metabolism and reduces fatigue with gentle, highly absorbable iron bisglycinate.',
+      defaultDose: '1 tablet daily with food',
+      category: 'iron'
     },
     {
-      name: 'Omegagenics EPA-DHA',
-      aliases: ['omega', 'fish oil', 'epa', 'dha', 'omega-3', 'omega 3', 'omegagenics'],
-      description: 'High-quality omega-3 for cardiovascular health, joint comfort, cognitive function, and healthy aging.',
-      defaultDose: '1-2 softgels daily with food',
-      category: 'omega'
-    },
-    {
-      name: 'D3 10,000 + K',
-      aliases: ['d3 10000', 'd3 10,000', 'vitamin d 10000'],
-      description: 'High-dose vitamin D repletion with vitamin K for bone and vascular health. Used for documented vitamin D deficiency.',
-      defaultDose: '1 softgel daily with meal',
-      category: 'vitamind-high'
-    },
-    {
-      name: 'D3 5,000 + K',
-      aliases: ['vitamin d', 'd3', 'd3 5000', 'd3 5,000', 'cholecalciferol', 'vitamin d3'],
-      description: 'Essential for bone health, immune function, mood regulation, and hormone balance. Works synergistically with vitamin K.',
-      defaultDose: '1 softgel daily with meal',
-      category: 'vitamind'
-    },
-    {
-      name: 'Adreset',
-      aliases: ['adreset', 'adrenal', 'adaptogen', 'cortisol'],
-      description: 'Daytime resilience adaptogen formula with Cordyceps, Panax ginseng, and Rhodiola to support energy, stamina, and stress tolerance.',
-      defaultDose: '2 capsules daily in morning',
-      category: 'adrenal'
-    },
-    {
-      name: 'Exhilarin',
-      aliases: ['exhilarin', 'ashwagandha', 'holy basil', 'bacopa', 'rhodiola'],
-      description: 'Stress tolerance and cognitive support blend with adaptogens for mood, brain fog relief, and sleep quality.',
-      defaultDose: '2 capsules daily',
-      category: 'mood'
-    },
-    {
-      name: 'UltraFlora Balance',
-      aliases: ['ultraflora balance'],
-      description: 'Targeted probiotic strains for digestive health, immune support, and maintaining healthy gut microbiome.',
-      defaultDose: '1 capsule daily',
-      category: 'probiotic-balance'
-    },
-    {
-      name: 'UltraFlora Complete',
-      aliases: ['ultraflora complete', 'ultraflora', 'probiotic', 'lactobacillus', 'bifidobacterium', 'gut health'],
-      description: 'Comprehensive multi-strain probiotic supporting gut health, hormone metabolism, immune function, and inflammation modulation.',
-      defaultDose: '1 capsule daily',
-      category: 'probiotic'
-    },
-    {
-      name: 'Methyl B12',
-      aliases: ['methyl b12', 'methylcobalamin', 'cobalamin', 'b12', 'vitamin b12'],
-      description: 'Active form of B12 for optimal absorption, supporting energy, nerve function, and methylation.',
+      name: 'Intrinsi B12-Folate',
+      aliases: ['intrinsi', 'b12-folate', 'b12 folate', 'intrinsic factor', 'methylcobalamin', 'b12', 'vitamin b12'],
+      description: 'High-potency methylcobalamin (500 mcg) and L-5-MTHF folate with intrinsic factor for enhanced absorption. Supports nervous system function, cardiovascular health, and energy metabolism.',
       defaultDose: '1 tablet daily',
       category: 'b12'
     },
     {
-      name: 'Intrinsi B12-Folate',
-      aliases: ['intrinsi', 'b12-folate', 'b12 folate', 'intrinsic factor'],
-      description: 'Methylated B12 and folate with intrinsic factor for superior absorption. Supports energy, cognition, and methylation.',
-      defaultDose: '1 tablet daily',
-      category: 'b12-folate'
+      name: 'HerWellness Rapid Stress Relief',
+      aliases: ['rapid stress', 'stress relief', 'l-theanine', 'lactium', 'stress chew'],
+      description: 'Fast-acting stress support with L-Theanine (200mg) and Lactium for calm within 1 hour. Non-drowsy formula with saffron and vitamin B6 for relaxation and hormonal balance.',
+      defaultDose: '1 soft chew during times of stress',
+      category: 'stress'
     },
     {
-      name: 'Folate 5-MTHF',
-      aliases: ['folate', 'methylfolate', 'folic acid', '5-mthf'],
-      description: 'Active form of folate for those with MTHFR variations, supporting mood, energy, and cellular health.',
-      defaultDose: '1 capsule daily',
-      category: 'folate'
+      name: 'Vitamin D3 10,000 + K',
+      aliases: ['d3 10000', 'd3 10,000', 'vitamin d 10000', 'high dose d'],
+      description: 'High-potency vitamin D3 (10,000 IU) with vitamin K2 (MK-7) in olive oil for enhanced absorption. Supports bone health, immune function, and proper calcium utilization. Monitor serum levels every 60-90 days.',
+      defaultDose: '1 softgel daily with meal',
+      category: 'vitamind-high'
     },
     {
-      name: 'Hemagenics',
-      aliases: ['hemagenics', 'red blood cell', 'rbc support', 'iron folate b12'],
-      description: 'Comprehensive red blood cell support with highly absorbable iron, folate, and B12. Supports energy, prevents fatigue, and addresses iron deficiency without anemia.',
-      defaultDose: '1 tablet twice daily with meals',
-      category: 'iron'
+      name: 'Vitamin D3 5,000 + K',
+      aliases: ['d3 5000', 'd3 5,000', 'vitamin d', 'd3', 'cholecalciferol', 'vitamin d3'],
+      description: 'Vitamin D3 (5,000 IU) with vitamin K2 (MK-7, 90 mcg) for synergistic bone, cardiovascular, and immune support. Enhanced absorption in olive oil softgel.',
+      defaultDose: '1 softgel daily with meal',
+      category: 'vitamind'
     },
     {
-      name: 'Iron Bisglycinate',
-      aliases: ['iron bisglycinate', 'ferrous bisglycinate', 'iron', 'ferrous', 'ferritin'],
-      description: 'Gentle, highly absorbable iron for oxygen transport, energy production, and preventing fatigue from iron deficiency.',
-      defaultDose: '1 capsule daily with vitamin C',
-      category: 'iron-generic'
+      name: 'Magtein Magnesium L-Threonate',
+      aliases: ['magtein', 'magnesium', 'mag l-threonate', 'l-threonate', 'brain magnesium'],
+      description: 'Clinically studied magnesium L-threonate that crosses the blood-brain barrier. Supports memory, focus, learning, cognitive performance, and sleep quality.',
+      defaultDose: '1 capsule morning, 2 capsules 2 hours before sleep',
+      category: 'magnesium'
     },
     {
-      name: 'Psyllium Fiber',
-      aliases: ['psyllium', 'fiber', 'soluble fiber', 'husk'],
-      description: 'Soluble fiber for digestive regularity, cholesterol support, and blood sugar balance.',
-      defaultDose: '5g mixed in water daily',
-      category: 'fiber'
+      name: 'Adreset',
+      aliases: ['adreset', 'adrenal', 'cordyceps', 'ginseng', 'rhodiola', 'adaptogen'],
+      description: 'Adaptogen formula with Cordyceps, Asian Ginseng, and Rhodiola for those who are stressed and tired. Supports stress resilience, energy, stamina, and mental clarity.',
+      defaultDose: '2 capsules twice daily',
+      category: 'adrenal'
     },
     {
-      name: 'Zinc A.G.',
-      aliases: ['zinc', 'zinc picolinate'],
-      description: 'Essential mineral for immune function, wound healing, hormone production, and taste/smell.',
-      defaultDose: '1 tablet daily with food',
-      category: 'zinc'
+      name: 'Exhilarin',
+      aliases: ['exhilarin', 'ashwagandha', 'holy basil', 'tulsi', 'bacopa', 'amla'],
+      description: 'Ayurvedic adaptogen blend with Ashwagandha, Holy Basil, Bacopa, and Amla. Increases stress tolerance, supports energy, mental acuity, and mood balance without stimulants.',
+      defaultDose: '2 tablets daily',
+      category: 'mood'
     },
     {
-      name: 'Selenium',
-      aliases: ['selenium', 'selenomethionine'],
-      description: 'Trace mineral supporting thyroid function, antioxidant defenses, and immune health.',
-      defaultDose: '1 capsule daily',
-      category: 'selenium'
-    },
-    {
-      name: 'Curcumin',
-      aliases: ['curcumin', 'turmeric'],
-      description: 'Powerful anti-inflammatory from turmeric supporting joint comfort, brain health, and healthy aging.',
-      defaultDose: '2 capsules daily with food',
-      category: 'curcumin'
-    },
-    {
-      name: 'Berberine',
-      aliases: ['berberine'],
-      description: 'Plant compound supporting healthy blood sugar, cholesterol metabolism, and metabolic health.',
-      defaultDose: '500mg twice daily with meals',
-      category: 'berberine'
-    },
-    {
-      name: 'HerWellness Estrovera',
-      aliases: ['estrovera', 'herwellness', 'err 731', 'rhubarb extract', 'menopause'],
-      description: 'Clinically studied ERr 731 rhubarb extract for relief of menopausal symptoms including hot flashes, sleep disturbances, and mood changes without hormones.',
-      defaultDose: '1 tablet daily',
-      category: 'menopause'
-    },
-    {
-      name: 'Cal Apatite Bone Builder',
-      aliases: ['cal apatite', 'bone builder', 'mchc', 'calcium', 'bone support'],
-      description: 'Microcrystalline hydroxyapatite (MCHC) - the form of calcium found in bone - for comprehensive skeletal support and bone density.',
-      defaultDose: '2 tablets twice daily with meals',
-      category: 'bone'
+      name: 'UltraFlora Complete Women\'s Probiotic',
+      aliases: ['ultraflora', 'ultraflora complete', 'probiotic', 'womens probiotic', 'lactobacillus', 'vaginal health'],
+      description: '5-in-1 multi-benefit probiotic with Lactobacillus GR-1 and RC-14 for vaginal, urinary, digestive, and immune health. Includes vitamins B2, B6, and D. Works in 30 minutes, stays active 24 hours.',
+      defaultDose: '1 capsule daily (2 daily for urogenital irritation)',
+      category: 'probiotic'
     },
   ];
 
@@ -1028,22 +951,6 @@ export async function generatePatientWellnessPDF(
   };
   
   const supplementData = buildSupplementTable();
-  
-  // Add Omegagenics for patients over 35 if not already included
-  if (patientAge && patientAge > 35) {
-    const hasOmega = supplementData.some(r => {
-      const name = r[0].toLowerCase();
-      return name.includes('omega') || name.includes('fish oil') || name.includes('epa') || name.includes('dha');
-    });
-    if (!hasOmega) {
-      const omegaProduct = metagenicsProducts.find(p => p.category === 'omega')!;
-      supplementData.push([
-        omegaProduct.name,
-        omegaProduct.description,
-        omegaProduct.defaultDose
-      ]);
-    }
-  }
   
   if (supplementData.length > 0) {
     autoTable(doc, {
