@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, insertSavedInterpretationSchema } from "@shared/schema";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
@@ -9,6 +9,7 @@ import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
+import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
   // Lab interpretation endpoint
@@ -450,6 +451,110 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: 'Failed to extract lab values from PDF',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  });
+
+  // ===== SAVED INTERPRETATIONS ENDPOINTS =====
+  
+  // Get all saved interpretations (with optional gender filter)
+  app.get("/api/saved-interpretations", async (req, res) => {
+    console.log('[API] GET /api/saved-interpretations');
+    try {
+      const gender = req.query.gender as string | undefined;
+      const interpretations = await storage.getAllSavedInterpretations(gender);
+      res.json(interpretations);
+    } catch (error) {
+      console.error('[API] Error fetching saved interpretations:', error);
+      res.status(500).json({ error: 'Failed to fetch saved interpretations' });
+    }
+  });
+
+  // Search saved interpretations by patient name
+  app.get("/api/saved-interpretations/search", async (req, res) => {
+    console.log('[API] GET /api/saved-interpretations/search');
+    try {
+      const searchTerm = req.query.q as string;
+      const gender = req.query.gender as string | undefined;
+      
+      if (!searchTerm) {
+        return res.status(400).json({ error: 'Search term (q) is required' });
+      }
+      
+      const interpretations = await storage.searchSavedInterpretations(searchTerm, gender);
+      res.json(interpretations);
+    } catch (error) {
+      console.error('[API] Error searching saved interpretations:', error);
+      res.status(500).json({ error: 'Failed to search saved interpretations' });
+    }
+  });
+
+  // Get a single saved interpretation by ID
+  app.get("/api/saved-interpretations/:id", async (req, res) => {
+    console.log('[API] GET /api/saved-interpretations/:id');
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid interpretation ID' });
+      }
+      
+      const interpretation = await storage.getSavedInterpretation(id);
+      if (!interpretation) {
+        return res.status(404).json({ error: 'Interpretation not found' });
+      }
+      
+      res.json(interpretation);
+    } catch (error) {
+      console.error('[API] Error fetching saved interpretation:', error);
+      res.status(500).json({ error: 'Failed to fetch saved interpretation' });
+    }
+  });
+
+  // Save a new interpretation
+  app.post("/api/saved-interpretations", async (req, res) => {
+    console.log('[API] POST /api/saved-interpretations');
+    try {
+      const { patientName, gender, labValues, interpretation, labDate } = req.body;
+      
+      if (!patientName || !gender || !labValues || !interpretation) {
+        return res.status(400).json({ 
+          error: 'Missing required fields: patientName, gender, labValues, interpretation' 
+        });
+      }
+      
+      const saved = await storage.createSavedInterpretation({
+        patientName,
+        gender,
+        labValues,
+        interpretation,
+        labDate: labDate ? new Date(labDate) : new Date(),
+      });
+      
+      console.log('[API] Saved interpretation for patient:', patientName);
+      res.status(201).json(saved);
+    } catch (error) {
+      console.error('[API] Error saving interpretation:', error);
+      res.status(500).json({ error: 'Failed to save interpretation' });
+    }
+  });
+
+  // Delete a saved interpretation
+  app.delete("/api/saved-interpretations/:id", async (req, res) => {
+    console.log('[API] DELETE /api/saved-interpretations/:id');
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: 'Invalid interpretation ID' });
+      }
+      
+      const deleted = await storage.deleteSavedInterpretation(id);
+      if (!deleted) {
+        return res.status(404).json({ error: 'Interpretation not found' });
+      }
+      
+      res.json({ success: true, message: 'Interpretation deleted' });
+    } catch (error) {
+      console.error('[API] Error deleting interpretation:', error);
+      res.status(500).json({ error: 'Failed to delete interpretation' });
     }
   });
 

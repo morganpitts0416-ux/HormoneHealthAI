@@ -37,6 +37,9 @@ export type ASCVDRiskResult = z.infer<typeof ascvdRiskResultSchema>;
 
 // Lab Values Schema - Complete Men's Clinic Panel
 export const labValuesSchema = z.object({
+  // Patient Name (for saving and retrieving interpretations)
+  patientName: z.string().optional(),
+  
   // Patient Demographics & ASCVD Risk Factors (for cardiovascular risk assessment)
   demographics: patientDemographicsSchema.optional(),
   
@@ -89,6 +92,9 @@ export const labValuesSchema = z.object({
 
 // Female-specific Lab Values Schema
 export const femaleLabValuesSchema = z.object({
+  // Patient Name (for saving and retrieving interpretations)
+  patientName: z.string().optional(),
+  
   // Patient Demographics & ASCVD Risk Factors
   demographics: patientDemographicsSchema.optional(),
   
@@ -339,3 +345,22 @@ export const insertLabResultSchema = createInsertSchema(labResults).omit({
 
 export type InsertLabResult = z.infer<typeof insertLabResultSchema>;
 export type LabResult = typeof labResults.$inferSelect;
+
+// Saved Lab Interpretations - simple table for storing and retrieving past interpretations
+export const savedInterpretations = pgTable("saved_interpretations", {
+  id: serial("id").primaryKey(),
+  patientName: varchar("patient_name", { length: 200 }).notNull(),
+  gender: varchar("gender", { length: 10 }).notNull(), // 'male' or 'female'
+  labDate: timestamp("lab_date").defaultNow().notNull(),
+  labValues: jsonb("lab_values").$type<LabValues | FemaleLabValues>().notNull(),
+  interpretation: jsonb("interpretation").$type<InterpretationResult>().notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSavedInterpretationSchema = createInsertSchema(savedInterpretations).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSavedInterpretation = z.infer<typeof insertSavedInterpretationSchema>;
+export type SavedInterpretation = typeof savedInterpretations.$inferSelect;
