@@ -833,6 +833,13 @@ export async function generatePatientWellnessPDF(
       defaultDose: '1 capsule daily (2 daily for urogenital irritation)',
       category: 'probiotic'
     },
+    {
+      name: 'NutraGems CoQ10 300',
+      aliases: ['nutragems', 'coq10', 'coenzyme q10', 'ubiquinone', 'coq10 300'],
+      description: 'Chewable 300mg CoQ10 in emulsified form for enhanced absorption. Supports heart muscle function, cellular energy production, and antioxidant protection. Non-GMO, gluten-free.',
+      defaultDose: '1 chewable gel daily',
+      category: 'cardiovascular'
+    },
   ];
 
   // Parse and format supplement protocol into table with Metagenics products

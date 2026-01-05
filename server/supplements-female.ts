@@ -300,6 +300,50 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
+  // NUTRAGEMS CoQ10 300 - Cardiovascular and Lipid Support
+  {
+    supplement: {
+      name: "NutraGems® CoQ10 300",
+      dose: "1 chewable gel daily",
+      priority: 'medium',
+      category: 'cardiovascular',
+      caution: "Chewable 300mg CoQ10 in emulsified form for enhanced absorption. Supports heart muscle function, energy production, and antioxidant protection. Non-GMO, gluten-free."
+    },
+    evaluate: (labs) => {
+      // Abnormal lipid findings
+      const highLDL = labs.ldl !== undefined && labs.ldl > 100;
+      const lowHDL = labs.hdl !== undefined && labs.hdl < 50;
+      const highTriglycerides = labs.triglycerides !== undefined && labs.triglycerides > 150;
+      const highTotalCholesterol = labs.totalCholesterol !== undefined && labs.totalCholesterol > 200;
+      const abnormalLipids = highLDL || lowHDL || highTriglycerides || highTotalCholesterol;
+      
+      // Elevated cardiovascular risk markers
+      const elevatedLpa = labs.lpa !== undefined && labs.lpa > 30;
+      const elevatedApoB = labs.apoB !== undefined && labs.apoB > 90;
+      const elevatedHsCRP = labs.hsCRP !== undefined && labs.hsCRP > 2;
+      const elevatedCVRisk = elevatedLpa || elevatedApoB || elevatedHsCRP;
+      
+      if (abnormalLipids || elevatedCVRisk) {
+        let indications: string[] = [];
+        if (highLDL) indications.push(`LDL ${labs.ldl} mg/dL`);
+        if (lowHDL) indications.push(`HDL ${labs.hdl} mg/dL (low)`);
+        if (highTriglycerides) indications.push(`TG ${labs.triglycerides} mg/dL`);
+        if (highTotalCholesterol) indications.push(`TC ${labs.totalCholesterol} mg/dL`);
+        if (elevatedLpa) indications.push(`Lp(a) ${labs.lpa} nmol/L`);
+        if (elevatedApoB) indications.push(`ApoB ${labs.apoB} mg/dL`);
+        if (elevatedHsCRP) indications.push(`hs-CRP ${labs.hsCRP} mg/L`);
+        
+        return {
+          shouldRecommend: true,
+          indication: indications.join(', '),
+          rationale: "NutraGems CoQ10 300 provides high-potency ubiquinone for cardiovascular protection, cellular energy production, and antioxidant support. Essential for patients on statins."
+        };
+      }
+      
+      return null;
+    }
+  },
+
 ];
 
 export function evaluateSupplements(labs: FemaleLabValues): SupplementRecommendation[] {
