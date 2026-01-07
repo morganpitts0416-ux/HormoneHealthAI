@@ -43,7 +43,7 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // D3 10000 + K - Severe Vitamin D Deficiency
+  // D3 10000 + K - Vitamin D Deficiency (≤30 ng/mL)
   {
     supplement: {
       name: "D3 10,000 + K",
@@ -55,10 +55,11 @@ const supplementRules: SupplementRule[] = [
     evaluate: (labs) => {
       if (labs.vitaminD === undefined) return null;
       
-      if (labs.vitaminD < 20) {
+      // Deficiency: ≤30 ng/mL - high-dose repletion needed
+      if (labs.vitaminD <= 30) {
         return {
           shouldRecommend: true,
-          indication: `Vitamin D ${labs.vitaminD} ng/mL (deficiency <20)`,
+          indication: `Vitamin D ${labs.vitaminD} ng/mL (deficient ≤30)`,
           rationale: "D3 10,000 + K provides high-dose vitamin D3 with K2 for efficient repletion. K2 ensures proper calcium utilization and bone health."
         };
       }
@@ -67,7 +68,7 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // D3 5000 + K - Moderate Vitamin D Insufficiency
+  // D3 5000 + K - Vitamin D Insufficiency (31-40 ng/mL)
   {
     supplement: {
       name: "D3 5,000 + K",
@@ -79,10 +80,11 @@ const supplementRules: SupplementRule[] = [
     evaluate: (labs) => {
       if (labs.vitaminD === undefined) return null;
       
-      if (labs.vitaminD >= 20 && labs.vitaminD < 30) {
+      // Insufficiency: 31-40 ng/mL - maintenance dose
+      if (labs.vitaminD > 30 && labs.vitaminD <= 40) {
         return {
           shouldRecommend: true,
-          indication: `Vitamin D ${labs.vitaminD} ng/mL (insufficiency 20-30)`,
+          indication: `Vitamin D ${labs.vitaminD} ng/mL (insufficient 31-40)`,
           rationale: "D3 5,000 + K provides vitamin D3 with K2 for moderate insufficiency. K2 supports bone health and cardiovascular function."
         };
       }
