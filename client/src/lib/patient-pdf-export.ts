@@ -526,9 +526,12 @@ export async function generatePatientWellnessPDF(
     yPosition += 10;
   }
 
-  doc.addPage();
-  addHeader();
-  yPosition = 45;
+  // Only add new page if not enough space for next section (nutrition plan needs ~120 units)
+  if (yPosition > pageHeight - 120) {
+    doc.addPage();
+    addHeader();
+    yPosition = 45;
+  }
 
   // Parse nutrition plan into Goal, Diet, and Foods To Emphasize structure
   const parseNutritionPlan = (text: string): { goal: string; diet: string; foods: string[][] } => {
@@ -1183,6 +1186,13 @@ export async function generatePatientWellnessPDF(
   });
 
   yPosition += 12;
+
+  // Ensure enough space for final sections (Additional Recs + Follow-Up + Support = ~140 units)
+  if (yPosition > pageHeight - 140) {
+    doc.addPage();
+    addHeader();
+    yPosition = 45;
+  }
 
   // Additional Recommendations section (for provider to write in)
   doc.setTextColor(...brandColor);
