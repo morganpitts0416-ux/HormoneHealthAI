@@ -1148,8 +1148,10 @@ export async function generatePatientWellnessPDF(
   yPosition = addTextSection(wellnessPlan.educationalContent, yPosition, contentWidth);
   yPosition += 8;
 
-  // Ensure space for Action Checklist section header + first few items (~80 units)
-  yPosition = ensureSpace(80, yPosition);
+  // FINAL PAGE CONTENT: Ensure all closing sections stay together on one page
+  // Action Checklist (~85) + Additional Recs (~48) + Follow-Up Plan (~68) + Support Box (~35) = ~236 units
+  const finalSectionsHeight = 240;
+  yPosition = ensureSpace(finalSectionsHeight, yPosition);
 
   yPosition = addSectionHeader('YOUR ACTION CHECKLIST', yPosition);
 
@@ -1170,7 +1172,6 @@ export async function generatePatientWellnessPDF(
   ];
 
   checklistItems.forEach((item, index) => {
-    yPosition = ensureSpace(10, yPosition);
     doc.setDrawColor(...brandColor);
     doc.rect(margin, yPosition - 3, 4, 4);
     doc.text(`${index + 1}. ${item}`, margin + 7, yPosition);
@@ -1178,9 +1179,6 @@ export async function generatePatientWellnessPDF(
   });
 
   yPosition += 12;
-
-  // Ensure enough space for final sections (Additional Recs + Follow-Up + Support = ~140 units)
-  yPosition = ensureSpace(140, yPosition);
 
   // Additional Recommendations section (for provider to write in)
   doc.setTextColor(...brandColor);
