@@ -369,12 +369,20 @@ export async function generatePatientWellnessPDF(
     doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
   };
 
-  const addSectionHeader = (title: string, y: number): number => {
-    if (y > pageHeight - 50) {
+  // Helper to ensure enough space for upcoming content, adds page if needed
+  const ensureSpace = (heightNeeded: number, currentY: number): number => {
+    const usableBottom = pageHeight - 25; // Leave space for footer
+    if (currentY + heightNeeded > usableBottom) {
       doc.addPage();
       addHeader();
-      y = 45;
+      return 45;
     }
+    return currentY;
+  };
+
+  const addSectionHeader = (title: string, y: number): number => {
+    // Section header needs ~12 units height, plus some content after it
+    y = ensureSpace(30, y);
     doc.setFillColor(...brandColor);
     doc.rect(margin, y, contentWidth, 8, 'F');
     doc.setTextColor(255, 255, 255);
@@ -391,15 +399,12 @@ export async function generatePatientWellnessPDF(
     
     const lines = doc.splitTextToSize(sanitizeForPdf(text), maxWidth);
     let y = startY;
+    const lineHeight = 4;
     
     for (let i = 0; i < lines.length; i++) {
-      if (y > pageHeight - 25) {
-        doc.addPage();
-        addHeader();
-        y = 45;
-      }
+      y = ensureSpace(lineHeight, y);
       doc.text(lines[i], margin, y);
-      y += 4;
+      y += lineHeight;
     }
     return y;
   };
@@ -526,12 +531,8 @@ export async function generatePatientWellnessPDF(
     yPosition += 10;
   }
 
-  // Only add new page if not enough space for next section (nutrition plan needs ~120 units)
-  if (yPosition > pageHeight - 120) {
-    doc.addPage();
-    addHeader();
-    yPosition = 45;
-  }
+  // Ensure space for nutrition plan section (~120 units)
+  yPosition = ensureSpace(120, yPosition);
 
   // Parse nutrition plan into Goal, Diet, and Foods To Emphasize structure
   const parseNutritionPlan = (text: string): { goal: string; diet: string; foods: string[][] } => {
@@ -1030,12 +1031,8 @@ export async function generatePatientWellnessPDF(
   }
   yPosition += 10;
 
-  // Start lifestyle section on new page only if not enough room
-  if (yPosition > pageHeight - 80) {
-    doc.addPage();
-    addHeader();
-    yPosition = 45;
-  }
+  // Ensure space for lifestyle section (~80 units)
+  yPosition = ensureSpace(80, yPosition);
 
   // Parse lifestyle recommendations into four categories
   const parseLifestyle = (text: string): { activity: string; sleep: string; stress: string; hydration: string } => {
@@ -1148,12 +1145,8 @@ export async function generatePatientWellnessPDF(
   yPosition = addTextSection(wellnessPlan.educationalContent, yPosition, contentWidth);
   yPosition += 8;
 
-  // Only add new page if not enough room for Action Checklist (need ~120mm for checklist + recommendations)
-  if (yPosition > pageHeight - 130) {
-    doc.addPage();
-    addHeader();
-    yPosition = 45;
-  }
+  // Ensure space for Action Checklist section header + first few items (~80 units)
+  yPosition = ensureSpace(80, yPosition);
 
   yPosition = addSectionHeader('YOUR ACTION CHECKLIST', yPosition);
 
@@ -1174,11 +1167,7 @@ export async function generatePatientWellnessPDF(
   ];
 
   checklistItems.forEach((item, index) => {
-    if (yPosition > pageHeight - 30) {
-      doc.addPage();
-      addHeader();
-      yPosition = 45;
-    }
+    yPosition = ensureSpace(10, yPosition);
     doc.setDrawColor(...brandColor);
     doc.rect(margin, yPosition - 3, 4, 4);
     doc.text(`${index + 1}. ${item}`, margin + 7, yPosition);
@@ -1188,11 +1177,7 @@ export async function generatePatientWellnessPDF(
   yPosition += 12;
 
   // Ensure enough space for final sections (Additional Recs + Follow-Up + Support = ~140 units)
-  if (yPosition > pageHeight - 140) {
-    doc.addPage();
-    addHeader();
-    yPosition = 45;
-  }
+  yPosition = ensureSpace(140, yPosition);
 
   // Additional Recommendations section (for provider to write in)
   doc.setTextColor(...brandColor);
