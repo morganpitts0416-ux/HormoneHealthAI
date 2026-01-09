@@ -48,15 +48,16 @@ function getLabInsight(category: string, value: number | string, status: string,
       }
     }
     
+    // Provider-specific clinic target ranges (HRT optimization goals)
     const thresholds: Record<string, { low: number; high: number }> = {
       hemoglobin: { low: 12, high: 16 },
       hematocrit: { low: 36, high: 44 },
-      ferritin: { low: 30, high: 150 },
-      tsh: { low: 0.45, high: 4.5 },
+      ferritin: { low: 50, high: 150 },  // Provider goal: >50 optimal
+      tsh: { low: 0.4, high: 4.5 },
       "free t4": { low: 0.9, high: 1.7 },
       "free t3": { low: 2.3, high: 4.2 },
-      "vitamin d": { low: 30, high: 100 },
-      "vitamin b12": { low: 200, high: 900 },
+      "vitamin d": { low: 60, high: 80 },  // Provider goal: 60-80 optimal
+      "vitamin b12": { low: 400, high: 900 },  // Provider goal: >400 optimal
       ldl: { low: 0, high: 100 },
       hdl: { low: 50, high: 200 },
       triglycerides: { low: 0, high: 150 },
@@ -67,12 +68,12 @@ function getLabInsight(category: string, value: number | string, status: string,
       egfr: { low: 60, high: 200 },
       alt: { low: 0, high: 32 },
       ast: { low: 0, high: 32 },
-      estradiol: { low: 30, high: 400 },
-      progesterone: { low: 1, high: 20 },
-      testosterone: { low: 15, high: 70 },
-      fsh: { low: 2, high: 25 },
+      estradiol: { low: 60, high: 100 },  // HRT goal: 60-100 pg/mL, >40 minimum for bone
+      progesterone: { low: 8, high: 10 },  // HRT goal: 8-10 ng/mL
+      testosterone: { low: 75, high: 125 },  // HRT goal: 75-125 ng/dL
+      fsh: { low: 3, high: 20 },
       amh: { low: 1, high: 5 },
-      "hs-crp": { low: 0, high: 2 },
+      "hs-crp": { low: 0, high: 1 },  // Provider goal: <1 optimal
       "lp(a)": { low: 0, high: 30 },
       "apolipoprotein b": { low: 0, high: 90 },
       platelets: { low: 150, high: 400 },
@@ -111,8 +112,8 @@ function getLabInsight(category: string, value: number | string, status: string,
     },
     ferritin: {
       what: "Ferritin reflects your body's iron stores, essential for energy and immunity.",
-      normal: "Your iron stores are adequate for energy production and immune function.",
-      low: "Low iron stores can cause fatigue, hair loss, and weakened immunity. Iron supplementation may help.",
+      normal: "Your iron stores are at the optimal level (>50 ng/mL) for energy production and immune function.",
+      low: "Low iron stores can cause fatigue, hair loss, and weakened immunity. Target is >50 ng/mL optimal. Iron supplementation is recommended.",
       high: "Elevated ferritin may indicate inflammation or excess iron intake."
     },
     tsh: {
@@ -135,9 +136,9 @@ function getLabInsight(category: string, value: number | string, status: string,
     },
     "vitamin d": {
       what: "Vitamin D supports bone health, immune function, and mood regulation.",
-      normal: "Your vitamin D level supports strong bones, immunity, and positive mood.",
-      low: "Low vitamin D is linked to fatigue, weakened bones, and increased illness. Vitamin D3 with K2 supplementation is recommended.",
-      high: "Vitamin D levels above optimal range - monitoring recommended."
+      normal: "Your vitamin D level is at the optimal goal (60-80 ng/mL), supporting strong bones, immunity, and positive mood.",
+      low: "Low vitamin D is linked to fatigue, weakened bones, and increased illness. Target is 60-80 ng/mL optimal. Vitamin D3 with K2 supplementation is recommended.",
+      high: "Vitamin D levels above optimal range (60-80 ng/mL) - monitoring recommended."
     },
     "vitamin b12": {
       what: "Vitamin B12 is essential for nerve function, energy, and red blood cell production.",
@@ -207,21 +208,21 @@ function getLabInsight(category: string, value: number | string, status: string,
     },
     estradiol: {
       what: "Estradiol is your primary estrogen, vital for bone health, mood, and heart protection.",
-      normal: "Your estrogen level is appropriate for your cycle phase and overall health.",
-      low: "Lower estrogen may cause hot flashes, mood changes, and bone loss. HRT may be beneficial.",
-      high: "Higher estrogen levels should be interpreted in context of your cycle phase."
+      normal: "Your estrogen level is at the optimal HRT goal (60-100 pg/mL), supporting bone health, mood stability, and heart protection.",
+      low: "Lower estrogen may cause hot flashes, mood changes, and bone loss. Target is 60-100 pg/mL (minimum >40 for bone protection). HRT adjustment may be beneficial.",
+      high: "Estrogen is above the HRT optimization goal. Your provider may adjust dosing to optimize your levels."
     },
     progesterone: {
       what: "Progesterone balances estrogen and is essential for cycle regularity and sleep.",
-      normal: "Your progesterone level is appropriate for your cycle phase.",
-      low: "Lower progesterone may cause PMS, irregular cycles, and sleep issues. Supplementation may help.",
-      high: "Higher progesterone is normal in the luteal phase and typically not concerning."
+      normal: "Your progesterone level is at the optimal HRT goal (8-10 ng/mL), providing endometrial protection and supporting sleep.",
+      low: "Lower progesterone may cause PMS, irregular cycles, and sleep issues. Target is 8-10 ng/mL for optimal endometrial protection.",
+      high: "Progesterone is above the HRT optimization goal. This is typically not concerning but will be reviewed."
     },
     testosterone: {
       what: "Testosterone in women supports energy, libido, muscle strength, and mood.",
-      normal: "Your testosterone level supports healthy energy, mood, and muscle function.",
-      low: "Lower testosterone may cause fatigue, low libido, and decreased muscle mass.",
-      high: "Higher testosterone may cause acne or hair changes. This will be addressed in your treatment plan."
+      normal: "Your testosterone level is at the optimal HRT goal (75-125 ng/dL), supporting healthy energy, libido, and muscle function.",
+      low: "Lower testosterone may cause fatigue, low libido, and decreased muscle mass. Target is 75-125 ng/dL for optimal results.",
+      high: "Testosterone is above the HRT optimization goal. Your provider may adjust dosing to avoid androgenic side effects."
     },
     fsh: {
       what: "FSH controls ovarian function and egg development.",
