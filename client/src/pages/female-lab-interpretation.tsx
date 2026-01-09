@@ -95,7 +95,7 @@ export default function FemaleLabInterpretation() {
     onSuccess: async (wellnessPlan) => {
       console.log('[Frontend] Wellness plan generated:', wellnessPlan);
       if (interpretationResult) {
-        const patientName = labValues.demographics?.patientName || undefined;
+        const patientName = labValues.patientName || undefined;
         await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName);
         toast({
           title: "Patient Report Generated",
