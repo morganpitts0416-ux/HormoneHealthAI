@@ -438,7 +438,9 @@ export async function generatePatientWellnessPDF(
       // Special handling for ferritin with clinical thresholds
       const catLower = interp.category.toLowerCase();
       if (catLower === 'ferritin' && interp.value !== undefined) {
-        if (interp.value <= 30) {
+        if (interp.value < 10) {
+          statusText = 'Severe Deficiency';
+        } else if (interp.value <= 30) {
           statusText = 'Iron deficiency without anemia';
         } else if (interp.value <= 50) {
           statusText = 'Insufficient';
@@ -513,7 +515,7 @@ export async function generatePatientWellnessPDF(
       didParseCell: (data) => {
         if (data.section === 'body' && data.column.index === 3) {
           const status = data.cell.raw as string;
-          if (status === 'Needs Attention' || status === 'Iron deficiency without anemia' || status === 'Deficient') {
+          if (status === 'Needs Attention' || status === 'Iron deficiency without anemia' || status === 'Deficient' || status === 'Severe Deficiency') {
             data.cell.styles.textColor = [220, 38, 38];
             data.cell.styles.fontStyle = 'bold';
           } else if (status === 'Outside Range' || status === 'Elevated') {
