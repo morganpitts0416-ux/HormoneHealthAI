@@ -13,6 +13,10 @@ export const patientDemographicsSchema = z.object({
   smoker: z.boolean().default(false),
   familyHistory: z.boolean().default(false), // Premature ASCVD in 1st degree relatives (<55 male, <65 female)
   
+  // PREVENT Calculator Fields
+  bmi: z.number().min(15).max(60).optional(), // Body Mass Index for PREVENT
+  onStatins: z.boolean().default(false), // Statin use for PREVENT
+  
   // STOP-BANG Sleep Apnea Screening
   snoring: z.boolean().default(false),
   tiredness: z.boolean().default(false),
@@ -23,7 +27,42 @@ export const patientDemographicsSchema = z.object({
 
 export type PatientDemographics = z.infer<typeof patientDemographicsSchema>;
 
-// ASCVD Risk Result Schema
+// PREVENT Risk Result Schema - AHA 2023 Equations
+export const preventRiskResultSchema = z.object({
+  // 10-Year Risks
+  tenYearTotalCVD: z.number(),
+  tenYearASCVD: z.number(),
+  tenYearHeartFailure: z.number(),
+  
+  // 30-Year Risks (only valid for ages 30-59)
+  thirtyYearTotalCVD: z.number().optional(),
+  thirtyYearASCVD: z.number().optional(),
+  thirtyYearHeartFailure: z.number().optional(),
+  
+  // Risk Categories
+  riskCategory: z.enum(['low', 'borderline', 'intermediate', 'high']),
+  
+  // Display strings
+  tenYearCVDPercentage: z.string(),
+  tenYearASCVDPercentage: z.string(),
+  tenYearHFPercentage: z.string(),
+  thirtyYearCVDPercentage: z.string().optional(),
+  thirtyYearASCVDPercentage: z.string().optional(),
+  thirtyYearHFPercentage: z.string().optional(),
+  
+  // Recommendations
+  recommendations: z.string(),
+  statinRecommendation: z.string().optional(),
+  ldlGoal: z.string().optional(),
+  
+  // Calculator info
+  calculatorUsed: z.literal('PREVENT').default('PREVENT'),
+  ageValidFor30Year: z.boolean().default(true),
+});
+
+export type PREVENTRiskResult = z.infer<typeof preventRiskResultSchema>;
+
+// ASCVD Risk Result Schema (legacy - kept for backward compatibility)
 export const ascvdRiskResultSchema = z.object({
   tenYearRisk: z.number(),
   riskCategory: z.enum(['low', 'borderline', 'intermediate', 'high']),
@@ -292,6 +331,7 @@ export const interpretationResultSchema = z.object({
   patientSummary: z.string(),
   recheckWindow: z.string(),
   ascvdRisk: ascvdRiskResultSchema.optional(),
+  preventRisk: preventRiskResultSchema.optional(),
   supplements: z.array(supplementRecommendationSchema).optional(),
   cvRiskFlags: cardiovascularRiskFlagsSchema.optional(),
   cacStatinRec: cacStatinRecommendationSchema.optional(),

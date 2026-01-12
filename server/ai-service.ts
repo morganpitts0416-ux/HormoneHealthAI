@@ -2,7 +2,7 @@
 // Using Replit AI Integrations (blueprint:javascript_openai_ai_integrations)
 
 import OpenAI from "openai";
-import type { LabValues, FemaleLabValues, RedFlag, LabInterpretation, ASCVDRiskResult } from "@shared/schema";
+import type { LabValues, FemaleLabValues, RedFlag, LabInterpretation, ASCVDRiskResult, PREVENTRiskResult } from "@shared/schema";
 
 // Using gpt-5-mini for faster responses - smaller model but still capable
 const openai = new OpenAI({
@@ -85,7 +85,7 @@ ${gender === 'female' ? `- Consider menstrual cycle phase when interpreting horm
     labs: LabValues | FemaleLabValues,
     interpretations: LabInterpretation[],
     hasRedFlags: boolean,
-    ascvdRisk?: ASCVDRiskResult | null,
+    riskResult?: ASCVDRiskResult | PREVENTRiskResult | null,
     gender: 'male' | 'female' = 'male'
   ): Promise<string> {
     // Categorize findings
@@ -98,14 +98,34 @@ ${gender === 'female' ? `- Consider menstrual cycle phase when interpreting horm
       return findings.map(f => `${f.category}: ${f.value} ${f.unit} (${f.interpretation})`).join('\n');
     };
 
-    // Build ASCVD section if available
-    const ascvdSection = ascvdRisk ? `
+    // Build cardiovascular risk section if available (supports both ASCVD and PREVENT)
+    let cvRiskSection = '';
+    if (riskResult) {
+      if ('tenYearTotalCVD' in riskResult) {
+        // PREVENT Risk Result (2023 equations)
+        const preventRisk = riskResult as PREVENTRiskResult;
+        cvRiskSection = `
+CARDIOVASCULAR RISK ASSESSMENT (PREVENT 2023):
+10-Year Total CVD Risk: ${preventRisk.tenYearCVDPercentage}
+10-Year ASCVD Risk (Heart Attack/Stroke): ${preventRisk.tenYearASCVDPercentage}
+10-Year Heart Failure Risk: ${preventRisk.tenYearHFPercentage}
+Risk Category: ${preventRisk.riskCategory.toUpperCase()}
+${preventRisk.thirtyYearCVDPercentage ? `30-Year CVD Risk: ${preventRisk.thirtyYearCVDPercentage}` : ''}
+${preventRisk.ldlGoal ? `LDL Cholesterol Goal: ${preventRisk.ldlGoal}` : ''}
+${preventRisk.statinRecommendation ? `Statin Recommendation: ${preventRisk.statinRecommendation}` : ''}
+`;
+      } else {
+        // Legacy ASCVD Risk Result
+        const ascvdRisk = riskResult as ASCVDRiskResult;
+        cvRiskSection = `
 CARDIOVASCULAR RISK ASSESSMENT:
 10-Year Risk of Heart Attack/Stroke: ${ascvdRisk.riskPercentage}
 Risk Category: ${ascvdRisk.riskCategory.toUpperCase()}
 ${ascvdRisk.ldlGoal ? `LDL Cholesterol Goal: ${ascvdRisk.ldlGoal}` : ''}
 ${ascvdRisk.statinRecommendation ? `Statin Recommendation: ${ascvdRisk.statinRecommendation}` : ''}
-` : '';
+`;
+      }
+    }
 
     const prompt = `Write a patient communication summary for these lab results. Use SPECIFIC values and ACTIONABLE recommendations.
 
@@ -117,7 +137,7 @@ ${borderlineFindings.length > 0 ? buildFindingsList(borderlineFindings) : 'None'
 
 NORMAL FINDINGS:
 ${normalFindings.length > 0 ? buildFindingsList(normalFindings) : 'None'}
-${ascvdSection}
+${cvRiskSection}
 ${hasRedFlags ? 'NOTE: Critical values require physician review before changes.\n' : ''}
 
 MANDATORY REQUIREMENTS:
@@ -303,7 +323,7 @@ Thank you for trusting us with your care.`;
     labs: FemaleLabValues,
     interpretations: LabInterpretation[],
     supplements: Array<{ name: string; dose: string; reason: string }>,
-    ascvdRisk?: ASCVDRiskResult | null
+    riskResult?: ASCVDRiskResult | PREVENTRiskResult | null
   ): Promise<{
     dietPlan: string;
     supplementProtocol: string;
@@ -319,11 +339,30 @@ Thank you for trusting us with your care.`;
 
     const supplementsList = supplements.map(s => `${s.name} (${s.dose}) - ${s.reason}`).join('\n');
 
-    const ascvdSection = ascvdRisk ? `
+    // Build cardiovascular risk section supporting both ASCVD and PREVENT formats
+    let cvRiskSection = '';
+    if (riskResult) {
+      if ('tenYearTotalCVD' in riskResult) {
+        // PREVENT Risk Result (2023 AHA equations)
+        const preventRisk = riskResult as PREVENTRiskResult;
+        cvRiskSection = `
+CARDIOVASCULAR RISK (PREVENT 2023):
+10-Year Total CVD Risk: ${preventRisk.tenYearCVDPercentage}
+10-Year ASCVD Risk: ${preventRisk.tenYearASCVDPercentage}
+10-Year Heart Failure Risk: ${preventRisk.tenYearHFPercentage}
+Risk Category: ${preventRisk.riskCategory}
+${preventRisk.thirtyYearCVDPercentage ? `30-Year CVD Risk: ${preventRisk.thirtyYearCVDPercentage}` : ''}
+${preventRisk.ldlGoal ? `LDL Goal: ${preventRisk.ldlGoal}` : ''}`;
+      } else {
+        // Legacy ASCVD Risk Result
+        const ascvdRisk = riskResult as ASCVDRiskResult;
+        cvRiskSection = `
 CARDIOVASCULAR RISK:
 10-Year Risk: ${ascvdRisk.riskPercentage}
 Category: ${ascvdRisk.riskCategory}
-${ascvdRisk.ldlGoal ? `LDL Goal: ${ascvdRisk.ldlGoal}` : ''}` : '';
+${ascvdRisk.ldlGoal ? `LDL Goal: ${ascvdRisk.ldlGoal}` : ''}`;
+      }
+    }
 
     const prompt = `Create a comprehensive personalized wellness plan for a female patient based on her lab results.
 
@@ -335,7 +374,7 @@ ${borderlineFindings.length > 0 ? buildFindingsList(borderlineFindings) : 'None'
 
 RECOMMENDED SUPPLEMENTS:
 ${supplementsList || 'None specified'}
-${ascvdSection}
+${cvRiskSection}
 
 KEY LAB VALUES:
 - Hemoglobin: ${labs.hemoglobin || 'not tested'} g/dL

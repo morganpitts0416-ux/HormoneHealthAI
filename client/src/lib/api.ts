@@ -71,14 +71,14 @@ export const femaleLabsApi = {
     labs: FemaleLabValues,
     interpretations: InterpretationResult['interpretations'],
     supplements: InterpretationResult['supplements'],
-    ascvdRisk: InterpretationResult['ascvdRisk']
+    preventRisk: InterpretationResult['preventRisk']
   ): Promise<WellnessPlan> => {
     console.log('[API Client] generateWellnessPlan called');
     const response = await apiRequest("POST", "/api/generate-wellness-plan", {
       labs,
       interpretations,
       supplements,
-      ascvdRisk,
+      preventRisk,
     });
     const result = await response.json();
     console.log('[API Client] generateWellnessPlan result:', result);

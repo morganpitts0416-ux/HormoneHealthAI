@@ -7,6 +7,7 @@ import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
+import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
 import { storage } from "./storage";
@@ -210,18 +211,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 2: Generate detailed interpretations with female reference ranges
       const interpretations = FemaleClinicalLogicEngine.interpretLabValues(labs);
 
-      // Step 3: Calculate ASCVD risk if demographics and lipid data are available
-      // Note: ASCVD calculator already handles sex-specific equations
-      const ascvdLabData = {
+      // Step 3: Calculate PREVENT cardiovascular risk if demographics and lipid data are available
+      // PREVENT uses sex-specific, race-free equations with eGFR and BMI
+      const preventLabData = {
         ...labs,
         demographics: labs.demographics ? { ...labs.demographics, sex: 'female' as const } : undefined
       };
-      const ascvdRisk = ASCVDCalculator.calculateRisk(ascvdLabData) || undefined;
-      console.log('[API] Female ASCVD calculation result:', ascvdRisk ? `Risk: ${ascvdRisk.riskPercentage}, Category: ${ascvdRisk.riskCategory}` : 'Not calculated');
+      const preventRisk = PREVENTCalculator.calculateRisk(preventLabData) || undefined;
+      console.log('[API] Female PREVENT calculation result:', preventRisk ? `10yr CVD: ${preventRisk.tenYearCVDPercentage}, ASCVD: ${preventRisk.tenYearASCVDPercentage}, HF: ${preventRisk.tenYearHFPercentage}` : 'Not calculated');
 
-      // Step 3a: Add ASCVD to interpretations if calculated
-      if (ascvdRisk) {
-        console.log('[API] Adding ASCVD to female interpretations array');
+      // Step 3a: Add PREVENT risk metrics to interpretations if calculated
+      if (preventRisk) {
+        console.log('[API] Adding PREVENT to female interpretations array');
         const getRiskStatus = (category: string): 'normal' | 'borderline' | 'abnormal' | 'critical' => {
           switch (category.toLowerCase()) {
             case 'low': return 'normal';
@@ -244,21 +245,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
             !arr[idx + 1].category.toLowerCase().includes('hdl')))
         );
 
-        const ascvdInterpretation = {
-          category: 'ASCVD Cardiovascular Risk',
-          value: parseFloat(ascvdRisk.riskPercentage.replace('%', '')),
+        // Add CVD risk interpretation
+        const cvdInterpretation = {
+          category: '10-Year Total CVD Risk (PREVENT)',
+          value: preventRisk.tenYearTotalCVD * 100,
           unit: '%',
-          status: getRiskStatus(ascvdRisk.riskCategory),
+          status: getRiskStatus(preventRisk.riskCategory),
           referenceRange: 'Low <5%, Borderline 5-7.4%, Intermediate 7.5-19.9%, High ≥20%',
-          interpretation: `10-year risk of heart attack or stroke: ${ascvdRisk.riskPercentage} (${ascvdRisk.riskCategory.toUpperCase()} RISK)`,
-          recommendation: ascvdRisk.recommendations,
+          interpretation: `10-year cardiovascular disease risk: ${preventRisk.tenYearCVDPercentage} (${preventRisk.riskCategory.toUpperCase()} RISK). Includes ASCVD and heart failure.`,
+          recommendation: preventRisk.recommendations,
           recheckTiming: 'Annual',
         };
 
+        // Add ASCVD-specific risk
+        const ascvdInterpretation = {
+          category: '10-Year ASCVD Risk (PREVENT)',
+          value: preventRisk.tenYearASCVD * 100,
+          unit: '%',
+          status: getRiskStatus(preventRisk.riskCategory),
+          referenceRange: 'Heart attack & stroke risk',
+          interpretation: `10-year atherosclerotic CVD risk (MI, stroke): ${preventRisk.tenYearASCVDPercentage}`,
+          recommendation: preventRisk.statinRecommendation || '',
+          recheckTiming: 'Annual',
+        };
+
+        // Add Heart Failure risk
+        const hfInterpretation = {
+          category: '10-Year Heart Failure Risk (PREVENT)',
+          value: preventRisk.tenYearHeartFailure * 100,
+          unit: '%',
+          status: preventRisk.tenYearHeartFailure >= 0.1 ? 'abnormal' : preventRisk.tenYearHeartFailure >= 0.05 ? 'borderline' : 'normal',
+          referenceRange: 'Heart failure risk',
+          interpretation: `10-year heart failure risk: ${preventRisk.tenYearHFPercentage}`,
+          recommendation: preventRisk.tenYearHeartFailure >= 0.075 ? 'Consider SGLT2 inhibitor or GLP-1 agonist for cardioprotection if diabetic or high-risk.' : 'Monitor for symptoms: shortness of breath, fatigue, leg swelling.',
+          recheckTiming: 'Annual',
+        };
+
+        // Insert after lipid panel if found, otherwise append at end
         if (lipidEndIndex !== -1) {
-          interpretations.splice(lipidEndIndex + 1, 0, ascvdInterpretation);
+          interpretations.splice(lipidEndIndex + 1, 0, cvdInterpretation, ascvdInterpretation, hfInterpretation);
         } else {
-          interpretations.push(ascvdInterpretation);
+          interpretations.push(cvdInterpretation, ascvdInterpretation, hfInterpretation);
+        }
+
+        // Add 30-year risks if available (ages 30-59)
+        if (preventRisk.thirtyYearTotalCVD !== undefined) {
+          const thirtyYearInterpretation = {
+            category: '30-Year CVD Risk (PREVENT)',
+            value: preventRisk.thirtyYearTotalCVD * 100,
+            unit: '%',
+            status: preventRisk.thirtyYearTotalCVD >= 0.30 ? 'abnormal' : preventRisk.thirtyYearTotalCVD >= 0.15 ? 'borderline' : 'normal',
+            referenceRange: 'Long-term cardiovascular risk',
+            interpretation: `30-year risks: CVD ${preventRisk.thirtyYearCVDPercentage}, ASCVD ${preventRisk.thirtyYearASCVDPercentage}, Heart Failure ${preventRisk.thirtyYearHFPercentage}`,
+            recommendation: 'Long-term lifestyle modifications and risk factor management are critical for reducing lifetime cardiovascular risk.',
+            recheckTiming: 'Annual',
+          };
+          const hfIdx = interpretations.findIndex(i => i.category === '10-Year Heart Failure Risk (PREVENT)');
+          if (hfIdx !== -1) {
+            interpretations.splice(hfIdx + 1, 0, thirtyYearInterpretation);
+          } else {
+            interpretations.push(thirtyYearInterpretation);
+          }
         }
       }
 
@@ -293,9 +340,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
           recheckTiming: stopBangRisk.riskCategory === 'low' ? 'Annual' : 'Follow-up in 1-3 months after sleep study',
         };
 
-        const ascvdIndex = interpretations.findIndex(interp => interp.category === 'ASCVD Cardiovascular Risk');
-        if (ascvdIndex !== -1) {
-          interpretations.splice(ascvdIndex + 1, 0, stopBangInterpretation);
+        // Find the last PREVENT risk category or 30-year risk to insert STOP-BANG after
+        const preventIndex = interpretations.findIndex(interp => 
+          interp.category === '30-Year CVD Risk (PREVENT)' || 
+          interp.category === '10-Year Heart Failure Risk (PREVENT)'
+        );
+        if (preventIndex !== -1) {
+          interpretations.splice(preventIndex + 1, 0, stopBangInterpretation);
         } else {
           interpretations.push(stopBangInterpretation);
         }
@@ -314,7 +365,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         labs,
         interpretations,
         redFlags.length > 0,
-        ascvdRisk,
+        preventRisk,
         'female'
       );
 
@@ -340,7 +391,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         aiRecommendations,
         patientSummary,
         recheckWindow,
-        ascvdRisk,
+        preventRisk,
         supplements,
         cvRiskFlags,
         cacStatinRec,
@@ -370,7 +421,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     console.log('[API] POST /api/generate-wellness-plan - Received request');
     
     try {
-      const { labs, interpretations, supplements, ascvdRisk } = req.body;
+      const { labs, interpretations, supplements, preventRisk } = req.body;
       
       if (!labs || !interpretations) {
         return res.status(400).json({ error: 'Missing required fields: labs, interpretations' });
@@ -380,14 +431,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         labsProvided: !!labs,
         interpretationsCount: interpretations?.length,
         supplementsCount: supplements?.length,
-        ascvdRiskProvided: !!ascvdRisk
+        preventRiskProvided: !!preventRisk
       });
 
       const wellnessPlan = await AIService.generatePatientWellnessPlan(
         labs,
         interpretations,
         supplements || [],
-        ascvdRisk || null
+        preventRisk || null
       );
 
       console.log('[API] Wellness plan generated successfully');
