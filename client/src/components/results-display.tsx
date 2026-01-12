@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Activity } from "lucide-react";
-import type { LabInterpretation, RedFlag, ASCVDRiskResult } from "@shared/schema";
+import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Activity, Heart, TrendingUp } from "lucide-react";
+import type { LabInterpretation, RedFlag, ASCVDRiskResult, PREVENTRiskResult } from "@shared/schema";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -11,9 +11,10 @@ interface ResultsDisplayProps {
   recheckWindow: string;
   redFlags?: RedFlag[];
   ascvdAssessment?: ASCVDRiskResult | null;
+  preventAssessment?: PREVENTRiskResult | null;
 }
 
-export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [], ascvdAssessment = null }: ResultsDisplayProps) {
+export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [], ascvdAssessment = null, preventAssessment = null }: ResultsDisplayProps) {
   const getRiskBadge = (category: string) => {
     switch (category) {
       case 'low':
@@ -154,8 +155,117 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
         </CardContent>
       </Card>
 
-      {/* ASCVD Cardiovascular Risk Assessment */}
-      {ascvdAssessment && (
+      {/* PREVENT Cardiovascular Risk Assessment (2023 AHA Equations) */}
+      {preventAssessment && (
+        <Card data-testid="card-prevent-assessment">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Heart className="w-5 h-5 text-primary" />
+                <CardTitle>PREVENT Cardiovascular Risk Assessment</CardTitle>
+              </div>
+              {getRiskBadge(preventAssessment.riskCategory)}
+            </div>
+            <CardDescription>
+              2023 AHA PREVENT Equations - 10/30-year risk for CVD, ASCVD, and Heart Failure
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* 10-Year Risks */}
+            <div>
+              <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                <TrendingUp className="w-4 h-4" />
+                10-Year Risk Predictions
+              </h4>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <div className="p-4 rounded-lg bg-muted/30 border">
+                  <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Total CVD Risk</p>
+                  <span className="text-3xl font-bold font-mono" data-testid="text-10yr-cvd">
+                    {preventAssessment.tenYearCVDPercentage}
+                  </span>
+                  <p className="text-xs text-muted-foreground mt-1">Heart attack, stroke & heart failure</p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30 border">
+                  <p className="text-xs font-medium text-muted-foreground uppercase mb-1">ASCVD Risk</p>
+                  <span className="text-3xl font-bold font-mono" data-testid="text-10yr-ascvd">
+                    {preventAssessment.tenYearASCVDPercentage}
+                  </span>
+                  <p className="text-xs text-muted-foreground mt-1">Heart attack & stroke only</p>
+                </div>
+                <div className="p-4 rounded-lg bg-muted/30 border">
+                  <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Heart Failure Risk</p>
+                  <span className="text-3xl font-bold font-mono" data-testid="text-10yr-hf">
+                    {preventAssessment.tenYearHFPercentage}
+                  </span>
+                  <p className="text-xs text-muted-foreground mt-1">Heart failure alone</p>
+                </div>
+              </div>
+            </div>
+
+            {/* 30-Year Risks (if available) */}
+            {preventAssessment.thirtyYearCVDPercentage && (
+              <div>
+                <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
+                  <TrendingUp className="w-4 h-4" />
+                  30-Year Risk Predictions (Ages 30-59)
+                </h4>
+                <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                  <div className="p-4 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Total CVD Risk</p>
+                    <span className="text-2xl font-bold font-mono" data-testid="text-30yr-cvd">
+                      {preventAssessment.thirtyYearCVDPercentage}
+                    </span>
+                  </div>
+                  <div className="p-4 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs font-medium text-muted-foreground uppercase mb-1">ASCVD Risk</p>
+                    <span className="text-2xl font-bold font-mono" data-testid="text-30yr-ascvd">
+                      {preventAssessment.thirtyYearASCVDPercentage}
+                    </span>
+                  </div>
+                  <div className="p-4 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
+                    <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Heart Failure Risk</p>
+                    <span className="text-2xl font-bold font-mono" data-testid="text-30yr-hf">
+                      {preventAssessment.thirtyYearHFPercentage}
+                    </span>
+                  </div>
+                </div>
+              </div>
+            )}
+
+            <Separator />
+
+            <div className="space-y-4">
+              {preventAssessment.ldlGoal && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">LDL Cholesterol Goal</p>
+                  <p className="text-sm font-semibold" data-testid="text-prevent-ldl-goal">
+                    {preventAssessment.ldlGoal}
+                  </p>
+                </div>
+              )}
+
+              {preventAssessment.statinRecommendation && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Statin Therapy Recommendation</p>
+                  <p className="text-sm bg-muted/50 p-3 rounded-md" data-testid="text-prevent-statin">
+                    {preventAssessment.statinRecommendation}
+                  </p>
+                </div>
+              )}
+
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase text-muted-foreground">Clinical Recommendations</p>
+                <p className="text-sm leading-relaxed whitespace-pre-line" data-testid="text-prevent-recommendations">
+                  {preventAssessment.recommendations}
+                </p>
+              </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Legacy ASCVD Cardiovascular Risk Assessment (for male endpoint that still uses it) */}
+      {ascvdAssessment && !preventAssessment && (
         <Card data-testid="card-ascvd-assessment">
           <CardHeader>
             <div className="flex items-center justify-between gap-4 flex-wrap">

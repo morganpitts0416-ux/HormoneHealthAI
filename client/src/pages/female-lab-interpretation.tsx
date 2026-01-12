@@ -50,6 +50,7 @@ export default function FemaleLabInterpretation() {
           diabetic: false,
           smoker: false,
           familyHistory: false,
+          onStatins: false,
           snoring: false,
           tiredness: false,
           observedApnea: false,
@@ -89,7 +90,7 @@ export default function FemaleLabInterpretation() {
         labValues,
         interpretationResult.interpretations,
         interpretationResult.supplements,
-        interpretationResult.ascvdRisk
+        interpretationResult.preventRisk
       );
     },
     onSuccess: async (wellnessPlan) => {
@@ -386,6 +387,7 @@ export default function FemaleLabInterpretation() {
                       aiRecommendations={interpretationResult.aiRecommendations}
                       recheckWindow={interpretationResult.recheckWindow}
                       redFlags={interpretationResult.redFlags}
+                      preventAssessment={interpretationResult.preventRisk}
                     />
                   </CardContent>
                 </Card>
