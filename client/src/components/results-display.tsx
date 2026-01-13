@@ -122,7 +122,11 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                         <TableCell>
                           {interp.value !== undefined ? (
                             <span className="font-mono font-semibold">
-                              {interp.value} <span className="text-xs text-muted-foreground">{interp.unit}</span>
+                              {typeof interp.value === 'number' && interp.unit === '%' 
+                                ? interp.value.toFixed(1) 
+                                : typeof interp.value === 'number' 
+                                ? Number.isInteger(interp.value) ? interp.value : interp.value.toFixed(1)
+                                : interp.value} <span className="text-xs text-muted-foreground">{interp.unit}</span>
                             </span>
                           ) : (
                             <span className="text-xs text-muted-foreground italic">Not provided</span>
@@ -296,24 +300,56 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                 <p className="text-xs text-muted-foreground mt-1">From PREVENT calculator</p>
               </div>
               {adjustedRiskAssessment.apoBValue !== undefined && (
-                <div className={`p-4 rounded-lg border ${adjustedRiskAssessment.hasElevatedApoB ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800' : 'bg-muted/30'}`}>
+                <div className={`p-4 rounded-lg border ${
+                  adjustedRiskAssessment.apoBStatus === 'elevated' 
+                    ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800' 
+                    : adjustedRiskAssessment.apoBStatus === 'borderline'
+                    ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
+                    : 'bg-muted/30'
+                }`}>
                   <p className="text-xs font-medium text-muted-foreground uppercase mb-1">ApoB</p>
-                  <span className={`text-2xl font-bold font-mono ${adjustedRiskAssessment.hasElevatedApoB ? 'text-orange-600 dark:text-orange-400' : ''}`} data-testid="text-apob">
+                  <span className={`text-2xl font-bold font-mono ${
+                    adjustedRiskAssessment.apoBStatus === 'elevated' 
+                      ? 'text-orange-600 dark:text-orange-400' 
+                      : adjustedRiskAssessment.apoBStatus === 'borderline'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : ''
+                  }`} data-testid="text-apob">
                     {adjustedRiskAssessment.apoBValue} mg/dL
                   </span>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {adjustedRiskAssessment.hasElevatedApoB ? 'Elevated (≥130 mg/dL)' : 'Within range'}
+                    {adjustedRiskAssessment.apoBStatus === 'elevated' 
+                      ? 'Elevated (≥130 mg/dL)' 
+                      : adjustedRiskAssessment.apoBStatus === 'borderline'
+                      ? 'Borderline (90-129 mg/dL)'
+                      : 'Normal (<90 mg/dL)'}
                   </p>
                 </div>
               )}
               {adjustedRiskAssessment.lpaValue !== undefined && (
-                <div className={`p-4 rounded-lg border ${adjustedRiskAssessment.hasElevatedLpa ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800' : 'bg-muted/30'}`}>
+                <div className={`p-4 rounded-lg border ${
+                  adjustedRiskAssessment.lpaStatus === 'elevated' 
+                    ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800' 
+                    : adjustedRiskAssessment.lpaStatus === 'borderline'
+                    ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
+                    : 'bg-muted/30'
+                }`}>
                   <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Lp(a)</p>
-                  <span className={`text-2xl font-bold font-mono ${adjustedRiskAssessment.hasElevatedLpa ? 'text-orange-600 dark:text-orange-400' : ''}`} data-testid="text-lpa">
+                  <span className={`text-2xl font-bold font-mono ${
+                    adjustedRiskAssessment.lpaStatus === 'elevated' 
+                      ? 'text-orange-600 dark:text-orange-400' 
+                      : adjustedRiskAssessment.lpaStatus === 'borderline'
+                      ? 'text-amber-600 dark:text-amber-400'
+                      : ''
+                  }`} data-testid="text-lpa">
                     {adjustedRiskAssessment.lpaValue} {adjustedRiskAssessment.lpaValue >= 200 ? 'nmol/L' : 'mg/dL'}
                   </span>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {adjustedRiskAssessment.hasElevatedLpa ? 'Elevated (genetic risk)' : 'Within range'}
+                    {adjustedRiskAssessment.lpaStatus === 'elevated' 
+                      ? 'Elevated (≥50 mg/dL)' 
+                      : adjustedRiskAssessment.lpaStatus === 'borderline'
+                      ? 'Borderline (40-49 mg/dL)'
+                      : 'Normal (<40 mg/dL)'}
                   </p>
                 </div>
               )}

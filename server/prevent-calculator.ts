@@ -497,13 +497,35 @@ export class PREVENTCalculator {
 
     const baseRiskPercent = tenYearASCVD * 100;
     
-    // Determine if markers are elevated
-    // Lp(a) ≥ 50 mg/dL or ≥125 nmol/L (assume mg/dL if < 200, nmol/L if >= 200)
-    const lpaElevated = lpa !== undefined && (lpa >= 50 || (lpa >= 125 && lpa >= 200));
-    // ApoB ≥ 130 mg/dL
-    const apoBElevated = apoB !== undefined && apoB >= 130;
+    // Determine marker status with borderline classification
+    // ApoB: <90 normal, 90-129 borderline, ≥130 elevated
+    // Lp(a): <40 normal, 40-49 borderline, ≥50 elevated (mg/dL) or ≥125 elevated (nmol/L if value ≥200)
+    
+    let apoBStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
+    if (apoB !== undefined) {
+      if (apoB >= 130) apoBStatus = 'elevated';
+      else if (apoB >= 90) apoBStatus = 'borderline';
+    }
+    
+    let lpaStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
+    if (lpa !== undefined) {
+      // If value >= 200, assume nmol/L; ≥125 nmol/L is elevated
+      if (lpa >= 200) {
+        lpaStatus = lpa >= 125 ? 'elevated' : 'normal'; // nmol/L scale
+      } else {
+        // mg/dL scale: <40 normal, 40-49 borderline, ≥50 elevated
+        if (lpa >= 50) lpaStatus = 'elevated';
+        else if (lpa >= 40) lpaStatus = 'borderline';
+      }
+    }
+    
+    const lpaElevated = lpaStatus === 'elevated';
+    const apoBElevated = apoBStatus === 'elevated';
+    const lpaBorderline = lpaStatus === 'borderline';
+    const apoBBorderline = apoBStatus === 'borderline';
     
     const hasElevatedMarkers = lpaElevated || apoBElevated;
+    const hasBorderlineMarkers = lpaBorderline || apoBBorderline;
     
     // Get base risk category
     let riskCategory: 'low' | 'borderline' | 'intermediate' | 'high';
@@ -578,8 +600,12 @@ export class PREVENTCalculator {
     return {
       hasElevatedLpa: lpaElevated,
       hasElevatedApoB: apoBElevated,
+      hasBorderlineLpa: lpaBorderline,
+      hasBorderlineApoB: apoBBorderline,
       lpaValue: lpa,
       apoBValue: apoB,
+      lpaStatus,
+      apoBStatus,
       baseASCVDRisk: baseRiskPercent,
       riskCategory,
       adjustedCategory,

@@ -66,8 +66,12 @@ export type PREVENTRiskResult = z.infer<typeof preventRiskResultSchema>;
 export const adjustedRiskAssessmentSchema = z.object({
   hasElevatedLpa: z.boolean(),
   hasElevatedApoB: z.boolean(),
+  hasBorderlineLpa: z.boolean().optional(),
+  hasBorderlineApoB: z.boolean().optional(),
   lpaValue: z.number().optional(),
   apoBValue: z.number().optional(),
+  lpaStatus: z.enum(['normal', 'borderline', 'elevated']).optional(),
+  apoBStatus: z.enum(['normal', 'borderline', 'elevated']).optional(),
   baseASCVDRisk: z.number(), // 10-year ASCVD risk percentage
   riskCategory: z.enum(['low', 'borderline', 'intermediate', 'high']),
   adjustedCategory: z.enum(['low', 'borderline', 'intermediate', 'high', 'reclassified_upward']),
