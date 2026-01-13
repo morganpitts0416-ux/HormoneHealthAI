@@ -722,20 +722,34 @@ export async function generatePatientWellnessPDF(
     // Marker values table
     const markerData: string[][] = [];
     if (adjustedRisk.apoBValue !== undefined) {
+      const apoBStatusText = adjustedRisk.apoBStatus === 'elevated' ? 'Elevated' 
+        : adjustedRisk.apoBStatus === 'borderline' ? 'Borderline' : 'Normal';
+      const apoBExplanation = adjustedRisk.apoBStatus === 'elevated' 
+        ? 'Your ApoB is above 130 mg/dL, indicating more particles that can deposit cholesterol.'
+        : adjustedRisk.apoBStatus === 'borderline'
+        ? 'Your ApoB is in the borderline range (90-129 mg/dL). Consider lifestyle modifications.'
+        : 'Your ApoB level is within the healthy range (<90 mg/dL).';
       markerData.push([
         'ApoB',
         `${adjustedRisk.apoBValue} mg/dL`,
-        adjustedRisk.hasElevatedApoB ? 'Elevated' : 'Normal',
-        adjustedRisk.hasElevatedApoB ? 'Your ApoB is above the goal of 130 mg/dL, indicating more particles that can deposit cholesterol.' : 'Your ApoB level is within the healthy range.'
+        apoBStatusText,
+        apoBExplanation
       ]);
     }
     if (adjustedRisk.lpaValue !== undefined) {
       const lpaUnit = adjustedRisk.lpaValue >= 200 ? 'nmol/L' : 'mg/dL';
+      const lpaStatusText = adjustedRisk.lpaStatus === 'elevated' ? 'Elevated' 
+        : adjustedRisk.lpaStatus === 'borderline' ? 'Borderline' : 'Normal';
+      const lpaExplanation = adjustedRisk.lpaStatus === 'elevated' 
+        ? 'Lp(a) is genetically determined. Elevated levels (≥50 mg/dL) increase heart risk independently.'
+        : adjustedRisk.lpaStatus === 'borderline'
+        ? 'Your Lp(a) is in the borderline range (40-49 mg/dL). This is a genetic marker to monitor.'
+        : 'Your Lp(a) level is within the healthy range (<40 mg/dL).';
       markerData.push([
         'Lp(a)',
         `${adjustedRisk.lpaValue} ${lpaUnit}`,
-        adjustedRisk.hasElevatedLpa ? 'Elevated' : 'Normal',
-        adjustedRisk.hasElevatedLpa ? 'Lp(a) is genetically determined. Elevated levels increase heart risk independently of other factors.' : 'Your Lp(a) level is within the healthy range.'
+        lpaStatusText,
+        lpaExplanation
       ]);
     }
 
@@ -771,6 +785,9 @@ export async function generatePatientWellnessPDF(
             if (status === 'Elevated') {
               data.cell.styles.textColor = [234, 88, 12];
               data.cell.styles.fontStyle = 'bold';
+            } else if (status === 'Borderline') {
+              data.cell.styles.textColor = [180, 130, 0];
+              data.cell.styles.fontStyle = 'bold';
             } else {
               data.cell.styles.textColor = [34, 139, 34];
             }
@@ -782,8 +799,8 @@ export async function generatePatientWellnessPDF(
       yPosition += 6;
     }
 
-    // Clinical guidance box
-    if (adjustedRisk.hasElevatedApoB || adjustedRisk.hasElevatedLpa) {
+    // Clinical guidance box (show for elevated or borderline markers)
+    if (adjustedRisk.hasElevatedApoB || adjustedRisk.hasElevatedLpa || adjustedRisk.hasBorderlineApoB || adjustedRisk.hasBorderlineLpa) {
       yPosition = ensureSpace(30, yPosition);
       doc.setFillColor(255, 248, 240);
       doc.roundedRect(margin, yPosition, contentWidth, 24, 2, 2, 'F');
@@ -798,11 +815,19 @@ export async function generatePatientWellnessPDF(
       doc.setFontSize(8);
       doc.setFont('helvetica', 'normal');
       
-      let patientGuidance = 'Your advanced lipid markers suggest additional cardiovascular risk factors. ';
-      if (adjustedRisk.adjustedCategory === 'reclassified_upward') {
-        patientGuidance += 'These results may influence treatment decisions, and your provider may recommend additional protective measures such as lifestyle changes or medication.';
-      } else {
-        patientGuidance += 'Your provider will discuss whether any changes to your prevention plan are recommended based on these results.';
+      const hasElevated = adjustedRisk.hasElevatedApoB || adjustedRisk.hasElevatedLpa;
+      const hasBorderline = adjustedRisk.hasBorderlineApoB || adjustedRisk.hasBorderlineLpa;
+      
+      let patientGuidance = '';
+      if (hasElevated) {
+        patientGuidance = 'Your advanced lipid markers show elevated levels that may affect your cardiovascular risk. ';
+        if (adjustedRisk.adjustedCategory === 'reclassified_upward') {
+          patientGuidance += 'These results may influence treatment decisions, and your provider may recommend additional protective measures such as lifestyle changes or medication.';
+        } else {
+          patientGuidance += 'Your provider will discuss whether any changes to your prevention plan are recommended based on these results.';
+        }
+      } else if (hasBorderline) {
+        patientGuidance = 'Your advanced lipid markers are in the borderline range. While not elevated, these results warrant monitoring and may benefit from lifestyle modifications. Your provider will discuss the best approach for your individual situation.';
       }
       const guidanceLines = doc.splitTextToSize(patientGuidance, contentWidth - 8);
       doc.text(guidanceLines, margin + 4, yPosition + 13);
