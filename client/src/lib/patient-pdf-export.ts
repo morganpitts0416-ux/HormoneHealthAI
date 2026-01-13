@@ -534,6 +534,170 @@ export async function generatePatientWellnessPDF(
     yPosition += 10;
   }
 
+  // PREVENT Cardiovascular Risk Assessment Section
+  if (interpretation.preventRisk) {
+    const preventRisk = interpretation.preventRisk;
+    yPosition = ensureSpace(90, yPosition);
+    yPosition = addSectionHeader('YOUR HEART HEALTH ASSESSMENT', yPosition);
+    
+    // Helper function to get risk level description
+    const getRiskDescription = (category: string): { text: string; color: [number, number, number] } => {
+      switch (category) {
+        case 'low':
+          return { text: 'Low Risk', color: [34, 139, 34] };
+        case 'borderline':
+          return { text: 'Borderline', color: [180, 130, 20] };
+        case 'intermediate':
+          return { text: 'Moderate Risk', color: [234, 88, 12] };
+        case 'high':
+          return { text: 'Higher Risk', color: [220, 38, 38] };
+        default:
+          return { text: 'See Provider', color: [100, 100, 100] };
+      }
+    };
+
+    // Helper to get interpretation for each risk type
+    const getRiskInterpretation = (riskType: string, percentage: string, timeframe: string): string => {
+      const pct = parseFloat(percentage);
+      if (isNaN(pct)) return 'Risk calculation not available for your age range.';
+      
+      if (riskType === 'CVD') {
+        if (pct < 5) return `Your ${timeframe} risk of any cardiovascular event (heart attack, stroke, or heart failure) is low.`;
+        if (pct < 10) return `Your ${timeframe} risk includes heart attack, stroke, and heart failure combined. Lifestyle changes can help reduce this.`;
+        return `Your ${timeframe} total cardiovascular risk is elevated. Your provider will discuss prevention strategies with you.`;
+      } else if (riskType === 'ASCVD') {
+        if (pct < 5) return `Your ${timeframe} risk of heart attack or stroke is low - great news for your heart health!`;
+        if (pct < 7.5) return `Your ${timeframe} risk of heart attack or stroke is borderline. Healthy lifestyle choices matter.`;
+        if (pct < 20) return `Your ${timeframe} heart attack/stroke risk is moderate. Discuss prevention options with your provider.`;
+        return `Your ${timeframe} heart attack/stroke risk is elevated. Your provider will recommend targeted interventions.`;
+      } else { // HF
+        if (pct < 2) return `Your ${timeframe} heart failure risk is low - your heart is in good shape!`;
+        if (pct < 5) return `Your ${timeframe} heart failure risk is low to moderate. Maintaining a healthy weight and staying active helps.`;
+        return `Your ${timeframe} heart failure risk is notable. Weight management and blood pressure control are key.`;
+      }
+    };
+
+    // Overall risk category box
+    const riskInfo = getRiskDescription(preventRisk.riskCategory);
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, 16, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Overall Cardiovascular Risk Category:', margin + 4, yPosition + 7);
+    doc.setTextColor(...riskInfo.color);
+    doc.setFontSize(12);
+    doc.text(riskInfo.text, margin + 75, yPosition + 7);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Based on the 2023 AHA PREVENT Equations - a modern, validated heart risk calculator', margin + 4, yPosition + 13);
+    yPosition += 20;
+
+    // 10-Year Risk Table
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Your 10-Year Heart Health Predictions', margin, yPosition + 4);
+    yPosition += 8;
+
+    const tenYearData = [
+      ['Total Cardiovascular Disease', preventRisk.tenYearCVDPercentage || 'N/A', getRiskInterpretation('CVD', preventRisk.tenYearCVDPercentage || '0', '10-year')],
+      ['Heart Attack & Stroke (ASCVD)', preventRisk.tenYearASCVDPercentage || 'N/A', getRiskInterpretation('ASCVD', preventRisk.tenYearASCVDPercentage || '0', '10-year')],
+      ['Heart Failure', preventRisk.tenYearHFPercentage || 'N/A', getRiskInterpretation('HF', preventRisk.tenYearHFPercentage || '0', '10-year')],
+    ];
+
+    autoTable(doc, {
+      startY: yPosition,
+      head: [['Risk Type', 'Your Risk', 'What This Means For You']],
+      body: tenYearData,
+      theme: 'grid',
+      headStyles: {
+        fillColor: brandColor,
+        fontSize: 9,
+        fontStyle: 'bold',
+        textColor: [255, 255, 255],
+      },
+      bodyStyles: {
+        fontSize: 8,
+        textColor: textColor,
+      },
+      columnStyles: {
+        0: { cellWidth: 45 },
+        1: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+        2: { cellWidth: 111 },
+      },
+      styles: {
+        overflow: 'linebreak',
+        cellPadding: 2,
+      },
+    });
+
+    yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
+    yPosition += 6;
+
+    // 30-Year Risk Table (if available - ages 30-59)
+    if (preventRisk.thirtyYearCVDPercentage) {
+      yPosition = ensureSpace(50, yPosition);
+      doc.setTextColor(...brandColor);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Your 30-Year Heart Health Predictions (Long-Term Outlook)', margin, yPosition + 4);
+      yPosition += 8;
+
+      const thirtyYearData = [
+        ['Total Cardiovascular Disease', preventRisk.thirtyYearCVDPercentage || 'N/A', getRiskInterpretation('CVD', preventRisk.thirtyYearCVDPercentage || '0', '30-year')],
+        ['Heart Attack & Stroke (ASCVD)', preventRisk.thirtyYearASCVDPercentage || 'N/A', getRiskInterpretation('ASCVD', preventRisk.thirtyYearASCVDPercentage || '0', '30-year')],
+        ['Heart Failure', preventRisk.thirtyYearHFPercentage || 'N/A', getRiskInterpretation('HF', preventRisk.thirtyYearHFPercentage || '0', '30-year')],
+      ];
+
+      autoTable(doc, {
+        startY: yPosition,
+        head: [['Risk Type', 'Your Risk', 'What This Means For You']],
+        body: thirtyYearData,
+        theme: 'grid',
+        headStyles: {
+          fillColor: [120, 100, 90],
+          fontSize: 9,
+          fontStyle: 'bold',
+          textColor: [255, 255, 255],
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: textColor,
+        },
+        columnStyles: {
+          0: { cellWidth: 45 },
+          1: { cellWidth: 22, halign: 'center', fontStyle: 'bold' },
+          2: { cellWidth: 111 },
+        },
+        styles: {
+          overflow: 'linebreak',
+          cellPadding: 2,
+        },
+      });
+
+      yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
+      yPosition += 6;
+    }
+
+    // Key lifestyle recommendations for heart health
+    yPosition = ensureSpace(30, yPosition);
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, 22, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Heart-Healthy Lifestyle Tips:', margin + 4, yPosition + 6);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    const heartTips = 'Mediterranean diet, 150+ minutes of moderate exercise weekly, maintain healthy weight, manage stress, avoid smoking, limit alcohol. These lifestyle factors can significantly reduce your cardiovascular risk over time.';
+    const heartTipLines = doc.splitTextToSize(heartTips, contentWidth - 8);
+    doc.text(heartTipLines, margin + 4, yPosition + 12);
+    yPosition += 28;
+  }
+
   // Ensure space for nutrition plan section (~120 units)
   yPosition = ensureSpace(120, yPosition);
 
