@@ -130,6 +130,8 @@ export const labValuesSchema = z.object({
   hdl: z.number().optional(),
   totalCholesterol: z.number().optional(),
   triglycerides: z.number().optional(),
+  apoB: z.number().optional(), // Apolipoprotein B
+  lpa: z.number().optional(), // Lipoprotein(a)
   
   // Hormones
   testosterone: z.number().optional(),
@@ -143,6 +145,7 @@ export const labValuesSchema = z.object({
   tsh: z.number().optional(),
   psa: z.number().optional(),
   a1c: z.number().optional(),
+  hsCRP: z.number().optional(), // High-Sensitivity C-Reactive Protein (mg/dL)
   
   // Previous PSA for velocity calculation
   previousPsa: z.number().optional(),

@@ -787,6 +787,134 @@ export class ClinicalLogicEngine {
       });
     }
 
+    // ApoB (Apolipoprotein B) - Advanced Lipid Marker
+    // Reflects total atherogenic particle burden
+    // Thresholds: <90 normal, 90-129 borderline, ≥130 elevated
+    if (labs.apoB !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.apoB >= 130) {
+        status = 'abnormal';
+        interpretation = `Elevated ApoB (${labs.apoB} mg/dL) - high atherogenic particle burden. This is a risk-enhancing factor for ASCVD.`;
+        recommendation = 'Statin therapy favored. Consider LDL-C target <70 mg/dL or >50% reduction. ApoB target <90 mg/dL for high-risk patients.';
+      } else if (labs.apoB >= 90) {
+        status = 'borderline';
+        interpretation = `Borderline ApoB (${labs.apoB} mg/dL) - moderate atherogenic particle burden.`;
+        recommendation = 'Consider statin therapy based on overall risk assessment. Lifestyle modifications. Recheck in 6-12 months.';
+      } else {
+        status = 'normal';
+        interpretation = `ApoB within optimal range (${labs.apoB} mg/dL) - low atherogenic particle burden.`;
+        recommendation = 'Continue heart-healthy lifestyle. Routine monitoring.';
+      }
+
+      interpretations.push({
+        category: 'ApoB (Apolipoprotein B)',
+        value: labs.apoB,
+        unit: 'mg/dL',
+        status,
+        referenceRange: '<90 mg/dL optimal, 90-129 borderline, ≥130 elevated',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Lp(a) (Lipoprotein a) - Genetic Cardiovascular Risk Marker
+    // mg/dL thresholds: <40 normal, 40-49 borderline, ≥50 elevated
+    // nmol/L thresholds: <75 normal, 75-124 borderline, ≥125 elevated
+    // Unit detection: Values >75 are likely nmol/L (mg/dL rarely exceeds 75)
+    if (labs.lpa !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+      let unit = 'mg/dL';
+
+      // Determine unit based on value magnitude
+      // mg/dL scale typically 0-100, nmol/L scale typically 0-300+
+      // Values >75 are very rare in mg/dL, so treat as nmol/L
+      const isNmolL = labs.lpa > 75;
+      
+      if (isNmolL) {
+        unit = 'nmol/L';
+        if (labs.lpa >= 125) {
+          status = 'abnormal';
+          interpretation = `Elevated Lp(a) (${labs.lpa} nmol/L) - genetic cardiovascular risk factor. Associated with increased ASCVD and aortic stenosis risk.`;
+          recommendation = 'Lp(a) is genetically determined. More aggressive LDL-C lowering indicated. Consider CAC scoring for risk refinement. Discuss with patient about hereditary nature.';
+        } else if (labs.lpa >= 75) {
+          status = 'borderline';
+          interpretation = `Borderline Lp(a) (${labs.lpa} nmol/L) - moderately elevated genetic risk.`;
+          recommendation = 'Consider additional cardiovascular risk assessment. More aggressive lifestyle modifications. Optimize other modifiable risk factors.';
+        } else {
+          status = 'normal';
+          interpretation = `Lp(a) within normal range (${labs.lpa} nmol/L).`;
+          recommendation = 'Continue routine cardiovascular risk monitoring.';
+        }
+      } else {
+        // mg/dL scale
+        if (labs.lpa >= 50) {
+          status = 'abnormal';
+          interpretation = `Elevated Lp(a) (${labs.lpa} mg/dL) - genetic cardiovascular risk factor. Associated with increased ASCVD and aortic stenosis risk.`;
+          recommendation = 'Lp(a) is genetically determined. More aggressive LDL-C lowering indicated. Consider CAC scoring for risk refinement. Discuss with patient about hereditary nature.';
+        } else if (labs.lpa >= 40) {
+          status = 'borderline';
+          interpretation = `Borderline Lp(a) (${labs.lpa} mg/dL) - moderately elevated genetic risk.`;
+          recommendation = 'Consider additional cardiovascular risk assessment. More aggressive lifestyle modifications. Optimize other modifiable risk factors.';
+        } else {
+          status = 'normal';
+          interpretation = `Lp(a) within normal range (${labs.lpa} mg/dL).`;
+          recommendation = 'Continue routine cardiovascular risk monitoring.';
+        }
+      }
+
+      interpretations.push({
+        category: 'Lp(a) (Lipoprotein a)',
+        value: labs.lpa,
+        unit,
+        status,
+        referenceRange: '<40 mg/dL normal, 40-49 borderline, ≥50 elevated',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // hs-CRP (High-Sensitivity C-Reactive Protein)
+    // Using mg/dL as per clinic protocol
+    // Lab reference: <0.50 mg/dL = normal, 0.30-0.50 = borderline, ≥0.50 mg/dL = high, ≥1.0 = critical
+    if (labs.hsCRP !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.hsCRP >= 1.0) {
+        status = 'critical';
+        interpretation = 'Markedly elevated hs-CRP - acute inflammation.';
+        recommendation = 'Evaluate for infection or inflammatory condition. Rule out acute illness before interpreting as cardiovascular risk marker.';
+      } else if (labs.hsCRP >= 0.50) {
+        status = 'abnormal';
+        interpretation = 'Elevated hs-CRP - increased cardiovascular risk.';
+        recommendation = 'Address cardiovascular risk factors. This is a risk-enhancing factor for statin therapy decisions. Consider repeat testing.';
+      } else if (labs.hsCRP >= 0.30) {
+        status = 'borderline';
+        interpretation = 'Borderline hs-CRP - monitor cardiovascular health.';
+        recommendation = 'Lifestyle modifications: anti-inflammatory diet, exercise, weight management. Continue monitoring.';
+      } else {
+        status = 'normal';
+        interpretation = 'Low cardiovascular inflammation risk.';
+        recommendation = 'Continue healthy lifestyle.';
+      }
+
+      interpretations.push({
+        category: 'hs-CRP',
+        value: labs.hsCRP,
+        unit: 'mg/dL',
+        status,
+        referenceRange: '<0.50 mg/dL normal, ≥0.50 mg/dL high',
+        interpretation,
+        recommendation,
+      });
+    }
+
     // BUN
     if (labs.bun !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
