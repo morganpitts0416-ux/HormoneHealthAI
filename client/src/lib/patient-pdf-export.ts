@@ -698,6 +698,118 @@ export async function generatePatientWellnessPDF(
     yPosition += 28;
   }
 
+  // Adjusted Risk Assessment Section (ApoB and Lp(a))
+  if (interpretation.adjustedRisk) {
+    const adjustedRisk = interpretation.adjustedRisk;
+    yPosition = ensureSpace(60, yPosition);
+    yPosition = addSectionHeader('ADVANCED LIPID MARKERS ASSESSMENT', yPosition);
+
+    // Explanation box
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, 20, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('What are ApoB and Lp(a)?', margin + 4, yPosition + 6);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    const markerExplanation = 'ApoB measures the number of particles that can deposit cholesterol in artery walls. Lp(a) is a genetic marker that can increase heart risk independent of other factors. These advanced markers help refine your overall cardiovascular risk assessment.';
+    const markerLines = doc.splitTextToSize(markerExplanation, contentWidth - 8);
+    doc.text(markerLines, margin + 4, yPosition + 12);
+    yPosition += 24;
+
+    // Marker values table
+    const markerData: string[][] = [];
+    if (adjustedRisk.apoBValue !== undefined) {
+      markerData.push([
+        'ApoB',
+        `${adjustedRisk.apoBValue} mg/dL`,
+        adjustedRisk.hasElevatedApoB ? 'Elevated' : 'Normal',
+        adjustedRisk.hasElevatedApoB ? 'Your ApoB is above the goal of 130 mg/dL, indicating more particles that can deposit cholesterol.' : 'Your ApoB level is within the healthy range.'
+      ]);
+    }
+    if (adjustedRisk.lpaValue !== undefined) {
+      const lpaUnit = adjustedRisk.lpaValue >= 200 ? 'nmol/L' : 'mg/dL';
+      markerData.push([
+        'Lp(a)',
+        `${adjustedRisk.lpaValue} ${lpaUnit}`,
+        adjustedRisk.hasElevatedLpa ? 'Elevated' : 'Normal',
+        adjustedRisk.hasElevatedLpa ? 'Lp(a) is genetically determined. Elevated levels increase heart risk independently of other factors.' : 'Your Lp(a) level is within the healthy range.'
+      ]);
+    }
+
+    if (markerData.length > 0) {
+      autoTable(doc, {
+        startY: yPosition,
+        head: [['Marker', 'Your Value', 'Status', 'What This Means']],
+        body: markerData,
+        theme: 'grid',
+        headStyles: {
+          fillColor: brandColor,
+          fontSize: 9,
+          fontStyle: 'bold',
+          textColor: [255, 255, 255],
+        },
+        bodyStyles: {
+          fontSize: 8,
+          textColor: textColor,
+        },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 28 },
+          2: { cellWidth: 20 },
+          3: { cellWidth: 108 },
+        },
+        styles: {
+          overflow: 'linebreak',
+          cellPadding: 2,
+        },
+        didParseCell: (data) => {
+          if (data.section === 'body' && data.column.index === 2) {
+            const status = data.cell.raw as string;
+            if (status === 'Elevated') {
+              data.cell.styles.textColor = [234, 88, 12];
+              data.cell.styles.fontStyle = 'bold';
+            } else {
+              data.cell.styles.textColor = [34, 139, 34];
+            }
+          }
+        },
+      });
+
+      yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
+      yPosition += 6;
+    }
+
+    // Clinical guidance box
+    if (adjustedRisk.hasElevatedApoB || adjustedRisk.hasElevatedLpa) {
+      yPosition = ensureSpace(30, yPosition);
+      doc.setFillColor(255, 248, 240);
+      doc.roundedRect(margin, yPosition, contentWidth, 24, 2, 2, 'F');
+      doc.setDrawColor(234, 88, 12);
+      doc.setLineWidth(0.5);
+      doc.roundedRect(margin, yPosition, contentWidth, 24, 2, 2, 'S');
+      doc.setTextColor(180, 70, 0);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('What This Means For Your Care:', margin + 4, yPosition + 6);
+      doc.setTextColor(...textColor);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      
+      let patientGuidance = 'Your advanced lipid markers suggest additional cardiovascular risk factors. ';
+      if (adjustedRisk.adjustedCategory === 'reclassified_upward') {
+        patientGuidance += 'These results may influence treatment decisions, and your provider may recommend additional protective measures such as lifestyle changes or medication.';
+      } else {
+        patientGuidance += 'Your provider will discuss whether any changes to your prevention plan are recommended based on these results.';
+      }
+      const guidanceLines = doc.splitTextToSize(patientGuidance, contentWidth - 8);
+      doc.text(guidanceLines, margin + 4, yPosition + 13);
+      yPosition += 30;
+    }
+  }
+
   // Ensure space for nutrition plan section (~120 units)
   yPosition = ensureSpace(120, yPosition);
 

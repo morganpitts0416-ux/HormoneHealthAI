@@ -384,6 +384,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const cacStatinRec = FemaleClinicalLogicEngine.generateCacStatinRecommendations(labs, cvRiskFlags);
       console.log('[API] CAC/Statin Recommendations generated');
 
+      // Step 10: Calculate Adjusted Risk Assessment based on ApoB and Lp(a)
+      let adjustedRisk = undefined;
+      if (preventRisk && (labs.apoB !== undefined || labs.lpa !== undefined)) {
+        adjustedRisk = PREVENTCalculator.calculateAdjustedRisk(
+          preventRisk.tenYearASCVD,
+          labs.apoB,
+          labs.lpa
+        ) || undefined;
+        console.log('[API] Adjusted Risk Assessment:', adjustedRisk ? 
+          `Base: ${adjustedRisk.baseASCVDRisk.toFixed(1)}%, Category: ${adjustedRisk.riskCategory} → ${adjustedRisk.adjustedCategory}` : 
+          'Not calculated');
+      }
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -392,6 +405,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientSummary,
         recheckWindow,
         preventRisk,
+        adjustedRisk,
         supplements,
         cvRiskFlags,
         cacStatinRec,
