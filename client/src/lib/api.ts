@@ -29,6 +29,24 @@ export const labsApi = {
     console.log('[API Client] extractPdfLabs result:', result);
     return result.data;
   },
+
+  generateWellnessPlan: async (
+    labs: LabValues,
+    interpretations: InterpretationResult['interpretations'],
+    supplements: InterpretationResult['supplements'],
+    preventRisk: InterpretationResult['preventRisk']
+  ): Promise<WellnessPlan> => {
+    console.log('[API Client] generateMaleWellnessPlan called');
+    const response = await apiRequest("POST", "/api/generate-wellness-plan-male", {
+      labs,
+      interpretations,
+      supplements,
+      preventRisk,
+    });
+    const result = await response.json();
+    console.log('[API Client] generateMaleWellnessPlan result:', result);
+    return result.wellnessPlan;
+  },
 };
 
 export interface WellnessPlan {

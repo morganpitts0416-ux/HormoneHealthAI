@@ -3,15 +3,16 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History, Heart } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LabInputForm } from "@/components/lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { PatientSummary } from "@/components/patient-summary";
 import { SavedInterpretations } from "@/components/saved-interpretations";
-import { labsApi } from "@/lib/api";
+import { labsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
+import { generateMalePatientWellnessPDF } from "@/lib/patient-pdf-export-male";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -160,6 +161,43 @@ export default function LabInterpretation() {
     saveMutation.mutate();
   };
 
+  const wellnessPlanMutation = useMutation({
+    mutationFn: () => {
+      if (!interpretationResult) throw new Error('No interpretation result');
+      return labsApi.generateWellnessPlan(
+        labValues,
+        interpretationResult.interpretations,
+        interpretationResult.supplements,
+        interpretationResult.preventRisk
+      );
+    },
+    onSuccess: async (wellnessPlan) => {
+      console.log('[Frontend] Male wellness plan generated:', wellnessPlan);
+      if (interpretationResult) {
+        const patientName = labValues.patientName || undefined;
+        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName);
+        toast({
+          title: "Patient Report Generated",
+          description: "The personalized wellness report has been downloaded.",
+        });
+      }
+    },
+    onError: (error) => {
+      console.error('[Frontend] Male wellness plan error:', error);
+      toast({
+        variant: "destructive",
+        title: "Report Generation Failed",
+        description: error instanceof Error ? error.message : "Failed to generate wellness plan",
+      });
+    },
+  });
+
+  const handlePatientReport = () => {
+    if (interpretationResult) {
+      wellnessPlanMutation.mutate();
+    }
+  };
+
   const handleLoadInterpretation = (loadedLabValues: LabValues | FemaleLabValues, loadedInterpretation: InterpretationResult) => {
     setLabValues(loadedLabValues as LabValues);
     setInterpretationResult(loadedInterpretation);
@@ -186,11 +224,12 @@ export default function LabInterpretation() {
                 <>
                   <Button 
                     variant="default" 
-                    onClick={handleExportPDF}
-                    data-testid="button-export-pdf"
+                    onClick={handlePatientReport}
+                    disabled={wellnessPlanMutation.isPending}
+                    data-testid="button-patient-report"
                   >
-                    <Download className="w-4 h-4 mr-2" />
-                    Export PDF
+                    <Heart className="w-4 h-4 mr-2" />
+                    {wellnessPlanMutation.isPending ? 'Generating...' : 'Patient Report'}
                   </Button>
                   <Button 
                     variant="outline" 
@@ -200,6 +239,14 @@ export default function LabInterpretation() {
                   >
                     <Save className="w-4 h-4 mr-2" />
                     {saveMutation.isPending ? 'Saving...' : 'Save'}
+                  </Button>
+                  <Button 
+                    variant="outline" 
+                    onClick={handleExportPDF}
+                    data-testid="button-export-pdf"
+                  >
+                    <Download className="w-4 h-4 mr-2" />
+                    Provider PDF
                   </Button>
                   <Button 
                     variant="outline" 
