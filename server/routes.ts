@@ -10,6 +10,7 @@ import { ASCVDCalculator } from "./ascvd-calculator";
 import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
+import { evaluateMaleSupplements } from "./supplements-male";
 import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -225,6 +226,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interpretations
       );
 
+      // Step 7: Evaluate supplement recommendations
+      const supplements = evaluateMaleSupplements(labs);
+      console.log('[API] Male supplement recommendations:', supplements.length);
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -234,6 +239,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         recheckWindow,
         preventRisk,
         adjustedRisk,
+        supplements,
       };
 
       console.log('[API] Response summary:');
@@ -242,6 +248,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - AI recommendations length:', aiRecommendations.length);
       console.log('  - Patient summary length:', patientSummary.length);
       console.log('  - Recheck window:', recheckWindow);
+      console.log('  - Supplements:', supplements.length);
 
       res.json(result);
     } catch (error) {

@@ -146,6 +146,7 @@ export const labValuesSchema = z.object({
   psa: z.number().optional(),
   a1c: z.number().optional(),
   hsCRP: z.number().optional(), // High-Sensitivity C-Reactive Protein (mg/dL)
+  vitaminD: z.number().optional(), // 25-hydroxyvitamin D (ng/mL)
   
   // Previous PSA for velocity calculation
   previousPsa: z.number().optional(),
