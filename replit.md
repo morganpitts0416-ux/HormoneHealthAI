@@ -27,7 +27,9 @@ The application features a comprehensive lab input form, a results display with 
 -   **Patient Wellness PDF Report (Women's Clinic)**: Generates comprehensive patient-facing wellness PDFs with AI-powered personalized diet, supplement, and lifestyle recommendations, and educational content.
 
 ## Metagenics Supplement Catalog (Clinic Inventory)
-The following 12 Metagenics products are configured in the system. These are the only products that will be recommended:
+
+### Women's Clinic Catalog (12 products)
+The following Metagenics products are configured for the women's clinic in `server/supplements-female.ts`:
 
 1. **HerWellness Estrovera** - Hormone-free menopause relief with ERr 731 rhubarb extract (1 tablet daily)
 2. **Hemagenics** - Non-constipating iron with B12, B6, folate for red blood cell support (1 tablet daily)
@@ -42,7 +44,20 @@ The following 12 Metagenics products are configured in the system. These are the
 11. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily)
 12. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
 
-**Note**: To add new Metagenics products, update both `server/supplements-female.ts` (clinical logic) and `client/src/lib/patient-pdf-export.ts` (PDF display).
+### Men's Clinic Catalog (9 products)
+The following Metagenics products are configured for the men's clinic in `server/supplements-male.ts`:
+
+1. **Testralin** - Testosterone support with botanical and nutrient formula for male vitality (2 tablets twice daily)
+2. **UltraFlora Complete Probiotic** - Multi-strain probiotic for digestive and immune health (1 capsule daily)
+3. **Vitamin D3 10,000 + K** - High-dose vitamin D with K2 for deficiency repletion (1 softgel daily)
+4. **Vitamin D3 5,000 + K** - Maintenance vitamin D with K2 for bone/immune support (1 softgel daily)
+5. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for sleep and cognitive support (3 capsules daily, divided)
+6. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal/testosterone support (2 capsules twice daily)
+7. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
+8. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily)
+9. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
+
+**Note**: To add new Metagenics products to women's clinic, update `server/supplements-female.ts` and `client/src/lib/patient-pdf-export.ts`. For men's clinic, update `server/supplements-male.ts`.
 
 ## External Dependencies
 -   **OpenAI**: Used for AI-powered recommendations, intelligent text extraction from PDFs, and generating patient-friendly summaries and wellness plans.
