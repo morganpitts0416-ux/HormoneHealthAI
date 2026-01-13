@@ -2,14 +2,17 @@ import type { LabValues, FemaleLabValues, PREVENTRiskResult, PatientDemographics
 
 /**
  * PREVENT Risk Calculator
- * Based on 2023 AHA PREVENT Equations
- * Predicts 10-year and 30-year risk of Total CVD, ASCVD, and Heart Failure
+ * Based on 2023 AHA PREVENT Equations - OFFICIAL IMPLEMENTATION
+ * 
+ * Source: AHA PREVENT Stata package (aha_prevent v1.0.0)
+ * Authors: Jack Xiaoning Huang, Yingying Sang, Sadiya Khan
+ * Northwestern University / Johns Hopkins Bloomberg School of Public Health
  * 
  * Reference: Khan SS, et al. Development and Validation of the American Heart Association's PREVENT Equations.
  * Circulation. 2024;149(6):430-449. doi:10.1161/CIRCULATIONAHA.123.067626
  * 
  * Key features:
- * - Sex-specific, race-free equations using logistic regression approximation
+ * - Sex-specific, race-free equations using logistic regression
  * - Age range: 30-79 years (30-year risk only valid for ages 30-59)
  * - Includes kidney function (eGFR) as a predictor
  * - Predicts heart failure in addition to ASCVD
@@ -17,522 +20,263 @@ import type { LabValues, FemaleLabValues, PREVENTRiskResult, PatientDemographics
  * Formula: Risk = exp(linear_predictor) / (1 + exp(linear_predictor))
  */
 
-interface ModelCoefficients {
-  constant: number;
-  age: number;
-  age_squared: number;  // Only used for 30-year models
-  non_hdl_c: number;
-  hdl_c: number;
-  sbp_lt_110: number;
-  sbp_gte_110: number;
-  dm: number;
-  smoking: number;
-  bmi_lt_30: number;
-  bmi_gte_30: number;
-  egfr_lt_60: number;
-  egfr_gte_60: number;
-  bp_tx: number;
-  statin: number;
-  bp_tx_sbp_gte_110: number;
-  statin_non_hdl_c: number;
-  age_non_hdl_c: number;
-  age_hdl_c: number;
-  age_sbp_gte_110: number;
-  age_dm: number;
-  age_smoking: number;
-  age_bmi_gte_30: number;
-  age_egfr_lt_60: number;
-}
+// Official AHA PREVENT coefficients extracted from prevent_beta10_2024.dta and prevent_beta30_2024.dta
+// Covariate order for CVD/ASCVD 10yr: age, nhdl, hdl, sbp_1, sbp_2, dm, smoke, egfr_1, egfr_2, bptreat, statin, bptreat*sbp_2, statin*nhdl, age*nhdl, age*hdl, age*sbp_2, age*dm, age*smoke, age*egfr_1, constant
+// Covariate order for CVD/ASCVD 30yr: age, age2, nhdl, hdl, sbp_1, sbp_2, dm, smoke, egfr_1, egfr_2, bptreat, statin, bptreat*sbp_2, statin*nhdl, age*nhdl, age*hdl, age*sbp_2, age*dm, age*smoke, age*egfr_1, constant
+// Covariate order for HF 10yr: age, sbp_1, sbp_2, dm, smoke, bmi_1, bmi_2, egfr_1, egfr_2, bptreat, bptreat*sbp_2, age*sbp_2, age*dm, age*smoke, age*bmi_2, age*egfr_1, constant
+// Covariate order for HF 30yr: age, age2, sbp_1, sbp_2, dm, smoke, bmi_1, bmi_2, egfr_1, egfr_2, bptreat, bptreat*sbp_2, age*sbp_2, age*dm, age*smoke, age*bmi_2, age*egfr_1, constant
 
-// Coefficients derived from PREVENT equations publication and preventr R package
-// These produce logistic regression risk estimates matching official AHA calculator
+// FEMALE 10-YEAR COEFFICIENTS (beta11_* columns from prevent_beta10_2024.dta)
+const FEMALE_10YR_CVD = [0.793933, 0.030524, -0.160686, -0.239400, 0.360078, 0.866760, 0.536074, 0.604592, 0.043377, 0.315167, -0.147765, -0.066361, 0.119788, -0.081972, 0.030677, -0.094635, -0.270570, -0.078715, -0.163781, -3.307728];
+const FEMALE_10YR_ASCVD = [0.719883, 0.117697, -0.151185, -0.083536, 0.359285, 0.834858, 0.483108, 0.486462, 0.039778, 0.226531, -0.059237, -0.039576, 0.084442, -0.056784, 0.032569, -0.103598, -0.241754, -0.079114, -0.167149, -3.819975];
+const FEMALE_10YR_HF = [0.899823, -0.455977, 0.357650, 1.038346, 0.583916, -0.007229, 0.299771, 0.745164, 0.055709, 0.353444, -0.098151, -0.094666, -0.358104, -0.115945, -0.003878, -0.188429, -4.310409];
 
-// 10-YEAR MODELS (no age_squared term)
-// Calibrated to match official AHA PREVENT calculator
-// Test case: 50yo female, SBP 160 on BP meds, TC 200, HDL 45, BMI 35, eGFR 90, diabetic, non-smoker, no statin → 16.3%
-const FEMALE_10YR_COEFFICIENTS: Record<string, ModelCoefficients> = {
-  total_cvd: {
-    constant: -3.2022,  // Calibrated to match AHA calculator (16.3%)
-    age: 0.9365,
-    age_squared: 0,
-    non_hdl_c: 0.2370,
-    hdl_c: -0.2742,
-    sbp_lt_110: 0.1406,
-    sbp_gte_110: 0.3980,
-    dm: 0.6578,
-    smoking: 0.5000,
-    bmi_lt_30: 0.1042,
-    bmi_gte_30: 0.1756,
-    egfr_lt_60: 0.1992,
-    egfr_gte_60: -0.0267,
-    bp_tx: 0.2318,
-    statin: -0.1763,
-    bp_tx_sbp_gte_110: -0.0861,
-    statin_non_hdl_c: -0.0827,
-    age_non_hdl_c: -0.0796,
-    age_hdl_c: 0.0683,
-    age_sbp_gte_110: -0.0647,
-    age_dm: -0.1054,
-    age_smoking: -0.0988,
-    age_bmi_gte_30: -0.0303,
-    age_egfr_lt_60: -0.0381
-  },
-  ascvd: {
-    constant: -3.7470,  // Calibrated (+1.105 offset from -4.8524)
-    age: 0.9550,
-    age_squared: 0,
-    non_hdl_c: 0.2969,
-    hdl_c: -0.2865,
-    sbp_lt_110: 0.1453,
-    sbp_gte_110: 0.3802,
-    dm: 0.5866,
-    smoking: 0.5519,
-    bmi_lt_30: 0.0618,
-    bmi_gte_30: 0.1010,
-    egfr_lt_60: 0.1577,
-    egfr_gte_60: -0.0191,
-    bp_tx: 0.2411,
-    statin: -0.1711,
-    bp_tx_sbp_gte_110: -0.0797,
-    statin_non_hdl_c: -0.1067,
-    age_non_hdl_c: -0.0935,
-    age_hdl_c: 0.0596,
-    age_sbp_gte_110: -0.0620,
-    age_dm: -0.0904,
-    age_smoking: -0.1129,
-    age_bmi_gte_30: -0.0087,
-    age_egfr_lt_60: -0.0297
-  },
-  heart_failure: {
-    constant: -3.5026,  // Calibrated (+1.105 offset from -4.6080)
-    age: 0.8769,
-    age_squared: 0,
-    non_hdl_c: 0.0977,
-    hdl_c: -0.2284,
-    sbp_lt_110: 0.1176,
-    sbp_gte_110: 0.4095,
-    dm: 0.7598,
-    smoking: 0.3572,
-    bmi_lt_30: 0.1820,
-    bmi_gte_30: 0.3034,
-    egfr_lt_60: 0.2709,
-    egfr_gte_60: -0.0324,
-    bp_tx: 0.1967,
-    statin: -0.1726,
-    bp_tx_sbp_gte_110: -0.0949,
-    statin_non_hdl_c: -0.0212,
-    age_non_hdl_c: -0.0410,
-    age_hdl_c: 0.0633,
-    age_sbp_gte_110: -0.0695,
-    age_dm: -0.1260,
-    age_smoking: -0.0663,
-    age_bmi_gte_30: -0.0681,
-    age_egfr_lt_60: -0.0567
-  }
-};
+// FEMALE 30-YEAR COEFFICIENTS (beta11_* columns from prevent_beta30_2024.dta)
+const FEMALE_30YR_CVD = [0.550308, -0.092837, 0.040979, -0.166331, -0.162865, 0.329950, 0.679389, 0.319611, 0.185710, 0.055353, 0.289400, -0.075688, -0.056367, 0.107102, -0.075144, 0.030179, -0.099878, -0.320617, -0.160786, -0.145079, -1.318827];
+const FEMALE_30YR_ASCVD = [0.466920, -0.089312, 0.125690, -0.154225, -0.001809, 0.322949, 0.629671, 0.268292, 0.100106, 0.049966, 0.187529, 0.015248, -0.027612, 0.073615, -0.052196, 0.031692, -0.104610, -0.272779, -0.153091, -0.129915, -1.974074];
+const FEMALE_30YR_HF = [0.625437, -0.098304, -0.391924, 0.314229, 0.833079, 0.343865, 0.059487, 0.252554, 0.298164, 0.066716, 0.333921, -0.089318, -0.097430, -0.404855, -0.198299, -0.003562, -0.156421, -2.205379];
 
-// 30-YEAR MODELS (includes age_squared term)
-// Calibrated with +0.733 offset to match AHA calculator (different from 10yr)
-const FEMALE_30YR_COEFFICIENTS: Record<string, ModelCoefficients> = {
-  total_cvd: {
-    constant: -1.5672,  // Calibrated to match AHA (51.4% for test case)
-    age: 0.8365,
-    age_squared: 0.0283,
-    non_hdl_c: 0.2370,
-    hdl_c: -0.2742,
-    sbp_lt_110: 0.1406,
-    sbp_gte_110: 0.3980,
-    dm: 0.6578,
-    smoking: 0.5000,
-    bmi_lt_30: 0.1042,
-    bmi_gte_30: 0.1756,
-    egfr_lt_60: 0.1992,
-    egfr_gte_60: -0.0267,
-    bp_tx: 0.2318,
-    statin: -0.1763,
-    bp_tx_sbp_gte_110: -0.0861,
-    statin_non_hdl_c: -0.0827,
-    age_non_hdl_c: -0.0796,
-    age_hdl_c: 0.0683,
-    age_sbp_gte_110: -0.0647,
-    age_dm: -0.1054,
-    age_smoking: -0.0988,
-    age_bmi_gte_30: -0.0303,
-    age_egfr_lt_60: -0.0381
-  },
-  ascvd: {
-    constant: -2.0172,  // Calibrated (+0.733 offset from -2.75)
-    age: 0.8550,
-    age_squared: 0.0295,
-    non_hdl_c: 0.2969,
-    hdl_c: -0.2865,
-    sbp_lt_110: 0.1453,
-    sbp_gte_110: 0.3802,
-    dm: 0.5866,
-    smoking: 0.5519,
-    bmi_lt_30: 0.0618,
-    bmi_gte_30: 0.1010,
-    egfr_lt_60: 0.1577,
-    egfr_gte_60: -0.0191,
-    bp_tx: 0.2411,
-    statin: -0.1711,
-    bp_tx_sbp_gte_110: -0.0797,
-    statin_non_hdl_c: -0.1067,
-    age_non_hdl_c: -0.0935,
-    age_hdl_c: 0.0596,
-    age_sbp_gte_110: -0.0620,
-    age_dm: -0.0904,
-    age_smoking: -0.1129,
-    age_bmi_gte_30: -0.0087,
-    age_egfr_lt_60: -0.0297
-  },
-  heart_failure: {
-    constant: -1.7672,  // Calibrated (+0.733 offset from -2.5)
-    age: 0.7769,
-    age_squared: 0.0261,
-    non_hdl_c: 0.0977,
-    hdl_c: -0.2284,
-    sbp_lt_110: 0.1176,
-    sbp_gte_110: 0.4095,
-    dm: 0.7598,
-    smoking: 0.3572,
-    bmi_lt_30: 0.1820,
-    bmi_gte_30: 0.3034,
-    egfr_lt_60: 0.2709,
-    egfr_gte_60: -0.0324,
-    bp_tx: 0.1967,
-    statin: -0.1726,
-    bp_tx_sbp_gte_110: -0.0949,
-    statin_non_hdl_c: -0.0212,
-    age_non_hdl_c: -0.0410,
-    age_hdl_c: 0.0633,
-    age_sbp_gte_110: -0.0695,
-    age_dm: -0.1260,
-    age_smoking: -0.0663,
-    age_bmi_gte_30: -0.0681,
-    age_egfr_lt_60: -0.0567
-  }
-};
+// MALE 10-YEAR COEFFICIENTS (beta10_* columns from prevent_beta10_2024.dta)
+const MALE_10YR_CVD = [0.768853, 0.073617, -0.095443, -0.434735, 0.336266, 0.769286, 0.438687, 0.537898, 0.016483, 0.288879, -0.133735, -0.047592, 0.150273, -0.051787, 0.019117, -0.104948, -0.225195, -0.089507, -0.154370, -3.031168];
+const MALE_10YR_ASCVD = [0.709985, 0.165866, -0.114429, -0.283721, 0.323998, 0.718960, 0.395697, 0.369007, 0.020362, 0.203652, -0.086558, -0.032292, 0.114563, -0.030000, 0.023275, -0.092702, -0.201852, -0.097053, -0.121708, -3.500655];
+const MALE_10YR_HF = [0.897264, -0.681147, 0.363446, 0.923776, 0.502374, -0.048584, 0.372693, 0.692692, 0.025183, 0.298092, -0.049773, -0.128920, -0.304092, -0.140169, 0.006813, -0.179778, -3.946391];
 
-// Male coefficients - 10 year (calibrated with +1.105 offset)
-const MALE_10YR_COEFFICIENTS: Record<string, ModelCoefficients> = {
-  total_cvd: {
-    constant: -2.4446,  // Calibrated (+1.105 offset from -3.55)
-    age: 0.7989,
-    age_squared: 0,
-    non_hdl_c: 0.2075,
-    hdl_c: -0.2097,
-    sbp_lt_110: 0.1211,
-    sbp_gte_110: 0.3472,
-    dm: 0.5648,
-    smoking: 0.4692,
-    bmi_lt_30: 0.0820,
-    bmi_gte_30: 0.1388,
-    egfr_lt_60: 0.1849,
-    egfr_gte_60: -0.0219,
-    bp_tx: 0.2050,
-    statin: -0.1615,
-    bp_tx_sbp_gte_110: -0.0736,
-    statin_non_hdl_c: -0.0698,
-    age_non_hdl_c: -0.0713,
-    age_hdl_c: 0.0393,
-    age_sbp_gte_110: -0.0589,
-    age_dm: -0.0864,
-    age_smoking: -0.0984,
-    age_bmi_gte_30: -0.0227,
-    age_egfr_lt_60: -0.0337
-  },
-  ascvd: {
-    constant: -2.7946,  // Calibrated (+1.105 offset from -3.9)
-    age: 0.8170,
-    age_squared: 0,
-    non_hdl_c: 0.2606,
-    hdl_c: -0.2201,
-    sbp_lt_110: 0.1265,
-    sbp_gte_110: 0.3307,
-    dm: 0.5125,
-    smoking: 0.5216,
-    bmi_lt_30: 0.0458,
-    bmi_gte_30: 0.0767,
-    egfr_lt_60: 0.1480,
-    egfr_gte_60: -0.0175,
-    bp_tx: 0.2154,
-    statin: -0.1570,
-    bp_tx_sbp_gte_110: -0.0680,
-    statin_non_hdl_c: -0.0892,
-    age_non_hdl_c: -0.0833,
-    age_hdl_c: 0.0410,
-    age_sbp_gte_110: -0.0566,
-    age_dm: -0.0740,
-    age_smoking: -0.1115,
-    age_bmi_gte_30: -0.0043,
-    age_egfr_lt_60: -0.0257
-  },
-  heart_failure: {
-    constant: -2.8446,  // Calibrated (+1.105 offset from -3.95)
-    age: 0.7604,
-    age_squared: 0,
-    non_hdl_c: 0.0832,
-    hdl_c: -0.1571,
-    sbp_lt_110: 0.0937,
-    sbp_gte_110: 0.3607,
-    dm: 0.6377,
-    smoking: 0.3440,
-    bmi_lt_30: 0.1467,
-    bmi_gte_30: 0.2450,
-    egfr_lt_60: 0.2555,
-    egfr_gte_60: -0.0299,
-    bp_tx: 0.1773,
-    statin: -0.1583,
-    bp_tx_sbp_gte_110: -0.0819,
-    statin_non_hdl_c: -0.0173,
-    age_non_hdl_c: -0.0363,
-    age_hdl_c: 0.0339,
-    age_sbp_gte_110: -0.0624,
-    age_dm: -0.1036,
-    age_smoking: -0.0612,
-    age_bmi_gte_30: -0.0548,
-    age_egfr_lt_60: -0.0510
-  }
-};
-
-// Male coefficients - 30 year (calibrated with +0.733 offset, same as female 30yr)
-const MALE_30YR_COEFFICIENTS: Record<string, ModelCoefficients> = {
-  total_cvd: {
-    constant: -0.8172,  // Calibrated (+0.733 offset from -1.55)
-    age: 0.6989,
-    age_squared: 0.0237,
-    non_hdl_c: 0.2075,
-    hdl_c: -0.2097,
-    sbp_lt_110: 0.1211,
-    sbp_gte_110: 0.3472,
-    dm: 0.5648,
-    smoking: 0.4692,
-    bmi_lt_30: 0.0820,
-    bmi_gte_30: 0.1388,
-    egfr_lt_60: 0.1849,
-    egfr_gte_60: -0.0219,
-    bp_tx: 0.2050,
-    statin: -0.1615,
-    bp_tx_sbp_gte_110: -0.0736,
-    statin_non_hdl_c: -0.0698,
-    age_non_hdl_c: -0.0713,
-    age_hdl_c: 0.0393,
-    age_sbp_gte_110: -0.0589,
-    age_dm: -0.0864,
-    age_smoking: -0.0984,
-    age_bmi_gte_30: -0.0227,
-    age_egfr_lt_60: -0.0337
-  },
-  ascvd: {
-    constant: -1.1672,  // Calibrated (+0.733 offset from -1.9)
-    age: 0.7170,
-    age_squared: 0.0248,
-    non_hdl_c: 0.2606,
-    hdl_c: -0.2201,
-    sbp_lt_110: 0.1265,
-    sbp_gte_110: 0.3307,
-    dm: 0.5125,
-    smoking: 0.5216,
-    bmi_lt_30: 0.0458,
-    bmi_gte_30: 0.0767,
-    egfr_lt_60: 0.1480,
-    egfr_gte_60: -0.0175,
-    bp_tx: 0.2154,
-    statin: -0.1570,
-    bp_tx_sbp_gte_110: -0.0680,
-    statin_non_hdl_c: -0.0892,
-    age_non_hdl_c: -0.0833,
-    age_hdl_c: 0.0410,
-    age_sbp_gte_110: -0.0566,
-    age_dm: -0.0740,
-    age_smoking: -0.1115,
-    age_bmi_gte_30: -0.0043,
-    age_egfr_lt_60: -0.0257
-  },
-  heart_failure: {
-    constant: -1.2172,  // Calibrated (+0.733 offset from -1.95)
-    age: 0.6604,
-    age_squared: 0.0217,
-    non_hdl_c: 0.0832,
-    hdl_c: -0.1571,
-    sbp_lt_110: 0.0937,
-    sbp_gte_110: 0.3607,
-    dm: 0.6377,
-    smoking: 0.3440,
-    bmi_lt_30: 0.1467,
-    bmi_gte_30: 0.2450,
-    egfr_lt_60: 0.2555,
-    egfr_gte_60: -0.0299,
-    bp_tx: 0.1773,
-    statin: -0.1583,
-    bp_tx_sbp_gte_110: -0.0819,
-    statin_non_hdl_c: -0.0173,
-    age_non_hdl_c: -0.0363,
-    age_hdl_c: 0.0339,
-    age_sbp_gte_110: -0.0624,
-    age_dm: -0.1036,
-    age_smoking: -0.0612,
-    age_bmi_gte_30: -0.0548,
-    age_egfr_lt_60: -0.0510
-  }
-};
+// MALE 30-YEAR COEFFICIENTS (beta10_* columns from prevent_beta30_2024.dta)
+const MALE_30YR_CVD = [0.462731, -0.098428, 0.083609, -0.102982, -0.214035, 0.290432, 0.533128, 0.214191, 0.115556, 0.060378, 0.232714, -0.027211, -0.038449, 0.134192, -0.051176, 0.016587, -0.110144, -0.258594, -0.156641, -0.116678, -1.148204];
+const MALE_30YR_ASCVD = [0.399410, -0.093748, 0.174464, -0.120203, -0.066512, 0.275304, 0.479026, 0.178263, -0.021879, 0.060255, 0.142118, 0.013600, -0.021826, 0.101315, -0.031262, 0.020673, -0.092093, -0.215995, -0.154881, -0.071255, -1.736444];
+const MALE_30YR_HF = [0.568154, -0.104839, -0.476156, 0.303240, 0.684034, 0.265627, 0.083311, 0.269990, 0.254180, 0.063892, 0.258363, -0.039194, -0.126912, -0.327357, -0.204302, -0.018283, -0.134262, -1.957510];
 
 export class PREVENTCalculator {
-  private static convertCholToMmol(mgdl: number): number {
-    return mgdl * 0.02586;
-  }
-
+  
   /**
-   * Prepare terms for the PREVENT model following the transformations from the preventr R package.
-   * All continuous variables are centered and scaled as follows:
-   * - age: centered at 55, scaled by 10 years
-   * - non-HDL-C: centered at 3.5 mmol/L
-   * - HDL-C: centered at 1.3 mmol/L, scaled by 0.3
-   * - SBP: piecewise linear with knot at 110 mmHg, scaled by 20 mmHg
-   * - BMI: piecewise linear with knot at 30 kg/m², scaled by 5 kg/m²
-   * - eGFR: piecewise linear with knot at 60 mL/min/1.73m², scaled by -15
+   * Prepare variable transformations according to official AHA PREVENT Stata code
    */
-  private static prepareTerms(
+  private static prepareTransformations(
     age: number,
     totalCholesterol: number,
     hdl: number,
-    sbp: number,
+    systolicBP: number,
     bmi: number,
     egfr: number,
     diabetic: boolean,
-    smoking: boolean,
-    bpTx: boolean,
+    smoker: boolean,
+    bpTreat: boolean,
     statin: boolean
-  ): Record<string, number> {
-    // Convert cholesterol to mmol/L
-    const totalCMmol = this.convertCholToMmol(totalCholesterol);
-    const hdlMmol = this.convertCholToMmol(hdl);
+  ): {
+    age: number;
+    age2: number;
+    nhdl: number;
+    hdlTrans: number;
+    sbp1: number;
+    sbp2: number;
+    dm: number;
+    smoke: number;
+    bmi1: number;
+    bmi2: number;
+    egfr1: number;
+    egfr2: number;
+    bptreat: number;
+    statinFlag: number;
+  } {
+    // Age transformation: (age - 55) / 10
+    const ageTrans = (age - 55) / 10;
+    const age2 = ageTrans * ageTrans;
     
-    // Calculate centered/scaled terms
-    const ageTerm = (age - 55) / 10;
-    const ageSquared = ageTerm * ageTerm;
-    const nonHdlC = (totalCMmol - hdlMmol) - 3.5;
-    const hdlC = (hdlMmol - 1.3) / 0.3;
-    const sbpLt110 = (Math.min(sbp, 110) - 110) / 20;
-    const sbpGte110 = (Math.max(sbp, 110) - 130) / 20;
-    const dm = diabetic ? 1 : 0;
-    const smk = smoking ? 1 : 0;
-    const bmiLt30 = (Math.min(bmi, 30) - 25) / 5;
-    const bmiGte30 = (Math.max(bmi, 30) - 30) / 5;
-    const egfrLt60 = (Math.min(egfr, 60) - 60) / -15;
-    const egfrGte60 = (Math.max(egfr, 60) - 90) / -15;
-    const bp = bpTx ? 1 : 0;
-    const stat = statin ? 1 : 0;
-
-    // Interaction terms
-    const bpTxSbpGte110 = bp * sbpGte110;
-    const statinNonHdlC = stat * nonHdlC;
-    const ageNonHdlC = ageTerm * nonHdlC;
-    const ageHdlC = ageTerm * hdlC;
-    const ageSbpGte110 = ageTerm * sbpGte110;
-    const ageDm = ageTerm * dm;
-    const ageSmk = ageTerm * smk;
-    const ageBmiGte30 = ageTerm * bmiGte30;
-    const ageEgfrLt60 = ageTerm * egfrLt60;
-
+    // Non-HDL cholesterol in mmol/L, centered at 3.5
+    // TC and HDL are in mg/dL, convert to mmol/L: mg/dL * 0.02586
+    const tcMmol = totalCholesterol * 0.02586;
+    const hdlMmol = hdl * 0.02586;
+    const nhdl = tcMmol - hdlMmol - 3.5;
+    
+    // HDL transformation: (hdl_mmol - 1.3) / 0.3
+    const hdlTrans = (hdlMmol - 1.3) / 0.3;
+    
+    // SBP transformation with spline at 110
+    // prevent_sbp = (sbp - 110) / 20
+    // mkspline creates sbp_1 (<=0) and sbp_2 (>0)
+    // sbp_2 is then adjusted: sbp_2 = sbp_2 - 1
+    const sbpTrans = (systolicBP - 110) / 20;
+    const sbp1 = Math.min(sbpTrans, 0);  // <=0 part
+    const sbp2Raw = Math.max(sbpTrans, 0);  // >0 part
+    const sbp2 = sbp2Raw - 1;  // subtract 1 as per Stata code
+    
+    // BMI transformation: (bmi - 25) / 5, then spline at 1
+    const bmiTrans = (bmi - 25) / 5;
+    const bmi1 = Math.min(bmiTrans, 1);  // <=1 part
+    const bmi2 = Math.max(bmiTrans - 1, 0);  // >1 part
+    
+    // eGFR transformation with spline at 60
+    // egfr_1 = -egfr/15 + 4 for values <=60
+    // egfr_2 = -(egfr-60)/15 + 2 for values >60
+    // Note: This creates a descending scale where higher eGFR = lower risk
+    let egfr1: number, egfr2: number;
+    if (egfr <= 60) {
+      egfr1 = -egfr / 15 + 4;
+      egfr2 = 0;  // No contribution from >60 segment
+    } else {
+      egfr1 = -60 / 15 + 4;  // Fixed value at knot (=0)
+      egfr2 = -(egfr - 60) / 15;  // Stata code: egfr_2 = -egfr_2/15 + 2, but after spline adjustment
+    }
+    // Actually re-reading the Stata code more carefully:
+    // mkspline `prevent_egfr_1' 60 `prevent_egfr_2'=`egfr'
+    // qui replace `prevent_egfr_1'=-`prevent_egfr_1'/15+4
+    // qui replace `prevent_egfr_2'=-`prevent_egfr_2'/15+2
+    // This means:
+    // - mkspline creates: egfr_1 = min(egfr, 60), egfr_2 = max(egfr - 60, 0)
+    // - Then: egfr_1 = -egfr_1/15 + 4 and egfr_2 = -egfr_2/15 + 2
+    const egfrSpline1 = Math.min(egfr, 60);
+    const egfrSpline2 = Math.max(egfr - 60, 0);
+    egfr1 = -egfrSpline1 / 15 + 4;
+    egfr2 = -egfrSpline2 / 15 + 2;
+    
     return {
-      constant: 1,
-      age: ageTerm,
-      age_squared: ageSquared,
-      non_hdl_c: nonHdlC,
-      hdl_c: hdlC,
-      sbp_lt_110: sbpLt110,
-      sbp_gte_110: sbpGte110,
-      dm,
-      smoking: smk,
-      bmi_lt_30: bmiLt30,
-      bmi_gte_30: bmiGte30,
-      egfr_lt_60: egfrLt60,
-      egfr_gte_60: egfrGte60,
-      bp_tx: bp,
-      statin: stat,
-      bp_tx_sbp_gte_110: bpTxSbpGte110,
-      statin_non_hdl_c: statinNonHdlC,
-      age_non_hdl_c: ageNonHdlC,
-      age_hdl_c: ageHdlC,
-      age_sbp_gte_110: ageSbpGte110,
-      age_dm: ageDm,
-      age_smoking: ageSmk,
-      age_bmi_gte_30: ageBmiGte30,
-      age_egfr_lt_60: ageEgfrLt60
+      age: ageTrans,
+      age2,
+      nhdl,
+      hdlTrans,
+      sbp1,
+      sbp2,
+      dm: diabetic ? 1 : 0,
+      smoke: smoker ? 1 : 0,
+      bmi1,
+      bmi2,
+      egfr1,
+      egfr2,
+      bptreat: bpTreat ? 1 : 0,
+      statinFlag: statin ? 1 : 0
     };
   }
 
-  private static calculateLinearPredictor(
-    coef: ModelCoefficients,
-    terms: Record<string, number>,
-    is30Year: boolean = false
+  /**
+   * Calculate 10-year CVD/ASCVD risk using official AHA coefficients
+   */
+  private static calculate10YearCVD_ASCVD(
+    coef: number[],
+    trans: ReturnType<typeof PREVENTCalculator.prepareTransformations>
   ): number {
-    let lp = coef.constant * terms.constant;
-    lp += coef.age * terms.age;
+    // Covariate order: age, nhdl, hdl, sbp_1, sbp_2, dm, smoke, egfr_1, egfr_2, bptreat, statin, 
+    //                  bptreat*sbp_2, statin*nhdl, age*nhdl, age*hdl, age*sbp_2, age*dm, age*smoke, age*egfr_1, constant
+    const xb = 
+      coef[0] * trans.age +
+      coef[1] * trans.nhdl +
+      coef[2] * trans.hdlTrans +
+      coef[3] * trans.sbp1 +
+      coef[4] * trans.sbp2 +
+      coef[5] * trans.dm +
+      coef[6] * trans.smoke +
+      coef[7] * trans.egfr1 +
+      coef[8] * trans.egfr2 +
+      coef[9] * trans.bptreat +
+      coef[10] * trans.statinFlag +
+      coef[11] * (trans.bptreat * trans.sbp2) +
+      coef[12] * (trans.statinFlag * trans.nhdl) +
+      coef[13] * (trans.age * trans.nhdl) +
+      coef[14] * (trans.age * trans.hdlTrans) +
+      coef[15] * (trans.age * trans.sbp2) +
+      coef[16] * (trans.age * trans.dm) +
+      coef[17] * (trans.age * trans.smoke) +
+      coef[18] * (trans.age * trans.egfr1) +
+      coef[19];  // constant
     
-    // Add age_squared only for 30-year models
-    if (is30Year) {
-      lp += coef.age_squared * terms.age_squared;
-    }
-    
-    lp += coef.non_hdl_c * terms.non_hdl_c;
-    lp += coef.hdl_c * terms.hdl_c;
-    lp += coef.sbp_lt_110 * terms.sbp_lt_110;
-    lp += coef.sbp_gte_110 * terms.sbp_gte_110;
-    lp += coef.dm * terms.dm;
-    lp += coef.smoking * terms.smoking;
-    lp += coef.bmi_lt_30 * terms.bmi_lt_30;
-    lp += coef.bmi_gte_30 * terms.bmi_gte_30;
-    lp += coef.egfr_lt_60 * terms.egfr_lt_60;
-    lp += coef.egfr_gte_60 * terms.egfr_gte_60;
-    lp += coef.bp_tx * terms.bp_tx;
-    lp += coef.statin * terms.statin;
-    
-    // Interaction terms
-    lp += coef.bp_tx_sbp_gte_110 * terms.bp_tx_sbp_gte_110;
-    lp += coef.statin_non_hdl_c * terms.statin_non_hdl_c;
-    lp += coef.age_non_hdl_c * terms.age_non_hdl_c;
-    lp += coef.age_hdl_c * terms.age_hdl_c;
-    lp += coef.age_sbp_gte_110 * terms.age_sbp_gte_110;
-    lp += coef.age_dm * terms.age_dm;
-    lp += coef.age_smoking * terms.age_smoking;
-    lp += coef.age_bmi_gte_30 * terms.age_bmi_gte_30;
-    lp += coef.age_egfr_lt_60 * terms.age_egfr_lt_60;
-    
-    return lp;
+    return Math.exp(xb) / (1 + Math.exp(xb));
   }
 
   /**
-   * Calculate risk using logistic regression formula:
-   * Risk = exp(LP) / (1 + exp(LP))
+   * Calculate 30-year CVD/ASCVD risk using official AHA coefficients
    */
-  private static calculateRiskFromLogit(linearPredictor: number): number {
-    const expLP = Math.exp(linearPredictor);
-    const risk = expLP / (1 + expLP);
-    return Math.max(0, Math.min(1, risk));
+  private static calculate30YearCVD_ASCVD(
+    coef: number[],
+    trans: ReturnType<typeof PREVENTCalculator.prepareTransformations>
+  ): number {
+    // Covariate order: age, age2, nhdl, hdl, sbp_1, sbp_2, dm, smoke, egfr_1, egfr_2, bptreat, statin,
+    //                  bptreat*sbp_2, statin*nhdl, age*nhdl, age*hdl, age*sbp_2, age*dm, age*smoke, age*egfr_1, constant
+    const xb = 
+      coef[0] * trans.age +
+      coef[1] * trans.age2 +
+      coef[2] * trans.nhdl +
+      coef[3] * trans.hdlTrans +
+      coef[4] * trans.sbp1 +
+      coef[5] * trans.sbp2 +
+      coef[6] * trans.dm +
+      coef[7] * trans.smoke +
+      coef[8] * trans.egfr1 +
+      coef[9] * trans.egfr2 +
+      coef[10] * trans.bptreat +
+      coef[11] * trans.statinFlag +
+      coef[12] * (trans.bptreat * trans.sbp2) +
+      coef[13] * (trans.statinFlag * trans.nhdl) +
+      coef[14] * (trans.age * trans.nhdl) +
+      coef[15] * (trans.age * trans.hdlTrans) +
+      coef[16] * (trans.age * trans.sbp2) +
+      coef[17] * (trans.age * trans.dm) +
+      coef[18] * (trans.age * trans.smoke) +
+      coef[19] * (trans.age * trans.egfr1) +
+      coef[20];  // constant
+    
+    return Math.exp(xb) / (1 + Math.exp(xb));
   }
 
   /**
-   * Apply ASCVD calibration adjustment to match AHA PREVENT calculator
-   * The logistic regression approximation underestimates low-risk cases.
-   * This applies a smooth scaling factor that:
-   * - At low risks (<2%): applies ~2x multiplier to match AHA
-   * - At high risks (>10%): applies minimal adjustment
-   * 
-   * Formula: adjusted = raw * (1 + k * exp(-raw * scale))
-   * Parameters calibrated against AHA test cases
+   * Calculate 10-year Heart Failure risk using official AHA coefficients
    */
-  private static adjustASCVDRisk(rawRisk: number, is30Year: boolean = false): number {
-    // Parameters tuned to match AHA PREVENT calculator
-    // 10-year: raw 0.2% → 0.5% (low-risk), raw 8.6% → ~9.0% (high-risk)
-    // 30-year: raw 1.8% → 3.6% (low-risk), raw 35.9% → ~36% (high-risk)
-    const scale = is30Year ? 15 : 40;
-    const k = is30Year ? 1.3 : 1.6;
+  private static calculate10YearHF(
+    coef: number[],
+    trans: ReturnType<typeof PREVENTCalculator.prepareTransformations>
+  ): number {
+    // Covariate order for HF: age, sbp_1, sbp_2, dm, smoke, bmi_1, bmi_2, egfr_1, egfr_2, bptreat,
+    //                         bptreat*sbp_2, age*sbp_2, age*dm, age*smoke, age*bmi_2, age*egfr_1, constant
+    const xb = 
+      coef[0] * trans.age +
+      coef[1] * trans.sbp1 +
+      coef[2] * trans.sbp2 +
+      coef[3] * trans.dm +
+      coef[4] * trans.smoke +
+      coef[5] * trans.bmi1 +
+      coef[6] * trans.bmi2 +
+      coef[7] * trans.egfr1 +
+      coef[8] * trans.egfr2 +
+      coef[9] * trans.bptreat +
+      coef[10] * (trans.bptreat * trans.sbp2) +
+      coef[11] * (trans.age * trans.sbp2) +
+      coef[12] * (trans.age * trans.dm) +
+      coef[13] * (trans.age * trans.smoke) +
+      coef[14] * (trans.age * trans.bmi2) +
+      coef[15] * (trans.age * trans.egfr1) +
+      coef[16];  // constant
     
-    const adjusted = rawRisk * (1 + k * Math.exp(-rawRisk * scale));
-    return Math.max(0, Math.min(1, adjusted));
+    return Math.exp(xb) / (1 + Math.exp(xb));
+  }
+
+  /**
+   * Calculate 30-year Heart Failure risk using official AHA coefficients
+   */
+  private static calculate30YearHF(
+    coef: number[],
+    trans: ReturnType<typeof PREVENTCalculator.prepareTransformations>
+  ): number {
+    // Covariate order for HF 30yr: age, age2, sbp_1, sbp_2, dm, smoke, bmi_1, bmi_2, egfr_1, egfr_2, bptreat,
+    //                              bptreat*sbp_2, age*sbp_2, age*dm, age*smoke, age*bmi_2, age*egfr_1, constant
+    const xb = 
+      coef[0] * trans.age +
+      coef[1] * trans.age2 +
+      coef[2] * trans.sbp1 +
+      coef[3] * trans.sbp2 +
+      coef[4] * trans.dm +
+      coef[5] * trans.smoke +
+      coef[6] * trans.bmi1 +
+      coef[7] * trans.bmi2 +
+      coef[8] * trans.egfr1 +
+      coef[9] * trans.egfr2 +
+      coef[10] * trans.bptreat +
+      coef[11] * (trans.bptreat * trans.sbp2) +
+      coef[12] * (trans.age * trans.sbp2) +
+      coef[13] * (trans.age * trans.dm) +
+      coef[14] * (trans.age * trans.smoke) +
+      coef[15] * (trans.age * trans.bmi2) +
+      coef[16] * (trans.age * trans.egfr1) +
+      coef[17];  // constant
+    
+    return Math.exp(xb) / (1 + Math.exp(xb));
   }
 
   private static getRiskCategory(risk: number): 'low' | 'borderline' | 'intermediate' | 'high' {
@@ -573,26 +317,26 @@ export class PREVENTCalculator {
     if (riskPercent >= 20) {
       recommendations.push('HIGH RISK (>=20%): High-intensity statin therapy strongly recommended');
       recommendations.push('Consider additional LDL-lowering therapy if LDL >=70 mg/dL despite statin');
-      recommendations.push('Optimize blood pressure control (<130/80 mmHg)');
-      recommendations.push('Consider SGLT2 inhibitor or GLP-1 agonist if diabetic or high heart failure risk');
     } else if (riskPercent >= 7.5) {
-      recommendations.push('INTERMEDIATE RISK (7.5-19.9%): Moderate-to-high intensity statin therapy recommended');
-      recommendations.push('Consider risk-enhancing factors: family history, metabolic syndrome, chronic inflammation, CKD');
-      if (ldl !== undefined && ldl >= 160) {
-        recommendations.push('LDL >=160 mg/dL supports statin initiation');
-      }
+      recommendations.push('INTERMEDIATE-HIGH RISK (7.5-20%): Moderate-to-high intensity statin recommended');
+      recommendations.push('Risk-enhancing factors may favor more aggressive therapy');
     } else if (riskPercent >= 5) {
-      recommendations.push('BORDERLINE RISK (5-7.4%): Consider statin if risk-enhancing factors present');
-      recommendations.push('May consider coronary artery calcium (CAC) scoring if decision uncertain');
+      recommendations.push('BORDERLINE RISK (5-7.5%): Consider coronary artery calcium (CAC) scoring');
+      recommendations.push('Statin therapy based on shared decision-making if risk-enhancing factors present');
     } else {
-      recommendations.push('LOW RISK (<5%): Continue lifestyle modifications. Statin generally not indicated unless LDL >=190 mg/dL');
+      recommendations.push('LOW RISK (<5%): Focus on lifestyle modifications');
+      recommendations.push('Reassess risk in 4-6 years');
     }
 
     if (diabetic && age >= 40 && age <= 75) {
-      recommendations.push('Diabetes management: Optimize A1c, consider cardioprotective agents (SGLT2i, GLP-1 RA)');
+      recommendations.push('DIABETES: Moderate-intensity statin recommended regardless of calculated risk');
     }
 
-    return recommendations.map(r => `• ${r}`).join('\n');
+    if (ldl !== undefined && ldl >= 190) {
+      recommendations.push('SEVERE HYPERCHOLESTEROLEMIA: High-intensity statin therapy indicated (LDL >=190 mg/dL)');
+    }
+
+    return recommendations.join('\n\n');
   }
 
   private static getStatinRecommendation(
@@ -670,25 +414,25 @@ export class PREVENTCalculator {
 
     const canCalculate30Year = age! >= 30 && age! <= 59;
 
-    // Prepare terms for the model
-    const terms = this.prepareTerms(
+    // Prepare variable transformations
+    const trans = this.prepareTransformations(
       age!, totalCholesterol, hdl, systolicBP!, bmi!, egfr,
       diabetic!, smoker!, onBPMeds!, onStatins!
     );
 
-    // Get appropriate coefficients based on sex
-    const coef10yr = sex === 'female' ? FEMALE_10YR_COEFFICIENTS : MALE_10YR_COEFFICIENTS;
-    const coef30yr = sex === 'female' ? FEMALE_30YR_COEFFICIENTS : MALE_30YR_COEFFICIENTS;
-
+    // Select coefficients based on sex
+    const isFemale = sex === 'female';
+    
     // Calculate 10-year risks
-    const lp10CVD = this.calculateLinearPredictor(coef10yr.total_cvd, terms, false);
-    const lp10ASCVD = this.calculateLinearPredictor(coef10yr.ascvd, terms, false);
-    const lp10HF = this.calculateLinearPredictor(coef10yr.heart_failure, terms, false);
-
-    const tenYearCVD = this.calculateRiskFromLogit(lp10CVD);
-    // Apply ASCVD calibration adjustment to match AHA values across risk spectrum
-    const tenYearASCVD = this.adjustASCVDRisk(this.calculateRiskFromLogit(lp10ASCVD), false);
-    const tenYearHF = this.calculateRiskFromLogit(lp10HF);
+    const tenYearCVD = this.calculate10YearCVD_ASCVD(
+      isFemale ? FEMALE_10YR_CVD : MALE_10YR_CVD, trans
+    );
+    const tenYearASCVD = this.calculate10YearCVD_ASCVD(
+      isFemale ? FEMALE_10YR_ASCVD : MALE_10YR_ASCVD, trans
+    );
+    const tenYearHF = this.calculate10YearHF(
+      isFemale ? FEMALE_10YR_HF : MALE_10YR_HF, trans
+    );
 
     // Calculate 30-year risks if applicable
     let thirtyYearCVD: number | undefined;
@@ -696,14 +440,15 @@ export class PREVENTCalculator {
     let thirtyYearHF: number | undefined;
 
     if (canCalculate30Year) {
-      const lp30CVD = this.calculateLinearPredictor(coef30yr.total_cvd, terms, true);
-      const lp30ASCVD = this.calculateLinearPredictor(coef30yr.ascvd, terms, true);
-      const lp30HF = this.calculateLinearPredictor(coef30yr.heart_failure, terms, true);
-
-      thirtyYearCVD = this.calculateRiskFromLogit(lp30CVD);
-      // Apply ASCVD calibration adjustment for 30-year estimates
-      thirtyYearASCVD = this.adjustASCVDRisk(this.calculateRiskFromLogit(lp30ASCVD), true);
-      thirtyYearHF = this.calculateRiskFromLogit(lp30HF);
+      thirtyYearCVD = this.calculate30YearCVD_ASCVD(
+        isFemale ? FEMALE_30YR_CVD : MALE_30YR_CVD, trans
+      );
+      thirtyYearASCVD = this.calculate30YearCVD_ASCVD(
+        isFemale ? FEMALE_30YR_ASCVD : MALE_30YR_ASCVD, trans
+      );
+      thirtyYearHF = this.calculate30YearHF(
+        isFemale ? FEMALE_30YR_HF : MALE_30YR_HF, trans
+      );
     }
 
     const riskCategory = this.getRiskCategory(tenYearCVD);

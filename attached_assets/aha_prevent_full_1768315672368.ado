@@ -1,0 +1,182 @@
+* version 0.1 published Jan 2024
+* by Jack Xiaoning Huang and Yingying Sang
+
+program aha_prevent_full, rclass
+
+preserve // preserve user data
+********************************************************************************
+* 10-year
+use "`c(sysdir_personal)'a/prevent_beta10_2024.dta", clear
+forvalues f=0/1 {
+	foreach o in cvd ascvd hf chd str {
+		if "`o'"=="hf" local lc 16
+		else local lc 19
+		forvalues i=1/5 {
+			mata:beta`i'`f'_`o'_10=st_data((1,`=`lc'+`i'+(`i'==2)+(`i'==3)+4*(`i'==5)'),"beta`i'`f'_`o'")
+		}
+	}
+}
+
+* 30-year
+use "`c(sysdir_personal)'a/prevent_beta30_2024.dta", clear
+forvalues f=0/1 {
+	foreach o in cvd ascvd hf chd str {
+		if "`o'"=="hf" local lc 17
+		else local lc 20
+		forvalues i=1/5 {
+			mata:beta`i'`f'_`o'_30=st_data((1,`=`lc'+`i'+(`i'==2)+(`i'==3)+4*(`i'==5)'),"beta`i'`f'_`o'")
+		}
+	}
+}
+********************************************************************************
+restore // restore user data
+
+
+
+syntax [if], age(varname numeric) sex(varname numeric) bmi(varname numeric) sbp(varname numeric) bptreat(varname numeric) tc(varname numeric) hdl(varname numeric) statin(varname numeric) dm(varname numeric) smoke(varname numeric) egfr(varname numeric) uacr(varname numeric) hba1c(varname numeric) sdi(varname numeric)
+
+marksample touse, novarlist
+markout `touse' `age' `sex' `bmi' `sbp' `bptreat' `tc' `hdl' `statin' `dm' `smoke' `egfr' `uacr' `hba1c' `sdi', sysmissok
+
+qui count if `touse' // check sample size
+if r(N) == 0 error 2000
+
+
+* check to ensure binary variables contain only 0 or 1
+foreach v in  `sex' `bptreat' `statin' `dm' `smoke' {
+capture assert inlist(`v', 0, 1, .) if `touse' 
+	if _rc {
+		di as err "`v' contains values other than 0 or 1"
+		exit 498
+	}
+}
+
+* check ranges
+capture assert `age'<80 & `age'>=30 | `age'==. if `touse'
+	if _rc {
+		di as err "Warning - `age' contains values outside of validated range (30-79 yrs)"
+	}
+capture assert `tc'<=320 & `tc'>=130 | `tc'==. if `touse'
+	if _rc {
+		di as err "Warning - `tc' contains values outside of validated range (130-320 mg/dL)"
+	}
+capture assert `hdl'<=100 & `hdl'>=20 | `hdl'==. if `touse'
+	if _rc {
+		di as err "Warning - `hdl' contains values outside of validated range (20-100 mg/dL)"
+	}
+capture assert `sbp'<=200 & `sbp'>=90 | `sbp'==. if `touse'
+	if _rc {
+		di as err "Warning - `sbp' contains values outside of validated range (90-200 mmHg)"
+	}
+capture assert `bmi'<40 & `bmi'>=18.5 | `bmi'==. if `touse'
+	if _rc {
+		di as err "Warning - `bmi' contains values outside of validated range (18.5-39.9 kg/m^2)"
+	}
+
+* check to ensure ratio variables >=0
+foreach v in  `egfr' `uacr' `hba1c' {
+capture assert `v'>=0 if `touse'
+	if _rc {
+		di as err "`v' contains negative values"
+		exit 498
+	}
+}
+
+* check to ensure sdi is decile <=10
+capture assert `sdi'<=10 & `sdi'>0 | `sdi'==. if `touse'
+	if _rc {
+		di as err "`sdi' should be integers between 1 and 10"
+		exit 498
+	}
+
+
+
+********************************************************************************
+tempvar prevent_age prevent_age2 prevent_sbp prevent_sbp_1 prevent_sbp_2 prevent_bptreat prevent_nhdl prevent_statin prevent_hdl prevent_bmi prevent_bmi_1 prevent_bmi_2 prevent_egfr_1 prevent_egfr_2 prevent_c xb5_cvd_10 xb5_cvd_30 xb5_ascvd_10 xb5_ascvd_30 xb5_hf_10 xb5_hf_30 prevent_sdicat1 prevent_sdicat2 prevent_acr prevent_logacr prevent_hba1c prevent_hba1c_nondm prevent_hba1c_dm prevent_sdi_missing prevent_acr_missing prevent_hba1c_missing
+
+* recode variables
+qui gen `prevent_age'=(`age'-55)/10 if `age'>=30 & `age'<80
+qui gen `prevent_age2'=`prevent_age'^2 if `age'<60
+
+qui gen `prevent_sbp'=(`sbp'-110)/20
+qui replace `prevent_sbp'=. if `sbp'<90 | `sbp'>200
+mkspline `prevent_sbp_1' 0 `prevent_sbp_2'=`prevent_sbp'
+qui replace `prevent_sbp_2'=`prevent_sbp_2'-1
+qui gen `prevent_bptreat'=`prevent_sbp_2'*`bptreat'
+
+qui gen `prevent_nhdl'=`tc'*0.02586-`hdl'*0.02586-3.5
+qui replace `prevent_nhdl'=. if `tc'<130 | `tc'>320
+qui replace `prevent_nhdl'=. if `hdl'<20 | `hdl'>100
+qui gen `prevent_statin'=`prevent_nhdl'*`statin'
+qui gen `prevent_hdl'=(`hdl'*0.02586-1.3)/0.3
+
+qui gen `prevent_bmi'=(`bmi'-25)/5
+qui replace `prevent_bmi'=. if `bmi'<18.5 | `bmi'>=40
+mkspline `prevent_bmi_1' 1 `prevent_bmi_2'=`prevent_bmi'
+
+mkspline `prevent_egfr_1' 60 `prevent_egfr_2'=`egfr'
+qui replace `prevent_egfr_1'=-`prevent_egfr_1'/15+4
+qui replace `prevent_egfr_2'=-`prevent_egfr_2'/15+2
+
+qui gen `prevent_acr'=`uacr'
+qui replace `prevent_acr'=0.1 if `prevent_acr'==0
+qui gen `prevent_logacr'=log(`prevent_acr')
+qui gen `prevent_acr_missing'=(`uacr'==.)
+
+qui gen `prevent_hba1c'=`hba1c'-5.3
+qui gen `prevent_hba1c_nondm'=cond(`dm'==1,0,`prevent_hba1c')
+qui gen `prevent_hba1c_dm'=cond(`dm'==1,`prevent_hba1c',0)
+qui replace `prevent_hba1c_nondm'=0 if `prevent_hba1c_nondm'==.
+qui replace `prevent_hba1c_dm'=0 if `prevent_hba1c_dm'==.
+qui gen `prevent_hba1c_missing'=(`hba1c'==.)
+
+qui gen `prevent_sdicat1'=(`sdi'>4 & `sdi'<=6)
+qui gen `prevent_sdicat2'=(`sdi'>7 & `sdi'<=10)
+qui gen `prevent_sdi_missing'=(`sdi'==.)
+
+
+foreach v of varlist `prevent_nhdl' `prevent_hdl' `prevent_sbp_2' `dm' `smoke' `prevent_bmi_2' `prevent_egfr_1' {
+	tempvar age_`v'
+	qui gen `age_`v''=`v'*`prevent_age'
+}
+
+gen `prevent_c'=1
+
+********************************************************************************
+
+
+
+foreach o in cvd ascvd hf{
+	
+if "`o'"=="hf" local cov `prevent_sbp_1' `prevent_sbp_2' `dm' `smoke' `prevent_bmi_1' `prevent_bmi_2' `prevent_egfr_1' `prevent_egfr_2' `bptreat' `prevent_bptreat' `age_`prevent_sbp_2'' `age_`dm'' `age_`smoke'' `age_`prevent_bmi_2'' `age_`prevent_egfr_1''
+
+else local cov `prevent_nhdl' `prevent_hdl' `prevent_sbp_1' `prevent_sbp_2' `dm' `smoke' `prevent_egfr_1' `prevent_egfr_2' `bptreat' `statin' `prevent_bptreat' `prevent_statin' `age_`prevent_nhdl'' `age_`prevent_hdl'' `age_`prevent_sbp_2'' `age_`dm'' `age_`smoke'' `age_`prevent_egfr_1''
+
+	foreach y in 10 30 {
+	if `y'==30 local av `prevent_age' `prevent_age2'
+	else local av `prevent_age'
+		local var5 `prevent_sdicat1' `prevent_sdicat2' `prevent_sdi_missing' `prevent_logacr' `prevent_acr_missing' `prevent_hba1c_dm' `prevent_hba1c_nondm' `prevent_hba1c_missing'
+		forvalues i=5/5 {
+		qui gen `xb`i'_`o'_`y''=.
+			forvalues f=0/1 {
+			qui replace `sex'=1-`sex'
+			mata:st_store(.,"`xb`i'_`o'_`y''","`sex'",st_data(.,"`av' `cov' `var`i'' `prevent_c'","`sex'")*beta`i'`f'_`o'_`y')
+			}
+		qui gen aha_prevent_full_`y'yr_`o'=exp(`xb`i'_`o'_`y'')/(exp(`xb`i'_`o'_`y'')+1) if `touse' & `sex'!=.
+		}
+	}
+}
+
+foreach v of varlist aha_prevent_full_* {
+	qui replace `v'=`v'*100
+}
+di "Please note for the sex variable female should be coded as 1. Please type 'help aha_prevent' for more details about the program."
+
+label variable aha_prevent_full_10yr_cvd "AHA PREVENT Risk Full Model: Any CVD in 10 years (%)"
+label variable aha_prevent_full_30yr_cvd "AHA PREVENT Risk Full Model: Any CVD in 30 years (%)"
+label variable aha_prevent_full_10yr_ascvd "AHA PREVENT Risk Full Model: ASCVD in 10 years (%)"
+label variable aha_prevent_full_30yr_ascvd "AHA PREVENT Risk Full Model: ASCVD in 30 years (%)"
+label variable aha_prevent_full_10yr_hf "AHA PREVENT Risk Full Model: Heart failure in 10 years (%)"
+label variable aha_prevent_full_30yr_hf "AHA PREVENT Risk Full Model: Heart failure in 30 years (%)"
+
+end
