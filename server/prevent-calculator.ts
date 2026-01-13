@@ -499,7 +499,9 @@ export class PREVENTCalculator {
     
     // Determine marker status with borderline classification
     // ApoB: <90 normal, 90-129 borderline, ≥130 elevated
-    // Lp(a): <40 normal, 40-49 borderline, ≥50 elevated (mg/dL) or ≥125 elevated (nmol/L if value ≥200)
+    // Lp(a): mg/dL (<40 normal, 40-49 borderline, ≥50 elevated)
+    //        nmol/L (<75 normal, 75-124 borderline, ≥125 elevated)
+    // Unit detection: Values >75 are likely nmol/L (mg/dL rarely exceeds 75)
     
     let apoBStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
     if (apoB !== undefined) {
@@ -509,9 +511,13 @@ export class PREVENTCalculator {
     
     let lpaStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
     if (lpa !== undefined) {
-      // If value >= 200, assume nmol/L; ≥125 nmol/L is elevated
-      if (lpa >= 200) {
-        lpaStatus = lpa >= 125 ? 'elevated' : 'normal'; // nmol/L scale
+      // Detect unit based on value magnitude (mg/dL rarely exceeds 75)
+      const isNmolL = lpa > 75;
+      
+      if (isNmolL) {
+        // nmol/L scale: <75 normal, 75-124 borderline, ≥125 elevated
+        if (lpa >= 125) lpaStatus = 'elevated';
+        else if (lpa >= 75) lpaStatus = 'borderline';
       } else {
         // mg/dL scale: <40 normal, 40-49 borderline, ≥50 elevated
         if (lpa >= 50) lpaStatus = 'elevated';
