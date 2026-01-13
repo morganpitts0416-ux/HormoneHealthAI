@@ -62,6 +62,22 @@ export const preventRiskResultSchema = z.object({
 
 export type PREVENTRiskResult = z.infer<typeof preventRiskResultSchema>;
 
+// Adjusted Risk Assessment Schema - considers ApoB and Lp(a)
+export const adjustedRiskAssessmentSchema = z.object({
+  hasElevatedLpa: z.boolean(),
+  hasElevatedApoB: z.boolean(),
+  lpaValue: z.number().optional(),
+  apoBValue: z.number().optional(),
+  baseASCVDRisk: z.number(), // 10-year ASCVD risk percentage
+  riskCategory: z.enum(['low', 'borderline', 'intermediate', 'high']),
+  adjustedCategory: z.enum(['low', 'borderline', 'intermediate', 'high', 'reclassified_upward']),
+  clinicalGuidance: z.string(),
+  cacRecommendation: z.string().optional(),
+  statinGuidance: z.string().optional(),
+});
+
+export type AdjustedRiskAssessment = z.infer<typeof adjustedRiskAssessmentSchema>;
+
 // ASCVD Risk Result Schema (legacy - kept for backward compatibility)
 export const ascvdRiskResultSchema = z.object({
   tenYearRisk: z.number(),
@@ -332,6 +348,7 @@ export const interpretationResultSchema = z.object({
   recheckWindow: z.string(),
   ascvdRisk: ascvdRiskResultSchema.optional(),
   preventRisk: preventRiskResultSchema.optional(),
+  adjustedRisk: adjustedRiskAssessmentSchema.optional(),
   supplements: z.array(supplementRecommendationSchema).optional(),
   cvRiskFlags: cardiovascularRiskFlagsSchema.optional(),
   cacStatinRec: cacStatinRecommendationSchema.optional(),

@@ -1,4 +1,4 @@
-import type { LabValues, FemaleLabValues, PREVENTRiskResult, PatientDemographics } from "@shared/schema";
+import type { LabValues, FemaleLabValues, PREVENTRiskResult, PatientDemographics, AdjustedRiskAssessment } from "@shared/schema";
 
 /**
  * PREVENT Risk Calculator
@@ -474,6 +474,118 @@ export class PREVENTCalculator {
       ldlGoal: ldl !== undefined ? this.getLDLGoal(tenYearCVD * 100, ldl, diabetic!) : undefined,
       calculatorUsed: 'PREVENT',
       ageValidFor30Year: canCalculate30Year
+    };
+  }
+
+  /**
+   * Calculate Adjusted Risk Assessment based on ApoB and Lp(a)
+   * This supplements the PREVENT risk with atherogenic marker assessment
+   * 
+   * Thresholds:
+   * - Lp(a) ≥ 50 mg/dL or ≥125 nmol/L → elevated concern
+   * - ApoB ≥ 130 mg/dL → elevated concern
+   */
+  static calculateAdjustedRisk(
+    tenYearASCVD: number,
+    apoB?: number,
+    lpa?: number
+  ): AdjustedRiskAssessment | null {
+    // Must have at least one marker to provide adjusted assessment
+    if (apoB === undefined && lpa === undefined) {
+      return null;
+    }
+
+    const baseRiskPercent = tenYearASCVD * 100;
+    
+    // Determine if markers are elevated
+    // Lp(a) ≥ 50 mg/dL or ≥125 nmol/L (assume mg/dL if < 200, nmol/L if >= 200)
+    const lpaElevated = lpa !== undefined && (lpa >= 50 || (lpa >= 125 && lpa >= 200));
+    // ApoB ≥ 130 mg/dL
+    const apoBElevated = apoB !== undefined && apoB >= 130;
+    
+    const hasElevatedMarkers = lpaElevated || apoBElevated;
+    
+    // Get base risk category
+    let riskCategory: 'low' | 'borderline' | 'intermediate' | 'high';
+    if (baseRiskPercent < 5) riskCategory = 'low';
+    else if (baseRiskPercent < 7.5) riskCategory = 'borderline';
+    else if (baseRiskPercent < 20) riskCategory = 'intermediate';
+    else riskCategory = 'high';
+
+    // Determine adjusted category and clinical guidance
+    let adjustedCategory: 'low' | 'borderline' | 'intermediate' | 'high' | 'reclassified_upward';
+    let clinicalGuidance: string;
+    let cacRecommendation: string | undefined;
+    let statinGuidance: string | undefined;
+
+    if (baseRiskPercent >= 20) {
+      // High risk (≥20%)
+      adjustedCategory = 'high';
+      clinicalGuidance = 'High risk: treat as high risk (statin) regardless; ApoB/Lp(a) further support intensity.';
+      statinGuidance = 'High-intensity statin therapy strongly indicated. Elevated atherogenic markers support aggressive treatment.';
+      if (hasElevatedMarkers) {
+        cacRecommendation = 'CAC not needed for treatment decision; already high risk warranting statin therapy.';
+      }
+    } else if (baseRiskPercent >= 7.5) {
+      // Intermediate risk (7.5-20%)
+      if (hasElevatedMarkers) {
+        adjustedCategory = 'reclassified_upward';
+        clinicalGuidance = 'Statin strongly favored; CAC optional if patient hesitant.';
+        statinGuidance = 'Moderate-to-high intensity statin recommended. Elevated ApoB/Lp(a) supports treatment initiation.';
+        cacRecommendation = 'CAC scoring optional if patient hesitant about statin therapy; can help with shared decision-making.';
+      } else {
+        adjustedCategory = riskCategory;
+        clinicalGuidance = 'Intermediate risk without elevated atherogenic markers. Standard shared decision-making for statin therapy.';
+        statinGuidance = 'Moderate-intensity statin reasonable based on shared decision-making.';
+      }
+    } else if (baseRiskPercent >= 5) {
+      // Borderline risk (5-7.5%)
+      if (hasElevatedMarkers) {
+        adjustedCategory = 'reclassified_upward';
+        clinicalGuidance = 'Reclassified upward: statin favored OR CAC to adjudicate.';
+        statinGuidance = 'Statin therapy favored given elevated atherogenic markers. Consider CAC if patient prefers more information.';
+        cacRecommendation = 'CAC scoring recommended to help adjudicate treatment decision. If CAC > 0, strongly favors statin.';
+      } else {
+        adjustedCategory = riskCategory;
+        clinicalGuidance = 'Borderline risk without elevated atherogenic markers. Lifestyle modifications primary; consider CAC if risk-enhancing factors present.';
+      }
+    } else {
+      // Low risk (<5%)
+      if (hasElevatedMarkers) {
+        adjustedCategory = 'borderline';
+        clinicalGuidance = 'Low short-term risk, but elevated atherogenic risk markers; consider CAC if strong family history / patient wants clearer risk signal.';
+        cacRecommendation = 'CAC scoring may help clarify risk, especially with family history of premature ASCVD.';
+        statinGuidance = 'Statin not routinely indicated at this risk level, but elevated markers warrant discussion about long-term risk.';
+      } else {
+        adjustedCategory = riskCategory;
+        clinicalGuidance = 'Low risk with normal atherogenic markers. Focus on lifestyle modifications; reassess in 4-6 years.';
+      }
+    }
+
+    // Build marker-specific notes
+    const markerNotes: string[] = [];
+    if (lpaElevated) {
+      markerNotes.push(`Lp(a) ${lpa} ${lpa! >= 200 ? 'nmol/L' : 'mg/dL'} - elevated (genetic risk factor)`);
+    }
+    if (apoBElevated) {
+      markerNotes.push(`ApoB ${apoB} mg/dL - elevated atherogenic particle burden`);
+    }
+    
+    if (markerNotes.length > 0) {
+      clinicalGuidance = `${markerNotes.join('; ')}. ${clinicalGuidance}`;
+    }
+
+    return {
+      hasElevatedLpa: lpaElevated,
+      hasElevatedApoB: apoBElevated,
+      lpaValue: lpa,
+      apoBValue: apoB,
+      baseASCVDRisk: baseRiskPercent,
+      riskCategory,
+      adjustedCategory,
+      clinicalGuidance,
+      cacRecommendation,
+      statinGuidance
     };
   }
 }

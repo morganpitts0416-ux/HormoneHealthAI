@@ -388,6 +388,7 @@ export default function FemaleLabInterpretation() {
                       recheckWindow={interpretationResult.recheckWindow}
                       redFlags={interpretationResult.redFlags}
                       preventAssessment={interpretationResult.preventRisk}
+                      adjustedRiskAssessment={interpretationResult.adjustedRisk}
                     />
                   </CardContent>
                 </Card>

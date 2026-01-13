@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Activity, Heart, TrendingUp } from "lucide-react";
-import type { LabInterpretation, RedFlag, ASCVDRiskResult, PREVENTRiskResult } from "@shared/schema";
+import type { LabInterpretation, RedFlag, ASCVDRiskResult, PREVENTRiskResult, AdjustedRiskAssessment } from "@shared/schema";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -12,9 +12,10 @@ interface ResultsDisplayProps {
   redFlags?: RedFlag[];
   ascvdAssessment?: ASCVDRiskResult | null;
   preventAssessment?: PREVENTRiskResult | null;
+  adjustedRiskAssessment?: AdjustedRiskAssessment | null;
 }
 
-export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [], ascvdAssessment = null, preventAssessment = null }: ResultsDisplayProps) {
+export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [], ascvdAssessment = null, preventAssessment = null, adjustedRiskAssessment = null }: ResultsDisplayProps) {
   const getRiskBadge = (category: string) => {
     switch (category) {
       case 'low':
@@ -259,6 +260,92 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                   {preventAssessment.recommendations}
                 </p>
               </div>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Adjusted Risk Assessment - ApoB and Lp(a) consideration */}
+      {adjustedRiskAssessment && (
+        <Card data-testid="card-adjusted-risk">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Activity className="w-5 h-5 text-primary" />
+                <CardTitle>Adjusted Risk Assessment</CardTitle>
+              </div>
+              {adjustedRiskAssessment.adjustedCategory === 'reclassified_upward' ? (
+                <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800" data-testid="badge-reclassified">
+                  Reclassified Upward
+                </Badge>
+              ) : (
+                getRiskBadge(adjustedRiskAssessment.adjustedCategory)
+              )}
+            </div>
+            <CardDescription>
+              Risk assessment adjusted for atherogenic markers (ApoB, Lp(a))
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="p-4 rounded-lg bg-muted/30 border">
+                <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Base 10yr ASCVD</p>
+                <span className="text-2xl font-bold font-mono" data-testid="text-base-ascvd">
+                  {adjustedRiskAssessment.baseASCVDRisk.toFixed(1)}%
+                </span>
+                <p className="text-xs text-muted-foreground mt-1">From PREVENT calculator</p>
+              </div>
+              {adjustedRiskAssessment.apoBValue !== undefined && (
+                <div className={`p-4 rounded-lg border ${adjustedRiskAssessment.hasElevatedApoB ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800' : 'bg-muted/30'}`}>
+                  <p className="text-xs font-medium text-muted-foreground uppercase mb-1">ApoB</p>
+                  <span className={`text-2xl font-bold font-mono ${adjustedRiskAssessment.hasElevatedApoB ? 'text-orange-600 dark:text-orange-400' : ''}`} data-testid="text-apob">
+                    {adjustedRiskAssessment.apoBValue} mg/dL
+                  </span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {adjustedRiskAssessment.hasElevatedApoB ? 'Elevated (≥130 mg/dL)' : 'Within range'}
+                  </p>
+                </div>
+              )}
+              {adjustedRiskAssessment.lpaValue !== undefined && (
+                <div className={`p-4 rounded-lg border ${adjustedRiskAssessment.hasElevatedLpa ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800' : 'bg-muted/30'}`}>
+                  <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Lp(a)</p>
+                  <span className={`text-2xl font-bold font-mono ${adjustedRiskAssessment.hasElevatedLpa ? 'text-orange-600 dark:text-orange-400' : ''}`} data-testid="text-lpa">
+                    {adjustedRiskAssessment.lpaValue} {adjustedRiskAssessment.lpaValue >= 200 ? 'nmol/L' : 'mg/dL'}
+                  </span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {adjustedRiskAssessment.hasElevatedLpa ? 'Elevated (genetic risk)' : 'Within range'}
+                  </p>
+                </div>
+              )}
+            </div>
+
+            <Separator />
+
+            <div className="space-y-4">
+              <div className="space-y-2">
+                <p className="text-xs font-medium uppercase text-muted-foreground">Clinical Guidance</p>
+                <p className="text-sm bg-muted/50 p-3 rounded-md leading-relaxed" data-testid="text-adjusted-guidance">
+                  {adjustedRiskAssessment.clinicalGuidance}
+                </p>
+              </div>
+
+              {adjustedRiskAssessment.cacRecommendation && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">CAC Scoring Recommendation</p>
+                  <p className="text-sm" data-testid="text-cac-rec">
+                    {adjustedRiskAssessment.cacRecommendation}
+                  </p>
+                </div>
+              )}
+
+              {adjustedRiskAssessment.statinGuidance && (
+                <div className="space-y-2">
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Statin Therapy Guidance</p>
+                  <p className="text-sm" data-testid="text-statin-guidance">
+                    {adjustedRiskAssessment.statinGuidance}
+                  </p>
+                </div>
+              )}
             </div>
           </CardContent>
         </Card>
