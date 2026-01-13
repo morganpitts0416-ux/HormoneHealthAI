@@ -264,7 +264,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           unit: '%',
           status: getRiskStatus(preventRisk.riskCategory),
           referenceRange: 'Heart attack & stroke risk',
-          interpretation: `10-year atherosclerotic CVD risk (MI, stroke): ${preventRisk.tenYearASCVDPercentage}`,
+          interpretation: `10-year ASCVD risk (heart attack, stroke): ${preventRisk.tenYearASCVDPercentage}`,
           recommendation: preventRisk.statinRecommendation || '',
           recheckTiming: 'Annual',
         };
