@@ -544,6 +544,46 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Generate male patient wellness plan endpoint
+  app.post("/api/generate-wellness-plan-male", async (req, res) => {
+    console.log('[API] POST /api/generate-wellness-plan-male - Received request');
+    
+    try {
+      const { labs, interpretations, supplements, preventRisk } = req.body;
+      
+      if (!labs || !interpretations) {
+        return res.status(400).json({ error: 'Missing required fields: labs, interpretations' });
+      }
+
+      console.log('[API] Generating male wellness plan with:', {
+        labsProvided: !!labs,
+        interpretationsCount: interpretations?.length,
+        supplementsCount: supplements?.length,
+        preventRiskProvided: !!preventRisk
+      });
+
+      const wellnessPlan = await AIService.generateMalePatientWellnessPlan(
+        labs,
+        interpretations,
+        supplements || [],
+        preventRisk || null
+      );
+
+      console.log('[API] Male wellness plan generated successfully');
+      
+      res.json({ 
+        success: true, 
+        wellnessPlan 
+      });
+    } catch (error) {
+      console.error('[API] Error generating male wellness plan:', error);
+      res.status(500).json({ 
+        error: 'Failed to generate male wellness plan',
+        message: error instanceof Error ? error.message : 'Unknown error'
+      });
+    }
+  });
+
   // Configure multer for PDF uploads (memory storage)
   const upload = multer({ 
     storage: multer.memoryStorage(),

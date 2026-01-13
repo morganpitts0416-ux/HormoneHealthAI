@@ -593,4 +593,271 @@ Your Next Steps:
 We're Here for You:
 Our team is dedicated to supporting your health journey. Don't hesitate to reach out if you need guidance or have questions about your wellness plan.`;
   }
+
+  /**
+   * Generate comprehensive patient wellness plan for MALE patients
+   */
+  static async generateMalePatientWellnessPlan(
+    labs: LabValues,
+    interpretations: LabInterpretation[],
+    supplements: Array<{ name: string; dose: string; reason: string }>,
+    riskResult?: ASCVDRiskResult | PREVENTRiskResult | null
+  ): Promise<{
+    dietPlan: string;
+    supplementProtocol: string;
+    lifestyleRecommendations: string;
+    educationalContent: string;
+  }> {
+    const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
+    const borderlineFindings = interpretations.filter(i => i.status === 'borderline');
+
+    const buildFindingsList = (findings: LabInterpretation[]) => {
+      return findings.map(f => `${f.category}: ${f.value} ${f.unit} - ${f.interpretation}`).join('\n');
+    };
+
+    const supplementsList = supplements.map(s => `${s.name} (${s.dose}) - ${s.reason}`).join('\n');
+
+    let cvRiskSection = '';
+    if (riskResult) {
+      if ('tenYearTotalCVD' in riskResult) {
+        const preventRisk = riskResult as PREVENTRiskResult;
+        cvRiskSection = `
+CARDIOVASCULAR RISK (PREVENT 2023):
+10-Year Total CVD Risk: ${preventRisk.tenYearCVDPercentage}
+10-Year ASCVD Risk: ${preventRisk.tenYearASCVDPercentage}
+10-Year Heart Failure Risk: ${preventRisk.tenYearHFPercentage}
+Risk Category: ${preventRisk.riskCategory}
+${preventRisk.thirtyYearCVDPercentage ? `30-Year CVD Risk: ${preventRisk.thirtyYearCVDPercentage}` : ''}
+${preventRisk.ldlGoal ? `LDL Goal: ${preventRisk.ldlGoal}` : ''}`;
+      } else {
+        const ascvdRisk = riskResult as ASCVDRiskResult;
+        cvRiskSection = `
+CARDIOVASCULAR RISK:
+10-Year Risk: ${ascvdRisk.riskPercentage}
+Category: ${ascvdRisk.riskCategory}
+${ascvdRisk.ldlGoal ? `LDL Goal: ${ascvdRisk.ldlGoal}` : ''}`;
+      }
+    }
+
+    const prompt = `Create a comprehensive personalized wellness plan for a MALE patient based on his lab results. Focus on testosterone optimization, muscle building, cardiovascular health, and male vitality.
+
+ABNORMAL FINDINGS:
+${abnormalFindings.length > 0 ? buildFindingsList(abnormalFindings) : 'None'}
+
+BORDERLINE FINDINGS:
+${borderlineFindings.length > 0 ? buildFindingsList(borderlineFindings) : 'None'}
+
+RECOMMENDED SUPPLEMENTS:
+${supplementsList || 'None specified'}
+${cvRiskSection}
+
+KEY LAB VALUES:
+- Testosterone: ${labs.testosterone || 'not tested'} ng/dL
+- Free Testosterone: ${labs.freeTestosterone || 'not tested'} pg/mL
+- Estradiol: ${labs.estradiol || 'not tested'} pg/mL
+- Hemoglobin: ${labs.hemoglobin || 'not tested'} g/dL
+- Hematocrit: ${labs.hematocrit || 'not tested'}%
+- PSA: ${labs.psa || 'not tested'} ng/mL
+- Vitamin D: ${labs.vitaminD || 'not tested'} ng/mL
+- TSH: ${labs.tsh || 'not tested'} mIU/L
+- LDL: ${labs.ldl || 'not tested'} mg/dL
+- HDL: ${labs.hdl || 'not tested'} mg/dL
+- Triglycerides: ${labs.triglycerides || 'not tested'} mg/dL
+- A1c: ${labs.a1c || 'not tested'}%
+- hs-CRP: ${labs.hsCRP || 'not tested'} mg/dL
+
+Please generate FOUR separate sections. Each section should be thorough, educational, and actionable for a MALE patient.
+
+SECTION 1 - PERSONALIZED NUTRITION PLAN (400-500 words):
+Based on the specific lab findings, structure this section with these three subsections:
+
+GOAL:
+Write 2-3 sentences explaining the patient's personalized nutrition goal focused on testosterone optimization, muscle building, and male health. (e.g., "Your goal is to support healthy testosterone production, build lean muscle mass, and optimize cardiovascular health through strategic nutrition.")
+
+DIET:
+Recommend a specific named diet approach (e.g., High-Protein Mediterranean, Testosterone-Optimizing, Carnivore-Inspired, Anti-Inflammatory). Explain in 2-3 sentences why this diet supports his specific testosterone and health goals.
+
+FOODS TO EMPHASIZE:
+List 6-8 specific foods with explanations of why each food will help THIS male patient. Focus on testosterone-supporting, muscle-building, and heart-healthy foods. Format each as:
+Food Name - reason it helps their specific condition
+
+Example format:
+- Beef/Red Meat - High in zinc and saturated fat needed for testosterone synthesis
+- Eggs - Complete protein with cholesterol for hormone production
+- Fatty Fish - Omega-3s reduce inflammation and support heart health
+- Cruciferous Vegetables - Help metabolize excess estrogen
+
+SECTION 2 - SUPPLEMENT PROTOCOL (300-400 words):
+Based on the recommended supplements and lab findings, provide:
+- Each supplement with exact dosing and timing
+- When to take each supplement (morning, with food, at bedtime, etc.)
+- Expected benefits specific to male health (testosterone, energy, muscle, recovery)
+- Tips for optimal absorption
+- Format as a clear daily schedule
+
+SECTION 3 - LIFESTYLE RECOMMENDATIONS (300-400 words):
+Structure this section with FOUR specific categories optimized for male health:
+
+TRAINING & EXERCISE:
+Recommend specific exercise types focusing on compound lifts and strength training. Include workout frequency, types (squats, deadlifts, bench press), and cardio recommendations that support testosterone.
+
+SLEEP & RECOVERY:
+Provide sleep optimization strategies critical for testosterone production. Include hours needed, sleep hygiene tips, and recovery practices.
+
+STRESS MANAGEMENT:
+Suggest stress reduction techniques for men. High cortisol suppresses testosterone - include specific practices to lower cortisol.
+
+HYDRATION:
+Give specific daily water intake goals (in ounces). Include pre/post workout hydration and limiting alcohol for testosterone optimization.
+
+SECTION 4 - EDUCATIONAL CONTENT (300-400 words):
+Help the patient understand their results:
+- What their key lab values mean for male health
+- Why testosterone, hematocrit, and PSA monitoring matters
+- How the recommended changes will improve their numbers and how they feel
+- What to expect at their next lab check (60-90 days)
+- Signs of improvement to watch for (energy, libido, strength, mood)
+- When to contact the clinic
+
+IMPORTANT FORMATTING:
+- Use clear headers and bullet points
+- Write in direct, actionable language for men
+- Be specific with numbers, sets/reps, and timing
+- Avoid medical jargon - explain everything clearly
+- Make it feel personalized to THEIR results
+- NO EMOJIS
+
+Respond with exactly four clearly labeled sections:
+[DIET PLAN]
+(content)
+
+[SUPPLEMENT PROTOCOL]
+(content)
+
+[LIFESTYLE RECOMMENDATIONS]
+(content)
+
+[EDUCATIONAL CONTENT]
+(content)`;
+
+    try {
+      console.log('[AI Service] Generating comprehensive MALE patient wellness plan');
+      
+      const response = await openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a men's health and testosterone optimization expert at MVP Men's Clinic creating personalized health plans. Write in a direct, motivating, action-oriented tone. Be specific with actionable recommendations focused on testosterone optimization, muscle building, energy, and cardiovascular health. Always connect recommendations back to their specific lab results.`
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_completion_tokens: 6000,
+      });
+
+      const content = response.choices[0]?.message?.content || '';
+      console.log('[AI Service] Male wellness plan generated, length:', content.length);
+
+      const dietMatch = content.match(/\[DIET PLAN\]([\s\S]*?)(?=\[SUPPLEMENT PROTOCOL\]|$)/i);
+      const supplementMatch = content.match(/\[SUPPLEMENT PROTOCOL\]([\s\S]*?)(?=\[LIFESTYLE RECOMMENDATIONS\]|$)/i);
+      const lifestyleMatch = content.match(/\[LIFESTYLE RECOMMENDATIONS\]([\s\S]*?)(?=\[EDUCATIONAL CONTENT\]|$)/i);
+      const educationalMatch = content.match(/\[EDUCATIONAL CONTENT\]([\s\S]*?)$/i);
+
+      return {
+        dietPlan: dietMatch?.[1]?.trim() || this.getDefaultMaleDietPlan(),
+        supplementProtocol: supplementMatch?.[1]?.trim() || this.getDefaultSupplementProtocol(supplements),
+        lifestyleRecommendations: lifestyleMatch?.[1]?.trim() || this.getDefaultMaleLifestyleRecommendations(),
+        educationalContent: educationalMatch?.[1]?.trim() || this.getDefaultMaleEducationalContent(),
+      };
+    } catch (error) {
+      console.error("Error generating male patient wellness plan:", error);
+      return {
+        dietPlan: this.getDefaultMaleDietPlan(),
+        supplementProtocol: this.getDefaultSupplementProtocol(supplements),
+        lifestyleRecommendations: this.getDefaultMaleLifestyleRecommendations(),
+        educationalContent: this.getDefaultMaleEducationalContent(),
+      };
+    }
+  }
+
+  private static getDefaultMaleDietPlan(): string {
+    return `Your Personalized Nutrition Plan
+
+GOAL:
+Your goal is to support healthy testosterone production, build lean muscle mass, and optimize cardiovascular health through strategic nutrition focused on protein, healthy fats, and nutrient-dense whole foods.
+
+DIET:
+We recommend a High-Protein Mediterranean approach that combines testosterone-supporting nutrients with heart-healthy fats. This eating pattern provides the cholesterol and zinc needed for hormone production while reducing inflammation.
+
+FOODS TO EMPHASIZE:
+- Beef and Red Meat - Rich in zinc, saturated fat, and complete protein essential for testosterone synthesis
+- Eggs (whole) - Complete protein with cholesterol for hormone production and vitamin D
+- Fatty Fish (salmon, mackerel) - Omega-3s reduce inflammation and support heart and brain health
+- Cruciferous Vegetables (broccoli, cauliflower) - Help metabolize excess estrogen
+- Nuts and Seeds (almonds, pumpkin seeds) - Zinc and healthy fats for testosterone support
+- Olive Oil - Monounsaturated fats support hormone production
+- Berries - Antioxidants protect cells and support cardiovascular health`;
+  }
+
+  private static getDefaultMaleLifestyleRecommendations(): string {
+    return `Lifestyle Recommendations for Optimal Male Health
+
+TRAINING & EXERCISE:
+- Prioritize strength training 3-4x per week focusing on compound movements
+- Include squats, deadlifts, bench press, rows, and overhead press
+- Keep workouts under 60 minutes to optimize testosterone response
+- Add 150+ minutes of moderate cardio weekly (walking, swimming, cycling)
+- Allow 48-72 hours recovery between training same muscle groups
+
+SLEEP & RECOVERY:
+- Target 7-8 hours of quality sleep nightly - critical for testosterone production
+- Keep bedroom cool (65-68°F), dark, and screen-free 1 hour before bed
+- Maintain consistent sleep and wake times, even on weekends
+- Consider cold showers or contrast therapy for recovery
+
+STRESS MANAGEMENT:
+- High cortisol directly suppresses testosterone production
+- Practice deep breathing or meditation for 10 minutes daily
+- Limit work stress and take regular breaks
+- Time in nature and outdoor activities lower cortisol naturally
+- Cold exposure (cold showers) can boost resilience
+
+HYDRATION:
+- Drink at least 100 oz (3L) of water daily
+- Increase intake with exercise - hydration affects workout performance
+- Limit alcohol which suppresses testosterone and disrupts sleep
+- Avoid excessive caffeine after noon`;
+  }
+
+  private static getDefaultMaleEducationalContent(): string {
+    return `Understanding Your Results
+
+Your lab tests provide critical insights into your testosterone levels, cardiovascular health, and overall vitality. Here's what to know:
+
+Why These Tests Matter:
+- Testosterone: The foundation of male energy, muscle, mood, and libido. Optimal range is 700-1100 ng/dL.
+- Hematocrit: Measures red blood cells - important to monitor with testosterone therapy. Target under 54%.
+- PSA: Prostate health marker - baseline and monitoring during treatment.
+- Vitamin D: Supports testosterone production - optimal 60-80 ng/mL.
+
+What to Expect:
+As you implement the nutrition, supplement, and training changes in this report, you may notice improvements in:
+- Energy levels: 2-4 weeks
+- Mood and motivation: 3-6 weeks
+- Strength and muscle gains: 4-8 weeks
+- Libido and sexual function: 3-6 weeks
+- Lab value improvements: 60-90 days
+
+Your Next Steps:
+1. Start implementing one change at a time for sustainable results
+2. Prioritize strength training and sleep optimization
+3. Schedule your follow-up lab work in 60-90 days
+4. Contact MVP Men's Clinic with any questions
+
+We're Here for Your Success:
+Our team is dedicated to optimizing your health and vitality. Reach out anytime with questions about your wellness plan.`;
+  }
 }
