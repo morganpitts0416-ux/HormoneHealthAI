@@ -193,6 +193,32 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
 
                 <FormField
                   control={form.control}
+                  name="demographics.bmi"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">BMI (Body Mass Index)</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="25.0"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-bmi"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">kg/m²</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-1">Required for AHA PREVENT cardiovascular risk calculation</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="demographics.onBPMeds"
                   render={({ field }) => (
                     <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
