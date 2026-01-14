@@ -382,6 +382,8 @@ export default function LabInterpretation() {
                   recheckWindow={interpretationResult.recheckWindow || ''}
                   redFlags={interpretationResult.redFlags || []}
                   ascvdAssessment={interpretationResult.ascvdRisk || null}
+                  preventAssessment={interpretationResult.preventRisk}
+                  adjustedRiskAssessment={interpretationResult.adjustedRisk}
                 />
 
                 {/* Patient Summary */}
