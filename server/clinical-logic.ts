@@ -1282,31 +1282,36 @@ export class ClinicalLogicEngine {
     }
 
     // Vitamin D (25-hydroxyvitamin D)
-    // Male optimal range: 60-80 ng/mL for testosterone support
+    // Deficient: ≤30, Insufficient: 31-40, Suboptimal: 41-59, Optimal: ≥60
+    // Supplement tiers: ≤20 = D3 10,000+K, 21-40 = D3 5,000+K, 41-59 = D3 2000 Complex
     if (labs.vitaminD !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
 
-      if (labs.vitaminD <= 30) {
+      if (labs.vitaminD <= 20) {
         status = 'abnormal';
-        interpretation = 'Vitamin D deficiency (≤30 ng/mL). Associated with fatigue, low testosterone, bone loss.';
-        recommendation = 'High-dose repletion: D3 10,000 IU daily with K2 for 8-12 weeks. Recheck levels after repletion.';
+        interpretation = 'Severe Vitamin D deficiency (≤20 ng/mL). Associated with fatigue, low testosterone, bone loss, and immune dysfunction.';
+        recommendation = 'High-dose repletion: Metagenics D3 10,000 + K daily for 8-12 weeks. Recheck levels after repletion.';
+      } else if (labs.vitaminD > 20 && labs.vitaminD <= 30) {
+        status = 'abnormal';
+        interpretation = 'Vitamin D deficiency (21-30 ng/mL). Suboptimal for hormone and bone health.';
+        recommendation = 'Repletion: Metagenics D3 5,000 + K daily. Target ≥60 ng/mL. Recheck in 8-12 weeks.';
       } else if (labs.vitaminD > 30 && labs.vitaminD <= 40) {
         status = 'borderline';
         interpretation = 'Vitamin D insufficient (31-40 ng/mL). Suboptimal for hormone optimization.';
-        recommendation = 'D3 5,000 IU daily with K2. Target 60-80 ng/mL for optimal testosterone support.';
+        recommendation = 'Metagenics D3 5,000 + K daily. Target ≥60 ng/mL for optimal testosterone support.';
       } else if (labs.vitaminD > 40 && labs.vitaminD < 60) {
         status = 'borderline';
         interpretation = 'Vitamin D adequate but suboptimal (41-59 ng/mL).';
-        recommendation = 'Consider D3 5,000 IU daily to reach optimal range 60-80 ng/mL for testosterone optimization.';
-      } else if (labs.vitaminD >= 60 && labs.vitaminD <= 80) {
+        recommendation = 'Metagenics D3 2000 Complex daily to reach optimal range ≥60 ng/mL.';
+      } else if (labs.vitaminD >= 60 && labs.vitaminD <= 100) {
         status = 'normal';
-        interpretation = 'Vitamin D optimal (60-80 ng/mL). Supports testosterone, bone health, and immune function.';
-        recommendation = 'Maintain with D3 2,000-5,000 IU daily. Monitor annually.';
+        interpretation = 'Vitamin D optimal (60-100 ng/mL). Supports testosterone, bone health, and immune function.';
+        recommendation = 'Maintain current regimen. Monitor annually.';
       } else {
         status = 'borderline';
-        interpretation = 'Vitamin D elevated (>80 ng/mL). Monitor for toxicity signs.';
+        interpretation = 'Vitamin D elevated (>100 ng/mL). Monitor for toxicity signs.';
         recommendation = 'Reduce supplementation. Recheck in 3 months. Watch for hypercalcemia symptoms.';
       }
 
@@ -1315,7 +1320,7 @@ export class ClinicalLogicEngine {
         value: labs.vitaminD,
         unit: 'ng/mL',
         status,
-        referenceRange: '60-80 ng/mL optimal (men\'s clinic target)',
+        referenceRange: '≥60 ng/mL optimal',
         interpretation,
         recommendation,
       });

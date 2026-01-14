@@ -28,35 +28,48 @@ The application features a comprehensive lab input form, a results display with 
 
 ## Metagenics Supplement Catalog (Clinic Inventory)
 
-### Women's Clinic Catalog (12 products)
+### Vitamin D Protocol (Both Clinics)
+- **Deficient**: ≤30 ng/mL (≤20 is severe deficiency)
+- **Insufficient**: 31-40 ng/mL
+- **Suboptimal**: 41-59 ng/mL
+- **Optimal**: ≥60 ng/mL
+
+**Supplement Recommendations by Level**:
+- **≤20 ng/mL (severe)**: Metagenics D3 10,000 + K
+- **21-40 ng/mL (deficiency/insufficiency)**: Metagenics D3 5,000 + K
+- **41-59 ng/mL (suboptimal)**: Metagenics D3 2000 Complex
+
+### Women's Clinic Catalog (13 products)
 The following Metagenics products are configured for the women's clinic in `server/supplements-female.ts`:
 
 1. **HerWellness Estrovera** - Hormone-free menopause relief with ERr 731 rhubarb extract (1 tablet daily)
 2. **Hemagenics** - Non-constipating iron with B12, B6, folate for red blood cell support (1 tablet daily)
 3. **Intrinsi B12-Folate** - Methylcobalamin + folate with intrinsic factor for enhanced absorption (1 tablet daily)
 4. **HerWellness Rapid Stress Relief** - Fast-acting L-Theanine + Lactium stress support chews (1 chew as needed)
-5. **Vitamin D3 10,000 + K** - High-dose vitamin D with K2 for deficiency repletion (1 softgel daily)
-6. **Vitamin D3 5,000 + K** - Maintenance vitamin D with K2 for bone/immune support (1 softgel daily)
-7. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for sleep and cognitive support (3 capsules daily, divided)
-8. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal support (2 capsules twice daily)
-9. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
-10. **UltraFlora Complete Women's Probiotic** - 5-in-1 probiotic for vaginal, urinary, digestive health (1 capsule daily)
-11. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily)
-12. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
+5. **Vitamin D3 10,000 + K** - High-dose vitamin D with K2 for severe deficiency ≤20 ng/mL (1 softgel daily)
+6. **Vitamin D3 5,000 + K** - Vitamin D with K2 for deficiency/insufficiency 21-40 ng/mL (1 softgel daily)
+7. **D3 2000 Complex** - Maintenance vitamin D for suboptimal 41-59 ng/mL (1 tablet daily)
+8. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for sleep and cognitive support (3 capsules daily, divided)
+9. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal support (2 capsules twice daily)
+10. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
+11. **UltraFlora Complete Women's Probiotic** - 5-in-1 probiotic for vaginal, urinary, digestive health (1 capsule daily)
+12. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily)
+13. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
 
-### Men's Clinic Catalog (10 products)
+### Men's Clinic Catalog (11 products)
 The following Metagenics products are configured for the men's clinic in `server/supplements-male.ts`:
 
 1. **Testralin** - Testosterone support with botanical and nutrient formula for male vitality (2 tablets twice daily)
 2. **UltraFlora Complete Probiotic** - Multi-strain probiotic for digestive and immune health (1 capsule daily)
-3. **Vitamin D3 10,000 + K** - High-dose vitamin D with K2 for deficiency repletion (1 softgel daily)
-4. **Vitamin D3 5,000 + K** - Maintenance vitamin D with K2 for bone/immune support (1 softgel daily)
-5. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for sleep and cognitive support (3 capsules daily, divided)
-6. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal/testosterone support (2 capsules twice daily)
-7. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
-8. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily) - **Auto-recommended for patients 40+**
-9. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
-10. **OmegaGenics Fish Oil EPA-DHA 1000** - Balanced omega-3 (500mg EPA, 500mg DHA) for cardiac/neurologic support (1-2 softgels daily) - **Auto-recommended for patients 40+**
+3. **Vitamin D3 10,000 + K** - High-dose vitamin D with K2 for severe deficiency ≤20 ng/mL (1 softgel daily)
+4. **Vitamin D3 5,000 + K** - Vitamin D with K2 for deficiency/insufficiency 21-40 ng/mL (1 softgel daily)
+5. **D3 2000 Complex** - Maintenance vitamin D for suboptimal 41-59 ng/mL (1 tablet daily)
+6. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for sleep and cognitive support (3 capsules daily, divided)
+7. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal/testosterone support (2 capsules twice daily)
+8. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
+9. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily) - **Auto-recommended for patients 40+**
+10. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
+11. **OmegaGenics Fish Oil EPA-DHA 1000** - Balanced omega-3 (500mg EPA, 500mg DHA) for cardiac/neurologic support (1-2 softgels daily) - **Auto-recommended for patients 40+**
 
 **Age-Based Recommendations**: For men 40 and over, OmegaGenics Fish Oil EPA-DHA 1000 and NutraGems CoQ10 300 are automatically recommended for overall cardiac and neurologic health maintenance.
 
