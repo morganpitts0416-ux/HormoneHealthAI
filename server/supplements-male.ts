@@ -100,7 +100,7 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // D3 10000 + K - Vitamin D Deficiency (≤30 ng/mL)
+  // D3 10000 + K - Severe Vitamin D Deficiency (≤20 ng/mL)
   {
     supplement: {
       name: "D3 10,000 + K",
@@ -112,11 +112,11 @@ const supplementRules: SupplementRule[] = [
     evaluate: (labs) => {
       if (labs.vitaminD === undefined) return null;
       
-      // Deficiency: ≤30 ng/mL - high-dose repletion needed
-      if (labs.vitaminD <= 30) {
+      // Severe deficiency: ≤20 ng/mL - high-dose repletion needed
+      if (labs.vitaminD <= 20) {
         return {
           shouldRecommend: true,
-          indication: `Vitamin D ${labs.vitaminD} ng/mL (deficient ≤30)`,
+          indication: `Vitamin D ${labs.vitaminD} ng/mL (severe deficiency ≤20)`,
           rationale: "D3 10,000 + K provides high-dose vitamin D3 with K2 for efficient repletion. K2 ensures proper calcium utilization and supports testosterone production."
         };
       }
@@ -125,24 +125,49 @@ const supplementRules: SupplementRule[] = [
     }
   },
 
-  // D3 5000 + K - Vitamin D Insufficiency (31-40 ng/mL)
+  // D3 5000 + K - Vitamin D Deficiency/Insufficiency (21-40 ng/mL)
   {
     supplement: {
       name: "D3 5,000 + K",
       dose: "1 softgel daily with meal",
       priority: 'medium',
       category: 'vitamin',
-      caution: "Maintenance/repletion dose. Contains vitamin K2 for optimal calcium metabolism. Recheck levels annually."
+      caution: "Repletion dose for deficiency/insufficiency. Contains vitamin K2 for optimal calcium metabolism. Recheck levels in 8-12 weeks."
     },
     evaluate: (labs) => {
       if (labs.vitaminD === undefined) return null;
       
-      // Insufficiency: 31-40 ng/mL - maintenance dose
-      if (labs.vitaminD > 30 && labs.vitaminD <= 40) {
+      // Deficiency/Insufficiency: 21-40 ng/mL
+      if (labs.vitaminD > 20 && labs.vitaminD <= 40) {
         return {
           shouldRecommend: true,
-          indication: `Vitamin D ${labs.vitaminD} ng/mL (insufficient 31-40)`,
-          rationale: "D3 5,000 + K provides vitamin D3 with K2 for moderate insufficiency. Supports bone health, cardiovascular function, and healthy testosterone levels."
+          indication: `Vitamin D ${labs.vitaminD} ng/mL (${labs.vitaminD <= 30 ? 'deficient' : 'insufficient'})`,
+          rationale: "D3 5,000 + K provides vitamin D3 with K2 for repletion. Supports bone health, cardiovascular function, and healthy testosterone levels. Target ≥60 ng/mL."
+        };
+      }
+      
+      return null;
+    }
+  },
+
+  // D3 2000 Complex - Vitamin D Suboptimal (41-59 ng/mL)
+  {
+    supplement: {
+      name: "D3 2000 Complex",
+      dose: "1 tablet daily with meal",
+      priority: 'low',
+      category: 'vitamin',
+      caution: "Maintenance dose for suboptimal levels. Comprehensive vitamin D support with cofactors."
+    },
+    evaluate: (labs) => {
+      if (labs.vitaminD === undefined) return null;
+      
+      // Suboptimal: 41-59 ng/mL - maintenance to reach optimal
+      if (labs.vitaminD > 40 && labs.vitaminD < 60) {
+        return {
+          shouldRecommend: true,
+          indication: `Vitamin D ${labs.vitaminD} ng/mL (suboptimal, target ≥60)`,
+          rationale: "D3 2000 Complex provides maintenance vitamin D with cofactors to reach optimal range ≥60 ng/mL for testosterone and immune support."
         };
       }
       

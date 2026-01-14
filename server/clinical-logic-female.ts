@@ -974,35 +974,37 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // Vitamin D - Provider protocol: Goal 60-80 ng/mL
+    // Vitamin D - Provider protocol: Goal ≥60 ng/mL
+    // Deficient: ≤30, Insufficient: 31-40, Suboptimal: 41-59, Optimal: ≥60
+    // Supplement tiers: ≤20 = D3 10,000+K, 21-40 = D3 5,000+K, 41-59 = D3 2000 Complex
     if (labs.vitaminD !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
 
-      if (labs.vitaminD <= 30) {
+      if (labs.vitaminD <= 20) {
         status = 'abnormal';
-        interpretation = 'Vitamin D deficiency (≤30 ng/mL). Goal is 60-80 ng/mL.';
-        recommendation = 'Metagenics Vitamin D3 10,000 + K: 1 softgel daily with meal. OR weekly prescription of 50,000 IU D3. Recheck in 8-12 weeks.';
-      } else if (labs.vitaminD <= 40) {
+        interpretation = 'Severe Vitamin D deficiency (≤20 ng/mL). Associated with fatigue, bone loss, and immune dysfunction.';
+        recommendation = 'High-dose repletion: Metagenics D3 10,000 + K daily for 8-12 weeks. Recheck levels after repletion.';
+      } else if (labs.vitaminD > 20 && labs.vitaminD <= 30) {
+        status = 'abnormal';
+        interpretation = 'Vitamin D deficiency (21-30 ng/mL). Suboptimal for hormone and bone health.';
+        recommendation = 'Repletion: Metagenics D3 5,000 + K daily. Target ≥60 ng/mL. Recheck in 8-12 weeks.';
+      } else if (labs.vitaminD > 30 && labs.vitaminD <= 40) {
         status = 'borderline';
-        interpretation = 'Vitamin D insufficiency (31-40 ng/mL). Goal is 60-80 ng/mL.';
-        recommendation = 'Metagenics Vitamin D3 5,000 + K: 1 softgel daily with meal. Recheck in 8-12 weeks.';
-      } else if (labs.vitaminD < 60) {
+        interpretation = 'Vitamin D insufficient (31-40 ng/mL). Suboptimal for hormone optimization.';
+        recommendation = 'Metagenics D3 5,000 + K daily. Target ≥60 ng/mL.';
+      } else if (labs.vitaminD > 40 && labs.vitaminD < 60) {
         status = 'borderline';
-        interpretation = 'Vitamin D suboptimal. Goal is 60-80 ng/mL.';
-        recommendation = 'Consider 2,000-5,000 IU D3+K daily to reach optimal range of 60-80 ng/mL.';
-      } else if (labs.vitaminD >= 60 && labs.vitaminD <= 80) {
+        interpretation = 'Vitamin D adequate but suboptimal (41-59 ng/mL).';
+        recommendation = 'Metagenics D3 2000 Complex daily to reach optimal range ≥60 ng/mL.';
+      } else if (labs.vitaminD >= 60 && labs.vitaminD <= 100) {
         status = 'normal';
-        interpretation = 'Optimal vitamin D level (60-80 ng/mL).';
-        recommendation = 'Maintain with 1,000-2,000 IU D3+K daily.';
-      } else if (labs.vitaminD > 80 && labs.vitaminD <= 100) {
-        status = 'borderline';
-        interpretation = 'Vitamin D above optimal range.';
-        recommendation = 'Reduce supplementation to maintenance dose. Goal is 60-80 ng/mL.';
+        interpretation = 'Vitamin D optimal (60-100 ng/mL). Supports hormone, bone, and immune health.';
+        recommendation = 'Maintain current regimen. Monitor annually.';
       } else {
         status = 'abnormal';
-        interpretation = 'Elevated vitamin D - possible toxicity risk if >100.';
+        interpretation = 'Vitamin D elevated (>100 ng/mL). Monitor for toxicity signs.';
         recommendation = 'Hold supplementation. Monitor calcium levels. Recheck in 4-6 weeks.';
       }
 
@@ -1011,7 +1013,7 @@ export class FemaleClinicalLogicEngine {
         value: labs.vitaminD,
         unit: 'ng/mL',
         status,
-        referenceRange: '60-80 ng/mL (optimal)',
+        referenceRange: '≥60 ng/mL optimal',
         interpretation,
         recommendation,
       });

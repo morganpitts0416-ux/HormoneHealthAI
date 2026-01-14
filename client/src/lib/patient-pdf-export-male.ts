@@ -935,9 +935,16 @@ export async function generateMalePatientWellnessPDF(
     {
       name: 'Vitamin D3 5,000 + K',
       aliases: ['d3 5000', 'd3 5,000', 'vitamin d', 'd3', 'vitamin d3'],
-      description: 'Vitamin D3 with vitamin K2 for maintenance of optimal levels (40-60 ng/mL). Supports testosterone, bones, immunity, and cardiovascular health.',
+      description: 'Vitamin D3 with vitamin K2 for deficiency/insufficiency repletion (21-40 ng/mL). Supports testosterone, bones, immunity, and cardiovascular health.',
       defaultDose: '1 softgel daily with meal',
       category: 'vitamind'
+    },
+    {
+      name: 'D3 2000 Complex',
+      aliases: ['d3 2000', 'vitamin d 2000', 'd3 complex', 'vitamin d maintenance'],
+      description: 'Comprehensive vitamin D3 with cofactors for suboptimal levels (41-59 ng/mL). Supports reaching optimal range (≥60 ng/mL) for testosterone and immune health.',
+      defaultDose: '1 tablet daily with meal',
+      category: 'vitamind-maintenance'
     },
     {
       name: 'Magtein Magnesium L-Threonate',
