@@ -44,7 +44,7 @@ The following Metagenics products are configured for the women's clinic in `serv
 11. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily)
 12. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
 
-### Men's Clinic Catalog (9 products)
+### Men's Clinic Catalog (10 products)
 The following Metagenics products are configured for the men's clinic in `server/supplements-male.ts`:
 
 1. **Testralin** - Testosterone support with botanical and nutrient formula for male vitality (2 tablets twice daily)
@@ -54,8 +54,11 @@ The following Metagenics products are configured for the men's clinic in `server
 5. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for sleep and cognitive support (3 capsules daily, divided)
 6. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal/testosterone support (2 capsules twice daily)
 7. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
-8. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily)
+8. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily) - **Auto-recommended for patients 40+**
 9. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
+10. **OmegaGenics Fish Oil EPA-DHA 1000** - Balanced omega-3 (500mg EPA, 500mg DHA) for cardiac/neurologic support (1-2 softgels daily) - **Auto-recommended for patients 40+**
+
+**Age-Based Recommendations**: For men 40 and over, OmegaGenics Fish Oil EPA-DHA 1000 and NutraGems CoQ10 300 are automatically recommended for overall cardiac and neurologic health maintenance.
 
 **Note**: To add new Metagenics products to women's clinic, update `server/supplements-female.ts` and `client/src/lib/patient-pdf-export.ts`. For men's clinic, update `server/supplements-male.ts`.
 
