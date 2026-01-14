@@ -1281,6 +1281,122 @@ export class ClinicalLogicEngine {
       });
     }
 
+    // Vitamin D (25-hydroxyvitamin D)
+    // Male optimal range: 60-80 ng/mL for testosterone support
+    if (labs.vitaminD !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.vitaminD <= 30) {
+        status = 'abnormal';
+        interpretation = 'Vitamin D deficiency (≤30 ng/mL). Associated with fatigue, low testosterone, bone loss.';
+        recommendation = 'High-dose repletion: D3 10,000 IU daily with K2 for 8-12 weeks. Recheck levels after repletion.';
+      } else if (labs.vitaminD > 30 && labs.vitaminD <= 40) {
+        status = 'borderline';
+        interpretation = 'Vitamin D insufficient (31-40 ng/mL). Suboptimal for hormone optimization.';
+        recommendation = 'D3 5,000 IU daily with K2. Target 60-80 ng/mL for optimal testosterone support.';
+      } else if (labs.vitaminD > 40 && labs.vitaminD < 60) {
+        status = 'borderline';
+        interpretation = 'Vitamin D adequate but suboptimal (41-59 ng/mL).';
+        recommendation = 'Consider D3 5,000 IU daily to reach optimal range 60-80 ng/mL for testosterone optimization.';
+      } else if (labs.vitaminD >= 60 && labs.vitaminD <= 80) {
+        status = 'normal';
+        interpretation = 'Vitamin D optimal (60-80 ng/mL). Supports testosterone, bone health, and immune function.';
+        recommendation = 'Maintain with D3 2,000-5,000 IU daily. Monitor annually.';
+      } else {
+        status = 'borderline';
+        interpretation = 'Vitamin D elevated (>80 ng/mL). Monitor for toxicity signs.';
+        recommendation = 'Reduce supplementation. Recheck in 3 months. Watch for hypercalcemia symptoms.';
+      }
+
+      interpretations.push({
+        category: 'Vitamin D (25-OH)',
+        value: labs.vitaminD,
+        unit: 'ng/mL',
+        status,
+        referenceRange: '60-80 ng/mL optimal (men\'s clinic target)',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Vitamin B12
+    // Normal: 400-1000 pg/mL for optimal neurological function
+    if (labs.vitaminB12 !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.vitaminB12 < 300) {
+        status = 'abnormal';
+        interpretation = 'Low B12 (<300 pg/mL). Risk of neurological symptoms, fatigue, cognitive impairment.';
+        recommendation = 'B12 supplementation indicated. Consider methylcobalamin 1000-2000 mcg daily. Rule out pernicious anemia if very low.';
+      } else if (labs.vitaminB12 >= 300 && labs.vitaminB12 < 400) {
+        status = 'borderline';
+        interpretation = 'B12 borderline low (300-399 pg/mL). Suboptimal for neurological health.';
+        recommendation = 'Consider B12 supplementation with methylcobalamin. Evaluate dietary intake (meat, eggs, dairy).';
+      } else if (labs.vitaminB12 >= 400 && labs.vitaminB12 <= 1000) {
+        status = 'normal';
+        interpretation = 'B12 optimal (400-1000 pg/mL). Adequate for neurological and red blood cell function.';
+        recommendation = 'Continue current intake. Routine monitoring.';
+      } else {
+        status = 'borderline';
+        interpretation = 'B12 elevated (>1000 pg/mL). Usually from supplementation.';
+        recommendation = 'Reduce supplementation if not medically indicated. High B12 is typically not harmful but evaluate for liver disease if unexplained.';
+      }
+
+      interpretations.push({
+        category: 'Vitamin B12',
+        value: labs.vitaminB12,
+        unit: 'pg/mL',
+        status,
+        referenceRange: '400-1000 pg/mL optimal',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Free T4 (Free Thyroxine)
+    // Normal: 0.9-1.7 ng/dL
+    if (labs.freeT4 !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.freeT4 > 1.7) {
+        status = 'abnormal';
+        interpretation = 'Elevated Free T4 (>1.7 ng/dL). Possible hyperthyroidism.';
+        recommendation = 'Correlate with TSH. If TSH suppressed, evaluate for Graves disease or thyroiditis. Consider endocrine referral.';
+      } else if (labs.freeT4 >= 1.5 && labs.freeT4 <= 1.7) {
+        status = 'borderline';
+        interpretation = 'Free T4 upper normal (1.5-1.7 ng/dL).';
+        recommendation = 'Monitor. If symptomatic (anxiety, tremor, weight loss), correlate with TSH and T3.';
+      } else if (labs.freeT4 >= 0.9 && labs.freeT4 < 1.5) {
+        status = 'normal';
+        interpretation = 'Free T4 optimal (0.9-1.5 ng/dL). Normal thyroid hormone production.';
+        recommendation = 'Continue routine monitoring. Healthy thyroid function.';
+      } else if (labs.freeT4 >= 0.7 && labs.freeT4 < 0.9) {
+        status = 'borderline';
+        interpretation = 'Free T4 borderline low (0.7-0.9 ng/dL).';
+        recommendation = 'Correlate with TSH. If TSH elevated, consider thyroid replacement. Evaluate for symptoms of hypothyroidism.';
+      } else {
+        status = 'abnormal';
+        interpretation = 'Low Free T4 (<0.7 ng/dL). Likely hypothyroidism.';
+        recommendation = 'Confirm with TSH. Thyroid replacement therapy typically indicated. Consider endocrine evaluation.';
+      }
+
+      interpretations.push({
+        category: 'Free T4',
+        value: labs.freeT4,
+        unit: 'ng/dL',
+        status,
+        referenceRange: '0.9-1.7 ng/dL',
+        interpretation,
+        recommendation,
+      });
+    }
+
     return interpretations;
   }
 

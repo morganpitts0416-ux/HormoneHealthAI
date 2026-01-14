@@ -6,6 +6,50 @@ interface SupplementRule {
 }
 
 const supplementRules: SupplementRule[] = [
+  // AGE-BASED CARDIAC/NEUROLOGIC SUPPORT - OmegaGenics Fish Oil for patients 40+
+  {
+    supplement: {
+      name: "OmegaGenics® Fish Oil EPA-DHA 1000",
+      dose: "1 softgel 1-2 times daily with meals",
+      priority: 'medium',
+      category: 'cardiovascular',
+      caution: "High-quality omega-3 (500mg EPA, 500mg DHA) for heart and brain health. Lemon-flavored for easy consumption. Contains fish oil."
+    },
+    evaluate: (labs) => {
+      const age = labs.demographics?.age;
+      if (age !== undefined && age >= 40) {
+        return {
+          shouldRecommend: true,
+          indication: `Age ${age} - cardiac/neurologic support for patients 40+`,
+          rationale: "OmegaGenics Fish Oil EPA-DHA 1000 provides balanced omega-3 fatty acids to support cardiovascular health, cognitive function, and reduce inflammation. Recommended for all men 40+ for overall cardiac and neurologic protection."
+        };
+      }
+      return null;
+    }
+  },
+
+  // AGE-BASED CARDIAC/NEUROLOGIC SUPPORT - NutraGems CoQ10 for patients 40+
+  {
+    supplement: {
+      name: "NutraGems® CoQ10 300",
+      dose: "1 chewable gel daily",
+      priority: 'medium',
+      category: 'cardiovascular',
+      caution: "Chewable 300mg CoQ10 in emulsified form for enhanced absorption. Supports heart muscle function, energy production, and antioxidant protection."
+    },
+    evaluate: (labs) => {
+      const age = labs.demographics?.age;
+      if (age !== undefined && age >= 40) {
+        return {
+          shouldRecommend: true,
+          indication: `Age ${age} - cardiac/energy support for patients 40+`,
+          rationale: "NutraGems CoQ10 300 provides high-potency ubiquinone essential for mitochondrial energy production and cardiovascular protection. Recommended for all men 40+ for cardiac and neurologic health maintenance."
+        };
+      }
+      return null;
+    }
+  },
+
   // TESTRALIN - Testosterone Support (Men-specific)
   {
     supplement: {

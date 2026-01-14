@@ -143,10 +143,12 @@ export const labValuesSchema = z.object({
   
   // Other
   tsh: z.number().optional(),
+  freeT4: z.number().optional(), // Free Thyroxine (ng/dL)
   psa: z.number().optional(),
   a1c: z.number().optional(),
   hsCRP: z.number().optional(), // High-Sensitivity C-Reactive Protein (mg/dL)
   vitaminD: z.number().optional(), // 25-hydroxyvitamin D (ng/mL)
+  vitaminB12: z.number().optional(), // Vitamin B12 (pg/mL)
   
   // Previous PSA for velocity calculation
   previousPsa: z.number().optional(),
