@@ -481,9 +481,14 @@ export class PREVENTCalculator {
    * Calculate Adjusted Risk Assessment based on ApoB and Lp(a)
    * This supplements the PREVENT risk with atherogenic marker assessment
    * 
-   * Thresholds:
-   * - Lp(a) ≥ 50 mg/dL or ≥125 nmol/L → elevated concern
-   * - ApoB ≥ 130 mg/dL → elevated concern
+   * RISK ENHANCERS (triggers risk reclassification):
+   * - ApoB ≥130 mg/dL = risk enhancer
+   * - Lp(a) ≥50 mg/dL (or ≥125 nmol/L) = risk enhancer
+   * 
+   * Risk Reclassification with enhancers:
+   * - Low (<5%) → Borderline: shared decision making, possibly consider statin, CAC reasonable
+   * - Borderline (5-7.4%) → Intermediate: Moderate statin favored, CAC recommended
+   * - Intermediate (7.5-19.9%) → High: High intensity statin, CAC optional
    */
   static calculateAdjustedRisk(
     tenYearASCVD: number,
@@ -498,28 +503,31 @@ export class PREVENTCalculator {
     const baseRiskPercent = tenYearASCVD * 100;
     
     // Determine marker status with borderline classification
-    // ApoB: <90 normal, 90-129 borderline, ≥130 elevated
-    // Lp(a): mg/dL (<40 normal, 40-49 borderline, ≥50 elevated)
-    //        nmol/L (<75 normal, 75-124 borderline, ≥125 elevated)
-    // Unit detection: Values >75 are likely nmol/L (mg/dL rarely exceeds 75)
+    // ApoB: <90 normal, 90-129 borderline, ≥130 elevated (RISK ENHANCER)
+    // Lp(a): mg/dL (<40 normal, 40-49 borderline, ≥50 elevated = RISK ENHANCER)
+    //        nmol/L (<75 normal, 75-124 borderline, ≥125 elevated = RISK ENHANCER)
+    // Unit detection: Values ≥200 are likely nmol/L (Lp(a) in mg/dL rarely exceeds 150)
     
     let apoBStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
     if (apoB !== undefined) {
-      if (apoB >= 130) apoBStatus = 'elevated';
+      if (apoB >= 130) apoBStatus = 'elevated';  // RISK ENHANCER
       else if (apoB >= 90) apoBStatus = 'borderline';
     }
     
     let lpaStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
+    let lpaIsNmolL = false;
     if (lpa !== undefined) {
-      // Detect unit based on value magnitude (mg/dL rarely exceeds 75)
-      const isNmolL = lpa > 75;
+      // Detect unit based on value magnitude
+      // Lp(a) in mg/dL typically ranges 0-150, nmol/L typically 0-300+
+      // Values ≥200 are almost certainly nmol/L
+      lpaIsNmolL = lpa >= 200;
       
-      if (isNmolL) {
-        // nmol/L scale: <75 normal, 75-124 borderline, ≥125 elevated
+      if (lpaIsNmolL) {
+        // nmol/L scale: <75 normal, 75-124 borderline, ≥125 elevated (RISK ENHANCER)
         if (lpa >= 125) lpaStatus = 'elevated';
         else if (lpa >= 75) lpaStatus = 'borderline';
       } else {
-        // mg/dL scale: <40 normal, 40-49 borderline, ≥50 elevated
+        // mg/dL scale: <40 normal, 40-49 borderline, ≥50 elevated (RISK ENHANCER)
         if (lpa >= 50) lpaStatus = 'elevated';
         else if (lpa >= 40) lpaStatus = 'borderline';
       }
@@ -530,8 +538,8 @@ export class PREVENTCalculator {
     const lpaBorderline = lpaStatus === 'borderline';
     const apoBBorderline = apoBStatus === 'borderline';
     
-    const hasElevatedMarkers = lpaElevated || apoBElevated;
-    const hasBorderlineMarkers = lpaBorderline || apoBBorderline;
+    // Risk enhancers are ELEVATED markers only (not borderline)
+    const hasRiskEnhancer = lpaElevated || apoBElevated;
     
     // Get base risk category
     let riskCategory: 'low' | 'borderline' | 'intermediate' | 'high';
@@ -540,67 +548,72 @@ export class PREVENTCalculator {
     else if (baseRiskPercent < 20) riskCategory = 'intermediate';
     else riskCategory = 'high';
 
-    // Determine adjusted category and clinical guidance
+    // Determine adjusted category and clinical guidance based on risk enhancers
     let adjustedCategory: 'low' | 'borderline' | 'intermediate' | 'high' | 'reclassified_upward';
     let clinicalGuidance: string;
     let cacRecommendation: string | undefined;
     let statinGuidance: string | undefined;
 
     if (baseRiskPercent >= 20) {
-      // High risk (≥20%)
+      // High risk (≥20%) - already highest category
       adjustedCategory = 'high';
-      clinicalGuidance = 'High risk: treat as high risk (statin) regardless; ApoB/Lp(a) further support intensity.';
-      statinGuidance = 'High-intensity statin therapy strongly indicated. Elevated atherogenic markers support aggressive treatment.';
-      if (hasElevatedMarkers) {
-        cacRecommendation = 'CAC not needed for treatment decision; already high risk warranting statin therapy.';
-      }
+      clinicalGuidance = 'High risk (≥20%): High-intensity statin therapy indicated regardless of additional markers.';
+      statinGuidance = 'High-intensity statin therapy strongly indicated.';
+      cacRecommendation = 'CAC not needed for treatment decision; already high risk warranting statin therapy.';
     } else if (baseRiskPercent >= 7.5) {
-      // Intermediate risk (7.5-20%)
-      if (hasElevatedMarkers) {
+      // Intermediate risk (7.5-19.9%)
+      if (hasRiskEnhancer) {
+        // Reclassify to High risk
         adjustedCategory = 'reclassified_upward';
-        clinicalGuidance = 'Statin strongly favored; CAC optional if patient hesitant.';
-        statinGuidance = 'Moderate-to-high intensity statin recommended. Elevated ApoB/Lp(a) supports treatment initiation.';
-        cacRecommendation = 'CAC scoring optional if patient hesitant about statin therapy; can help with shared decision-making.';
+        clinicalGuidance = 'RECLASSIFIED TO HIGH RISK: Risk enhancer present. High-intensity statin therapy indicated.';
+        statinGuidance = 'High-intensity statin therapy indicated due to risk enhancement.';
+        cacRecommendation = 'CAC optional but not needed for decision-making given elevated risk.';
       } else {
         adjustedCategory = riskCategory;
-        clinicalGuidance = 'Intermediate risk without elevated atherogenic markers. Standard shared decision-making for statin therapy.';
+        clinicalGuidance = 'Intermediate risk (7.5-19.9%) without risk enhancers. Standard shared decision-making for statin therapy.';
         statinGuidance = 'Moderate-intensity statin reasonable based on shared decision-making.';
+        cacRecommendation = 'CAC scoring may help refine treatment decision if patient uncertain.';
       }
     } else if (baseRiskPercent >= 5) {
-      // Borderline risk (5-7.5%)
-      if (hasElevatedMarkers) {
+      // Borderline risk (5-7.4%)
+      if (hasRiskEnhancer) {
+        // Reclassify to Intermediate risk
         adjustedCategory = 'reclassified_upward';
-        clinicalGuidance = 'Reclassified upward: statin favored OR CAC to adjudicate.';
-        statinGuidance = 'Statin therapy favored given elevated atherogenic markers. Consider CAC if patient prefers more information.';
-        cacRecommendation = 'CAC scoring recommended to help adjudicate treatment decision. If CAC > 0, strongly favors statin.';
+        clinicalGuidance = 'RECLASSIFIED TO INTERMEDIATE RISK: Risk enhancer present. Moderate-intensity statin favored.';
+        statinGuidance = 'Moderate-intensity statin favored given risk enhancement.';
+        cacRecommendation = 'CAC recommended especially if patient hesitant to start statin, strong familial history, or additional risk enhancers present.';
       } else {
         adjustedCategory = riskCategory;
-        clinicalGuidance = 'Borderline risk without elevated atherogenic markers. Lifestyle modifications primary; consider CAC if risk-enhancing factors present.';
+        clinicalGuidance = 'Borderline risk (5-7.4%) without risk enhancers. Lifestyle modifications primary; reassess risk factors.';
+        statinGuidance = 'Statin not routinely indicated; focus on lifestyle modifications.';
+        cacRecommendation = 'CAC may help clarify risk if other risk-enhancing factors present.';
       }
     } else {
       // Low risk (<5%)
-      if (hasElevatedMarkers) {
-        adjustedCategory = 'borderline';
-        clinicalGuidance = 'Low short-term risk, but elevated atherogenic risk markers; consider CAC if strong family history / patient wants clearer risk signal.';
-        cacRecommendation = 'CAC scoring may help clarify risk, especially with family history of premature ASCVD.';
-        statinGuidance = 'Statin not routinely indicated at this risk level, but elevated markers warrant discussion about long-term risk.';
+      if (hasRiskEnhancer) {
+        // Reclassify to Borderline risk
+        adjustedCategory = 'reclassified_upward';
+        clinicalGuidance = 'RECLASSIFIED TO BORDERLINE RISK: Risk enhancer present. Shared decision-making regarding statin therapy.';
+        statinGuidance = 'Possibly consider statin therapy given risk enhancement; shared decision-making recommended.';
+        cacRecommendation = 'CAC reasonable especially with strong family history and risk enhancement present.';
       } else {
         adjustedCategory = riskCategory;
-        clinicalGuidance = 'Low risk with normal atherogenic markers. Focus on lifestyle modifications; reassess in 4-6 years.';
+        clinicalGuidance = 'Low risk (<5%) without risk enhancers. Focus on lifestyle modifications; reassess in 4-6 years.';
       }
     }
 
-    // Build marker-specific notes
-    const markerNotes: string[] = [];
+    // Build marker-specific notes for risk enhancers
+    const riskEnhancerNotes: string[] = [];
     if (lpaElevated) {
-      markerNotes.push(`Lp(a) ${lpa} ${lpa! >= 200 ? 'nmol/L' : 'mg/dL'} - elevated (genetic risk factor)`);
+      const unit = lpaIsNmolL ? 'nmol/L' : 'mg/dL';
+      riskEnhancerNotes.push(`Lp(a) ${lpa} ${unit} - RISK ENHANCER (genetic risk factor)`);
     }
     if (apoBElevated) {
-      markerNotes.push(`ApoB ${apoB} mg/dL - elevated atherogenic particle burden`);
+      riskEnhancerNotes.push(`ApoB ${apoB} mg/dL - RISK ENHANCER (elevated atherogenic particle burden)`);
     }
     
-    if (markerNotes.length > 0) {
-      clinicalGuidance = `${markerNotes.join('; ')}. ${clinicalGuidance}`;
+    if (riskEnhancerNotes.length > 0) {
+      clinicalGuidance = `${riskEnhancerNotes.join('; ')}. ${clinicalGuidance}`;
     }
 
     return {
