@@ -1625,7 +1625,54 @@ export class FemaleClinicalLogicEngine {
         }
       }
 
-      // Pattern 5: High SHBG → Low Free Hormone Availability
+      // Pattern 5: Perimenopause/Menopause Transition
+      // FSH ≥ 25 mIU/mL indicates ovarian insufficiency / transition
+      // With or without symptoms - elevated FSH alone is diagnostic
+      if (labs.fsh !== undefined && labs.fsh >= 25) {
+        const isPostmenopausal = labs.menstrualPhase === 'postmenopausal';
+        const hasTransitionSymptoms = 
+          labs.hotFlashes === true || 
+          labs.nightSweats === true || 
+          labs.sleepDisruption === true ||
+          labs.vaginalDryness === true;
+        
+        const symptomsPresent: string[] = [];
+        if (labs.hotFlashes) symptomsPresent.push('hot flashes');
+        if (labs.nightSweats) symptomsPresent.push('night sweats');
+        if (labs.sleepDisruption) symptomsPresent.push('sleep disruption');
+        if (labs.vaginalDryness) symptomsPresent.push('vaginal dryness');
+        
+        // Determine stage based on FSH level and estradiol
+        let stage = 'perimenopause';
+        let stageDescription = '';
+        
+        if (labs.fsh >= 40 || isPostmenopausal) {
+          stage = 'menopause';
+          stageDescription = labs.estradiol !== undefined && labs.estradiol < 30 
+            ? `FSH of ${labs.fsh} mIU/mL with low estradiol (${labs.estradiol} pg/mL) confirms menopausal status.`
+            : `FSH of ${labs.fsh} mIU/mL is consistent with menopause.`;
+        } else {
+          stageDescription = `FSH of ${labs.fsh} mIU/mL indicates perimenopause (menopausal transition).`;
+        }
+        
+        const symptomText = symptomsPresent.length > 0 
+          ? ` Symptoms present: ${symptomsPresent.join(', ')}.`
+          : ' No specific symptoms reported at this time.';
+        
+        interpretations.push({
+          category: `Hormone Pattern: ${stage === 'menopause' ? 'Menopause' : 'Perimenopause Transition'}`,
+          value: labs.fsh,
+          unit: 'mIU/mL',
+          status: 'abnormal',
+          referenceRange: 'FSH <25 mIU/mL premenopausal; ≥25 suggests transition; ≥40 menopausal',
+          interpretation: `${stageDescription}${symptomText} Elevated FSH reflects decreased ovarian function and reduced estrogen production. This is a normal part of reproductive aging but may benefit from hormone optimization if symptomatic.`,
+          recommendation: stage === 'menopause' 
+            ? `PROVIDER RECOMMENDATION: If symptomatic, consider hormone therapy (HT): transdermal estradiol + micronized progesterone (if uterus intact). Discuss benefits/risks of HT including cardiovascular, bone, and quality of life considerations. PATIENT EDUCATION: Your lab results confirm you are in menopause. Hormone therapy can help manage symptoms like hot flashes, sleep problems, and vaginal dryness while also protecting bone health.`
+            : `PROVIDER RECOMMENDATION: If symptomatic, consider low-dose transdermal estradiol + micronized progesterone (if uterus intact). Perimenopause is characterized by fluctuating hormones. Steady hormone delivery via patch can smooth out peaks and valleys. PATIENT EDUCATION: Your lab results show you are in perimenopause - the transition phase before menopause. Hormone levels can swing widely during this time, causing symptoms. Treatment options are available to help you feel better.`,
+        });
+      }
+
+      // Pattern 6: High SHBG → Low Free Hormone Availability
       // SHBG ≥ 120 nmol/L AND symptoms (low libido, low energy, low motivation) AND/OR free T below normal
       if (labs.shbg !== undefined && labs.shbg >= 120) {
         const hasLowHormoneSymptoms = 
