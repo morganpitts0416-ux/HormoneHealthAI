@@ -688,13 +688,13 @@ export async function generateMalePatientWellnessPDF(
       ]);
     }
     if (adjustedRisk.lpaValue !== undefined) {
-      const lpaUnit = adjustedRisk.lpaValue > 75 ? 'nmol/L' : 'mg/dL';
+      const lpaUnit = adjustedRisk.lpaValue >= 200 ? 'nmol/L' : 'mg/dL';
       const lpaStatusText = adjustedRisk.lpaStatus === 'elevated' ? 'Elevated' 
         : adjustedRisk.lpaStatus === 'borderline' ? 'Borderline' : 'Normal';
       const lpaExplanation = adjustedRisk.lpaStatus === 'elevated' 
-        ? 'Lp(a) is genetically determined. Elevated levels increase heart risk independently. Aggressive lifestyle measures are important.'
+        ? 'Lp(a) is genetic. Elevated levels (>=50 mg/dL) increase heart risk. Aggressive lifestyle measures important.'
         : adjustedRisk.lpaStatus === 'borderline'
-        ? 'Your Lp(a) is borderline. This is genetic - monitoring and proactive cardiovascular protection are recommended.'
+        ? 'Lp(a) is borderline. This genetic marker warrants monitoring and proactive cardiovascular protection.'
         : 'Your Lp(a) level is within the healthy range.';
       markerData.push([
         'Lp(a)',

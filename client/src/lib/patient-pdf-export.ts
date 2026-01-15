@@ -741,9 +741,9 @@ export async function generatePatientWellnessPDF(
       const lpaStatusText = adjustedRisk.lpaStatus === 'elevated' ? 'Elevated' 
         : adjustedRisk.lpaStatus === 'borderline' ? 'Borderline' : 'Normal';
       const lpaExplanation = adjustedRisk.lpaStatus === 'elevated' 
-        ? 'Lp(a) is genetically determined. Elevated levels (≥50 mg/dL) increase heart risk independently.'
+        ? 'Lp(a) is genetic. Elevated levels (>=50 mg/dL) increase heart risk independently.'
         : adjustedRisk.lpaStatus === 'borderline'
-        ? 'Your Lp(a) is in the borderline range (40-49 mg/dL). This is a genetic marker to monitor.'
+        ? 'Lp(a) is borderline (40-49 mg/dL). This genetic marker warrants monitoring.'
         : 'Your Lp(a) level is within the healthy range (<40 mg/dL).';
       markerData.push([
         'Lp(a)',
