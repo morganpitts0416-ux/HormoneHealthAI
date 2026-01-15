@@ -277,11 +277,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       const labs = parseResult.data;
 
+      // Debug: Log hormone values received
+      console.log('[API] Female hormone values received:', {
+        estradiol: labs.estradiol,
+        progesterone: labs.progesterone,
+        fsh: labs.fsh,
+        lh: labs.lh,
+        testosterone: labs.testosterone,
+        menstrualPhase: labs.menstrualPhase,
+        onHRT: labs.onHRT
+      });
+
       // Step 1: Detect red flags using female-specific logic
       const redFlags = FemaleClinicalLogicEngine.detectRedFlags(labs);
 
       // Step 2: Generate detailed interpretations with female reference ranges
       const interpretations = FemaleClinicalLogicEngine.interpretLabValues(labs);
+      
+      // Debug: Log categories of all interpretations generated
+      console.log('[API] Female interpretation categories:', interpretations.map(i => i.category));
 
       // Step 3: Calculate PREVENT cardiovascular risk if demographics and lipid data are available
       // PREVENT uses sex-specific, race-free equations with eGFR and BMI
