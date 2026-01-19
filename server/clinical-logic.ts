@@ -879,24 +879,24 @@ export class ClinicalLogicEngine {
     }
 
     // hs-CRP (High-Sensitivity C-Reactive Protein)
-    // Using mg/dL as per clinic protocol
-    // Lab reference: <0.50 mg/dL = normal, 0.30-0.50 = borderline, ≥0.50 mg/dL = high, ≥1.0 = critical
+    // Using mg/L - standard lab reporting unit
+    // Clinical thresholds: <1.0 mg/L = low risk, 1.0-3.0 mg/L = moderate, >3.0 mg/L = high, >10.0 mg/L = acute
     if (labs.hsCRP !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
 
-      if (labs.hsCRP >= 1.0) {
+      if (labs.hsCRP >= 10.0) {
         status = 'critical';
         interpretation = 'Markedly elevated hs-CRP - acute inflammation.';
         recommendation = 'Evaluate for infection or inflammatory condition. Rule out acute illness before interpreting as cardiovascular risk marker.';
-      } else if (labs.hsCRP >= 0.50) {
+      } else if (labs.hsCRP > 3.0) {
         status = 'abnormal';
         interpretation = 'Elevated hs-CRP - increased cardiovascular risk.';
         recommendation = 'Address cardiovascular risk factors. This is a risk-enhancing factor for statin therapy decisions. Consider repeat testing.';
-      } else if (labs.hsCRP >= 0.30) {
+      } else if (labs.hsCRP >= 1.0) {
         status = 'borderline';
-        interpretation = 'Borderline hs-CRP - monitor cardiovascular health.';
+        interpretation = 'Borderline hs-CRP - moderate cardiovascular risk.';
         recommendation = 'Lifestyle modifications: anti-inflammatory diet, exercise, weight management. Continue monitoring.';
       } else {
         status = 'normal';
@@ -907,9 +907,9 @@ export class ClinicalLogicEngine {
       interpretations.push({
         category: 'hs-CRP',
         value: labs.hsCRP,
-        unit: 'mg/dL',
+        unit: 'mg/L',
         status,
-        referenceRange: '<0.50 mg/dL normal, ≥0.50 mg/dL high',
+        referenceRange: '<1.0 mg/L low risk, 1.0-3.0 mg/L moderate, >3.0 mg/L high',
         interpretation,
         recommendation,
       });
