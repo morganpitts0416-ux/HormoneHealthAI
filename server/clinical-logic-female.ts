@@ -331,8 +331,8 @@ export class FemaleClinicalLogicEngine {
         reactivePatterns.push('borderline ferritin');
       }
 
-      // Inflammation: hs-CRP elevated (≥0.50 mg/dL per clinic protocol)
-      if (labs.hsCRP !== undefined && labs.hsCRP >= 0.50) {
+      // Inflammation: hs-CRP elevated (>3.0 mg/L = high cardiovascular risk)
+      if (labs.hsCRP !== undefined && labs.hsCRP > 3.0) {
         reactivePatterns.push('elevated hs-CRP (inflammation/infection)');
       }
 
@@ -1479,24 +1479,24 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // hs-CRP (using mg/dL as per clinic protocol)
-    // Lab reference: <0.50 mg/dL = normal, ≥0.50 mg/dL = high
+    // hs-CRP (using mg/L - standard lab reporting unit)
+    // Clinical thresholds: <1.0 mg/L = low risk, 1.0-3.0 mg/L = moderate, >3.0 mg/L = high, >10.0 mg/L = acute
     if (labs.hsCRP !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
 
-      if (labs.hsCRP >= 1.0) {
+      if (labs.hsCRP >= 10.0) {
         status = 'critical';
         interpretation = 'Markedly elevated hs-CRP - acute inflammation.';
         recommendation = 'Evaluate for infection or inflammatory condition.';
-      } else if (labs.hsCRP >= 0.50) {
+      } else if (labs.hsCRP > 3.0) {
         status = 'abnormal';
         interpretation = 'Elevated hs-CRP - increased cardiovascular risk.';
         recommendation = 'Address cardiovascular risk factors. Consider repeat testing.';
-      } else if (labs.hsCRP >= 0.30) {
+      } else if (labs.hsCRP >= 1.0) {
         status = 'borderline';
-        interpretation = 'Borderline hs-CRP - monitor cardiovascular health.';
+        interpretation = 'Borderline hs-CRP - moderate cardiovascular risk.';
         recommendation = 'Lifestyle modifications. Continue monitoring.';
       } else {
         status = 'normal';
@@ -1507,9 +1507,9 @@ export class FemaleClinicalLogicEngine {
       interpretations.push({
         category: 'hs-CRP',
         value: labs.hsCRP,
-        unit: 'mg/dL',
+        unit: 'mg/L',
         status,
-        referenceRange: '<0.50 mg/dL normal, ≥0.50 mg/dL high',
+        referenceRange: '<1.0 mg/L low risk, 1.0-3.0 mg/L moderate, >3.0 mg/L high',
         interpretation,
         recommendation,
       });
@@ -1809,8 +1809,8 @@ export class FemaleClinicalLogicEngine {
       flags.low_HDL = true;
     }
 
-    // hs-CRP ≥0.50 mg/dL = cardiovascular risk enhancer (per clinic protocol)
-    if (labs.hsCRP !== undefined && labs.hsCRP >= 0.50) {
+    // hs-CRP >3.0 mg/L = cardiovascular risk enhancer (standard clinical threshold)
+    if (labs.hsCRP !== undefined && labs.hsCRP > 3.0) {
       flags.hsCRP_high = true;
     }
 
