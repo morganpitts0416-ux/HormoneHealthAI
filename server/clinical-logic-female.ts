@@ -1354,8 +1354,8 @@ export class FemaleClinicalLogicEngine {
 
     // Lp(a) - Per clinic protocol with unit detection
     // Values ≥200 treated as nmol/L, <200 as mg/dL
-    // mg/dL thresholds: <40 normal, 40-49 borderline, ≥50 elevated
-    // nmol/L thresholds: <75 normal, 75-124 borderline, ≥125 elevated
+    // mg/dL thresholds: <29 normal, ≥29 elevated, ≥50 risk enhancer (increases CVD category)
+    // nmol/L thresholds: <75 normal, ≥75 elevated, ≥125 risk enhancer
     if (labs.lpa !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
@@ -1369,27 +1369,27 @@ export class FemaleClinicalLogicEngine {
         // nmol/L thresholds
         if (labs.lpa >= 125) {
           status = 'abnormal';
-          interpretation = 'Elevated Lp(a) - cardiovascular risk enhancing factor.';
-          recommendation = 'Genetic cardiovascular risk factor. Consider aggressive LDL lowering and lifestyle optimization.';
+          interpretation = 'Elevated Lp(a) - RISK ENHANCER. Increases CVD risk category.';
+          recommendation = 'Lp(a) ≥125 nmol/L is a risk enhancer - consider upgrading CVD risk category. Aggressive LDL lowering indicated. Discuss hereditary nature.';
         } else if (labs.lpa >= 75) {
-          status = 'borderline';
-          interpretation = 'Borderline Lp(a) - moderate cardiovascular risk.';
-          recommendation = 'Lifestyle optimization. Monitor and lower other modifiable risk factors.';
+          status = 'abnormal';
+          interpretation = 'Elevated Lp(a) - genetic cardiovascular risk factor.';
+          recommendation = 'Lp(a) is genetically determined. Consider more aggressive LDL lowering. CAC scoring may help refine risk.';
         } else {
           status = 'normal';
           interpretation = 'Lp(a) within optimal range.';
           recommendation = 'Continue current lifestyle. Routine monitoring.';
         }
       } else {
-        // mg/dL thresholds
+        // mg/dL thresholds: ≥29 elevated, ≥50 risk enhancer
         if (labs.lpa >= 50) {
           status = 'abnormal';
-          interpretation = 'Elevated Lp(a) - cardiovascular risk enhancing factor.';
-          recommendation = 'Genetic cardiovascular risk factor. Consider aggressive LDL lowering and lifestyle optimization.';
-        } else if (labs.lpa >= 40) {
-          status = 'borderline';
-          interpretation = 'Borderline Lp(a) - moderate cardiovascular risk.';
-          recommendation = 'Lifestyle optimization. Monitor and lower other modifiable risk factors.';
+          interpretation = 'Elevated Lp(a) - RISK ENHANCER. Increases CVD risk category.';
+          recommendation = 'Lp(a) ≥50 mg/dL is a risk enhancer - consider upgrading CVD risk category. Aggressive LDL lowering indicated. Discuss hereditary nature.';
+        } else if (labs.lpa >= 29) {
+          status = 'abnormal';
+          interpretation = 'Elevated Lp(a) - genetic cardiovascular risk factor.';
+          recommendation = 'Lp(a) is genetically determined. Consider more aggressive LDL lowering. CAC scoring may help refine risk.';
         } else {
           status = 'normal';
           interpretation = 'Lp(a) within optimal range.';
@@ -1398,8 +1398,8 @@ export class FemaleClinicalLogicEngine {
       }
 
       const referenceRange = isNmolL 
-        ? '<75 nmol/L normal, 75-124 borderline, ≥125 elevated'
-        : '<40 mg/dL normal, 40-49 borderline, ≥50 elevated';
+        ? '<75 nmol/L normal, ≥75 elevated, ≥125 risk enhancer'
+        : '<29 mg/dL normal, ≥29 elevated, ≥50 risk enhancer';
 
       interpretations.push({
         category: 'Lipoprotein(a)',
@@ -1777,15 +1777,15 @@ export class FemaleClinicalLogicEngine {
     };
 
     // Lipoprotein(a) - Lp(a) thresholds per clinic protocol
-    // <30 mg/dL = normal
-    // 30-50 mg/dL = intermediate risk (borderline flag)
-    // >50 mg/dL = risk enhancing factor (high_Lp_a flag)
+    // <29 mg/dL = normal
+    // ≥29 mg/dL = elevated (high_Lp_a flag)
+    // ≥50 mg/dL = risk enhancer (increases CVD risk category)
     // ≥180 mg/dL = very high / genetic-equivalent risk
     if (labs.lpa !== undefined) {
       if (labs.lpa >= 180) {
         flags.high_Lp_a = true;
         flags.very_high_Lp_a = true;
-      } else if (labs.lpa > 50) {
+      } else if (labs.lpa >= 29) {
         flags.high_Lp_a = true;
       }
     }

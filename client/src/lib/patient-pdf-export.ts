@@ -74,7 +74,7 @@ function getLabInsight(category: string, value: number | string, status: string,
       fsh: { low: 3, high: 20 },
       amh: { low: 1, high: 5 },
       "hs-crp": { low: 0, high: 1 },  // Provider goal: <1 optimal
-      "lp(a)": { low: 0, high: 40 },
+      "lp(a)": { low: 0, high: 29 },
       "apolipoprotein b": { low: 0, high: 90 },
       platelets: { low: 150, high: 400 },
       wbc: { low: 4, high: 11 },
@@ -743,19 +743,24 @@ export async function generatePatientWellnessPDF(
         : adjustedRisk.lpaStatus === 'borderline' ? 'Borderline' : 'Normal';
       
       // Unit-specific explanations per clinic protocol
+      // mg/dL: ≥29 elevated, ≥50 risk enhancer; nmol/L: ≥75 elevated, ≥125 risk enhancer
       let lpaExplanation: string;
       if (isNmolL) {
-        lpaExplanation = adjustedRisk.lpaStatus === 'elevated' 
-          ? 'Lp(a) is genetic. Elevated levels (≥125 nmol/L) increase heart risk independently.'
-          : adjustedRisk.lpaStatus === 'borderline'
-          ? 'Lp(a) is borderline (75-124 nmol/L). This genetic marker warrants monitoring.'
-          : 'Your Lp(a) level is within the healthy range (<75 nmol/L).';
+        if (adjustedRisk.lpaValue >= 125) {
+          lpaExplanation = 'Lp(a) is genetic. ≥125 nmol/L is a RISK ENHANCER that increases your CVD risk category.';
+        } else if (adjustedRisk.lpaValue >= 75) {
+          lpaExplanation = 'Lp(a) is elevated (≥75 nmol/L). This genetic marker warrants aggressive LDL lowering.';
+        } else {
+          lpaExplanation = 'Your Lp(a) level is within the healthy range (<75 nmol/L).';
+        }
       } else {
-        lpaExplanation = adjustedRisk.lpaStatus === 'elevated' 
-          ? 'Lp(a) is genetic. Elevated levels (≥50 mg/dL) increase heart risk independently.'
-          : adjustedRisk.lpaStatus === 'borderline'
-          ? 'Lp(a) is borderline (40-49 mg/dL). This genetic marker warrants monitoring.'
-          : 'Your Lp(a) level is within the healthy range (<40 mg/dL).';
+        if (adjustedRisk.lpaValue >= 50) {
+          lpaExplanation = 'Lp(a) is genetic. ≥50 mg/dL is a RISK ENHANCER that increases your CVD risk category.';
+        } else if (adjustedRisk.lpaValue >= 29) {
+          lpaExplanation = 'Lp(a) is elevated (≥29 mg/dL). This genetic marker warrants aggressive LDL lowering.';
+        } else {
+          lpaExplanation = 'Your Lp(a) level is within the healthy range (<29 mg/dL).';
+        }
       }
       
       markerData.push([
