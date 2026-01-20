@@ -1352,35 +1352,61 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
-    // Lp(a) - Using mg/dL thresholds per clinic protocol
-    // <30 mg/dL = normal
-    // 30-50 mg/dL = intermediate risk
-    // >50 mg/dL = risk enhancing factor
+    // Lp(a) - Per clinic protocol with unit detection
+    // Values ≥200 treated as nmol/L, <200 as mg/dL
+    // mg/dL thresholds: <40 normal, 40-49 borderline, ≥50 elevated
+    // nmol/L thresholds: <75 normal, 75-124 borderline, ≥125 elevated
     if (labs.lpa !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
+      
+      // Detect unit based on value magnitude
+      const isNmolL = labs.lpa >= 200;
+      const unit = isNmolL ? 'nmol/L' : 'mg/dL';
 
-      if (labs.lpa > 50) {
-        status = 'abnormal';
-        interpretation = 'Elevated Lp(a) - cardiovascular risk enhancing factor.';
-        recommendation = 'Genetic cardiovascular risk factor. Consider aggressive LDL lowering and lifestyle optimization.';
-      } else if (labs.lpa >= 30 && labs.lpa <= 50) {
-        status = 'borderline';
-        interpretation = 'Intermediate Lp(a) - moderate cardiovascular risk.';
-        recommendation = 'Lifestyle optimization. Monitor and lower other modifiable risk factors.';
+      if (isNmolL) {
+        // nmol/L thresholds
+        if (labs.lpa >= 125) {
+          status = 'abnormal';
+          interpretation = 'Elevated Lp(a) - cardiovascular risk enhancing factor.';
+          recommendation = 'Genetic cardiovascular risk factor. Consider aggressive LDL lowering and lifestyle optimization.';
+        } else if (labs.lpa >= 75) {
+          status = 'borderline';
+          interpretation = 'Borderline Lp(a) - moderate cardiovascular risk.';
+          recommendation = 'Lifestyle optimization. Monitor and lower other modifiable risk factors.';
+        } else {
+          status = 'normal';
+          interpretation = 'Lp(a) within optimal range.';
+          recommendation = 'Continue current lifestyle. Routine monitoring.';
+        }
       } else {
-        status = 'normal';
-        interpretation = 'Lp(a) within optimal range.';
-        recommendation = 'Continue current lifestyle. Routine monitoring.';
+        // mg/dL thresholds
+        if (labs.lpa >= 50) {
+          status = 'abnormal';
+          interpretation = 'Elevated Lp(a) - cardiovascular risk enhancing factor.';
+          recommendation = 'Genetic cardiovascular risk factor. Consider aggressive LDL lowering and lifestyle optimization.';
+        } else if (labs.lpa >= 40) {
+          status = 'borderline';
+          interpretation = 'Borderline Lp(a) - moderate cardiovascular risk.';
+          recommendation = 'Lifestyle optimization. Monitor and lower other modifiable risk factors.';
+        } else {
+          status = 'normal';
+          interpretation = 'Lp(a) within optimal range.';
+          recommendation = 'Continue current lifestyle. Routine monitoring.';
+        }
       }
+
+      const referenceRange = isNmolL 
+        ? '<75 nmol/L normal, 75-124 borderline, ≥125 elevated'
+        : '<40 mg/dL normal, 40-49 borderline, ≥50 elevated';
 
       interpretations.push({
         category: 'Lipoprotein(a)',
         value: labs.lpa,
-        unit: 'mg/dL',
+        unit,
         status,
-        referenceRange: '<30 mg/dL optimal',
+        referenceRange,
         interpretation,
         recommendation,
       });

@@ -74,7 +74,7 @@ function getLabInsight(category: string, value: number | string, status: string,
       fsh: { low: 3, high: 20 },
       amh: { low: 1, high: 5 },
       "hs-crp": { low: 0, high: 1 },  // Provider goal: <1 optimal
-      "lp(a)": { low: 0, high: 30 },
+      "lp(a)": { low: 0, high: 40 },
       "apolipoprotein b": { low: 0, high: 90 },
       platelets: { low: 150, high: 400 },
       wbc: { low: 4, high: 11 },
@@ -737,14 +737,27 @@ export async function generatePatientWellnessPDF(
       ]);
     }
     if (adjustedRisk.lpaValue !== undefined) {
-      const lpaUnit = adjustedRisk.lpaValue >= 200 ? 'nmol/L' : 'mg/dL';
+      const isNmolL = adjustedRisk.lpaValue >= 200;
+      const lpaUnit = isNmolL ? 'nmol/L' : 'mg/dL';
       const lpaStatusText = adjustedRisk.lpaStatus === 'elevated' ? 'Elevated' 
         : adjustedRisk.lpaStatus === 'borderline' ? 'Borderline' : 'Normal';
-      const lpaExplanation = adjustedRisk.lpaStatus === 'elevated' 
-        ? 'Lp(a) is genetic. Elevated levels (>=50 mg/dL) increase heart risk independently.'
-        : adjustedRisk.lpaStatus === 'borderline'
-        ? 'Lp(a) is borderline (40-49 mg/dL). This genetic marker warrants monitoring.'
-        : 'Your Lp(a) level is within the healthy range (<40 mg/dL).';
+      
+      // Unit-specific explanations per clinic protocol
+      let lpaExplanation: string;
+      if (isNmolL) {
+        lpaExplanation = adjustedRisk.lpaStatus === 'elevated' 
+          ? 'Lp(a) is genetic. Elevated levels (≥125 nmol/L) increase heart risk independently.'
+          : adjustedRisk.lpaStatus === 'borderline'
+          ? 'Lp(a) is borderline (75-124 nmol/L). This genetic marker warrants monitoring.'
+          : 'Your Lp(a) level is within the healthy range (<75 nmol/L).';
+      } else {
+        lpaExplanation = adjustedRisk.lpaStatus === 'elevated' 
+          ? 'Lp(a) is genetic. Elevated levels (≥50 mg/dL) increase heart risk independently.'
+          : adjustedRisk.lpaStatus === 'borderline'
+          ? 'Lp(a) is borderline (40-49 mg/dL). This genetic marker warrants monitoring.'
+          : 'Your Lp(a) level is within the healthy range (<40 mg/dL).';
+      }
+      
       markerData.push([
         'Lp(a)',
         `${adjustedRisk.lpaValue} ${lpaUnit}`,
