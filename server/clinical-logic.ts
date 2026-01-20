@@ -823,7 +823,7 @@ export class ClinicalLogicEngine {
     // Lp(a) (Lipoprotein a) - Genetic Cardiovascular Risk Marker
     // mg/dL thresholds: <40 normal, 40-49 borderline, ≥50 elevated
     // nmol/L thresholds: <75 normal, 75-124 borderline, ≥125 elevated
-    // Unit detection: Values >75 are likely nmol/L (mg/dL rarely exceeds 75)
+    // Unit detection: Values ≥200 treated as nmol/L
     if (labs.lpa !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
@@ -831,9 +831,8 @@ export class ClinicalLogicEngine {
       let unit = 'mg/dL';
 
       // Determine unit based on value magnitude
-      // mg/dL scale typically 0-100, nmol/L scale typically 0-300+
-      // Values >75 are very rare in mg/dL, so treat as nmol/L
-      const isNmolL = labs.lpa > 75;
+      // Values ≥200 are treated as nmol/L per clinic protocol
+      const isNmolL = labs.lpa >= 200;
       
       if (isNmolL) {
         unit = 'nmol/L';
@@ -867,12 +866,16 @@ export class ClinicalLogicEngine {
         }
       }
 
+      const referenceRange = isNmolL 
+        ? '<75 nmol/L normal, 75-124 borderline, ≥125 elevated'
+        : '<40 mg/dL normal, 40-49 borderline, ≥50 elevated';
+
       interpretations.push({
         category: 'Lp(a) (Lipoprotein a)',
         value: labs.lpa,
         unit,
         status,
-        referenceRange: '<40 mg/dL normal, 40-49 borderline, ≥50 elevated',
+        referenceRange,
         interpretation,
         recommendation,
       });

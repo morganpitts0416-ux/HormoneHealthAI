@@ -70,7 +70,7 @@ function getMaleLabInsight(category: string, value: number | string, status: str
       estradiol: { low: 20, high: 50 },
       psa: { low: 0, high: 4 },
       "hs-crp": { low: 0, high: 1 },
-      "lp(a)": { low: 0, high: 30 },
+      "lp(a)": { low: 0, high: 40 },
       "apolipoprotein b": { low: 0, high: 90 },
       platelets: { low: 150, high: 400 },
       wbc: { low: 4, high: 11 },
