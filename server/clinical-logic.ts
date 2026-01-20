@@ -838,27 +838,27 @@ export class ClinicalLogicEngine {
         unit = 'nmol/L';
         if (labs.lpa >= 125) {
           status = 'abnormal';
-          interpretation = `Elevated Lp(a) (${labs.lpa} nmol/L) - genetic cardiovascular risk factor. Associated with increased ASCVD and aortic stenosis risk.`;
-          recommendation = 'Lp(a) is genetically determined. More aggressive LDL-C lowering indicated. Consider CAC scoring for risk refinement. Discuss with patient about hereditary nature.';
+          interpretation = `Elevated Lp(a) (${labs.lpa} nmol/L) - RISK ENHANCER. Increases CVD risk category. Associated with increased ASCVD and aortic stenosis risk.`;
+          recommendation = 'Lp(a) ≥125 nmol/L is a risk enhancer - consider upgrading CVD risk category. Aggressive LDL lowering indicated. Discuss hereditary nature with patient.';
         } else if (labs.lpa >= 75) {
-          status = 'borderline';
-          interpretation = `Borderline Lp(a) (${labs.lpa} nmol/L) - moderately elevated genetic risk.`;
-          recommendation = 'Consider additional cardiovascular risk assessment. More aggressive lifestyle modifications. Optimize other modifiable risk factors.';
+          status = 'abnormal';
+          interpretation = `Elevated Lp(a) (${labs.lpa} nmol/L) - genetic cardiovascular risk factor.`;
+          recommendation = 'Lp(a) is genetically determined. Consider more aggressive LDL lowering. CAC scoring may help refine risk.';
         } else {
           status = 'normal';
           interpretation = `Lp(a) within normal range (${labs.lpa} nmol/L).`;
           recommendation = 'Continue routine cardiovascular risk monitoring.';
         }
       } else {
-        // mg/dL scale
+        // mg/dL scale: ≥29 elevated, ≥50 risk enhancer
         if (labs.lpa >= 50) {
           status = 'abnormal';
-          interpretation = `Elevated Lp(a) (${labs.lpa} mg/dL) - genetic cardiovascular risk factor. Associated with increased ASCVD and aortic stenosis risk.`;
-          recommendation = 'Lp(a) is genetically determined. More aggressive LDL-C lowering indicated. Consider CAC scoring for risk refinement. Discuss with patient about hereditary nature.';
-        } else if (labs.lpa >= 40) {
-          status = 'borderline';
-          interpretation = `Borderline Lp(a) (${labs.lpa} mg/dL) - moderately elevated genetic risk.`;
-          recommendation = 'Consider additional cardiovascular risk assessment. More aggressive lifestyle modifications. Optimize other modifiable risk factors.';
+          interpretation = `Elevated Lp(a) (${labs.lpa} mg/dL) - RISK ENHANCER. Increases CVD risk category. Associated with increased ASCVD and aortic stenosis risk.`;
+          recommendation = 'Lp(a) ≥50 mg/dL is a risk enhancer - consider upgrading CVD risk category. Aggressive LDL lowering indicated. Discuss hereditary nature with patient.';
+        } else if (labs.lpa >= 29) {
+          status = 'abnormal';
+          interpretation = `Elevated Lp(a) (${labs.lpa} mg/dL) - genetic cardiovascular risk factor.`;
+          recommendation = 'Lp(a) is genetically determined. Consider more aggressive LDL lowering. CAC scoring may help refine risk.';
         } else {
           status = 'normal';
           interpretation = `Lp(a) within normal range (${labs.lpa} mg/dL).`;
@@ -867,8 +867,8 @@ export class ClinicalLogicEngine {
       }
 
       const referenceRange = isNmolL 
-        ? '<75 nmol/L normal, 75-124 borderline, ≥125 elevated'
-        : '<40 mg/dL normal, 40-49 borderline, ≥50 elevated';
+        ? '<75 nmol/L normal, ≥75 elevated, ≥125 risk enhancer'
+        : '<29 mg/dL normal, ≥29 elevated, ≥50 risk enhancer';
 
       interpretations.push({
         category: 'Lp(a) (Lipoprotein a)',
