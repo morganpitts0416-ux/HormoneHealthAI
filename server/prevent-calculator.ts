@@ -516,6 +516,7 @@ export class PREVENTCalculator {
     
     let lpaStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
     let lpaIsNmolL = false;
+    let lpaIsRiskEnhancer = false;
     if (lpa !== undefined) {
       // Detect unit based on value magnitude
       // Lp(a) in mg/dL typically ranges 0-150, nmol/L typically 0-300+
@@ -523,23 +524,23 @@ export class PREVENTCalculator {
       lpaIsNmolL = lpa >= 200;
       
       if (lpaIsNmolL) {
-        // nmol/L scale: <75 normal, 75-124 borderline, ≥125 elevated (RISK ENHANCER)
-        if (lpa >= 125) lpaStatus = 'elevated';
-        else if (lpa >= 75) lpaStatus = 'borderline';
+        // nmol/L scale: <75 normal, ≥75 elevated, ≥125 RISK ENHANCER
+        if (lpa >= 75) lpaStatus = 'elevated';
+        if (lpa >= 125) lpaIsRiskEnhancer = true;
       } else {
-        // mg/dL scale: <40 normal, 40-49 borderline, ≥50 elevated (RISK ENHANCER)
-        if (lpa >= 50) lpaStatus = 'elevated';
-        else if (lpa >= 40) lpaStatus = 'borderline';
+        // mg/dL scale: <29 normal, ≥29 elevated, ≥50 RISK ENHANCER
+        if (lpa >= 29) lpaStatus = 'elevated';
+        if (lpa >= 50) lpaIsRiskEnhancer = true;
       }
     }
     
     const lpaElevated = lpaStatus === 'elevated';
     const apoBElevated = apoBStatus === 'elevated';
-    const lpaBorderline = lpaStatus === 'borderline';
+    const lpaBorderline = false; // Lp(a) protocol: no borderline, only normal/elevated
     const apoBBorderline = apoBStatus === 'borderline';
     
-    // Risk enhancers are ELEVATED markers only (not borderline)
-    const hasRiskEnhancer = lpaElevated || apoBElevated;
+    // Risk enhancers: Lp(a) ≥50 mg/dL (or ≥125 nmol/L) OR ApoB ≥130 mg/dL
+    const hasRiskEnhancer = lpaIsRiskEnhancer || apoBElevated;
     
     // Get base risk category
     let riskCategory: 'low' | 'borderline' | 'intermediate' | 'high';
