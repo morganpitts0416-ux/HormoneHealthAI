@@ -1659,6 +1659,23 @@ export class FemaleClinicalLogicEngine {
         }
       }
 
+      // Pattern 2b: Relative Progesterone Deficiency
+      // Estradiol > 100 pg/mL AND Progesterone < 8 ng/mL
+      // High estrogen with inadequate progesterone opposition
+      if (labs.estradiol !== undefined && labs.progesterone !== undefined) {
+        if (labs.estradiol > 100 && labs.progesterone < 8) {
+          interpretations.push({
+            category: 'Perimenopause Assessment: Relative Progesterone Deficiency',
+            value: labs.progesterone,
+            unit: 'ng/mL',
+            status: 'abnormal',
+            referenceRange: 'E2 >100 should have P4 ≥8 for adequate opposition',
+            interpretation: `Estradiol of ${labs.estradiol} pg/mL with progesterone of only ${labs.progesterone} ng/mL indicates relative progesterone deficiency. The estrogen is not being adequately opposed by progesterone, which can lead to estrogen dominance symptoms.`,
+            recommendation: `PROVIDER RECOMMENDATION: Consider progesterone supplementation to balance the E2:P4 ratio. Micronized progesterone 100-200 mg nightly can provide adequate opposition. If patient has symptoms (insomnia, anxiety, heavy bleeding, breast tenderness), progesterone should help. PATIENT EDUCATION: Your estrogen level is good, but your progesterone is not keeping up. This imbalance can cause sleep problems, mood changes, and heavy periods. Progesterone supplementation can help restore balance.`,
+          });
+        }
+      }
+
       // Pattern 3: Hypoestrogen Symptom Pattern
       // E2 < 30 pg/mL (postmenopausal range) AND ≥1 symptom: hot flashes, night sweats, vaginal dryness, frequent UTIs, joint aches, sleep disruption
       if (labs.estradiol !== undefined && labs.estradiol < 30) {
