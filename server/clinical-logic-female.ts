@@ -1551,6 +1551,18 @@ export class FemaleClinicalLogicEngine {
     const patientAge = labs.demographics?.age;
     const isAge35Plus = patientAge !== undefined && patientAge >= 35;
     
+    // Debug logging for hormone pattern evaluation
+    console.log('[Clinical Logic] Hormone Pattern Evaluation Debug:', {
+      patientAge,
+      isAge35Plus,
+      fsh: labs.fsh,
+      estradiol: labs.estradiol,
+      progesterone: labs.progesterone,
+      menstrualPhase: labs.menstrualPhase,
+      hasHotFlashes: labs.hotFlashes,
+      hasNightSweats: labs.nightSweats,
+    });
+    
     if (isAge35Plus) {
       // Pattern 1: Estrogen Dominance (Estrogen Spike + Progesterone Mismatch)
       // E2 ≥ 250 pg/mL AND P4 < 3 ng/mL
@@ -1654,7 +1666,9 @@ export class FemaleClinicalLogicEngine {
       // Pattern 5: Perimenopause/Menopause Transition
       // FSH ≥ 25 mIU/mL indicates ovarian insufficiency / transition
       // With or without symptoms - elevated FSH alone is diagnostic
+      console.log('[Clinical Logic] Pattern 5 Check - FSH:', labs.fsh, 'Is >=25?', labs.fsh !== undefined && labs.fsh >= 25);
       if (labs.fsh !== undefined && labs.fsh >= 25) {
+        console.log('[Clinical Logic] Pattern 5 MATCHED - Perimenopause/Menopause detected with FSH:', labs.fsh);
         const isPostmenopausal = labs.menstrualPhase === 'postmenopausal';
         const hasTransitionSymptoms = 
           labs.hotFlashes === true || 
