@@ -1581,29 +1581,80 @@ export class FemaleClinicalLogicEngine {
         }
       }
 
-      // Pattern 2: Low Progesterone - Anovulatory Pattern
-      // P4 < 1.0 ng/mL with symptoms of sleep fragmentation/anxiety/PMS
-      if (labs.progesterone !== undefined && labs.progesterone < 1.0) {
+      // Pattern 2: Luteal Progesterone Assessment (Perimenopause Indicator for Cycling Women 35+)
+      // Optimal luteal progesterone thresholds:
+      // ≥10 ng/mL → robust ovulation
+      // 8-10 ng/mL → borderline luteal adequacy
+      // 5-8 ng/mL → functionally low (perimenopause indicator)
+      // <5 ng/mL → clearly anovulatory / luteal failure
+      if (labs.progesterone !== undefined) {
         const currentPhase = labs.menstrualPhase || 'unknown';
-        if (currentPhase === 'luteal' || currentPhase === 'postmenopausal') {
+        const isCyclingPhase = currentPhase === 'luteal' || currentPhase === 'ovulatory' || currentPhase === 'follicular';
+        
+        // For cycling women in luteal phase - full perimenopause assessment
+        if (currentPhase === 'luteal') {
+          if (labs.progesterone >= 10) {
+            interpretations.push({
+              category: 'Perimenopause Assessment: Luteal Progesterone',
+              value: labs.progesterone,
+              unit: 'ng/mL',
+              status: 'normal',
+              referenceRange: '≥10 ng/mL optimal, 8-10 borderline, <8 low, <5 anovulatory',
+              interpretation: `Luteal progesterone of ${labs.progesterone} ng/mL indicates robust ovulation. This is an optimal level suggesting good ovarian function.`,
+              recommendation: `PROVIDER RECOMMENDATION: Ovulatory function appears intact. Continue monitoring as part of routine perimenopause surveillance. PATIENT EDUCATION: Your progesterone level shows healthy ovulation this cycle.`,
+            });
+          } else if (labs.progesterone >= 8) {
+            interpretations.push({
+              category: 'Perimenopause Assessment: Luteal Progesterone',
+              value: labs.progesterone,
+              unit: 'ng/mL',
+              status: 'borderline',
+              referenceRange: '≥10 ng/mL optimal, 8-10 borderline, <8 low, <5 anovulatory',
+              interpretation: `Luteal progesterone of ${labs.progesterone} ng/mL indicates borderline luteal adequacy. Ovulation occurred but corpus luteum function may be suboptimal.`,
+              recommendation: `PROVIDER RECOMMENDATION: Monitor for symptoms of luteal phase deficiency (short cycles, premenstrual spotting, difficulty maintaining pregnancy). Consider repeat testing next cycle. If symptomatic, progesterone supplementation may help. PATIENT EDUCATION: Your progesterone is in a borderline range. This can happen as ovarian function begins to shift in perimenopause.`,
+            });
+          } else if (labs.progesterone >= 5) {
+            interpretations.push({
+              category: 'Perimenopause Assessment: Luteal Progesterone',
+              value: labs.progesterone,
+              unit: 'ng/mL',
+              status: 'abnormal',
+              referenceRange: '≥10 ng/mL optimal, 8-10 borderline, <8 low, <5 anovulatory',
+              interpretation: `Luteal progesterone of ${labs.progesterone} ng/mL is functionally low - a hallmark of perimenopause. This level suggests ovulation may have occurred but with inadequate luteal support.`,
+              recommendation: `PROVIDER RECOMMENDATION: This is a perimenopause indicator. If patient has symptoms (sleep disruption, anxiety, PMS, irregular cycles), consider micronized progesterone 100-200 mg nightly in luteal phase or continuously. PATIENT EDUCATION: Your progesterone level suggests your ovaries are producing less than optimal amounts. This is common in perimenopause and can cause sleep problems, mood changes, and cycle irregularities. Progesterone supplementation can help.`,
+            });
+          } else if (labs.progesterone < 5) {
+            interpretations.push({
+              category: 'Perimenopause Assessment: Luteal Progesterone',
+              value: labs.progesterone,
+              unit: 'ng/mL',
+              status: 'abnormal',
+              referenceRange: '≥10 ng/mL optimal, 8-10 borderline, <8 low, <5 anovulatory',
+              interpretation: `Luteal progesterone of ${labs.progesterone} ng/mL indicates anovulation or luteal failure. This cycle was likely anovulatory - a common perimenopause finding.`,
+              recommendation: `PROVIDER RECOMMENDATION: Anovulatory cycle confirmed. If recurrent, this signals advancing perimenopause. Consider progesterone for symptom management: micronized progesterone 100 mg nightly continuously, or cyclically if patient prefers withdrawal bleeds. Discuss HRT options if symptomatic. PATIENT EDUCATION: This level indicates you likely did not ovulate this cycle, which is common in perimenopause. This can cause irregular periods, heavy bleeding, and other symptoms. Treatment is available to help regulate your cycles and relieve symptoms.`,
+            });
+          }
+        } else if (currentPhase === 'unknown' && labs.progesterone < 5) {
+          // Low progesterone with unknown phase - flag for attention
           interpretations.push({
-            category: 'Hormone Pattern: Low Progesterone',
-            value: labs.progesterone,
-            unit: 'ng/mL',
-            status: 'abnormal',
-            referenceRange: '>1 ng/mL expected outside follicular phase',
-            interpretation: `Very low progesterone (${labs.progesterone} ng/mL) detected in ${currentPhase} phase. Progesterone effect likely minimal - may indicate anovulatory cycle. This pattern is associated with sleep fragmentation, anxiety, and PMS symptoms.`,
-            recommendation: `PROVIDER RECOMMENDATION: If symptoms match (sleep disruption, anxiety, PMS) and no contraindications, consider progesterone-first trial: Micronized progesterone 100 mg nightly at bedtime. PATIENT EDUCATION: Progesterone has calming, sleep-promoting effects. Low levels can contribute to difficulty staying asleep, anxiety, and premenstrual symptoms. Supplementation may help restore restful sleep and reduce anxiety.`,
-          });
-        } else if (currentPhase === 'unknown') {
-          interpretations.push({
-            category: 'Hormone Pattern: Low Progesterone (Phase Unknown)',
+            category: 'Perimenopause Assessment: Low Progesterone (Phase Unknown)',
             value: labs.progesterone,
             unit: 'ng/mL',
             status: 'borderline',
-            referenceRange: 'Varies by cycle phase',
-            interpretation: `Progesterone is very low (${labs.progesterone} ng/mL). Without cycle phase documentation, this may reflect follicular timing (expected) or anovulatory cycle. If symptoms of sleep fragmentation, anxiety, or PMS are present, this finding is clinically relevant.`,
-            recommendation: `PROVIDER RECOMMENDATION: Document cycle phase for accurate interpretation. If patient reports sleep disruption, anxiety, or PMS symptoms, consider trial of micronized progesterone 100 mg nightly. PATIENT EDUCATION: Progesterone levels naturally vary throughout your cycle. If you're experiencing sleep problems or anxiety, discuss progesterone supplementation with your provider.`,
+            referenceRange: 'Varies by cycle phase; <5 ng/mL suggests anovulation if luteal',
+            interpretation: `Progesterone is ${labs.progesterone} ng/mL. Without cycle phase documentation, interpretation is limited. If drawn in luteal phase, this would indicate anovulation - a perimenopause marker.`,
+            recommendation: `PROVIDER RECOMMENDATION: Document cycle phase for accurate interpretation. If patient is mid-cycle or luteal, this suggests anovulation. Consider symptoms: sleep disruption, anxiety, irregular cycles. PATIENT EDUCATION: We need to know where you are in your menstrual cycle to fully interpret this result. Please note when your last period started.`,
+          });
+        } else if (currentPhase === 'postmenopausal' && labs.progesterone > 1) {
+          // Postmenopausal with elevated progesterone - unusual
+          interpretations.push({
+            category: 'Hormone Pattern: Elevated Postmenopausal Progesterone',
+            value: labs.progesterone,
+            unit: 'ng/mL',
+            status: 'borderline',
+            referenceRange: '<1 ng/mL expected postmenopausal',
+            interpretation: `Progesterone of ${labs.progesterone} ng/mL is unexpectedly elevated for postmenopausal status. This may indicate exogenous progesterone use, adrenal source, or lab timing issue.`,
+            recommendation: `PROVIDER RECOMMENDATION: Confirm patient is not on progesterone therapy. If no exogenous source, consider adrenal evaluation. PATIENT EDUCATION: Your progesterone level is higher than expected after menopause. We should confirm you're not taking any progesterone supplements.`,
           });
         }
       }
