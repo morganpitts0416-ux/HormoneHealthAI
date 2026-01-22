@@ -1676,6 +1676,100 @@ export class FemaleClinicalLogicEngine {
         }
       }
 
+      // Pattern 2c: Luteal Progesterone Deficiency (Age-based)
+      // Age ≥35 AND Progesterone <5 AND Estradiol ≥60
+      const patientAgeForPeri = labs.demographics?.age;
+      if (patientAgeForPeri !== undefined && patientAgeForPeri >= 35 && 
+          labs.progesterone !== undefined && labs.progesterone < 5 &&
+          labs.estradiol !== undefined && labs.estradiol >= 60) {
+        interpretations.push({
+          category: 'Perimenopause Assessment: Luteal Progesterone Deficiency',
+          value: labs.progesterone,
+          unit: 'ng/mL',
+          status: 'abnormal',
+          referenceRange: 'P4 ≥5 ng/mL expected with E2 ≥60 pg/mL',
+          interpretation: `Progesterone of ${labs.progesterone} ng/mL with estradiol of ${labs.estradiol} pg/mL in a woman ${patientAgeForPeri} years old indicates luteal progesterone deficiency. Estrogen production is adequate but progesterone is not keeping pace - a hallmark of perimenopause.`,
+          recommendation: `PROVIDER RECOMMENDATION: Micronized progesterone 100-200 mg nightly. Dosing can be cyclic (days 14-28) or continuous depending on cycle regularity. Progesterone provides GABAergic support for sleep and anxiety relief. PATIENT EDUCATION: Your body is making enough estrogen, but progesterone has dropped. This is very common in perimenopause and causes sleep disruption, anxiety, and mood changes. Progesterone supplementation supports your nervous system and helps restore calm, restful sleep.`,
+        });
+      }
+
+      // Pattern 2d: Estrogen Dominance Pattern
+      // Estradiol >150 AND Progesterone <5
+      if (labs.estradiol !== undefined && labs.estradiol > 150 &&
+          labs.progesterone !== undefined && labs.progesterone < 5) {
+        interpretations.push({
+          category: 'Perimenopause Assessment: Estrogen Dominance Pattern',
+          value: labs.estradiol,
+          unit: 'pg/mL',
+          status: 'abnormal',
+          referenceRange: 'E2 >150 with P4 <5 indicates unopposed estrogen',
+          interpretation: `Estradiol of ${labs.estradiol} pg/mL with progesterone of only ${labs.progesterone} ng/mL represents estrogen dominance. This is not excess estrogen production - it reflects ovulatory dysfunction where estrogen continues but ovulation (and thus progesterone) fails.`,
+          recommendation: `PROVIDER RECOMMENDATION: Add progesterone first - do not attempt to suppress estrogen. Micronized progesterone 100-200 mg nightly provides opposition and symptom relief. Avoid language about "too much estrogen" - the issue is inadequate progesterone from anovulatory cycles. PATIENT EDUCATION: Your estrogen is in the higher range, but the real issue is that progesterone hasn't kept up. This happens when ovulation becomes irregular in perimenopause. Adding progesterone will help balance things out and relieve symptoms like heavy periods, breast tenderness, and mood swings.`,
+        });
+      }
+
+      // Pattern 2e: Estrogen Volatility / Spiking ("The Rollercoaster")
+      // Age ≥35 AND Estradiol >200 AND Progesterone <5
+      if (patientAgeForPeri !== undefined && patientAgeForPeri >= 35 &&
+          labs.estradiol !== undefined && labs.estradiol > 200 &&
+          labs.progesterone !== undefined && labs.progesterone < 5) {
+        interpretations.push({
+          category: 'Perimenopause Assessment: Estrogen Volatility/Spiking',
+          value: labs.estradiol,
+          unit: 'pg/mL',
+          status: 'abnormal',
+          referenceRange: 'E2 >200 with P4 <5 indicates hormone instability',
+          interpretation: `Estradiol of ${labs.estradiol} pg/mL with progesterone of ${labs.progesterone} ng/mL in a ${patientAgeForPeri}-year-old indicates estrogen volatility - the "hormone rollercoaster" of perimenopause. These spikes can cause paradoxical symptoms like anxiety surges, panic episodes, night sweats, palpitations, and sudden mood swings.`,
+          recommendation: `PROVIDER RECOMMENDATION: Progesterone stabilization is first-line: micronized progesterone 100-200 mg nightly. If symptoms are paradoxical (anxiety surges, panic, palpitations despite high E2), consider adding low-dose transdermal estradiol (0.025 mg) to smooth out the spikes. PATIENT EDUCATION: Your estrogen is spiking high, which can feel like a rollercoaster - anxiety, heart racing, sleep disruption, mood swings. This is your ovaries' erratic signaling in perimenopause. Progesterone helps stabilize the swings. Sometimes low-dose estrogen also helps by "quieting" the erratic surges.`,
+        });
+      }
+
+      // Pattern 2f: Early Perimenopause (Ovarian Unpredictability)
+      // Age ≥35 AND FSH 8-15 AND Progesterone <5
+      if (patientAgeForPeri !== undefined && patientAgeForPeri >= 35 &&
+          labs.fsh !== undefined && labs.fsh >= 8 && labs.fsh <= 15 &&
+          labs.progesterone !== undefined && labs.progesterone < 5) {
+        interpretations.push({
+          category: 'Perimenopause Assessment: Early Perimenopause',
+          value: labs.fsh,
+          unit: 'mIU/mL',
+          status: 'borderline',
+          referenceRange: 'FSH 8-15 with P4 <5 indicates early transition',
+          interpretation: `FSH of ${labs.fsh} mIU/mL with progesterone of ${labs.progesterone} ng/mL in a ${patientAgeForPeri}-year-old indicates early perimenopause. The brain is starting to signal harder (rising FSH) because ovarian response is becoming unpredictable. This is the beginning of the transition.`,
+          recommendation: `PROVIDER RECOMMENDATION: Progesterone is foundational at this stage: micronized progesterone 100 mg nightly for sleep and nervous system support. Begin the hormone continuity discussion - frame HRT as future-forward planning, not crisis intervention. Nervous system calming messaging matters. PATIENT EDUCATION: Your body is entering the perimenopause transition. Your brain is working a little harder to communicate with your ovaries, and ovulation is becoming less consistent. This can cause sleep changes, anxiety, and cycle irregularities. Progesterone support now can smooth this transition and protect your quality of life.`,
+        });
+      }
+
+      // Pattern 2g: Hypoestrogenic Perimenopause (Crash Phase)
+      // Estradiol <50 AND FSH >10
+      if (labs.estradiol !== undefined && labs.estradiol < 50 &&
+          labs.fsh !== undefined && labs.fsh > 10) {
+        interpretations.push({
+          category: 'Perimenopause Assessment: Hypoestrogenic Pattern',
+          value: labs.estradiol,
+          unit: 'pg/mL',
+          status: 'abnormal',
+          referenceRange: 'E2 <50 with FSH >10 indicates estrogen deficiency',
+          interpretation: `Estradiol of ${labs.estradiol} pg/mL with FSH of ${labs.fsh} mIU/mL indicates hypoestrogenic perimenopause - the "crash phase." Estrogen production has dropped significantly and the brain is signaling strongly (elevated FSH) trying to stimulate the ovaries.`,
+          recommendation: `PROVIDER RECOMMENDATION: Transdermal estradiol 0.025-0.05 mg is appropriate replacement therapy. Add micronized progesterone for uterine protection and sleep support. Frame this as hormone replacement, not stimulation - we are restoring what the body needs. PATIENT EDUCATION: Your estrogen has dropped to a level that can cause symptoms like hot flashes, night sweats, brain fog, and mood changes. Replacing estrogen with a patch or gel can relieve these symptoms and protect your long-term health. Progesterone is added to protect your uterus and help with sleep.`,
+        });
+      }
+
+      // Pattern 2h: High SHBG with "Normal" Estrogen (Hidden Deficiency)
+      // Estradiol 60-100 AND SHBG >80
+      if (labs.estradiol !== undefined && labs.estradiol >= 60 && labs.estradiol <= 100 &&
+          labs.shbg !== undefined && labs.shbg > 80) {
+        interpretations.push({
+          category: 'Perimenopause Assessment: Reduced Bioavailable Estrogen',
+          value: labs.shbg,
+          unit: 'nmol/L',
+          status: 'borderline',
+          referenceRange: 'SHBG >80 with E2 60-100 reduces free estrogen',
+          interpretation: `SHBG of ${labs.shbg} nmol/L with estradiol of ${labs.estradiol} pg/mL indicates reduced bioavailable estrogen. While total estradiol appears "normal," high SHBG binds it tightly, leaving less free hormone available to tissues. This is a hidden deficiency.`,
+          recommendation: `PROVIDER RECOMMENDATION: Do not dismiss symptoms as "normal labs." Consider testosterone optimization - testosterone can lower SHBG. Address metabolic contributors (thyroid, insulin sensitivity). If symptomatic, may need higher estradiol targets to overcome SHBG binding. PATIENT EDUCATION: Your estrogen level looks normal on paper, but a protein called SHBG is binding it up so your body can't use it effectively. This can cause symptoms even with "normal" labs. We may need to address the SHBG or optimize other hormones like testosterone to help you feel better.`,
+        });
+      }
+
       // Pattern 3: Hypoestrogen Symptom Pattern
       // E2 < 30 pg/mL (postmenopausal range) AND ≥1 symptom: hot flashes, night sweats, vaginal dryness, frequent UTIs, joint aches, sleep disruption
       if (labs.estradiol !== undefined && labs.estradiol < 30) {
