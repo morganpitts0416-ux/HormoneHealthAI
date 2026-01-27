@@ -747,19 +747,19 @@ export async function generatePatientWellnessPDF(
       let lpaExplanation: string;
       if (isNmolL) {
         if (adjustedRisk.lpaValue >= 125) {
-          lpaExplanation = 'Genetic risk factor. ≥125 nmol/L increases CVD risk category.';
+          lpaExplanation = 'Genetic marker. Elevated level increases CVD risk.';
         } else if (adjustedRisk.lpaValue >= 75) {
           lpaExplanation = 'Elevated genetic marker. Focus on LDL reduction.';
         } else {
-          lpaExplanation = 'Within healthy range (<75 nmol/L).';
+          lpaExplanation = 'Within healthy range.';
         }
       } else {
         if (adjustedRisk.lpaValue >= 50) {
-          lpaExplanation = 'Genetic risk factor. ≥50 mg/dL increases CVD risk category.';
+          lpaExplanation = 'Genetic marker. Elevated level increases CVD risk.';
         } else if (adjustedRisk.lpaValue >= 29) {
           lpaExplanation = 'Elevated genetic marker. Focus on LDL reduction.';
         } else {
-          lpaExplanation = 'Within healthy range (<29 mg/dL).';
+          lpaExplanation = 'Within healthy range.';
         }
       }
       
