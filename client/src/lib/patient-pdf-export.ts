@@ -206,6 +206,12 @@ function getLabInsight(category: string, value: number | string, status: string,
       low: "Lower AST is typically not concerning.",
       high: "Elevated AST may indicate liver or muscle stress. Worth monitoring."
     },
+    "fib-4 score (liver fibrosis)": {
+      what: "FIB-4 is a calculated score that helps assess liver health by combining your age with liver enzyme and platelet levels.",
+      normal: "Your FIB-4 score suggests a low likelihood of significant liver scarring (fibrosis). This is reassuring for your liver health.",
+      low: "A lower FIB-4 score is favorable and suggests healthy liver tissue without significant scarring.",
+      high: "Your FIB-4 score suggests the possibility of liver changes that may benefit from additional evaluation. This does not mean you have liver disease, but your provider may recommend further testing such as an imaging study to get a clearer picture. Your provider will discuss the best next steps for you."
+    },
     estradiol: {
       what: "Estradiol is your primary estrogen, vital for bone health, mood, and heart protection.",
       normal: "Your estrogen level is at the optimal HRT goal (60-100 pg/mL), supporting bone health, mood stability, and heart protection.",
