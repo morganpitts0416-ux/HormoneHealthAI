@@ -1259,6 +1259,57 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
+    // FIB-4 Score Calculation (for patients with elevated LFTs)
+    // FIB-4 = (Age × AST) / (Platelets × √ALT)
+    // Only calculate if AST or ALT is elevated AND we have all required values
+    const patientAgeForFib4 = labs.demographics?.age;
+    if (patientAgeForFib4 !== undefined && 
+        labs.ast !== undefined && 
+        labs.alt !== undefined && 
+        labs.platelets !== undefined &&
+        labs.alt > 0 && // Prevent division by zero
+        labs.platelets > 0 &&
+        (labs.ast > ULN.AST || labs.alt > ULN.ALT)) { // Only if LFTs elevated
+      
+      // Platelets should be in 10^9/L (thousands). If value > 1000, assume it's per μL and convert
+      const plateletsNormalized = labs.platelets > 1000 ? labs.platelets / 1000 : labs.platelets;
+      
+      const fib4Score = (patientAgeForFib4 * labs.ast) / (plateletsNormalized * Math.sqrt(labs.alt));
+      const fib4Rounded = Math.round(fib4Score * 100) / 100;
+      
+      let fib4Status: LabInterpretation['status'] = 'normal';
+      let fib4Interpretation = '';
+      let fib4Recommendation = '';
+      let fib4RecheckTiming = '';
+      
+      if (fib4Score < 1.30) {
+        fib4Status = 'normal';
+        fib4Interpretation = `FIB-4 score ${fib4Rounded} indicates LOW risk of advanced fibrosis (F0-F1). Negative predictive value >90%.`;
+        fib4Recommendation = 'Advanced fibrosis unlikely. Continue lifestyle modifications and routine LFT monitoring. Address underlying cause of LFT elevation.';
+      } else if (fib4Score >= 1.30 && fib4Score <= 2.67) {
+        fib4Status = 'borderline';
+        fib4Interpretation = `FIB-4 score ${fib4Rounded} is INDETERMINATE for fibrosis risk. Falls between low and high-risk thresholds.`;
+        fib4Recommendation = 'Consider additional testing: FibroScan/elastography, enhanced liver fibrosis (ELF) test, or hepatology referral for further evaluation. Repeat FIB-4 in 3-6 months.';
+        fib4RecheckTiming = '3-6 months';
+      } else {
+        fib4Status = 'abnormal';
+        fib4Interpretation = `FIB-4 score ${fib4Rounded} indicates HIGH risk of advanced fibrosis (F3-F4). Positive predictive value ~65%.`;
+        fib4Recommendation = 'HEPATOLOGY REFERRAL recommended. Consider FibroScan to confirm. Screen for varices if cirrhosis suspected. Avoid hepatotoxic medications.';
+        fib4RecheckTiming = '1-2 months';
+      }
+      
+      interpretations.push({
+        category: 'FIB-4 Score (Liver Fibrosis)',
+        value: fib4Rounded,
+        unit: 'score',
+        status: fib4Status,
+        referenceRange: '<1.30 low risk, 1.30-2.67 indeterminate, >2.67 high risk',
+        interpretation: fib4Interpretation,
+        recommendation: fib4Recommendation,
+        recheckTiming: fib4RecheckTiming,
+      });
+    }
+
     // eGFR - Kidney function
     if (labs.egfr !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
