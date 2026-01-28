@@ -393,26 +393,6 @@ export default function FemaleLabInterpretation() {
                   </CardContent>
                 </Card>
 
-                {/* AI Recommendations */}
-                <Card>
-                  <CardHeader>
-                    <div className="flex items-center gap-2">
-                      <Sparkles className="w-5 h-5 text-primary" />
-                      <CardTitle>AI-Powered Clinical Recommendations</CardTitle>
-                    </div>
-                    <CardDescription>
-                      Synthesized recommendations based on clinical protocols (Staff-facing)
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <div className="prose prose-sm max-w-none">
-                      <pre className="whitespace-pre-wrap font-sans text-sm">
-                        {interpretationResult.aiRecommendations}
-                      </pre>
-                    </div>
-                  </CardContent>
-                </Card>
-
                 {/* Supplement Recommendations */}
                 {interpretationResult.supplements && interpretationResult.supplements.length > 0 && (
                   <Card>
