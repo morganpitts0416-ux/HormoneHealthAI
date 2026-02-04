@@ -704,6 +704,37 @@ export async function generatePatientWellnessPDF(
     yPosition += 28;
   }
 
+  // Smoking Cessation Education Section (only for current smokers)
+  if (labValues.demographics?.smoker === true) {
+    yPosition = ensureSpace(55, yPosition);
+    yPosition = addSectionHeader('SMOKING CESSATION: YOUR PATH TO BETTER HEALTH', yPosition);
+
+    // Educational content box
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, 42, 2, 2, 'F');
+    
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Why Quitting Matters for Your Health', margin + 4, yPosition + 6);
+    
+    doc.setTextColor(...textColor);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    const smokingInfo = 'Smoking is one of the most significant modifiable risk factors for heart disease, stroke, and many cancers. The good news: your body begins healing almost immediately after quitting. Within 20 minutes, heart rate drops. Within 1 year, heart disease risk drops by half. Within 5-15 years, stroke risk equals that of a non-smoker.';
+    const smokingLines = doc.splitTextToSize(smokingInfo, contentWidth - 8);
+    doc.text(smokingLines, margin + 4, yPosition + 12);
+    
+    doc.setFont('helvetica', 'bold');
+    doc.text('Resources to Help You Quit:', margin + 4, yPosition + 28);
+    doc.setFont('helvetica', 'normal');
+    const resources = 'Talk to your provider about nicotine replacement therapy (patches, gum, lozenges), prescription medications, or counseling support. The national Quitline (1-800-QUIT-NOW) offers free coaching. Your provider will work with you to create a personalized quit plan that fits your needs.';
+    const resourceLines = doc.splitTextToSize(resources, contentWidth - 8);
+    doc.text(resourceLines, margin + 4, yPosition + 34);
+    
+    yPosition += 48;
+  }
+
   // Adjusted Risk Assessment Section (ApoB and Lp(a))
   if (interpretation.adjustedRisk) {
     const adjustedRisk = interpretation.adjustedRisk;
