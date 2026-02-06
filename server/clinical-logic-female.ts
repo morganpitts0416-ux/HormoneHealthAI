@@ -1925,23 +1925,21 @@ export class FemaleClinicalLogicEngine {
         });
       }
 
-      // Pattern 6: High SHBG → Low Free Hormone Availability
-      // SHBG ≥ 120 nmol/L AND symptoms (low libido, low energy, low motivation) AND/OR free T below normal
-      if (labs.shbg !== undefined && labs.shbg >= 120) {
+      // Pattern 6: High SHBG → Low Free Hormone Availability (symptom-based, no free T/bioavail T data)
+      // Only triggers when free T and bioavailable T are NOT available (otherwise the dedicated testosterone patterns below handle it)
+      // SHBG ≥ 120 nmol/L AND symptoms (low libido, low energy, low motivation)
+      if (labs.shbg !== undefined && labs.shbg >= 120 &&
+          labs.freeTestosterone === undefined && labs.bioavailableTestosterone === undefined) {
         const hasLowHormoneSymptoms = 
           labs.lowLibido === true || 
           labs.lowEnergy === true || 
           labs.lowMotivation === true;
         
-        // Check if free testosterone is low (typical female lower limit ~0.3 pg/mL or varies by lab)
-        const hasLowFreeT = labs.freeTestosterone !== undefined && labs.freeTestosterone < 1.0;
-        
-        if (hasLowHormoneSymptoms || hasLowFreeT) {
+        if (hasLowHormoneSymptoms) {
           const symptomsPresent: string[] = [];
           if (labs.lowLibido) symptomsPresent.push('low libido');
           if (labs.lowEnergy) symptomsPresent.push('low energy');
           if (labs.lowMotivation) symptomsPresent.push('low motivation');
-          if (hasLowFreeT) symptomsPresent.push(`low free testosterone (${labs.freeTestosterone} pg/mL)`);
           
           interpretations.push({
             category: 'Hormone Pattern: High SHBG / Low Bioavailable Hormones',
@@ -1949,12 +1947,237 @@ export class FemaleClinicalLogicEngine {
             unit: 'nmol/L',
             status: 'abnormal',
             referenceRange: 'SHBG <120 nmol/L preferred for optimal bioavailability',
-            interpretation: `Elevated SHBG (${labs.shbg} nmol/L) with symptoms of low bioavailable hormones: ${symptomsPresent.join(', ')}. High SHBG can reduce bioavailable testosterone even when total testosterone looks "fine." This pattern often presents with symptoms of androgen insufficiency.`,
-            recommendation: `PROVIDER RECOMMENDATION: Check for drivers of elevated SHBG: oral contraceptive pill (OCP) use, thyroid medication dosing (thyroid hormone increases SHBG), and estrogen route/dose (oral estrogen raises SHBG more than transdermal). If considering testosterone therapy, emphasize evidence-based indication is HSDD (Hypoactive Sexual Desire Disorder). Monitor levels and side effects carefully. PATIENT EDUCATION: A protein in your blood (SHBG) is binding up your hormones, making less available for your body to use. This can cause low energy, low libido, and other symptoms. Identifying the cause and potentially adjusting your current medications may help.`,
+            interpretation: `Elevated SHBG (${labs.shbg} nmol/L) with symptoms of low bioavailable hormones: ${symptomsPresent.join(', ')}. High SHBG can reduce bioavailable testosterone even when total testosterone looks "fine." Consider ordering Free Testosterone and Bioavailable Testosterone for complete assessment.`,
+            recommendation: `PROVIDER RECOMMENDATION: Order Free Testosterone (pg/mL) and Bioavailable Testosterone (ng/dL) for full assessment. Check for drivers of elevated SHBG: oral contraceptive pill (OCP) use, thyroid medication dosing (thyroid hormone increases SHBG), and estrogen route/dose (oral estrogen raises SHBG more than transdermal). PATIENT EDUCATION: A protein in your blood (SHBG) is binding up your hormones, making less available for your body to use. This can cause low energy, low libido, and other symptoms. Identifying the cause and potentially adjusting your current medications may help.`,
           });
         }
       }
     } // End of age 35+ hormone patterns
+
+    // FEMALE TESTOSTERONE PATTERN EVALUATION (all ages)
+    // Use free & bioavailable testosterone, SHBG context, and symptoms to guide treatment
+    // rather than total testosterone alone.
+    
+    // Track which testosterone pattern was identified to avoid duplicate individual interpretations
+    let testosteronePatternIdentified = false;
+    
+    // Pattern A – SHBG Trap (Low Androgen Signaling)
+    // Total T: 15–40 ng/dL, SHBG: >80-100 (always), or >60-80 if symptomatic (low libido/energy/motivation)
+    // Free T: Low, Bioavailable T: Low
+    // Common symptoms: low libido, low motivation, brain fog, mental fatigue, low confidence, poor strength response
+    const shbgTrapSymptomatic = labs.lowLibido === true || labs.lowEnergy === true || labs.lowMotivation === true;
+    const shbgTrapThreshold = shbgTrapSymptomatic ? 60 : 80; // Lower threshold when symptoms present
+    if (labs.testosterone !== undefined && labs.testosterone >= 15 && labs.testosterone <= 40 &&
+        labs.shbg !== undefined && labs.shbg > shbgTrapThreshold &&
+        ((labs.freeTestosterone !== undefined && labs.freeTestosterone < 1.5) ||
+         (labs.bioavailableTestosterone !== undefined && labs.bioavailableTestosterone < 5))) {
+      
+      testosteronePatternIdentified = true;
+      const labDetails: string[] = [`Total T: ${labs.testosterone} ng/dL`];
+      labDetails.push(`SHBG: ${labs.shbg} nmol/L`);
+      if (labs.freeTestosterone !== undefined) labDetails.push(`Free T: ${labs.freeTestosterone} pg/mL (low)`);
+      if (labs.bioavailableTestosterone !== undefined) labDetails.push(`Bioavailable T: ${labs.bioavailableTestosterone} ng/dL (low)`);
+      
+      interpretations.push({
+        category: 'Testosterone Pattern A: SHBG Trap (Low Androgen Signaling)',
+        value: labs.shbg,
+        unit: 'nmol/L',
+        status: 'abnormal',
+        referenceRange: 'Total T 15-40, SHBG >60-100, Free T low, Bioavail T low',
+        interpretation: `SHBG Trap pattern identified (${labDetails.join('; ')}). Total testosterone appears "normal" but SHBG is trapping it, resulting in low free and bioavailable testosterone. This pattern commonly presents with low libido and desire, low motivation and drive, brain fog and mental fatigue, low confidence, people-pleasing behavior, and poor strength response to exercise.`,
+        recommendation: `PROVIDER RECOMMENDATION: Address SHBG drivers first — oral estrogen (switch to transdermal to reduce SHBG), oral contraceptives (major SHBG elevator), thyroid medication dosing (excess thyroid hormone raises SHBG). Consider low-dose titratable testosterone therapy if symptomatic after addressing SHBG drivers. Support iron levels, sleep quality, and nutrition optimization. Monitor: SHBG, free T, bioavailable T to track response. PATIENT EDUCATION: Your total testosterone level looks normal on paper, but a binding protein (SHBG) is holding onto it tightly so your body can't use it. This can cause symptoms like low energy, foggy thinking, and reduced motivation. Your provider will work on identifying what's driving the SHBG up and may discuss treatment options to help.`,
+      });
+    }
+    
+    // Pattern B – Low SHBG / High Activity
+    // Total T: 30–60 ng/dL, SHBG: <30-40, Free/Bioavailable: High relative to total
+    // Common symptoms: acne, oily skin, hirsutism, scalp hair loss, irritability, light sleep, cravings, insulin resistance
+    if (labs.shbg !== undefined && labs.shbg < 40 &&
+        labs.testosterone !== undefined && labs.testosterone >= 30 && labs.testosterone <= 60 &&
+        ((labs.freeTestosterone !== undefined && labs.freeTestosterone > 3.0) ||
+         (labs.bioavailableTestosterone !== undefined && labs.bioavailableTestosterone > 8))) {
+      
+      testosteronePatternIdentified = true;
+      const labDetails: string[] = [`Total T: ${labs.testosterone} ng/dL`];
+      labDetails.push(`SHBG: ${labs.shbg} nmol/L (low)`);
+      if (labs.freeTestosterone !== undefined) labDetails.push(`Free T: ${labs.freeTestosterone} pg/mL (high relative to total)`);
+      if (labs.bioavailableTestosterone !== undefined) labDetails.push(`Bioavailable T: ${labs.bioavailableTestosterone} ng/dL (high relative to total)`);
+      
+      const metabolicFindings: string[] = [];
+      if (labs.a1c !== undefined && labs.a1c >= 5.7) metabolicFindings.push(`A1c ${labs.a1c}% (prediabetes)`);
+      if (labs.triglycerides !== undefined && labs.triglycerides > 150) metabolicFindings.push(`Triglycerides ${labs.triglycerides} mg/dL (elevated)`);
+      
+      interpretations.push({
+        category: 'Testosterone Pattern B: Low SHBG / High Androgen Activity',
+        value: labs.shbg,
+        unit: 'nmol/L',
+        status: 'abnormal',
+        referenceRange: 'Total T 30-60, SHBG <30-40, Free/Bioavail T elevated',
+        interpretation: `Low SHBG / High Androgen Activity pattern identified (${labDetails.join('; ')}). Low SHBG allows more testosterone to circulate freely, creating androgenic symptoms even with a "normal" total testosterone. This pattern commonly presents with acne and oily skin, hirsutism (excess facial/body hair), scalp hair thinning, irritability, light/disrupted sleep, cravings, and insulin resistance.${metabolicFindings.length > 0 ? ` Metabolic markers: ${metabolicFindings.join('; ')}.` : ''}`,
+        recommendation: `PROVIDER RECOMMENDATION: Avoid aggressive testosterone dosing in this pattern — adding testosterone will worsen symptoms. Address insulin resistance as the primary driver (fasting insulin, HOMA-IR). Consider metformin if insulin resistant. Dietary modifications: low glycemic index, anti-inflammatory diet. Consider downstream androgen blockade (spironolactone) for androgenic symptoms if clinically appropriate. Weight management if applicable (5-10% loss improves SHBG). Monitor metabolic markers alongside hormone levels. PATIENT EDUCATION: Your body has lower levels of a binding protein (SHBG), which means more of your testosterone is active and available. While your total testosterone looks normal, the extra activity can cause symptoms like acne, unwanted hair growth, and sleep issues. This is often connected to how your body handles insulin and blood sugar. Your provider will focus on addressing the root cause.`,
+      });
+    }
+    
+    // Pattern C – Supraphysiologic / Pellet Pattern
+    // Total T: >100-150+, SHBG: mid-high, Free/Bioavailable: Elevated (if available)
+    // Total T >100 alone is sufficient to trigger this pattern
+    // Common symptoms: early energy/libido boost → later insomnia, heat intolerance, acne, hair shedding, irritability, anxiety
+    if (labs.testosterone !== undefined && labs.testosterone > 100) {
+      
+      testosteronePatternIdentified = true;
+      const labDetails: string[] = [`Total T: ${labs.testosterone} ng/dL (supraphysiologic)`];
+      if (labs.shbg !== undefined) labDetails.push(`SHBG: ${labs.shbg} nmol/L`);
+      if (labs.freeTestosterone !== undefined) labDetails.push(`Free T: ${labs.freeTestosterone} pg/mL${labs.freeTestosterone > 5.0 ? ' (elevated)' : ''}`);
+      if (labs.bioavailableTestosterone !== undefined) labDetails.push(`Bioavailable T: ${labs.bioavailableTestosterone} ng/dL${labs.bioavailableTestosterone > 10 ? ' (elevated)' : ''}`);
+      
+      interpretations.push({
+        category: 'Testosterone Pattern C: Supraphysiologic / Pellet Pattern',
+        value: labs.testosterone,
+        unit: 'ng/dL',
+        status: labs.testosterone > 150 ? 'critical' : 'abnormal',
+        referenceRange: 'Total T >100-150+ (supraphysiologic for women)',
+        interpretation: `Supraphysiologic testosterone pattern identified (${labDetails.join('; ')}). Total testosterone is well above the physiologic range for women.${labs.testosterone > 150 ? ' At >150 ng/dL, this requires urgent evaluation.' : ''} This pattern is commonly seen with testosterone pellet therapy and may initially produce an energy and libido boost, but typically leads to insomnia, heat intolerance, acne, hair shedding, irritability, and anxiety as levels remain elevated.`,
+        recommendation: `PROVIDER RECOMMENDATION: Do NOT stack testosterone — do not add more testosterone on top of existing supraphysiologic levels. Manage downstream symptoms: consider spironolactone for acne/hair loss, sleep support, anxiety management. ${labs.testosterone > 150 ? 'If NOT on testosterone therapy: Rule out androgen-secreting tumor (pelvic ultrasound, CT adrenals). ' : ''}If pellet-related: transition to titratable testosterone therapy (transdermal cream/gel) to allow dose adjustments. Target physiologic range (Total T 30-70 ng/dL naturally, or per HRT protocol). Monitor CBC, lipids, liver function. PATIENT EDUCATION: Your testosterone level is much higher than what the body typically needs. This can happen with certain forms of testosterone therapy like pellets. While it may feel good initially, sustained high levels can cause side effects. Your provider may recommend transitioning to a form of testosterone that allows more precise dosing control.`,
+      });
+    }
+    
+    // Pattern D – Adequate Androgens, Persistent Symptoms
+    // Total, Free & Bioavailable T within range, SHBG not extreme
+    // Common symptoms: fatigue, low mood, sleep disruption, low libido despite normal labs
+    // This pattern fires when all testosterone markers are in range and no other pattern (A/B/C) was identified
+    if (!testosteronePatternIdentified &&
+        labs.testosterone !== undefined && labs.testosterone >= 15 && labs.testosterone <= 70 &&
+        (labs.freeTestosterone === undefined || (labs.freeTestosterone >= 0.5 && labs.freeTestosterone <= 5.0)) &&
+        (labs.bioavailableTestosterone === undefined || (labs.bioavailableTestosterone >= 2 && labs.bioavailableTestosterone <= 10)) &&
+        (labs.shbg === undefined || (labs.shbg >= 24 && labs.shbg <= 100))) {
+      
+      testosteronePatternIdentified = true;
+      
+      // Identify other factors that may be driving persistent symptoms
+      const otherFactors: string[] = [];
+      if (labs.ferritin !== undefined && labs.ferritin < 50) otherFactors.push(`Low ferritin (${labs.ferritin} ng/mL) — iron deficiency mimics androgen insufficiency`);
+      if (labs.tsh !== undefined && (labs.tsh > 3.0 || labs.tsh < 0.5)) otherFactors.push(`Thyroid: TSH ${labs.tsh} mIU/L — evaluate thyroid function`);
+      if (labs.vitaminD !== undefined && labs.vitaminD < 30) otherFactors.push(`Low Vitamin D (${labs.vitaminD} ng/mL) — contributes to fatigue and mood changes`);
+      if (labs.estradiol !== undefined && labs.progesterone !== undefined) {
+        otherFactors.push(`Estrogen/Progesterone balance should be assessed (E2: ${labs.estradiol} pg/mL, P4: ${labs.progesterone} ng/mL)`);
+      }
+      
+      const labDetails: string[] = [`Total T: ${labs.testosterone} ng/dL (within range)`];
+      if (labs.freeTestosterone !== undefined) labDetails.push(`Free T: ${labs.freeTestosterone} pg/mL`);
+      if (labs.bioavailableTestosterone !== undefined) labDetails.push(`Bioavailable T: ${labs.bioavailableTestosterone} ng/dL`);
+      if (labs.shbg !== undefined) labDetails.push(`SHBG: ${labs.shbg} nmol/L`);
+      
+      interpretations.push({
+        category: 'Testosterone Pattern D: Adequate Androgens, Persistent Symptoms',
+        value: labs.testosterone,
+        unit: 'ng/dL',
+        status: 'borderline',
+        referenceRange: 'Total T 15-70 ng/dL, Free T 0.5-5.0 pg/mL (all within range)',
+        interpretation: `Adequate Androgens pattern identified (${labDetails.join('; ')}). Total, free, and bioavailable testosterone are within normal ranges and SHBG is not extreme. If the patient reports fatigue, low mood, sleep disruption, or low libido, these symptoms are likely driven by non-androgenic factors.${otherFactors.length > 0 ? ` Findings to evaluate: ${otherFactors.join('. ')}.` : ' Evaluate iron, thyroid, sleep quality, and estrogen/progesterone balance.'}`,
+        recommendation: `PROVIDER RECOMMENDATION: Do not reflexively add testosterone when levels are adequate — look deeper. Evaluate iron status (ferritin target >50 for symptom resolution), thyroid function (optimize TSH), and sleep quality (consider sleep apnea screening with STOP-BANG). Assess estrogen and progesterone balance — E2/P4 imbalance is a common driver of persistent symptoms. Address CNS and psychosocial drivers: chronic stress, HPA axis dysregulation, mood disorders. Consider DHEA-S if not already checked. Support with lifestyle optimization: sleep hygiene, stress management, nutrition. PATIENT EDUCATION: Your testosterone levels are actually in a healthy range, which is good news. When symptoms persist despite normal testosterone, it usually means something else is contributing. Your provider will look at other factors like iron levels, thyroid function, sleep quality, and hormone balance to find what's driving your symptoms.`,
+      });
+    }
+    
+    // Individual marker interpretations (only when no pattern was identified)
+    if (!testosteronePatternIdentified) {
+      // Individual SHBG interpretation
+      if (labs.shbg !== undefined) {
+        let shbgStatus: LabInterpretation['status'] = 'normal';
+        let shbgInterp = '';
+        let shbgRec = '';
+        
+        if (labs.shbg > 100) {
+          shbgStatus = 'abnormal';
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is elevated. High SHBG reduces bioavailable testosterone and estrogen. Common causes: oral estrogen, oral contraceptives, thyroid medication, liver conditions.`;
+          shbgRec = 'Evaluate SHBG drivers. Consider ordering Free Testosterone and Bioavailable Testosterone for complete androgen assessment.';
+        } else if (labs.shbg < 24) {
+          shbgStatus = 'abnormal';
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is low. Low SHBG increases free androgen activity and is associated with insulin resistance and metabolic syndrome.`;
+          shbgRec = 'Evaluate for insulin resistance (fasting insulin, HOMA-IR). Consider metabolic workup.';
+        } else {
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is within normal range. SHBG regulates bioavailable sex hormones by binding testosterone and estradiol.`;
+          shbgRec = 'Continue routine monitoring.';
+        }
+        
+        interpretations.push({
+          category: 'SHBG',
+          value: labs.shbg,
+          unit: 'nmol/L',
+          status: shbgStatus,
+          referenceRange: '24-122 nmol/L',
+          interpretation: shbgInterp,
+          recommendation: shbgRec,
+        });
+      }
+      
+      // Individual Free Testosterone interpretation
+      if (labs.freeTestosterone !== undefined) {
+        let ftStatus: LabInterpretation['status'] = 'normal';
+        let ftInterp = '';
+        let ftRec = '';
+        
+        if (labs.freeTestosterone < 0.5) {
+          ftStatus = 'abnormal';
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is low. May contribute to low libido, fatigue, and reduced motivation.`;
+          ftRec = 'Evaluate SHBG and total testosterone in context. Consider androgen insufficiency workup.';
+        } else if (labs.freeTestosterone > 5.0) {
+          ftStatus = 'abnormal';
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is elevated. May cause androgenic symptoms (acne, hirsutism, hair thinning).`;
+          ftRec = 'Evaluate for PCOS, exogenous testosterone, or low SHBG driving elevated free T.';
+        } else if (labs.freeTestosterone < 1.0) {
+          ftStatus = 'borderline';
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is on the lower end. May be associated with reduced libido or energy.`;
+          ftRec = 'Consider clinical correlation with symptoms. If symptomatic, evaluate SHBG and total testosterone in context.';
+        } else {
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is within normal functional range.`;
+          ftRec = 'Continue routine monitoring.';
+        }
+        
+        interpretations.push({
+          category: 'Free Testosterone',
+          value: labs.freeTestosterone,
+          unit: 'pg/mL',
+          status: ftStatus,
+          referenceRange: '0.5-5.0 pg/mL',
+          interpretation: ftInterp,
+          recommendation: ftRec,
+        });
+      }
+      
+      // Individual Bioavailable Testosterone interpretation
+      if (labs.bioavailableTestosterone !== undefined) {
+        let batStatus: LabInterpretation['status'] = 'normal';
+        let batInterp = '';
+        let batRec = '';
+        
+        if (labs.bioavailableTestosterone < 2) {
+          batStatus = 'abnormal';
+          batInterp = `Bioavailable testosterone ${labs.bioavailableTestosterone} ng/dL is low. May contribute to androgen insufficiency symptoms.`;
+          batRec = 'Evaluate alongside SHBG and free testosterone. Consider androgen insufficiency workup.';
+        } else if (labs.bioavailableTestosterone > 10) {
+          batStatus = 'abnormal';
+          batInterp = `Bioavailable testosterone ${labs.bioavailableTestosterone} ng/dL is elevated. May cause androgenic symptoms.`;
+          batRec = 'Evaluate for low SHBG, exogenous testosterone, or other causes of elevated bioavailable androgens.';
+        } else if (labs.bioavailableTestosterone < 3) {
+          batStatus = 'borderline';
+          batInterp = `Bioavailable testosterone ${labs.bioavailableTestosterone} ng/dL is low-normal. May correlate with symptoms of androgen insufficiency.`;
+          batRec = 'Clinical correlation recommended. If symptomatic, evaluate alongside free T and SHBG.';
+        } else {
+          batInterp = `Bioavailable testosterone ${labs.bioavailableTestosterone} ng/dL is within normal functional range.`;
+          batRec = 'Continue routine monitoring.';
+        }
+        
+        interpretations.push({
+          category: 'Bioavailable Testosterone',
+          value: labs.bioavailableTestosterone,
+          unit: 'ng/dL',
+          status: batStatus,
+          referenceRange: '2-10 ng/dL',
+          interpretation: batInterp,
+          recommendation: batRec,
+        });
+      }
+    }
 
     return interpretations;
   }

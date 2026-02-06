@@ -851,6 +851,36 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                     <p className="text-xs text-muted-foreground">15-70 ng/dL</p>
                   </FormItem>
                 )} />
+                <FormField control={form.control} name="shbg" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">SHBG</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="60" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-shbg-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">nmol/L</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Sex Hormone Binding Globulin (24-122 nmol/L)</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="freeTestosterone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Free Testosterone</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.01" placeholder="1.5" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-free-testosterone-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">pg/mL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Calculated (0.5-5.0 pg/mL)</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="bioavailableTestosterone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Bioavailable Testosterone</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="5" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-bioavailable-testosterone-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/dL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">2-10 ng/dL</p>
+                  </FormItem>
+                )} />
                 <FormField control={form.control} name="lh" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-xs font-medium uppercase">LH</FormLabel>

@@ -230,6 +230,24 @@ function getLabInsight(category: string, value: number | string, status: string,
       low: "Lower testosterone may cause fatigue, low libido, and decreased muscle mass. Target is 75-125 ng/dL for optimal results.",
       high: "Testosterone is above the HRT optimization goal. Your provider may adjust dosing to avoid androgenic side effects."
     },
+    shbg: {
+      what: "SHBG (Sex Hormone Binding Globulin) is a protein that controls how much testosterone and estrogen is available for your body to use.",
+      normal: "Your SHBG level is in a healthy range, allowing a good balance of available hormones.",
+      low: "Lower SHBG means more free hormones are available, which can sometimes cause imbalances. Your provider will evaluate this in context with your other hormone levels.",
+      high: "Higher SHBG binds more of your hormones, which can reduce the amount available for your body. This may contribute to symptoms like low energy or low libido even when total hormone levels appear normal."
+    },
+    "free testosterone": {
+      what: "Free testosterone is the small portion of testosterone that is unbound and actively available for your body to use.",
+      normal: "Your free testosterone level is in a healthy range, supporting energy, mood, and vitality.",
+      low: "Lower free testosterone may contribute to fatigue, low libido, or reduced motivation, even if total testosterone appears normal. Your provider will discuss whether any adjustments are needed.",
+      high: "Higher free testosterone may cause symptoms like acne or hair changes. Your provider will evaluate this and discuss the best approach."
+    },
+    "bioavailable testosterone": {
+      what: "Bioavailable testosterone measures the testosterone that is available for your tissues to use, including both free and loosely bound forms.",
+      normal: "Your bioavailable testosterone is at a healthy level, supporting your energy, mood, and overall well-being.",
+      low: "Lower bioavailable testosterone may contribute to fatigue, low libido, or reduced muscle strength. Your provider will review this alongside your other hormone levels.",
+      high: "Higher bioavailable testosterone may cause androgenic symptoms. Your provider will discuss options to bring it into balance."
+    },
     fsh: {
       what: "FSH controls ovarian function and egg development.",
       normal: "Your FSH level is appropriate for your cycle phase and reproductive status.",
