@@ -212,9 +212,10 @@ export const femaleLabValuesSchema = z.object({
   lh: z.number().optional(),
   prolactin: z.number().optional(),
   testosterone: z.number().optional(), // Total testosterone (lower ranges for women)
-  freeTestosterone: z.number().optional(),
+  freeTestosterone: z.number().optional(), // Free Testosterone (pg/mL)
+  bioavailableTestosterone: z.number().optional(), // Bioavailable Testosterone (ng/dL)
   dheas: z.number().optional(), // DHEA-Sulfate
-  shbg: z.number().optional(),
+  shbg: z.number().optional(), // Sex Hormone Binding Globulin (nmol/L)
   amh: z.number().optional(), // Anti-Mullerian Hormone (fertility marker)
   
   // Thyroid
