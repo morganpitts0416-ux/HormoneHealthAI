@@ -38,7 +38,8 @@ function sanitizeForPdf(text: string): string {
 export function generateLabReportPDF(
   labValues: LabValues,
   interpretation: InterpretationResult,
-  patientName?: string
+  patientName?: string,
+  clinicName: string = "Men's Hormone & Primary Care Clinic"
 ): void {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -57,7 +58,7 @@ export function generateLabReportPDF(
 
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  doc.text("Men's Hormone & Primary Care Clinic", pageWidth / 2, yPosition, { align: 'center' });
+  doc.text(clinicName, pageWidth / 2, yPosition, { align: 'center' });
   yPosition += 12;
 
   if (patientName) {

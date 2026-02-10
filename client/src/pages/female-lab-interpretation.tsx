@@ -132,7 +132,7 @@ export default function FemaleLabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, "Women's Hormone & Primary Care Clinic");
+      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, undefined, "Women's Hormone & Primary Care Clinic");
     }
   };
 
