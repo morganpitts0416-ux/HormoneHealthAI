@@ -1028,6 +1028,62 @@ export async function generatePatientWellnessPDF(
     return { goal: sanitizeForPdf(goal), diet: sanitizeForPdf(diet), foods: foods.slice(0, 8).map(f => [sanitizeForPdf(f[0]), sanitizeForPdf(f[1])]) };
   };
 
+  if (interpretation.insulinResistance && interpretation.insulinResistance.likelihood !== 'none') {
+    const ir = interpretation.insulinResistance;
+    yPosition = addSectionHeader('METABOLIC HEALTH ASSESSMENT', yPosition);
+    
+    yPosition = ensureSpace(20, yPosition);
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, 14, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    const likelihoodText = ir.likelihood === 'high' ? 'High Likelihood of Insulin Resistance' : 'Moderate Likelihood of Insulin Resistance';
+    doc.text(likelihoodText, margin + 4, yPosition + 6);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(`${ir.positiveCount} of 6 screening markers positive`, margin + 4, yPosition + 11);
+    yPosition += 18;
+
+    if (ir.phenotypes.length > 0) {
+      for (const phenotype of ir.phenotypes) {
+        const explanationText = sanitizeForPdf(phenotype.patientExplanation);
+        const expLines = doc.splitTextToSize(explanationText, contentWidth - 10);
+        const blockHeight = 10 + (expLines.length * 4);
+        yPosition = ensureSpace(blockHeight, yPosition);
+        
+        doc.setTextColor(...brandColor);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.text(phenotype.name, margin, yPosition);
+        yPosition += 5;
+        
+        doc.setTextColor(...textColor);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        for (let i = 0; i < expLines.length; i++) {
+          yPosition = ensureSpace(4, yPosition);
+          doc.text(expLines[i], margin + 2, yPosition);
+          yPosition += 4;
+        }
+        yPosition += 4;
+      }
+    } else {
+      const defaultText = sanitizeForPdf('Some of your metabolic markers suggest your body may not be processing insulin as efficiently as it should. We recommend confirmation testing with fasting insulin and fasting glucose to guide next steps.');
+      const defaultLines = doc.splitTextToSize(defaultText, contentWidth - 10);
+      for (let i = 0; i < defaultLines.length; i++) {
+        yPosition = ensureSpace(4, yPosition);
+        doc.setTextColor(...textColor);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        doc.text(defaultLines[i], margin + 2, yPosition);
+        yPosition += 4;
+      }
+      yPosition += 4;
+    }
+    yPosition += 4;
+  }
+
   yPosition = addSectionHeader('YOUR PERSONALIZED NUTRITION PLAN', yPosition);
   
   const nutritionParsed = parseNutritionPlan(wellnessPlan.dietPlan);

@@ -350,6 +350,40 @@ export const cacStatinRecommendationSchema = z.object({
 
 export type CacStatinRecommendation = z.infer<typeof cacStatinRecommendationSchema>;
 
+// Insulin Resistance Screening Schemas
+export const insulinResistanceMarkerSchema = z.object({
+  name: z.string(),
+  value: z.union([z.number(), z.string()]),
+  threshold: z.string(),
+  positive: z.boolean(),
+  detail: z.string(),
+});
+
+export const insulinResistancePhenotypeSchema = z.object({
+  name: z.string(),
+  key: z.enum(['visceral_metabolic', 'hepatic', 'hormonal_pcos', 'early_lean']),
+  triggerCriteria: z.array(z.string()),
+  matchedCriteria: z.array(z.string()),
+  pathophysiology: z.string(),
+  treatmentRecommendations: z.array(z.string()),
+  monitoringPlan: z.string(),
+  patientExplanation: z.string(),
+});
+
+export const insulinResistanceScreeningSchema = z.object({
+  markers: z.array(insulinResistanceMarkerSchema),
+  positiveCount: z.number(),
+  likelihood: z.enum(['none', 'moderate', 'high']),
+  likelihoodLabel: z.string(),
+  phenotypes: z.array(insulinResistancePhenotypeSchema),
+  confirmationTests: z.string(),
+  providerSummary: z.string(),
+});
+
+export type InsulinResistanceMarker = z.infer<typeof insulinResistanceMarkerSchema>;
+export type InsulinResistancePhenotype = z.infer<typeof insulinResistancePhenotypeSchema>;
+export type InsulinResistanceScreening = z.infer<typeof insulinResistanceScreeningSchema>;
+
 // Complete Interpretation Result
 export const interpretationResultSchema = z.object({
   redFlags: z.array(redFlagSchema),
@@ -363,6 +397,7 @@ export const interpretationResultSchema = z.object({
   supplements: z.array(supplementRecommendationSchema).optional(),
   cvRiskFlags: cardiovascularRiskFlagsSchema.optional(),
   cacStatinRec: cacStatinRecommendationSchema.optional(),
+  insulinResistance: insulinResistanceScreeningSchema.optional(),
 });
 
 export type InterpretationResult = z.infer<typeof interpretationResultSchema>;
