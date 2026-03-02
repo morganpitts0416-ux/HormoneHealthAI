@@ -31,10 +31,42 @@ interface WellnessPlan {
   educationalContent: string;
 }
 
-function getLabInsight(category: string, value: number | string, status: string, referenceRange?: string): string {
+interface PatientContext {
+  age?: number;
+  onHRT?: boolean;
+  menstrualPhase?: string;
+}
+
+function getLabInsight(category: string, value: number | string, status: string, referenceRange?: string, context?: PatientContext): string {
   const cat = category.toLowerCase();
   const val = typeof value === 'number' ? value : parseFloat(String(value)) || 0;
   
+  const isOnHRT = context?.onHRT === true;
+  const phase = context?.menstrualPhase;
+  const isPostmenopausal = phase === 'postmenopausal';
+
+  const getEstradiolThresholds = (): { low: number; high: number } => {
+    if (isOnHRT) return { low: 60, high: 100 };
+    if (isPostmenopausal) return { low: 0, high: 20 };
+    if (phase === 'ovulatory') return { low: 150, high: 500 };
+    if (phase === 'luteal') return { low: 50, high: 250 };
+    return { low: 20, high: 500 };
+  };
+
+  const getProgesteroneThresholds = (): { low: number; high: number } => {
+    if (isOnHRT) return { low: 8, high: 10 };
+    if (isPostmenopausal) return { low: 0, high: 1 };
+    if (phase === 'luteal') return { low: 5, high: 20 };
+    if (phase === 'follicular') return { low: 0.1, high: 1.5 };
+    if (phase === 'ovulatory') return { low: 4, high: 25 };
+    return { low: 0.1, high: 25 };
+  };
+
+  const getTestosteroneThresholds = (): { low: number; high: number } => {
+    if (isOnHRT) return { low: 75, high: 125 };
+    return { low: 15, high: 70 };
+  };
+
   const determineDirection = (category: string, value: number, refRange?: string): 'low' | 'high' | 'normal' => {
     if (status === 'normal') return 'normal';
     
@@ -48,16 +80,15 @@ function getLabInsight(category: string, value: number | string, status: string,
       }
     }
     
-    // Provider-specific clinic target ranges (HRT optimization goals)
     const thresholds: Record<string, { low: number; high: number }> = {
       hemoglobin: { low: 12, high: 16 },
       hematocrit: { low: 36, high: 44 },
-      ferritin: { low: 50, high: 150 },  // Provider goal: >50 optimal
+      ferritin: { low: 50, high: 150 },
       tsh: { low: 0.4, high: 4.5 },
       "free t4": { low: 0.9, high: 1.7 },
       "free t3": { low: 2.3, high: 4.2 },
-      "vitamin d": { low: 60, high: 80 },  // Provider goal: 60-80 optimal
-      "vitamin b12": { low: 400, high: 900 },  // Provider goal: >400 optimal
+      "vitamin d": { low: 60, high: 80 },
+      "vitamin b12": { low: 400, high: 900 },
       ldl: { low: 0, high: 100 },
       hdl: { low: 50, high: 200 },
       triglycerides: { low: 0, high: 150 },
@@ -68,12 +99,12 @@ function getLabInsight(category: string, value: number | string, status: string,
       egfr: { low: 60, high: 200 },
       alt: { low: 0, high: 32 },
       ast: { low: 0, high: 32 },
-      estradiol: { low: 60, high: 100 },  // HRT goal: 60-100 pg/mL, >40 minimum for bone
-      progesterone: { low: 8, high: 10 },  // HRT goal: 8-10 ng/mL
-      testosterone: { low: 75, high: 125 },  // HRT goal: 75-125 ng/dL
+      estradiol: getEstradiolThresholds(),
+      progesterone: getProgesteroneThresholds(),
+      testosterone: getTestosteroneThresholds(),
       fsh: { low: 3, high: 20 },
       amh: { low: 1, high: 5 },
-      "hs-crp": { low: 0, high: 1 },  // Provider goal: <1 optimal
+      "hs-crp": { low: 0, high: 1 },
       "lp(a)": { low: 0, high: 29 },
       "apolipoprotein b": { low: 0, high: 90 },
       platelets: { low: 150, high: 400 },
@@ -214,21 +245,43 @@ function getLabInsight(category: string, value: number | string, status: string,
     },
     estradiol: {
       what: "Estradiol is your primary estrogen, vital for bone health, mood, and heart protection.",
-      normal: "Your estrogen level is at the optimal HRT goal (60-100 pg/mL), supporting bone health, mood stability, and heart protection.",
-      low: "Lower estrogen may cause hot flashes, mood changes, and bone loss. Target is 60-100 pg/mL (minimum >40 for bone protection). HRT adjustment may be beneficial.",
-      high: "Estrogen is above the HRT optimization goal. Your provider may adjust dosing to optimize your levels."
+      normal: isOnHRT
+        ? "Your estrogen level is at the optimal HRT goal (60-100 pg/mL), supporting bone health, mood stability, and heart protection."
+        : isPostmenopausal
+        ? "Your estradiol level is within the expected postmenopausal range."
+        : "Your estradiol level is within the normal range for your cycle phase, supporting healthy reproductive and metabolic function.",
+      low: isOnHRT
+        ? "Lower estrogen may cause hot flashes, mood changes, and bone loss. Target is 60-100 pg/mL (minimum >40 for bone protection). HRT adjustment may be beneficial."
+        : isPostmenopausal
+        ? "Low estradiol is expected after menopause. If you are experiencing symptoms, your provider may discuss hormone therapy options."
+        : "Lower estradiol may be related to your cycle phase or other factors. Your provider will evaluate this in the context of your symptoms and overall health.",
+      high: isOnHRT
+        ? "Estrogen is above the HRT optimization goal. Your provider may adjust dosing to optimize your levels."
+        : "Your estradiol level is above the typical range. Your provider will evaluate this in context with your cycle phase and symptoms."
     },
     progesterone: {
       what: "Progesterone balances estrogen and is essential for cycle regularity and sleep.",
-      normal: "Your progesterone level is at the optimal HRT goal (8-10 ng/mL), providing endometrial protection and supporting sleep.",
-      low: "Lower progesterone may cause PMS, irregular cycles, and sleep issues. Target is 8-10 ng/mL for optimal endometrial protection.",
-      high: "Progesterone is above the HRT optimization goal. This is typically not concerning but will be reviewed."
+      normal: isOnHRT
+        ? "Your progesterone level is at the optimal HRT goal (8-10 ng/mL), providing endometrial protection and supporting sleep."
+        : "Your progesterone level is within the expected range for your cycle phase, supporting healthy cycle regularity and sleep.",
+      low: isOnHRT
+        ? "Lower progesterone may cause PMS, irregular cycles, and sleep issues. Target is 8-10 ng/mL for optimal endometrial protection."
+        : "Lower progesterone may be related to your cycle phase. If you are in the luteal phase, low progesterone can affect cycle regularity and sleep. Your provider will review this.",
+      high: isOnHRT
+        ? "Progesterone is above the HRT optimization goal. This is typically not concerning but will be reviewed."
+        : "Your progesterone level is above the typical range for your cycle phase. This is usually not a concern but will be evaluated by your provider."
     },
     testosterone: {
       what: "Testosterone in women supports energy, libido, muscle strength, and mood.",
-      normal: "Your testosterone level is at the optimal HRT goal (75-125 ng/dL), supporting healthy energy, libido, and muscle function.",
-      low: "Lower testosterone may cause fatigue, low libido, and decreased muscle mass. Target is 75-125 ng/dL for optimal results.",
-      high: "Testosterone is above the HRT optimization goal. Your provider may adjust dosing to avoid androgenic side effects."
+      normal: isOnHRT
+        ? "Your testosterone level is at the optimal HRT goal (75-125 ng/dL), supporting healthy energy, libido, and muscle function."
+        : "Your testosterone level is within the normal range (15-70 ng/dL), supporting healthy energy, mood, and muscle function.",
+      low: isOnHRT
+        ? "Lower testosterone may cause fatigue, low libido, and decreased muscle mass. Target is 75-125 ng/dL for optimal results."
+        : "Lower testosterone may contribute to fatigue, low libido, and decreased muscle mass. Your provider may discuss options to support your levels.",
+      high: isOnHRT
+        ? "Testosterone is above the HRT optimization goal. Your provider may adjust dosing to avoid androgenic side effects."
+        : "Testosterone is above the typical range for women. Your provider will evaluate this in context with your other hormone levels and symptoms."
     },
     shbg: {
       what: "SHBG (Sex Hormone Binding Globulin) is a protein that controls how much testosterone and estrogen is available for your body to use.",
@@ -496,7 +549,12 @@ export async function generatePatientWellnessPDF(
         statusText = 'Optimal';
       }
 
-      const healthInsight = getLabInsight(interp.category, interp.value ?? 0, interp.status, interp.referenceRange);
+      const patientContext: PatientContext = {
+        age: labValues.demographics?.age,
+        onHRT: labValues.onHRT,
+        menstrualPhase: labValues.menstrualPhase,
+      };
+      const healthInsight = getLabInsight(interp.category, interp.value ?? 0, interp.status, interp.referenceRange, patientContext);
 
       return [
         sanitizeForPdf(interp.category),
