@@ -1,7 +1,7 @@
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Activity, Heart, TrendingUp } from "lucide-react";
-import type { LabInterpretation, RedFlag, ASCVDRiskResult, PREVENTRiskResult, AdjustedRiskAssessment } from "@shared/schema";
+import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Activity, Heart, TrendingUp, Zap } from "lucide-react";
+import type { LabInterpretation, RedFlag, ASCVDRiskResult, PREVENTRiskResult, AdjustedRiskAssessment, InsulinResistanceScreening } from "@shared/schema";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -13,9 +13,10 @@ interface ResultsDisplayProps {
   ascvdAssessment?: ASCVDRiskResult | null;
   preventAssessment?: PREVENTRiskResult | null;
   adjustedRiskAssessment?: AdjustedRiskAssessment | null;
+  insulinResistance?: InsulinResistanceScreening | null;
 }
 
-export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [], ascvdAssessment = null, preventAssessment = null, adjustedRiskAssessment = null }: ResultsDisplayProps) {
+export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [], ascvdAssessment = null, preventAssessment = null, adjustedRiskAssessment = null, insulinResistance = null }: ResultsDisplayProps) {
   const getRiskBadge = (category: string) => {
     switch (category) {
       case 'low':
@@ -383,6 +384,121 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                 </div>
               )}
             </div>
+          </CardContent>
+        </Card>
+      )}
+
+      {/* Insulin Resistance Screening */}
+      {insulinResistance && insulinResistance.likelihood !== 'none' && (
+        <Card data-testid="card-insulin-resistance">
+          <CardHeader>
+            <div className="flex items-center justify-between gap-4 flex-wrap">
+              <div className="flex items-center gap-2">
+                <Zap className="w-5 h-5 text-primary" />
+                <CardTitle>Insulin Resistance Screening</CardTitle>
+              </div>
+              {insulinResistance.likelihood === 'high' ? (
+                <Badge variant="destructive" data-testid="badge-ir-high">High Likelihood</Badge>
+              ) : (
+                <Badge variant="outline" className="bg-amber-50 text-amber-700 border-amber-200 dark:bg-amber-950/30 dark:text-amber-400 dark:border-amber-800" data-testid="badge-ir-moderate">Moderate Likelihood</Badge>
+              )}
+            </div>
+            <CardDescription>
+              {insulinResistance.positiveCount} of 6 screening markers positive
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            <div>
+              <h4 className="text-sm font-semibold mb-3">Screening Markers</h4>
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
+                {insulinResistance.markers.map((marker, idx) => (
+                  <div
+                    key={idx}
+                    className={`p-3 rounded-lg border ${
+                      marker.positive
+                        ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
+                        : 'bg-muted/30'
+                    }`}
+                    data-testid={`ir-marker-${idx}`}
+                  >
+                    <div className="flex items-center justify-between gap-2 mb-1">
+                      <p className="text-xs font-medium text-muted-foreground uppercase">{marker.name}</p>
+                      {marker.positive ? (
+                        <AlertCircle className="w-3.5 h-3.5 text-orange-600 dark:text-orange-400" />
+                      ) : (
+                        <CheckCircle className="w-3.5 h-3.5 text-green-600 dark:text-green-500" />
+                      )}
+                    </div>
+                    <span className={`text-lg font-bold font-mono ${
+                      marker.positive ? 'text-orange-600 dark:text-orange-400' : ''
+                    }`}>
+                      {marker.value}
+                    </span>
+                    <p className="text-xs text-muted-foreground mt-1">Threshold: {marker.threshold}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
+            {insulinResistance.phenotypes.length > 0 && (
+              <>
+                <Separator />
+                <div className="space-y-4">
+                  <h4 className="text-sm font-semibold">Identified Phenotype(s)</h4>
+                  {insulinResistance.phenotypes.map((phenotype, idx) => (
+                    <div key={idx} className="space-y-3 p-4 rounded-lg bg-muted/30 border" data-testid={`ir-phenotype-${idx}`}>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="outline" className="bg-primary/10 text-primary border-primary/20">
+                          {phenotype.name}
+                        </Badge>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Matched Criteria</p>
+                        <ul className="text-sm space-y-0.5">
+                          {phenotype.matchedCriteria.map((c, i) => (
+                            <li key={i} className="flex items-center gap-1.5">
+                              <AlertTriangle className="w-3 h-3 text-amber-500 shrink-0" />
+                              {c}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Pathophysiology</p>
+                        <p className="text-sm">{phenotype.pathophysiology}</p>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Treatment Recommendations</p>
+                        <ul className="text-sm space-y-0.5">
+                          {phenotype.treatmentRecommendations.map((rec, i) => (
+                            <li key={i} className="flex items-start gap-1.5">
+                              <span className="text-primary mt-0.5 shrink-0">-</span>
+                              {rec}
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                      <div>
+                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Monitoring</p>
+                        <p className="text-sm">{phenotype.monitoringPlan}</p>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              </>
+            )}
+
+            {insulinResistance.confirmationTests && (
+              <>
+                <Separator />
+                <div>
+                  <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Confirmation Testing</p>
+                  <p className="text-sm bg-muted/50 p-3 rounded-md" data-testid="text-ir-confirmation">
+                    {insulinResistance.confirmationTests}
+                  </p>
+                </div>
+              </>
+            )}
           </CardContent>
         </Card>
       )}

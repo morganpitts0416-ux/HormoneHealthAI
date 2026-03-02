@@ -389,6 +389,7 @@ export default function FemaleLabInterpretation() {
                       redFlags={interpretationResult.redFlags}
                       preventAssessment={interpretationResult.preventRisk}
                       adjustedRiskAssessment={interpretationResult.adjustedRisk}
+                      insulinResistance={interpretationResult.insulinResistance}
                     />
                   </CardContent>
                 </Card>

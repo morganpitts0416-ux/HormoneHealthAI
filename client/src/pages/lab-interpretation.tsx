@@ -384,6 +384,7 @@ export default function LabInterpretation() {
                   ascvdAssessment={interpretationResult.ascvdRisk || null}
                   preventAssessment={interpretationResult.preventRisk}
                   adjustedRiskAssessment={interpretationResult.adjustedRisk}
+                  insulinResistance={interpretationResult.insulinResistance}
                 />
 
                 {/* Patient Summary */}

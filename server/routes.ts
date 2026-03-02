@@ -11,6 +11,7 @@ import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
+import { screenInsulinResistance } from "./insulin-resistance";
 import { storage } from "./storage";
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -230,6 +231,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const supplements = evaluateMaleSupplements(labs);
       console.log('[API] Male supplement recommendations:', supplements.length);
 
+      // Step 8: Insulin Resistance Screening
+      const insulinResistance = screenInsulinResistance(labs, 'male') || undefined;
+      console.log('[API] Male IR Screening:', insulinResistance ? `${insulinResistance.positiveCount} positive markers, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
+
+      if (insulinResistance && insulinResistance.likelihood !== 'none') {
+        const irStatus: 'normal' | 'borderline' | 'abnormal' | 'critical' = 
+          insulinResistance.likelihood === 'high' ? 'critical' : 'abnormal';
+        const irInterpretation = {
+          category: 'Insulin Resistance Screening',
+          value: insulinResistance.positiveCount,
+          unit: 'of 6 markers positive',
+          status: irStatus,
+          referenceRange: '0-1 Low, 2 Moderate, 3+ High Likelihood',
+          interpretation: insulinResistance.providerSummary,
+          recommendation: insulinResistance.phenotypes.length > 0 
+            ? `Phenotype(s): ${insulinResistance.phenotypes.map(p => p.name).join('; ')}. ${insulinResistance.confirmationTests}`
+            : insulinResistance.confirmationTests || 'Consider fasting insulin + fasting glucose for confirmation.',
+          recheckTiming: '3-6 months',
+        };
+        interpretations.push(irInterpretation);
+      }
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -240,6 +263,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         preventRisk,
         adjustedRisk,
         supplements,
+        insulinResistance,
       };
 
       console.log('[API] Response summary:');
@@ -485,6 +509,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'Not calculated');
       }
 
+      // Step 11: Insulin Resistance Screening
+      const insulinResistance = screenInsulinResistance(labs, 'female') || undefined;
+      console.log('[API] Female IR Screening:', insulinResistance ? `${insulinResistance.positiveCount} positive markers, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
+
+      if (insulinResistance && insulinResistance.likelihood !== 'none') {
+        const irStatus: 'normal' | 'borderline' | 'abnormal' | 'critical' = 
+          insulinResistance.likelihood === 'high' ? 'critical' : 'abnormal';
+        const irInterpretation = {
+          category: 'Insulin Resistance Screening',
+          value: insulinResistance.positiveCount,
+          unit: 'of 6 markers positive',
+          status: irStatus,
+          referenceRange: '0-1 Low, 2 Moderate, 3+ High Likelihood',
+          interpretation: insulinResistance.providerSummary,
+          recommendation: insulinResistance.phenotypes.length > 0 
+            ? `Phenotype(s): ${insulinResistance.phenotypes.map(p => p.name).join('; ')}. ${insulinResistance.confirmationTests}`
+            : insulinResistance.confirmationTests || 'Consider fasting insulin + fasting glucose for confirmation.',
+          recheckTiming: '3-6 months',
+        };
+        interpretations.push(irInterpretation);
+      }
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -497,6 +543,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         supplements,
         cvRiskFlags,
         cacStatinRec,
+        insulinResistance,
       };
 
       console.log('[API] Female interpretation response summary:');
@@ -507,6 +554,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - Recheck window:', recheckWindow);
       console.log('  - Supplements:', supplements.length);
       console.log('  - CV Risk Flags computed');
+      console.log('  - Insulin Resistance:', insulinResistance ? insulinResistance.likelihoodLabel : 'Not screened');
 
       res.json(result);
     } catch (error) {
