@@ -1,0 +1,91 @@
+If appropriate, patients can qualify for both, but the logic should explain why.
+
+3. Use clinically sensible recommendation categories
+Each supplement recommendation should include:
+- supplement_name
+- priority (high / moderate / optional)
+- clinical_rationale
+- supporting_findings
+- patient_friendly_explanation
+- caution_notes if applicable
+
+4. Build or revise recommendation logic for all supplements
+Please create recommendation rules for the following:
+
+A. D3 + K 5000 / D3 + K 10,000 / D3 2000 Complex
+Recommend based on vitamin D level severity and maintenance needs.
+Example logic:
+- severe deficiency -> D3 + K 10,000
+- mild/moderate deficiency -> D3 + K 5000
+- maintenance / borderline low -> D3 2000 Complex
+
+B. OmegaGenics Fish Oil EPA-DHA 1000 mg
+Recommend when inflammatory or cardiometabolic markers suggest benefit, such as:
+- elevated hs-CRP
+- elevated ApoB
+- elevated triglycerides
+- metabolic dysfunction
+- generalized inflammatory picture
+
+C. NutraGems CoQ10 300 mg
+Recommend when symptoms or patterns suggest mitochondrial or cardiovascular support needs:
+- fatigue
+- low energy
+- statin use if medication data exists
+- cardiometabolic strain
+- possible mitochondrial support need
+
+D. HerWellness Estrovera
+Recommend for perimenopausal / menopausal vasomotor or symptom burden:
+- hot flashes
+- night sweats
+- irritability
+- sleep disruption
+- mood changes
+- patient is appropriate for non-hormonal symptom support
+
+E. Hemagenics
+Recommend for iron deficiency patterns:
+- low ferritin
+- low iron saturation
+- low serum iron
+- elevated TIBC
+- symptoms like fatigue, hair loss, restless legs if symptoms are available
+
+F. UltraFlora Complete Women’s Probiotic
+Recommend for:
+- general gut support
+- recurrent vaginal issues
+- post-antibiotic support
+- bloating or GI symptoms
+- women needing baseline microbiome support
+
+G. HerWellness Rapid Stress Relief
+Recommend for:
+- elevated stress symptoms
+- sleep disruption related to stress
+- anxiety / overwhelm
+- HPA-axis-type symptom picture
+
+H. Intrinsi Vitamin B12-Folate
+Recommend for:
+- low or borderline B12
+- low folate
+- fatigue
+- macrocytosis or borderline macrocytosis if CBC suggests it
+- neurologic symptom support if symptoms are present
+
+I. UltraFlora Healthy Weight with Akkermansia
+Recommend for:
+- insulin resistance
+- metabolic syndrome features
+- central adiposity
+- elevated ApoB / triglycerides
+- elevated hs-CRP
+- weight loss resistance
+- visceral adiposity phenotype
+- gut-metabolic dysfunction pattern
+
+J. EstroFactors
+Recommend when the patient has a pattern suggesting hormone transition support / estrogen metabolism support / perimenopausal symptom burden, especially if they may benefit from nutritional support around estrogen balance and menopausal transition.
+Help differentiate when EstroFactors is a better fit versus Estrovera, and when they may reasonably be used together.

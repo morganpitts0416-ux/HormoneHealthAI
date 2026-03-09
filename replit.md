@@ -42,22 +42,36 @@ The application features a comprehensive lab input form, a results display with 
 - **21-40 ng/mL (deficiency/insufficiency)**: Metagenics D3 5,000 + K
 - **41-59 ng/mL (suboptimal)**: Metagenics D3 2000 Complex
 
-### Women's Clinic Catalog (13 products)
+### Women's Clinic Supplement Architecture
+
+The women's supplement system uses a **layered architecture** with 4 distinct layers:
+1. **Phenotype Detection Layer** (`server/phenotype-detection-female.ts`): Identifies 8 clinical phenotypes from labs + symptoms: Inflammatory Burden, Iron Deficiency, Insulin Resistance/Visceral Adiposity, Menopausal Transition, Estrogen Dominance/Impaired Clearance, Oxidative Stress Burden, Stress/Cortisol Dysregulation, Gut-Microbiome Support
+2. **Supplement Matching Layer** (`server/supplements-female.ts`): Each supplement has its own evaluator function that uses weighted scoring from labs, symptoms, AND detected phenotypes
+3. **Prioritization Layer**: Supplements are scored, ranked, and capped (max 5 high, 5 medium, 7 low priority) to avoid over-recommending
+4. **Explanation Layer**: Each recommendation includes clinical rationale, supporting findings, patient-friendly explanation, confidence level, and linked phenotypes
+
+### Women's Clinic Catalog (17 products)
 The following Metagenics products are configured for the women's clinic in `server/supplements-female.ts`:
 
-1. **HerWellness Estrovera** - Hormone-free menopause relief with ERr 731 rhubarb extract (1 tablet daily)
-2. **Hemagenics** - Non-constipating iron with B12, B6, folate for red blood cell support (1 tablet daily)
-3. **Intrinsi B12-Folate** - Methylcobalamin + folate with intrinsic factor for enhanced absorption (1 tablet daily)
-4. **HerWellness Rapid Stress Relief** - Fast-acting L-Theanine + Lactium stress support chews (1 chew as needed)
-5. **Vitamin D3 10,000 + K** - High-dose vitamin D with K2 for severe deficiency ≤20 ng/mL (1 softgel daily)
-6. **Vitamin D3 5,000 + K** - Vitamin D with K2 for deficiency/insufficiency 21-40 ng/mL (1 softgel daily)
-7. **D3 2000 Complex** - Maintenance vitamin D for suboptimal 41-59 ng/mL (1 tablet daily)
-8. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for sleep and cognitive support (3 capsules daily, divided)
-9. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal support (2 capsules twice daily)
-10. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
-11. **UltraFlora Complete Women's Probiotic** - 5-in-1 probiotic for vaginal, urinary, digestive health (1 capsule daily)
-12. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily)
-13. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
+1. **HerWellness Estrovera** - Hormone-free menopause relief with ERr 731 rhubarb extract (1 tablet daily) - Triggered by vasomotor symptoms (hot flashes, night sweats)
+2. **EstroFactors** - Estrogen metabolism support with I3C, DIM, calcium D-glucarate (2 tablets twice daily) - Triggered by estrogen dominance/impaired clearance phenotype, PMS, hormonal transition
+3. **AdvaClear** - Broad-spectrum phase I/II liver detoxification support (2 capsules twice daily) - Triggered by estrogen dominance, metabolic dysfunction, borderline liver markers, oxidative stress
+4. **GlutaClear** - Glutathione/antioxidant support with NAC, alpha-lipoic acid (2 capsules daily) - Triggered by oxidative stress phenotype, inflammatory burden, metabolic stress
+5. **UltraFlora Healthy Weight with Akkermansia** - Metabolic probiotic with Akkermansia muciniphila (1 capsule daily) - Triggered by insulin resistance/visceral adiposity phenotype, weight gain, metabolic markers
+6. **Hemagenics** - Non-constipating iron with B12, B6, folate for red blood cell support (1 tablet twice daily)
+7. **Intrinsi B12-Folate** - Methylcobalamin + folate with intrinsic factor for enhanced absorption (1 tablet daily)
+8. **HerWellness Rapid Stress Relief** - Fast-acting L-Theanine + Lactium stress support chews (1 chew as needed)
+9. **Vitamin D3 10,000 + K** - High-dose vitamin D with K2 for severe deficiency ≤20 ng/mL (1 softgel daily)
+10. **Vitamin D3 5,000 + K** - Vitamin D with K2 for deficiency/insufficiency 21-40 ng/mL (1 softgel daily)
+11. **D3 2000 Complex** - Maintenance vitamin D for suboptimal 41-59 ng/mL (1 tablet daily)
+12. **Magtein Magnesium L-Threonate** - Brain-focused magnesium for sleep and cognitive support (3 capsules daily, divided)
+13. **Adreset** - Adaptogen formula with Cordyceps, Ginseng, Rhodiola for adrenal support (2 capsules twice daily)
+14. **Exhilarin** - Ayurvedic adaptogen blend for mood, energy, and stress tolerance (2 tablets daily)
+15. **UltraFlora Complete Women's Probiotic** - 5-in-1 probiotic for vaginal, urinary, digestive health (1 capsule daily)
+16. **NutraGems CoQ10 300** - Chewable 300mg CoQ10 for cardiovascular health, energy production (1 gel daily)
+17. **OmegaGenics Fish Oil Neuro 1000** - High-DHA omega-3 (750mg DHA, 250mg EPA) for brain, heart, and joint health (1-2 softgels daily)
+
+**Estrovera vs EstroFactors**: Estrovera is for vasomotor symptom relief (hot flashes, night sweats) — non-hormonal symptom management. EstroFactors addresses underlying estrogen metabolism and balance (I3C, DIM). Both can be recommended together when a patient has vasomotor symptoms AND estrogen metabolism issues.
 
 ### Men's Clinic Catalog (11 products)
 The following Metagenics products are configured for the men's clinic in `server/supplements-male.ts`:

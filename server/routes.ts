@@ -484,32 +484,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 6: Determine recheck window using female-specific logic
       const recheckWindow = FemaleClinicalLogicEngine.determineRecheckWindow(labs, redFlags);
 
-      // Step 7: Evaluate supplement recommendations based on lab values
-      const supplements = evaluateSupplements(labs);
-      console.log('[API] Supplement recommendations:', supplements.length);
-
-      // Step 8: Compute cardiovascular risk stratification flags
-      const cvRiskFlags = FemaleClinicalLogicEngine.computeCardiovascularRiskFlags(labs);
-      console.log('[API] CV Risk Flags:', JSON.stringify(cvRiskFlags, null, 2));
-
-      // Step 9: Generate CAC and statin recommendations
-      const cacStatinRec = FemaleClinicalLogicEngine.generateCacStatinRecommendations(labs, cvRiskFlags);
-      console.log('[API] CAC/Statin Recommendations generated');
-
-      // Step 10: Calculate Adjusted Risk Assessment based on ApoB and Lp(a)
-      let adjustedRisk = undefined;
-      if (preventRisk && (labs.apoB !== undefined || labs.lpa !== undefined)) {
-        adjustedRisk = PREVENTCalculator.calculateAdjustedRisk(
-          preventRisk.tenYearASCVD,
-          labs.apoB,
-          labs.lpa
-        ) || undefined;
-        console.log('[API] Adjusted Risk Assessment:', adjustedRisk ? 
-          `Base: ${adjustedRisk.baseASCVDRisk.toFixed(1)}%, Category: ${adjustedRisk.riskCategory} → ${adjustedRisk.adjustedCategory}` : 
-          'Not calculated');
-      }
-
-      // Step 11: Insulin Resistance Screening
+      // Step 7: Insulin Resistance Screening (moved before supplements for phenotype input)
       const insulinResistance = screenInsulinResistance(labs, 'female') || undefined;
       console.log('[API] Female IR Screening:', insulinResistance ? `${insulinResistance.positiveCount} positive markers, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
 
@@ -531,6 +506,34 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interpretations.push(irInterpretation);
       }
 
+      // Step 8: Evaluate supplement recommendations based on lab values, phenotypes, and IR screening
+      const supplementResult = evaluateSupplements(labs, insulinResistance);
+      const supplements = supplementResult.recommendations;
+      const clinicalPhenotypes = supplementResult.phenotypes;
+      console.log('[API] Supplement recommendations:', supplements.length);
+      console.log('[API] Clinical phenotypes detected:', clinicalPhenotypes.map(p => `${p.name} (${p.confidence})`).join(', ') || 'None');
+
+      // Step 9: Compute cardiovascular risk stratification flags
+      const cvRiskFlags = FemaleClinicalLogicEngine.computeCardiovascularRiskFlags(labs);
+      console.log('[API] CV Risk Flags:', JSON.stringify(cvRiskFlags, null, 2));
+
+      // Step 10: Generate CAC and statin recommendations
+      const cacStatinRec = FemaleClinicalLogicEngine.generateCacStatinRecommendations(labs, cvRiskFlags);
+      console.log('[API] CAC/Statin Recommendations generated');
+
+      // Step 11: Calculate Adjusted Risk Assessment based on ApoB and Lp(a)
+      let adjustedRisk = undefined;
+      if (preventRisk && (labs.apoB !== undefined || labs.lpa !== undefined)) {
+        adjustedRisk = PREVENTCalculator.calculateAdjustedRisk(
+          preventRisk.tenYearASCVD,
+          labs.apoB,
+          labs.lpa
+        ) || undefined;
+        console.log('[API] Adjusted Risk Assessment:', adjustedRisk ? 
+          `Base: ${adjustedRisk.baseASCVDRisk.toFixed(1)}%, Category: ${adjustedRisk.riskCategory} → ${adjustedRisk.adjustedCategory}` : 
+          'Not calculated');
+      }
+
       // Construct response
       const result: InterpretationResult = {
         redFlags,
@@ -544,6 +547,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cvRiskFlags,
         cacStatinRec,
         insulinResistance,
+        clinicalPhenotypes,
       };
 
       console.log('[API] Female interpretation response summary:');

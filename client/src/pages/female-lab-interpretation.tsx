@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Heart, Save, History } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Heart, Save, History, Activity } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { FemaleLabInputForm } from "@/components/female-lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
@@ -394,6 +394,55 @@ export default function FemaleLabInterpretation() {
                   </CardContent>
                 </Card>
 
+                {/* Clinical Phenotypes */}
+                {interpretationResult.clinicalPhenotypes && interpretationResult.clinicalPhenotypes.length > 0 && (
+                  <Card>
+                    <CardHeader>
+                      <div className="flex items-center gap-2">
+                        <Activity className="w-5 h-5 text-purple-600" />
+                        <CardTitle>Clinical Phenotype Assessment</CardTitle>
+                      </div>
+                      <CardDescription>
+                        Detected clinical patterns driving supplement and treatment recommendations
+                      </CardDescription>
+                    </CardHeader>
+                    <CardContent>
+                      <div className="space-y-3">
+                        {interpretationResult.clinicalPhenotypes.map((phenotype, index) => (
+                          <div 
+                            key={index} 
+                            className={`p-4 rounded-lg border ${
+                              phenotype.confidence === 'high' ? 'border-purple-300 bg-purple-50/50 dark:bg-purple-950/20' :
+                              phenotype.confidence === 'moderate' ? 'border-indigo-200 bg-indigo-50/50 dark:bg-indigo-950/20' :
+                              'border-gray-200 bg-gray-50/50 dark:bg-gray-800/30'
+                            }`}
+                            data-testid={`clinical-phenotype-${index}`}
+                          >
+                            <div className="flex items-center gap-2 mb-2 flex-wrap">
+                              <h4 className="font-semibold text-sm">{phenotype.name}</h4>
+                              <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                phenotype.confidence === 'high' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200' :
+                                phenotype.confidence === 'moderate' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200' :
+                                'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
+                              }`}>
+                                {phenotype.confidence} confidence
+                              </span>
+                            </div>
+                            <p className="text-xs text-muted-foreground mb-2">{phenotype.description}</p>
+                            <div className="flex flex-wrap gap-1">
+                              {phenotype.supportingFindings.map((finding, fIdx) => (
+                                <span key={fIdx} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                                  {finding}
+                                </span>
+                              ))}
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    </CardContent>
+                  </Card>
+                )}
+
                 {/* Supplement Recommendations */}
                 {interpretationResult.supplements && interpretationResult.supplements.length > 0 && (
                   <Card>
@@ -403,7 +452,7 @@ export default function FemaleLabInterpretation() {
                         <CardTitle>Supplement Recommendations</CardTitle>
                       </div>
                       <CardDescription>
-                        Personalized supplement suggestions based on lab results
+                        Personalized Metagenics supplement protocol based on labs, symptoms, and clinical phenotypes
                       </CardDescription>
                     </CardHeader>
                     <CardContent>
@@ -412,38 +461,68 @@ export default function FemaleLabInterpretation() {
                           <div 
                             key={index} 
                             className={`p-4 rounded-lg border ${
-                              supp.priority === 'high' ? 'border-red-200 bg-red-50/50' :
-                              supp.priority === 'medium' ? 'border-amber-200 bg-amber-50/50' :
-                              'border-gray-200 bg-gray-50/50'
+                              supp.priority === 'high' ? 'border-red-200 bg-red-50/50 dark:bg-red-950/20' :
+                              supp.priority === 'medium' ? 'border-amber-200 bg-amber-50/50 dark:bg-amber-950/20' :
+                              'border-gray-200 bg-gray-50/50 dark:bg-gray-800/30'
                             }`}
                             data-testid={`supplement-recommendation-${index}`}
                           >
                             <div className="flex items-start justify-between gap-4">
                               <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1">
+                                <div className="flex items-center gap-2 mb-1 flex-wrap">
                                   <h4 className="font-semibold text-base">{supp.name}</h4>
                                   <span className={`px-2 py-0.5 text-xs rounded-full ${
-                                    supp.priority === 'high' ? 'bg-red-100 text-red-700' :
-                                    supp.priority === 'medium' ? 'bg-amber-100 text-amber-700' :
-                                    'bg-gray-100 text-gray-700'
+                                    supp.priority === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200' :
+                                    supp.priority === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200' :
+                                    'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
                                   }`}>
                                     {supp.priority} priority
                                   </span>
-                                  <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700">
+                                  {supp.confidenceLevel && (
+                                    <span className={`px-2 py-0.5 text-xs rounded-full ${
+                                      supp.confidenceLevel === 'high' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' :
+                                      supp.confidenceLevel === 'moderate' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' :
+                                      'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
+                                    }`}>
+                                      {supp.confidenceLevel} confidence
+                                    </span>
+                                  )}
+                                  <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200">
                                     {supp.category}
                                   </span>
                                 </div>
                                 <p className="text-sm font-medium text-primary mb-1">
                                   Dose: {supp.dose}
                                 </p>
-                                <p className="text-sm text-muted-foreground mb-1">
-                                  <span className="font-medium">Indication:</span> {supp.indication}
-                                </p>
+                                {supp.supportingFindings && supp.supportingFindings.length > 0 && (
+                                  <div className="mb-2">
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Supporting Findings:</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {supp.supportingFindings.map((finding, fIdx) => (
+                                        <span key={fIdx} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
+                                          {finding}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
+                                {supp.phenotypes && supp.phenotypes.length > 0 && (
+                                  <div className="mb-2">
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">Linked Phenotypes:</p>
+                                    <div className="flex flex-wrap gap-1">
+                                      {supp.phenotypes.map((ph, pIdx) => (
+                                        <span key={pIdx} className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200">
+                                          {ph}
+                                        </span>
+                                      ))}
+                                    </div>
+                                  </div>
+                                )}
                                 <p className="text-sm text-muted-foreground mb-1">
                                   {supp.rationale}
                                 </p>
                                 {supp.caution && (
-                                  <p className="text-sm text-amber-700 mt-2 flex items-start gap-1">
+                                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-2 flex items-start gap-1">
                                     <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
                                     <span><span className="font-medium">Caution:</span> {supp.caution}</span>
                                   </p>
