@@ -426,6 +426,7 @@ export const interpretationResultSchema = z.object({
   cacStatinRec: cacStatinRecommendationSchema.optional(),
   insulinResistance: insulinResistanceScreeningSchema.optional(),
   clinicalPhenotypes: z.array(clinicalPhenotypeSchema).optional(),
+  soapNote: z.string().optional(),
 });
 
 export type InterpretationResult = z.infer<typeof interpretationResultSchema>;
