@@ -44,7 +44,9 @@ function evaluateHemagenics(labs: FemaleLabValues, phenotypes: ClinicalPhenotype
   const ironPhenotype = phenotypes.find(p => p.name === "Iron Deficiency");
   if (ironPhenotype) matchedPhenotypes.push(ironPhenotype.name);
 
-  if (score < 2) return null;
+  const hasLabEvidence = lowFerritin || veryLowFerritin || lowIron || elevatedTIBC || lowHemoglobin;
+  if (!hasLabEvidence) return null;
+  if (score < 3) return null;
 
   return {
     name: "Hemagenics\u00AE Red Blood Cell Support",
