@@ -253,7 +253,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interpretations.push(irInterpretation);
       }
 
-      // Construct response
+      // Step 9: Generate SOAP note
+      const soapNote = await AIService.generateSOAPNote(
+        labs, redFlags, interpretations, aiRecommendations, recheckWindow,
+        'male', preventRisk, supplements, insulinResistance
+      );
+
       const result: InterpretationResult = {
         redFlags,
         interpretations,
@@ -264,6 +269,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         adjustedRisk,
         supplements,
         insulinResistance,
+        soapNote,
       };
 
       console.log('[API] Response summary:');
@@ -273,6 +279,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - Patient summary length:', patientSummary.length);
       console.log('  - Recheck window:', recheckWindow);
       console.log('  - Supplements:', supplements.length);
+      console.log('  - SOAP note length:', soapNote.length);
 
       res.json(result);
     } catch (error) {
@@ -534,7 +541,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'Not calculated');
       }
 
-      // Construct response
+      // Step 10: Generate SOAP note
+      const soapNote = await AIService.generateSOAPNote(
+        labs, redFlags, interpretations, aiRecommendations, recheckWindow,
+        'female', preventRisk, supplements, insulinResistance
+      );
+
       const result: InterpretationResult = {
         redFlags,
         interpretations,
@@ -548,6 +560,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cacStatinRec,
         insulinResistance,
         clinicalPhenotypes,
+        soapNote,
       };
 
       console.log('[API] Female interpretation response summary:');
@@ -559,6 +572,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - Supplements:', supplements.length);
       console.log('  - CV Risk Flags computed');
       console.log('  - Insulin Resistance:', insulinResistance ? insulinResistance.likelihoodLabel : 'Not screened');
+      console.log('  - SOAP note length:', soapNote.length);
 
       res.json(result);
     } catch (error) {

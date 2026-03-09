@@ -9,6 +9,7 @@ import { LabInputForm } from "@/components/lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { PatientSummary } from "@/components/patient-summary";
+import { SOAPNote } from "@/components/soap-note";
 import { SavedInterpretations } from "@/components/saved-interpretations";
 import { labsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
@@ -393,6 +394,11 @@ export default function LabInterpretation() {
                     summary={interpretationResult.patientSummary}
                     labValues={labValues}
                   />
+                )}
+
+                {/* SOAP Note */}
+                {interpretationResult.soapNote && (
+                  <SOAPNote soapNote={interpretationResult.soapNote} />
                 )}
               </>
             ) : (

@@ -2,7 +2,7 @@
 // Using Replit AI Integrations (blueprint:javascript_openai_ai_integrations)
 
 import OpenAI from "openai";
-import type { LabValues, FemaleLabValues, RedFlag, LabInterpretation, ASCVDRiskResult, PREVENTRiskResult } from "@shared/schema";
+import type { LabValues, FemaleLabValues, RedFlag, LabInterpretation, ASCVDRiskResult, PREVENTRiskResult, SupplementRecommendation, InsulinResistanceScreening } from "@shared/schema";
 
 // Using gpt-5-mini for faster responses - smaller model but still capable
 const openai = new OpenAI({
@@ -242,6 +242,160 @@ Write the summary now:`;
       }
       return this.getDefaultPatientSummary();
     }
+  }
+
+  static async generateSOAPNote(
+    labs: LabValues | FemaleLabValues,
+    redFlags: RedFlag[],
+    interpretations: LabInterpretation[],
+    aiRecommendations: string,
+    recheckWindow: string,
+    gender: 'male' | 'female' = 'male',
+    riskResult?: ASCVDRiskResult | PREVENTRiskResult | null,
+    supplements?: SupplementRecommendation[],
+    insulinResistance?: InsulinResistanceScreening | null,
+  ): Promise<string> {
+    const clinicType = gender === 'female' ? "Women's Hormone & Primary Care Clinic" : "Men's Hormone & Primary Care Clinic";
+    const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
+
+    const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
+    const borderlineFindings = interpretations.filter(i => i.status === 'borderline');
+    const normalFindings = interpretations.filter(i => i.status === 'normal');
+
+    const buildLabList = (findings: LabInterpretation[]) =>
+      findings.map(f => `${f.category}: ${f.value} ${f.unit} [${f.status.toUpperCase()}] - ${f.interpretation}`).join('\n');
+
+    let cvRiskSection = '';
+    if (riskResult) {
+      if ('tenYearTotalCVD' in riskResult) {
+        const pr = riskResult as PREVENTRiskResult;
+        cvRiskSection = `\nCardiovascular Risk (AHA PREVENT 2023): 10-yr Total CVD ${pr.tenYearCVDPercentage}, 10-yr ASCVD ${pr.tenYearASCVDPercentage}, 10-yr HF ${pr.tenYearHFPercentage}. Category: ${pr.riskCategory}.`;
+        if (pr.thirtyYearCVDPercentage) cvRiskSection += ` 30-yr CVD: ${pr.thirtyYearCVDPercentage}.`;
+        if (pr.statinRecommendation) cvRiskSection += ` Statin: ${pr.statinRecommendation}.`;
+      } else {
+        const ar = riskResult as ASCVDRiskResult;
+        cvRiskSection = `\nCardiovascular Risk: 10-yr ASCVD ${ar.riskPercentage}, Category: ${ar.riskCategory}.`;
+        if (ar.statinRecommendation) cvRiskSection += ` Statin: ${ar.statinRecommendation}.`;
+      }
+    }
+
+    let irSection = '';
+    if (insulinResistance && insulinResistance.positiveCount >= 2) {
+      const totalMarkers = insulinResistance.markers?.length || 6;
+      irSection = `\nInsulin Resistance Screening: ${insulinResistance.likelihoodLabel} (${insulinResistance.positiveCount}/${totalMarkers} markers positive).`;
+      if (insulinResistance.phenotypes && insulinResistance.phenotypes.length > 0) {
+        irSection += ` Phenotypes: ${insulinResistance.phenotypes.map((p: any) => p.name).join(', ')}.`;
+      }
+    }
+
+    let supplementSection = '';
+    if (supplements && supplements.length > 0) {
+      const highPriority = supplements.filter(s => s.priority === 'high');
+      const medPriority = supplements.filter(s => s.priority === 'medium');
+      if (highPriority.length > 0) {
+        supplementSection += `\nHigh-priority supplements recommended: ${highPriority.map(s => `${s.name} (${s.dose})`).join('; ')}.`;
+      }
+      if (medPriority.length > 0) {
+        supplementSection += `\nMedium-priority supplements: ${medPriority.map(s => `${s.name} (${s.dose})`).join('; ')}.`;
+      }
+    }
+
+    const patientName = (labs as any).patientName || 'Patient';
+    const age = (labs as any).age || (labs as any).demographics?.age;
+    const ageStr = age ? `, ${age}-year-old` : '';
+    const sexStr = gender === 'female' ? 'female' : 'male';
+
+    const prompt = `Generate a complete SOAP note for a clinical chart entry based on the following lab interpretation data. This note should be ready to copy and paste directly into an EMR/EHR.
+
+PATIENT: ${patientName}${ageStr} ${sexStr}
+CLINIC: ${clinicType}
+DATE: ${today}
+
+RED FLAGS (${redFlags.length}):
+${redFlags.length > 0 ? redFlags.map(f => `- [${f.severity.toUpperCase()}] ${f.category}: ${f.message} → Action: ${f.action}`).join('\n') : 'None'}
+
+ABNORMAL/CRITICAL FINDINGS:
+${abnormalFindings.length > 0 ? buildLabList(abnormalFindings) : 'None'}
+
+BORDERLINE FINDINGS:
+${borderlineFindings.length > 0 ? buildLabList(borderlineFindings) : 'None'}
+
+NORMAL FINDINGS (${normalFindings.length}):
+${normalFindings.map(f => `${f.category}: ${f.value} ${f.unit}`).join(', ')}
+${cvRiskSection}${irSection}${supplementSection}
+
+RECHECK WINDOW: ${recheckWindow}
+
+AI CLINICAL RECOMMENDATIONS (already generated):
+${aiRecommendations}
+
+FORMAT THE SOAP NOTE AS FOLLOWS:
+
+SUBJECTIVE:
+- Chief complaint: Lab review / follow-up / hormone management (use clinical context)
+- Include any relevant symptoms the patient reports based on abnormal findings
+- For ${gender === 'female' ? 'women' : 'men'}: reference relevant ${gender === 'female' ? 'hormonal symptoms, menstrual history, or menopausal status' : 'hormone therapy status, energy, libido, or mood concerns'} if labs suggest them
+
+OBJECTIVE:
+- List ALL lab values in a clean, organized format grouped by category (CBC, CMP, Lipids, Hormones, etc.)
+- Include units and flag abnormal/critical values
+- Include vital signs if available (BMI, BP)
+- Include risk scores (cardiovascular, insulin resistance) if calculated
+
+ASSESSMENT:
+- Number each problem identified from the lab results
+- Reference specific values and clinical significance
+- Include differential considerations where appropriate
+- Note red flags requiring physician review
+
+PLAN:
+- For each assessment item, provide specific plan steps
+- Include medication adjustments with specific doses when applicable
+- Include supplement recommendations if provided
+- Include lifestyle modifications
+- Include follow-up lab orders with timing
+- State that results were reviewed and discussed with the patient
+- Include care plan and follow-up appointment timing
+
+End with:
+"Results reviewed and discussed with patient. Questions answered. Patient verbalized understanding. Follow-up as above."
+
+CRITICAL FORMATTING RULES:
+- Use standard SOAP format with clear S/O/A/P headers
+- Use numbered problem list in Assessment
+- Be thorough but concise - this goes directly into a medical chart
+- Use professional medical terminology
+- NO emojis
+- Include today's date: ${today}`;
+
+    try {
+      console.log('[AI Service] Generating SOAP note...');
+      const response = await openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are an experienced clinical documentation specialist generating SOAP notes for a ${clinicType}. Your notes are thorough, professionally formatted, and ready for direct entry into an EMR/EHR system. You write in standard medical documentation style with appropriate terminology. Every SOAP note you produce is chart-ready.`
+          },
+          {
+            role: "user",
+            content: prompt
+          }
+        ],
+        max_completion_tokens: 4000,
+      });
+
+      const soapNote = response.choices[0]?.message?.content;
+      console.log('[AI Service] SOAP note generated, length:', soapNote?.length || 0);
+      return soapNote || this.getDefaultSOAPNote(today);
+    } catch (error) {
+      console.error("Error generating SOAP note:", error);
+      return this.getDefaultSOAPNote(today);
+    }
+  }
+
+  private static getDefaultSOAPNote(date: string): string {
+    return `SOAP NOTE - ${date}\n\nS: Lab review visit. [Unable to generate AI-powered SOAP note at this time. Please document subjective findings manually.]\n\nO: See lab results above.\n\nA: See clinical interpretations above.\n\nP: See recommendations above. Follow up as clinically indicated.\n\nResults reviewed with patient. Questions answered. Patient verbalized understanding.`;
   }
 
   private static buildRecommendationPrompt(

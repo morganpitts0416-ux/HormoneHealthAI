@@ -242,6 +242,39 @@ export function generateLabReportPDF(
     yPosition += 4;
   }
 
+  if (interpretation.soapNote) {
+    doc.addPage();
+    yPosition = 20;
+
+    doc.setFontSize(12);
+    doc.setFont('helvetica', 'bold');
+    doc.text('SOAP Note - Chart Ready', 14, yPosition);
+    yPosition += 7;
+
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    const sanitizedSOAP = sanitizeForPdf(interpretation.soapNote);
+    const soapLines = doc.splitTextToSize(sanitizedSOAP, pageWidth - 28);
+
+    soapLines.forEach((line: string) => {
+      if (yPosition > 270) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      const trimmed = line.trim();
+      if (trimmed === 'SUBJECTIVE:' || trimmed === 'OBJECTIVE:' || trimmed === 'ASSESSMENT:' || trimmed === 'PLAN:' ||
+          trimmed.startsWith('S:') || trimmed.startsWith('O:') || trimmed.startsWith('A:') || trimmed.startsWith('P:')) {
+        doc.setFont('helvetica', 'bold');
+        doc.text(line, 14, yPosition);
+        doc.setFont('helvetica', 'normal');
+      } else {
+        doc.text(line, 14, yPosition);
+      }
+      yPosition += 4;
+    });
+    yPosition += 4;
+  }
+
   if (interpretation.recheckWindow) {
     if (yPosition > 260) {
       doc.addPage();
