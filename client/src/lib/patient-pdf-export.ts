@@ -1349,6 +1349,34 @@ export async function generatePatientWellnessPDF(
       defaultDose: '1 softgel 1-2 times daily',
       category: 'cardiovascular'
     },
+    {
+      name: 'AdvaClear',
+      aliases: ['advaclear', 'adva clear', 'liver detox', 'biotransformation', 'phase i', 'phase ii', 'detoxification'],
+      description: 'Broad-spectrum liver detoxification support with nutrients for both Phase I and Phase II biotransformation pathways. Supports metabolic clearance of hormones, environmental compounds, and metabolic byproducts.',
+      defaultDose: '2 capsules twice daily with food',
+      category: 'detox'
+    },
+    {
+      name: 'GlutaClear',
+      aliases: ['glutaclear', 'gluta clear', 'glutathione', 'nac', 'antioxidant', 'alpha lipoic'],
+      description: 'Glutathione and antioxidant support formula with NAC, alpha-lipoic acid, and green tea catechins. Supports cellular defense against oxidative damage, liver health, and immune function.',
+      defaultDose: '2 capsules daily',
+      category: 'detox'
+    },
+    {
+      name: 'UltraFlora Healthy Weight with Akkermansia',
+      aliases: ['healthy weight', 'akkermansia', 'ultraflora weight', 'metabolic probiotic', 'weight probiotic'],
+      description: 'Specialized probiotic with Akkermansia muciniphila and Bifidobacterium lactis B420 for metabolic health, gut barrier integrity, and healthy weight management support.',
+      defaultDose: '1 capsule daily',
+      category: 'metabolic-probiotic'
+    },
+    {
+      name: 'EstroFactors',
+      aliases: ['estrofactors', 'estro factors', 'i3c', 'dim', 'calcium d-glucarate', 'estrogen metabolism', 'estrogen balance'],
+      description: 'Nutritional support for healthy estrogen metabolism and balance with I3C, DIM, and calcium D-glucarate. Supports healthy estrogen metabolite ratios during hormonal transitions.',
+      defaultDose: '2 tablets twice daily',
+      category: 'estrogen-support'
+    },
   ];
 
   // Parse and format supplement protocol into table with Metagenics products
@@ -1456,7 +1484,7 @@ export async function generatePatientWellnessPDF(
       return interpretation.supplements.map(s => {
         // Find matching Metagenics product for better description
         const normalizedName = normalizeName(s.name);
-        let description = s.rationale || s.indication || 'Supports overall health and wellness.';
+        let description = (s as any).patientExplanation || s.rationale || s.indication || 'Supports overall health and wellness.';
         
         // Match to our Metagenics catalog for consistent descriptions
         // Priority 1: Exact product name match (normalized, case-insensitive)

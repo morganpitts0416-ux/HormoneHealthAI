@@ -42,6 +42,18 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
     lowLibido: false,
     lowEnergy: false,
     lowMotivation: false,
+    acne: false,
+    pmsSymptoms: false,
+    irritability: false,
+    headaches: false,
+    heavyMenses: false,
+    bloating: false,
+    hairLoss: false,
+    restlessLegs: false,
+    anxiety: false,
+    weightGain: false,
+    moodChanges: false,
+    brainFog: false,
     ...initialValues,
   };
 
@@ -76,6 +88,18 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
       lowLibido: false,
       lowEnergy: false,
       lowMotivation: false,
+      acne: false,
+      pmsSymptoms: false,
+      irritability: false,
+      headaches: false,
+      heavyMenses: false,
+      bloating: false,
+      hairLoss: false,
+      restlessLegs: false,
+      anxiety: false,
+      weightGain: false,
+      moodChanges: false,
+      brainFog: false,
       ...initialValues,
     };
     form.reset(mergedValues, { keepDirtyValues: true });
@@ -375,11 +399,11 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
             <AccordionTrigger className="hover:no-underline" data-testid="accordion-symptoms-female">
               <div className="flex items-center gap-2">
                 <Thermometer className="w-4 h-4 text-orange-500" />
-                <span className="font-semibold">Symptom Assessment (Women 35+)</span>
+                <span className="font-semibold">Symptom Assessment</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
-              <p className="text-xs text-muted-foreground mb-4">Check any symptoms the patient is currently experiencing. These help identify hormone patterns for women 35 and older.</p>
+              <p className="text-xs text-muted-foreground mb-4">Check any symptoms the patient is currently experiencing. These drive clinical phenotype detection and personalized supplement recommendations.</p>
               <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                 <FormField control={form.control} name="hotFlashes" render={({ field }) => (
                   <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
@@ -433,6 +457,78 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                   <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
                     <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-low-motivation" /></FormControl>
                     <FormLabel className="text-xs font-medium">Low Motivation</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="moodChanges" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-mood-changes" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Mood Changes</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="anxiety" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-anxiety" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Anxiety</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="irritability" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-irritability" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Irritability</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="brainFog" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-brain-fog" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Brain Fog</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="headaches" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-headaches" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Headaches</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="pmsSymptoms" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-pms-symptoms" /></FormControl>
+                    <FormLabel className="text-xs font-medium">PMS Symptoms</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="heavyMenses" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-heavy-menses" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Heavy Menses</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="acne" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-acne" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Acne</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="bloating" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-bloating" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Bloating / GI Issues</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="hairLoss" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-hair-loss" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Hair Loss</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="restlessLegs" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-restless-legs" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Restless Legs</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="weightGain" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-weight-gain" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Weight Gain / Central Adiposity</FormLabel>
                   </FormItem>
                 )} />
               </div>

@@ -244,6 +244,20 @@ export const femaleLabValuesSchema = z.object({
   lowLibido: z.boolean().optional(),
   lowEnergy: z.boolean().optional(),
   lowMotivation: z.boolean().optional(),
+
+  // Extended Symptom Assessment (for phenotype detection and supplement logic)
+  acne: z.boolean().optional(),
+  pmsSymptoms: z.boolean().optional(),
+  irritability: z.boolean().optional(),
+  headaches: z.boolean().optional(),
+  heavyMenses: z.boolean().optional(),
+  bloating: z.boolean().optional(),
+  hairLoss: z.boolean().optional(),
+  restlessLegs: z.boolean().optional(),
+  anxiety: z.boolean().optional(),
+  weightGain: z.boolean().optional(),
+  moodChanges: z.boolean().optional(),
+  brainFog: z.boolean().optional(),
 });
 
 export type FemaleLabValues = z.infer<typeof femaleLabValuesSchema>;
@@ -281,11 +295,24 @@ export const supplementRecommendationSchema = z.object({
   indication: z.string(),
   rationale: z.string(),
   priority: z.enum(['high', 'medium', 'low']),
-  category: z.enum(['iron', 'vitamin', 'mineral', 'hormone-support', 'cardiovascular', 'thyroid', 'bone', 'general']),
+  category: z.enum(['iron', 'vitamin', 'mineral', 'hormone-support', 'cardiovascular', 'thyroid', 'bone', 'general', 'detox', 'metabolic', 'probiotic']),
   caution: z.string().optional(),
+  supportingFindings: z.array(z.string()).optional(),
+  patientExplanation: z.string().optional(),
+  confidenceLevel: z.enum(['high', 'moderate', 'supportive']).optional(),
+  phenotypes: z.array(z.string()).optional(),
 });
 
 export type SupplementRecommendation = z.infer<typeof supplementRecommendationSchema>;
+
+export const clinicalPhenotypeSchema = z.object({
+  name: z.string(),
+  confidence: z.enum(['high', 'moderate', 'low']),
+  supportingFindings: z.array(z.string()),
+  description: z.string(),
+});
+
+export type ClinicalPhenotype = z.infer<typeof clinicalPhenotypeSchema>;
 
 // Cardiovascular Risk Flags Schema - Boolean flags for risk stratification
 export const cardiovascularRiskFlagsSchema = z.object({
@@ -398,6 +425,7 @@ export const interpretationResultSchema = z.object({
   cvRiskFlags: cardiovascularRiskFlagsSchema.optional(),
   cacStatinRec: cacStatinRecommendationSchema.optional(),
   insulinResistance: insulinResistanceScreeningSchema.optional(),
+  clinicalPhenotypes: z.array(clinicalPhenotypeSchema).optional(),
 });
 
 export type InterpretationResult = z.infer<typeof interpretationResultSchema>;
