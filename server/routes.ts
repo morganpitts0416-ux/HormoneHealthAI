@@ -890,6 +890,33 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interpretation,
         labDate: labDate ? new Date(labDate) : new Date(),
       });
+
+      // Also create/find patient profile and link lab result
+      try {
+        const nameParts = patientName.trim().split(/\s+/);
+        const firstName = nameParts[0] || patientName;
+        const lastName = nameParts.slice(1).join(' ') || '';
+        if (firstName && lastName) {
+          let patient = await storage.getPatientByName(firstName, lastName);
+          if (!patient) {
+            patient = await storage.createPatient({
+              firstName,
+              lastName,
+              gender: gender as 'male' | 'female',
+            });
+            console.log('[API] Auto-created patient profile:', patient.id, firstName, lastName);
+          }
+          await storage.createLabResult({
+            patientId: patient.id,
+            labDate: labDate ? new Date(labDate) : new Date(),
+            labValues,
+            interpretationResult: interpretation,
+          } as InsertLabResult);
+          console.log('[API] Linked lab result to patient:', patient.id);
+        }
+      } catch (linkError) {
+        console.error('[API] Error auto-linking patient profile (non-fatal):', linkError);
+      }
       
       console.log('[API] Saved interpretation for patient:', patientName);
       res.status(201).json(saved);
