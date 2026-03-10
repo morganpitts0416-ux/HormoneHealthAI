@@ -19,7 +19,7 @@ import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { FemaleLabValues, InterpretationResult, LabValues, Patient } from "@shared/schema";
+import type { FemaleLabValues, InterpretationResult, LabValues, Patient, LabResult } from "@shared/schema";
 
 export default function FemaleLabInterpretation() {
   const [labValues, setLabValues] = useState<FemaleLabValues>({});
@@ -115,7 +115,24 @@ export default function FemaleLabInterpretation() {
       console.log('[Frontend] Wellness plan generated:', wellnessPlan);
       if (interpretationResult) {
         const patientName = labValues.patientName || undefined;
-        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName);
+        let patientLabs: LabResult[] | undefined;
+        if (selectedPatient) {
+          try {
+            const cached = queryClient.getQueryData<LabResult[]>([`/api/patients/${selectedPatient.id}/labs`]);
+            if (cached && cached.length >= 2) {
+              patientLabs = cached;
+            } else {
+              const res = await fetch(`/api/patients/${selectedPatient.id}/labs`);
+              if (res.ok) {
+                const fetched = await res.json();
+                if (fetched.length >= 2) patientLabs = fetched;
+              }
+            }
+          } catch (e) {
+            console.warn('Could not fetch patient labs for trend charts:', e);
+          }
+        }
+        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",

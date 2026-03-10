@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { LabValues, InterpretationResult, LabInterpretation } from '@shared/schema';
+import type { LabValues, InterpretationResult, LabInterpretation, LabResult } from '@shared/schema';
+import { addTrendChartsToWellnessPDF } from '@/lib/pdf-trend-charts';
 
 function sanitizeForPdf(text: string): string {
   return text
@@ -289,7 +290,8 @@ export async function generateMalePatientWellnessPDF(
   labValues: LabValues,
   interpretation: InterpretationResult,
   wellnessPlan: MaleWellnessPlan,
-  patientName?: string
+  patientName?: string,
+  patientLabs?: LabResult[]
 ): Promise<void> {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -1314,6 +1316,15 @@ export async function generateMalePatientWellnessPDF(
   });
 
   yPosition += 8;
+
+  if (patientLabs && patientLabs.length >= 2) {
+    yPosition = addTrendChartsToWellnessPDF(
+      doc, patientLabs, yPosition, margin, contentWidth, pageHeight,
+      brandColor, textColor,
+      () => { doc.addPage(); addHeader(); return 45; }
+    );
+    yPosition += 4;
+  }
 
   yPosition = ensureSpace(35, yPosition);
   doc.setFillColor(...lightBg);
