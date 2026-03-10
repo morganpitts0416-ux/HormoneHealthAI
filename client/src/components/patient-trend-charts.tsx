@@ -1,8 +1,8 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Button } from "@/components/ui/button";
-import { BarChart3, Download } from "lucide-react";
+import { BarChart3 } from "lucide-react";
+import { generateTrendInsights, type TrendInsight } from "@/lib/clinical-trend-insights";
 import {
   LineChart,
   Line,
@@ -119,6 +119,11 @@ export function PatientTrendCharts({ labs, patientName }: PatientTrendChartsProp
 
   const availableMarkers = getAvailableMarkersWithMultiplePoints(labs);
   const allAvailableMarkers = getAvailableMarkers(labs);
+  const insights = generateTrendInsights(labs);
+  const insightMap = new Map<string, TrendInsight>();
+  for (const insight of insights) {
+    insightMap.set(insight.markerKey, insight);
+  }
 
   if (availableMarkers.length === 0) {
     if (allAvailableMarkers.length > 0 && labs.length < 2) {
@@ -275,6 +280,22 @@ export function PatientTrendCharts({ labs, patientName }: PatientTrendChartsProp
                     </LineChart>
                   </ResponsiveContainer>
                 </div>
+                {(() => {
+                  const insight = insightMap.get(marker.key);
+                  if (!insight) return null;
+                  const colorClass = insight.severity === 'positive'
+                    ? 'text-green-600 dark:text-green-400'
+                    : insight.severity === 'urgent'
+                    ? 'text-red-600 dark:text-red-400'
+                    : insight.severity === 'concern'
+                    ? 'text-amber-600 dark:text-amber-400'
+                    : 'text-muted-foreground';
+                  return (
+                    <p className={`text-xs mt-1 ${colorClass}`} data-testid={`insight-${marker.key}`}>
+                      {insight.clinicianInsight}
+                    </p>
+                  );
+                })()}
               </div>
             );
           })}

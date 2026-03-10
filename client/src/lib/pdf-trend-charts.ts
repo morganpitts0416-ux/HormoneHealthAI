@@ -1,5 +1,6 @@
 import type { jsPDF } from 'jspdf';
 import type { LabResult } from '@shared/schema';
+import { generateTrendInsights, type TrendInsight } from '@/lib/clinical-trend-insights';
 
 interface ChartMarker {
   name: string;
@@ -7,30 +8,31 @@ interface ChartMarker {
   unit: string;
   color: [number, number, number];
   optimalMax?: number;
+  lowerIsBetter?: boolean;
 }
 
 const pdfMarkers: ChartMarker[] = [
-  { name: 'LDL', key: 'ldl', unit: 'mg/dL', color: [220, 50, 50], optimalMax: 100 },
-  { name: 'HDL', key: 'hdl', unit: 'mg/dL', color: [34, 197, 94] },
-  { name: 'Triglycerides', key: 'triglycerides', unit: 'mg/dL', color: [249, 115, 22], optimalMax: 150 },
-  { name: 'Total Cholesterol', key: 'totalCholesterol', unit: 'mg/dL', color: [139, 92, 246], optimalMax: 200 },
-  { name: 'ApoB', key: 'apoB', unit: 'mg/dL', color: [236, 72, 153], optimalMax: 90 },
-  { name: 'A1c', key: 'a1c', unit: '%', color: [245, 158, 11], optimalMax: 5.7 },
-  { name: 'Fasting Glucose', key: 'fastingGlucose', unit: 'mg/dL', color: [217, 119, 6] },
-  { name: 'PSA', key: 'psa', unit: 'ng/mL', color: [100, 116, 139], optimalMax: 4.0 },
+  { name: 'LDL', key: 'ldl', unit: 'mg/dL', color: [220, 50, 50], optimalMax: 100, lowerIsBetter: true },
+  { name: 'HDL', key: 'hdl', unit: 'mg/dL', color: [34, 197, 94], lowerIsBetter: false },
+  { name: 'Triglycerides', key: 'triglycerides', unit: 'mg/dL', color: [249, 115, 22], optimalMax: 150, lowerIsBetter: true },
+  { name: 'Total Cholesterol', key: 'totalCholesterol', unit: 'mg/dL', color: [139, 92, 246], optimalMax: 200, lowerIsBetter: true },
+  { name: 'ApoB', key: 'apoB', unit: 'mg/dL', color: [236, 72, 153], optimalMax: 90, lowerIsBetter: true },
+  { name: 'A1c', key: 'a1c', unit: '%', color: [245, 158, 11], optimalMax: 5.7, lowerIsBetter: true },
+  { name: 'Fasting Glucose', key: 'fastingGlucose', unit: 'mg/dL', color: [217, 119, 6], lowerIsBetter: true },
+  { name: 'PSA', key: 'psa', unit: 'ng/mL', color: [100, 116, 139], optimalMax: 4.0, lowerIsBetter: true },
   { name: 'Testosterone', key: 'testosterone', unit: 'ng/dL', color: [59, 130, 246] },
-  { name: 'Free Testosterone', key: 'freeTestosterone', unit: 'pg/mL', color: [99, 102, 241] },
+  { name: 'Free Testosterone', key: 'freeTestosterone', unit: 'pg/mL', color: [99, 102, 241], lowerIsBetter: false },
   { name: 'Estradiol', key: 'estradiol', unit: 'pg/mL', color: [236, 72, 153] },
   { name: 'SHBG', key: 'shbg', unit: 'nmol/L', color: [20, 184, 166] },
   { name: 'TSH', key: 'tsh', unit: 'mIU/L', color: [139, 92, 246] },
   { name: 'Free T4', key: 'freeT4', unit: 'ng/dL', color: [168, 85, 247] },
   { name: 'Free T3', key: 'freeT3', unit: 'pg/mL', color: [217, 70, 239] },
-  { name: 'hs-CRP', key: 'hsCRP', unit: 'mg/L', color: [239, 68, 68], optimalMax: 1.0 },
+  { name: 'hs-CRP', key: 'hsCRP', unit: 'mg/L', color: [239, 68, 68], optimalMax: 1.0, lowerIsBetter: true },
   { name: 'Hemoglobin', key: 'hemoglobin', unit: 'g/dL', color: [220, 38, 38] },
   { name: 'Hematocrit', key: 'hematocrit', unit: '%', color: [185, 28, 28] },
-  { name: 'Vitamin D', key: 'vitaminD', unit: 'ng/mL', color: [234, 179, 8] },
+  { name: 'Vitamin D', key: 'vitaminD', unit: 'ng/mL', color: [234, 179, 8], lowerIsBetter: false },
   { name: 'Ferritin', key: 'ferritin', unit: 'ng/mL', color: [120, 113, 108] },
-  { name: 'Vitamin B12', key: 'vitaminB12', unit: 'pg/mL', color: [5, 150, 105] },
+  { name: 'Vitamin B12', key: 'vitaminB12', unit: 'pg/mL', color: [5, 150, 105], lowerIsBetter: false },
 ];
 
 interface DataPoint {
@@ -72,7 +74,8 @@ function drawMiniChart(
   height: number,
   marker: ChartMarker,
   data: DataPoint[],
-  brandColor: [number, number, number]
+  brandColor: [number, number, number],
+  patientInsight?: string
 ) {
   const chartTop = y + 14;
   const chartHeight = height - 22;
@@ -83,21 +86,56 @@ function drawMiniChart(
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(...brandColor);
   doc.text(marker.name, x + 2, y + 5);
+  const nameWidth = doc.getTextWidth(marker.name);
 
   doc.setFontSize(7);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(120, 120, 120);
-  doc.text(`(${marker.unit})`, x + 2 + doc.getTextWidth(marker.name) + 2, y + 5);
+  doc.text(`(${marker.unit})`, x + 2 + nameWidth + 2, y + 5);
 
   const latestVal = data[data.length - 1].value;
   const prevVal = data[data.length - 2].value;
   const change = latestVal - prevVal;
-  const arrow = change > 0 ? '\u2191' : change < 0 ? '\u2193' : '\u2192';
-  const changeStr = `${latestVal} ${arrow}`;
-  doc.setFontSize(8);
+  const latestStr = latestVal % 1 === 0 ? latestVal.toFixed(0) : latestVal.toFixed(1);
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'bold');
   doc.setTextColor(51, 51, 51);
-  doc.text(changeStr, x + width - 2, y + 5, { align: 'right' });
+  doc.text(latestStr, x + width - 2, y + 5, { align: 'right' });
+
+  const arrowX = x + width - 2 - doc.getTextWidth(latestStr) - 3;
+  const arrowY = y + 4;
+  const arrowSize = 1.8;
+  const isFavorable = marker.lowerIsBetter === true
+    ? change < 0
+    : marker.lowerIsBetter === false
+    ? change > 0
+    : false;
+  const isUnfavorable = marker.lowerIsBetter === true
+    ? change > 0
+    : marker.lowerIsBetter === false
+    ? change < 0
+    : false;
+  const arrowColorGood: [number, number, number] = [34, 150, 80];
+  const arrowColorBad: [number, number, number] = [220, 50, 50];
+  const arrowColorNeutral: [number, number, number] = [120, 120, 120];
+
+  if (change > 0) {
+    doc.setDrawColor(...(isFavorable ? arrowColorGood : isUnfavorable ? arrowColorBad : arrowColorNeutral));
+    doc.setLineWidth(0.6);
+    doc.line(arrowX, arrowY, arrowX, arrowY - arrowSize);
+    doc.line(arrowX - arrowSize * 0.6, arrowY - arrowSize * 0.5, arrowX, arrowY - arrowSize);
+    doc.line(arrowX + arrowSize * 0.6, arrowY - arrowSize * 0.5, arrowX, arrowY - arrowSize);
+  } else if (change < 0) {
+    doc.setDrawColor(...(isFavorable ? arrowColorGood : isUnfavorable ? arrowColorBad : arrowColorNeutral));
+    doc.setLineWidth(0.6);
+    doc.line(arrowX, arrowY - arrowSize, arrowX, arrowY);
+    doc.line(arrowX - arrowSize * 0.6, arrowY - arrowSize * 0.5, arrowX, arrowY);
+    doc.line(arrowX + arrowSize * 0.6, arrowY - arrowSize * 0.5, arrowX, arrowY);
+  } else {
+    doc.setDrawColor(...arrowColorNeutral);
+    doc.setLineWidth(0.6);
+    doc.line(arrowX - arrowSize * 0.6, arrowY - arrowSize * 0.5, arrowX + arrowSize * 0.6, arrowY - arrowSize * 0.5);
+  }
 
   const values = data.map(d => d.value);
   const minVal = Math.min(...values);
@@ -158,6 +196,15 @@ function drawMiniChart(
     const px = chartLeft + i * stepX;
     doc.text(data[i].dateLabel, px, chartTop + chartHeight + 5, { align: 'center' });
   }
+
+  if (patientInsight) {
+    doc.setFontSize(6);
+    doc.setFont('helvetica', 'italic');
+    doc.setTextColor(80, 80, 80);
+    const insightLines = doc.splitTextToSize(patientInsight, width - 6);
+    const maxLines = Math.min(insightLines.length, 2);
+    doc.text(insightLines.slice(0, maxLines), x + 3, chartTop + chartHeight + 9);
+  }
 }
 
 export function addTrendChartsToWellnessPDF(
@@ -173,6 +220,12 @@ export function addTrendChartsToWellnessPDF(
 ): number {
   const chartableMarkers = getChartableMarkers(labs);
   if (chartableMarkers.length === 0) return startY;
+
+  const insights = generateTrendInsights(labs);
+  const insightMap = new Map<string, TrendInsight>();
+  for (const insight of insights) {
+    insightMap.set(insight.markerKey, insight);
+  }
 
   let yPosition = startY;
 
@@ -193,7 +246,7 @@ export function addTrendChartsToWellnessPDF(
   yPosition += 6;
 
   const chartWidth = (contentWidth - 4) / 2;
-  const chartHeight = 42;
+  const chartHeight = 50;
   let col = 0;
 
   for (const { marker, data } of chartableMarkers) {
@@ -202,11 +255,13 @@ export function addTrendChartsToWellnessPDF(
     }
 
     const xPos = margin + col * (chartWidth + 4);
+    const insight = insightMap.get(marker.key);
+    const patientInsight = insight?.patientInsight;
     
     doc.setFillColor(248, 248, 250);
     doc.roundedRect(xPos, yPosition - 2, chartWidth, chartHeight + 4, 2, 2, 'F');
 
-    drawMiniChart(doc, xPos, yPosition, chartWidth, chartHeight, marker, data, brandColor);
+    drawMiniChart(doc, xPos, yPosition, chartWidth, chartHeight, marker, data, brandColor, patientInsight);
 
     col++;
     if (col >= 2) {

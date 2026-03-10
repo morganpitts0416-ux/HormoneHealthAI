@@ -262,6 +262,11 @@ export default function FemaleLabInterpretation() {
               <p className="text-sm text-muted-foreground">Women's Hormone & Primary Care Clinic</p>
             </div>
             <div className="flex items-center gap-4">
+              <Link href="/patients">
+                <Button variant="outline" data-testid="link-to-patient-profiles">
+                  Patient Profiles
+                </Button>
+              </Link>
               <Link href="/">
                 <Button variant="outline" data-testid="link-to-mens-labs">
                   Switch to Men's Labs

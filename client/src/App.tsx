@@ -5,12 +5,14 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import LabInterpretation from "@/pages/lab-interpretation";
 import FemaleLabInterpretation from "@/pages/female-lab-interpretation";
+import PatientProfiles from "@/pages/patient-profiles";
 
 function Router() {
   return (
     <Switch>
       <Route path="/" component={LabInterpretation} />
       <Route path="/female" component={FemaleLabInterpretation} />
+      <Route path="/patients" component={PatientProfiles} />
       <Route path="/:rest*">
         {() => <LabInterpretation />}
       </Route>
