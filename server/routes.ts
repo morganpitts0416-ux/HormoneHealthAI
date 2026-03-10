@@ -800,10 +800,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
-      const { labValues: bodyLabValues, interpretationResult: bodyInterpretation, notes } = req.body;
+      const { labValues: bodyLabValues, interpretationResult: bodyInterpretation, notes, labDate: bodyLabDate } = req.body;
       const labResult = await storage.createLabResult({
         patientId,
-        labDate: new Date(),
+        labDate: bodyLabDate ? new Date(bodyLabDate) : new Date(),
         labValues: bodyLabValues as LabValues | FemaleLabValues,
         interpretationResult: bodyInterpretation as InterpretationResult,
         notes,

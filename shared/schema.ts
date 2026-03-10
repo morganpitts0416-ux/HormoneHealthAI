@@ -98,6 +98,7 @@ export type ASCVDRiskResult = z.infer<typeof ascvdRiskResultSchema>;
 export const labValuesSchema = z.object({
   // Patient Name (for saving and retrieving interpretations)
   patientName: z.string().optional(),
+  labDrawDate: z.string().optional(),
   
   // Patient Demographics & ASCVD Risk Factors (for cardiovascular risk assessment)
   demographics: patientDemographicsSchema.optional(),
@@ -159,6 +160,7 @@ export const labValuesSchema = z.object({
 export const femaleLabValuesSchema = z.object({
   // Patient Name (for saving and retrieving interpretations)
   patientName: z.string().optional(),
+  labDrawDate: z.string().optional(),
   
   // Patient Demographics & ASCVD Risk Factors
   demographics: patientDemographicsSchema.optional(),
