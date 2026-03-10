@@ -41,8 +41,9 @@ export default function LabInterpretation() {
       setInterpretationResult(data);
       setActiveTab("results");
       if (selectedPatient) {
+        const labDate = labValues.labDrawDate ? new Date(labValues.labDrawDate).toISOString() : new Date().toISOString();
         apiRequest('POST', `/api/patients/${selectedPatient.id}/labs`, {
-          labDate: new Date().toISOString(),
+          labDate,
           labValues,
           interpretationResult: data,
         }).then(() => {
@@ -143,9 +144,10 @@ export default function LabInterpretation() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!interpretationResult) throw new Error('No interpretation to save');
+      const labDate = labValues.labDrawDate ? new Date(labValues.labDrawDate).toISOString() : new Date().toISOString();
       if (selectedPatient) {
         return apiRequest('POST', `/api/patients/${selectedPatient.id}/labs`, {
-          labDate: new Date().toISOString(),
+          labDate,
           labValues,
           interpretationResult,
         });
@@ -156,7 +158,7 @@ export default function LabInterpretation() {
         gender: 'male',
         labValues,
         interpretation: interpretationResult,
-        labDate: new Date().toISOString(),
+        labDate,
       });
     },
     onSuccess: () => {

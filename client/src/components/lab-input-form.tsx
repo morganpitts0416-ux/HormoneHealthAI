@@ -83,7 +83,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
                   control={form.control}
                   name="patientName"
                   render={({ field }) => (
-                    <FormItem className="md:col-span-2">
+                    <FormItem>
                       <FormLabel className="text-xs font-medium uppercase">Patient Name</FormLabel>
                       <FormControl>
                         <Input
@@ -92,6 +92,25 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
                           {...field}
                           value={field.value ?? ''}
                           data-testid="input-patient-name"
+                        />
+                      </FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="labDrawDate"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Lab Draw Date (optional)</FormLabel>
+                      <FormControl>
+                        <Input
+                          type="date"
+                          {...field}
+                          value={field.value ?? ''}
+                          data-testid="input-lab-draw-date"
                         />
                       </FormControl>
                       <FormMessage />
