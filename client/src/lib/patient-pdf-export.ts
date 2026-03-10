@@ -1149,37 +1149,76 @@ export async function generatePatientWellnessPDF(
   
   const nutritionParsed = parseNutritionPlan(wellnessPlan.dietPlan);
   
-  // Goal section - dynamically sized
+  // Goal section - dynamically sized with page break support
   doc.setFontSize(9);
   const goalLines = doc.splitTextToSize(nutritionParsed.goal, contentWidth - 10);
   const goalBoxHeight = 14 + (goalLines.length * 4);
-  doc.setFillColor(...lightBg);
-  doc.roundedRect(margin, yPosition, contentWidth, goalBoxHeight, 2, 2, 'F');
-  doc.setTextColor(...brandColor);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Your Nutrition Goal', margin + 4, yPosition + 7);
-  doc.setTextColor(...textColor);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text(goalLines, margin + 4, yPosition + 14);
-  yPosition += goalBoxHeight + 4;
+  const usableHeight = pageHeight - 25 - 45;
+  if (goalBoxHeight <= usableHeight) {
+    yPosition = ensureSpace(goalBoxHeight + 4, yPosition);
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, goalBoxHeight, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Your Nutrition Goal', margin + 4, yPosition + 7);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(goalLines, margin + 4, yPosition + 14);
+    yPosition += goalBoxHeight + 4;
+  } else {
+    yPosition = ensureSpace(20, yPosition);
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Your Nutrition Goal', margin + 4, yPosition + 7);
+    yPosition += 14;
+    doc.setTextColor(...textColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    for (let i = 0; i < goalLines.length; i++) {
+      yPosition = ensureSpace(12, yPosition);
+      doc.text(goalLines[i], margin + 4, yPosition);
+      yPosition += 4;
+    }
+    yPosition += 4;
+  }
 
-  // Diet section - dynamically sized
+  // Diet section - dynamically sized with page break support
   doc.setFontSize(9);
   const dietLines = doc.splitTextToSize(nutritionParsed.diet, contentWidth - 10);
   const dietBoxHeight = 14 + (dietLines.length * 4);
-  doc.setFillColor(...lightBg);
-  doc.roundedRect(margin, yPosition, contentWidth, dietBoxHeight, 2, 2, 'F');
-  doc.setTextColor(...brandColor);
-  doc.setFontSize(10);
-  doc.setFont('helvetica', 'bold');
-  doc.text('Recommended Diet', margin + 4, yPosition + 7);
-  doc.setTextColor(...textColor);
-  doc.setFontSize(9);
-  doc.setFont('helvetica', 'normal');
-  doc.text(dietLines, margin + 4, yPosition + 14);
-  yPosition += dietBoxHeight + 6;
+  if (dietBoxHeight <= usableHeight) {
+    yPosition = ensureSpace(dietBoxHeight + 6, yPosition);
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, dietBoxHeight, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Recommended Diet', margin + 4, yPosition + 7);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    doc.text(dietLines, margin + 4, yPosition + 14);
+    yPosition += dietBoxHeight + 6;
+  } else {
+    yPosition = ensureSpace(20, yPosition);
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('Recommended Diet', margin + 4, yPosition + 7);
+    yPosition += 14;
+    doc.setTextColor(...textColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
+    for (let i = 0; i < dietLines.length; i++) {
+      yPosition = ensureSpace(12, yPosition);
+      doc.text(dietLines[i], margin + 4, yPosition);
+      yPosition += 4;
+    }
+    yPosition += 6;
+  }
 
   // Foods To Emphasize table
   doc.setTextColor(...brandColor);
@@ -1674,7 +1713,7 @@ export async function generatePatientWellnessPDF(
   yPosition = addTextSection(wellnessPlan.educationalContent, yPosition, contentWidth);
   yPosition += 8;
 
-  yPosition = ensureSpace(90, yPosition);
+  yPosition = ensureSpace(30, yPosition);
   yPosition = addSectionHeader('YOUR ACTION CHECKLIST', yPosition);
 
   doc.setTextColor(...textColor);
