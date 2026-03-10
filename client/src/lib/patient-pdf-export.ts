@@ -480,9 +480,10 @@ export async function generatePatientWellnessPDF(
     const lines = doc.splitTextToSize(sanitizeForPdf(text), maxWidth);
     let y = startY;
     const lineHeight = 4;
+    const footerBuffer = 8;
     
     for (let i = 0; i < lines.length; i++) {
-      y = ensureSpace(lineHeight, y);
+      y = ensureSpace(lineHeight + footerBuffer, y);
       doc.text(lines[i], margin, y);
       y += lineHeight;
     }
@@ -1673,11 +1674,7 @@ export async function generatePatientWellnessPDF(
   yPosition = addTextSection(wellnessPlan.educationalContent, yPosition, contentWidth);
   yPosition += 8;
 
-  // FINAL PAGE CONTENT: Ensure all closing sections stay together on one page
-  // Action Checklist (~85) + Additional Recs (~48) + Follow-Up Plan (~68) + Support Box (~35) = ~236 units
-  const finalSectionsHeight = 240;
-  yPosition = ensureSpace(finalSectionsHeight, yPosition);
-
+  yPosition = ensureSpace(90, yPosition);
   yPosition = addSectionHeader('YOUR ACTION CHECKLIST', yPosition);
 
   doc.setTextColor(...textColor);
@@ -1697,6 +1694,10 @@ export async function generatePatientWellnessPDF(
   ];
 
   checklistItems.forEach((item, index) => {
+    yPosition = ensureSpace(10, yPosition);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
     doc.setDrawColor(...brandColor);
     doc.rect(margin, yPosition - 3, 4, 4);
     doc.text(`${index + 1}. ${item}`, margin + 7, yPosition);
@@ -1705,7 +1706,7 @@ export async function generatePatientWellnessPDF(
 
   yPosition += 12;
 
-  // Additional Recommendations section (for provider to write in)
+  yPosition = ensureSpace(48, yPosition);
   doc.setTextColor(...brandColor);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
@@ -1721,14 +1722,13 @@ export async function generatePatientWellnessPDF(
   
   yPosition += 8;
 
-  // Follow-Up Plan section (for provider to write in)
+  yPosition = ensureSpace(68, yPosition);
   doc.setTextColor(...brandColor);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'bold');
   doc.text('Your Follow-Up Plan:', margin, yPosition);
   yPosition += 6;
   
-  // Create a structured follow-up box
   doc.setFillColor(...lightBg);
   doc.roundedRect(margin, yPosition, contentWidth, 50, 2, 2, 'F');
   
