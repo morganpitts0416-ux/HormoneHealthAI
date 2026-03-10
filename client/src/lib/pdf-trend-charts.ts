@@ -30,9 +30,9 @@ const pdfMarkers: ChartMarker[] = [
   { name: 'hs-CRP', key: 'hsCRP', unit: 'mg/L', color: [239, 68, 68], optimalMax: 1.0, lowerIsBetter: true },
   { name: 'Hemoglobin', key: 'hemoglobin', unit: 'g/dL', color: [220, 38, 38] },
   { name: 'Hematocrit', key: 'hematocrit', unit: '%', color: [185, 28, 28] },
-  { name: 'Vitamin D', key: 'vitaminD', unit: 'ng/mL', color: [234, 179, 8], lowerIsBetter: false },
+  { name: 'Vitamin D', key: 'vitaminD', unit: 'ng/mL', color: [234, 179, 8] },
   { name: 'Ferritin', key: 'ferritin', unit: 'ng/mL', color: [120, 113, 108] },
-  { name: 'Vitamin B12', key: 'vitaminB12', unit: 'pg/mL', color: [5, 150, 105], lowerIsBetter: false },
+  { name: 'Vitamin B12', key: 'vitaminB12', unit: 'pg/mL', color: [5, 150, 105] },
 ];
 
 interface DataPoint {

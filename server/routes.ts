@@ -757,7 +757,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const q = (req.query.q as string) || '';
       const gender = req.query.gender as string | undefined;
       if (!q || q.length < 1) {
-        return res.json([]);
+        const allPatients = await storage.getAllPatients();
+        return res.json(allPatients);
       }
       const patients = await storage.searchPatients(q, gender);
       res.json(patients);
@@ -894,9 +895,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Also create/find patient profile and link lab result
       try {
         const nameParts = patientName.trim().split(/\s+/);
-        const firstName = nameParts[0] || patientName;
-        const lastName = nameParts.slice(1).join(' ') || '';
-        if (firstName && lastName) {
+        const firstName = nameParts[0] || patientName.trim();
+        const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
+
+        if (firstName) {
           let patient = await storage.getPatientByName(firstName, lastName);
           if (!patient) {
             patient = await storage.createPatient({
