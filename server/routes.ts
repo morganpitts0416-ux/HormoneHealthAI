@@ -817,6 +817,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.delete("/api/lab-results/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) {
+        return res.status(400).json({ error: "Invalid lab result ID" });
+      }
+      const deleted = await storage.deleteLabResult(id);
+      if (!deleted) {
+        return res.status(404).json({ error: "Lab result not found" });
+      }
+      console.log('[API] Deleted lab result:', id);
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting lab result:", error);
+      res.status(500).json({ error: "Failed to delete lab result" });
+    }
+  });
+
   // ===== SAVED INTERPRETATIONS ENDPOINTS =====
   
   // Get all saved interpretations (with optional gender filter)
