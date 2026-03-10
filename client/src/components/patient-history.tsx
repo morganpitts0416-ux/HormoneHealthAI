@@ -3,6 +3,7 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Clock, AlertTriangle, CheckCircle2, TrendingUp, TrendingDown, Minus, FileText } from "lucide-react";
+import { PatientTrendCharts } from "@/components/patient-trend-charts";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues } from "@shared/schema";
 
 interface PatientHistoryProps {
@@ -106,6 +107,7 @@ export function PatientHistory({ patient, onLoadResult }: PatientHistoryProps) {
     : [];
 
   return (
+    <>
     <Card data-testid="patient-history-card">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
@@ -176,5 +178,13 @@ export function PatientHistory({ patient, onLoadResult }: PatientHistoryProps) {
         </div>
       </CardContent>
     </Card>
+
+    {labs.length >= 2 && (
+      <PatientTrendCharts
+        labs={labs}
+        patientName={`${patient.firstName} ${patient.lastName}`}
+      />
+    )}
+    </>
   );
 }
