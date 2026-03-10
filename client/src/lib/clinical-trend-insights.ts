@@ -416,7 +416,26 @@ const rangeBasedDirectionality: Record<string, (current: number, previous: numbe
     if (cInRange) return 'stable';
     return cDist < pDist ? 'improved' : cDist > pDist ? 'worsened' : 'stable';
   },
-  freeTestosterone: (c, p) => c > p ? 'improved' : c < p ? 'worsened' : 'stable',
+  freeTestosterone: (c, p) => {
+    if (c > 200 && c > p) return 'worsened';
+    return c > p ? 'improved' : c < p ? 'worsened' : 'stable';
+  },
+  vitaminD: (c, p) => {
+    const optMin = 40, optMax = 80;
+    const cDist = c < optMin ? optMin - c : c > optMax ? c - optMax : 0;
+    const pDist = p < optMin ? optMin - p : p > optMax ? p - optMax : 0;
+    if (cDist < pDist) return 'improved';
+    if (cDist > pDist) return 'worsened';
+    return 'stable';
+  },
+  vitaminB12: (c, p) => {
+    const optMin = 400, optMax = 1100;
+    const cDist = c < optMin ? optMin - c : c > optMax ? c - optMax : 0;
+    const pDist = p < optMin ? optMin - p : p > optMax ? p - optMax : 0;
+    if (cDist < pDist) return 'improved';
+    if (cDist > pDist) return 'worsened';
+    return 'stable';
+  },
   estradiol: (c, p) => {
     const optMin = 20, optMax = 50;
     const cDist = c < optMin ? optMin - c : c > optMax ? c - optMax : 0;

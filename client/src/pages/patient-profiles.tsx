@@ -17,16 +17,28 @@ import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValu
 function PatientSearch({ onSelect }: { onSelect: (patient: Patient) => void }) {
   const [searchTerm, setSearchTerm] = useState("");
 
-  const { data: searchResults = [], isLoading } = useQuery<Patient[]>({
+  const { data: allPatients = [], isLoading: loadingAll } = useQuery<Patient[]>({
+    queryKey: ['/api/patients/search', ''],
+    queryFn: async () => {
+      const res = await fetch('/api/patients/search');
+      if (!res.ok) throw new Error('Failed to load patients');
+      return res.json();
+    },
+  });
+
+  const { data: searchResults = [], isLoading: loadingSearch } = useQuery<Patient[]>({
     queryKey: ['/api/patients/search', searchTerm],
     queryFn: async () => {
-      if (searchTerm.length < 2) return [];
       const res = await fetch(`/api/patients/search?q=${encodeURIComponent(searchTerm)}`);
       if (!res.ok) throw new Error('Search failed');
       return res.json();
     },
     enabled: searchTerm.length >= 2,
   });
+
+  const displayPatients = searchTerm.length >= 2 ? searchResults : allPatients;
+  const isLoading = searchTerm.length >= 2 ? loadingSearch : loadingAll;
+  const showResults = searchTerm.length >= 2 || allPatients.length > 0;
 
   return (
     <div className="space-y-3">
@@ -40,13 +52,16 @@ function PatientSearch({ onSelect }: { onSelect: (patient: Patient) => void }) {
           data-testid="input-patient-profile-search"
         />
       </div>
-      {searchTerm.length >= 2 && (
+      {showResults && (
         <div className="space-y-1">
-          {isLoading && <p className="text-sm text-muted-foreground px-2">Searching...</p>}
-          {!isLoading && searchResults.length === 0 && (
+          {isLoading && <p className="text-sm text-muted-foreground px-2">Loading...</p>}
+          {!isLoading && displayPatients.length === 0 && searchTerm.length >= 2 && (
             <p className="text-sm text-muted-foreground px-2">No patients found matching "{searchTerm}"</p>
           )}
-          {searchResults.map(patient => (
+          {!isLoading && displayPatients.length === 0 && searchTerm.length < 2 && (
+            <p className="text-sm text-muted-foreground px-2">No patient profiles yet. Save a lab interpretation to create one.</p>
+          )}
+          {displayPatients.map(patient => (
             <button
               key={patient.id}
               onClick={() => { onSelect(patient); setSearchTerm(""); }}
