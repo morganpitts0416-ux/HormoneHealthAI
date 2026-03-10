@@ -7,7 +7,7 @@ import { Input } from "@/components/ui/input";
 import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
-  BarChart3, ClipboardList, Heart, Download
+  BarChart3, ClipboardList, Heart, Download, Trash2
 } from "lucide-react";
 import { Link } from "wouter";
 import { PatientTrendCharts } from "@/components/patient-trend-charts";
@@ -17,6 +17,7 @@ import { generateMalePatientWellnessPDF, type MaleWellnessPlan } from "@/lib/pat
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
+import { queryClient } from "@/lib/queryClient";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues } from "@shared/schema";
 
 function PatientSearch({ onSelect }: { onSelect: (patient: Patient) => void }) {
@@ -197,7 +198,7 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
   );
 }
 
-function LabHistoryList({ labs, onViewLab }: { labs: LabResult[]; onViewLab: (lab: LabResult) => void }) {
+function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId }: { labs: LabResult[]; onViewLab: (lab: LabResult) => void; onDeleteLab: (lab: LabResult) => void; deletingId: number | null }) {
   return (
     <Card data-testid="lab-history-list">
       <CardHeader className="pb-3">
@@ -263,6 +264,16 @@ function LabHistoryList({ labs, onViewLab }: { labs: LabResult[]; onViewLab: (la
                       <FileText className="h-3.5 w-3.5 mr-1" />
                       View Details
                     </Button>
+                    <Button
+                      variant="outline"
+                      size="icon"
+                      onClick={(e) => { e.stopPropagation(); onDeleteLab(lab); }}
+                      disabled={deletingId === lab.id}
+                      data-testid={`button-delete-lab-${lab.id}`}
+                      className="text-muted-foreground"
+                    >
+                      <Trash2 className="h-3.5 w-3.5" />
+                    </Button>
                   </div>
                 </div>
               );
@@ -274,7 +285,7 @@ function LabHistoryList({ labs, onViewLab }: { labs: LabResult[]; onViewLab: (la
   );
 }
 
-function LabDetailModal({ lab, onClose, patient, allLabs }: { lab: LabResult; onClose: () => void; patient: Patient; allLabs: LabResult[] }) {
+function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: LabResult; onClose: () => void; patient: Patient; allLabs: LabResult[]; onDelete: () => void }) {
   const { toast } = useToast();
   const interp = lab.interpretationResult as InterpretationResult | null;
   const vals = lab.labValues as any;
@@ -425,6 +436,16 @@ function LabDetailModal({ lab, onClose, patient, allLabs }: { lab: LabResult; on
                   </Button>
                 </>
               )}
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={onDelete}
+                className="text-muted-foreground"
+                data-testid="button-delete-lab-modal"
+              >
+                <Trash2 className="w-4 h-4 mr-1" />
+                Delete
+              </Button>
               <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">
                 Close
               </Button>
@@ -554,8 +575,10 @@ function EnrichedTrendInsights({ insights }: { insights: TrendInsight[] }) {
 }
 
 export default function PatientProfiles() {
+  const { toast } = useToast();
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
+  const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
 
   const { data: labs = [], isLoading: labsLoading } = useQuery<LabResult[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
@@ -567,6 +590,31 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient,
   });
+
+  const deleteMutation = useMutation({
+    mutationFn: async (labId: number) => {
+      const res = await fetch(`/api/lab-results/${labId}`, { method: 'DELETE' });
+      if (!res.ok) throw new Error('Failed to delete');
+      return res.json();
+    },
+    onSuccess: () => {
+      if (selectedPatient) {
+        queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient.id, 'labs'] });
+      }
+      if (viewingLab && confirmDelete && viewingLab.id === confirmDelete.id) {
+        setViewingLab(null);
+      }
+      setConfirmDelete(null);
+      toast({ title: "Lab Result Deleted", description: "The lab result has been removed from this patient's history." });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Error", description: "Failed to delete lab result. Please try again." });
+    },
+  });
+
+  const handleDeleteLab = (lab: LabResult) => {
+    setConfirmDelete(lab);
+  };
 
   const insights = labs.length >= 2 ? generateTrendInsights(labs) : [];
 
@@ -621,7 +669,7 @@ export default function PatientProfiles() {
           <div className="space-y-6">
             <ClinicalSnapshot labs={labs} patient={selectedPatient} />
 
-            <LabHistoryList labs={labs} onViewLab={setViewingLab} />
+            <LabHistoryList labs={labs} onViewLab={setViewingLab} onDeleteLab={handleDeleteLab} deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null} />
 
             {labs.length >= 2 && (
               <PatientTrendCharts
@@ -638,7 +686,58 @@ export default function PatientProfiles() {
       </div>
 
       {viewingLab && selectedPatient && (
-        <LabDetailModal lab={viewingLab} onClose={() => setViewingLab(null)} patient={selectedPatient} allLabs={labs} />
+        <LabDetailModal
+          lab={viewingLab}
+          onClose={() => setViewingLab(null)}
+          patient={selectedPatient}
+          allLabs={labs}
+          onDelete={() => handleDeleteLab(viewingLab)}
+        />
+      )}
+
+      {confirmDelete && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" data-testid="delete-confirm-modal">
+          <Card className="w-full max-w-md m-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <AlertTriangle className="h-5 w-5 text-destructive" />
+                Delete Lab Result
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to delete the lab result from{' '}
+                <span className="font-medium text-foreground">
+                  {new Date(confirmDelete.labDate).toLocaleDateString('en-US', {
+                    month: 'long', day: 'numeric', year: 'numeric'
+                  })}
+                </span>
+                ? This action cannot be undone.
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmDelete(null)}
+                  disabled={deleteMutation.isPending}
+                  data-testid="button-cancel-delete"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => deleteMutation.mutate(confirmDelete.id)}
+                  disabled={deleteMutation.isPending}
+                  data-testid="button-confirm-delete"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
     </div>
   );
