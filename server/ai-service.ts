@@ -18,9 +18,13 @@ export class AIService {
     labs: LabValues | FemaleLabValues,
     redFlags: RedFlag[],
     interpretations: LabInterpretation[],
-    gender: 'male' | 'female' = 'male'
+    gender: 'male' | 'female' = 'male',
+    trendContext?: string
   ): Promise<string> {
-    const prompt = this.buildRecommendationPrompt(labs, redFlags, interpretations, gender);
+    let prompt = this.buildRecommendationPrompt(labs, redFlags, interpretations, gender);
+    if (trendContext) {
+      prompt += trendContext;
+    }
     const clinicType = gender === 'female' ? "women's hormone and primary care clinic" : "men's hormone and primary care clinic";
 
     try {
@@ -244,6 +248,59 @@ Write the summary now:`;
     }
   }
 
+  static buildTrendContext(
+    currentLabs: LabValues | FemaleLabValues,
+    priorLabs: Array<{ labDate: Date | string; labValues: LabValues | FemaleLabValues }>
+  ): string {
+    if (!priorLabs || priorLabs.length === 0) return '';
+
+    const prior = priorLabs[0];
+    const priorDate = new Date(prior.labDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+    const priorVals = prior.labValues as any;
+    const currentVals = currentLabs as any;
+
+    const trackedMarkers: Array<{ name: string; key: string; unit: string }> = [
+      { name: 'Total Cholesterol', key: 'totalCholesterol', unit: 'mg/dL' },
+      { name: 'LDL', key: 'ldl', unit: 'mg/dL' },
+      { name: 'HDL', key: 'hdl', unit: 'mg/dL' },
+      { name: 'Triglycerides', key: 'triglycerides', unit: 'mg/dL' },
+      { name: 'A1c', key: 'a1c', unit: '%' },
+      { name: 'Hemoglobin', key: 'hemoglobin', unit: 'g/dL' },
+      { name: 'Hematocrit', key: 'hematocrit', unit: '%' },
+      { name: 'PSA', key: 'psa', unit: 'ng/mL' },
+      { name: 'TSH', key: 'tsh', unit: 'mIU/L' },
+      { name: 'Testosterone', key: 'testosterone', unit: 'ng/dL' },
+      { name: 'Estradiol', key: 'estradiol', unit: 'pg/mL' },
+      { name: 'Vitamin D', key: 'vitaminD', unit: 'ng/mL' },
+      { name: 'Ferritin', key: 'ferritin', unit: 'ng/mL' },
+      { name: 'AST', key: 'ast', unit: 'U/L' },
+      { name: 'ALT', key: 'alt', unit: 'U/L' },
+      { name: 'Creatinine', key: 'creatinine', unit: 'mg/dL' },
+      { name: 'eGFR', key: 'egfr', unit: 'mL/min' },
+      { name: 'ApoB', key: 'apoB', unit: 'mg/dL' },
+      { name: 'hs-CRP', key: 'hsCRP', unit: 'mg/L' },
+      { name: 'SHBG', key: 'shbg', unit: 'nmol/L' },
+      { name: 'Free Testosterone', key: 'freeTestosterone', unit: '' },
+      { name: 'Progesterone', key: 'progesterone', unit: 'ng/mL' },
+    ];
+
+    const trends: string[] = [];
+    for (const marker of trackedMarkers) {
+      const current = currentVals[marker.key];
+      const previous = priorVals[marker.key];
+      if (current !== undefined && current !== null && previous !== undefined && previous !== null) {
+        const diff = Number(current) - Number(previous);
+        const direction = diff > 0 ? 'increased' : diff < 0 ? 'decreased' : 'unchanged';
+        const absChange = Math.abs(diff).toFixed(1);
+        trends.push(`${marker.name}: ${previous} -> ${current} ${marker.unit} (${direction} by ${absChange})`);
+      }
+    }
+
+    if (trends.length === 0) return '';
+
+    return `\n\nPRIOR LAB COMPARISON (vs ${priorDate}):\n${trends.join('\n')}\nPlease reference these trends in your recommendations - note improvements, worsening values, and stability.`;
+  }
+
   static async generateSOAPNote(
     labs: LabValues | FemaleLabValues,
     redFlags: RedFlag[],
@@ -254,6 +311,7 @@ Write the summary now:`;
     riskResult?: ASCVDRiskResult | PREVENTRiskResult | null,
     supplements?: SupplementRecommendation[],
     insulinResistance?: InsulinResistanceScreening | null,
+    trendContext?: string,
   ): Promise<string> {
     const clinicType = gender === 'female' ? "Women's Hormone & Primary Care Clinic" : "Men's Hormone & Primary Care Clinic";
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -325,7 +383,7 @@ ${normalFindings.map(f => `${f.category}: ${f.value} ${f.unit}`).join(', ')}
 ${cvRiskSection}${irSection}${supplementSection}
 
 RECHECK WINDOW: ${recheckWindow}
-
+${trendContext || ''}
 AI CLINICAL RECOMMENDATIONS (already generated):
 ${aiRecommendations}
 
