@@ -1,7 +1,7 @@
 import type { Express } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, insertSavedInterpretationSchema } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema } from "@shared/schema";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
@@ -31,6 +31,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const labs = parseResult.data;
+      const patientId = req.body.patientId ? parseInt(req.body.patientId) : undefined;
+
+      let trendContext = '';
+      if (patientId) {
+        const priorLabs = await storage.getLabResultsByPatient(patientId);
+        if (priorLabs.length > 0) {
+          trendContext = AIService.buildTrendContext(labs, priorLabs.map(l => ({ labDate: l.labDate, labValues: l.labValues as LabValues })));
+          console.log('[API] Trend context built from', priorLabs.length, 'prior labs');
+        }
+      }
 
       // Step 1: Detect red flags
       const redFlags = ClinicalLogicEngine.detectRedFlags(labs);
@@ -210,7 +220,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const aiRecommendations = await AIService.generateRecommendations(
         labs,
         redFlags,
-        interpretations
+        interpretations,
+        'male',
+        trendContext || undefined
       );
 
       // Step 5: Generate patient-friendly summary (includes PREVENT-based lifestyle modifications)
@@ -256,7 +268,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 9: Generate SOAP note
       const soapNote = await AIService.generateSOAPNote(
         labs, redFlags, interpretations, aiRecommendations, recheckWindow,
-        'male', preventRisk, supplements, insulinResistance
+        'male', preventRisk, supplements, insulinResistance, trendContext || undefined
       );
 
       const result: InterpretationResult = {
@@ -307,6 +319,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       const labs = parseResult.data;
+      const patientId = req.body.patientId ? parseInt(req.body.patientId) : undefined;
+
+      let trendContext = '';
+      if (patientId) {
+        const priorLabs = await storage.getLabResultsByPatient(patientId);
+        if (priorLabs.length > 0) {
+          trendContext = AIService.buildTrendContext(labs, priorLabs.map(l => ({ labDate: l.labDate, labValues: l.labValues as FemaleLabValues })));
+          console.log('[API] Female trend context built from', priorLabs.length, 'prior labs');
+        }
+      }
 
       // Debug: Log hormone values received
       console.log('[API] Female hormone values received:', {
@@ -476,7 +498,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         labs,
         redFlags,
         interpretations,
-        'female'
+        'female',
+        trendContext || undefined
       );
 
       // Step 5: Generate patient-friendly summary
@@ -544,7 +567,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 10: Generate SOAP note
       const soapNote = await AIService.generateSOAPNote(
         labs, redFlags, interpretations, aiRecommendations, recheckWindow,
-        'female', preventRisk, supplements, insulinResistance
+        'female', preventRisk, supplements, insulinResistance, trendContext || undefined
       );
 
       const result: InterpretationResult = {
@@ -710,6 +733,86 @@ export async function registerRoutes(app: Express): Promise<Server> {
         error: 'Failed to extract lab values from PDF',
         message: error instanceof Error ? error.message : 'Unknown error'
       });
+    }
+  });
+
+  // ===== PATIENT PROFILE ENDPOINTS =====
+
+  app.post("/api/patients", async (req, res) => {
+    try {
+      const parseResult = insertPatientSchema.safeParse(req.body);
+      if (!parseResult.success) {
+        return res.status(400).json({ error: "Invalid patient data", details: parseResult.error.errors });
+      }
+      const patient = await storage.createPatient(parseResult.data);
+      res.json(patient);
+    } catch (error) {
+      console.error("Error creating patient:", error);
+      res.status(500).json({ error: "Failed to create patient" });
+    }
+  });
+
+  app.get("/api/patients/search", async (req, res) => {
+    try {
+      const q = (req.query.q as string) || '';
+      const gender = req.query.gender as string | undefined;
+      if (!q || q.length < 1) {
+        return res.json([]);
+      }
+      const patients = await storage.searchPatients(q, gender);
+      res.json(patients);
+    } catch (error) {
+      console.error("Error searching patients:", error);
+      res.status(500).json({ error: "Failed to search patients" });
+    }
+  });
+
+  app.get("/api/patients/:id", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const patient = await storage.getPatient(id);
+      if (!patient) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
+      const labHistory = await storage.getLabResultsByPatient(id);
+      res.json({ patient, labHistory });
+    } catch (error) {
+      console.error("Error getting patient:", error);
+      res.status(500).json({ error: "Failed to get patient" });
+    }
+  });
+
+  app.get("/api/patients/:id/labs", async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const labs = await storage.getLabResultsByPatient(id);
+      res.json(labs);
+    } catch (error) {
+      console.error("Error getting patient labs:", error);
+      res.status(500).json({ error: "Failed to get patient labs" });
+    }
+  });
+
+  app.post("/api/patients/:id/labs", async (req, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId);
+      if (!patient) {
+        return res.status(404).json({ error: "Patient not found" });
+      }
+      const { labValues: bodyLabValues, interpretationResult: bodyInterpretation, notes } = req.body;
+      const labResult = await storage.createLabResult({
+        patientId,
+        labDate: new Date(),
+        labValues: bodyLabValues as LabValues | FemaleLabValues,
+        interpretationResult: bodyInterpretation as InterpretationResult,
+        notes,
+      } as InsertLabResult);
+      await storage.updatePatient(patientId, {});
+      res.json(labResult);
+    } catch (error) {
+      console.error("Error saving patient labs:", error);
+      res.status(500).json({ error: "Failed to save patient labs" });
     }
   });
 

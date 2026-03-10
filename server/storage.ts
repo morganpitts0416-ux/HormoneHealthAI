@@ -1,30 +1,28 @@
-import { eq, desc, ilike, or } from "drizzle-orm";
+import { eq, desc, ilike, or, and } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
 import * as schema from "@shared/schema";
 import type { Patient, InsertPatient, LabResult, InsertLabResult, SavedInterpretation, InsertSavedInterpretation } from "@shared/schema";
 
-// Configure Neon to use ws for WebSocket in Node.js
 neonConfig.webSocketConstructor = ws;
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
 const db = drizzle(pool, { schema });
 
 export interface IStorage {
-  // Patient operations
   getPatient(id: number): Promise<Patient | undefined>;
   getAllPatients(): Promise<Patient[]>;
+  searchPatients(searchTerm: string, gender?: string): Promise<Patient[]>;
+  getPatientByName(firstName: string, lastName: string): Promise<Patient | undefined>;
   createPatient(patient: InsertPatient): Promise<Patient>;
   updatePatient(id: number, patient: Partial<InsertPatient>): Promise<Patient | undefined>;
-  
-  // Lab result operations
+
   getLabResult(id: number): Promise<LabResult | undefined>;
   getLabResultsByPatient(patientId: number): Promise<LabResult[]>;
   createLabResult(labResult: InsertLabResult): Promise<LabResult>;
   updateLabResult(id: number, labResult: Partial<InsertLabResult>): Promise<LabResult | undefined>;
-  
-  // Saved interpretation operations
+
   getSavedInterpretation(id: number): Promise<SavedInterpretation | undefined>;
   getAllSavedInterpretations(gender?: string): Promise<SavedInterpretation[]>;
   searchSavedInterpretations(searchTerm: string, gender?: string): Promise<SavedInterpretation[]>;
@@ -40,6 +38,39 @@ export class DbStorage implements IStorage {
 
   async getAllPatients(): Promise<Patient[]> {
     return await db.select().from(schema.patients).orderBy(desc(schema.patients.updatedAt));
+  }
+
+  async searchPatients(searchTerm: string, gender?: string): Promise<Patient[]> {
+    const searchPattern = `%${searchTerm}%`;
+    const nameCondition = or(
+      ilike(schema.patients.firstName, searchPattern),
+      ilike(schema.patients.lastName, searchPattern)
+    );
+    if (gender) {
+      return await db
+        .select()
+        .from(schema.patients)
+        .where(and(nameCondition, eq(schema.patients.gender, gender)))
+        .orderBy(desc(schema.patients.updatedAt));
+    }
+    return await db
+      .select()
+      .from(schema.patients)
+      .where(nameCondition!)
+      .orderBy(desc(schema.patients.updatedAt));
+  }
+
+  async getPatientByName(firstName: string, lastName: string): Promise<Patient | undefined> {
+    const result = await db
+      .select()
+      .from(schema.patients)
+      .where(
+        and(
+          ilike(schema.patients.firstName, firstName),
+          ilike(schema.patients.lastName, lastName)
+        )
+      );
+    return result[0];
   }
 
   async createPatient(patient: InsertPatient): Promise<Patient> {
@@ -70,20 +101,19 @@ export class DbStorage implements IStorage {
   }
 
   async createLabResult(labResult: InsertLabResult): Promise<LabResult> {
-    const result = await db.insert(schema.labResults).values(labResult).returning();
+    const result = await db.insert(schema.labResults).values(labResult as any).returning();
     return result[0];
   }
 
   async updateLabResult(id: number, labResult: Partial<InsertLabResult>): Promise<LabResult | undefined> {
     const result = await db
       .update(schema.labResults)
-      .set({ ...labResult, updatedAt: new Date() })
+      .set({ ...labResult, updatedAt: new Date() } as any)
       .where(eq(schema.labResults.id, id))
       .returning();
     return result[0];
   }
 
-  // Saved interpretation operations
   async getSavedInterpretation(id: number): Promise<SavedInterpretation | undefined> {
     const result = await db.select().from(schema.savedInterpretations).where(eq(schema.savedInterpretations.id, id));
     return result[0];
@@ -107,8 +137,9 @@ export class DbStorage implements IStorage {
         .select()
         .from(schema.savedInterpretations)
         .where(
-          or(
-            ilike(schema.savedInterpretations.patientName, searchPattern)
+          and(
+            ilike(schema.savedInterpretations.patientName, searchPattern),
+            eq(schema.savedInterpretations.gender, gender)
           )
         )
         .orderBy(desc(schema.savedInterpretations.createdAt));
@@ -121,7 +152,7 @@ export class DbStorage implements IStorage {
   }
 
   async createSavedInterpretation(interpretation: InsertSavedInterpretation): Promise<SavedInterpretation> {
-    const result = await db.insert(schema.savedInterpretations).values(interpretation).returning();
+    const result = await db.insert(schema.savedInterpretations).values(interpretation as any).returning();
     return result[0];
   }
 

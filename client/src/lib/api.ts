@@ -2,7 +2,7 @@ import type { LabValues, FemaleLabValues, InterpretationResult } from "@shared/s
 import { apiRequest } from "./queryClient";
 
 export const labsApi = {
-  interpretLabs: async (labValues: LabValues): Promise<InterpretationResult> => {
+  interpretLabs: async (labValues: LabValues & { patientId?: number }): Promise<InterpretationResult> => {
     console.log('[API Client] interpretLabs called with:', labValues);
     const response = await apiRequest("POST", "/api/interpret-labs", labValues);
     const result = await response.json();
@@ -57,7 +57,7 @@ export interface WellnessPlan {
 }
 
 export const femaleLabsApi = {
-  interpretLabs: async (labValues: FemaleLabValues): Promise<InterpretationResult> => {
+  interpretLabs: async (labValues: FemaleLabValues & { patientId?: number }): Promise<InterpretationResult> => {
     console.log('[API Client] interpretLabsFemale called with:', labValues);
     const response = await apiRequest("POST", "/api/interpret-labs-female", labValues);
     const result = await response.json();

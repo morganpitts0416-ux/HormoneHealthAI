@@ -11,13 +11,15 @@ import { RedFlagAlert } from "@/components/red-flag-alert";
 import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
 import { SavedInterpretations } from "@/components/saved-interpretations";
+import { PatientSelector } from "@/components/patient-selector";
+import { PatientHistory } from "@/components/patient-history";
 import { femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { useToast } from "@/hooks/use-toast";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { FemaleLabValues, InterpretationResult, LabValues } from "@shared/schema";
+import type { FemaleLabValues, InterpretationResult, LabValues, Patient } from "@shared/schema";
 
 export default function FemaleLabInterpretation() {
   const [labValues, setLabValues] = useState<FemaleLabValues>({});
@@ -25,15 +27,29 @@ export default function FemaleLabInterpretation() {
   const [activeTab, setActiveTab] = useState<string>("input");
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [isPdfPendingReview, setIsPdfPendingReview] = useState(false);
+  const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
 
   const interpretMutation = useMutation({
-    mutationFn: femaleLabsApi.interpretLabs,
+    mutationFn: (data: FemaleLabValues) => {
+      const payload = selectedPatient ? { ...data, patientId: selectedPatient.id } : data;
+      return femaleLabsApi.interpretLabs(payload);
+    },
     onSuccess: (data) => {
       console.log('[Frontend] Female interpretation successful:', data);
       setInterpretationResult(data);
       setActiveTab("results");
+      if (selectedPatient) {
+        apiRequest('POST', `/api/patients/${selectedPatient.id}/labs`, {
+          labDate: new Date().toISOString(),
+          labValues,
+          interpretationResult: data,
+        }).then(() => {
+          queryClient.invalidateQueries({ queryKey: [`/api/patients/${selectedPatient.id}/labs`] });
+          console.log('[Frontend] Auto-saved interpretation to patient profile');
+        }).catch(err => console.error('[Frontend] Auto-save failed:', err));
+      }
     },
     onError: (error) => {
       console.error('[Frontend] Female interpretation error:', error);
@@ -161,6 +177,13 @@ export default function FemaleLabInterpretation() {
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!interpretationResult) throw new Error('No interpretation to save');
+      if (selectedPatient) {
+        return apiRequest('POST', `/api/patients/${selectedPatient.id}/labs`, {
+          labDate: new Date().toISOString(),
+          labValues,
+          interpretationResult,
+        });
+      }
       const patientName = labValues.patientName || 'Unknown Patient';
       return apiRequest('POST', '/api/saved-interpretations', {
         patientName,
@@ -172,9 +195,14 @@ export default function FemaleLabInterpretation() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/saved-interpretations'] });
+      if (selectedPatient) {
+        queryClient.invalidateQueries({ queryKey: [`/api/patients/${selectedPatient.id}/labs`] });
+      }
       toast({
         title: "Saved",
-        description: "Interpretation saved to history.",
+        description: selectedPatient 
+          ? `Interpretation saved to ${selectedPatient.firstName} ${selectedPatient.lastName}'s profile.`
+          : "Interpretation saved to history.",
       });
     },
     onError: (error) => {
@@ -187,11 +215,11 @@ export default function FemaleLabInterpretation() {
   });
 
   const handleSave = () => {
-    if (!labValues.patientName) {
+    if (!selectedPatient && !labValues.patientName) {
       toast({
         variant: "destructive",
-        title: "Patient Name Required",
-        description: "Please enter a patient name before saving.",
+        title: "Patient Required",
+        description: "Please select a patient or enter a patient name before saving.",
       });
       return;
     }
@@ -278,6 +306,26 @@ export default function FemaleLabInterpretation() {
           </TabsList>
 
           <TabsContent value="input" className="space-y-6">
+            {/* Patient Selector */}
+            <PatientSelector
+              gender="female"
+              onPatientSelect={(patient) => {
+                setSelectedPatient(patient);
+                if (patient) {
+                  setLabValues(prev => ({ ...prev, patientName: `${patient.firstName} ${patient.lastName}` }));
+                }
+              }}
+              selectedPatient={selectedPatient}
+            />
+
+            {/* Patient History (when patient selected) */}
+            {selectedPatient && (
+              <PatientHistory
+                patient={selectedPatient}
+                onLoadResult={handleLoadInterpretation}
+              />
+            )}
+
             {/* PDF Upload Section */}
             <Card>
               <CardHeader>
