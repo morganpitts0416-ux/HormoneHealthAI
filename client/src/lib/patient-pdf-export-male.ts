@@ -372,9 +372,10 @@ export async function generateMalePatientWellnessPDF(
     const lines = doc.splitTextToSize(sanitizeForPdf(text), maxWidth);
     let y = startY;
     const lineHeight = 4;
+    const footerBuffer = 8;
     
     for (let i = 0; i < lines.length; i++) {
-      y = ensureSpace(lineHeight, y);
+      y = ensureSpace(lineHeight + footerBuffer, y);
       doc.text(lines[i], margin, y);
       y += lineHeight;
     }
@@ -1287,9 +1288,7 @@ export async function generateMalePatientWellnessPDF(
   yPosition = addTextSection(wellnessPlan.educationalContent, yPosition, contentWidth);
   yPosition += 8;
 
-  const finalSectionsHeight = 180;
-  yPosition = ensureSpace(finalSectionsHeight, yPosition);
-
+  yPosition = ensureSpace(90, yPosition);
   yPosition = addSectionHeader('YOUR ACTION CHECKLIST', yPosition);
 
   doc.setTextColor(...textColor);
@@ -1309,6 +1308,10 @@ export async function generateMalePatientWellnessPDF(
   ];
 
   checklistItems.forEach((item, index) => {
+    yPosition = ensureSpace(10, yPosition);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'normal');
     doc.setDrawColor(...brandColor);
     doc.rect(margin, yPosition - 3, 4, 4);
     doc.text(`${index + 1}. ${item}`, margin + 7, yPosition);
