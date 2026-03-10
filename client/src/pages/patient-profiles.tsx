@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -7,11 +7,16 @@ import { Input } from "@/components/ui/input";
 import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
-  BarChart3, ClipboardList, Heart
+  BarChart3, ClipboardList, Heart, Download
 } from "lucide-react";
 import { Link } from "wouter";
 import { PatientTrendCharts } from "@/components/patient-trend-charts";
 import { generateTrendInsights, generateClinicalSnapshot, type TrendInsight } from "@/lib/clinical-trend-insights";
+import { generateLabReportPDF } from "@/lib/pdf-export";
+import { generateMalePatientWellnessPDF, type MaleWellnessPlan } from "@/lib/patient-pdf-export-male";
+import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
+import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
+import { useToast } from "@/hooks/use-toast";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues } from "@shared/schema";
 
 function PatientSearch({ onSelect }: { onSelect: (patient: Patient) => void }) {
@@ -269,9 +274,61 @@ function LabHistoryList({ labs, onViewLab }: { labs: LabResult[]; onViewLab: (la
   );
 }
 
-function LabDetailModal({ lab, onClose }: { lab: LabResult; onClose: () => void }) {
+function LabDetailModal({ lab, onClose, patient, allLabs }: { lab: LabResult; onClose: () => void; patient: Patient; allLabs: LabResult[] }) {
+  const { toast } = useToast();
   const interp = lab.interpretationResult as InterpretationResult | null;
   const vals = lab.labValues as any;
+  const patientName = `${patient.firstName} ${patient.lastName}`.trim();
+  const isFemale = patient.gender === 'female';
+
+  const wellnessPlanMutation = useMutation({
+    mutationFn: async () => {
+      if (!interp) throw new Error('No interpretation available');
+      if (isFemale) {
+        return femaleLabsApi.generateWellnessPlan(
+          vals as FemaleLabValues,
+          interp.interpretations,
+          interp.supplements,
+          interp.preventRisk
+        );
+      } else {
+        return labsApi.generateWellnessPlan(
+          vals as LabValues,
+          interp.interpretations,
+          interp.supplements,
+          interp.preventRisk
+        );
+      }
+    },
+    onSuccess: async (wellnessPlan: WellnessPlan) => {
+      if (interp) {
+        const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
+        if (isFemale) {
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs);
+        } else {
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs);
+        }
+        toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
+      }
+    },
+    onError: (error) => {
+      toast({ variant: "destructive", title: "Error", description: "Failed to generate patient report. Please try again." });
+    },
+  });
+
+  const handleProviderPDF = () => {
+    if (interp) {
+      const clinicName = isFemale ? "Women's Hormone & Primary Care Clinic" : undefined;
+      generateLabReportPDF(vals as LabValues, interp, patientName, clinicName);
+      toast({ title: "Provider Report Generated", description: "The provider report has been downloaded." });
+    }
+  };
+
+  const handlePatientReport = () => {
+    if (interp) {
+      wellnessPlanMutation.mutate();
+    }
+  };
 
   const markerOrder = [
     { label: 'Total Cholesterol', key: 'totalCholesterol', unit: 'mg/dL' },
@@ -344,9 +401,34 @@ function LabDetailModal({ lab, onClose }: { lab: LabResult; onClose: () => void 
                 month: 'long', day: 'numeric', year: 'numeric'
               })}
             </CardTitle>
-            <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">
-              Close
-            </Button>
+            <div className="flex items-center gap-2 flex-wrap">
+              {interp && (
+                <>
+                  <Button
+                    variant="default"
+                    size="sm"
+                    onClick={handlePatientReport}
+                    disabled={wellnessPlanMutation.isPending}
+                    data-testid="button-patient-report-modal"
+                  >
+                    <Heart className="w-4 h-4 mr-1" />
+                    {wellnessPlanMutation.isPending ? 'Generating...' : 'Patient Report'}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleProviderPDF}
+                    data-testid="button-provider-pdf-modal"
+                  >
+                    <Download className="w-4 h-4 mr-1" />
+                    Provider PDF
+                  </Button>
+                </>
+              )}
+              <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">
+                Close
+              </Button>
+            </div>
           </div>
         </CardHeader>
         <CardContent className="space-y-4 pt-4">
@@ -555,8 +637,8 @@ export default function PatientProfiles() {
         )}
       </div>
 
-      {viewingLab && (
-        <LabDetailModal lab={viewingLab} onClose={() => setViewingLab(null)} />
+      {viewingLab && selectedPatient && (
+        <LabDetailModal lab={viewingLab} onClose={() => setViewingLab(null)} patient={selectedPatient} allLabs={labs} />
       )}
     </div>
   );
