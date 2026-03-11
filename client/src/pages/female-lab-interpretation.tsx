@@ -116,13 +116,29 @@ export default function FemaleLabInterpretation() {
       if (interpretationResult) {
         const patientName = labValues.patientName || undefined;
         let patientLabs: LabResult[] | undefined;
-        if (selectedPatient) {
+        let patientId: number | undefined = selectedPatient?.id;
+
+        if (!patientId && patientName) {
           try {
-            const cached = queryClient.getQueryData<LabResult[]>([`/api/patients/${selectedPatient.id}/labs`]);
+            const searchRes = await fetch(`/api/patients/search?q=${encodeURIComponent(patientName)}`);
+            if (searchRes.ok) {
+              const patients = await searchRes.json();
+              if (patients.length > 0) {
+                patientId = patients[0].id;
+              }
+            }
+          } catch (e) {
+            console.warn('Could not search for patient:', e);
+          }
+        }
+
+        if (patientId) {
+          try {
+            const cached = queryClient.getQueryData<LabResult[]>([`/api/patients/${patientId}/labs`]);
             if (cached && cached.length >= 2) {
               patientLabs = cached;
             } else {
-              const res = await fetch(`/api/patients/${selectedPatient.id}/labs`);
+              const res = await fetch(`/api/patients/${patientId}/labs`);
               if (res.ok) {
                 const fetched = await res.json();
                 if (fetched.length >= 2) patientLabs = fetched;
