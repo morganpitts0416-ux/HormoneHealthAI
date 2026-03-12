@@ -40,8 +40,8 @@ export default function LabInterpretation() {
       console.log('[Frontend] Interpretation successful:', data);
       setInterpretationResult(data);
       setActiveTab("results");
+      const labDate = labValues.labDrawDate ? new Date(labValues.labDrawDate).toISOString() : new Date().toISOString();
       if (selectedPatient) {
-        const labDate = labValues.labDrawDate ? new Date(labValues.labDrawDate).toISOString() : new Date().toISOString();
         apiRequest('POST', `/api/patients/${selectedPatient.id}/labs`, {
           labDate,
           labValues,
@@ -49,6 +49,17 @@ export default function LabInterpretation() {
         }).then(() => {
           queryClient.invalidateQueries({ queryKey: [`/api/patients/${selectedPatient.id}/labs`] });
           console.log('[Frontend] Auto-saved interpretation to patient profile');
+        }).catch(err => console.error('[Frontend] Auto-save failed:', err));
+      } else if (labValues.patientName) {
+        apiRequest('POST', '/api/saved-interpretations', {
+          patientName: labValues.patientName,
+          gender: 'male',
+          labValues,
+          interpretation: data,
+          labDate,
+        }).then(() => {
+          queryClient.invalidateQueries({ queryKey: ['/api/saved-interpretations'] });
+          console.log('[Frontend] Auto-saved interpretation with patient name');
         }).catch(err => console.error('[Frontend] Auto-save failed:', err));
       }
     },
@@ -225,17 +236,29 @@ export default function LabInterpretation() {
           }
         }
 
+        const currentLabDate = labValues.labDrawDate ? new Date(labValues.labDrawDate).toISOString() : new Date().toISOString();
+        const currentLabResult: LabResult = {
+          id: -1,
+          patientId: patientId || 0,
+          labDate: currentLabDate,
+          labValues: labValues as any,
+          interpretationResult,
+          notes: null,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        } as unknown as LabResult;
+
         if (patientId) {
           try {
-            const cached = queryClient.getQueryData<LabResult[]>([`/api/patients/${patientId}/labs`]);
-            if (cached && cached.length >= 2) {
-              patientLabs = cached;
-            } else {
-              const res = await fetch(`/api/patients/${patientId}/labs`);
-              if (res.ok) {
-                const fetched = await res.json();
-                if (fetched.length >= 2) patientLabs = fetched;
-              }
+            const res = await fetch(`/api/patients/${patientId}/labs`);
+            if (res.ok) {
+              const fetched: LabResult[] = await res.json();
+              const isDuplicate = fetched.some(lab => 
+                new Date(lab.labDate).toISOString().split('T')[0] === new Date(currentLabDate).toISOString().split('T')[0]
+              );
+              const combined = isDuplicate ? fetched : [...fetched, currentLabResult];
+              combined.sort((a, b) => new Date(a.labDate).getTime() - new Date(b.labDate).getTime());
+              if (combined.length >= 2) patientLabs = combined;
             }
           } catch (e) {
             console.warn('Could not fetch patient labs for trend charts:', e);
