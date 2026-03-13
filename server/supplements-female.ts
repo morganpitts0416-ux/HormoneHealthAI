@@ -557,94 +557,6 @@ function evaluateUltraFloraHealthyWeight(labs: FemaleLabValues, phenotypes: Clin
   };
 }
 
-function evaluateAdreset(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): SupplementCandidate | null {
-  const findings: string[] = [];
-  let score = 0;
-  const matchedPhenotypes: string[] = [];
-
-  const lowDHEAS = labs.dheas !== undefined && labs.dheas < 100;
-  const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
-  const thyroidStress = labs.tsh !== undefined && labs.tsh > 3.5;
-  const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
-  const hasLowEnergy = labs.lowEnergy === true;
-  const hasLowMotivation = labs.lowMotivation === true;
-  const hasBrainFog = labs.brainFog === true;
-
-  if (lowDHEAS) { findings.push(`DHEA-S ${labs.dheas} \u00B5g/dL (low, adrenal depletion)`); score += 4; }
-  if (thyroidStress) { findings.push(`TSH ${labs.tsh} mIU/L (HPA-thyroid axis stress)`); score += 2; }
-  if (lowFerritin && lowVitD) { findings.push("Combined ferritin and vitamin D depletion (fatigue pattern)"); score += 2; }
-  else if (lowFerritin) { findings.push(`Ferritin ${labs.ferritin} (fatigue contributor)`); score += 1; }
-  if (hasLowEnergy) { findings.push("Low energy reported"); score += 1; }
-  if (hasLowMotivation) { findings.push("Low motivation reported"); score += 1; }
-  if (hasBrainFog) { findings.push("Brain fog reported"); score += 1; }
-
-  const stressPhenotype = phenotypes.find(p => p.name === "Stress / Cortisol Dysregulation");
-  if (stressPhenotype) { matchedPhenotypes.push(stressPhenotype.name); score += 2; }
-
-  if (score < 4) return null;
-
-  return {
-    name: "Adreset\u00AE",
-    dose: "2 capsules twice daily",
-    category: 'hormone-support',
-    caution: "Adaptogenic formula with ginseng, rhodiola, and cordyceps. Best taken earlier in day. May take 2-4 weeks for full effect.",
-    score,
-    priority: lowDHEAS ? 'high' : 'medium',
-    confidenceLevel: score >= 6 ? 'high' : 'moderate',
-    supportingFindings: findings,
-    phenotypes: matchedPhenotypes,
-    clinicalRationale: "Adreset combines adaptogenic herbs (Cordyceps, Asian Ginseng, Rhodiola) to support healthy adrenal function, stress resilience, and HPA axis balance. Indicated for low DHEA-S, fatigue patterns, and cortisol dysregulation.",
-    patientExplanation: "This adaptogen formula helps your body better handle stress and restore energy. It supports your adrenal glands, which produce hormones that help you cope with daily demands and maintain stamina.",
-  };
-}
-
-function evaluateExhilarin(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): SupplementCandidate | null {
-  const findings: string[] = [];
-  let score = 0;
-  const matchedPhenotypes: string[] = [];
-
-  const lowB12 = labs.vitaminB12 !== undefined && labs.vitaminB12 < 400;
-  const lowVitD = labs.vitaminD !== undefined && labs.vitaminD < 30;
-  const lowFerritin = labs.ferritin !== undefined && labs.ferritin < 50;
-  const suboptimalThyroid = labs.tsh !== undefined && labs.tsh > 3.0 && labs.tsh <= 4.5;
-  const hasLowEnergy = labs.lowEnergy === true;
-  const hasLowMotivation = labs.lowMotivation === true;
-  const hasMoodChanges = labs.moodChanges === true;
-  const hasBrainFog = labs.brainFog === true;
-
-  if (lowB12) { findings.push(`B12 ${labs.vitaminB12} pg/mL (suboptimal)`); score += 1; }
-  if (lowVitD) { findings.push(`Vit D ${labs.vitaminD} ng/mL (low)`); score += 1; }
-  if (lowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (low)`); score += 1; }
-  if (suboptimalThyroid) { findings.push(`TSH ${labs.tsh} mIU/L (suboptimal)`); score += 1; }
-  if (hasLowEnergy) { findings.push("Low energy reported"); score += 2; }
-  if (hasLowMotivation) { findings.push("Low motivation reported"); score += 2; }
-  if (hasMoodChanges) { findings.push("Mood changes reported"); score += 2; }
-  if (hasBrainFog) { findings.push("Brain fog reported"); score += 1; }
-
-  const stressPhenotype = phenotypes.find(p => p.name === "Stress / Cortisol Dysregulation");
-  if (stressPhenotype) { matchedPhenotypes.push(stressPhenotype.name); score += 1; }
-
-  const fatigueFactorCount = [lowB12, lowVitD, lowFerritin, suboptimalThyroid].filter(Boolean).length;
-  const symptomCount = [hasLowEnergy, hasLowMotivation, hasMoodChanges, hasBrainFog].filter(Boolean).length;
-
-  if (fatigueFactorCount < 2 && symptomCount < 2) return null;
-  if (score < 4) return null;
-
-  return {
-    name: "Exhilarin\u00AE",
-    dose: "2 tablets daily",
-    category: 'general',
-    caution: "Ayurvedic adaptogenic formula. Supports mental clarity and emotional well-being. Takes 2-4 weeks for optimal benefits.",
-    score,
-    priority: 'medium',
-    confidenceLevel: score >= 6 ? 'moderate' : 'supportive',
-    supportingFindings: findings,
-    phenotypes: matchedPhenotypes,
-    clinicalRationale: "Exhilarin provides adaptogenic support with Ashwagandha, Holy Basil, Bacopa, and Amla for mental energy, mood, and stress resilience. Complements nutrient repletion for comprehensive fatigue and mood management.",
-    patientExplanation: "This herbal formula supports mental energy, mood balance, and stress resilience. It works alongside your nutrient supplements to help restore your energy and emotional well-being.",
-  };
-}
-
 function evaluateOmegaGenics(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): SupplementCandidate | null {
   const findings: string[] = [];
   let score = 0;
@@ -798,8 +710,6 @@ export function evaluateSupplements(labs: FemaleLabValues, irScreening?: Insulin
     () => evaluateAdvaClear(labs, phenotypes),
     () => evaluateGlutaClear(labs, phenotypes),
     () => evaluateUltraFloraHealthyWeight(labs, phenotypes),
-    () => evaluateAdreset(labs, phenotypes),
-    () => evaluateExhilarin(labs, phenotypes),
     () => evaluateOmegaGenics(labs, phenotypes),
     () => evaluateCoQ10(labs, phenotypes),
   ];
