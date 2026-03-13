@@ -23,6 +23,7 @@ function evaluateHemagenics(labs: FemaleLabValues, phenotypes: ClinicalPhenotype
 
   const lowFerritin = labs.ferritin !== undefined && labs.ferritin <= 50;
   const veryLowFerritin = labs.ferritin !== undefined && labs.ferritin <= 20;
+  const moderateLowFerritin = labs.ferritin !== undefined && labs.ferritin > 20 && labs.ferritin <= 30;
   const lowIron = labs.iron !== undefined && labs.iron < 60;
   const elevatedTIBC = labs.tibc !== undefined && labs.tibc > 450;
   const lowHemoglobin = labs.hemoglobin !== undefined && labs.hemoglobin < 12;
@@ -31,8 +32,9 @@ function evaluateHemagenics(labs: FemaleLabValues, phenotypes: ClinicalPhenotype
   const hasLowEnergy = labs.lowEnergy === true;
   const hasHeavyMenses = labs.heavyMenses === true;
 
-  if (veryLowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (severely depleted ≤20)`); score += 4; }
-  else if (lowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (suboptimal ≤50)`); score += 3; }
+  if (veryLowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (severely depleted ≤20)`); score += 5; }
+  else if (moderateLowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (iron deficiency ≤30)`); score += 4; }
+  else if (lowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (suboptimal ≤50, optimal >50)`); score += 4; }
   if (lowIron) { findings.push(`Serum iron ${labs.iron} µg/dL (low <60)`); score += 2; }
   if (elevatedTIBC) { findings.push(`TIBC ${labs.tibc} µg/dL (elevated >450)`); score += 2; }
   if (lowHemoglobin) { findings.push(`Hemoglobin ${labs.hemoglobin} g/dL (low)`); score += 3; }
@@ -48,14 +50,16 @@ function evaluateHemagenics(labs: FemaleLabValues, phenotypes: ClinicalPhenotype
   if (!hasLabEvidence) return null;
   if (score < 3) return null;
 
+  const isHighPriority = lowFerritin || veryLowFerritin || moderateLowFerritin || lowHemoglobin || lowIron || elevatedTIBC || score >= 5;
+
   return {
     name: "Hemagenics\u00AE Red Blood Cell Support",
     dose: "1 tablet twice daily with meals",
     category: 'iron',
     caution: "Contains iron, folate, and B12 for comprehensive RBC support. Avoid taking with calcium-rich foods or dairy. May cause mild GI upset initially.",
     score,
-    priority: score >= 5 ? 'high' : 'medium',
-    confidenceLevel: score >= 5 ? 'high' : score >= 3 ? 'moderate' : 'supportive',
+    priority: isHighPriority ? 'high' : 'medium',
+    confidenceLevel: score >= 6 ? 'high' : score >= 4 ? 'moderate' : 'supportive',
     supportingFindings: findings,
     phenotypes: matchedPhenotypes,
     clinicalRationale: "Hemagenics provides highly absorbable iron bisglycinate with B12, B6, and folate for comprehensive red blood cell support. Indicated for functional iron deficiency, iron deficiency without anemia, and iron-responsive symptoms.",
