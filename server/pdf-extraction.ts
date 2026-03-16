@@ -118,6 +118,7 @@ EXTRACTION RULES:
 4. Common test name variations:
    - Hematocrit: HCT, Hct, Hematocrit
    - Hemoglobin: HGB, Hgb, Hemoglobin (NOT Hemoglobin A1C)
+   - MCV: Mean Corpuscular Volume, MCV (fL)
    - LDL: LDL-C, LDL Cholesterol, LDL Cholesterol (Calculation)
    - HDL: HDL-C, HDL Cholesterol
    - Total Cholesterol: CHOL, Cholesterol Total
@@ -162,6 +163,7 @@ Return a JSON object with these possible fields (use camelCase):
 {
   "hemoglobin": number,
   "hematocrit": number,
+  "mcv": number,
   "rbc": number,
   "wbc": number,
   "platelets": number,

@@ -488,6 +488,31 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
                     </FormItem>
                   )}
                 />
+                <FormField
+                  control={form.control}
+                  name="mcv"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">MCV</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="90"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-mcv"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">fL</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">80-100 fL</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
               </div>
             </AccordionContent>
           </AccordionItem>

@@ -106,6 +106,7 @@ export const labValuesSchema = z.object({
   // CBC Values (Complete Blood Count)
   hemoglobin: z.number().optional(),
   hematocrit: z.number().optional(),
+  mcv: z.number().optional(), // Mean Corpuscular Volume
   rbc: z.number().optional(), // Red blood cell count
   wbc: z.number().optional(), // White blood cell count
   platelets: z.number().optional(),
@@ -174,6 +175,7 @@ export const femaleLabValuesSchema = z.object({
   // CBC Values (Complete Blood Count) - Female reference ranges differ
   hemoglobin: z.number().optional(),
   hematocrit: z.number().optional(),
+  mcv: z.number().optional(), // Mean Corpuscular Volume
   rbc: z.number().optional(),
   wbc: z.number().optional(),
   platelets: z.number().optional(),
