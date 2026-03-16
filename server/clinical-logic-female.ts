@@ -295,6 +295,57 @@ export class FemaleClinicalLogicEngine {
       });
     }
 
+    // MCV - Mean Corpuscular Volume (RBC size index)
+    if (labs.mcv !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      const hasLowFerritin = labs.ferritin !== undefined && labs.ferritin < 30;
+      const hasLowB12 = labs.vitaminB12 !== undefined && labs.vitaminB12 < 300;
+      const hasLowFolate = labs.folate !== undefined && labs.folate < 4;
+
+      if (labs.mcv < 80) {
+        status = 'abnormal';
+        interpretation = `Low MCV (${labs.mcv} fL) indicates microcytic red blood cells. Most common cause in women is iron deficiency; thalassemia trait should also be considered.`;
+        if (hasLowFerritin) {
+          recommendation = 'Low MCV with low ferritin strongly supports iron deficiency anemia. Provider protocol: Metagenics Hemagenics. Recheck CBC and iron studies after 3 months of repletion.';
+        } else {
+          recommendation = 'Evaluate iron studies (ferritin, serum iron, TIBC, iron saturation). If iron studies are normal, consider hemoglobin electrophoresis to evaluate for thalassemia trait.';
+        }
+      } else if (labs.mcv > 100) {
+        status = 'abnormal';
+        const macrocyticCauses: string[] = [];
+        if (hasLowB12) macrocyticCauses.push(`low B12 (${labs.vitaminB12} pg/mL)`);
+        if (hasLowFolate) macrocyticCauses.push(`low folate (${labs.folate} ng/mL)`);
+        const causeText = macrocyticCauses.length > 0 ? ` Lab data supports: ${macrocyticCauses.join(', ')}.` : '';
+        interpretation = `Elevated MCV (${labs.mcv} fL) indicates macrocytic red blood cells.${causeText} Common causes include B12 deficiency, folate deficiency, hypothyroidism, alcohol use, or certain medications (methotrexate, hydroxyurea).`;
+        const recParts: string[] = [];
+        if (hasLowB12) recParts.push('B12 deficiency confirmed — provider protocol: Metagenics IntrinsiB12/Folate or intramuscular B12 if severe');
+        if (hasLowFolate) recParts.push('folate deficiency confirmed — supplement with Metagenics Ultraflora or folate 1 mg/day');
+        if (recParts.length === 0) recParts.push('check serum B12, folate, TSH, reticulocyte count, and medication list. Rule out alcohol use.');
+        recommendation = recParts.join('. ') + '.';
+      } else if (labs.mcv >= 96 && labs.mcv <= 100) {
+        status = 'borderline';
+        interpretation = `MCV ${labs.mcv} fL is in the high-normal range. Early macrocytosis can precede overt B12 or folate deficiency.`;
+        recommendation = 'Ensure B12 and folate levels are within optimal range. Monitor CBC at next visit.';
+      } else {
+        status = 'normal';
+        interpretation = `MCV ${labs.mcv} fL is within normal range (80–100 fL), indicating normal-sized red blood cells.`;
+        recommendation = 'Continue routine monitoring.';
+      }
+
+      interpretations.push({
+        category: 'MCV',
+        value: labs.mcv,
+        unit: 'fL',
+        status,
+        referenceRange: '80-100 fL',
+        interpretation,
+        recommendation,
+      });
+    }
+
     // Platelets - Thrombocytosis evaluation with reactive pattern detection
     if (labs.platelets !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
@@ -2089,7 +2140,17 @@ export class FemaleClinicalLogicEngine {
         if (labs.shbg > 100) {
           shbgStatus = 'abnormal';
           shbgInterp = `SHBG ${labs.shbg} nmol/L is elevated. High SHBG reduces bioavailable testosterone and estrogen. Common causes: oral estrogen, oral contraceptives, thyroid medication, liver conditions.`;
-          shbgRec = 'Evaluate SHBG drivers. Consider ordering Free Testosterone and Bioavailable Testosterone for complete androgen assessment.';
+          const hasFreeT = labs.freeTestosterone !== undefined;
+          const hasBioavailT = labs.bioavailableTestosterone !== undefined;
+          if (!hasFreeT && !hasBioavailT) {
+            shbgRec = 'Evaluate SHBG drivers. Consider ordering Free Testosterone and Bioavailable Testosterone for complete androgen assessment.';
+          } else if (!hasFreeT) {
+            shbgRec = 'Evaluate SHBG drivers (oral estrogen, OCP, thyroid medication). Consider ordering Free Testosterone for complete androgen assessment.';
+          } else if (!hasBioavailT) {
+            shbgRec = 'Evaluate SHBG drivers (oral estrogen, OCP, thyroid medication). Consider ordering Bioavailable Testosterone for complete androgen assessment.';
+          } else {
+            shbgRec = 'Evaluate SHBG drivers: oral estrogen (switch to transdermal may lower SHBG), oral contraceptive pill, thyroid medication dosing, or liver conditions. Androgen assessment is complete with Free and Bioavailable Testosterone on file.';
+          }
         } else if (labs.shbg < 24) {
           shbgStatus = 'abnormal';
           shbgInterp = `SHBG ${labs.shbg} nmol/L is low. Low SHBG increases free androgen activity and is associated with insulin resistance and metabolic syndrome.`;

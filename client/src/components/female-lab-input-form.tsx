@@ -611,6 +611,16 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                     </div>
                   </FormItem>
                 )} />
+                <FormField control={form.control} name="mcv" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">MCV</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="90" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-mcv-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">fL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">80-100 fL</p>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>

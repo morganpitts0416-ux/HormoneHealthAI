@@ -299,6 +299,57 @@ export class ClinicalLogicEngine {
       });
     }
 
+    // MCV - Mean Corpuscular Volume
+    if (labs.mcv !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      const hasLowFerritin = labs.ferritin !== undefined && labs.ferritin < 30;
+      const hasLowB12 = labs.vitaminB12 !== undefined && labs.vitaminB12 < 300;
+      const hasLowFolate = labs.folate !== undefined && labs.folate < 4;
+
+      if (labs.mcv < 80) {
+        status = 'abnormal';
+        interpretation = `Low MCV (${labs.mcv} fL) indicates microcytic red blood cells. Common causes: iron deficiency, thalassemia trait, or chronic disease anemia.`;
+        if (hasLowFerritin) {
+          recommendation = 'Low MCV with low ferritin strongly supports iron deficiency. Evaluate iron studies. Consider iron supplementation and workup for bleeding source if no obvious cause.';
+        } else {
+          recommendation = 'Evaluate iron studies (ferritin, serum iron, TIBC, iron saturation). If iron studies are normal, consider hemoglobin electrophoresis to evaluate for thalassemia trait.';
+        }
+      } else if (labs.mcv > 100) {
+        status = 'abnormal';
+        const macrocyticCauses: string[] = [];
+        if (hasLowB12) macrocyticCauses.push(`low B12 (${labs.vitaminB12} pg/mL)`);
+        if (hasLowFolate) macrocyticCauses.push(`low folate (${labs.folate} ng/mL)`);
+        const causeText = macrocyticCauses.length > 0 ? ` Lab data supports: ${macrocyticCauses.join(', ')}.` : '';
+        interpretation = `Elevated MCV (${labs.mcv} fL) indicates macrocytic red blood cells.${causeText} Common causes include B12 deficiency, folate deficiency, hypothyroidism, alcohol use, or certain medications.`;
+        const recParts: string[] = [];
+        if (hasLowB12) recParts.push('B12 deficiency confirmed — supplement with B12 (IM or oral high-dose)');
+        if (hasLowFolate) recParts.push('folate deficiency confirmed — supplement with folate 1 mg/day');
+        if (recParts.length === 0) recParts.push('check serum B12, folate, TSH, reticulocyte count, and medication list. Rule out alcohol use.');
+        recommendation = recParts.join('. ') + '.';
+      } else if (labs.mcv >= 96 && labs.mcv <= 100) {
+        status = 'borderline';
+        interpretation = `MCV ${labs.mcv} fL is in the high-normal range. Early macrocytosis can precede overt B12 or folate deficiency.`;
+        recommendation = 'Ensure B12 and folate levels are within optimal range. Monitor CBC at next visit.';
+      } else {
+        status = 'normal';
+        interpretation = `MCV ${labs.mcv} fL is within normal range (80–100 fL), indicating normal-sized red blood cells.`;
+        recommendation = 'Continue routine monitoring.';
+      }
+
+      interpretations.push({
+        category: 'MCV',
+        value: labs.mcv,
+        unit: 'fL',
+        status,
+        referenceRange: '80-100 fL',
+        interpretation,
+        recommendation,
+      });
+    }
+
     // Testosterone
     if (labs.testosterone !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
