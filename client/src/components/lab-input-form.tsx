@@ -742,6 +742,32 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
 
                 <FormField
                   control={form.control}
+                  name="shbg"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">SHBG</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="35"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-shbg"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">nmol/L</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">25-50 nmol/L optimal</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="lh"
                   render={({ field }) => (
                     <FormItem>
