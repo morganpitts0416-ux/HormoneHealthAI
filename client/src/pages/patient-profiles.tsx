@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -7,9 +7,10 @@ import { Input } from "@/components/ui/input";
 import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
-  BarChart3, ClipboardList, Heart, Download, Trash2
+  BarChart3, ClipboardList, Heart, Download, Trash2, Users
 } from "lucide-react";
 import { Link } from "wouter";
+import { cn } from "@/lib/utils";
 import { PatientTrendCharts } from "@/components/patient-trend-charts";
 import { generateTrendInsights, generateClinicalSnapshot, type TrendInsight } from "@/lib/clinical-trend-insights";
 import { generateLabReportPDF } from "@/lib/pdf-export";
@@ -19,77 +20,6 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues } from "@shared/schema";
-
-function PatientSearch({ onSelect }: { onSelect: (patient: Patient) => void }) {
-  const [searchTerm, setSearchTerm] = useState("");
-
-  const { data: allPatients = [], isLoading: loadingAll } = useQuery<Patient[]>({
-    queryKey: ['/api/patients/search', ''],
-    queryFn: async () => {
-      const res = await fetch('/api/patients/search', { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to load patients');
-      return res.json();
-    },
-  });
-
-  const { data: searchResults = [], isLoading: loadingSearch } = useQuery<Patient[]>({
-    queryKey: ['/api/patients/search', searchTerm],
-    queryFn: async () => {
-      const res = await fetch(`/api/patients/search?q=${encodeURIComponent(searchTerm)}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Search failed');
-      return res.json();
-    },
-    enabled: searchTerm.length >= 2,
-  });
-
-  const displayPatients = searchTerm.length >= 2 ? searchResults : allPatients;
-  const isLoading = searchTerm.length >= 2 ? loadingSearch : loadingAll;
-  const showResults = searchTerm.length >= 2 || allPatients.length > 0;
-
-  return (
-    <div className="space-y-3">
-      <div className="relative">
-        <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
-        <Input
-          placeholder="Search patients by name..."
-          value={searchTerm}
-          onChange={(e) => setSearchTerm(e.target.value)}
-          className="pl-10"
-          data-testid="input-patient-profile-search"
-        />
-      </div>
-      {showResults && (
-        <div className="space-y-1">
-          {isLoading && <p className="text-sm text-muted-foreground px-2">Loading...</p>}
-          {!isLoading && displayPatients.length === 0 && searchTerm.length >= 2 && (
-            <p className="text-sm text-muted-foreground px-2">No patients found matching "{searchTerm}"</p>
-          )}
-          {!isLoading && displayPatients.length === 0 && searchTerm.length < 2 && (
-            <p className="text-sm text-muted-foreground px-2">No patient profiles yet. Save a lab interpretation to create one.</p>
-          )}
-          {displayPatients.map(patient => (
-            <button
-              key={patient.id}
-              onClick={() => { onSelect(patient); setSearchTerm(""); }}
-              className="w-full text-left p-3 rounded-md border hover-elevate flex items-center gap-3"
-              data-testid={`button-select-patient-${patient.id}`}
-            >
-              <User className="h-5 w-5 text-muted-foreground flex-shrink-0" />
-              <div>
-                <p className="font-medium text-sm">{patient.firstName} {patient.lastName}</p>
-                <p className="text-xs text-muted-foreground">
-                  {patient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
-                  {patient.dateOfBirth && ` · DOB: ${new Date(patient.dateOfBirth).toLocaleDateString()}`}
-                  {patient.mrn && ` · MRN: ${patient.mrn}`}
-                </p>
-              </div>
-            </button>
-          ))}
-        </div>
-      )}
-    </div>
-  );
-}
 
 function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patient }) {
   const insights = generateTrendInsights(labs);
@@ -574,11 +504,37 @@ function EnrichedTrendInsights({ insights }: { insights: TrendInsight[] }) {
   );
 }
 
+function PatientAvatar({ patient, size = "md" }: { patient: Patient; size?: "sm" | "md" }) {
+  const initials = `${patient.firstName[0] ?? ''}${patient.lastName[0] ?? ''}`.toUpperCase();
+  const isMale = patient.gender === 'male';
+  const sizeClasses = size === "sm" ? "w-8 h-8 text-xs" : "w-10 h-10 text-sm";
+  return (
+    <div className={cn(
+      "rounded-full flex items-center justify-center font-semibold text-white flex-shrink-0",
+      isMale ? "bg-blue-600" : "bg-rose-500",
+      sizeClasses
+    )}>
+      {initials}
+    </div>
+  );
+}
+
 export default function PatientProfiles() {
   const { toast } = useToast();
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
+  const [searchTerm, setSearchTerm] = useState("");
+  const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
+
+  const { data: allPatients = [], isLoading: patientsLoading } = useQuery<Patient[]>({
+    queryKey: ['/api/patients/search', ''],
+    queryFn: async () => {
+      const res = await fetch('/api/patients/search', { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to load patients');
+      return res.json();
+    },
+  });
 
   const { data: labs = [], isLoading: labsLoading } = useQuery<LabResult[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
@@ -591,6 +547,33 @@ export default function PatientProfiles() {
     enabled: !!selectedPatient,
   });
 
+  const filteredPatients = useMemo(() => {
+    let list = allPatients;
+    if (genderFilter !== "all") list = list.filter(p => p.gender === genderFilter);
+    if (searchTerm.trim().length > 0) {
+      const q = searchTerm.toLowerCase();
+      list = list.filter(p =>
+        `${p.firstName} ${p.lastName}`.toLowerCase().includes(q) ||
+        (p.mrn ?? '').toLowerCase().includes(q)
+      );
+    }
+    return list;
+  }, [allPatients, genderFilter, searchTerm]);
+
+  const alphabeticalGroups = useMemo(() => {
+    const sorted = [...filteredPatients].sort((a, b) =>
+      a.lastName.localeCompare(b.lastName) || a.firstName.localeCompare(b.firstName)
+    );
+    const groups: { letter: string; patients: Patient[] }[] = [];
+    for (const patient of sorted) {
+      const letter = (patient.lastName[0] ?? '#').toUpperCase();
+      const existing = groups.find(g => g.letter === letter);
+      if (existing) { existing.patients.push(patient); }
+      else { groups.push({ letter, patients: [patient] }); }
+    }
+    return groups;
+  }, [filteredPatients]);
+
   const deleteMutation = useMutation({
     mutationFn: async (labId: number) => {
       const res = await fetch(`/api/lab-results/${labId}`, { method: 'DELETE', credentials: 'include' });
@@ -601,9 +584,7 @@ export default function PatientProfiles() {
       if (selectedPatient) {
         queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient.id, 'labs'] });
       }
-      if (viewingLab && confirmDelete && viewingLab.id === confirmDelete.id) {
-        setViewingLab(null);
-      }
+      if (viewingLab && confirmDelete && viewingLab.id === confirmDelete.id) setViewingLab(null);
       setConfirmDelete(null);
       toast({ title: "Lab Result Deleted", description: "The lab result has been removed from this patient's history." });
     },
@@ -612,77 +593,205 @@ export default function PatientProfiles() {
     },
   });
 
-  const handleDeleteLab = (lab: LabResult) => {
-    setConfirmDelete(lab);
-  };
-
+  const handleDeleteLab = (lab: LabResult) => setConfirmDelete(lab);
   const insights = labs.length >= 2 ? generateTrendInsights(labs) : [];
+  const maleCount = allPatients.filter(p => p.gender === 'male').length;
+  const femaleCount = allPatients.filter(p => p.gender === 'female').length;
 
   return (
-    <div className="min-h-screen bg-background">
-      <div className="sticky top-0 z-30 bg-background border-b">
-        <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
-          <div className="flex items-center gap-3">
-            <Link href="/dashboard">
-              <Button variant="ghost" size="sm" data-testid="button-back-to-labs">
-                <ArrowLeft className="h-4 w-4 mr-1" />
-                Dashboard
-              </Button>
-            </Link>
-            <h1 className="text-lg font-semibold">Patient Profiles</h1>
-          </div>
-          {selectedPatient && (
-            <div className="flex items-center gap-2">
-              <User className="h-4 w-4 text-muted-foreground" />
-              <span className="text-sm font-medium">{selectedPatient.firstName} {selectedPatient.lastName}</span>
+    <div className="flex flex-col h-screen bg-background overflow-hidden">
+      {/* Header */}
+      <div className="flex-shrink-0 bg-background border-b">
+        <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
+          <Link href="/dashboard">
+            <Button variant="ghost" size="sm" data-testid="button-back-to-labs">
+              <ArrowLeft className="h-4 w-4 mr-1" />
+              Dashboard
+            </Button>
+          </Link>
+          <div className="h-4 w-px bg-border" />
+          <div className="flex items-center gap-2">
+            <Users className="h-4 w-4 text-muted-foreground" />
+            <h1 className="text-base font-semibold">Patient Profiles</h1>
+            {!patientsLoading && (
               <Badge variant="secondary" className="text-xs">
-                {selectedPatient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
+                {allPatients.length} patient{allPatients.length !== 1 ? 's' : ''}
               </Badge>
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={() => { setSelectedPatient(null); setViewingLab(null); }}
-                data-testid="button-change-patient"
-              >
-                Change
-              </Button>
-            </div>
-          )}
+            )}
+          </div>
         </div>
       </div>
 
-      <div className="max-w-6xl mx-auto px-4 py-6">
-        {!selectedPatient ? (
-          <div className="max-w-lg mx-auto space-y-6">
-            <div className="text-center space-y-2">
-              <User className="h-12 w-12 text-muted-foreground mx-auto" />
-              <h2 className="text-xl font-semibold">Select a Patient</h2>
-              <p className="text-sm text-muted-foreground">
-                Search for a patient to view their clinical profile, lab history, and trend analysis.
+      {/* Split panel body */}
+      <div className="flex flex-1 overflow-hidden">
+
+        {/* Left panel: patient list */}
+        <div className="w-72 border-r flex flex-col flex-shrink-0 bg-background">
+          {/* Search + filter controls */}
+          <div className="p-3 border-b space-y-2 flex-shrink-0">
+            <div className="relative">
+              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+              <Input
+                placeholder="Search by name or MRN..."
+                value={searchTerm}
+                onChange={(e) => setSearchTerm(e.target.value)}
+                className="pl-9 h-8 text-sm"
+                data-testid="input-patient-profile-search"
+              />
+            </div>
+            <div className="flex gap-1">
+              <Button
+                size="sm"
+                variant={genderFilter === "all" ? "default" : "ghost"}
+                className="flex-1 text-xs h-7"
+                onClick={() => setGenderFilter("all")}
+                data-testid="filter-all-patients"
+              >
+                All ({allPatients.length})
+              </Button>
+              <Button
+                size="sm"
+                variant={genderFilter === "male" ? "default" : "ghost"}
+                className="flex-1 text-xs h-7"
+                onClick={() => setGenderFilter("male")}
+                data-testid="filter-male-patients"
+              >
+                Men ({maleCount})
+              </Button>
+              <Button
+                size="sm"
+                variant={genderFilter === "female" ? "default" : "ghost"}
+                className="flex-1 text-xs h-7"
+                onClick={() => setGenderFilter("female")}
+                data-testid="filter-female-patients"
+              >
+                Women ({femaleCount})
+              </Button>
+            </div>
+          </div>
+
+          {/* Patient list */}
+          <div className="flex-1 overflow-y-auto">
+            {patientsLoading && (
+              <p className="text-xs text-muted-foreground p-4">Loading patients...</p>
+            )}
+            {!patientsLoading && allPatients.length === 0 && (
+              <div className="p-6 text-center space-y-3">
+                <User className="h-8 w-8 text-muted-foreground mx-auto" />
+                <p className="text-xs text-muted-foreground leading-relaxed">
+                  No patients yet. Save a lab interpretation to create a patient profile.
+                </p>
+              </div>
+            )}
+            {!patientsLoading && allPatients.length > 0 && filteredPatients.length === 0 && (
+              <p className="text-xs text-muted-foreground p-4 text-center">No patients match your search.</p>
+            )}
+            {alphabeticalGroups.map(group => (
+              <div key={group.letter}>
+                <div className="px-3 py-1 text-xs font-semibold text-muted-foreground uppercase tracking-wider bg-muted/40 sticky top-0 z-10">
+                  {group.letter}
+                </div>
+                {group.patients.map(patient => {
+                  const isSelected = selectedPatient?.id === patient.id;
+                  return (
+                    <button
+                      key={patient.id}
+                      onClick={() => { setSelectedPatient(patient); setViewingLab(null); }}
+                      className={cn(
+                        "w-full px-3 py-2.5 flex items-center gap-3 text-left transition-colors",
+                        isSelected
+                          ? "bg-primary/10 border-r-2 border-primary"
+                          : "hover:bg-muted/50"
+                      )}
+                      data-testid={`button-select-patient-${patient.id}`}
+                    >
+                      <PatientAvatar patient={patient} size="sm" />
+                      <div className="min-w-0 flex-1">
+                        <p className={cn(
+                          "text-sm font-medium truncate",
+                          isSelected ? "text-primary" : "text-foreground"
+                        )}>
+                          {patient.firstName} {patient.lastName}
+                        </p>
+                        <p className="text-xs text-muted-foreground truncate">
+                          {patient.gender === 'male' ? "Men's" : "Women's"}
+                          {patient.mrn ? ` · MRN: ${patient.mrn}` : ''}
+                          {patient.dateOfBirth
+                            ? ` · ${new Date(patient.dateOfBirth).toLocaleDateString('en-US', { month: 'short', year: 'numeric' })}`
+                            : ''}
+                        </p>
+                      </div>
+                    </button>
+                  );
+                })}
+              </div>
+            ))}
+          </div>
+        </div>
+
+        {/* Right panel: patient detail */}
+        <div className="flex-1 overflow-y-auto">
+          {!selectedPatient ? (
+            <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
+              <div className="rounded-full bg-muted p-4">
+                <User className="h-8 w-8 text-muted-foreground" />
+              </div>
+              <h2 className="text-base font-semibold">Select a Patient</h2>
+              <p className="text-sm text-muted-foreground max-w-xs">
+                Choose a patient from the list on the left to view their clinical profile, lab history, and trend analysis.
               </p>
             </div>
-            <PatientSearch onSelect={setSelectedPatient} />
-          </div>
-        ) : labsLoading ? (
-          <div className="text-center py-12 text-muted-foreground">Loading patient data...</div>
-        ) : (
-          <div className="space-y-6">
-            <ClinicalSnapshot labs={labs} patient={selectedPatient} />
+          ) : labsLoading ? (
+            <div className="flex items-center justify-center h-32 text-sm text-muted-foreground">
+              Loading patient data...
+            </div>
+          ) : (
+            <div className="p-6 space-y-6">
+              {/* Patient header */}
+              <div className="flex items-center gap-4 pb-2">
+                <PatientAvatar patient={selectedPatient} size="md" />
+                <div>
+                  <h2 className="text-lg font-semibold">
+                    {selectedPatient.firstName} {selectedPatient.lastName}
+                  </h2>
+                  <div className="flex items-center gap-2 flex-wrap mt-0.5">
+                    <Badge variant="secondary" className="text-xs">
+                      {selectedPatient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
+                    </Badge>
+                    {selectedPatient.mrn && (
+                      <span className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</span>
+                    )}
+                    {selectedPatient.dateOfBirth && (
+                      <span className="text-xs text-muted-foreground">
+                        DOB: {new Date(selectedPatient.dateOfBirth).toLocaleDateString('en-US', {
+                          month: 'long', day: 'numeric', year: 'numeric'
+                        })}
+                      </span>
+                    )}
+                    <Badge variant="outline" className="text-xs">
+                      {labs.length} lab result{labs.length !== 1 ? 's' : ''}
+                    </Badge>
+                  </div>
+                </div>
+              </div>
 
-            <LabHistoryList labs={labs} onViewLab={setViewingLab} onDeleteLab={handleDeleteLab} deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null} />
-
-            {labs.length >= 2 && (
-              <PatientTrendCharts
+              <ClinicalSnapshot labs={labs} patient={selectedPatient} />
+              <LabHistoryList
                 labs={labs}
-                patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                onViewLab={setViewingLab}
+                onDeleteLab={handleDeleteLab}
+                deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null}
               />
-            )}
-
-            {insights.length > 0 && (
-              <EnrichedTrendInsights insights={insights} />
-            )}
-          </div>
-        )}
+              {labs.length >= 2 && (
+                <PatientTrendCharts
+                  labs={labs}
+                  patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                />
+              )}
+              {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
+            </div>
+          )}
+        </div>
       </div>
 
       {viewingLab && selectedPatient && (
