@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { SOAPNote } from "@/components/soap-note";
 import { SavedInterpretations } from "@/components/saved-interpretations";
 import { PatientSelector } from "@/components/patient-selector";
 import { PatientHistory } from "@/components/patient-history";
+import { SupplementSelector, type CustomSupplement } from "@/components/supplement-selector";
 import { labsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generateMalePatientWellnessPDF } from "@/lib/patient-pdf-export-male";
@@ -28,8 +29,17 @@ export default function LabInterpretation() {
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [isPdfPendingReview, setIsPdfPendingReview] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedSupplementNames, setSelectedSupplementNames] = useState<Set<string>>(new Set());
+  const [customSupplements, setCustomSupplements] = useState<CustomSupplement[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (interpretationResult?.supplements) {
+      setSelectedSupplementNames(new Set(interpretationResult.supplements.map(s => s.name)));
+      setCustomSupplements([]);
+    }
+  }, [interpretationResult]);
 
   const interpretMutation = useMutation({
     mutationFn: (data: LabValues) => {
@@ -264,7 +274,15 @@ export default function LabInterpretation() {
             console.warn('Could not fetch patient labs for trend charts:', e);
           }
         }
-        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs);
+        const curatedSupplements = [
+          ...(interpretationResult.supplements || []).filter(s => selectedSupplementNames.has(s.name)).map(s => ({
+            name: s.name,
+            dose: s.dose,
+            indication: s.patientExplanation || s.indication,
+          })),
+          ...customSupplements.map(c => ({ name: c.name, dose: c.dose, indication: c.indication })),
+        ];
+        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",
@@ -499,6 +517,15 @@ export default function LabInterpretation() {
                   preventAssessment={interpretationResult.preventRisk}
                   adjustedRiskAssessment={interpretationResult.adjustedRisk}
                   insulinResistance={interpretationResult.insulinResistance}
+                />
+
+                {/* Supplement Protocol — Interactive Selector */}
+                <SupplementSelector
+                  supplements={interpretationResult.supplements || []}
+                  selectedNames={selectedSupplementNames}
+                  onSelectionChange={setSelectedSupplementNames}
+                  customSupplements={customSupplements}
+                  onCustomChange={setCustomSupplements}
                 />
 
                 {/* Patient Summary */}
