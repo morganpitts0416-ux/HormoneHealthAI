@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -13,6 +13,7 @@ import { SOAPNote } from "@/components/soap-note";
 import { SavedInterpretations } from "@/components/saved-interpretations";
 import { PatientSelector } from "@/components/patient-selector";
 import { PatientHistory } from "@/components/patient-history";
+import { SupplementSelector, type CustomSupplement } from "@/components/supplement-selector";
 import { femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
@@ -28,8 +29,17 @@ export default function FemaleLabInterpretation() {
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [isPdfPendingReview, setIsPdfPendingReview] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const [selectedSupplementNames, setSelectedSupplementNames] = useState<Set<string>>(new Set());
+  const [customSupplements, setCustomSupplements] = useState<CustomSupplement[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  useEffect(() => {
+    if (interpretationResult?.supplements) {
+      setSelectedSupplementNames(new Set(interpretationResult.supplements.map(s => s.name)));
+      setCustomSupplements([]);
+    }
+  }, [interpretationResult]);
 
   const interpretMutation = useMutation({
     mutationFn: (data: FemaleLabValues) => {
@@ -171,7 +181,15 @@ export default function FemaleLabInterpretation() {
             console.warn('Could not fetch patient labs for trend charts:', e);
           }
         }
-        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs);
+        const curatedSupplements = [
+          ...(interpretationResult.supplements || []).filter(s => selectedSupplementNames.has(s.name)).map(s => ({
+            name: s.name,
+            dose: s.dose,
+            indication: s.patientExplanation || s.indication,
+          })),
+          ...customSupplements.map(c => ({ name: c.name, dose: c.dose, indication: c.indication })),
+        ];
+        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",
@@ -555,98 +573,14 @@ export default function FemaleLabInterpretation() {
                   </Card>
                 )}
 
-                {/* Supplement Recommendations */}
-                {interpretationResult.supplements && interpretationResult.supplements.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <div className="flex items-center gap-2">
-                        <CheckCircle2 className="w-5 h-5 text-green-600" />
-                        <CardTitle>Supplement Recommendations</CardTitle>
-                      </div>
-                      <CardDescription>
-                        Personalized Metagenics supplement protocol based on labs, symptoms, and clinical phenotypes
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-4">
-                        {interpretationResult.supplements.map((supp, index) => (
-                          <div 
-                            key={index} 
-                            className={`p-4 rounded-lg border ${
-                              supp.priority === 'high' ? 'border-red-200 bg-red-50/50 dark:bg-red-950/20' :
-                              supp.priority === 'medium' ? 'border-amber-200 bg-amber-50/50 dark:bg-amber-950/20' :
-                              'border-gray-200 bg-gray-50/50 dark:bg-gray-800/30'
-                            }`}
-                            data-testid={`supplement-recommendation-${index}`}
-                          >
-                            <div className="flex items-start justify-between gap-4">
-                              <div className="flex-1">
-                                <div className="flex items-center gap-2 mb-1 flex-wrap">
-                                  <h4 className="font-semibold text-base">{supp.name}</h4>
-                                  <span className={`px-2 py-0.5 text-xs rounded-full ${
-                                    supp.priority === 'high' ? 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200' :
-                                    supp.priority === 'medium' ? 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200' :
-                                    'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
-                                  }`}>
-                                    {supp.priority} priority
-                                  </span>
-                                  {supp.confidenceLevel && (
-                                    <span className={`px-2 py-0.5 text-xs rounded-full ${
-                                      supp.confidenceLevel === 'high' ? 'bg-green-100 text-green-700 dark:bg-green-900 dark:text-green-200' :
-                                      supp.confidenceLevel === 'moderate' ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200' :
-                                      'bg-gray-100 text-gray-600 dark:bg-gray-700 dark:text-gray-300'
-                                    }`}>
-                                      {supp.confidenceLevel} confidence
-                                    </span>
-                                  )}
-                                  <span className="px-2 py-0.5 text-xs rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200">
-                                    {supp.category}
-                                  </span>
-                                </div>
-                                <p className="text-sm font-medium text-primary mb-1">
-                                  Dose: {supp.dose}
-                                </p>
-                                {supp.supportingFindings && supp.supportingFindings.length > 0 && (
-                                  <div className="mb-2">
-                                    <p className="text-xs font-medium text-muted-foreground mb-1">Supporting Findings:</p>
-                                    <div className="flex flex-wrap gap-1">
-                                      {supp.supportingFindings.map((finding, fIdx) => (
-                                        <span key={fIdx} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                                          {finding}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                {supp.phenotypes && supp.phenotypes.length > 0 && (
-                                  <div className="mb-2">
-                                    <p className="text-xs font-medium text-muted-foreground mb-1">Linked Phenotypes:</p>
-                                    <div className="flex flex-wrap gap-1">
-                                      {supp.phenotypes.map((ph, pIdx) => (
-                                        <span key={pIdx} className="text-xs px-2 py-0.5 rounded-full bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200">
-                                          {ph}
-                                        </span>
-                                      ))}
-                                    </div>
-                                  </div>
-                                )}
-                                <p className="text-sm text-muted-foreground mb-1">
-                                  {supp.rationale}
-                                </p>
-                                {supp.caution && (
-                                  <p className="text-sm text-amber-700 dark:text-amber-400 mt-2 flex items-start gap-1">
-                                    <AlertCircle className="w-4 h-4 mt-0.5 flex-shrink-0" />
-                                    <span><span className="font-medium">Caution:</span> {supp.caution}</span>
-                                  </p>
-                                )}
-                              </div>
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
-                )}
+                {/* Supplement Protocol — Interactive Selector */}
+                <SupplementSelector
+                  supplements={interpretationResult.supplements || []}
+                  selectedNames={selectedSupplementNames}
+                  onSelectionChange={setSelectedSupplementNames}
+                  customSupplements={customSupplements}
+                  onCustomChange={setCustomSupplements}
+                />
 
                 {/* Patient Summary */}
                 <PatientSummary summary={interpretationResult.patientSummary} labValues={labValues as any} />

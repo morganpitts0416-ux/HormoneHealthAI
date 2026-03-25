@@ -286,12 +286,19 @@ function getMaleLabInsight(category: string, value: number | string, status: str
   return explanation;
 }
 
+export interface PdfSupplement {
+  name: string;
+  dose: string;
+  indication: string;
+}
+
 export async function generateMalePatientWellnessPDF(
   labValues: LabValues,
   interpretation: InterpretationResult,
   wellnessPlan: MaleWellnessPlan,
   patientName?: string,
-  patientLabs?: LabResult[]
+  patientLabs?: LabResult[],
+  selectedSupplements?: PdfSupplement[]
 ): Promise<void> {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -1145,11 +1152,17 @@ export async function generateMalePatientWellnessPDF(
   yPosition = addSectionHeader('YOUR SUPPLEMENT PROTOCOL', yPosition);
   
   const buildSupplementTable = (): string[][] => {
-    const normalizeName = (name: string): string => 
+    const normalizeName = (name: string): string =>
       name.toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ').trim();
-    
-    if (interpretation.supplements && interpretation.supplements.length > 0) {
-      return interpretation.supplements.map(s => {
+
+    // Use provider-curated list if supplied; otherwise fall back to all interpretation supplements
+    const sourceSupplements: Array<{ name: string; dose: string; indication?: string; rationale?: string; patientExplanation?: string }> =
+      selectedSupplements && selectedSupplements.length > 0
+        ? selectedSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }))
+        : (interpretation.supplements || []);
+
+    if (sourceSupplements.length > 0) {
+      return sourceSupplements.map(s => {
         const normalizedName = normalizeName(s.name);
         let description = s.rationale || s.indication || 'Supports overall health and performance.';
         

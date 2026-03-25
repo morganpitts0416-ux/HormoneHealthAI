@@ -393,12 +393,19 @@ function getLabInsight(category: string, value: number | string, status: string,
   return explanation;
 }
 
+export interface PdfSupplement {
+  name: string;
+  dose: string;
+  indication: string;
+}
+
 export async function generatePatientWellnessPDF(
   labValues: FemaleLabValues,
   interpretation: InterpretationResult,
   wellnessPlan: WellnessPlan,
   patientName?: string,
-  patientLabs?: LabResult[]
+  patientLabs?: LabResult[],
+  selectedSupplements?: PdfSupplement[]
 ): Promise<void> {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -1515,15 +1522,19 @@ export async function generatePatientWellnessPDF(
   // This ensures patient PDF matches the Complete Lab Review recommendations
   const patientAge = labValues.demographics?.age;
   
-  // Build supplement table from interpretation.supplements (the authoritative source)
+  // Build supplement table — uses provider-curated list if supplied, otherwise defaults to interpretation supplements
   const buildSupplementTable = (): string[][] => {
     // Helper to normalize names for comparison (strip trademarks, extra spaces, punctuation)
-    const normalizeName = (name: string): string => 
+    const normalizeName = (name: string): string =>
       name.toLowerCase().replace(/[®™]/g, '').replace(/\s+/g, ' ').trim();
-    
-    if (interpretation.supplements && interpretation.supplements.length > 0) {
-      // Use the actual supplements from clinical logic (same as staff view)
-      return interpretation.supplements.map(s => {
+
+    const sourceSupplements: Array<{ name: string; dose: string; indication?: string; rationale?: string; patientExplanation?: string }> =
+      selectedSupplements && selectedSupplements.length > 0
+        ? selectedSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }))
+        : (interpretation.supplements || []);
+
+    if (sourceSupplements.length > 0) {
+      return sourceSupplements.map(s => {
         // Find matching Metagenics product for better description
         const normalizedName = normalizeName(s.name);
         let description = (s as any).patientExplanation || s.rationale || s.indication || 'Supports overall health and wellness.';
