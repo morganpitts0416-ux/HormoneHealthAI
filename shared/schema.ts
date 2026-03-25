@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, serial, varchar, text, timestamp, jsonb, integer } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean } from "drizzle-orm/pg-core";
 
 // Patient Demographics & ASCVD Risk Factors Schema
 export const patientDemographicsSchema = z.object({
@@ -443,13 +443,41 @@ export const interpretLabsResponseSchema = interpretationResultSchema;
 export type InterpretLabsResponse = z.infer<typeof interpretLabsResponseSchema>;
 
 // Database Tables
+// ─── Users (Clinician Accounts) ───────────────────────────────────────────────
+export const users = pgTable("users", {
+  id: serial("id").primaryKey(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  username: varchar("username", { length: 100 }).notNull().unique(),
+  passwordHash: varchar("password_hash", { length: 255 }).notNull(),
+  firstName: varchar("first_name", { length: 100 }).notNull(),
+  lastName: varchar("last_name", { length: 100 }).notNull(),
+  title: varchar("title", { length: 50 }).notNull(), // MD, DO, NP, PA-C, etc.
+  npi: varchar("npi", { length: 20 }),
+  clinicName: varchar("clinic_name", { length: 200 }).notNull(),
+  phone: varchar("phone", { length: 30 }),
+  address: text("address"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertUserSchema = createInsertSchema(users).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+
+export type InsertUser = z.infer<typeof insertUserSchema>;
+export type User = typeof users.$inferSelect;
+
+// ─── Patients ─────────────────────────────────────────────────────────────────
 export const patients = pgTable("patients", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }).notNull(),
   dateOfBirth: timestamp("date_of_birth"),
   gender: varchar("gender", { length: 10 }).notNull().default('male'),
-  mrn: varchar("mrn", { length: 50 }).unique(),
+  mrn: varchar("mrn", { length: 50 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -486,6 +514,7 @@ export type LabResult = typeof labResults.$inferSelect;
 // Saved Lab Interpretations - simple table for storing and retrieving past interpretations
 export const savedInterpretations = pgTable("saved_interpretations", {
   id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: 'cascade' }),
   patientName: varchar("patient_name", { length: 200 }).notNull(),
   gender: varchar("gender", { length: 10 }).notNull(), // 'male' or 'female'
   labDate: timestamp("lab_date").defaultNow().notNull(),

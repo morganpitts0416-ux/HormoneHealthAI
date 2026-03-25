@@ -26,7 +26,7 @@ function PatientSearch({ onSelect }: { onSelect: (patient: Patient) => void }) {
   const { data: allPatients = [], isLoading: loadingAll } = useQuery<Patient[]>({
     queryKey: ['/api/patients/search', ''],
     queryFn: async () => {
-      const res = await fetch('/api/patients/search');
+      const res = await fetch('/api/patients/search', { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to load patients');
       return res.json();
     },
@@ -35,7 +35,7 @@ function PatientSearch({ onSelect }: { onSelect: (patient: Patient) => void }) {
   const { data: searchResults = [], isLoading: loadingSearch } = useQuery<Patient[]>({
     queryKey: ['/api/patients/search', searchTerm],
     queryFn: async () => {
-      const res = await fetch(`/api/patients/search?q=${encodeURIComponent(searchTerm)}`);
+      const res = await fetch(`/api/patients/search?q=${encodeURIComponent(searchTerm)}`, { credentials: 'include' });
       if (!res.ok) throw new Error('Search failed');
       return res.json();
     },
@@ -584,7 +584,7 @@ export default function PatientProfiles() {
     queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
     queryFn: async () => {
       if (!selectedPatient) return [];
-      const res = await fetch(`/api/patients/${selectedPatient.id}/labs`);
+      const res = await fetch(`/api/patients/${selectedPatient.id}/labs`, { credentials: 'include' });
       if (!res.ok) throw new Error('Failed to fetch labs');
       return res.json();
     },
@@ -593,7 +593,7 @@ export default function PatientProfiles() {
 
   const deleteMutation = useMutation({
     mutationFn: async (labId: number) => {
-      const res = await fetch(`/api/lab-results/${labId}`, { method: 'DELETE' });
+      const res = await fetch(`/api/lab-results/${labId}`, { method: 'DELETE', credentials: 'include' });
       if (!res.ok) throw new Error('Failed to delete');
       return res.json();
     },
@@ -623,10 +623,10 @@ export default function PatientProfiles() {
       <div className="sticky top-0 z-30 bg-background border-b">
         <div className="max-w-6xl mx-auto px-4 py-3 flex items-center justify-between gap-3 flex-wrap">
           <div className="flex items-center gap-3">
-            <Link href="/">
+            <Link href="/dashboard">
               <Button variant="ghost" size="sm" data-testid="button-back-to-labs">
                 <ArrowLeft className="h-4 w-4 mr-1" />
-                Back to Labs
+                Dashboard
               </Button>
             </Link>
             <h1 className="text-lg font-semibold">Patient Profiles</h1>
