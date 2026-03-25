@@ -16,6 +16,23 @@ interface ResultsDisplayProps {
   insulinResistance?: InsulinResistanceScreening | null;
 }
 
+/**
+ * Strips administrative prefixes from clinical recommendation text for provider display.
+ * "PROVIDER RECOMMENDATION:" is redundant when the reader IS the provider.
+ * "PATIENT EDUCATION:" sections belong in the patient-facing report, not the clinical view.
+ */
+function formatClinicalManagement(text: string): string {
+  if (!text) return text;
+  let cleaned = text.replace(/PROVIDER RECOMMENDATION:\s*/gi, '');
+  const patientEdIndex = cleaned.search(/PATIENT EDUCATION:/i);
+  if (patientEdIndex !== -1) {
+    cleaned = cleaned.substring(0, patientEdIndex).trim();
+    if (cleaned.endsWith('.')) cleaned = cleaned;
+    else if (cleaned.length > 0) cleaned = cleaned.trimEnd();
+  }
+  return cleaned.trim();
+}
+
 export function ResultsDisplay({ interpretations, aiRecommendations, recheckWindow, redFlags = [], ascvdAssessment = null, preventAssessment = null, adjustedRiskAssessment = null, insulinResistance = null }: ResultsDisplayProps) {
   const getRiskBadge = (category: string) => {
     switch (category) {
@@ -62,14 +79,12 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
     }
   };
 
-  // Group interpretations by category for better organization
   const normalResults = interpretations.filter(i => i.status === 'normal');
   const abnormalResults = interpretations.filter(i => i.status !== 'normal');
 
-  // Helper to check if a lab has a red flag
   const hasRedFlag = (category: string) => {
-    return redFlags.some(flag => 
-      flag.category.toLowerCase().includes(category.toLowerCase()) || 
+    return redFlags.some(flag =>
+      flag.category.toLowerCase().includes(category.toLowerCase()) ||
       category.toLowerCase().includes(flag.category.toLowerCase())
     );
   };
@@ -79,9 +94,9 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
       {/* Comprehensive Results Overview Table */}
       <Card data-testid="card-results-overview">
         <CardHeader>
-          <CardTitle>Complete Lab Results Overview</CardTitle>
+          <CardTitle>Clinical Interpretation Summary</CardTitle>
           <CardDescription>
-            All lab values with status, interpretation, and clinical recommendations
+            All submitted values assessed against optimized clinical ranges with management guidance
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -89,12 +104,12 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
             <Table>
               <TableHeader>
                 <TableRow>
-                  <TableHead className="w-[180px]">Lab Test</TableHead>
+                  <TableHead className="w-[180px]">Marker</TableHead>
                   <TableHead className="w-[120px]">Value</TableHead>
                   <TableHead className="w-[100px]">Status</TableHead>
                   <TableHead className="w-[140px]">Reference Range</TableHead>
-                  <TableHead>Interpretation</TableHead>
-                  <TableHead>Recommendation</TableHead>
+                  <TableHead>Assessment</TableHead>
+                  <TableHead>Management</TableHead>
                   <TableHead className="w-[80px] text-center">Alert</TableHead>
                 </TableRow>
               </TableHeader>
@@ -109,8 +124,8 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                   interpretations.map((interp, index) => {
                     const isRedFlag = hasRedFlag(interp.category);
                     return (
-                      <TableRow 
-                        key={index} 
+                      <TableRow
+                        key={index}
                         data-testid={`table-row-${index}`}
                         className={isRedFlag ? "bg-destructive/5" : ""}
                       >
@@ -123,9 +138,9 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                         <TableCell>
                           {interp.value !== undefined ? (
                             <span className="font-mono font-semibold">
-                              {typeof interp.value === 'number' && interp.unit === '%' 
-                                ? interp.value.toFixed(1) 
-                                : typeof interp.value === 'number' 
+                              {typeof interp.value === 'number' && interp.unit === '%'
+                                ? interp.value.toFixed(1)
+                                : typeof interp.value === 'number'
                                 ? Number.isInteger(interp.value) ? interp.value : interp.value.toFixed(1)
                                 : interp.value} <span className="text-xs text-muted-foreground">{interp.unit}</span>
                             </span>
@@ -141,12 +156,12 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                           {interp.interpretation}
                         </TableCell>
                         <TableCell className="text-sm">
-                          {interp.recommendation}
+                          {formatClinicalManagement(interp.recommendation)}
                         </TableCell>
                         <TableCell className="text-center">
                           {isRedFlag && (
-                            <AlertOctagon 
-                              className="w-5 h-5 text-destructive inline-block" 
+                            <AlertOctagon
+                              className="w-5 h-5 text-destructive inline-block"
                               data-testid={`red-flag-${index}`}
                             />
                           )}
@@ -173,11 +188,10 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
               {getRiskBadge(preventAssessment.riskCategory)}
             </div>
             <CardDescription>
-              2023 AHA PREVENT Equations - 10/30-year risk for CVD, ASCVD, and Heart Failure
+              2023 AHA PREVENT Equations — 10/30-year risk for Total CVD, ASCVD, and Heart Failure
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
-            {/* 10-Year Risks */}
             <div>
               <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                 <TrendingUp className="w-4 h-4" />
@@ -196,7 +210,7 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                   <span className="text-3xl font-bold font-mono" data-testid="text-10yr-ascvd">
                     {preventAssessment.tenYearASCVDPercentage}
                   </span>
-                  <p className="text-xs text-muted-foreground mt-1">Heart attack & stroke only</p>
+                  <p className="text-xs text-muted-foreground mt-1">Atherosclerotic CVD only</p>
                 </div>
                 <div className="p-4 rounded-lg bg-muted/30 border">
                   <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Heart Failure Risk</p>
@@ -208,12 +222,11 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
               </div>
             </div>
 
-            {/* 30-Year Risks (if available) */}
             {preventAssessment.thirtyYearCVDPercentage && (
               <div>
                 <h4 className="text-sm font-semibold mb-3 flex items-center gap-2">
                   <TrendingUp className="w-4 h-4" />
-                  30-Year Risk Predictions (Ages 30-59)
+                  30-Year Risk Predictions (Ages 30–59)
                 </h4>
                 <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
                   <div className="p-4 rounded-lg bg-blue-50/50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800">
@@ -243,7 +256,7 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
             <div className="space-y-4">
               {preventAssessment.ldlGoal && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">LDL Cholesterol Goal</p>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">LDL Target</p>
                   <p className="text-sm font-semibold" data-testid="text-prevent-ldl-goal">
                     {preventAssessment.ldlGoal}
                   </p>
@@ -252,17 +265,17 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
 
               {preventAssessment.statinRecommendation && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Statin Therapy Recommendation</p>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Statin Therapy</p>
                   <p className="text-sm bg-muted/50 p-3 rounded-md" data-testid="text-prevent-statin">
-                    {preventAssessment.statinRecommendation}
+                    {formatClinicalManagement(preventAssessment.statinRecommendation)}
                   </p>
                 </div>
               )}
 
               <div className="space-y-2">
-                <p className="text-xs font-medium uppercase text-muted-foreground">Clinical Recommendations</p>
+                <p className="text-xs font-medium uppercase text-muted-foreground">Clinical Considerations</p>
                 <p className="text-sm leading-relaxed whitespace-pre-line" data-testid="text-prevent-recommendations">
-                  {preventAssessment.recommendations}
+                  {formatClinicalManagement(preventAssessment.recommendations)}
                 </p>
               </div>
             </div>
@@ -277,18 +290,18 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div className="flex items-center gap-2">
                 <Activity className="w-5 h-5 text-primary" />
-                <CardTitle>Adjusted Risk Assessment</CardTitle>
+                <CardTitle>Atherogenic Marker Risk Adjustment</CardTitle>
               </div>
               {adjustedRiskAssessment.adjustedCategory === 'reclassified_upward' ? (
                 <Badge variant="outline" className="bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800" data-testid="badge-reclassified">
-                  Reclassified Upward
+                  Risk Reclassified Upward
                 </Badge>
               ) : (
                 getRiskBadge(adjustedRiskAssessment.adjustedCategory)
               )}
             </div>
             <CardDescription>
-              Risk assessment adjusted for atherogenic markers (ApoB, Lp(a))
+              PREVENT risk adjusted for atherogenic markers — ApoB and Lp(a) reclassification
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
@@ -302,16 +315,16 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
               </div>
               {adjustedRiskAssessment.apoBValue !== undefined && (
                 <div className={`p-4 rounded-lg border ${
-                  adjustedRiskAssessment.apoBStatus === 'elevated' 
-                    ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800' 
+                  adjustedRiskAssessment.apoBStatus === 'elevated'
+                    ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
                     : adjustedRiskAssessment.apoBStatus === 'borderline'
                     ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
                     : 'bg-muted/30'
                 }`}>
                   <p className="text-xs font-medium text-muted-foreground uppercase mb-1">ApoB</p>
                   <span className={`text-2xl font-bold font-mono ${
-                    adjustedRiskAssessment.apoBStatus === 'elevated' 
-                      ? 'text-orange-600 dark:text-orange-400' 
+                    adjustedRiskAssessment.apoBStatus === 'elevated'
+                      ? 'text-orange-600 dark:text-orange-400'
                       : adjustedRiskAssessment.apoBStatus === 'borderline'
                       ? 'text-amber-600 dark:text-amber-400'
                       : ''
@@ -319,26 +332,26 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                     {adjustedRiskAssessment.apoBValue} mg/dL
                   </span>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {adjustedRiskAssessment.apoBStatus === 'elevated' 
-                      ? 'Elevated (≥130 mg/dL)' 
+                    {adjustedRiskAssessment.apoBStatus === 'elevated'
+                      ? 'Elevated (≥130 mg/dL)'
                       : adjustedRiskAssessment.apoBStatus === 'borderline'
-                      ? 'Borderline (90-129 mg/dL)'
-                      : 'Normal (<90 mg/dL)'}
+                      ? 'Borderline (90–129 mg/dL)'
+                      : 'Optimal (<90 mg/dL)'}
                   </p>
                 </div>
               )}
               {adjustedRiskAssessment.lpaValue !== undefined && (
                 <div className={`p-4 rounded-lg border ${
-                  adjustedRiskAssessment.lpaStatus === 'elevated' 
-                    ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800' 
+                  adjustedRiskAssessment.lpaStatus === 'elevated'
+                    ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
                     : adjustedRiskAssessment.lpaStatus === 'borderline'
                     ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
                     : 'bg-muted/30'
                 }`}>
                   <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Lp(a)</p>
                   <span className={`text-2xl font-bold font-mono ${
-                    adjustedRiskAssessment.lpaStatus === 'elevated' 
-                      ? 'text-orange-600 dark:text-orange-400' 
+                    adjustedRiskAssessment.lpaStatus === 'elevated'
+                      ? 'text-orange-600 dark:text-orange-400'
                       : adjustedRiskAssessment.lpaStatus === 'borderline'
                       ? 'text-amber-600 dark:text-amber-400'
                       : ''
@@ -346,11 +359,11 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                     {adjustedRiskAssessment.lpaValue} {adjustedRiskAssessment.lpaValue >= 200 ? 'nmol/L' : 'mg/dL'}
                   </span>
                   <p className="text-xs text-muted-foreground mt-1">
-                    {adjustedRiskAssessment.lpaStatus === 'elevated' 
-                      ? 'Elevated (≥50 mg/dL)' 
+                    {adjustedRiskAssessment.lpaStatus === 'elevated'
+                      ? 'Elevated (≥50 mg/dL)'
                       : adjustedRiskAssessment.lpaStatus === 'borderline'
-                      ? 'Borderline (40-49 mg/dL)'
-                      : 'Normal (<40 mg/dL)'}
+                      ? 'Borderline (40–49 mg/dL)'
+                      : 'Optimal (<40 mg/dL)'}
                   </p>
                 </div>
               )}
@@ -362,24 +375,24 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
               <div className="space-y-2">
                 <p className="text-xs font-medium uppercase text-muted-foreground">Clinical Guidance</p>
                 <p className="text-sm bg-muted/50 p-3 rounded-md leading-relaxed" data-testid="text-adjusted-guidance">
-                  {adjustedRiskAssessment.clinicalGuidance}
+                  {formatClinicalManagement(adjustedRiskAssessment.clinicalGuidance)}
                 </p>
               </div>
 
               {adjustedRiskAssessment.cacRecommendation && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">CAC Scoring Recommendation</p>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">CAC Scoring</p>
                   <p className="text-sm" data-testid="text-cac-rec">
-                    {adjustedRiskAssessment.cacRecommendation}
+                    {formatClinicalManagement(adjustedRiskAssessment.cacRecommendation)}
                   </p>
                 </div>
               )}
 
               {adjustedRiskAssessment.statinGuidance && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase text-muted-foreground">Statin Therapy Guidance</p>
+                  <p className="text-xs font-medium uppercase text-muted-foreground">Statin Therapy</p>
                   <p className="text-sm" data-testid="text-statin-guidance">
-                    {adjustedRiskAssessment.statinGuidance}
+                    {formatClinicalManagement(adjustedRiskAssessment.statinGuidance)}
                   </p>
                 </div>
               )}
@@ -453,7 +466,7 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                         </Badge>
                       </div>
                       <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Matched Criteria</p>
+                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Diagnostic Criteria Met</p>
                         <ul className="text-sm space-y-0.5">
                           {phenotype.matchedCriteria.map((c, i) => (
                             <li key={i} className="flex items-center gap-1.5">
@@ -468,12 +481,12 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                         <p className="text-sm">{phenotype.pathophysiology}</p>
                       </div>
                       <div>
-                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Treatment Recommendations</p>
+                        <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Treatment Plan</p>
                         <ul className="text-sm space-y-0.5">
                           {phenotype.treatmentRecommendations.map((rec, i) => (
                             <li key={i} className="flex items-start gap-1.5">
-                              <span className="text-primary mt-0.5 shrink-0">-</span>
-                              {rec}
+                              <span className="text-primary mt-0.5 shrink-0">–</span>
+                              {formatClinicalManagement(rec)}
                             </li>
                           ))}
                         </ul>
@@ -492,7 +505,7 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
               <>
                 <Separator />
                 <div>
-                  <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Confirmation Testing</p>
+                  <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Confirmatory Testing</p>
                   <p className="text-sm bg-muted/50 p-3 rounded-md" data-testid="text-ir-confirmation">
                     {insulinResistance.confirmationTests}
                   </p>
@@ -515,23 +528,23 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
               {getRiskBadge(ascvdAssessment.riskCategory)}
             </div>
             <CardDescription>
-              10-year ASCVD risk based on 2013 ACC/AHA Pooled Cohort Equations
+              10-year ASCVD risk — 2013 ACC/AHA Pooled Cohort Equations
             </CardDescription>
           </CardHeader>
           <CardContent className="space-y-6">
             <div className="grid grid-cols-1 md:grid-cols-2 gap-6">
               <div className="space-y-2">
-                <p className="text-sm font-medium text-muted-foreground" data-testid="label-10year-risk">10-Year Risk of Heart Attack or Stroke</p>
+                <p className="text-sm font-medium text-muted-foreground" data-testid="label-10year-risk">10-Year ASCVD Risk</p>
                 <div className="flex items-baseline gap-2">
                   <span className="text-4xl font-bold font-mono" data-testid="text-ascvd-risk">
                     {ascvdAssessment.riskPercentage}
                   </span>
                 </div>
               </div>
-              
+
               {ascvdAssessment.ldlGoal && (
                 <div className="space-y-2">
-                  <p className="text-sm font-medium text-muted-foreground" data-testid="label-ldl-goal">LDL Cholesterol Goal</p>
+                  <p className="text-sm font-medium text-muted-foreground" data-testid="label-ldl-goal">LDL Target</p>
                   <div className="flex items-baseline gap-2">
                     <span className="text-2xl font-semibold font-mono" data-testid="text-ldl-goal">
                       {ascvdAssessment.ldlGoal}
@@ -546,17 +559,17 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
             <div className="space-y-4">
               {ascvdAssessment.statinRecommendation && (
                 <div className="space-y-2">
-                  <p className="text-xs font-medium uppercase text-muted-foreground" data-testid="label-statin-recommendation">Statin Therapy Recommendation</p>
+                  <p className="text-xs font-medium uppercase text-muted-foreground" data-testid="label-statin-recommendation">Statin Therapy</p>
                   <p className="text-sm bg-muted/50 p-3 rounded-md" data-testid="text-statin-recommendation">
-                    {ascvdAssessment.statinRecommendation}
+                    {formatClinicalManagement(ascvdAssessment.statinRecommendation)}
                   </p>
                 </div>
               )}
 
               <div className="space-y-2">
-                <p className="text-xs font-medium uppercase text-muted-foreground" data-testid="label-clinical-recommendations">Clinical Recommendations</p>
+                <p className="text-xs font-medium uppercase text-muted-foreground" data-testid="label-clinical-recommendations">Clinical Considerations</p>
                 <p className="text-sm leading-relaxed" data-testid="text-ascvd-recommendations">
-                  {ascvdAssessment.recommendations}
+                  {formatClinicalManagement(ascvdAssessment.recommendations)}
                 </p>
               </div>
             </div>
@@ -564,19 +577,19 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
         </Card>
       )}
 
-      {/* Lab Results Grid */}
+      {/* Clinical Assessment — Detailed Cards */}
       <Card data-testid="card-lab-results">
         <CardHeader>
-          <CardTitle>Lab Results Summary</CardTitle>
+          <CardTitle>Detailed Clinical Assessment</CardTitle>
           <CardDescription>
-            Detailed interpretation of each lab value based on clinical protocols
+            Individual marker analysis with protocol-based management guidance
           </CardDescription>
         </CardHeader>
         <CardContent className="space-y-6">
           {abnormalResults.length > 0 && (
             <div className="space-y-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Results Requiring Attention ({abnormalResults.length})
+                Findings Requiring Action ({abnormalResults.length})
               </h3>
               <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
                 {abnormalResults.map((interp, index) => (
@@ -598,27 +611,27 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
                             <span className="text-sm text-muted-foreground">{interp.unit}</span>
                           </div>
                           <p className="text-xs text-muted-foreground mt-1">
-                            Reference: {interp.referenceRange}
+                            Ref: {interp.referenceRange}
                           </p>
                         </div>
                       )}
-                      
+
                       <Separator />
-                      
+
                       <div className="space-y-2">
                         <div>
-                          <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Interpretation</p>
+                          <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Assessment</p>
                           <p className="text-sm">{interp.interpretation}</p>
                         </div>
-                        
+
                         <div>
-                          <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Recommendation</p>
-                          <p className="text-sm">{interp.recommendation}</p>
+                          <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Management</p>
+                          <p className="text-sm">{formatClinicalManagement(interp.recommendation)}</p>
                         </div>
-                        
+
                         {interp.recheckTiming && (
                           <div>
-                            <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Recheck Timeline</p>
+                            <p className="text-xs font-medium uppercase text-muted-foreground mb-1">Follow-up</p>
                             <p className="text-sm font-medium text-primary">{interp.recheckTiming}</p>
                           </div>
                         )}
@@ -633,7 +646,7 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
           {normalResults.length > 0 && (
             <div className="space-y-4">
               <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground">
-                Normal Results ({normalResults.length})
+                Within Range ({normalResults.length})
               </h3>
               <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 gap-3">
                 {normalResults.map((interp, index) => (
@@ -666,15 +679,15 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
         </CardContent>
       </Card>
 
-      {/* AI Recommendations */}
+      {/* AI-Assisted Clinical Assessment */}
       <Card data-testid="card-ai-recommendations">
         <CardHeader>
           <CardTitle className="flex items-center gap-2">
             <div className="w-2 h-2 rounded-full bg-primary animate-pulse" />
-            AI-Powered Clinical Recommendations
+            AI-Assisted Clinical Assessment
           </CardTitle>
           <CardDescription>
-            Synthesized guidance based on all lab values and clinical protocols
+            Protocol-based synthesis across all submitted values — for clinical review and decision support
           </CardDescription>
         </CardHeader>
         <CardContent>
@@ -683,11 +696,11 @@ export function ResultsDisplay({ interpretations, aiRecommendations, recheckWind
               {aiRecommendations}
             </div>
           </div>
-          
+
           <Separator className="my-4" />
-          
+
           <div className="flex items-center gap-2 text-sm">
-            <span className="font-semibold">Recommended Recheck Window:</span>
+            <span className="font-semibold">Monitoring Interval:</span>
             <Badge variant="outline" className="font-mono">{recheckWindow}</Badge>
           </div>
         </CardContent>
