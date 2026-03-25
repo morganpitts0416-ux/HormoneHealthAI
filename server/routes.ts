@@ -1,4 +1,4 @@
-import type { Express } from "express";
+import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import multer from "multer";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema } from "@shared/schema";
@@ -13,8 +13,106 @@ import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { storage } from "./storage";
+import { passport, hashPassword } from "./auth";
+
+// ── Auth middleware ────────────────────────────────────────────────────────────
+function requireAuth(req: Request, res: Response, next: NextFunction) {
+  if (req.isAuthenticated()) return next();
+  res.status(401).json({ message: "Authentication required" });
+}
 
 export async function registerRoutes(app: Express): Promise<Server> {
+
+  // ── Auth routes ────────────────────────────────────────────────────────────
+
+  // Register
+  app.post("/api/auth/register", async (req, res) => {
+    try {
+      const { email, username, password, firstName, lastName, title, npi, clinicName, phone, address } = req.body;
+      if (!email || !username || !password || !firstName || !lastName || !title || !clinicName) {
+        return res.status(400).json({ message: "All required fields must be provided" });
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+      const existingByUsername = await storage.getUserByUsername(username);
+      if (existingByUsername) {
+        return res.status(409).json({ message: "Username already taken" });
+      }
+      const existingByEmail = await storage.getUserByEmail(email);
+      if (existingByEmail) {
+        return res.status(409).json({ message: "Email already registered" });
+      }
+      const passwordHash = await hashPassword(password);
+      const user = await storage.createUser({
+        email,
+        username,
+        passwordHash,
+        firstName,
+        lastName,
+        title,
+        npi: npi || null,
+        clinicName,
+        phone: phone || null,
+        address: address || null,
+      });
+      req.login(user, (err) => {
+        if (err) return res.status(500).json({ message: "Login after registration failed" });
+        const { passwordHash: _ph, ...safeUser } = user;
+        res.status(201).json(safeUser);
+      });
+    } catch (error) {
+      console.error("Error registering user:", error);
+      res.status(500).json({ message: "Registration failed" });
+    }
+  });
+
+  // Login
+  app.post("/api/auth/login", (req, res, next) => {
+    passport.authenticate("local", (err: any, user: any, info: any) => {
+      if (err) return next(err);
+      if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
+      req.login(user, (loginErr) => {
+        if (loginErr) return next(loginErr);
+        const { passwordHash: _ph, ...safeUser } = user;
+        res.json(safeUser);
+      });
+    })(req, res, next);
+  });
+
+  // Logout
+  app.post("/api/auth/logout", (req, res) => {
+    req.logout((err) => {
+      if (err) return res.status(500).json({ message: "Logout failed" });
+      res.json({ success: true });
+    });
+  });
+
+  // Current user
+  app.get("/api/auth/me", (req, res) => {
+    if (!req.isAuthenticated() || !req.user) {
+      return res.status(401).json({ message: "Not authenticated" });
+    }
+    const { passwordHash: _ph, ...safeUser } = req.user as any;
+    res.json(safeUser);
+  });
+
+  // Update profile
+  app.patch("/api/auth/profile", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const { firstName, lastName, title, npi, clinicName, phone, address, email } = req.body;
+      const updated = await storage.updateUser(userId, {
+        firstName, lastName, title, npi, clinicName, phone, address, email,
+      });
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      const { passwordHash: _ph, ...safeUser } = updated;
+      res.json(safeUser);
+    } catch (error) {
+      console.error("Error updating profile:", error);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
   // Lab interpretation endpoint
   app.post("/api/interpret-labs", async (req, res) => {
     console.log('[API] POST /api/interpret-labs - Received request');
@@ -738,9 +836,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   // ===== PATIENT PROFILE ENDPOINTS =====
 
-  app.post("/api/patients", async (req, res) => {
+  app.post("/api/patients", requireAuth, async (req, res) => {
     try {
-      const parseResult = insertPatientSchema.safeParse(req.body);
+      const userId = (req.user as any).id;
+      const parseResult = insertPatientSchema.safeParse({ ...req.body, userId });
       if (!parseResult.success) {
         return res.status(400).json({ error: "Invalid patient data", details: parseResult.error.errors });
       }
@@ -752,15 +851,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/patients/search", async (req, res) => {
+  app.get("/api/patients/search", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const q = (req.query.q as string) || '';
       const gender = req.query.gender as string | undefined;
       if (!q || q.length < 1) {
-        const allPatients = await storage.getAllPatients();
+        const allPatients = await storage.getAllPatients(userId);
         return res.json(allPatients);
       }
-      const patients = await storage.searchPatients(q, gender);
+      const patients = await storage.searchPatients(q, userId, gender);
       res.json(patients);
     } catch (error) {
       console.error("Error searching patients:", error);
@@ -768,10 +868,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/patients/:id", async (req, res) => {
+  app.get("/api/patients/:id", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
-      const patient = await storage.getPatient(id);
+      const patient = await storage.getPatient(id, userId);
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
@@ -783,9 +884,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.get("/api/patients/:id/labs", async (req, res) => {
+  app.get("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
+      const patient = await storage.getPatient(id, userId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
       const labs = await storage.getLabResultsByPatient(id);
       res.json(labs);
     } catch (error) {
@@ -794,10 +898,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.post("/api/patients/:id/labs", async (req, res) => {
+  app.post("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const patientId = parseInt(req.params.id);
-      const patient = await storage.getPatient(patientId);
+      const patient = await storage.getPatient(patientId, userId);
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
@@ -809,7 +914,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         interpretationResult: bodyInterpretation as InterpretationResult,
         notes,
       } as InsertLabResult);
-      await storage.updatePatient(patientId, {});
+      await storage.updatePatient(patientId, {}, userId);
       res.json(labResult);
     } catch (error) {
       console.error("Error saving patient labs:", error);
@@ -817,7 +922,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  app.delete("/api/lab-results/:id", async (req, res) => {
+  app.delete("/api/lab-results/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) {
@@ -838,11 +943,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ===== SAVED INTERPRETATIONS ENDPOINTS =====
   
   // Get all saved interpretations (with optional gender filter)
-  app.get("/api/saved-interpretations", async (req, res) => {
-    console.log('[API] GET /api/saved-interpretations');
+  app.get("/api/saved-interpretations", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const gender = req.query.gender as string | undefined;
-      const interpretations = await storage.getAllSavedInterpretations(gender);
+      const interpretations = await storage.getAllSavedInterpretations(userId, gender);
       res.json(interpretations);
     } catch (error) {
       console.error('[API] Error fetching saved interpretations:', error);
@@ -851,17 +956,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Search saved interpretations by patient name
-  app.get("/api/saved-interpretations/search", async (req, res) => {
-    console.log('[API] GET /api/saved-interpretations/search');
+  app.get("/api/saved-interpretations/search", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const searchTerm = req.query.q as string;
       const gender = req.query.gender as string | undefined;
-      
       if (!searchTerm) {
         return res.status(400).json({ error: 'Search term (q) is required' });
       }
-      
-      const interpretations = await storage.searchSavedInterpretations(searchTerm, gender);
+      const interpretations = await storage.searchSavedInterpretations(searchTerm, userId, gender);
       res.json(interpretations);
     } catch (error) {
       console.error('[API] Error searching saved interpretations:', error);
@@ -870,19 +973,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Get a single saved interpretation by ID
-  app.get("/api/saved-interpretations/:id", async (req, res) => {
-    console.log('[API] GET /api/saved-interpretations/:id');
+  app.get("/api/saved-interpretations/:id", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ error: 'Invalid interpretation ID' });
-      }
-      
-      const interpretation = await storage.getSavedInterpretation(id);
-      if (!interpretation) {
-        return res.status(404).json({ error: 'Interpretation not found' });
-      }
-      
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid interpretation ID' });
+      const interpretation = await storage.getSavedInterpretation(id, userId);
+      if (!interpretation) return res.status(404).json({ error: 'Interpretation not found' });
       res.json(interpretation);
     } catch (error) {
       console.error('[API] Error fetching saved interpretation:', error);
@@ -891,18 +988,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Save a new interpretation
-  app.post("/api/saved-interpretations", async (req, res) => {
-    console.log('[API] POST /api/saved-interpretations');
+  app.post("/api/saved-interpretations", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const { patientName, gender, labValues, interpretation, labDate } = req.body;
-      
       if (!patientName || !gender || !labValues || !interpretation) {
         return res.status(400).json({ 
           error: 'Missing required fields: patientName, gender, labValues, interpretation' 
         });
       }
-      
       const saved = await storage.createSavedInterpretation({
+        userId,
         patientName,
         gender,
         labValues,
@@ -915,16 +1011,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const nameParts = patientName.trim().split(/\s+/);
         const firstName = nameParts[0] || patientName.trim();
         const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
-
         if (firstName) {
-          let patient = await storage.getPatientByName(firstName, lastName);
+          let patient = await storage.getPatientByName(firstName, lastName, userId);
           if (!patient) {
             patient = await storage.createPatient({
+              userId,
               firstName,
               lastName,
               gender: gender as 'male' | 'female',
             });
-            console.log('[API] Auto-created patient profile:', patient.id, firstName, lastName);
           }
           await storage.createLabResult({
             patientId: patient.id,
@@ -932,13 +1027,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
             labValues,
             interpretationResult: interpretation,
           } as InsertLabResult);
-          console.log('[API] Linked lab result to patient:', patient.id);
         }
       } catch (linkError) {
         console.error('[API] Error auto-linking patient profile (non-fatal):', linkError);
       }
-      
-      console.log('[API] Saved interpretation for patient:', patientName);
       res.status(201).json(saved);
     } catch (error) {
       console.error('[API] Error saving interpretation:', error);
@@ -947,19 +1039,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Delete a saved interpretation
-  app.delete("/api/saved-interpretations/:id", async (req, res) => {
-    console.log('[API] DELETE /api/saved-interpretations/:id');
+  app.delete("/api/saved-interpretations/:id", requireAuth, async (req, res) => {
     try {
+      const userId = (req.user as any).id;
       const id = parseInt(req.params.id);
-      if (isNaN(id)) {
-        return res.status(400).json({ error: 'Invalid interpretation ID' });
-      }
-      
-      const deleted = await storage.deleteSavedInterpretation(id);
-      if (!deleted) {
-        return res.status(404).json({ error: 'Interpretation not found' });
-      }
-      
+      if (isNaN(id)) return res.status(400).json({ error: 'Invalid interpretation ID' });
+      const deleted = await storage.deleteSavedInterpretation(id, userId);
+      if (!deleted) return res.status(404).json({ error: 'Interpretation not found' });
       res.json({ success: true, message: 'Interpretation deleted' });
     } catch (error) {
       console.error('[API] Error deleting interpretation:', error);

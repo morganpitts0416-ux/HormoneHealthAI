@@ -1,7 +1,24 @@
-# Lab Interpretation Tool - Men's & Women's Clinics
+# ClinIQ Lab Interpretation - Multi-Tenant SaaS Platform
 
 ## Overview
-This tool is a clinical lab interpretation application for staff in men's and women's hormone and primary care clinics. Its core purpose is to efficiently interpret standard lab panels, apply clinical protocols, generate AI-powered recommendations, and identify critical "red flag" values for immediate physician attention. The project supports gender-specific lab interpretation, including female-specific reference ranges and menstrual phase context, aiming to improve diagnostic accuracy and patient care. It provides comprehensive patient wellness reports and integrates advanced risk assessments like the AHA PREVENT model.
+ClinIQ is a multi-tenant SaaS clinical lab interpretation platform for staff in men's and women's hormone and primary care clinics. Clinicians register for their own account (with clinic name, NPI, credentials) and log in to access a fully isolated workspace. The platform efficiently interprets standard lab panels, applies clinical protocols, generates AI-powered recommendations, and identifies critical "red flag" values. It supports gender-specific lab interpretation, comprehensive patient wellness reports, and advanced risk assessments.
+
+## SaaS Architecture
+- **Multi-tenant**: Each clinician account has completely isolated patient data, lab results, and saved interpretations — one clinic cannot access another's data
+- **Authentication**: Session-based auth using express-session + passport-local + bcrypt; sessions stored in PostgreSQL via connect-pg-simple
+- **Enrollment**: 3-step registration wizard (personal info → clinic info → account credentials)
+- **Dashboard**: Clean home page with Male/Female eval actions, patient search, recent patients
+- **Account page**: Clinicians can update their clinic name, NPI, contact info, credentials
+
+## Routing
+- `/` → Redirects to `/login` (unauthenticated) or `/dashboard` (authenticated)
+- `/login` → Login page (public)
+- `/register` → 3-step enrollment wizard (public)
+- `/dashboard` → Protected home page (Male/Female eval, patient search)
+- `/account` → Protected clinic account settings
+- `/male` → Protected men's lab interpretation
+- `/female` → Protected women's lab interpretation
+- `/patients` → Protected patient profiles
 
 ## User Preferences
 - Medical-grade professional interface

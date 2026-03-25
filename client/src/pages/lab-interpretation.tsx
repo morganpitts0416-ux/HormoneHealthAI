@@ -234,7 +234,7 @@ export default function LabInterpretation() {
 
         if (!patientId && patientName) {
           try {
-            const searchRes = await fetch(`/api/patients/search?q=${encodeURIComponent(patientName)}`);
+            const searchRes = await fetch(`/api/patients/search?q=${encodeURIComponent(patientName)}`, { credentials: 'include' });
             if (searchRes.ok) {
               const patients = await searchRes.json();
               if (patients.length > 0) {
@@ -260,7 +260,7 @@ export default function LabInterpretation() {
 
         if (patientId) {
           try {
-            const res = await fetch(`/api/patients/${patientId}/labs`);
+            const res = await fetch(`/api/patients/${patientId}/labs`, { credentials: 'include' });
             if (res.ok) {
               const fetched: LabResult[] = await res.json();
               const isDuplicate = fetched.some(lab => 
@@ -322,6 +322,11 @@ export default function LabInterpretation() {
               <p className="text-sm text-muted-foreground">Men's Hormone & Primary Care Clinic</p>
             </div>
             <div className="flex items-center gap-4">
+              <Link href="/dashboard">
+                <Button variant="ghost" size="sm" data-testid="link-to-dashboard">
+                  Dashboard
+                </Button>
+              </Link>
               <Link href="/patients">
                 <Button variant="outline" data-testid="link-to-patient-profiles">
                   Patient Profiles
