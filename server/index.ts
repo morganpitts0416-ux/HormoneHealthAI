@@ -36,8 +36,9 @@ app.use(
     secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
+    rolling: true, // reset the 1-hour window on every request while active
     cookie: {
-      maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
+      maxAge: 60 * 60 * 1000, // 1 hour of inactivity
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "lax" : false,
