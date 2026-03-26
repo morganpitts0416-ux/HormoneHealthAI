@@ -1053,6 +1053,114 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // ── Admin routes ────────────────────────────────────────────────────────────
+
+  // Middleware: must be logged in AND have role === 'admin'
+  function requireAdmin(req: Request, res: Response, next: NextFunction) {
+    if (!req.isAuthenticated()) return res.status(401).json({ message: "Authentication required" });
+    if ((req.user as any).role !== "admin") return res.status(403).json({ message: "Admin access required" });
+    next();
+  }
+
+  // Bootstrap: promote logged-in user to admin (one-time, requires env token)
+  app.post("/api/admin/bootstrap", requireAuth, async (req, res) => {
+    const token = req.body?.token;
+    const envToken = process.env.ADMIN_BOOTSTRAP_TOKEN;
+    if (!envToken) return res.status(503).json({ message: "Bootstrap not configured" });
+    if (token !== envToken) return res.status(403).json({ message: "Invalid bootstrap token" });
+    const userId = (req.user as any).id;
+    const updated = await storage.promoteToAdmin(userId);
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "Account promoted to admin", user: { id: updated.id, username: updated.username, role: updated.role } });
+  });
+
+  // Get all users + patient counts (admin only)
+  app.get("/api/admin/clinicians", requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const withCounts = await Promise.all(
+        users.map(async (u) => ({
+          id: u.id,
+          email: u.email,
+          username: u.username,
+          firstName: u.firstName,
+          lastName: u.lastName,
+          title: u.title,
+          clinicName: u.clinicName,
+          phone: u.phone,
+          npi: u.npi,
+          role: u.role,
+          subscriptionStatus: u.subscriptionStatus,
+          notes: u.notes,
+          createdAt: u.createdAt,
+          patientCount: await storage.getPatientCountByUser(u.id),
+        }))
+      );
+      res.json(withCounts);
+    } catch (error) {
+      console.error("[ADMIN] Error fetching clinicians:", error);
+      res.status(500).json({ message: "Failed to fetch clinicians" });
+    }
+  });
+
+  // Create a new clinician account (admin only)
+  app.post("/api/admin/clinicians", requireAdmin, async (req, res) => {
+    try {
+      const { email, username, password, firstName, lastName, title, npi, clinicName, phone, address, subscriptionStatus, notes } = req.body;
+      if (!email || !username || !password || !firstName || !lastName || !title || !clinicName) {
+        return res.status(400).json({ message: "All required fields must be provided" });
+      }
+      if (password.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
+      const existingByUsername = await storage.getUserByUsername(username);
+      if (existingByUsername) return res.status(409).json({ message: "Username already taken" });
+      const existingByEmail = await storage.getUserByEmail(email);
+      if (existingByEmail) return res.status(409).json({ message: "Email already registered" });
+      const passwordHash = await hashPassword(password);
+      const user = await storage.createUser({
+        email, username, passwordHash, firstName, lastName, title,
+        npi: npi || null, clinicName, phone: phone || null, address: address || null,
+        role: "clinician",
+        subscriptionStatus: subscriptionStatus || "active",
+        notes: notes || null,
+      } as any);
+      res.status(201).json({ message: "Clinician account created", user: { id: user.id, username: user.username } });
+    } catch (error) {
+      console.error("[ADMIN] Error creating clinician:", error);
+      res.status(500).json({ message: "Failed to create clinician" });
+    }
+  });
+
+  // Update a clinician's subscription status, role, or notes (admin only)
+  app.patch("/api/admin/clinicians/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid user ID" });
+      const { subscriptionStatus, role, notes } = req.body;
+      const updated = await storage.updateUserAdmin(id, { subscriptionStatus, role, notes });
+      if (!updated) return res.status(404).json({ message: "User not found" });
+      res.json({ message: "Updated successfully", user: updated });
+    } catch (error) {
+      console.error("[ADMIN] Error updating clinician:", error);
+      res.status(500).json({ message: "Failed to update clinician" });
+    }
+  });
+
+  // Delete a clinician account (admin only) — also deletes all their patients/data via cascade
+  app.delete("/api/admin/clinicians/:id", requireAdmin, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid user ID" });
+      const adminId = (req.user as any).id;
+      if (id === adminId) return res.status(400).json({ message: "Cannot delete your own account" });
+      const deleted = await storage.deleteUserAdmin(id);
+      if (!deleted) return res.status(404).json({ message: "User not found" });
+      res.json({ message: "Account and all associated data deleted" });
+    } catch (error) {
+      console.error("[ADMIN] Error deleting clinician:", error);
+      res.status(500).json({ message: "Failed to delete clinician" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

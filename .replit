@@ -45,3 +45,8 @@ waitForPort = 5000
 
 [agent]
 integrations = ["javascript_mem_db:1.0.0", "javascript_openai_ai_integrations:1.0.0"]
+
+[userenv]
+
+[userenv.shared]
+ADMIN_BOOTSTRAP_TOKEN = "37f2ff4c773c4eeccf877197240707f71f75343990c922d1"

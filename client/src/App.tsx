@@ -12,6 +12,8 @@ import Account from "@/pages/account";
 import LabInterpretation from "@/pages/lab-interpretation";
 import FemaleLabInterpretation from "@/pages/female-lab-interpretation";
 import PatientProfiles from "@/pages/patient-profiles";
+import AdminDashboard from "@/pages/admin";
+import Bootstrap from "@/pages/bootstrap";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -25,13 +27,36 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   if (isLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center bg-slate-50">
-        <div className="text-slate-400 text-sm">Loading...</div>
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-muted-foreground text-sm">Loading...</div>
       </div>
     );
   }
 
   if (!user) return null;
+  return <Component />;
+}
+
+function AdminRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
+    if (!isLoading) {
+      if (!user) setLocation("/login");
+      else if ((user as any).role !== "admin") setLocation("/dashboard");
+    }
+  }, [user, isLoading, setLocation]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-muted-foreground text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user || (user as any).role !== "admin") return null;
   return <Component />;
 }
 
@@ -73,6 +98,10 @@ function Router() {
       <Route path="/patients">
         {() => <ProtectedRoute component={PatientProfiles} />}
       </Route>
+      <Route path="/admin">
+        {() => <AdminRoute component={AdminDashboard} />}
+      </Route>
+      <Route path="/bootstrap" component={Bootstrap} />
       <Route>
         {() => <RootRedirect />}
       </Route>

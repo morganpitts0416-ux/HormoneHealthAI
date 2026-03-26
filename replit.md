@@ -14,11 +14,13 @@ ClinIQ is a multi-tenant SaaS clinical lab interpretation platform for staff in 
 - `/` → Redirects to `/login` (unauthenticated) or `/dashboard` (authenticated)
 - `/login` → Login page (public)
 - `/register` → 3-step enrollment wizard (public)
+- `/bootstrap` → One-time admin bootstrap page (public, requires ADMIN_BOOTSTRAP_TOKEN)
 - `/dashboard` → Protected home page (Male/Female eval, patient search)
 - `/account` → Protected clinic account settings
 - `/male` → Protected men's lab interpretation
 - `/female` → Protected women's lab interpretation
 - `/patients` → Protected patient profiles
+- `/admin` → Developer dashboard (admin role only) — manage clinician accounts, subscription status
 
 ## User Preferences
 - Medical-grade professional interface

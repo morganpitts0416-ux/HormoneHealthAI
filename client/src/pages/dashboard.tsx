@@ -16,6 +16,7 @@ import {
   ChevronRight,
   Calendar,
   Settings,
+  ShieldCheck,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -79,6 +80,19 @@ export default function Dashboard() {
             </div>
           </div>
           <div className="flex items-center gap-1">
+            {(user as any)?.role === "admin" && (
+              <Button
+                data-testid="button-admin"
+                variant="ghost"
+                size="default"
+                onClick={() => setLocation("/admin")}
+                className="text-sm"
+                style={{ color: "#2e3a20" }}
+              >
+                <ShieldCheck className="w-4 h-4 mr-2" />
+                Admin
+              </Button>
+            )}
             <Button
               data-testid="button-account"
               variant="ghost"
