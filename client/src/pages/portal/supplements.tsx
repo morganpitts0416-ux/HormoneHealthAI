@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   Leaf, LogOut, ChevronLeft, CalendarDays, Clock, Package, Sparkles,
-  ChevronDown, ChevronUp
+  ChevronDown, ChevronUp, MessageSquare
 } from "lucide-react";
 import { useState } from "react";
 import type { SupplementRecommendation } from "@shared/schema";
@@ -375,6 +375,15 @@ export default function PortalSupplements() {
             >
               <Package className="w-4 h-4" style={{ color: "#2e3a20" }} />
               <span className="text-xs font-semibold" style={{ color: "#2e3a20" }}>Protocol</span>
+            </button>
+          </Link>
+          <Link href="/portal/messages" className="flex-1">
+            <button
+              className="w-full py-3.5 flex flex-col items-center gap-1"
+              data-testid="nav-portal-messages"
+            >
+              <MessageSquare className="w-4 h-4" style={{ color: "#a0a880" }} />
+              <span className="text-xs" style={{ color: "#a0a880" }}>Messages</span>
             </button>
           </Link>
         </div>

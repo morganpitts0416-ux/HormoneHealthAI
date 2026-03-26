@@ -12,8 +12,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
-import { Activity, ArrowLeft, Save, CheckCircle } from "lucide-react";
+import { Activity, ArrowLeft, Save, CheckCircle, MessageSquare, Phone, BanIcon, Smartphone } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 
 const profileSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -30,12 +31,48 @@ type ProfileForm = z.infer<typeof profileSchema>;
 
 const TITLES = ["MD", "DO", "NP", "NP-C", "FNP-C", "APRN", "PA", "PA-C", "RN", "PharmD", "Other"];
 
+type MessagingPreference = 'none' | 'in_app' | 'sms';
+
+const MESSAGING_OPTIONS: {
+  value: MessagingPreference;
+  label: string;
+  description: string;
+  icon: React.ComponentType<{ className?: string }>;
+}[] = [
+  {
+    value: 'none',
+    label: 'No messaging',
+    description: 'Patients will not see a messaging option in their portal.',
+    icon: BanIcon,
+  },
+  {
+    value: 'in_app',
+    label: 'In-app messaging',
+    description: 'Patients can send you messages directly through the portal. You reply from the patient profile.',
+    icon: MessageSquare,
+  },
+  {
+    value: 'sms',
+    label: 'Text / Spruce Health',
+    description: 'Patients tap "Message Provider" and their native SMS app opens, pre-addressed to your Spruce number (or any number you choose).',
+    icon: Smartphone,
+  },
+];
+
 export default function Account() {
   const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const [saved, setSaved] = useState(false);
+  const [messagingSaved, setMessagingSaved] = useState(false);
+
+  const [messagingPreference, setMessagingPreference] = useState<MessagingPreference>(
+    ((user as any)?.messagingPreference as MessagingPreference) || 'none'
+  );
+  const [messagingPhone, setMessagingPhone] = useState<string>(
+    (user as any)?.messagingPhone || ''
+  );
 
   const form = useForm<ProfileForm>({
     resolver: zodResolver(profileSchema),
@@ -64,6 +101,25 @@ export default function Account() {
     },
     onError: () => {
       toast({ title: "Update failed", description: "Could not save your profile. Please try again.", variant: "destructive" });
+    },
+  });
+
+  const messagingMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", "/api/auth/profile", {
+        messagingPreference,
+        messagingPhone: messagingPreference === 'sms' ? messagingPhone : null,
+      });
+      return res.json();
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["/api/auth/me"], updated);
+      setMessagingSaved(true);
+      toast({ title: "Messaging preference saved" });
+      setTimeout(() => setMessagingSaved(false), 3000);
+    },
+    onError: () => {
+      toast({ title: "Save failed", description: "Could not save messaging settings.", variant: "destructive" });
     },
   });
 
@@ -286,6 +342,103 @@ export default function Account() {
                 </div>
               </form>
             </Form>
+          </CardContent>
+        </Card>
+
+        {/* Portal Messaging Preference */}
+        <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <MessageSquare className="w-4 h-4 text-muted-foreground" />
+              Patient Portal Messaging
+            </CardTitle>
+            <CardDescription>
+              Choose how patients in your portal can reach you. This setting only affects the patient-facing portal.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-5">
+            {/* Option tiles */}
+            <div className="space-y-2">
+              {MESSAGING_OPTIONS.map((opt) => {
+                const Icon = opt.icon;
+                const isSelected = messagingPreference === opt.value;
+                return (
+                  <button
+                    key={opt.value}
+                    type="button"
+                    onClick={() => setMessagingPreference(opt.value)}
+                    data-testid={`messaging-option-${opt.value}`}
+                    className={cn(
+                      "w-full text-left rounded-lg border p-4 flex items-start gap-3 transition-colors",
+                      isSelected
+                        ? "border-primary bg-primary/5"
+                        : "border-border hover-elevate"
+                    )}
+                  >
+                    <div className={cn(
+                      "w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5",
+                      isSelected ? "bg-primary text-primary-foreground" : "bg-muted text-muted-foreground"
+                    )}>
+                      <Icon className="w-4 h-4" />
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className={cn("font-medium text-sm", isSelected ? "text-foreground" : "text-foreground")}>
+                        {opt.label}
+                      </p>
+                      <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                        {opt.description}
+                      </p>
+                    </div>
+                    <div className={cn(
+                      "w-4 h-4 rounded-full border-2 flex-shrink-0 mt-1.5 flex items-center justify-center",
+                      isSelected ? "border-primary bg-primary" : "border-border"
+                    )}>
+                      {isSelected && <div className="w-1.5 h-1.5 rounded-full bg-white" />}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+
+            {/* SMS phone number input */}
+            {messagingPreference === 'sms' && (
+              <div className="space-y-1.5 pt-1">
+                <label className="text-sm font-medium text-foreground flex items-center gap-1.5">
+                  <Phone className="w-3.5 h-3.5 text-muted-foreground" />
+                  Messaging phone number
+                </label>
+                <Input
+                  type="tel"
+                  placeholder="e.g. +1 (555) 000-0000  (your Spruce number)"
+                  value={messagingPhone}
+                  onChange={(e) => setMessagingPhone(e.target.value)}
+                  data-testid="input-messaging-phone"
+                />
+                <p className="text-xs text-muted-foreground">
+                  Enter your Spruce Health number or any number you want patients to text. When patients tap "Message Provider," their SMS app will open pre-addressed to this number.
+                </p>
+              </div>
+            )}
+
+            <div className="flex items-center justify-between pt-1 flex-wrap gap-3">
+              <div className="h-5">
+                {messagingSaved && (
+                  <span className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
+                    <CheckCircle className="w-4 h-4" />
+                    Saved
+                  </span>
+                )}
+              </div>
+              <Button
+                type="button"
+                onClick={() => messagingMutation.mutate()}
+                disabled={messagingMutation.isPending || (messagingPreference === 'sms' && !messagingPhone.trim())}
+                data-testid="button-save-messaging"
+              >
+                <Save className="w-4 h-4 mr-2" />
+                {messagingMutation.isPending ? "Saving..." : "Save Messaging Setting"}
+              </Button>
+            </div>
           </CardContent>
         </Card>
 

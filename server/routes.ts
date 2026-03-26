@@ -104,9 +104,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.patch("/api/auth/profile", requireAuth, async (req, res) => {
     try {
       const userId = (req.user as any).id;
-      const { firstName, lastName, title, npi, clinicName, phone, address, email } = req.body;
+      const { firstName, lastName, title, npi, clinicName, phone, address, email, messagingPreference, messagingPhone } = req.body;
       const updated = await storage.updateUser(userId, {
         firstName, lastName, title, npi, clinicName, phone, address, email,
+        ...(messagingPreference !== undefined ? { messagingPreference } : {}),
+        ...(messagingPhone !== undefined ? { messagingPhone } : {}),
       });
       if (!updated) return res.status(404).json({ message: "User not found" });
       const { passwordHash: _ph, ...safeUser } = updated;
@@ -1527,6 +1529,112 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch portal status" });
+    }
+  });
+
+  // ── Portal Messaging ──────────────────────────────────────────────────────────
+
+  // GET /api/portal/messaging-config — patient fetches their clinician's messaging preference
+  app.get("/api/portal/messaging-config", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const patient = await storage.getPatientById(patientId);
+      if (!patient || !patient.userId) return res.status(404).json({ message: "Patient not found" });
+      const clinician = await storage.getUserById(patient.userId);
+      if (!clinician) return res.status(404).json({ message: "Clinician not found" });
+      res.json({
+        messagingPreference: clinician.messagingPreference || 'none',
+        messagingPhone: clinician.messagingPhone || null,
+        clinicianId: clinician.id,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch messaging config" });
+    }
+  });
+
+  // GET /api/portal/messages — patient fetches their message thread
+  app.get("/api/portal/messages", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const messages = await storage.getPortalMessages(patientId);
+      // Mark clinician messages as read
+      await storage.markPortalMessagesRead(patientId, 'patient');
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  // POST /api/portal/messages — patient sends a message
+  app.post("/api/portal/messages", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const { content } = req.body;
+      if (!content?.trim()) return res.status(400).json({ message: "Message content is required" });
+      const patient = await storage.getPatientById(patientId);
+      if (!patient || !patient.userId) return res.status(404).json({ message: "Patient not found" });
+      const msg = await storage.createPortalMessage({
+        patientId,
+        clinicianId: patient.userId,
+        senderType: 'patient',
+        content: content.trim(),
+        readAt: null,
+      });
+      res.json(msg);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // GET /api/patients/:id/messages — clinician fetches message thread
+  app.get("/api/patients/:id/messages", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId, clinicianId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const messages = await storage.getPortalMessages(patientId);
+      // Mark patient messages as read
+      await storage.markPortalMessagesRead(patientId, 'clinician');
+      res.json(messages);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch messages" });
+    }
+  });
+
+  // POST /api/patients/:id/messages — clinician replies to patient
+  app.post("/api/patients/:id/messages", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId, clinicianId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const { content } = req.body;
+      if (!content?.trim()) return res.status(400).json({ message: "Message content is required" });
+      const msg = await storage.createPortalMessage({
+        patientId,
+        clinicianId,
+        senderType: 'clinician',
+        content: content.trim(),
+        readAt: null,
+      });
+      res.json(msg);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // GET /api/patients/:id/messages/unread — clinician gets unread count
+  app.get("/api/patients/:id/messages/unread", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId, clinicianId);
+      if (!patient) return res.status(404).json({ count: 0 });
+      const cnt = await storage.getUnreadPortalMessageCount(patientId, 'clinician');
+      res.json({ count: cnt });
+    } catch (error) {
+      res.status(500).json({ count: 0 });
     }
   });
 
