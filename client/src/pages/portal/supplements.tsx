@@ -8,6 +8,7 @@ import {
   Leaf, LogOut, ChevronLeft, CalendarDays, Clock, Package, Sparkles,
   ChevronDown, ChevronUp, MessageSquare
 } from "lucide-react";
+import { usePortalUnreadCount } from "@/hooks/use-portal-unread";
 import { useState } from "react";
 import type { SupplementRecommendation } from "@shared/schema";
 
@@ -218,6 +219,7 @@ function ProtocolBlock({ protocol, isLatest }: { protocol: PublishedProtocol; is
 export default function PortalSupplements() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const unreadCount = usePortalUnreadCount();
 
   const { data: patient, isLoading: patientLoading, error: patientError } = useQuery<PortalPatient>({
     queryKey: ["/api/portal/me"],
@@ -382,7 +384,18 @@ export default function PortalSupplements() {
               className="w-full py-3.5 flex flex-col items-center gap-1"
               data-testid="nav-portal-messages"
             >
-              <MessageSquare className="w-4 h-4" style={{ color: "#a0a880" }} />
+              <span className="relative">
+                <MessageSquare className="w-4 h-4" style={{ color: "#a0a880" }} />
+                {unreadCount > 0 && (
+                  <span
+                    className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none text-white"
+                    style={{ backgroundColor: "#c0392b" }}
+                    data-testid="badge-messages-unread"
+                  >
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </span>
               <span className="text-xs" style={{ color: "#a0a880" }}>Messages</span>
             </button>
           </Link>

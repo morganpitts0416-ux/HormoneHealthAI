@@ -4,6 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Leaf, LogOut, ChevronLeft, Send, MessageSquare, CalendarDays, Package } from "lucide-react";
+import { usePortalUnreadCount } from "@/hooks/use-portal-unread";
 
 interface PortalPatient {
   patientId: number;
@@ -38,6 +39,7 @@ function formatTime(dateStr: string): string {
 export default function PortalMessages() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
+  const unreadCount = usePortalUnreadCount();
   const [draft, setDraft] = useState("");
   const bottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
@@ -310,7 +312,18 @@ export default function PortalMessages() {
           </Link>
           <Link href="/portal/messages" className="flex-1">
             <button className="w-full py-3.5 flex flex-col items-center gap-1" data-testid="nav-portal-messages">
-              <MessageSquare className="w-4 h-4" style={{ color: "#2e3a20" }} />
+              <span className="relative">
+                <MessageSquare className="w-4 h-4" style={{ color: "#2e3a20" }} />
+                {unreadCount > 0 && (
+                  <span
+                    className="absolute -top-1.5 -right-1.5 min-w-[14px] h-[14px] rounded-full flex items-center justify-center text-[9px] font-bold leading-none text-white"
+                    style={{ backgroundColor: "#c0392b" }}
+                    data-testid="badge-messages-unread"
+                  >
+                    {unreadCount > 9 ? "9+" : unreadCount}
+                  </span>
+                )}
+              </span>
               <span className="text-xs font-semibold" style={{ color: "#2e3a20" }}>Messages</span>
             </button>
           </Link>
