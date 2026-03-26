@@ -57,6 +57,12 @@ Key architectural decisions and features include:
 -   **Metagenics Supplement Catalog**: Integrates a catalog of Metagenics supplements for both men's and women's clinics, with specific recommendation logic based on lab values, symptoms, and detected phenotypes (e.g., Vitamin D protocol, women's phenotype-driven recommendations, men's age-based recommendations). The women's supplement system uses a layered architecture for phenotype detection, supplement matching, prioritization, and explanation.
 -   **Interactive Supplement Selector** (`client/src/components/supplement-selector.tsx`): Provider-facing component that displays the AI-generated supplement protocol with checkboxes (all checked by default). Providers can deselect any supplement to exclude it from the patient report, expand each row to see clinical rationale, supporting findings, linked phenotypes, and cautions, and add custom supplements (name, dose, patient-facing description) not in the standard Metagenics catalog. The curated list (selected standard + custom) is passed directly to both `generatePatientWellnessPDF` and `generateMalePatientWellnessPDF` via an optional `selectedSupplements` parameter, overriding the auto-generated supplement table in the patient PDF.
 
+## Email Integration (Pending Setup)
+- **Clinician invite flow**: Admin can add clinicians without a password — a 72-hour invite link is generated and sent via email so clinicians set their own password at `/set-password?token=...`
+- **Forgot password**: Login page has "Forgot your password?" → `/forgot-password` → generates 1-hour reset link → `/reset-password?token=...`
+- **Email service**: Uses Resend API (`RESEND_API_KEY` secret + `RESEND_FROM_EMAIL` env var). Currently in stub mode — links are logged to server console. To enable real email: store `RESEND_API_KEY` as a secret (free account at resend.com). Code is in `server/email-service.ts`.
+- **NOTE**: Resend Replit integration was dismissed. Use `RESEND_API_KEY` environment secret directly. Alternatively, SendGrid can be wired up in `server/email-service.ts`.
+
 ## External Dependencies
 -   **OpenAI**: For AI-powered recommendations, PDF text extraction, and summary generation.
 -   **PostgreSQL**: Primary database.
