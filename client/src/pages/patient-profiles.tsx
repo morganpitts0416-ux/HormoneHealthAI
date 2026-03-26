@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useRef, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -10,7 +10,7 @@ import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
-  Mail, Globe, Send, Share2, Leaf
+  Mail, Globe, Send, Share2, Leaf, MessageSquare
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
@@ -556,6 +556,9 @@ export default function PatientProfiles() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [publishingLabId, setPublishingLabId] = useState<number | null>(null);
+  const [messageDraft, setMessageDraft] = useState("");
+  const [showMessages, setShowMessages] = useState(false);
+  const messageBottomRef = useRef<HTMLDivElement>(null);
 
   const { data: allPatients = [], isLoading: patientsLoading } = useQuery<Patient[]>({
     queryKey: ['/api/patients/search', ''],
@@ -591,6 +594,63 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient,
   });
+
+  const { user } = useAuth();
+  const messagingEnabled = (user as any)?.messagingPreference === 'in_app';
+
+  interface PortalMessage {
+    id: number;
+    patientId: number;
+    clinicianId: number;
+    senderType: 'patient' | 'clinician';
+    content: string;
+    readAt: string | null;
+    createdAt: string;
+  }
+
+  const { data: messages = [] } = useQuery<PortalMessage[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'messages'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/messages`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient && messagingEnabled && showMessages,
+    refetchInterval: showMessages ? 15000 : false,
+  });
+
+  const { data: unreadData } = useQuery<{ count: number }>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'messages', 'unread'],
+    queryFn: async () => {
+      if (!selectedPatient) return { count: 0 };
+      const res = await fetch(`/api/patients/${selectedPatient.id}/messages/unread`, { credentials: 'include' });
+      if (!res.ok) return { count: 0 };
+      return res.json();
+    },
+    enabled: !!selectedPatient && messagingEnabled,
+    refetchInterval: 30000,
+  });
+
+  const sendMessageMutation = useMutation({
+    mutationFn: async (content: string) => {
+      const res = await apiRequest("POST", `/api/patients/${selectedPatient!.id}/messages`, { content });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'messages'] });
+      setMessageDraft("");
+    },
+    onError: () => {
+      toast({ title: "Failed to send message", variant: "destructive" });
+    },
+  });
+
+  useEffect(() => {
+    if (showMessages) {
+      messageBottomRef.current?.scrollIntoView({ behavior: "smooth" });
+    }
+  }, [messages, showMessages]);
 
   const inviteMutation = useMutation({
     mutationFn: async ({ patientId, email }: { patientId: number; email: string }) => {
@@ -794,7 +854,7 @@ export default function PatientProfiles() {
                   return (
                     <button
                       key={patient.id}
-                      onClick={() => { setSelectedPatient(patient); setViewingLab(null); }}
+                      onClick={() => { setSelectedPatient(patient); setViewingLab(null); setShowMessages(false); setMessageDraft(""); }}
                       className={cn(
                         "w-full px-3 py-2.5 flex items-center gap-3 text-left transition-colors",
                         isSelected
@@ -914,6 +974,106 @@ export default function PatientProfiles() {
                 />
               )}
               {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
+
+              {/* Messaging panel — only visible when clinician has in-app messaging enabled */}
+              {messagingEnabled && portalStatus?.hasPortalAccount && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                        Portal Messages
+                        {(unreadData?.count ?? 0) > 0 && !showMessages && (
+                          <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
+                            {unreadData!.count} new
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowMessages(!showMessages)}
+                        className="text-xs"
+                        data-testid="button-toggle-messages"
+                      >
+                        {showMessages ? "Hide" : "View messages"}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  {showMessages && (
+                    <CardContent className="space-y-4">
+                      {/* Thread */}
+                      <div className="space-y-3 max-h-72 overflow-y-auto px-1">
+                        {messages.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-6">
+                            No messages yet. Send the first message to this patient.
+                          </p>
+                        ) : (
+                          messages.map((msg) => {
+                            const isClinician = msg.senderType === 'clinician';
+                            return (
+                              <div key={msg.id} className={`flex ${isClinician ? "justify-end" : "justify-start"}`}>
+                                <div
+                                  className={cn(
+                                    "max-w-xs rounded-xl px-3 py-2 text-sm",
+                                    isClinician
+                                      ? "bg-primary text-primary-foreground"
+                                      : "bg-muted text-foreground"
+                                  )}
+                                >
+                                  {!isClinician && (
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">
+                                      {selectedPatient!.firstName}
+                                    </p>
+                                  )}
+                                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                                  <p className={cn("text-xs mt-1", isClinician ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                                    {new Date(msg.createdAt).toLocaleString("en-US", {
+                                      month: "short", day: "numeric",
+                                      hour: "numeric", minute: "2-digit"
+                                    })}
+                                    {!isClinician && !msg.readAt && (
+                                      <span className="ml-2 text-amber-600 font-medium">Unread</span>
+                                    )}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        <div ref={messageBottomRef} />
+                      </div>
+
+                      {/* Compose */}
+                      <div className="flex items-end gap-2 border-t pt-3">
+                        <textarea
+                          className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[36px] max-h-24 outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="Write a message to this patient…"
+                          rows={1}
+                          value={messageDraft}
+                          onChange={(e) => setMessageDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) {
+                              e.preventDefault();
+                              if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim());
+                            }
+                          }}
+                          data-testid="input-clinician-message"
+                        />
+                        <Button
+                          size="icon"
+                          onClick={() => { if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }}
+                          disabled={!messageDraft.trim() || sendMessageMutation.isPending}
+                          data-testid="button-clinician-send-message"
+                        >
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Press Enter to send · Shift+Enter for new line</p>
+                    </CardContent>
+                  )}
+                </Card>
+              )}
             </div>
           )}
         </div>

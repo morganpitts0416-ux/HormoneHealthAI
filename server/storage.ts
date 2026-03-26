@@ -1,4 +1,4 @@
-import { eq, desc, ilike, or, and } from "drizzle-orm";
+import { eq, desc, ilike, or, and, isNull, count } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
@@ -10,6 +10,7 @@ import type {
   User, InsertUser,
   PatientPortalAccount, InsertPatientPortalAccount,
   PublishedProtocol, InsertPublishedProtocol,
+  PortalMessage, InsertPortalMessage,
 } from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
@@ -72,6 +73,12 @@ export interface IStorage {
   publishProtocol(protocol: InsertPublishedProtocol): Promise<PublishedProtocol>;
   getLatestPublishedProtocol(patientId: number): Promise<PublishedProtocol | undefined>;
   getAllPublishedProtocols(patientId: number): Promise<PublishedProtocol[]>;
+
+  // Portal messaging operations
+  getPortalMessages(patientId: number): Promise<PortalMessage[]>;
+  createPortalMessage(msg: InsertPortalMessage): Promise<PortalMessage>;
+  markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void>;
+  getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number>;
 }
 
 export class DbStorage implements IStorage {
@@ -406,6 +413,54 @@ export class DbStorage implements IStorage {
       .from(schema.publishedProtocols)
       .where(eq(schema.publishedProtocols.patientId, patientId))
       .orderBy(desc(schema.publishedProtocols.publishedAt));
+  }
+
+  // ── Portal message operations ─────────────────────────────────────────────────
+  async getPortalMessages(patientId: number): Promise<PortalMessage[]> {
+    return await db
+      .select()
+      .from(schema.portalMessages)
+      .where(eq(schema.portalMessages.patientId, patientId))
+      .orderBy(schema.portalMessages.createdAt);
+  }
+
+  async createPortalMessage(msg: InsertPortalMessage): Promise<PortalMessage> {
+    const result = await db
+      .insert(schema.portalMessages)
+      .values(msg as any)
+      .returning();
+    return result[0];
+  }
+
+  async markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void> {
+    // Mark messages sent by the OTHER party as read (i.e. the reader is not the sender)
+    const senderToMark = readBySenderType === 'patient' ? 'clinician' : 'patient';
+    await db
+      .update(schema.portalMessages)
+      .set({ readAt: new Date() })
+      .where(
+        and(
+          eq(schema.portalMessages.patientId, patientId),
+          eq(schema.portalMessages.senderType, senderToMark),
+          isNull(schema.portalMessages.readAt)
+        )
+      );
+  }
+
+  async getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number> {
+    // Count messages sent by the other party that haven't been read yet
+    const senderToCount = unreadBySenderType === 'patient' ? 'clinician' : 'patient';
+    const result = await db
+      .select({ cnt: count() })
+      .from(schema.portalMessages)
+      .where(
+        and(
+          eq(schema.portalMessages.patientId, patientId),
+          eq(schema.portalMessages.senderType, senderToCount),
+          isNull(schema.portalMessages.readAt)
+        )
+      );
+    return Number(result[0]?.cnt ?? 0);
   }
 }
 

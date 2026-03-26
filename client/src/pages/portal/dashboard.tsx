@@ -4,7 +4,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { Leaf, LogOut, FlaskConical, Sparkles, ChevronRight, CalendarDays, TrendingUp, TrendingDown, Minus, Package } from "lucide-react";
+import { Leaf, LogOut, FlaskConical, Sparkles, ChevronRight, CalendarDays, TrendingUp, TrendingDown, Minus, Package, MessageSquare, Smartphone } from "lucide-react";
 import type { SupplementRecommendation } from "@shared/schema";
 
 interface PortalPatient {
@@ -141,6 +141,15 @@ export default function PortalDashboard() {
     retry: false,
   });
 
+  const { data: messagingConfig } = useQuery<{
+    messagingPreference: 'none' | 'in_app' | 'sms';
+    messagingPhone: string | null;
+  }>({
+    queryKey: ["/api/portal/messaging-config"],
+    enabled: !!patient,
+    retry: false,
+  });
+
   const logoutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/portal/logout", {}),
     onSuccess: () => {
@@ -220,6 +229,37 @@ export default function PortalDashboard() {
             </p>
           )}
         </div>
+
+        {/* Message Provider button */}
+        {messagingConfig && messagingConfig.messagingPreference !== 'none' && (
+          <div>
+            {messagingConfig.messagingPreference === 'sms' && messagingConfig.messagingPhone ? (
+              <a
+                href={`sms:${messagingConfig.messagingPhone}`}
+                data-testid="button-message-provider-sms"
+              >
+                <button
+                  className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium"
+                  style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                >
+                  <Smartphone className="w-4 h-4" />
+                  Message your care team
+                </button>
+              </a>
+            ) : messagingConfig.messagingPreference === 'in_app' ? (
+              <Link href="/portal/messages">
+                <button
+                  className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium"
+                  style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                  data-testid="button-message-provider-inapp"
+                >
+                  <MessageSquare className="w-4 h-4" />
+                  Message your care team
+                </button>
+              </Link>
+            ) : null}
+          </div>
+        )}
 
         {/* Quick stats strip */}
         <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
@@ -488,6 +528,15 @@ export default function PortalDashboard() {
             >
               <Package className="w-4 h-4" style={{ color: "#a0a880" }} />
               <span className="text-xs" style={{ color: "#a0a880" }}>Protocol</span>
+            </button>
+          </Link>
+          <Link href="/portal/messages" className="flex-1">
+            <button
+              className="w-full py-3.5 flex flex-col items-center gap-1"
+              data-testid="nav-portal-messages"
+            >
+              <MessageSquare className="w-4 h-4" style={{ color: "#a0a880" }} />
+              <span className="text-xs" style={{ color: "#a0a880" }}>Messages</span>
             </button>
           </Link>
         </div>

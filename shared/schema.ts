@@ -466,6 +466,10 @@ export const users = pgTable("users", {
   // Password reset / invite tokens
   passwordResetToken: varchar("password_reset_token", { length: 255 }),
   passwordResetExpires: timestamp("password_reset_expires"),
+  // Portal messaging preference: 'none' | 'in_app' | 'sms'
+  messagingPreference: varchar("messaging_preference", { length: 20 }).notNull().default("none"),
+  // Phone number shown to patients for SMS messaging (e.g. Spruce Health number)
+  messagingPhone: varchar("messaging_phone", { length: 30 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -582,3 +586,23 @@ export const insertPublishedProtocolSchema = createInsertSchema(publishedProtoco
 
 export type InsertPublishedProtocol = z.infer<typeof insertPublishedProtocolSchema>;
 export type PublishedProtocol = typeof publishedProtocols.$inferSelect;
+
+// ─── Portal Messages (in-app messaging between patient and clinician) ──────────
+export const portalMessages = pgTable("portal_messages", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  // 'patient' | 'clinician'
+  senderType: varchar("sender_type", { length: 20 }).notNull(),
+  content: text("content").notNull(),
+  readAt: timestamp("read_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPortalMessageSchema = createInsertSchema(portalMessages).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPortalMessage = z.infer<typeof insertPortalMessageSchema>;
+export type PortalMessage = typeof portalMessages.$inferSelect;
