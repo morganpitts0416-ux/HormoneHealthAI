@@ -7,7 +7,9 @@ import type {
   Patient, InsertPatient,
   LabResult, InsertLabResult,
   SavedInterpretation, InsertSavedInterpretation,
-  User, InsertUser
+  User, InsertUser,
+  PatientPortalAccount, InsertPatientPortalAccount,
+  PublishedProtocol, InsertPublishedProtocol,
 } from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
@@ -57,6 +59,19 @@ export interface IStorage {
   searchSavedInterpretations(searchTerm: string, userId: number, gender?: string): Promise<SavedInterpretation[]>;
   createSavedInterpretation(interpretation: InsertSavedInterpretation): Promise<SavedInterpretation>;
   deleteSavedInterpretation(id: number, userId: number): Promise<boolean>;
+
+  // Patient portal account operations
+  getPatientById(id: number): Promise<Patient | undefined>;
+  getPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined>;
+  getPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined>;
+  getPortalAccountByInviteToken(token: string): Promise<PatientPortalAccount | undefined>;
+  createPortalAccount(account: InsertPatientPortalAccount): Promise<PatientPortalAccount>;
+  updatePortalAccount(patientId: number, data: Partial<InsertPatientPortalAccount>): Promise<PatientPortalAccount | undefined>;
+
+  // Published protocol operations
+  publishProtocol(protocol: InsertPublishedProtocol): Promise<PublishedProtocol>;
+  getLatestPublishedProtocol(patientId: number): Promise<PublishedProtocol | undefined>;
+  getAllPublishedProtocols(patientId: number): Promise<PublishedProtocol[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -317,6 +332,80 @@ export class DbStorage implements IStorage {
       .where(and(eq(schema.savedInterpretations.id, id), eq(schema.savedInterpretations.userId, userId)))
       .returning();
     return result.length > 0;
+  }
+
+  // ── Patient portal account operations ────────────────────────────────────────
+  async getPatientById(id: number): Promise<Patient | undefined> {
+    const result = await db.select().from(schema.patients).where(eq(schema.patients.id, id));
+    return result[0];
+  }
+
+  async getPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined> {
+    const result = await db
+      .select()
+      .from(schema.patientPortalAccounts)
+      .where(eq(schema.patientPortalAccounts.email, email));
+    return result[0];
+  }
+
+  async getPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined> {
+    const result = await db
+      .select()
+      .from(schema.patientPortalAccounts)
+      .where(eq(schema.patientPortalAccounts.patientId, patientId));
+    return result[0];
+  }
+
+  async getPortalAccountByInviteToken(token: string): Promise<PatientPortalAccount | undefined> {
+    const result = await db
+      .select()
+      .from(schema.patientPortalAccounts)
+      .where(eq(schema.patientPortalAccounts.inviteToken, token));
+    return result[0];
+  }
+
+  async createPortalAccount(account: InsertPatientPortalAccount): Promise<PatientPortalAccount> {
+    const result = await db
+      .insert(schema.patientPortalAccounts)
+      .values(account as any)
+      .returning();
+    return result[0];
+  }
+
+  async updatePortalAccount(patientId: number, data: Partial<InsertPatientPortalAccount>): Promise<PatientPortalAccount | undefined> {
+    const result = await db
+      .update(schema.patientPortalAccounts)
+      .set(data as any)
+      .where(eq(schema.patientPortalAccounts.patientId, patientId))
+      .returning();
+    return result[0];
+  }
+
+  // ── Published protocol operations ─────────────────────────────────────────────
+  async publishProtocol(protocol: InsertPublishedProtocol): Promise<PublishedProtocol> {
+    const result = await db
+      .insert(schema.publishedProtocols)
+      .values(protocol as any)
+      .returning();
+    return result[0];
+  }
+
+  async getLatestPublishedProtocol(patientId: number): Promise<PublishedProtocol | undefined> {
+    const result = await db
+      .select()
+      .from(schema.publishedProtocols)
+      .where(eq(schema.publishedProtocols.patientId, patientId))
+      .orderBy(desc(schema.publishedProtocols.publishedAt))
+      .limit(1);
+    return result[0];
+  }
+
+  async getAllPublishedProtocols(patientId: number): Promise<PublishedProtocol[]> {
+    return await db
+      .select()
+      .from(schema.publishedProtocols)
+      .where(eq(schema.publishedProtocols.patientId, patientId))
+      .orderBy(desc(schema.publishedProtocols.publishedAt));
   }
 }
 

@@ -488,6 +488,8 @@ export const patients = pgTable("patients", {
   dateOfBirth: timestamp("date_of_birth"),
   gender: varchar("gender", { length: 10 }).notNull().default('male'),
   mrn: varchar("mrn", { length: 50 }),
+  email: varchar("email", { length: 255 }),
+  phone: varchar("phone", { length: 30 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -540,3 +542,43 @@ export const insertSavedInterpretationSchema = createInsertSchema(savedInterpret
 
 export type InsertSavedInterpretation = z.infer<typeof insertSavedInterpretationSchema>;
 export type SavedInterpretation = typeof savedInterpretations.$inferSelect;
+
+// ─── Patient Portal Accounts ───────────────────────────────────────────────────
+export const patientPortalAccounts = pgTable("patient_portal_accounts", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }).unique(),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  passwordHash: varchar("password_hash", { length: 255 }),
+  inviteToken: varchar("invite_token", { length: 255 }),
+  inviteExpires: timestamp("invite_expires"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPatientPortalAccountSchema = createInsertSchema(patientPortalAccounts).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertPatientPortalAccount = z.infer<typeof insertPatientPortalAccountSchema>;
+export type PatientPortalAccount = typeof patientPortalAccounts.$inferSelect;
+
+// ─── Published Protocols ───────────────────────────────────────────────────────
+export const publishedProtocols = pgTable("published_protocols", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  labResultId: integer("lab_result_id").references(() => labResults.id, { onDelete: 'set null' }),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id),
+  supplements: jsonb("supplements").$type<SupplementRecommendation[]>().notNull(),
+  clinicianNotes: text("clinician_notes"),
+  labDate: timestamp("lab_date"),
+  publishedAt: timestamp("published_at").defaultNow().notNull(),
+});
+
+export const insertPublishedProtocolSchema = createInsertSchema(publishedProtocols).omit({
+  id: true,
+  publishedAt: true,
+});
+
+export type InsertPublishedProtocol = z.infer<typeof insertPublishedProtocolSchema>;
+export type PublishedProtocol = typeof publishedProtocols.$inferSelect;

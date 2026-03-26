@@ -93,6 +93,57 @@ export async function sendInviteEmail(
   });
 }
 
+export async function sendPatientPortalInviteEmail(
+  to: string,
+  patientFirstName: string,
+  clinicName: string,
+  token: string,
+  req?: any
+): Promise<void> {
+  const base = getBaseUrl(req);
+  const link = `${base}/portal/set-password?token=${token}`;
+
+  await sendEmail({
+    to,
+    subject: `${clinicName} has invited you to your personal health portal`,
+    html: `
+      <div style="font-family: 'Inter', Georgia, serif; max-width: 560px; margin: 0 auto; background: #fffdf9;">
+        <div style="background: #2e3a20; padding: 28px 32px; text-align: center;">
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">ReAlign Health</h1>
+          <p style="color: #a8b88c; margin: 6px 0 0; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">Your Personal Wellness Portal</p>
+        </div>
+        <div style="padding: 40px 32px; background: #fffdf9;">
+          <p style="color: #2e3a20; font-size: 28px; font-weight: 700; margin: 0 0 8px; line-height: 1.2;">Hello, ${patientFirstName}.</p>
+          <p style="color: #7a8a64; font-size: 14px; margin: 0 0 28px; letter-spacing: 0.3px;">${clinicName}</p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.7; margin: 0 0 12px;">
+            Your care team has set up a private health portal just for you. Inside, you'll find:
+          </p>
+          <ul style="color: #3d4a30; font-size: 14px; line-height: 2; margin: 0 0 28px; padding-left: 20px;">
+            <li>Your lab results explained in plain language</li>
+            <li>Your personalized wellness supplement protocol</li>
+            <li>Your health trends over time</li>
+            <li>Notes and updates from your care team</li>
+          </ul>
+          <div style="text-align: center; margin: 36px 0;">
+            <a href="${link}" style="background: #2e3a20; color: #e8ddd0; padding: 16px 40px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block; letter-spacing: 0.3px;">
+              Access My Health Portal
+            </a>
+          </div>
+          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0; text-align: center;">
+            This invitation expires in <strong>72 hours</strong>. Your health data is private and secure — only you and your care team can access it.
+          </p>
+          <p style="color: #b0b8a0; font-size: 12px; margin: 12px 0 0; word-break: break-all; text-align: center;">
+            ${link}
+          </p>
+        </div>
+        <div style="border-top: 1px solid #e8ddd0; padding: 20px 32px; text-align: center; background: #f5f0e8;">
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(
   to: string,
   firstName: string,
