@@ -47,7 +47,6 @@ const createClinicianSchema = z.object({
   email: z.string().email("Valid email required"),
   clinicName: z.string().min(1, "Required"),
   username: z.string().min(3).regex(/^[a-zA-Z0-9._-]+$/, "Letters, numbers, dots, hyphens only"),
-  password: z.string().min(8, "At least 8 characters"),
   npi: z.string().optional(),
   phone: z.string().optional(),
   subscriptionStatus: z.string().default("active"),
@@ -121,7 +120,7 @@ export default function AdminDashboard() {
       queryClient.invalidateQueries({ queryKey: ["/api/admin/clinicians"] });
       setShowCreate(false);
       form.reset();
-      toast({ title: "Account created", description: "The clinician can now log in." });
+      toast({ title: "Account created", description: "An invite email has been sent so they can set their password." });
     },
     onError: (err: any) => {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -168,7 +167,7 @@ export default function AdminDashboard() {
     resolver: zodResolver(createClinicianSchema),
     defaultValues: {
       firstName: "", lastName: "", title: "", email: "", clinicName: "",
-      username: "", password: "", npi: "", phone: "", subscriptionStatus: "active", notes: "",
+      username: "", npi: "", phone: "", subscriptionStatus: "active", notes: "",
     },
   });
 
@@ -378,7 +377,7 @@ export default function AdminDashboard() {
           <DialogHeader>
             <DialogTitle>Add Clinician Account</DialogTitle>
             <DialogDescription>
-              Create a provider workspace. They can log in immediately with these credentials.
+              An invite email will be sent to the clinician so they can set their own password and activate their account.
               Their account status is set to <strong>Active</strong> by default.
             </DialogDescription>
           </DialogHeader>
@@ -448,22 +447,16 @@ export default function AdminDashboard() {
               </div>
               <div className="border-t pt-4">
                 <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Login Credentials</p>
-                <div className="grid grid-cols-2 gap-3">
-                  <FormField control={form.control} name="username" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Username *</FormLabel>
-                      <FormControl><Input placeholder="jane.smith" data-testid="input-create-username" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                  <FormField control={form.control} name="password" render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password *</FormLabel>
-                      <FormControl><Input type="password" placeholder="Min. 8 characters" data-testid="input-create-password" {...field} /></FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )} />
-                </div>
+                <FormField control={form.control} name="username" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Username *</FormLabel>
+                    <FormControl><Input placeholder="jane.smith" data-testid="input-create-username" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <p className="text-xs text-muted-foreground mt-2">
+                  Password will be set by the clinician via the invite link sent to their email.
+                </p>
               </div>
               <div className="grid grid-cols-2 gap-3">
                 <FormField control={form.control} name="subscriptionStatus" render={({ field }) => (

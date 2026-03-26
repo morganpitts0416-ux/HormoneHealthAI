@@ -1,5 +1,6 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
+import crypto from "crypto";
 import multer from "multer";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema } from "@shared/schema";
 import { ClinicalLogicEngine } from "./clinical-logic";
@@ -14,6 +15,7 @@ import { evaluateMaleSupplements } from "./supplements-male";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { storage } from "./storage";
 import { passport, hashPassword } from "./auth";
+import { sendInviteEmail, sendPasswordResetEmail } from "./email-service";
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -113,6 +115,80 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.status(500).json({ message: "Failed to update profile" });
     }
   });
+  // Forgot password — sends reset link to email
+  app.post("/api/auth/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ message: "Email is required" });
+
+      const user = await storage.getUserByEmail(email.trim().toLowerCase());
+      // Always return 200 to avoid email enumeration
+      if (!user) return res.json({ message: "If that email is registered, a reset link has been sent." });
+
+      const token = crypto.randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await storage.savePasswordResetToken(user.id, token, expires);
+
+      try {
+        await sendPasswordResetEmail(user.email, user.firstName, token, req);
+      } catch (emailErr) {
+        console.error("[EMAIL] Failed to send password reset email:", emailErr);
+      }
+
+      res.json({ message: "If that email is registered, a reset link has been sent." });
+    } catch (error) {
+      console.error("Error in forgot-password:", error);
+      res.status(500).json({ message: "Failed to process request" });
+    }
+  });
+
+  // Validate a reset/invite token (check it's valid + not expired)
+  app.get("/api/auth/validate-reset-token/:token", async (req, res) => {
+    try {
+      const { token } = req.params;
+      const user = await storage.getUserByResetToken(token);
+      if (!user || !user.passwordResetExpires) {
+        return res.status(400).json({ valid: false, message: "Invalid or expired link" });
+      }
+      if (new Date() > user.passwordResetExpires) {
+        return res.status(400).json({ valid: false, message: "This link has expired" });
+      }
+      res.json({ valid: true, email: user.email, firstName: user.firstName });
+    } catch (error) {
+      console.error("Error validating reset token:", error);
+      res.status(500).json({ valid: false, message: "Failed to validate link" });
+    }
+  });
+
+  // Reset password using a valid token
+  app.post("/api/auth/reset-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ message: "Token and new password are required" });
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+
+      const user = await storage.getUserByResetToken(token);
+      if (!user || !user.passwordResetExpires) {
+        return res.status(400).json({ message: "Invalid or expired link" });
+      }
+      if (new Date() > user.passwordResetExpires) {
+        return res.status(400).json({ message: "This link has expired. Please request a new one." });
+      }
+
+      const passwordHash = await hashPassword(password);
+      await storage.updatePassword(user.id, passwordHash);
+
+      res.json({ message: "Password updated successfully. You can now log in." });
+    } catch (error) {
+      console.error("Error in reset-password:", error);
+      res.status(500).json({ message: "Failed to reset password" });
+    }
+  });
+
   // Lab interpretation endpoint
   app.post("/api/interpret-labs", async (req, res) => {
     console.log('[API] POST /api/interpret-labs - Received request');
@@ -1144,27 +1220,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Create a new clinician account (admin only)
+  // Create a new clinician account via invite (admin only — no password required)
   app.post("/api/admin/clinicians", requireAdmin, async (req, res) => {
     try {
-      const { email, username, password, firstName, lastName, title, npi, clinicName, phone, address, subscriptionStatus, notes } = req.body;
-      if (!email || !username || !password || !firstName || !lastName || !title || !clinicName) {
+      const { email, username, firstName, lastName, title, npi, clinicName, phone, address, subscriptionStatus, notes } = req.body;
+      if (!email || !username || !firstName || !lastName || !title || !clinicName) {
         return res.status(400).json({ message: "All required fields must be provided" });
       }
-      if (password.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
       const existingByUsername = await storage.getUserByUsername(username);
       if (existingByUsername) return res.status(409).json({ message: "Username already taken" });
-      const existingByEmail = await storage.getUserByEmail(email);
+      const existingByEmail = await storage.getUserByEmail(email.trim().toLowerCase());
       if (existingByEmail) return res.status(409).json({ message: "Email already registered" });
-      const passwordHash = await hashPassword(password);
+
+      // Create account with a random placeholder password — invite token required to activate
+      const placeholderHash = await hashPassword(crypto.randomBytes(32).toString("hex"));
       const user = await storage.createUser({
-        email, username, passwordHash, firstName, lastName, title,
+        email: email.trim().toLowerCase(),
+        username,
+        passwordHash: placeholderHash,
+        firstName, lastName, title,
         npi: npi || null, clinicName, phone: phone || null, address: address || null,
         role: "clinician",
         subscriptionStatus: subscriptionStatus || "active",
         notes: notes || null,
       } as any);
-      res.status(201).json({ message: "Clinician account created", user: { id: user.id, username: user.username } });
+
+      // Generate invite token (72-hour expiry)
+      const token = crypto.randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      await storage.savePasswordResetToken(user.id, token, expires);
+
+      // Send invite email (best-effort — don't fail if email errors)
+      try {
+        await sendInviteEmail(user.email, user.firstName, token, req);
+        console.log(`[ADMIN] Invite email sent to ${user.email}`);
+      } catch (emailErr) {
+        console.error("[ADMIN] Failed to send invite email:", emailErr);
+      }
+
+      res.status(201).json({
+        message: "Clinician account created and invite email sent",
+        user: { id: user.id, username: user.username, email: user.email },
+        inviteToken: process.env.NODE_ENV === "development" ? token : undefined,
+      });
     } catch (error) {
       console.error("[ADMIN] Error creating clinician:", error);
       res.status(500).json({ message: "Failed to create clinician" });

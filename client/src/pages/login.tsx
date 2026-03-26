@@ -131,7 +131,18 @@ export default function Login() {
             </form>
           </Form>
 
-          <div className="mt-6 text-center">
+          <div className="mt-4 text-center">
+            <button
+              data-testid="link-forgot-password"
+              onClick={() => setLocation("/forgot-password")}
+              className="text-sm font-medium hover:underline"
+              style={{ color: "#2e3a20" }}
+            >
+              Forgot your password?
+            </button>
+          </div>
+
+          <div className="mt-4 text-center">
             <p className="text-sm text-muted-foreground">
               New to ReAlign Health?{" "}
               <button
