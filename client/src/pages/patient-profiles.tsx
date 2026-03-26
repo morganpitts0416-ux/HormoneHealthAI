@@ -24,6 +24,10 @@ import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues } from "@shared/schema";
+import { ResultsDisplay } from "@/components/results-display";
+import { PatientSummary } from "@/components/patient-summary";
+import { SOAPNote } from "@/components/soap-note";
+import { RedFlagAlert } from "@/components/red-flag-alert";
 
 function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patient }) {
   const insights = generateTrendInsights(labs);
@@ -279,7 +283,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }
     },
-    onError: (error) => {
+    onError: () => {
       toast({ variant: "destructive", title: "Error", description: "Failed to generate patient report. Please try again." });
     },
   });
@@ -292,162 +296,191 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     }
   };
 
-  const handlePatientReport = () => {
-    if (interp) {
-      wellnessPlanMutation.mutate();
+  const priorityColor = (p: string) => {
+    switch (p) {
+      case 'high': return 'bg-red-50 border-red-200 dark:bg-red-950/20 dark:border-red-800';
+      case 'medium': return 'bg-amber-50 border-amber-200 dark:bg-amber-950/20 dark:border-amber-800';
+      default: return 'bg-muted/40 border-muted';
     }
   };
 
-  const markerOrder = [
-    { label: 'Total Cholesterol', key: 'totalCholesterol', unit: 'mg/dL' },
-    { label: 'LDL', key: 'ldl', unit: 'mg/dL' },
-    { label: 'HDL', key: 'hdl', unit: 'mg/dL' },
-    { label: 'Triglycerides', key: 'triglycerides', unit: 'mg/dL' },
-    { label: 'ApoB', key: 'apoB', unit: 'mg/dL' },
-    { label: 'A1c', key: 'a1c', unit: '%' },
-    { label: 'Fasting Glucose', key: 'fastingGlucose', unit: 'mg/dL' },
-    { label: 'Testosterone', key: 'testosterone', unit: 'ng/dL' },
-    { label: 'Free Testosterone', key: 'freeTestosterone', unit: 'pg/mL' },
-    { label: 'Estradiol', key: 'estradiol', unit: 'pg/mL' },
-    { label: 'SHBG', key: 'shbg', unit: 'nmol/L' },
-    { label: 'TSH', key: 'tsh', unit: 'mIU/L' },
-    { label: 'Free T4', key: 'freeT4', unit: 'ng/dL' },
-    { label: 'Free T3', key: 'freeT3', unit: 'pg/mL' },
-    { label: 'hs-CRP', key: 'hsCRP', unit: 'mg/L' },
-    { label: 'Hemoglobin', key: 'hemoglobin', unit: 'g/dL' },
-    { label: 'Hematocrit', key: 'hematocrit', unit: '%' },
-    { label: 'Vitamin D', key: 'vitaminD', unit: 'ng/mL' },
-    { label: 'Ferritin', key: 'ferritin', unit: 'ng/mL' },
-    { label: 'Vitamin B12', key: 'vitaminB12', unit: 'pg/mL' },
-    { label: 'PSA', key: 'psa', unit: 'ng/mL' },
-    { label: 'AST', key: 'ast', unit: 'U/L' },
-    { label: 'ALT', key: 'alt', unit: 'U/L' },
-    { label: 'eGFR', key: 'egfr', unit: 'mL/min' },
-    { label: 'BUN', key: 'bun', unit: 'mg/dL' },
-    { label: 'Creatinine', key: 'creatinine', unit: 'mg/dL' },
-  ];
-
-  const filledMarkers = markerOrder.filter(m => vals?.[m.key] != null && vals[m.key] !== '');
-
-  const interpMap = new Map<string, any>();
-  if (interp?.interpretations) {
-    for (const item of interp.interpretations) {
-      const key = (item as any).marker?.toLowerCase().replace(/[\s-]/g, '') ||
-                  item.category?.toLowerCase().replace(/[\s-]/g, '');
-      if (key) interpMap.set(key, item);
+  const priorityBadge = (p: string) => {
+    switch (p) {
+      case 'high': return 'bg-red-100 text-red-700 dark:bg-red-900 dark:text-red-200';
+      case 'medium': return 'bg-amber-100 text-amber-700 dark:bg-amber-900 dark:text-amber-200';
+      default: return 'bg-muted text-muted-foreground';
     }
-  }
-
-  function getStatus(markerKey: string): string | null {
-    const normalizedKey = markerKey.toLowerCase();
-    const entries = Array.from(interpMap.entries());
-    for (const [k, v] of entries) {
-      if (k.includes(normalizedKey) || normalizedKey.includes(k)) {
-        return v.status;
-      }
-    }
-    return null;
-  }
-
-  function statusColor(status: string | null) {
-    switch (status) {
-      case 'critical': return 'text-red-600 dark:text-red-400 bg-red-50 dark:bg-red-950/30';
-      case 'abnormal': return 'text-orange-600 dark:text-orange-400 bg-orange-50 dark:bg-orange-950/30';
-      case 'borderline': return 'text-amber-600 dark:text-amber-400 bg-amber-50 dark:bg-amber-950/30';
-      case 'normal': return 'text-green-600 dark:text-green-400 bg-green-50 dark:bg-green-950/30';
-      default: return '';
-    }
-  }
+  };
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-testid="lab-detail-modal">
-      <Card className="w-full max-w-2xl max-h-[85vh] overflow-y-auto m-4">
-        <CardHeader className="pb-3 sticky top-0 bg-card z-10 border-b">
-          <div className="flex items-center justify-between gap-2 flex-wrap">
-            <CardTitle className="text-lg">
-              Lab Results - {new Date(lab.labDate).toLocaleDateString('en-US', {
-                month: 'long', day: 'numeric', year: 'numeric'
-              })}
-            </CardTitle>
-            <div className="flex items-center gap-2 flex-wrap">
-              {interp && (
-                <>
-                  <Button
-                    variant="default"
-                    size="sm"
-                    onClick={handlePatientReport}
-                    disabled={wellnessPlanMutation.isPending}
-                    data-testid="button-patient-report-modal"
-                  >
-                    <Heart className="w-4 h-4 mr-1" />
-                    {wellnessPlanMutation.isPending ? 'Generating...' : 'Patient Report'}
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={handleProviderPDF}
-                    data-testid="button-provider-pdf-modal"
-                  >
-                    <Download className="w-4 h-4 mr-1" />
-                    Provider PDF
-                  </Button>
-                </>
-              )}
-              <Button
-                variant="outline"
-                size="sm"
-                onClick={onDelete}
-                className="text-muted-foreground"
-                data-testid="button-delete-lab-modal"
-              >
-                <Trash2 className="w-4 h-4 mr-1" />
-                Delete
-              </Button>
-              <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">
-                Close
-              </Button>
-            </div>
+      <div className="w-full max-w-5xl max-h-[92vh] flex flex-col m-4 rounded-lg border bg-card shadow-xl overflow-hidden">
+        {/* Sticky header */}
+        <div className="flex-shrink-0 px-5 py-3 border-b bg-card flex items-start justify-between gap-3 flex-wrap">
+          <div>
+            <h2 className="text-base font-semibold">
+              Full Evaluation — {new Date(lab.labDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+            </h2>
+            <p className="text-xs text-muted-foreground mt-0.5">{patientName} · {isFemale ? "Women's Clinic" : "Men's Clinic"}</p>
           </div>
-        </CardHeader>
-        <CardContent className="space-y-4 pt-4">
-          {interp?.redFlags && interp.redFlags.length > 0 && (
-            <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3">
-              <p className="text-sm font-semibold text-red-700 dark:text-red-400 mb-1 flex items-center gap-1">
-                <AlertTriangle className="h-4 w-4" /> Red Flags
-              </p>
-              {interp.redFlags.map((rf: any, i: number) => (
-                <p key={i} className="text-sm text-red-600 dark:text-red-300">
-                  {rf.marker}: {rf.message}
-                </p>
-              ))}
-            </div>
-          )}
-
-          <div className="grid grid-cols-2 gap-2">
-            {filledMarkers.map(m => {
-              const status = getStatus(m.key);
-              return (
-                <div
-                  key={m.key}
-                  className={`flex items-center justify-between p-2 rounded-md border text-sm ${statusColor(status)}`}
+          <div className="flex items-center gap-2 flex-wrap">
+            {interp && (
+              <>
+                <Button
+                  variant="default"
+                  size="sm"
+                  onClick={() => wellnessPlanMutation.mutate()}
+                  disabled={wellnessPlanMutation.isPending}
+                  data-testid="button-patient-report-modal"
                 >
-                  <span className="font-medium">{m.label}</span>
-                  <span className="font-mono">{vals[m.key]} {m.unit}</span>
-                </div>
-              );
-            })}
+                  <Heart className="w-3.5 h-3.5 mr-1" />
+                  {wellnessPlanMutation.isPending ? 'Generating...' : 'Patient Report'}
+                </Button>
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={handleProviderPDF}
+                  data-testid="button-provider-pdf-modal"
+                >
+                  <Download className="w-3.5 h-3.5 mr-1" />
+                  Provider PDF
+                </Button>
+              </>
+            )}
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={onDelete}
+              className="text-muted-foreground"
+              data-testid="button-delete-lab-modal"
+            >
+              <Trash2 className="w-3.5 h-3.5 mr-1" />
+              Delete
+            </Button>
+            <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">
+              Close
+            </Button>
           </div>
+        </div>
 
-          {interp?.aiRecommendations && (
-            <div className="rounded-md border p-3 space-y-1">
-              <p className="text-sm font-semibold flex items-center gap-1">
-                <Heart className="h-4 w-4 text-primary dark:text-primary" /> AI Recommendations
-              </p>
-              <p className="text-sm text-muted-foreground whitespace-pre-wrap">{interp.aiRecommendations}</p>
+        {/* Scrollable content */}
+        <div className="flex-1 overflow-y-auto">
+          {!interp ? (
+            <div className="flex items-center justify-center h-40 text-sm text-muted-foreground">
+              No interpretation data saved for this lab result.
+            </div>
+          ) : (
+            <div className="p-5 space-y-6">
+              {/* Red Flags */}
+              {interp.redFlags && interp.redFlags.length > 0 && (
+                <RedFlagAlert redFlags={interp.redFlags} />
+              )}
+
+              {/* Full Lab Results + PREVENT CVD Risk + Insulin Resistance */}
+              <ResultsDisplay
+                interpretations={interp.interpretations || []}
+                aiRecommendations={interp.aiRecommendations || ''}
+                recheckWindow={interp.recheckWindow || ''}
+                redFlags={interp.redFlags || []}
+                ascvdAssessment={interp.ascvdRisk || null}
+                preventAssessment={interp.preventRisk}
+                adjustedRiskAssessment={interp.adjustedRisk}
+                insulinResistance={interp.insulinResistance}
+              />
+
+              {/* Clinical Phenotypes (female hormone patterns) */}
+              {interp.clinicalPhenotypes && interp.clinicalPhenotypes.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-purple-600" />
+                      Clinical Phenotype Assessment
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {interp.clinicalPhenotypes.map((phenotype, index) => (
+                        <div
+                          key={index}
+                          className={`p-3 rounded-md border ${
+                            phenotype.confidence === 'high'
+                              ? 'border-purple-300 bg-purple-50/50 dark:bg-purple-950/20'
+                              : phenotype.confidence === 'moderate'
+                              ? 'border-indigo-200 bg-indigo-50/50 dark:bg-indigo-950/20'
+                              : 'border-muted bg-muted/30'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <span className="text-sm font-semibold">{phenotype.name}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              phenotype.confidence === 'high'
+                                ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200'
+                                : phenotype.confidence === 'moderate'
+                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200'
+                                : 'bg-muted text-muted-foreground'
+                            }`}>{phenotype.confidence} confidence</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-1.5">{phenotype.description}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {phenotype.supportingFindings.map((f, fi) => (
+                              <span key={fi} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{f}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Supplement Protocol (read-only historical view) */}
+              {interp.supplements && interp.supplements.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <ClipboardList className="w-4 h-4 text-primary" />
+                      Supplement Protocol ({interp.supplements.length} recommended)
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-2">
+                      {interp.supplements.map((supp, idx) => (
+                        <div key={idx} className={`p-3 rounded-md border ${priorityColor(supp.priority)}`}>
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                                <span className="text-sm font-semibold">{supp.name}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(supp.priority)}`}>
+                                  {supp.priority} priority
+                                </span>
+                              </div>
+                              <p className="text-xs text-muted-foreground font-mono">{supp.dose}</p>
+                              <p className="text-xs text-muted-foreground mt-0.5">{supp.indication}</p>
+                              {supp.rationale && (
+                                <p className="text-xs text-muted-foreground mt-0.5 italic">{supp.rationale}</p>
+                              )}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
+              {/* Patient Summary */}
+              {interp.patientSummary && (
+                <PatientSummary summary={interp.patientSummary} labValues={vals} />
+              )}
+
+              {/* SOAP Note */}
+              {interp.soapNote && (
+                <SOAPNote soapNote={interp.soapNote} />
+              )}
             </div>
           )}
-        </CardContent>
-      </Card>
+        </div>
+      </div>
     </div>
   );
 }
