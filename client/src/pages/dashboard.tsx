@@ -65,12 +65,12 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       {/* Top nav */}
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
+        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <img
               src="/realign-health-logo.png"
               alt="ReAlign Health"
-              className="h-10 w-auto"
+              className="h-14 w-auto"
               style={{ mixBlendMode: "multiply" }}
             />
             <div className="h-5 w-px" style={{ backgroundColor: "#c4b9a5" }} />

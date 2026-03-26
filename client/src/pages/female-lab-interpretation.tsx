@@ -19,6 +19,7 @@ import { femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Link } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { FemaleLabValues, InterpretationResult, LabValues, Patient, LabResult } from "@shared/schema";
@@ -34,6 +35,7 @@ export default function FemaleLabInterpretation() {
   const [customSupplements, setCustomSupplements] = useState<CustomSupplement[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+  const { user } = useAuth();
 
   const { data: patientLabs } = useQuery<LabResult[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
@@ -195,7 +197,7 @@ export default function FemaleLabInterpretation() {
           })),
           ...customSupplements.map(c => ({ name: c.name, dose: c.dose, indication: c.indication })),
         ];
-        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements);
+        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",
@@ -230,7 +232,7 @@ export default function FemaleLabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, "Women's Hormone & Primary Care Clinic", patientLabs);
+      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName || "Women's Hormone & Primary Care Clinic", patientLabs);
     }
   };
 
@@ -318,10 +320,10 @@ export default function FemaleLabInterpretation() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="border-b sticky top-0 z-10" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center">
+        <div className="max-w-7xl mx-auto px-4 h-16 flex items-center">
           <div className="flex items-center justify-between w-full gap-4">
             <div className="flex items-center gap-4">
-              <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-9 w-auto" style={{ mixBlendMode: "multiply" }} />
+              <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-14 w-auto" style={{ mixBlendMode: "multiply" }} />
               <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
               <div>
                 <h1 className="text-sm font-semibold leading-tight" style={{ color: "#1c2414" }}>Women's Lab Interpretation</h1>

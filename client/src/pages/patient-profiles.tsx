@@ -1,5 +1,6 @@
 import { useState, useMemo } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -217,6 +218,7 @@ function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId }: { labs: La
 
 function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: LabResult; onClose: () => void; patient: Patient; allLabs: LabResult[]; onDelete: () => void }) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const interp = lab.interpretationResult as InterpretationResult | null;
   const vals = lab.labValues as any;
   const patientName = `${patient.firstName} ${patient.lastName}`.trim();
@@ -245,9 +247,9 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       if (interp) {
         const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
         if (isFemale) {
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs);
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, undefined, user?.clinicName);
         } else {
-          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs);
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, undefined, user?.clinicName);
         }
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }
@@ -259,9 +261,8 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
 
   const handleProviderPDF = () => {
     if (interp) {
-      const clinicName = isFemale ? "Women's Hormone & Primary Care Clinic" : undefined;
       const historyForPdf = allLabs.length >= 2 ? allLabs : undefined;
-      generateLabReportPDF(vals as LabValues, interp, patientName, clinicName, historyForPdf);
+      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf);
       toast({ title: "Provider Report Generated", description: "The provider report has been downloaded." });
     }
   };
@@ -603,7 +604,7 @@ export default function PatientProfiles() {
     <div className="flex flex-col h-screen bg-background overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="px-4 h-14 flex items-center gap-3">
+        <div className="px-4 h-16 flex items-center gap-3">
           <Link href="/dashboard">
             <Button variant="ghost" size="sm" data-testid="button-back-to-labs" style={{ color: "#2e3a20" }}>
               <ArrowLeft className="h-4 w-4 mr-1" />
@@ -614,7 +615,7 @@ export default function PatientProfiles() {
           <img
             src="/realign-health-logo.png"
             alt="ReAlign Health"
-            className="h-9 w-auto"
+            className="h-14 w-auto"
             style={{ mixBlendMode: "multiply" }}
           />
           <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
