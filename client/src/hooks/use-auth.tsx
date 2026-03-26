@@ -13,6 +13,13 @@ export interface AuthUser {
   npi?: string | null;
   phone?: string | null;
   address?: string | null;
+  role?: string | null;
+  // Staff-specific fields (present only when a staff member is logged in)
+  isStaff?: boolean;
+  staffId?: number;
+  staffFirstName?: string;
+  staffLastName?: string;
+  staffRole?: string;
 }
 
 export function useAuth() {

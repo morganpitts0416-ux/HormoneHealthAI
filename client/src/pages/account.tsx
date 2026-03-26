@@ -12,12 +12,27 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Separator } from "@/components/ui/separator";
+import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Save, CheckCircle, MessageSquare, Phone, BanIcon, Smartphone,
   Zap, Copy, Eye, EyeOff, Key, Globe, Info,
+  Users, UserPlus, Trash2, ShieldAlert, Mail,
 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
+
+interface StaffMember {
+  id: number;
+  clinicianId: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  role: string;
+  isActive: boolean;
+  inviteToken: null;
+  inviteExpires: null;
+  createdAt: string;
+}
 
 const profileSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
@@ -112,6 +127,63 @@ export default function Account() {
   const [messagingSaved, setMessagingSaved] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
+
+  const isStaff = !!(user as any)?.isStaff;
+
+  // Staff management (clinicians only)
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteFirstName, setInviteFirstName] = useState("");
+  const [inviteLastName, setInviteLastName] = useState("");
+  const [inviteRole, setInviteRole] = useState("staff");
+  const [showInviteForm, setShowInviteForm] = useState(false);
+
+  const { data: staffList = [], refetch: refetchStaff } = useQuery<StaffMember[]>({
+    queryKey: ["/api/staff"],
+    enabled: !isStaff,
+  });
+
+  const inviteStaffMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/staff", {
+        email: inviteEmail.trim(),
+        firstName: inviteFirstName.trim(),
+        lastName: inviteLastName.trim(),
+        role: inviteRole,
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to invite");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Invite sent", description: `${inviteFirstName} will receive an email with a link to set their password.` });
+      setInviteEmail("");
+      setInviteFirstName("");
+      setInviteLastName("");
+      setInviteRole("staff");
+      setShowInviteForm(false);
+      refetchStaff();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Invite failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const removeStaffMutation = useMutation({
+    mutationFn: async (staffId: number) => {
+      const res = await apiRequest("DELETE", `/api/staff/${staffId}`);
+      if (!res.ok) throw new Error("Failed to remove");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Staff member removed" });
+      refetchStaff();
+    },
+    onError: () => {
+      toast({ title: "Remove failed", variant: "destructive" });
+    },
+  });
 
   const [messagingPreference, setMessagingPreference] = useState<MessagingPreference>(
     ((user as any)?.messagingPreference as MessagingPreference) || 'none'
@@ -247,19 +319,49 @@ export default function Account() {
         {/* Profile hero */}
         <div className="flex items-center gap-4">
           <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-lg font-bold">
-            {user?.firstName?.[0]}{user?.lastName?.[0]}
+            {isStaff
+              ? `${(user as any)?.staffFirstName?.[0] ?? ""}${(user as any)?.staffLastName?.[0] ?? ""}`
+              : `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`}
           </div>
           <div>
-            <h1 className="text-xl font-semibold text-foreground">
-              {user?.title} {user?.firstName} {user?.lastName}
-            </h1>
-            <p className="text-muted-foreground text-sm">{user?.clinicName}</p>
-            <p className="text-muted-foreground/60 text-xs mt-0.5">@{user?.username}</p>
+            {isStaff ? (
+              <>
+                <h1 className="text-xl font-semibold text-foreground">
+                  {(user as any)?.staffFirstName} {(user as any)?.staffLastName}
+                </h1>
+                <p className="text-muted-foreground text-sm">{user?.clinicName}</p>
+                <p className="text-muted-foreground/60 text-xs mt-0.5">
+                  Staff · {(user as any)?.staffRole || "staff"} · logged into {user?.firstName} {user?.lastName}'s workspace
+                </p>
+              </>
+            ) : (
+              <>
+                <h1 className="text-xl font-semibold text-foreground">
+                  {user?.title} {user?.firstName} {user?.lastName}
+                </h1>
+                <p className="text-muted-foreground text-sm">{user?.clinicName}</p>
+                <p className="text-muted-foreground/60 text-xs mt-0.5">@{user?.username}</p>
+              </>
+            )}
           </div>
         </div>
 
-        {/* Profile form */}
-        <Card>
+        {/* Staff read-only notice */}
+        {isStaff && (
+          <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-4">
+            <ShieldAlert className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
+            <div className="space-y-1">
+              <p className="text-sm font-medium text-amber-900">Staff account</p>
+              <p className="text-sm text-amber-800">
+                You are logged in as a staff member. Clinic settings, messaging preferences, and account details are managed by {user?.firstName} {user?.lastName}.
+                You have full access to patient records, lab interpretations, and protocols.
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Profile form — clinicians only */}
+        {!isStaff && <Card>
           <CardHeader>
             <CardTitle className="text-base">Clinic & Provider Information</CardTitle>
             <CardDescription>
@@ -366,10 +468,10 @@ export default function Account() {
               </form>
             </Form>
           </CardContent>
-        </Card>
+        </Card>}
 
-        {/* Portal Messaging Preference */}
-        <Card>
+        {/* Portal Messaging Preference — clinicians only */}
+        {!isStaff && <Card>
           <CardHeader>
             <CardTitle className="text-base flex items-center gap-2">
               <MessageSquare className="w-4 h-4 text-muted-foreground" />
@@ -631,7 +733,141 @@ export default function Account() {
               </Button>
             </div>
           </CardContent>
-        </Card>
+        </Card>}
+
+        {/* Team Members — clinicians only */}
+        {!isStaff && (
+          <Card>
+            <CardHeader className="flex flex-row items-center justify-between gap-4 flex-wrap">
+              <div>
+                <CardTitle className="text-base flex items-center gap-2">
+                  <Users className="w-4 h-4 text-muted-foreground" />
+                  Team Members
+                </CardTitle>
+                <CardDescription>
+                  Invite nurses or assistants. Staff log in with their own credentials and share your workspace.
+                </CardDescription>
+              </div>
+              <Button
+                variant="outline"
+                size="default"
+                onClick={() => setShowInviteForm((v) => !v)}
+                data-testid="button-invite-staff"
+              >
+                <UserPlus className="w-4 h-4 mr-2" />
+                {showInviteForm ? "Cancel" : "Invite Staff"}
+              </Button>
+            </CardHeader>
+
+            <CardContent className="space-y-4">
+              {/* Invite form */}
+              {showInviteForm && (
+                <div className="rounded-md border bg-muted/40 p-4 space-y-3">
+                  <p className="text-sm font-medium text-foreground">Send an invite</p>
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">First Name</label>
+                      <Input
+                        placeholder="Jane"
+                        value={inviteFirstName}
+                        onChange={(e) => setInviteFirstName(e.target.value)}
+                        data-testid="input-staff-first-name"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Last Name</label>
+                      <Input
+                        placeholder="Smith"
+                        value={inviteLastName}
+                        onChange={(e) => setInviteLastName(e.target.value)}
+                        data-testid="input-staff-last-name"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Email</label>
+                      <Input
+                        type="email"
+                        placeholder="jane@clinic.com"
+                        value={inviteEmail}
+                        onChange={(e) => setInviteEmail(e.target.value)}
+                        data-testid="input-staff-email"
+                      />
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Role</label>
+                      <Select value={inviteRole} onValueChange={setInviteRole}>
+                        <SelectTrigger data-testid="select-staff-role">
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="nurse">Nurse</SelectItem>
+                          <SelectItem value="assistant">Medical Assistant</SelectItem>
+                          <SelectItem value="staff">Staff</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <Button
+                    onClick={() => inviteStaffMutation.mutate()}
+                    disabled={inviteStaffMutation.isPending || !inviteEmail || !inviteFirstName || !inviteLastName}
+                    data-testid="button-send-staff-invite"
+                  >
+                    <Mail className="w-4 h-4 mr-2" />
+                    {inviteStaffMutation.isPending ? "Sending…" : "Send Invite"}
+                  </Button>
+                </div>
+              )}
+
+              {/* Staff list */}
+              {staffList.length === 0 && !showInviteForm && (
+                <p className="text-sm text-muted-foreground py-2">
+                  No staff members yet. Invite a nurse or assistant to get started.
+                </p>
+              )}
+              {staffList.length > 0 && (
+                <div className="space-y-2">
+                  {staffList.map((member) => (
+                    <div
+                      key={member.id}
+                      className="flex items-center justify-between gap-3 rounded-md border px-4 py-3"
+                      data-testid={`row-staff-${member.id}`}
+                    >
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">
+                          {member.firstName[0]}{member.lastName[0]}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">
+                            {member.firstName} {member.lastName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">{member.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <Badge variant="secondary" className="capitalize text-xs">
+                          {member.role}
+                        </Badge>
+                        <Button
+                          variant="ghost"
+                          size="icon"
+                          onClick={() => {
+                            if (confirm(`Remove ${member.firstName} ${member.lastName} from your team?`)) {
+                              removeStaffMutation.mutate(member.id);
+                            }
+                          }}
+                          disabled={removeStaffMutation.isPending}
+                          data-testid={`button-remove-staff-${member.id}`}
+                        >
+                          <Trash2 className="w-4 h-4 text-muted-foreground" />
+                        </Button>
+                      </div>
+                    </div>
+                  ))}
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Billing placeholder */}
         <Card className="border-slate-200 border-dashed">

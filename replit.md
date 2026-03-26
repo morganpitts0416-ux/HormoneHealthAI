@@ -8,7 +8,17 @@ ClinIQ is a multi-tenant SaaS clinical lab interpretation platform for staff in 
 - **Authentication**: Session-based auth using express-session + passport-local + bcrypt; sessions stored in PostgreSQL via connect-pg-simple
 - **Enrollment**: 3-step registration wizard (personal info → clinic info → account credentials)
 - **Dashboard**: Clean home page with Male/Female eval actions, patient search, recent patients
-- **Account page**: Clinicians can update their clinic name, NPI, contact info, credentials
+- **Account page**: Clinicians can update their clinic name, NPI, contact info, credentials, and manage staff
+
+## Staff Access System
+- **Staff table**: `clinician_staff` — stores email, first/last name, role (nurse/assistant/staff), bcrypt password hash, invite token + expiry, isActive flag
+- **Staff auth flow**: Clinician invites staff from Account page → staff receives email with `/staff-set-password?token=...` link (72hr) → staff sets password → staff logs in at `/login` using email address
+- **Staff sessions**: Stored in `req.session.staffId` + `req.session.staffClinicianId`; `getClinicianId(req)` helper returns the owning clinician's ID for all data operations
+- **`requireAuth` middleware**: Accepts both clinician (passport) and staff (session.staffId) sessions
+- **`requireClinicianOnly` middleware**: Blocks staff from account settings, messaging settings, and admin routes
+- **Staff workspace access**: Full read/write to all patient records, lab interpretations, protocols, and messages in the clinician's workspace
+- **Account page**: When staff is logged in — shows staff identity in profile hero, amber "Staff account" notice, hides profile/messaging forms; Team Members section (invite/remove) visible only to clinicians
+- **Routes**: `GET/POST/DELETE /api/staff`, `POST /api/auth/staff-set-password`; staff management guarded by `requireClinicianOnly`
 
 ## Routing
 - `/` → Redirects to `/login` (unauthenticated) or `/dashboard` (authenticated)

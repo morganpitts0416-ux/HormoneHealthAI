@@ -21,13 +21,34 @@ import {
 } from "./external-messaging";
 import { storage } from "./storage";
 import { passport, hashPassword } from "./auth";
-import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail } from "./email-service";
+import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail } from "./email-service";
 import bcrypt from "bcrypt";
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
+
+// Returns the effective clinician ID — either the staff member's owning clinician
+// or the logged-in clinician's own ID.
+function getClinicianId(req: Request): number {
+  const sess = req.session as any;
+  if (sess.staffClinicianId) return sess.staffClinicianId as number;
+  return (req.user as any).id;
+}
+
+// Allows both clinicians (passport) and staff (session.staffId) through.
 function requireAuth(req: Request, res: Response, next: NextFunction) {
+  const sess = req.session as any;
+  if (sess.staffId && sess.staffClinicianId) return next();
   if (req.isAuthenticated()) return next();
   res.status(401).json({ message: "Authentication required" });
+}
+
+// Blocks staff from reaching clinician-only endpoints (account settings, admin).
+function requireClinicianOnly(req: Request, res: Response, next: NextFunction) {
+  const sess = req.session as any;
+  if (sess.staffId) {
+    return res.status(403).json({ message: "Staff members cannot modify clinic account settings." });
+  }
+  return requireAuth(req, res, next);
 }
 
 export async function registerRoutes(app: Express): Promise<Server> {
@@ -76,29 +97,95 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Login
+  // Login — checks clinician accounts first (via passport), then staff accounts
   app.post("/api/auth/login", (req, res, next) => {
-    passport.authenticate("local", (err: any, user: any, info: any) => {
+    passport.authenticate("local", async (err: any, user: any, info: any) => {
       if (err) return next(err);
-      if (!user) return res.status(401).json({ message: info?.message || "Invalid credentials" });
-      req.login(user, (loginErr) => {
-        if (loginErr) return next(loginErr);
-        const { passwordHash: _ph, ...safeUser } = user;
-        res.json(safeUser);
-      });
+
+      if (user) {
+        // Clinician login succeeded
+        return req.login(user, (loginErr) => {
+          if (loginErr) return next(loginErr);
+          const { passwordHash: _ph, externalMessagingApiKey, ...safeUser } = user;
+          res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey) });
+        });
+      }
+
+      // Try staff login (email-only, no username)
+      try {
+        const { username: emailOrUsername, password } = req.body;
+        const staff = await storage.getClinicianStaffByEmail(emailOrUsername?.trim?.() || '');
+        if (staff && staff.isActive && staff.passwordHash) {
+          const valid = await bcrypt.compare(password, staff.passwordHash);
+          if (valid) {
+            const sess = req.session as any;
+            sess.staffId = staff.id;
+            sess.staffClinicianId = staff.clinicianId;
+            return req.session.save((saveErr) => {
+              if (saveErr) return next(saveErr);
+              const { passwordHash: _ph, inviteToken: _it, ...safeStaff } = staff;
+              return res.json({ ...safeStaff, isStaff: true });
+            });
+          }
+        }
+      } catch (staffErr) {
+        console.error('[AUTH] Error checking staff login:', staffErr);
+      }
+
+      return res.status(401).json({ message: info?.message || "Invalid credentials" });
     })(req, res, next);
   });
 
-  // Logout
+  // Logout — handles both clinician (passport) and staff (session) logout
   app.post("/api/auth/logout", (req, res) => {
+    const sess = req.session as any;
+    if (sess.staffId) {
+      delete sess.staffId;
+      delete sess.staffClinicianId;
+      return req.session.save((err) => {
+        if (err) return res.status(500).json({ message: "Logout failed" });
+        res.json({ success: true });
+      });
+    }
     req.logout((err) => {
       if (err) return res.status(500).json({ message: "Logout failed" });
       res.json({ success: true });
     });
   });
 
-  // Current user
-  app.get("/api/auth/me", (req, res) => {
+  // Current user — returns clinician info for both clinician and staff sessions.
+  // When staff is logged in, augments with isStaff/staffId/staffFirstName/staffLastName/staffRole.
+  app.get("/api/auth/me", async (req, res) => {
+    const sess = req.session as any;
+
+    // Staff session
+    if (sess.staffId && sess.staffClinicianId) {
+      try {
+        const [clinician, staff] = await Promise.all([
+          storage.getUserById(sess.staffClinicianId),
+          storage.getClinicianStaffById(sess.staffId),
+        ]);
+        if (!clinician || !staff || !staff.isActive) {
+          delete sess.staffId;
+          delete sess.staffClinicianId;
+          return res.status(401).json({ message: "Not authenticated" });
+        }
+        const { passwordHash: _ph, externalMessagingApiKey, ...safeClinician } = clinician as any;
+        return res.json({
+          ...safeClinician,
+          externalMessagingApiKeySet: !!(externalMessagingApiKey),
+          isStaff: true,
+          staffId: staff.id,
+          staffFirstName: staff.firstName,
+          staffLastName: staff.lastName,
+          staffRole: staff.role,
+        });
+      } catch {
+        return res.status(500).json({ message: "Error fetching session" });
+      }
+    }
+
+    // Clinician session
     if (!req.isAuthenticated() || !req.user) {
       return res.status(401).json({ message: "Not authenticated" });
     }
@@ -106,8 +193,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey) });
   });
 
-  // Update profile
-  app.patch("/api/auth/profile", requireAuth, async (req, res) => {
+  // Update profile (clinicians only — staff cannot change clinic settings)
+  app.patch("/api/auth/profile", requireClinicianOnly, async (req, res) => {
     try {
       const userId = (req.user as any).id;
       const {
@@ -949,8 +1036,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/patients", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
-      const parseResult = insertPatientSchema.safeParse({ ...req.body, userId });
+      const clinicianId = getClinicianId(req);
+      const parseResult = insertPatientSchema.safeParse({ ...req.body, userId: clinicianId });
       if (!parseResult.success) {
         return res.status(400).json({ error: "Invalid patient data", details: parseResult.error.errors });
       }
@@ -964,14 +1051,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/patients/search", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const q = (req.query.q as string) || '';
       const gender = req.query.gender as string | undefined;
       if (!q || q.length < 1) {
-        const allPatients = await storage.getAllPatients(userId);
+        const allPatients = await storage.getAllPatients(clinicianId);
         return res.json(allPatients);
       }
-      const patients = await storage.searchPatients(q, userId, gender);
+      const patients = await storage.searchPatients(q, clinicianId, gender);
       res.json(patients);
     } catch (error) {
       console.error("Error searching patients:", error);
@@ -981,9 +1068,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/patients/:id", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const id = parseInt(req.params.id);
-      const patient = await storage.getPatient(id, userId);
+      const patient = await storage.getPatient(id, clinicianId);
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
@@ -997,9 +1084,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.get("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const id = parseInt(req.params.id);
-      const patient = await storage.getPatient(id, userId);
+      const patient = await storage.getPatient(id, clinicianId);
       if (!patient) return res.status(404).json({ error: "Patient not found" });
       const labs = await storage.getLabResultsByPatient(id);
       res.json(labs);
@@ -1011,9 +1098,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/patients/:id/trend-narrative", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const id = parseInt(req.params.id);
-      const patient = await storage.getPatient(id, userId);
+      const patient = await storage.getPatient(id, clinicianId);
       if (!patient) return res.status(404).json({ error: "Patient not found" });
 
       const { trendData, gender } = req.body;
@@ -1035,9 +1122,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
   app.post("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const patientId = parseInt(req.params.id);
-      const patient = await storage.getPatient(patientId, userId);
+      const patient = await storage.getPatient(patientId, clinicianId);
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
@@ -1080,9 +1167,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get all saved interpretations (with optional gender filter)
   app.get("/api/saved-interpretations", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const gender = req.query.gender as string | undefined;
-      const interpretations = await storage.getAllSavedInterpretations(userId, gender);
+      const interpretations = await storage.getAllSavedInterpretations(clinicianId, gender);
       res.json(interpretations);
     } catch (error) {
       console.error('[API] Error fetching saved interpretations:', error);
@@ -1093,13 +1180,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Search saved interpretations by patient name
   app.get("/api/saved-interpretations/search", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const searchTerm = req.query.q as string;
       const gender = req.query.gender as string | undefined;
       if (!searchTerm) {
         return res.status(400).json({ error: 'Search term (q) is required' });
       }
-      const interpretations = await storage.searchSavedInterpretations(searchTerm, userId, gender);
+      const interpretations = await storage.searchSavedInterpretations(searchTerm, clinicianId, gender);
       res.json(interpretations);
     } catch (error) {
       console.error('[API] Error searching saved interpretations:', error);
@@ -1110,10 +1197,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Get a single saved interpretation by ID
   app.get("/api/saved-interpretations/:id", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid interpretation ID' });
-      const interpretation = await storage.getSavedInterpretation(id, userId);
+      const interpretation = await storage.getSavedInterpretation(id, clinicianId);
       if (!interpretation) return res.status(404).json({ error: 'Interpretation not found' });
       res.json(interpretation);
     } catch (error) {
@@ -1125,7 +1212,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Save a new interpretation
   app.post("/api/saved-interpretations", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const { patientName, gender, labValues, interpretation, labDate } = req.body;
       if (!patientName || !gender || !labValues || !interpretation) {
         return res.status(400).json({ 
@@ -1133,7 +1220,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
       }
       const saved = await storage.createSavedInterpretation({
-        userId,
+        userId: clinicianId,
         patientName,
         gender,
         labValues,
@@ -1147,10 +1234,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const firstName = nameParts[0] || patientName.trim();
         const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
         if (firstName) {
-          let patient = await storage.getPatientByName(firstName, lastName, userId);
+          let patient = await storage.getPatientByName(firstName, lastName, clinicianId);
           if (!patient) {
             patient = await storage.createPatient({
-              userId,
+              userId: clinicianId,
               firstName,
               lastName,
               gender: gender as 'male' | 'female',
@@ -1176,10 +1263,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Delete a saved interpretation
   app.delete("/api/saved-interpretations/:id", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid interpretation ID' });
-      const deleted = await storage.deleteSavedInterpretation(id, userId);
+      const deleted = await storage.deleteSavedInterpretation(id, clinicianId);
       if (!deleted) return res.status(404).json({ error: 'Interpretation not found' });
       res.json({ success: true, message: 'Interpretation deleted' });
     } catch (error) {
@@ -1198,7 +1285,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   }
 
   // Bootstrap: promote logged-in user to admin (one-time, requires env token)
-  app.post("/api/admin/bootstrap", requireAuth, async (req, res) => {
+  app.post("/api/admin/bootstrap", requireClinicianOnly, async (req, res) => {
     const token = req.body?.token;
     const envToken = process.env.ADMIN_BOOTSTRAP_TOKEN;
     if (!envToken) return res.status(503).json({ message: "Bootstrap not configured" });
@@ -1345,7 +1432,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/portal/invite/:patientId", requireAuth, async (req, res) => {
     try {
       const patientId = parseInt(req.params.patientId);
-      const clinicianId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const clinicianUser = await storage.getUserById(clinicianId);
       const { email } = req.body;
       if (!email) return res.status(400).json({ message: "Patient email is required" });
@@ -1516,7 +1603,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Clinician: Publish protocol to patient portal ─────────────────────────
   app.post("/api/protocols/publish", requireAuth, async (req, res) => {
     try {
-      const clinicianId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const { patientId, labResultId, supplements, clinicianNotes, labDate } = req.body;
       if (!patientId || !supplements) return res.status(400).json({ message: "patientId and supplements are required" });
 
@@ -1560,7 +1647,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // ── Portal: Check portal account status for a patient ─────────────────────
   app.get("/api/portal/status/:patientId", requireAuth, async (req, res) => {
     try {
-      const clinicianId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const patientId = parseInt(req.params.patientId);
       const patient = await storage.getPatient(patientId, clinicianId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
@@ -1663,7 +1750,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/patients/:id/messages — clinician fetches message thread
   app.get("/api/patients/:id/messages", requireAuth, async (req, res) => {
     try {
-      const clinicianId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const patientId = parseInt(req.params.id);
       const patient = await storage.getPatient(patientId, clinicianId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
@@ -1679,7 +1766,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // POST /api/patients/:id/messages — clinician replies to patient
   app.post("/api/patients/:id/messages", requireAuth, async (req, res) => {
     try {
-      const clinicianId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const patientId = parseInt(req.params.id);
       const patient = await storage.getPatient(patientId, clinicianId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
@@ -1727,7 +1814,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // GET /api/patients/:id/messages/unread — clinician gets unread count
   app.get("/api/patients/:id/messages/unread", requireAuth, async (req, res) => {
     try {
-      const clinicianId = (req.user as any).id;
+      const clinicianId = getClinicianId(req);
       const patientId = parseInt(req.params.id);
       const patient = await storage.getPatient(patientId, clinicianId);
       if (!patient) return res.status(404).json({ count: 0 });
@@ -1838,8 +1925,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // (separate from /api/auth/me to avoid sending sensitive data on every page load)
   app.get("/api/auth/messaging-settings", requireAuth, async (req, res) => {
     try {
-      const userId = (req.user as any).id;
-      const user = await storage.getUserById(userId);
+      const clinicianId = getClinicianId(req);
+      const user = await storage.getUserById(clinicianId);
       if (!user) return res.status(404).json({ message: "User not found" });
       res.json({
         messagingPreference: user.messagingPreference,
@@ -1848,10 +1935,128 @@ export async function registerRoutes(app: Express): Promise<Server> {
         externalMessagingApiKeySet: !!(user.externalMessagingApiKey),
         externalMessagingChannelId: user.externalMessagingChannelId,
         externalMessagingWebhookSecret: user.externalMessagingWebhookSecret,
-        webhookUrl: `${req.protocol}://${req.get('host')}/api/webhooks/messaging/${userId}`,
+        webhookUrl: `${req.protocol}://${req.get('host')}/api/webhooks/messaging/${clinicianId}`,
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch messaging settings" });
+    }
+  });
+
+  // ── Staff Management Routes ────────────────────────────────────────────────
+
+  // GET /api/staff — list all staff members for this clinician
+  app.get("/api/staff", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const staff = await storage.getAllStaffForClinician(clinicianId);
+      const safeStaff = staff.map(({ passwordHash: _ph, inviteToken: _it, ...s }) => s);
+      res.json(safeStaff);
+    } catch (error) {
+      console.error('[API] Error fetching staff:', error);
+      res.status(500).json({ message: "Failed to fetch staff" });
+    }
+  });
+
+  // POST /api/staff — invite a new staff member
+  app.post("/api/staff", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const { email, firstName, lastName, role } = req.body;
+      if (!email || !firstName || !lastName) {
+        return res.status(400).json({ message: "email, firstName, and lastName are required" });
+      }
+
+      // Check if email already in use
+      const existing = await storage.getClinicianStaffByEmail(email.trim().toLowerCase());
+      if (existing) {
+        return res.status(409).json({ message: "A staff member with this email already exists" });
+      }
+
+      const inviteToken = crypto.randomBytes(32).toString('hex');
+      const inviteExpires = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+
+      const staffMember = await storage.createClinicianStaff({
+        clinicianId,
+        email: email.trim().toLowerCase(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        role: role || 'staff',
+        inviteToken,
+        inviteExpires,
+        isActive: true,
+      });
+
+      // Send invite email (fire-and-forget)
+      const clinician = await storage.getUserById(clinicianId);
+      sendStaffInviteEmail({
+        to: staffMember.email,
+        firstName: staffMember.firstName,
+        clinicianName: clinician ? `${clinician.firstName} ${clinician.lastName}` : 'Your clinician',
+        clinicName: clinician?.clinicName || 'the clinic',
+        inviteToken,
+      }).catch(err => console.error('[EMAIL] Staff invite email failed:', err));
+
+      const { passwordHash: _ph, inviteToken: _it, ...safeStaff } = staffMember;
+      res.status(201).json(safeStaff);
+    } catch (error) {
+      console.error('[API] Error inviting staff:', error);
+      res.status(500).json({ message: "Failed to invite staff member" });
+    }
+  });
+
+  // DELETE /api/staff/:id — remove a staff member
+  app.delete("/api/staff/:id", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const staffId = parseInt(req.params.id);
+      if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+
+      // Verify the staff member belongs to this clinician
+      const staffMember = await storage.getClinicianStaffById(staffId);
+      if (!staffMember || staffMember.clinicianId !== clinicianId) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+
+      const deleted = await storage.deleteClinicianStaff(staffId);
+      if (!deleted) return res.status(404).json({ message: "Staff member not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error('[API] Error deleting staff:', error);
+      res.status(500).json({ message: "Failed to remove staff member" });
+    }
+  });
+
+  // POST /api/auth/staff-set-password — staff member accepts invite and sets password
+  app.post("/api/auth/staff-set-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) {
+        return res.status(400).json({ message: "Token and password are required" });
+      }
+      if (password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      }
+
+      const staffMember = await storage.getClinicianStaffByInviteToken(token);
+      if (!staffMember) {
+        return res.status(400).json({ message: "Invalid or expired invite link" });
+      }
+      if (staffMember.inviteExpires && staffMember.inviteExpires < new Date()) {
+        return res.status(400).json({ message: "Invite link has expired. Please ask your clinician to resend the invite." });
+      }
+
+      const passwordHash = await hashPassword(password);
+      await storage.updateClinicianStaff(staffMember.id, {
+        passwordHash,
+        inviteToken: null,
+        inviteExpires: null,
+        isActive: true,
+      });
+
+      res.json({ message: "Password set successfully. You can now log in." });
+    } catch (error) {
+      console.error('[API] Error setting staff password:', error);
+      res.status(500).json({ message: "Failed to set password" });
     }
   });
 
