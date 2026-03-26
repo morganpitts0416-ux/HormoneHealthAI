@@ -72,32 +72,35 @@ export default function Account() {
   };
 
   return (
-    <div className="min-h-screen bg-slate-50">
+    <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-white border-b border-slate-200 sticky top-0 z-50">
-        <div className="max-w-3xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
+      <header className="bg-[#2e3a20] sticky top-0 z-50">
+        <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Button
               variant="ghost"
               size="icon"
               onClick={() => setLocation("/dashboard")}
               data-testid="button-back"
+              className="text-white/70 hover:text-white hover:bg-white/10"
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
-            <div className="flex items-center gap-2">
-              <div className="w-8 h-8 rounded-full bg-blue-600 flex items-center justify-center">
-                <Activity className="w-4 h-4 text-white" />
-              </div>
-              <span className="font-semibold text-slate-900">Account Settings</span>
-            </div>
+            <img
+              src="/realign-health-logo.png"
+              alt="ReAlign Health"
+              className="h-7 w-auto"
+              style={{ mixBlendMode: "screen" }}
+            />
+            <div className="h-4 w-px bg-white/20" />
+            <span className="font-medium text-white/80 text-sm">Account Settings</span>
           </div>
           <Button
             variant="ghost"
             size="default"
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
-            className="text-slate-500"
+            className="text-white/70 hover:text-white hover:bg-white/10"
             data-testid="button-logout"
           >
             Sign Out
@@ -108,20 +111,20 @@ export default function Account() {
       <main className="max-w-3xl mx-auto px-6 py-8 space-y-6">
         {/* Profile hero */}
         <div className="flex items-center gap-4">
-          <div className="w-16 h-16 rounded-full bg-blue-600 flex items-center justify-center text-white text-xl font-bold shadow-sm">
+          <div className="w-14 h-14 rounded-full bg-primary flex items-center justify-center text-primary-foreground text-lg font-bold">
             {user?.firstName?.[0]}{user?.lastName?.[0]}
           </div>
           <div>
-            <h1 className="text-xl font-bold text-slate-900">
+            <h1 className="text-xl font-semibold text-foreground">
               {user?.title} {user?.firstName} {user?.lastName}
             </h1>
-            <p className="text-slate-500 text-sm">{user?.clinicName}</p>
-            <p className="text-slate-400 text-xs mt-0.5">@{user?.username}</p>
+            <p className="text-muted-foreground text-sm">{user?.clinicName}</p>
+            <p className="text-muted-foreground/60 text-xs mt-0.5">@{user?.username}</p>
           </div>
         </div>
 
         {/* Profile form */}
-        <Card className="border-slate-200">
+        <Card>
           <CardHeader>
             <CardTitle className="text-base">Clinic & Provider Information</CardTitle>
             <CardDescription>
@@ -274,7 +277,6 @@ export default function Account() {
                   <Button
                     data-testid="button-save"
                     type="submit"
-                    className="bg-blue-600 hover:bg-blue-700"
                     disabled={updateMutation.isPending}
                   >
                     <Save className="w-4 h-4 mr-2" />

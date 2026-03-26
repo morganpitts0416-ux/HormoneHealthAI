@@ -6,9 +6,9 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
-import { Activity, Lock, User } from "lucide-react";
+import { Lock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 
 const loginSchema = z.object({
@@ -44,101 +44,126 @@ export default function Login() {
   };
 
   return (
-    <div className="min-h-screen bg-gradient-to-br from-blue-50 via-white to-slate-50 flex items-center justify-center p-4">
-      <div className="w-full max-w-md">
-        {/* Header */}
-        <div className="text-center mb-8">
-          <div className="flex justify-center mb-4">
-            <div className="w-14 h-14 rounded-full bg-blue-600 flex items-center justify-center shadow-md">
-              <Activity className="w-7 h-7 text-white" />
+    <div className="min-h-screen flex">
+      {/* Left brand panel */}
+      <div className="hidden md:flex md:w-[45%] flex-col items-center justify-center bg-[#2e3a20] p-12 relative overflow-hidden">
+        <div className="absolute inset-0 opacity-10"
+          style={{
+            backgroundImage: "radial-gradient(circle at 20% 80%, #c8b89a 0%, transparent 50%), radial-gradient(circle at 80% 20%, #8a9e6a 0%, transparent 50%)"
+          }}
+        />
+        <div className="relative z-10 flex flex-col items-center text-center space-y-6 max-w-xs">
+          <img
+            src="/realign-health-logo.png"
+            alt="ReAlign Health"
+            className="w-64 h-auto"
+            style={{ mixBlendMode: "screen" }}
+          />
+          <p className="text-[#c8b89a] text-base font-light leading-relaxed">
+            Clinical-grade lab interpretation for hormone and primary care providers
+          </p>
+          <div className="w-12 h-px bg-[#c8b89a] opacity-40" />
+          <p className="text-[#8a9e6a] text-sm">
+            Secure · Evidence-based · Provider-first
+          </p>
+        </div>
+      </div>
+
+      {/* Right form panel */}
+      <div className="flex-1 flex items-center justify-center p-6 bg-background">
+        <div className="w-full max-w-sm">
+          {/* Mobile logo */}
+          <div className="md:hidden flex justify-center mb-8">
+            <div className="bg-[#2e3a20] rounded-lg px-6 py-3">
+              <img
+                src="/realign-health-logo.png"
+                alt="ReAlign Health"
+                className="h-10 w-auto"
+                style={{ mixBlendMode: "screen" }}
+              />
             </div>
           </div>
-          <h1 className="text-2xl font-bold text-slate-900">ClinIQ Lab Interpretation</h1>
-          <p className="text-slate-500 text-sm mt-1">Clinical-grade lab analysis for providers</p>
+
+          <div className="mb-8">
+            <h1 className="text-2xl font-semibold text-foreground">Sign in</h1>
+            <p className="text-muted-foreground text-sm mt-1">Access your clinic workspace</p>
+          </div>
+
+          <Form {...form}>
+            <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
+              <FormField
+                control={form.control}
+                name="username"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Username</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          data-testid="input-username"
+                          placeholder="your.username"
+                          className="pl-9"
+                          autoComplete="username"
+                          {...field}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <FormField
+                control={form.control}
+                name="password"
+                render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Password</FormLabel>
+                    <FormControl>
+                      <div className="relative">
+                        <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
+                        <Input
+                          data-testid="input-password"
+                          type="password"
+                          placeholder="••••••••"
+                          className="pl-9"
+                          autoComplete="current-password"
+                          {...field}
+                        />
+                      </div>
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )}
+              />
+              <Button
+                data-testid="button-login"
+                type="submit"
+                className="w-full"
+                disabled={loginMutation.isPending}
+              >
+                {loginMutation.isPending ? "Signing in..." : "Sign In"}
+              </Button>
+            </form>
+          </Form>
+
+          <div className="mt-6 text-center">
+            <p className="text-sm text-muted-foreground">
+              New to ReAlign Health?{" "}
+              <button
+                data-testid="link-register"
+                onClick={() => setLocation("/register")}
+                className="text-primary font-medium hover:underline"
+              >
+                Create an account
+              </button>
+            </p>
+          </div>
+
+          <p className="text-center text-xs text-muted-foreground mt-8">
+            Protected health information is encrypted and stored securely.
+          </p>
         </div>
-
-        <Card className="shadow-sm border-slate-200">
-          <CardHeader className="pb-4">
-            <CardTitle className="text-lg text-slate-800">Sign in to your account</CardTitle>
-            <CardDescription>Enter your credentials to access your clinic</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Form {...form}>
-              <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
-                <FormField
-                  control={form.control}
-                  name="username"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Username</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <Input
-                            data-testid="input-username"
-                            placeholder="your.username"
-                            className="pl-9"
-                            autoComplete="username"
-                            {...field}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <FormField
-                  control={form.control}
-                  name="password"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel>Password</FormLabel>
-                      <FormControl>
-                        <div className="relative">
-                          <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-slate-400" />
-                          <Input
-                            data-testid="input-password"
-                            type="password"
-                            placeholder="••••••••"
-                            className="pl-9"
-                            autoComplete="current-password"
-                            {...field}
-                          />
-                        </div>
-                      </FormControl>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-                <Button
-                  data-testid="button-login"
-                  type="submit"
-                  className="w-full bg-blue-600 hover:bg-blue-700"
-                  disabled={loginMutation.isPending}
-                >
-                  {loginMutation.isPending ? "Signing in..." : "Sign In"}
-                </Button>
-              </form>
-            </Form>
-
-            <div className="mt-6 text-center">
-              <p className="text-sm text-slate-500">
-                New to ClinIQ?{" "}
-                <button
-                  data-testid="link-register"
-                  onClick={() => setLocation("/register")}
-                  className="text-blue-600 font-medium hover:underline"
-                >
-                  Create an account
-                </button>
-              </p>
-            </div>
-          </CardContent>
-        </Card>
-
-        <p className="text-center text-xs text-slate-400 mt-6">
-          Protected health information is encrypted and stored securely.
-        </p>
       </div>
     </div>
   );

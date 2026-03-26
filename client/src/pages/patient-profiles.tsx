@@ -30,7 +30,7 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
       <Card data-testid="clinical-snapshot-empty">
         <CardHeader className="pb-3">
           <CardTitle className="text-lg flex items-center gap-2">
-            <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+            <Activity className="h-5 w-5 text-primary dark:text-primary" />
             Clinical Snapshot
           </CardTitle>
         </CardHeader>
@@ -54,7 +54,7 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
     <Card data-testid="clinical-snapshot-card">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <Activity className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          <Activity className="h-5 w-5 text-primary dark:text-primary" />
           Clinical Snapshot
           <Badge variant="secondary" className="text-xs ml-auto">
             {insights.length} markers compared
@@ -63,7 +63,7 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
       </CardHeader>
       <CardContent className="space-y-4">
         {urgents.length > 0 && (
-          <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 space-y-2" data-testid="snapshot-urgent">
+          <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 space-y-2" data-testid="snapshot-urgent" >
             <div className="flex items-center gap-2">
               <AlertTriangle className="h-4 w-4 text-red-600 dark:text-red-400 flex-shrink-0" />
               <span className="text-sm font-semibold text-red-700 dark:text-red-400">Requires Attention</span>
@@ -133,7 +133,7 @@ function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId }: { labs: La
     <Card data-testid="lab-history-list">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <ClipboardList className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          <ClipboardList className="h-5 w-5 text-primary dark:text-primary" />
           Lab History
           <Badge variant="secondary" className="text-xs ml-auto">{labs.length} result{labs.length !== 1 ? 's' : ''}</Badge>
         </CardTitle>
@@ -414,7 +414,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
           {interp?.aiRecommendations && (
             <div className="rounded-md border p-3 space-y-1">
               <p className="text-sm font-semibold flex items-center gap-1">
-                <Heart className="h-4 w-4 text-blue-600 dark:text-blue-400" /> AI Recommendations
+                <Heart className="h-4 w-4 text-primary dark:text-primary" /> AI Recommendations
               </p>
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{interp.aiRecommendations}</p>
             </div>
@@ -439,7 +439,7 @@ function EnrichedTrendInsights({ insights }: { insights: TrendInsight[] }) {
     <Card data-testid="enriched-trend-insights">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
-          <TrendingUp className="h-5 w-5 text-blue-600 dark:text-blue-400" />
+          <TrendingUp className="h-5 w-5 text-primary dark:text-primary" />
           Detailed Trend Analysis
         </CardTitle>
       </CardHeader>
