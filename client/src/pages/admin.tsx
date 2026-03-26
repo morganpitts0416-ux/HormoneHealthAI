@@ -197,8 +197,8 @@ export default function AdminDashboard() {
     <div className="min-h-screen bg-background">
       {/* Header */}
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
             <Button
               variant="ghost" size="icon"
               onClick={() => setLocation("/dashboard")}
@@ -210,17 +210,17 @@ export default function AdminDashboard() {
             <img
               src="/realign-health-logo.png"
               alt="ReAlign Health"
-              className="h-10 w-auto"
+              className="h-12 sm:h-14 w-auto flex-shrink-0"
               style={{ mixBlendMode: "multiply" }}
             />
-            <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
-            <div className="flex items-center gap-2">
+            <div className="h-4 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
+            <div className="hidden sm:flex items-center gap-2">
               <ShieldCheck className="w-4 h-4" style={{ color: "#2e3a20" }} />
               <span className="font-medium text-sm" style={{ color: "#2e3a20" }}>Developer Dashboard</span>
             </div>
           </div>
-          <div className="flex items-center gap-2 text-xs" style={{ color: "#7a8a64" }}>
-            <span>Signed in as <strong>{user.username}</strong></span>
+          <div className="flex items-center gap-1 sm:gap-2 text-xs" style={{ color: "#7a8a64" }}>
+            <span className="hidden sm:inline">Signed in as <strong>{user.username}</strong></span>
             <Button variant="ghost" size="sm" style={{ color: "#2e3a20" }} onClick={() => logoutMutation.mutate()}>
               Sign Out
             </Button>
