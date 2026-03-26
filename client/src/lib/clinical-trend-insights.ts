@@ -220,18 +220,36 @@ const markerProfiles: MarkerProfile[] = [
   },
   {
     name: 'Estradiol', key: 'estradiol', unit: 'pg/mL',
+    optimalMin: 55,
+    optimalMax: 150,
+    criticalMin: 15,
     getClinicianInsight: (c, p, d) => {
-      if (d === 'improved') return `Estradiol trending in favorable direction (${p} -> ${c} pg/mL).`;
-      if (d === 'worsened') {
-        if (c > 50) return `Estradiol elevated at ${c} pg/mL. Consider aromatase inhibitor if on TRT. Assess symptoms.`;
-        return `Estradiol shifting (${p} -> ${c} pg/mL). Monitor for symptoms.`;
+      if (d === 'improved') {
+        if (c >= 55 && c <= 150) return `Estradiol improved into optimization goal range (${p} → ${c} pg/mL; goal: 55–150 pg/mL).`;
+        return `Estradiol trending toward optimization goal (${p} → ${c} pg/mL; goal: 55–150 pg/mL).`;
       }
-      return `Estradiol stable at ${c} pg/mL.`;
+      if (d === 'worsened') {
+        if (c < 55) return `Estradiol dropped below optimization goal: ${c} pg/mL (was ${p} pg/mL; goal ≥55 pg/mL). Evaluate for perimenopausal decline; consider initiating or adjusting transdermal estradiol.`;
+        if (c > 150) return `Estradiol elevated above optimization ceiling: ${c} pg/mL (was ${p} pg/mL; goal 55–150). Assess for high-dose HRT effect or endogenous spike.`;
+        return `Estradiol declining within range (${p} → ${c} pg/mL; goal: 55–150 pg/mL). Monitor closely.`;
+      }
+      if (c < 55) return `Estradiol stable at ${c} pg/mL but below optimization goal (≥55 pg/mL). Consider dose adjustment or initiation of estradiol therapy.`;
+      if (c > 150) return `Estradiol stable but above optimization ceiling (${c} pg/mL; goal: 55–150). Monitor for symptoms of excess.`;
+      return `Estradiol stable within optimization goal range (${c} pg/mL; goal: 55–150 pg/mL).`;
     },
     getPatientInsight: (c, p, d) => {
-      if (d === 'improved') return `Your estradiol level has moved in a positive direction, from ${p} to ${c}.`;
-      if (d === 'worsened') return `Your estradiol has changed from ${p} to ${c}. We'll evaluate whether any adjustment is needed.`;
-      return `Your estradiol is stable at ${c}.`;
+      if (d === 'improved') return `Your estrogen (estradiol) level improved from ${p} to ${c} pg/mL, moving toward the healthy target range.`;
+      if (d === 'worsened') {
+        if (c < 55) return `Your estrogen level has dropped to ${c} pg/mL, which is below the target range. Low estrogen can contribute to hot flashes, sleep problems, mood changes, and other symptoms.`;
+        return `Your estrogen level has changed from ${p} to ${c} pg/mL. Your provider will evaluate whether any adjustment is needed.`;
+      }
+      if (c < 55) return `Your estrogen is steady at ${c} pg/mL, though below the target range. Your provider may discuss options to bring this into the optimal zone.`;
+      return `Your estrogen is stable at ${c} pg/mL, within the healthy target range.`;
+    },
+    getRecommendation: (c, d) => {
+      if (c < 55) return 'Estradiol below optimization goal (≥55 pg/mL). If symptomatic, initiate or increase transdermal estradiol — target 55–150 pg/mL. Add micronized progesterone if uterus intact. Avoid oral estrogen (raises SHBG, variable absorption).';
+      if (c > 150) return 'Estradiol above optimization ceiling (>150 pg/mL). If on HRT, consider dose reduction. Rule out endogenous spike from ovarian activity. Assess symptoms of estrogen excess.';
+      return undefined;
     }
   },
   {
@@ -458,7 +476,8 @@ const rangeBasedDirectionality: Record<string, (current: number, previous: numbe
     return 'stable';
   },
   estradiol: (c, p) => {
-    const optMin = 20, optMax = 50;
+    // Optimization goal: 55–150 pg/mL. Distance from range determines direction.
+    const optMin = 55, optMax = 150;
     const cDist = c < optMin ? optMin - c : c > optMax ? c - optMax : 0;
     const pDist = p < optMin ? optMin - p : p > optMax ? p - optMax : 0;
     if (cDist < pDist) return 'improved';
@@ -584,6 +603,46 @@ export function generateTrendInsights(labs: LabResult[]): TrendInsight[] {
       patientInsight: profile.getPatientInsight(c, p, direction),
       recommendation: profile.getRecommendation?.(c, direction),
     });
+  }
+
+  // ── Erratic Estradiol Detection (perimenopausal volatility flag) ──
+  // Fires when: female patient ≥35 y/o WITH perimenopausal symptoms AND
+  // estradiol shifts >60 pg/mL OR >50% between consecutive labs.
+  // Upgrades the existing estradiol insight to urgent with volatility-specific messaging.
+  const e2Idx = insights.findIndex(i => i.markerKey === 'estradiol');
+  if (e2Idx !== -1) {
+    const age = current?.demographics?.age != null ? Number(current.demographics.age) : null;
+    const hasPerimenoSymptoms =
+      current?.hotFlashes === true ||
+      current?.hotFlashes === 'true' ||
+      current?.nightSweats === true ||
+      current?.nightSweats === 'true' ||
+      current?.sleepDisruption === true ||
+      current?.sleepDisruption === 'true' ||
+      current?.moodChanges === true ||
+      current?.moodChanges === 'true' ||
+      current?.vaginalDryness === true ||
+      current?.vaginalDryness === 'true';
+
+    if (age !== null && age >= 35 && hasPerimenoSymptoms) {
+      const e2 = insights[e2Idx];
+      const absChange = Math.abs(e2.change);
+      const absPct = Math.abs(e2.changePercent);
+
+      if (absChange >= 60 || absPct >= 50) {
+        const direction = e2.previousValue < e2.currentValue ? 'rise' : 'drop';
+        const pctLabel = absPct.toFixed(0);
+        const absLabel = absChange.toFixed(0);
+        insights[e2Idx] = {
+          ...e2,
+          direction: 'worsened',
+          severity: 'urgent',
+          clinicianInsight: `Estradiol volatility detected: ${e2.previousValue} → ${e2.currentValue} pg/mL (${pctLabel}% ${direction === 'rise' ? 'increase' : 'drop'}, ${absLabel} pg/mL swing). In a ${age}-year-old with active perimenopausal symptoms, erratic estradiol is a hallmark of the perimenopause hormone rollercoaster. Erratic endogenous production causes symptom waves even when individual levels appear within range. Low-dose transdermal estradiol (patch or gel) can dampen volatility, stabilize trough levels, and reduce symptom burden without suppressing the axis.`,
+          patientInsight: `Your estrogen level shifted significantly from ${e2.previousValue} to ${e2.currentValue} pg/mL — a ${pctLabel}% swing. Erratic estrogen is one of the hallmarks of perimenopause: levels that spike and crash can cause hot flashes, poor sleep, mood swings, and brain fog even when a single reading looks "normal." Stabilizing these swings is one of the main goals of hormone therapy.`,
+          recommendation: `Erratic perimenopausal estradiol: consider low-dose transdermal estradiol (patch 0.025–0.05 mg/day or equivalent gel) to buffer endogenous fluctuations and stabilize trough levels. Add or continue micronized progesterone (100–200 mg nightly) if uterus intact. Reassess estradiol in 6–8 weeks. Target steady-state 55–150 pg/mL. Avoid oral estrogen (peak-trough variability, first-pass SHBG elevation).`,
+        };
+      }
+    }
   }
 
   return insights;
