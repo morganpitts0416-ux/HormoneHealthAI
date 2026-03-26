@@ -466,10 +466,15 @@ export const users = pgTable("users", {
   // Password reset / invite tokens
   passwordResetToken: varchar("password_reset_token", { length: 255 }),
   passwordResetExpires: timestamp("password_reset_expires"),
-  // Portal messaging preference: 'none' | 'in_app' | 'sms'
+  // Portal messaging preference: 'none' | 'in_app' | 'sms' | 'external_api'
   messagingPreference: varchar("messaging_preference", { length: 20 }).notNull().default("none"),
   // Phone number shown to patients for SMS messaging (e.g. Spruce Health number)
   messagingPhone: varchar("messaging_phone", { length: 30 }),
+  // External API / two-way bridge messaging config
+  externalMessagingProvider: varchar("external_messaging_provider", { length: 30 }), // 'spruce' | 'klara' | 'custom'
+  externalMessagingApiKey: text("external_messaging_api_key"),               // encrypted at rest in future
+  externalMessagingChannelId: varchar("external_messaging_channel_id", { length: 100 }), // Spruce channel ID / inbox number
+  externalMessagingWebhookSecret: varchar("external_messaging_webhook_secret", { length: 100 }), // auto-generated, shared with external system
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -596,6 +601,8 @@ export const portalMessages = pgTable("portal_messages", {
   senderType: varchar("sender_type", { length: 20 }).notNull(),
   content: text("content").notNull(),
   readAt: timestamp("read_at"),
+  // ID from external system (Spruce, Klara, etc.) — used for deduplication
+  externalMessageId: varchar("external_message_id", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 

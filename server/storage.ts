@@ -79,6 +79,7 @@ export interface IStorage {
   createPortalMessage(msg: InsertPortalMessage): Promise<PortalMessage>;
   markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void>;
   getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number>;
+  getPortalMessageByExternalId(externalMessageId: string): Promise<PortalMessage | undefined>;
 }
 
 export class DbStorage implements IStorage {
@@ -461,6 +462,15 @@ export class DbStorage implements IStorage {
         )
       );
     return Number(result[0]?.cnt ?? 0);
+  }
+
+  async getPortalMessageByExternalId(externalMessageId: string): Promise<PortalMessage | undefined> {
+    const result = await db
+      .select()
+      .from(schema.portalMessages)
+      .where(eq(schema.portalMessages.externalMessageId, externalMessageId))
+      .limit(1);
+    return result[0];
   }
 }
 

@@ -13,6 +13,12 @@ import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
 import { screenInsulinResistance } from "./insulin-resistance";
+import {
+  forwardMessageToExternalProvider,
+  parseInboundWebhook,
+  generateWebhookSecret,
+  type ExternalProvider,
+} from "./external-messaging";
 import { storage } from "./storage";
 import { passport, hashPassword } from "./auth";
 import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail } from "./email-service";
@@ -96,23 +102,49 @@ export async function registerRoutes(app: Express): Promise<Server> {
     if (!req.isAuthenticated() || !req.user) {
       return res.status(401).json({ message: "Not authenticated" });
     }
-    const { passwordHash: _ph, ...safeUser } = req.user as any;
-    res.json(safeUser);
+    const { passwordHash: _ph, externalMessagingApiKey, ...safeUser } = req.user as any;
+    res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey) });
   });
 
   // Update profile
   app.patch("/api/auth/profile", requireAuth, async (req, res) => {
     try {
       const userId = (req.user as any).id;
-      const { firstName, lastName, title, npi, clinicName, phone, address, email, messagingPreference, messagingPhone } = req.body;
-      const updated = await storage.updateUser(userId, {
+      const {
         firstName, lastName, title, npi, clinicName, phone, address, email,
+        messagingPreference, messagingPhone,
+        externalMessagingProvider, externalMessagingApiKey, externalMessagingChannelId,
+      } = req.body;
+
+      // Auto-generate a webhook secret the first time external_api is enabled
+      let webhookSecretUpdate: { externalMessagingWebhookSecret?: string } = {};
+      if (messagingPreference === 'external_api') {
+        const current = await storage.getUserById(userId);
+        if (!current?.externalMessagingWebhookSecret) {
+          webhookSecretUpdate = { externalMessagingWebhookSecret: generateWebhookSecret() };
+        }
+      }
+
+      const updated = await storage.updateUser(userId, {
+        ...(firstName !== undefined ? { firstName } : {}),
+        ...(lastName !== undefined ? { lastName } : {}),
+        ...(title !== undefined ? { title } : {}),
+        ...(npi !== undefined ? { npi } : {}),
+        ...(clinicName !== undefined ? { clinicName } : {}),
+        ...(phone !== undefined ? { phone } : {}),
+        ...(address !== undefined ? { address } : {}),
+        ...(email !== undefined ? { email } : {}),
         ...(messagingPreference !== undefined ? { messagingPreference } : {}),
         ...(messagingPhone !== undefined ? { messagingPhone } : {}),
+        ...(externalMessagingProvider !== undefined ? { externalMessagingProvider } : {}),
+        ...(externalMessagingApiKey !== undefined ? { externalMessagingApiKey } : {}),
+        ...(externalMessagingChannelId !== undefined ? { externalMessagingChannelId } : {}),
+        ...webhookSecretUpdate,
       });
       if (!updated) return res.status(404).json({ message: "User not found" });
-      const { passwordHash: _ph, ...safeUser } = updated;
-      res.json(safeUser);
+      // Never expose the raw API key to the client — only confirm it's set
+      const { passwordHash: _ph, externalMessagingApiKey: _key, ...safeUser } = updated;
+      res.json({ ...safeUser, externalMessagingApiKeySet: !!(updated.externalMessagingApiKey) });
     } catch (error) {
       console.error("Error updating profile:", error);
       res.status(500).json({ message: "Failed to update profile" });
@@ -1545,6 +1577,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({
         messagingPreference: clinician.messagingPreference || 'none',
         messagingPhone: clinician.messagingPhone || null,
+        externalMessagingProvider: clinician.externalMessagingProvider || null,
         clinicianId: clinician.id,
       });
     } catch (error) {
@@ -1573,13 +1606,41 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!content?.trim()) return res.status(400).json({ message: "Message content is required" });
       const patient = await storage.getPatientById(patientId);
       if (!patient || !patient.userId) return res.status(404).json({ message: "Patient not found" });
+
+      // Store the message in the DB first
       const msg = await storage.createPortalMessage({
         patientId,
         clinicianId: patient.userId,
         senderType: 'patient',
         content: content.trim(),
         readAt: null,
+        externalMessageId: null,
       });
+
+      // Forward to external API if configured (fire-and-forget — don't block patient response)
+      const clinician = await storage.getUserById(patient.userId);
+      if (
+        clinician?.messagingPreference === 'external_api' &&
+        clinician.externalMessagingApiKey &&
+        clinician.externalMessagingProvider
+      ) {
+        forwardMessageToExternalProvider(
+          clinician.externalMessagingProvider as ExternalProvider,
+          clinician.externalMessagingApiKey,
+          {
+            patientName: `${patient.firstName} ${patient.lastName}`,
+            content: content.trim(),
+            channelId: clinician.externalMessagingChannelId || '',
+          },
+        ).then((result) => {
+          if (!result.success) {
+            console.warn('[ExternalMessaging] Outbound forward failed:', result.error);
+          }
+        }).catch((err) => {
+          console.error('[ExternalMessaging] Unexpected error forwarding message:', err);
+        });
+      }
+
       res.json(msg);
     } catch (error) {
       res.status(500).json({ message: "Failed to send message" });
@@ -1635,6 +1696,123 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json({ count: cnt });
     } catch (error) {
       res.status(500).json({ count: 0 });
+    }
+  });
+
+  // ── External Messaging Webhook ────────────────────────────────────────────────
+  // POST /api/webhooks/messaging/:clinicianId
+  //   Called by Spruce, Klara, or any configured external system when a provider
+  //   replies to a patient message. No session auth — verified via webhook secret.
+  //
+  // The clinician must configure their external system to POST to:
+  //   https://<your-domain>/api/webhooks/messaging/<clinicianId>
+  // with the webhook secret in the X-Webhook-Secret header (or as the signature).
+  //
+  // The body must include enough information to identify the patient. We look for:
+  //   patient_id  (ReAlign internal patient ID, most reliable)
+  //   patient_email  (portal account email, fallback)
+  //   content / body / message / text  (the reply text)
+  app.post("/api/webhooks/messaging/:clinicianId", async (req, res) => {
+    try {
+      const clinicianId = parseInt(req.params.clinicianId);
+      if (isNaN(clinicianId)) return res.status(400).json({ ok: false, error: "Invalid clinician ID" });
+
+      const clinician = await storage.getUserById(clinicianId);
+      if (!clinician || clinician.messagingPreference !== 'external_api') {
+        return res.status(404).json({ ok: false, error: "Webhook not configured" });
+      }
+
+      if (!clinician.externalMessagingWebhookSecret) {
+        return res.status(503).json({ ok: false, error: "Webhook secret not set" });
+      }
+
+      // Verify the shared secret — external systems should send it in one of these headers
+      const signatureHeader =
+        req.headers['x-webhook-secret'] as string ||
+        req.headers['x-spruce-signature'] as string ||
+        req.headers['x-signature'] as string ||
+        req.headers['authorization']?.replace('Bearer ', '') as string;
+
+      const parsed = parseInboundWebhook({
+        provider: (clinician.externalMessagingProvider || 'custom') as ExternalProvider,
+        rawBody: req.body,
+        expectedSecret: clinician.externalMessagingWebhookSecret,
+        signatureHeader,
+      });
+
+      if (!parsed) {
+        return res.status(401).json({ ok: false, error: "Invalid signature or unrecognised payload" });
+      }
+
+      if (!parsed.isFromProvider) {
+        // Ignore messages not sent by the provider (e.g. patient-initiated copies)
+        return res.json({ ok: true, skipped: true, reason: "Not a provider message" });
+      }
+
+      // Identify which patient this reply belongs to
+      const body = req.body as Record<string, unknown>;
+      const rawPatientId = body.patient_id ?? body.patientId ?? body.realign_patient_id;
+      const patientEmail = body.patient_email ?? body.patientEmail;
+
+      let patient = null;
+      if (rawPatientId) {
+        patient = await storage.getPatientById(Number(rawPatientId));
+        // Verify the patient belongs to this clinician
+        if (patient && patient.userId !== clinicianId) patient = null;
+      }
+      if (!patient && patientEmail) {
+        const portalAccount = await storage.getPortalAccountByEmail(String(patientEmail));
+        if (portalAccount) {
+          patient = await storage.getPatientById(portalAccount.patientId);
+          if (patient && patient.userId !== clinicianId) patient = null;
+        }
+      }
+
+      if (!patient) {
+        return res.status(404).json({ ok: false, error: "Could not identify patient from webhook payload. Include patient_id or patient_email." });
+      }
+
+      // Deduplicate — if we already have this external message ID, skip it
+      if (parsed.externalMessageId) {
+        const existing = await storage.getPortalMessageByExternalId(parsed.externalMessageId);
+        if (existing) return res.json({ ok: true, skipped: true, reason: "Already processed" });
+      }
+
+      // Store the clinician reply as a portal message
+      await storage.createPortalMessage({
+        patientId: patient.id,
+        clinicianId,
+        senderType: 'clinician',
+        content: parsed.content,
+        readAt: null,
+        externalMessageId: parsed.externalMessageId || null,
+      });
+
+      return res.json({ ok: true });
+    } catch (error) {
+      console.error('[Webhook] Error processing inbound message:', error);
+      res.status(500).json({ ok: false, error: "Internal server error" });
+    }
+  });
+
+  // GET /api/auth/messaging-settings — clinician fetches their full external messaging config
+  // (separate from /api/auth/me to avoid sending sensitive data on every page load)
+  app.get("/api/auth/messaging-settings", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const user = await storage.getUserById(userId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      res.json({
+        messagingPreference: user.messagingPreference,
+        messagingPhone: user.messagingPhone,
+        externalMessagingProvider: user.externalMessagingProvider,
+        externalMessagingApiKeySet: !!(user.externalMessagingApiKey),
+        externalMessagingChannelId: user.externalMessagingChannelId,
+        externalMessagingWebhookSecret: user.externalMessagingWebhookSecret,
+        webhookUrl: `${req.protocol}://${req.get('host')}/api/webhooks/messaging/${userId}`,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch messaging settings" });
     }
   });
 

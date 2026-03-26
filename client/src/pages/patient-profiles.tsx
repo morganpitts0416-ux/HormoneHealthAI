@@ -596,7 +596,8 @@ export default function PatientProfiles() {
   });
 
   const { user } = useAuth();
-  const messagingEnabled = (user as any)?.messagingPreference === 'in_app';
+  const messagingPreference = (user as any)?.messagingPreference;
+  const messagingEnabled = messagingPreference === 'in_app' || messagingPreference === 'external_api';
 
   interface PortalMessage {
     id: number;
