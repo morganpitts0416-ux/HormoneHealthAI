@@ -21,7 +21,7 @@ import {
 } from "./external-messaging";
 import { storage } from "./storage";
 import { passport, hashPassword } from "./auth";
-import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail } from "./email-service";
+import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail } from "./email-service";
 import bcrypt from "bcrypt";
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -1537,6 +1537,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         labDate: labDate ? new Date(labDate) : null,
       });
 
+      // Fire-and-forget: notify patient via email
+      const clinician = await storage.getUserById(clinicianId);
+      if (portalAccount.email && clinician) {
+        sendProtocolPublishedEmail(
+          portalAccount.email,
+          patient.firstName,
+          clinician.clinicName,
+          `${clinician.title} ${clinician.firstName} ${clinician.lastName}`,
+          supplements.length,
+          req,
+        ).catch((err) => console.error('[PORTAL] Error sending protocol email:', err));
+      }
+
       res.json({ message: "Protocol published to patient portal", protocol });
     } catch (error) {
       console.error("[PORTAL] Error publishing protocol:", error);
@@ -1679,9 +1692,35 @@ export async function registerRoutes(app: Express): Promise<Server> {
         content: content.trim(),
         readAt: null,
       });
+
+      // Fire-and-forget: notify patient via email (only if they have a portal account with an email)
+      const portalAccount = await storage.getPortalAccountByPatientId(patientId);
+      const clinician = await storage.getUserById(clinicianId);
+      if (portalAccount?.email && clinician) {
+        sendNewPortalMessageEmail(
+          portalAccount.email,
+          patient.firstName,
+          clinician.clinicName,
+          `${clinician.title} ${clinician.firstName} ${clinician.lastName}`,
+          content.trim(),
+          req,
+        ).catch((err) => console.error('[PORTAL] Error sending message email:', err));
+      }
+
       res.json(msg);
     } catch (error) {
       res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // GET /api/portal/messages/unread — patient checks their own unread count
+  app.get("/api/portal/messages/unread", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const count = await storage.getUnreadPortalMessageCount(patientId, 'patient');
+      res.json({ count });
+    } catch {
+      res.json({ count: 0 });
     }
   });
 

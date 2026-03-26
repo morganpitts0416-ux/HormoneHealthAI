@@ -144,6 +144,98 @@ export async function sendPatientPortalInviteEmail(
   });
 }
 
+export async function sendProtocolPublishedEmail(
+  to: string,
+  patientFirstName: string,
+  clinicName: string,
+  clinicianName: string,
+  supplementCount: number,
+  req?: any
+): Promise<void> {
+  const base = getBaseUrl(req);
+  const link = `${base}/portal/dashboard`;
+
+  await sendEmail({
+    to,
+    subject: `${clinicName} has updated your wellness protocol`,
+    html: `
+      <div style="font-family: 'Inter', Georgia, serif; max-width: 560px; margin: 0 auto; background: #fffdf9;">
+        <div style="background: #2e3a20; padding: 28px 32px; text-align: center;">
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">ReAlign Health</h1>
+          <p style="color: #a8b88c; margin: 6px 0 0; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">Your Wellness Portal</p>
+        </div>
+        <div style="padding: 40px 32px; background: #fffdf9;">
+          <p style="color: #2e3a20; font-size: 24px; font-weight: 700; margin: 0 0 8px; line-height: 1.2;">New protocol shared.</p>
+          <p style="color: #7a8a64; font-size: 14px; margin: 0 0 28px;">${clinicName}</p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.7; margin: 0 0 12px;">
+            Hi ${patientFirstName}, your care team${clinicianName ? ` (${clinicianName})` : ''} has shared an updated wellness supplement protocol with you —
+            <strong>${supplementCount} supplement${supplementCount !== 1 ? 's' : ''}</strong> tailored to your latest lab results.
+          </p>
+          <div style="text-align: center; margin: 36px 0;">
+            <a href="${link}" style="background: #2e3a20; color: #e8ddd0; padding: 16px 40px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block; letter-spacing: 0.3px;">
+              View My Protocol
+            </a>
+          </div>
+          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0; text-align: center;">
+            Log in to your portal to see your full protocol, including dosing instructions and the clinical rationale behind each recommendation.
+          </p>
+        </div>
+        <div style="border-top: 1px solid #e8ddd0; padding: 20px 32px; text-align: center; background: #f5f0e8;">
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
+export async function sendNewPortalMessageEmail(
+  to: string,
+  patientFirstName: string,
+  clinicName: string,
+  clinicianName: string,
+  messagePreview: string,
+  req?: any
+): Promise<void> {
+  const base = getBaseUrl(req);
+  const link = `${base}/portal/messages`;
+
+  // Truncate preview to ~120 chars
+  const preview = messagePreview.length > 120
+    ? messagePreview.substring(0, 117) + '…'
+    : messagePreview;
+
+  await sendEmail({
+    to,
+    subject: `New message from ${clinicName}`,
+    html: `
+      <div style="font-family: 'Inter', Georgia, serif; max-width: 560px; margin: 0 auto; background: #fffdf9;">
+        <div style="background: #2e3a20; padding: 28px 32px; text-align: center;">
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">ReAlign Health</h1>
+          <p style="color: #a8b88c; margin: 6px 0 0; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">Your Wellness Portal</p>
+        </div>
+        <div style="padding: 40px 32px; background: #fffdf9;">
+          <p style="color: #2e3a20; font-size: 24px; font-weight: 700; margin: 0 0 8px; line-height: 1.2;">You have a new message.</p>
+          <p style="color: #7a8a64; font-size: 14px; margin: 0 0 28px;">${clinicName}${clinicianName ? ` · ${clinicianName}` : ''}</p>
+          <div style="background: #f0ece5; border-radius: 8px; padding: 20px 24px; margin: 0 0 28px;">
+            <p style="color: #3d4a30; font-size: 15px; line-height: 1.7; margin: 0; font-style: italic;">"${preview}"</p>
+          </div>
+          <div style="text-align: center; margin: 36px 0;">
+            <a href="${link}" style="background: #2e3a20; color: #e8ddd0; padding: 16px 40px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block; letter-spacing: 0.3px;">
+              Reply in Portal
+            </a>
+          </div>
+          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0; text-align: center;">
+            Sign in to your health portal to read the full message and reply to your care team.
+          </p>
+        </div>
+        <div style="border-top: 1px solid #e8ddd0; padding: 20px 32px; text-align: center; background: #f5f0e8;">
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(
   to: string,
   firstName: string,
