@@ -36,13 +36,26 @@ function sanitizeForPdf(text: string): string {
     .replace(/[^\x20-\x7E\n\r\t]/g, '');
 }
 
-export function generateLabReportPDF(
+export async function generateLabReportPDF(
   labValues: LabValues,
   interpretation: InterpretationResult,
   patientName?: string,
   clinicName: string = "Men's Hormone & Primary Care Clinic",
   labHistory?: LabResult[]
-): void {
+): Promise<void> {
+  // Load ReAlign logo for PDF branding
+  let logoData: string | null = null;
+  try {
+    const res = await fetch('/realign-health-logo.png');
+    const blob = await res.blob();
+    logoData = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {}
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -53,24 +66,36 @@ export function generateLabReportPDF(
   const pageWidth = doc.internal.pageSize.getWidth();
   let yPosition = 20;
 
+  // Header: ReAlign logo on left, clinic info on right
+  if (logoData) {
+    doc.addImage(logoData, 'PNG', 14, 8, 52, 22);
+  }
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.text('Lab Interpretation Report', pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 8;
-
-  doc.setFontSize(10);
+  doc.setTextColor(31, 78, 121);
+  doc.text('Lab Interpretation Report', pageWidth - 14, 14, { align: 'right' });
+  doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  doc.text(clinicName, pageWidth / 2, yPosition, { align: 'center' });
-  yPosition += 12;
+  doc.setTextColor(80, 80, 80);
+  doc.text(sanitizeForPdf(clinicName), pageWidth - 14, 20, { align: 'right' });
+  doc.text(`Powered by ReAlign Health`, pageWidth - 14, 26, { align: 'right' });
+  doc.setTextColor(0, 0, 0);
+
+  // Horizontal rule under header
+  doc.setDrawColor(200, 200, 200);
+  doc.line(14, 34, pageWidth - 14, 34);
+  yPosition = 42;
 
   if (patientName) {
     doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
+    doc.setTextColor(0, 0, 0);
     doc.text(`Patient: ${sanitizeForPdf(patientName)}`, 14, yPosition);
     yPosition += 6;
   }
 
   doc.setFont('helvetica', 'normal');
+  doc.setTextColor(0, 0, 0);
   doc.text(`Date: ${new Date().toLocaleDateString()}`, 14, yPosition);
   yPosition += 12;
 

@@ -405,8 +405,22 @@ export async function generatePatientWellnessPDF(
   wellnessPlan: WellnessPlan,
   patientName?: string,
   patientLabs?: LabResult[],
-  selectedSupplements?: PdfSupplement[]
+  selectedSupplements?: PdfSupplement[],
+  clinicName?: string
 ): Promise<void> {
+  // Load ReAlign logo for PDF branding
+  let logoData: string | null = null;
+  try {
+    const res = await fetch('/realign-health-logo.png');
+    const blob = await res.blob();
+    logoData = await new Promise<string>((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(blob);
+    });
+  } catch {}
+
   const doc = new jsPDF({
     orientation: 'portrait',
     unit: 'mm',
@@ -423,27 +437,36 @@ export async function generatePatientWellnessPDF(
   const brandColor: [number, number, number] = [163, 136, 121];
   const textColor: [number, number, number] = [51, 51, 51];
   const lightBg: [number, number, number] = [250, 248, 246];
+  const displayClinic = clinicName || "Women's Hormone & Primary Care Clinic";
 
   const addHeader = () => {
     doc.setFillColor(...brandColor);
-    doc.rect(0, 0, pageWidth, 35, 'F');
-    
-    doc.setTextColor(255, 255, 255);
-    doc.setFontSize(22);
-    doc.setFont('helvetica', 'bold');
-    doc.text("Women's", margin, 18);
-    doc.setFontSize(22);
-    doc.text("Wellness", margin + 35, 18);
-    
-    doc.setFontSize(9);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Hormone & Primary Care', margin, 26);
+    doc.rect(0, 0, pageWidth, 38, 'F');
 
+    // ReAlign Health logo on white inset
+    if (logoData) {
+      doc.setFillColor(255, 255, 255);
+      doc.rect(margin - 2, 4, 58, 28, 'F');
+      doc.addImage(logoData, 'PNG', margin, 6, 54, 24);
+    } else {
+      doc.setTextColor(255, 255, 255);
+      doc.setFontSize(14);
+      doc.setFont('helvetica', 'bold');
+      doc.text('ReAlign Health', margin, 18);
+    }
+
+    // Right side: clinic co-branding
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(10);
+    doc.setFontSize(7.5);
     doc.setFont('helvetica', 'normal');
-    doc.text('Your Personal Wellness Report', pageWidth - margin, 20, { align: 'right' });
-    doc.text(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), pageWidth - margin, 27, { align: 'right' });
+    doc.text('Prepared in partnership with', pageWidth - margin, 12, { align: 'right' });
+    doc.setFontSize(11);
+    doc.setFont('helvetica', 'bold');
+    doc.text(sanitizeForPdf(displayClinic), pageWidth - margin, 20, { align: 'right' });
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text('Your Personal Wellness Report', pageWidth - margin, 28, { align: 'right' });
+    doc.text(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), pageWidth - margin, 34, { align: 'right' });
   };
 
   const addFooter = (pageNum: number, totalPages: number) => {
@@ -452,7 +475,7 @@ export async function generatePatientWellnessPDF(
     doc.setTextColor(...brandColor);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text("Women's Wellness | Your Partner in Health", pageWidth / 2, pageHeight - 8, { align: 'center' });
+    doc.text(`A ReAlign Health Report | ${sanitizeForPdf(displayClinic)}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
     doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
   };
 
@@ -462,7 +485,7 @@ export async function generatePatientWellnessPDF(
     if (currentY + heightNeeded > usableBottom) {
       doc.addPage();
       addHeader();
-      return 45;
+      return 48;
     }
     return currentY;
   };
@@ -498,7 +521,7 @@ export async function generatePatientWellnessPDF(
   };
 
   addHeader();
-  yPosition = 45;
+  yPosition = 48;
 
   if (patientName) {
     doc.setTextColor(...textColor);
@@ -511,7 +534,7 @@ export async function generatePatientWellnessPDF(
   doc.setTextColor(...textColor);
   doc.setFontSize(10);
   doc.setFont('helvetica', 'normal');
-  const introText = "Thank you for trusting Women's Wellness with your care. This personalized wellness report is designed to help you understand your lab results and provides actionable steps to optimize your health. We've created a comprehensive plan tailored specifically to your unique needs.";
+  const introText = `Thank you for trusting ${sanitizeForPdf(displayClinic)} with your care. This personalized wellness report is designed to help you understand your lab results and provides actionable steps to optimize your health. We've created a comprehensive plan tailored specifically to your unique needs.`;
   const introLines = doc.splitTextToSize(introText, contentWidth);
   doc.text(introLines, margin, yPosition);
   yPosition += introLines.length * 4 + 8;
