@@ -604,22 +604,22 @@ export default function PatientProfiles() {
     <div className="flex flex-col h-screen bg-background overflow-hidden">
       {/* Header */}
       <div className="flex-shrink-0 sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="px-4 h-16 flex items-center gap-3">
+        <div className="px-3 sm:px-4 h-16 flex items-center gap-2 sm:gap-3">
           <Link href="/dashboard">
-            <Button variant="ghost" size="sm" data-testid="button-back-to-labs" style={{ color: "#2e3a20" }}>
-              <ArrowLeft className="h-4 w-4 mr-1" />
-              Dashboard
+            <Button variant="ghost" size="sm" data-testid="button-back-to-labs" style={{ color: "#2e3a20" }} title="Dashboard">
+              <ArrowLeft className="h-4 w-4" />
+              <span className="hidden sm:inline ml-1">Dashboard</span>
             </Button>
           </Link>
           <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
           <img
             src="/realign-health-logo.png"
             alt="ReAlign Health"
-            className="h-14 w-auto"
+            className="h-12 sm:h-14 w-auto flex-shrink-0"
             style={{ mixBlendMode: "multiply" }}
           />
-          <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
-          <div className="flex items-center gap-2">
+          <div className="h-4 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
+          <div className="hidden sm:flex items-center gap-2">
             <h1 className="text-sm font-semibold" style={{ color: "#1c2414" }}>Patient Profiles</h1>
             {!patientsLoading && (
               <Badge variant="secondary" className="text-xs">

@@ -65,56 +65,59 @@ export default function Dashboard() {
     <div className="min-h-screen bg-background">
       {/* Top nav */}
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-6xl mx-auto px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
+        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
             <img
               src="/realign-health-logo.png"
               alt="ReAlign Health"
-              className="h-14 w-auto"
+              className="h-12 sm:h-14 w-auto flex-shrink-0"
               style={{ mixBlendMode: "multiply" }}
             />
-            <div className="h-5 w-px" style={{ backgroundColor: "#c4b9a5" }} />
-            <div>
+            <div className="h-5 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
+            <div className="hidden sm:block">
               <p className="text-sm font-medium leading-tight" style={{ color: "#1c2414" }}>{user?.clinicName}</p>
               <p className="text-xs leading-tight" style={{ color: "#7a8a64" }}>{user?.title} {user?.firstName} {user?.lastName}</p>
             </div>
           </div>
-          <div className="flex items-center gap-1">
+          <div className="flex items-center gap-0.5 sm:gap-1">
             {(user as any)?.role === "admin" && (
               <Button
                 data-testid="button-admin"
                 variant="ghost"
-                size="default"
+                size="icon"
                 onClick={() => setLocation("/admin")}
-                className="text-sm"
+                className="sm:w-auto sm:px-3"
                 style={{ color: "#2e3a20" }}
+                title="Admin"
               >
-                <ShieldCheck className="w-4 h-4 mr-2" />
-                Admin
+                <ShieldCheck className="w-4 h-4" />
+                <span className="hidden sm:inline ml-2">Admin</span>
               </Button>
             )}
             <Button
               data-testid="button-account"
               variant="ghost"
-              size="default"
+              size="icon"
               onClick={() => setLocation("/account")}
-              className="text-sm"
+              className="sm:w-auto sm:px-3"
               style={{ color: "#2e3a20" }}
+              title="Account"
             >
-              <Settings className="w-4 h-4 mr-2" />
-              Account
+              <Settings className="w-4 h-4" />
+              <span className="hidden sm:inline ml-2">Account</span>
             </Button>
             <Button
               data-testid="button-logout"
               variant="ghost"
-              size="default"
+              size="icon"
               onClick={handleLogout}
               disabled={logoutMutation.isPending}
-              className="text-sm"
+              className="sm:w-auto sm:px-3"
               style={{ color: "#2e3a20" }}
+              title="Sign Out"
             >
-              <LogOut className="w-4 h-4 mr-2" />
-              Sign Out
+              <LogOut className="w-4 h-4" />
+              <span className="hidden sm:inline ml-2">Sign Out</span>
             </Button>
           </div>
         </div>
