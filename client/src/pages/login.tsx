@@ -6,7 +6,6 @@ import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Lock, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
@@ -24,9 +23,7 @@ export default function Login() {
   const { toast } = useToast();
 
   useEffect(() => {
-    if (!isLoading && user) {
-      setLocation("/dashboard");
-    }
+    if (!isLoading && user) setLocation("/dashboard");
   }, [user, isLoading, setLocation]);
 
   const form = useForm<LoginForm>({
@@ -38,55 +35,55 @@ export default function Login() {
     try {
       await loginMutation.mutateAsync(data);
     } catch (error: any) {
-      const message = error?.message || "Invalid username or password";
-      toast({ title: "Login failed", description: message, variant: "destructive" });
+      toast({ title: "Login failed", description: error?.message || "Invalid username or password", variant: "destructive" });
     }
   };
 
   return (
     <div className="min-h-screen flex">
-      {/* Left brand panel */}
-      <div className="hidden md:flex md:w-[45%] flex-col items-center justify-center bg-[#2e3a20] p-12 relative overflow-hidden">
-        <div className="absolute inset-0 opacity-10"
-          style={{
-            backgroundImage: "radial-gradient(circle at 20% 80%, #c8b89a 0%, transparent 50%), radial-gradient(circle at 80% 20%, #8a9e6a 0%, transparent 50%)"
-          }}
-        />
-        <div className="relative z-10 flex flex-col items-center text-center space-y-6 max-w-xs">
+      {/* Left brand panel — tan/warm cream */}
+      <div
+        className="hidden md:flex md:w-[44%] flex-col items-center justify-center p-14"
+        style={{ backgroundColor: "#e8ddd0" }}
+      >
+        <div className="flex flex-col items-center text-center space-y-8 max-w-xs">
           <img
             src="/realign-health-logo.png"
             alt="ReAlign Health"
             className="w-64 h-auto"
-            style={{ mixBlendMode: "screen" }}
+            style={{ mixBlendMode: "multiply" }}
           />
-          <p className="text-[#c8b89a] text-base font-light leading-relaxed">
-            Clinical-grade lab interpretation for hormone and primary care providers
-          </p>
-          <div className="w-12 h-px bg-[#c8b89a] opacity-40" />
-          <p className="text-[#8a9e6a] text-sm">
+          <div className="space-y-2">
+            <p className="text-[#2e3a20] text-base font-medium leading-snug">
+              Clinical-grade lab interpretation
+            </p>
+            <p className="text-[#5a6e44] text-sm leading-relaxed">
+              for hormone and primary care providers
+            </p>
+          </div>
+          <div className="w-10 h-px bg-[#2e3a20] opacity-20" />
+          <p className="text-[#7a8a64] text-xs tracking-wide uppercase">
             Secure · Evidence-based · Provider-first
           </p>
         </div>
       </div>
 
       {/* Right form panel */}
-      <div className="flex-1 flex items-center justify-center p-6 bg-background">
+      <div className="flex-1 flex items-center justify-center p-8 bg-white">
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
-          <div className="md:hidden flex justify-center mb-8">
-            <div className="bg-[#2e3a20] rounded-lg px-6 py-3">
-              <img
-                src="/realign-health-logo.png"
-                alt="ReAlign Health"
-                className="h-10 w-auto"
-                style={{ mixBlendMode: "screen" }}
-              />
-            </div>
+          <div className="md:hidden flex justify-center mb-10" style={{ backgroundColor: "#e8ddd0", borderRadius: "12px", padding: "12px 24px" }}>
+            <img
+              src="/realign-health-logo.png"
+              alt="ReAlign Health"
+              className="h-12 w-auto"
+              style={{ mixBlendMode: "multiply" }}
+            />
           </div>
 
           <div className="mb-8">
-            <h1 className="text-2xl font-semibold text-foreground">Sign in</h1>
-            <p className="text-muted-foreground text-sm mt-1">Access your clinic workspace</p>
+            <h1 className="text-2xl font-semibold" style={{ color: "#1c2414" }}>Welcome back</h1>
+            <p className="text-sm mt-1" style={{ color: "#7a8a64" }}>Sign in to your clinic workspace</p>
           </div>
 
           <Form {...form}>
@@ -96,17 +93,11 @@ export default function Login() {
                 name="username"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Username</FormLabel>
+                    <FormLabel className="text-[#2e3a20]">Username</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          data-testid="input-username"
-                          placeholder="your.username"
-                          className="pl-9"
-                          autoComplete="username"
-                          {...field}
-                        />
+                        <Input data-testid="input-username" placeholder="your.username" className="pl-9" autoComplete="username" {...field} />
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -118,18 +109,11 @@ export default function Login() {
                 name="password"
                 render={({ field }) => (
                   <FormItem>
-                    <FormLabel>Password</FormLabel>
+                    <FormLabel className="text-[#2e3a20]">Password</FormLabel>
                     <FormControl>
                       <div className="relative">
                         <Lock className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input
-                          data-testid="input-password"
-                          type="password"
-                          placeholder="••••••••"
-                          className="pl-9"
-                          autoComplete="current-password"
-                          {...field}
-                        />
+                        <Input data-testid="input-password" type="password" placeholder="••••••••" className="pl-9" autoComplete="current-password" {...field} />
                       </div>
                     </FormControl>
                     <FormMessage />
@@ -153,7 +137,8 @@ export default function Login() {
               <button
                 data-testid="link-register"
                 onClick={() => setLocation("/register")}
-                className="text-primary font-medium hover:underline"
+                className="font-medium hover:underline"
+                style={{ color: "#2e3a20" }}
               >
                 Create an account
               </button>

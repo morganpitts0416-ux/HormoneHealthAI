@@ -314,26 +314,30 @@ export default function LabInterpretation() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b bg-card/50 backdrop-blur-sm sticky top-0 z-10">
-        <div className="max-w-7xl mx-auto px-4 py-4">
-          <div className="flex items-center justify-between">
-            <div>
-              <h1 className="text-2xl font-semibold text-foreground">Lab Interpretation Tool</h1>
-              <p className="text-sm text-muted-foreground">Men's Hormone & Primary Care Clinic</p>
-            </div>
+      <header className="border-b sticky top-0 z-10" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
+        <div className="max-w-7xl mx-auto px-4 h-14 flex items-center">
+          <div className="flex items-center justify-between w-full gap-4">
             <div className="flex items-center gap-4">
+              <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-9 w-auto" style={{ mixBlendMode: "multiply" }} />
+              <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
+              <div>
+                <h1 className="text-sm font-semibold leading-tight" style={{ color: "#1c2414" }}>Men's Lab Interpretation</h1>
+                <p className="text-xs leading-tight" style={{ color: "#7a8a64" }}>Hormone & Primary Care</p>
+              </div>
+            </div>
+            <div className="flex items-center gap-2">
               <Link href="/dashboard">
-                <Button variant="ghost" size="sm" data-testid="link-to-dashboard">
+                <Button variant="ghost" size="sm" data-testid="link-to-dashboard" style={{ color: "#2e3a20" }}>
                   Dashboard
                 </Button>
               </Link>
               <Link href="/patients">
-                <Button variant="outline" data-testid="link-to-patient-profiles">
+                <Button variant="outline" size="sm" data-testid="link-to-patient-profiles">
                   Patient Profiles
                 </Button>
               </Link>
               <Link href="/female">
-                <Button variant="outline" data-testid="link-to-womens-labs">
+                <Button variant="outline" size="sm" data-testid="link-to-womens-labs">
                   Switch to Women's Labs
                 </Button>
               </Link>

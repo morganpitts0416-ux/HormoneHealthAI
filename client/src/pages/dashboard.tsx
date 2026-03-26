@@ -63,19 +63,19 @@ export default function Dashboard() {
   return (
     <div className="min-h-screen bg-background">
       {/* Top nav */}
-      <header className="bg-[#2e3a20] sticky top-0 z-50">
+      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
         <div className="max-w-6xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-4">
             <img
               src="/realign-health-logo.png"
               alt="ReAlign Health"
-              className="h-8 w-auto"
-              style={{ mixBlendMode: "screen" }}
+              className="h-10 w-auto"
+              style={{ mixBlendMode: "multiply" }}
             />
-            <div className="h-5 w-px bg-white/20" />
+            <div className="h-5 w-px" style={{ backgroundColor: "#c4b9a5" }} />
             <div>
-              <p className="text-white/90 text-sm font-medium leading-tight">{user?.clinicName}</p>
-              <p className="text-white/50 text-xs leading-tight">{user?.title} {user?.firstName} {user?.lastName}</p>
+              <p className="text-sm font-medium leading-tight" style={{ color: "#1c2414" }}>{user?.clinicName}</p>
+              <p className="text-xs leading-tight" style={{ color: "#7a8a64" }}>{user?.title} {user?.firstName} {user?.lastName}</p>
             </div>
           </div>
           <div className="flex items-center gap-1">
@@ -84,7 +84,8 @@ export default function Dashboard() {
               variant="ghost"
               size="default"
               onClick={() => setLocation("/account")}
-              className="text-white/70 hover:text-white hover:bg-white/10"
+              className="text-sm"
+              style={{ color: "#2e3a20" }}
             >
               <Settings className="w-4 h-4 mr-2" />
               Account
@@ -95,7 +96,8 @@ export default function Dashboard() {
               size="default"
               onClick={handleLogout}
               disabled={logoutMutation.isPending}
-              className="text-white/70 hover:text-white hover:bg-white/10"
+              className="text-sm"
+              style={{ color: "#2e3a20" }}
             >
               <LogOut className="w-4 h-4 mr-2" />
               Sign Out

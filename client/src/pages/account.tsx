@@ -74,7 +74,7 @@ export default function Account() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="bg-[#2e3a20] sticky top-0 z-50">
+      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
         <div className="max-w-3xl mx-auto px-6 h-14 flex items-center justify-between gap-4">
           <div className="flex items-center gap-3">
             <Button
@@ -82,25 +82,26 @@ export default function Account() {
               size="icon"
               onClick={() => setLocation("/dashboard")}
               data-testid="button-back"
-              className="text-white/70 hover:text-white hover:bg-white/10"
+              style={{ color: "#2e3a20" }}
             >
               <ArrowLeft className="w-5 h-5" />
             </Button>
             <img
               src="/realign-health-logo.png"
               alt="ReAlign Health"
-              className="h-7 w-auto"
-              style={{ mixBlendMode: "screen" }}
+              className="h-10 w-auto"
+              style={{ mixBlendMode: "multiply" }}
             />
-            <div className="h-4 w-px bg-white/20" />
-            <span className="font-medium text-white/80 text-sm">Account Settings</span>
+            <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
+            <span className="font-medium text-sm" style={{ color: "#2e3a20" }}>Account Settings</span>
           </div>
           <Button
             variant="ghost"
             size="default"
             onClick={() => logoutMutation.mutate()}
             disabled={logoutMutation.isPending}
-            className="text-white/70 hover:text-white hover:bg-white/10"
+            className="text-sm"
+            style={{ color: "#2e3a20" }}
             data-testid="button-logout"
           >
             Sign Out

@@ -601,18 +601,24 @@ export default function PatientProfiles() {
   return (
     <div className="flex flex-col h-screen bg-background overflow-hidden">
       {/* Header */}
-      <div className="flex-shrink-0 bg-background border-b">
-        <div className="px-4 py-3 flex items-center gap-3 flex-wrap">
+      <div className="flex-shrink-0 sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
+        <div className="px-4 h-14 flex items-center gap-3">
           <Link href="/dashboard">
-            <Button variant="ghost" size="sm" data-testid="button-back-to-labs">
+            <Button variant="ghost" size="sm" data-testid="button-back-to-labs" style={{ color: "#2e3a20" }}>
               <ArrowLeft className="h-4 w-4 mr-1" />
               Dashboard
             </Button>
           </Link>
-          <div className="h-4 w-px bg-border" />
+          <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
+          <img
+            src="/realign-health-logo.png"
+            alt="ReAlign Health"
+            className="h-9 w-auto"
+            style={{ mixBlendMode: "multiply" }}
+          />
+          <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
           <div className="flex items-center gap-2">
-            <Users className="h-4 w-4 text-muted-foreground" />
-            <h1 className="text-base font-semibold">Patient Profiles</h1>
+            <h1 className="text-sm font-semibold" style={{ color: "#1c2414" }}>Patient Profiles</h1>
             {!patientsLoading && (
               <Badge variant="secondary" className="text-xs">
                 {allPatients.length} patient{allPatients.length !== 1 ? 's' : ''}
