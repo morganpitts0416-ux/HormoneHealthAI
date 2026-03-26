@@ -26,7 +26,9 @@ passport.use(
     { usernameField: "username", passwordField: "password" },
     async (username, password, done) => {
       try {
-        const user = await storage.getUserByUsername(username);
+        // Accept either username or email
+        const user = await storage.getUserByUsername(username)
+          ?? await storage.getUserByEmail(username.trim().toLowerCase());
         if (!user) {
           return done(null, false, { message: "Invalid username or password" });
         }
