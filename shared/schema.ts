@@ -451,11 +451,18 @@ export const users = pgTable("users", {
   passwordHash: varchar("password_hash", { length: 255 }).notNull(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }).notNull(),
-  title: varchar("title", { length: 50 }).notNull(), // MD, DO, NP, PA-C, etc.
+  title: varchar("title", { length: 50 }).notNull(),
   npi: varchar("npi", { length: 20 }),
   clinicName: varchar("clinic_name", { length: 200 }).notNull(),
   phone: varchar("phone", { length: 30 }),
   address: text("address"),
+  // Role: 'admin' can access the developer dashboard; 'clinician' is the default
+  role: varchar("role", { length: 20 }).notNull().default("clinician"),
+  // Subscription status — defaults to 'active' so all existing and manually-added
+  // accounts keep full access when payment is added later. New self-registered users
+  // can be defaulted to 'trial' at that point without affecting anyone already here.
+  subscriptionStatus: varchar("subscription_status", { length: 30 }).notNull().default("active"),
+  notes: text("notes"), // Internal admin notes about this account
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

@@ -23,6 +23,13 @@ export interface IStorage {
   createUser(user: Omit<InsertUser, 'passwordHash'> & { passwordHash: string }): Promise<User>;
   updateUser(id: number, user: Partial<Omit<InsertUser, 'passwordHash'>>): Promise<User | undefined>;
 
+  // Admin operations
+  getAllUsers(): Promise<User[]>;
+  promoteToAdmin(id: number): Promise<User | undefined>;
+  updateUserAdmin(id: number, data: Partial<Pick<User, 'subscriptionStatus' | 'role' | 'notes'>>): Promise<User | undefined>;
+  deleteUserAdmin(id: number): Promise<boolean>;
+  getPatientCountByUser(userId: number): Promise<number>;
+
   // Patient operations (scoped by userId)
   getPatient(id: number, userId: number): Promise<Patient | undefined>;
   getAllPatients(userId: number): Promise<Patient[]>;
@@ -75,6 +82,42 @@ export class DbStorage implements IStorage {
       .where(eq(schema.users.id, id))
       .returning();
     return result[0];
+  }
+
+  // ── Admin operations ─────────────────────────────────────────────────────────
+  async getAllUsers(): Promise<User[]> {
+    return await db.select().from(schema.users).orderBy(desc(schema.users.createdAt));
+  }
+
+  async promoteToAdmin(id: number): Promise<User | undefined> {
+    const result = await db
+      .update(schema.users)
+      .set({ role: "admin", updatedAt: new Date() })
+      .where(eq(schema.users.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async updateUserAdmin(id: number, data: Partial<Pick<User, 'subscriptionStatus' | 'role' | 'notes'>>): Promise<User | undefined> {
+    const result = await db
+      .update(schema.users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.users.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async deleteUserAdmin(id: number): Promise<boolean> {
+    const result = await db.delete(schema.users).where(eq(schema.users.id, id)).returning();
+    return result.length > 0;
+  }
+
+  async getPatientCountByUser(userId: number): Promise<number> {
+    const result = await db
+      .select()
+      .from(schema.patients)
+      .where(eq(schema.patients.userId, userId));
+    return result.length;
   }
 
   // ── Patient operations ───────────────────────────────────────────────────────
