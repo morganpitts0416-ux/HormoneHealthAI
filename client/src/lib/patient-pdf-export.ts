@@ -408,16 +408,24 @@ export async function generatePatientWellnessPDF(
   selectedSupplements?: PdfSupplement[],
   clinicName?: string
 ): Promise<void> {
-  // Load ReAlign logo for PDF branding
+  // Load ReAlign logo for PDF branding — composite over white to avoid jsPDF alpha-channel corruption
   let logoData: string | null = null;
   try {
-    const res = await fetch('/realign-health-logo.png');
-    const blob = await res.blob();
     logoData = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      };
+      img.onerror = reject;
+      img.src = '/realign-health-logo.png';
     });
   } catch {}
 
@@ -447,7 +455,7 @@ export async function generatePatientWellnessPDF(
     if (logoData) {
       doc.setFillColor(255, 255, 255);
       doc.rect(margin - 2, 4, 58, 28, 'F');
-      doc.addImage(logoData, 'PNG', margin, 6, 54, 24);
+      doc.addImage(logoData, 'JPEG', margin, 6, 54, 24);
     } else {
       doc.setTextColor(255, 255, 255);
       doc.setFontSize(14);

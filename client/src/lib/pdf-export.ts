@@ -43,16 +43,24 @@ export async function generateLabReportPDF(
   clinicName: string = "Men's Hormone & Primary Care Clinic",
   labHistory?: LabResult[]
 ): Promise<void> {
-  // Load ReAlign logo for PDF branding
+  // Load ReAlign logo for PDF branding — composite over white to avoid jsPDF alpha-channel corruption
   let logoData: string | null = null;
   try {
-    const res = await fetch('/realign-health-logo.png');
-    const blob = await res.blob();
     logoData = await new Promise<string>((resolve, reject) => {
-      const reader = new FileReader();
-      reader.onload = () => resolve(reader.result as string);
-      reader.onerror = reject;
-      reader.readAsDataURL(blob);
+      const img = new Image();
+      img.crossOrigin = 'anonymous';
+      img.onload = () => {
+        const canvas = document.createElement('canvas');
+        canvas.width = img.naturalWidth;
+        canvas.height = img.naturalHeight;
+        const ctx = canvas.getContext('2d')!;
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(img, 0, 0);
+        resolve(canvas.toDataURL('image/jpeg', 0.95));
+      };
+      img.onerror = reject;
+      img.src = '/realign-health-logo.png';
     });
   } catch {}
 
@@ -68,7 +76,7 @@ export async function generateLabReportPDF(
 
   // Header: ReAlign logo on left, clinic info on right
   if (logoData) {
-    doc.addImage(logoData, 'PNG', 14, 8, 52, 22);
+    doc.addImage(logoData, 'JPEG', 14, 8, 52, 22);
   }
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
