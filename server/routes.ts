@@ -1074,14 +1074,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Account promoted to admin", user: { id: updated.id, username: updated.username, role: updated.role } });
   });
 
-  // One-click bootstrap — server uses the token internally, no copy/paste needed
-  app.post("/api/admin/auto-bootstrap", requireAuth, async (req, res) => {
-    const envToken = process.env.ADMIN_BOOTSTRAP_TOKEN;
-    if (!envToken) return res.status(503).json({ message: "Bootstrap not configured" });
-    const userId = (req.user as any).id;
-    const updated = await storage.promoteToAdmin(userId);
-    if (!updated) return res.status(404).json({ message: "User not found" });
-    res.json({ message: "Account promoted to admin", user: { id: updated.id, username: updated.username, role: updated.role } });
+  // One-time first-admin setup — no login required, only works when zero admins exist
+  app.post("/api/admin/auto-bootstrap", async (req, res) => {
+    const { username } = req.body || {};
+    if (!username) return res.status(400).json({ message: "Username required" });
+
+    // Only allowed when no admins exist yet
+    const allUsers = await storage.getAllUsers();
+    const hasAdmin = allUsers.some((u) => u.role === "admin");
+    if (hasAdmin) return res.status(403).json({ message: "An admin already exists. This endpoint is disabled." });
+
+    const user = await storage.getUserByUsername(username);
+    if (!user) return res.status(404).json({ message: "No account found with that username" });
+
+    const updated = await storage.promoteToAdmin(user.id);
+    res.json({ message: "Account promoted to admin", user: { id: updated!.id, username: updated!.username, role: updated!.role } });
   });
 
   // Get all users + patient counts (admin only)

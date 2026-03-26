@@ -1,31 +1,33 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ShieldCheck, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, CheckCircle2, User } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
-import { queryClient } from "@/lib/queryClient";
 
 export default function Bootstrap() {
-  const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const [username, setUsername] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
+  const [promotedUsername, setPromotedUsername] = useState("");
 
-  const handleBootstrap = async () => {
+  const handleBootstrap = async (e: React.FormEvent) => {
+    e.preventDefault();
+    if (!username.trim()) return;
     setLoading(true);
     try {
       const res = await fetch("/api/admin/auto-bootstrap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        credentials: "include",
+        body: JSON.stringify({ username: username.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
+      setPromotedUsername(data.user.username);
       setDone(true);
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       toast({ title: "Admin access granted", description: `${data.user.username} is now an admin.` });
     } catch (err: any) {
       toast({ title: "Error", description: err.message, variant: "destructive" });
@@ -34,23 +36,7 @@ export default function Bootstrap() {
     }
   };
 
-  if (!user) {
-    return (
-      <div className="min-h-screen flex items-center justify-center bg-background p-4">
-        <Card className="max-w-sm w-full">
-          <CardHeader>
-            <CardTitle className="text-base">Sign in required</CardTitle>
-            <CardDescription>You must be logged in to use this page.</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <Button className="w-full" onClick={() => setLocation("/login")}>Go to Login</Button>
-          </CardContent>
-        </Card>
-      </div>
-    );
-  }
-
-  if ((user as any).role === "admin" || done) {
+  if (done) {
     return (
       <div className="min-h-screen flex items-center justify-center bg-background p-4">
         <Card className="max-w-sm w-full text-center">
@@ -59,13 +45,16 @@ export default function Bootstrap() {
               <CheckCircle2 className="w-6 h-6" style={{ color: "#2e3a20" }} />
             </div>
             <div>
-              <h2 className="font-semibold text-lg" style={{ color: "#1c2414" }}>Admin access active</h2>
+              <h2 className="font-semibold text-lg" style={{ color: "#1c2414" }}>Admin access granted</h2>
               <p className="text-sm text-muted-foreground mt-1">
-                Your account <strong>@{user.username}</strong> has admin privileges.
+                <strong>@{promotedUsername}</strong> now has admin privileges.
               </p>
             </div>
-            <Button className="w-full" onClick={() => setLocation("/admin")}>
-              Go to Developer Dashboard
+            <p className="text-sm text-muted-foreground">
+              Log in with that account to access the Developer Dashboard.
+            </p>
+            <Button className="w-full" onClick={() => setLocation("/login")}>
+              Go to Login
             </Button>
           </CardContent>
         </Card>
@@ -93,29 +82,38 @@ export default function Bootstrap() {
               <CardTitle className="text-base">Admin Bootstrap</CardTitle>
             </div>
             <CardDescription>
-              Grant your account developer admin access to manage clinician accounts.
+              One-time setup to grant your account developer admin access. Enter the username you registered with.
             </CardDescription>
           </CardHeader>
-          <CardContent className="space-y-4">
-            <div className="space-y-1.5">
-              <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>Signed in as</label>
-              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-sm">
-                <span className="font-medium text-foreground">@{user.username}</span>
-                <span className="text-muted-foreground">— {user.title} {user.firstName} {user.lastName}</span>
+          <CardContent>
+            <form onSubmit={handleBootstrap} className="space-y-4">
+              <div className="space-y-1.5">
+                <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
+                  <User className="w-3.5 h-3.5 inline mr-1" />
+                  Your Username
+                </label>
+                <Input
+                  placeholder="e.g. morgan.admin"
+                  value={username}
+                  onChange={(e) => setUsername(e.target.value)}
+                  data-testid="input-bootstrap-username"
+                  autoComplete="off"
+                  autoFocus
+                />
               </div>
-            </div>
-            <Button
-              className="w-full"
-              onClick={handleBootstrap}
-              disabled={loading}
-              data-testid="button-bootstrap-submit"
-            >
-              {loading ? "Granting access..." : "Grant Admin Access"}
-            </Button>
+              <Button
+                type="submit"
+                className="w-full"
+                disabled={loading || !username.trim()}
+                data-testid="button-bootstrap-submit"
+              >
+                {loading ? "Granting access..." : "Grant Admin Access"}
+              </Button>
+            </form>
           </CardContent>
         </Card>
         <p className="text-center text-xs text-muted-foreground">
-          This page is only useful once. After your account is promoted, the Admin dashboard is accessible from your main dashboard header.
+          This only works once — once an admin account exists, this page is permanently disabled.
         </p>
       </div>
     </div>
