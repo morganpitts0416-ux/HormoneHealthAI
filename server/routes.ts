@@ -1074,6 +1074,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
     res.json({ message: "Account promoted to admin", user: { id: updated.id, username: updated.username, role: updated.role } });
   });
 
+  // One-click bootstrap — server uses the token internally, no copy/paste needed
+  app.post("/api/admin/auto-bootstrap", requireAuth, async (req, res) => {
+    const envToken = process.env.ADMIN_BOOTSTRAP_TOKEN;
+    if (!envToken) return res.status(503).json({ message: "Bootstrap not configured" });
+    const userId = (req.user as any).id;
+    const updated = await storage.promoteToAdmin(userId);
+    if (!updated) return res.status(404).json({ message: "User not found" });
+    res.json({ message: "Account promoted to admin", user: { id: updated.id, username: updated.username, role: updated.role } });
+  });
+
   // Get all users + patient counts (admin only)
   app.get("/api/admin/clinicians", requireAdmin, async (req, res) => {
     try {
