@@ -142,7 +142,7 @@ export default function PortalDashboard() {
   });
 
   const { data: messagingConfig } = useQuery<{
-    messagingPreference: 'none' | 'in_app' | 'sms';
+    messagingPreference: 'none' | 'in_app' | 'sms' | 'external_api';
     messagingPhone: string | null;
   }>({
     queryKey: ["/api/portal/messaging-config"],
@@ -246,7 +246,7 @@ export default function PortalDashboard() {
                   Message your care team
                 </button>
               </a>
-            ) : messagingConfig.messagingPreference === 'in_app' ? (
+            ) : (messagingConfig.messagingPreference === 'in_app' || messagingConfig.messagingPreference === 'external_api') ? (
               <Link href="/portal/messages">
                 <button
                   className="w-full flex items-center justify-center gap-2 rounded-xl py-3 text-sm font-medium"

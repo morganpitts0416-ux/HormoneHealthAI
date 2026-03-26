@@ -48,7 +48,7 @@ export default function PortalMessages() {
   });
 
   const { data: messagingConfig } = useQuery<{
-    messagingPreference: 'none' | 'in_app' | 'sms';
+    messagingPreference: 'none' | 'in_app' | 'sms' | 'external_api';
     messagingPhone: string | null;
   }>({
     queryKey: ["/api/portal/messaging-config"],
@@ -56,7 +56,9 @@ export default function PortalMessages() {
     retry: false,
   });
 
-  const isInApp = messagingConfig?.messagingPreference === 'in_app';
+  // Both 'in_app' and 'external_api' show the in-app thread to patients
+  const isInApp = messagingConfig?.messagingPreference === 'in_app' ||
+    messagingConfig?.messagingPreference === 'external_api';
 
   const { data: messages = [], isLoading: messagesLoading } = useQuery<PortalMessage[]>({
     queryKey: ["/api/portal/messages"],
