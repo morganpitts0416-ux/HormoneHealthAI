@@ -144,6 +144,54 @@ export async function sendPatientPortalInviteEmail(
   });
 }
 
+export async function sendStaffInviteEmail(
+  to: string,
+  staffFirstName: string,
+  clinicName: string,
+  clinicianName: string,
+  token: string,
+  req?: any
+): Promise<void> {
+  const base = getBaseUrl(req);
+  const link = `${base}/staff-set-password?token=${token}`;
+
+  await sendEmail({
+    to,
+    subject: `You've been invited to join ${clinicName} on ReAlign Health`,
+    html: `
+      <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
+        <div style="background: #2e3a20; padding: 28px 32px;">
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ReAlign Health</h1>
+          <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Clinical Lab Interpretation Platform</p>
+        </div>
+        <div style="padding: 36px 32px;">
+          <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hi ${staffFirstName},</p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+            <strong>${clinicianName}</strong> at <strong>${clinicName}</strong> has invited you to join their ReAlign Health workspace.
+          </p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+            As a team member, you'll have access to patient lab evaluations, supplement protocols, and portal messaging — all within their clinic account.
+          </p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
+              Set Up My Access
+            </a>
+          </div>
+          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
+            This invite link expires in <strong>72 hours</strong>. Once you set your password, you can log in at any time using your email address.
+          </p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 8px 0 0; word-break: break-all;">
+            Or copy this link: ${link}
+          </p>
+        </div>
+        <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; Clinician Lab Interpretation Platform</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
 export async function sendProtocolPublishedEmail(
   to: string,
   patientFirstName: string,

@@ -8,6 +8,7 @@ import type {
   LabResult, InsertLabResult,
   SavedInterpretation, InsertSavedInterpretation,
   User, InsertUser,
+  ClinicianStaff, InsertClinicianStaff,
   PatientPortalAccount, InsertPatientPortalAccount,
   PublishedProtocol, InsertPublishedProtocol,
   PortalMessage, InsertPortalMessage,
@@ -60,6 +61,15 @@ export interface IStorage {
   searchSavedInterpretations(searchTerm: string, userId: number, gender?: string): Promise<SavedInterpretation[]>;
   createSavedInterpretation(interpretation: InsertSavedInterpretation): Promise<SavedInterpretation>;
   deleteSavedInterpretation(id: number, userId: number): Promise<boolean>;
+
+  // Clinician staff operations
+  getClinicianStaffById(id: number): Promise<ClinicianStaff | undefined>;
+  getClinicianStaffByEmail(email: string): Promise<ClinicianStaff | undefined>;
+  getClinicianStaffByInviteToken(token: string): Promise<ClinicianStaff | undefined>;
+  getAllStaffForClinician(clinicianId: number): Promise<ClinicianStaff[]>;
+  createClinicianStaff(data: Omit<InsertClinicianStaff, 'passwordHash'> & { passwordHash?: string | null }): Promise<ClinicianStaff>;
+  updateClinicianStaff(id: number, data: Partial<ClinicianStaff>): Promise<ClinicianStaff | undefined>;
+  deleteClinicianStaff(id: number): Promise<boolean>;
 
   // Patient portal account operations
   getPatientById(id: number): Promise<Patient | undefined>;
@@ -471,6 +481,47 @@ export class DbStorage implements IStorage {
       .where(eq(schema.portalMessages.externalMessageId, externalMessageId))
       .limit(1);
     return result[0];
+  }
+
+  // ── Clinician Staff ──────────────────────────────────────────────────────────
+  async getClinicianStaffById(id: number): Promise<ClinicianStaff | undefined> {
+    const result = await db.select().from(schema.clinicianStaff).where(eq(schema.clinicianStaff.id, id));
+    return result[0];
+  }
+
+  async getClinicianStaffByEmail(email: string): Promise<ClinicianStaff | undefined> {
+    const result = await db.select().from(schema.clinicianStaff).where(eq(schema.clinicianStaff.email, email.toLowerCase()));
+    return result[0];
+  }
+
+  async getClinicianStaffByInviteToken(token: string): Promise<ClinicianStaff | undefined> {
+    const result = await db.select().from(schema.clinicianStaff).where(eq(schema.clinicianStaff.inviteToken, token));
+    return result[0];
+  }
+
+  async getAllStaffForClinician(clinicianId: number): Promise<ClinicianStaff[]> {
+    return db.select().from(schema.clinicianStaff)
+      .where(eq(schema.clinicianStaff.clinicianId, clinicianId))
+      .orderBy(schema.clinicianStaff.createdAt);
+  }
+
+  async createClinicianStaff(data: Omit<InsertClinicianStaff, 'passwordHash'> & { passwordHash?: string | null }): Promise<ClinicianStaff> {
+    const result = await db.insert(schema.clinicianStaff).values({
+      ...data,
+      email: data.email.toLowerCase(),
+      passwordHash: data.passwordHash ?? null,
+    }).returning();
+    return result[0];
+  }
+
+  async updateClinicianStaff(id: number, data: Partial<ClinicianStaff>): Promise<ClinicianStaff | undefined> {
+    const result = await db.update(schema.clinicianStaff).set(data).where(eq(schema.clinicianStaff.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteClinicianStaff(id: number): Promise<boolean> {
+    const result = await db.delete(schema.clinicianStaff).where(eq(schema.clinicianStaff.id, id)).returning();
+    return result.length > 0;
   }
 }
 

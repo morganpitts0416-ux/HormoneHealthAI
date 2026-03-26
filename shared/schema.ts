@@ -552,6 +552,30 @@ export const insertSavedInterpretationSchema = createInsertSchema(savedInterpret
 export type InsertSavedInterpretation = z.infer<typeof insertSavedInterpretationSchema>;
 export type SavedInterpretation = typeof savedInterpretations.$inferSelect;
 
+// ─── Clinician Staff (team members who share clinician workspace) ─────────────
+export const clinicianStaff = pgTable("clinician_staff", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  email: varchar("email", { length: 255 }).notNull().unique(),
+  firstName: varchar("first_name", { length: 100 }).notNull(),
+  lastName: varchar("last_name", { length: 100 }).notNull(),
+  // 'nurse' | 'assistant' | 'staff'
+  role: varchar("role", { length: 50 }).notNull().default("staff"),
+  passwordHash: varchar("password_hash", { length: 255 }),
+  inviteToken: varchar("invite_token", { length: 255 }),
+  inviteExpires: timestamp("invite_expires"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertClinicianStaffSchema = createInsertSchema(clinicianStaff).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertClinicianStaff = z.infer<typeof insertClinicianStaffSchema>;
+export type ClinicianStaff = typeof clinicianStaff.$inferSelect;
+
 // ─── Patient Portal Accounts ───────────────────────────────────────────────────
 export const patientPortalAccounts = pgTable("patient_portal_accounts", {
   id: serial("id").primaryKey(),
