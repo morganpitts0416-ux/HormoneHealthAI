@@ -1,8 +1,9 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { BarChart3 } from "lucide-react";
+import { BarChart3, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
 import { generateTrendInsights, type TrendInsight } from "@/lib/clinical-trend-insights";
+import { apiRequest } from "@/lib/queryClient";
 import {
   LineChart,
   Line,
@@ -44,7 +45,7 @@ const markerConfigs: MarkerConfig[] = [
   { name: 'Hemoglobin', key: 'hemoglobin', unit: 'g/dL', color: '#dc2626', group: 'cbc' },
   { name: 'Hematocrit', key: 'hematocrit', unit: '%', color: '#b91c1c', group: 'cbc' },
   { name: 'Vitamin D', key: 'vitaminD', unit: 'ng/mL', color: '#eab308', optimalRange: { min: 40, max: 80 }, lowerIsBetter: false, group: 'nutrients' },
-  { name: 'Ferritin', key: 'ferritin', unit: 'ng/mL', color: '#78716c', group: 'nutrients' },
+  { name: 'Ferritin', key: 'ferritin', unit: 'ng/mL', color: '#78716c', optimalRange: { min: 50 }, lowerIsBetter: false, group: 'nutrients' },
   { name: 'Vitamin B12', key: 'vitaminB12', unit: 'pg/mL', color: '#059669', lowerIsBetter: false, group: 'nutrients' },
   { name: 'PSA', key: 'psa', unit: 'ng/mL', color: '#64748b', optimalRange: { max: 4.0 }, lowerIsBetter: true, group: 'metabolic' },
 ];
@@ -62,6 +63,13 @@ const groupLabels: Record<string, string> = {
 interface PatientTrendChartsProps {
   labs: LabResult[];
   patientName: string;
+  patientId?: number;
+  gender?: 'male' | 'female';
+}
+
+interface TrendNarrative {
+  clinicianNarrative: string;
+  patientNarrative: string;
 }
 
 interface ChartDataPoint {
@@ -113,8 +121,11 @@ function getAvailableMarkersWithMultiplePoints(labs: LabResult[]): MarkerConfig[
   });
 }
 
-export function PatientTrendCharts({ labs, patientName }: PatientTrendChartsProps) {
+export function PatientTrendCharts({ labs, patientName, patientId, gender = 'male' }: PatientTrendChartsProps) {
   const [selectedGroup, setSelectedGroup] = useState<string | null>(null);
+  const [showPatientNarrative, setShowPatientNarrative] = useState(false);
+  const [narrative, setNarrative] = useState<TrendNarrative | null>(null);
+  const [narrativeLoading, setNarrativeLoading] = useState(false);
   const chartsRef = useRef<HTMLDivElement>(null);
 
   const availableMarkers = getAvailableMarkersWithMultiplePoints(labs);
@@ -124,6 +135,28 @@ export function PatientTrendCharts({ labs, patientName }: PatientTrendChartsProp
   for (const insight of insights) {
     insightMap.set(insight.markerKey, insight);
   }
+
+  // Auto-fetch AI narrative when we have enough data and a patient ID
+  useEffect(() => {
+    if (!patientId || insights.length === 0 || narrative) return;
+    setNarrativeLoading(true);
+    apiRequest('POST', `/api/patients/${patientId}/trend-narrative`, {
+      gender,
+      trendData: insights.map(i => ({
+        markerName: i.markerName,
+        unit: i.unit,
+        currentValue: i.currentValue,
+        previousValue: i.previousValue,
+        direction: i.direction,
+        severity: i.severity,
+        clinicianInsight: i.clinicianInsight,
+        patientInsight: i.patientInsight,
+      })),
+    })
+      .then((r: any) => setNarrative(r))
+      .catch(() => setNarrative(null))
+      .finally(() => setNarrativeLoading(false));
+  }, [patientId, insights.length]);
 
   if (availableMarkers.length === 0) {
     if (allAvailableMarkers.length > 0 && labs.length < 2) {
@@ -183,6 +216,45 @@ export function PatientTrendCharts({ labs, patientName }: PatientTrendChartsProp
         </div>
       </CardHeader>
       <CardContent>
+        {/* AI Trend Narrative */}
+        {(narrativeLoading || narrative) && (
+          <div className="mb-5 rounded-lg border bg-muted/30 p-4 space-y-2">
+            <div className="flex items-center gap-2">
+              <Sparkles className="h-4 w-4 text-blue-500 shrink-0" />
+              <span className="text-sm font-semibold">AI Trend Analysis</span>
+              {narrativeLoading && (
+                <span className="text-xs text-muted-foreground animate-pulse ml-auto">Generating...</span>
+              )}
+            </div>
+            {narrativeLoading && (
+              <div className="h-4 bg-muted animate-pulse rounded w-3/4" />
+            )}
+            {narrative && !narrativeLoading && (
+              <div className="space-y-3">
+                <p className="text-sm leading-relaxed text-foreground" data-testid="clinician-trend-narrative">
+                  {narrative.clinicianNarrative}
+                </p>
+                <div>
+                  <button
+                    onClick={() => setShowPatientNarrative(v => !v)}
+                    className="flex items-center gap-1 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                    data-testid="toggle-patient-narrative"
+                  >
+                    {showPatientNarrative ? <ChevronUp className="h-3 w-3" /> : <ChevronDown className="h-3 w-3" />}
+                    {showPatientNarrative ? 'Hide' : 'Show'} patient-facing version
+                  </button>
+                  {showPatientNarrative && (
+                    <div className="mt-2 pl-3 border-l-2 border-blue-200 dark:border-blue-800">
+                      <p className="text-sm leading-relaxed text-muted-foreground italic" data-testid="patient-trend-narrative">
+                        {narrative.patientNarrative}
+                      </p>
+                    </div>
+                  )}
+                </div>
+              </div>
+            )}
+          </div>
+        )}
         <div ref={chartsRef} className="grid grid-cols-1 md:grid-cols-2 gap-4">
           {displayMarkers.map(marker => {
             const data = buildChartData(labs, marker.key);

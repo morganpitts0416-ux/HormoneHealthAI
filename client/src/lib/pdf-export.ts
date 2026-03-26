@@ -1,6 +1,7 @@
 import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
-import type { LabValues, InterpretationResult } from '@shared/schema';
+import type { LabValues, InterpretationResult, LabResult } from '@shared/schema';
+import { generateTrendInsights } from '@/lib/clinical-trend-insights';
 
 // Sanitize text to replace Unicode characters that cause PDF spacing issues
 // Converts to ASCII-safe equivalents while preserving medical meaning
@@ -39,7 +40,8 @@ export function generateLabReportPDF(
   labValues: LabValues,
   interpretation: InterpretationResult,
   patientName?: string,
-  clinicName: string = "Men's Hormone & Primary Care Clinic"
+  clinicName: string = "Men's Hormone & Primary Care Clinic",
+  labHistory?: LabResult[]
 ): void {
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -273,6 +275,77 @@ export function generateLabReportPDF(
       yPosition += 4;
     });
     yPosition += 4;
+  }
+
+  if (labHistory && labHistory.length >= 2) {
+    const trendInsights = generateTrendInsights(labHistory);
+    if (trendInsights.length > 0) {
+      if (yPosition > 230) {
+        doc.addPage();
+        yPosition = 20;
+      }
+
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.text('Lab Trend Analysis', 14, yPosition);
+      yPosition += 6;
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(100, 100, 100);
+      doc.text(`Based on ${labHistory.length} lab results on record`, 14, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 7;
+
+      const improved = trendInsights.filter(i => i.direction === 'improved');
+      const worsened = trendInsights.filter(i => i.direction === 'worsened');
+      const stable = trendInsights.filter(i => i.direction === 'stable');
+
+      const addTrendGroup = (title: string, items: typeof trendInsights, color: [number, number, number]) => {
+        if (items.length === 0) return;
+        if (yPosition > 255) {
+          doc.addPage();
+          yPosition = 20;
+        }
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...color);
+        doc.text(title, 14, yPosition);
+        doc.setTextColor(0, 0, 0);
+        yPosition += 5;
+
+        items.forEach(insight => {
+          if (yPosition > 265) {
+            doc.addPage();
+            yPosition = 20;
+          }
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'bold');
+          doc.text(`${insight.markerName} (${insight.unit}): ${insight.currentValue} -> was ${insight.previousValue}`, 18, yPosition);
+          yPosition += 4;
+
+          if (insight.clinicianInsight) {
+            doc.setFont('helvetica', 'normal');
+            const ctxLines = doc.splitTextToSize(sanitizeForPdf(insight.clinicianInsight), pageWidth - 36);
+            ctxLines.forEach((line: string) => {
+              if (yPosition > 265) {
+                doc.addPage();
+                yPosition = 20;
+              }
+              doc.text(line, 20, yPosition);
+              yPosition += 4;
+            });
+          }
+          yPosition += 2;
+        });
+        yPosition += 3;
+      };
+
+      addTrendGroup('Improved Markers', improved, [22, 101, 52]);
+      addTrendGroup('Areas of Concern', worsened, [185, 28, 28]);
+      addTrendGroup('Stable Markers', stable, [100, 100, 100]);
+      yPosition += 4;
+    }
   }
 
   if (interpretation.recheckWindow) {

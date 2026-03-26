@@ -898,6 +898,30 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  app.post("/api/patients/:id/trend-narrative", requireAuth, async (req, res) => {
+    try {
+      const userId = (req.user as any).id;
+      const id = parseInt(req.params.id);
+      const patient = await storage.getPatient(id, userId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+
+      const { trendData, gender } = req.body;
+      if (!trendData || !Array.isArray(trendData) || trendData.length === 0) {
+        return res.status(400).json({ error: "trendData array required" });
+      }
+
+      const result = await AIService.generateTrendNarrative(
+        trendData,
+        gender || 'male',
+        patient.firstName ? `${patient.firstName} ${patient.lastName}` : undefined
+      );
+      res.json(result);
+    } catch (error) {
+      console.error("Error generating trend narrative:", error);
+      res.status(500).json({ error: "Failed to generate trend narrative" });
+    }
+  });
+
   app.post("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
       const userId = (req.user as any).id;
