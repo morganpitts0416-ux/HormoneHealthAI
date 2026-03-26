@@ -47,6 +47,7 @@ export interface IStorage {
   getPatientByName(firstName: string, lastName: string, userId: number): Promise<Patient | undefined>;
   createPatient(patient: InsertPatient): Promise<Patient>;
   updatePatient(id: number, patient: Partial<InsertPatient>, userId: number): Promise<Patient | undefined>;
+  deletePatient(id: number, userId: number): Promise<boolean>;
 
   // Lab result operations
   getLabResult(id: number): Promise<LabResult | undefined>;
@@ -253,6 +254,14 @@ export class DbStorage implements IStorage {
       .where(and(eq(schema.patients.id, id), eq(schema.patients.userId, userId)))
       .returning();
     return result[0];
+  }
+
+  async deletePatient(id: number, userId: number): Promise<boolean> {
+    const result = await db
+      .delete(schema.patients)
+      .where(and(eq(schema.patients.id, id), eq(schema.patients.userId, userId)))
+      .returning();
+    return result.length > 0;
   }
 
   // ── Lab result operations ────────────────────────────────────────────────────

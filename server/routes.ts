@@ -1082,6 +1082,21 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Delete a patient profile (and all their lab results, portal data, etc. via cascade)
+  app.delete("/api/patients/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid patient ID" });
+      const deleted = await storage.deletePatient(id, clinicianId);
+      if (!deleted) return res.status(404).json({ error: "Patient not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting patient:", error);
+      res.status(500).json({ error: "Failed to delete patient" });
+    }
+  });
+
   app.get("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
