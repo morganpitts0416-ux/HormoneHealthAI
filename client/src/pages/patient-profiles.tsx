@@ -260,7 +260,8 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const handleProviderPDF = () => {
     if (interp) {
       const clinicName = isFemale ? "Women's Hormone & Primary Care Clinic" : undefined;
-      generateLabReportPDF(vals as LabValues, interp, patientName, clinicName);
+      const historyForPdf = allLabs.length >= 2 ? allLabs : undefined;
+      generateLabReportPDF(vals as LabValues, interp, patientName, clinicName, historyForPdf);
       toast({ title: "Provider Report Generated", description: "The provider report has been downloaded." });
     }
   };
@@ -792,6 +793,8 @@ export default function PatientProfiles() {
                 <PatientTrendCharts
                   labs={labs}
                   patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                  patientId={selectedPatient.id}
+                  gender={selectedPatient.gender === 'female' ? 'female' : 'male'}
                 />
               )}
               {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}

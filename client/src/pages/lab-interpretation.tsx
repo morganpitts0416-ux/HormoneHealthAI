@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
@@ -13,6 +13,7 @@ import { SOAPNote } from "@/components/soap-note";
 import { SavedInterpretations } from "@/components/saved-interpretations";
 import { PatientSelector } from "@/components/patient-selector";
 import { PatientHistory } from "@/components/patient-history";
+import { PatientTrendCharts } from "@/components/patient-trend-charts";
 import { SupplementSelector, type CustomSupplement } from "@/components/supplement-selector";
 import { labsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
@@ -33,6 +34,11 @@ export default function LabInterpretation() {
   const [customSupplements, setCustomSupplements] = useState<CustomSupplement[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { toast } = useToast();
+
+  const { data: patientLabs } = useQuery<LabResult[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
+    enabled: !!selectedPatient?.id,
+  });
 
   useEffect(() => {
     if (interpretationResult?.supplements) {
@@ -143,7 +149,7 @@ export default function LabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues, interpretationResult);
+      generateLabReportPDF(labValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, undefined, patientLabs);
     }
   };
 
@@ -548,6 +554,16 @@ export default function LabInterpretation() {
                 {/* SOAP Note */}
                 {interpretationResult.soapNote && (
                   <SOAPNote soapNote={interpretationResult.soapNote} />
+                )}
+
+                {/* Lab Trend Charts with AI Narrative */}
+                {selectedPatient && patientLabs && patientLabs.length >= 2 && (
+                  <PatientTrendCharts
+                    labs={patientLabs}
+                    patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                    patientId={selectedPatient.id}
+                    gender="male"
+                  />
                 )}
               </>
             ) : (

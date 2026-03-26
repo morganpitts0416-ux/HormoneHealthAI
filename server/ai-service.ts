@@ -1072,4 +1072,81 @@ Your Next Steps:
 We're Here for Your Success:
 Our team is dedicated to optimizing your health and vitality. Reach out anytime with questions about your wellness plan.`;
   }
+
+  static async generateTrendNarrative(
+    trendData: Array<{
+      markerName: string;
+      unit: string;
+      currentValue: number;
+      previousValue: number;
+      direction: 'improved' | 'worsened' | 'stable';
+      severity: string;
+      clinicianInsight: string;
+      patientInsight: string;
+    }>,
+    gender: 'male' | 'female',
+    patientName?: string
+  ): Promise<{ clinicianNarrative: string; patientNarrative: string }> {
+    const notable = trendData.filter(t => t.direction !== 'stable');
+    if (notable.length === 0) {
+      return {
+        clinicianNarrative: 'All tracked markers are stable since the prior visit. No significant interval changes to report.',
+        patientNarrative: 'Great news — all of your tracked lab values have remained stable since your last visit. Keep doing what you\'re doing!',
+      };
+    }
+
+    const improved = notable.filter(t => t.direction === 'improved');
+    const worsened = notable.filter(t => t.direction === 'worsened');
+
+    const markerSummary = notable.map(t =>
+      `${t.markerName}: ${t.previousValue} → ${t.currentValue} ${t.unit} (${t.direction}, severity: ${t.severity}) — ${t.clinicianInsight}`
+    ).join('\n');
+
+    const clinicianPrompt = `You are a clinical specialist reviewing interval lab trends for a ${gender} patient${patientName ? ` named ${patientName}` : ''}.
+
+Interval changes since last visit:
+${markerSummary}
+
+Write a concise clinical trend narrative (3-5 sentences) for the provider chart. Include:
+- Which markers improved and the clinical significance
+- Which markers worsened and recommended actions
+- Any patterns across markers (e.g., metabolic cluster, hormonal pattern)
+- Specific next steps where indicated
+Be direct, clinical, and actionable. Do not use bullet points — write in flowing prose. Do not repeat the numbers already shown in the trend table.`;
+
+    const patientSummary = notable.map(t =>
+      `${t.markerName}: ${t.previousValue} → ${t.currentValue} ${t.unit} (${t.direction}) — ${t.patientInsight}`
+    ).join('\n');
+
+    const patientPrompt = `You are writing a patient-friendly explanation of their lab trends since their last visit.
+
+Lab changes:
+${patientSummary}
+
+Write a warm, encouraging 3-4 sentence explanation for the patient. Include:
+- Acknowledge what's improving and why it matters for how they feel
+- Explain what needs more work in plain language (no jargon)
+- One clear takeaway or encouragement
+Write in second person ("your"), be warm but honest, avoid medical jargon. No bullet points.`;
+
+    const [clinicianResp, patientResp] = await Promise.all([
+      openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [{ role: "user", content: clinicianPrompt }],
+        max_tokens: 300,
+        temperature: 0.4,
+      }),
+      openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [{ role: "user", content: patientPrompt }],
+        max_tokens: 250,
+        temperature: 0.5,
+      }),
+    ]);
+
+    return {
+      clinicianNarrative: clinicianResp.choices[0]?.message?.content?.trim() || '',
+      patientNarrative: patientResp.choices[0]?.message?.content?.trim() || '',
+    };
+  }
 }

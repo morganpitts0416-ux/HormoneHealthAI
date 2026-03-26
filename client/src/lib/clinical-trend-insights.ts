@@ -363,14 +363,35 @@ const markerProfiles: MarkerProfile[] = [
   {
     name: 'Ferritin', key: 'ferritin', unit: 'ng/mL',
     getClinicianInsight: (c, p, d) => {
-      if (c < 30) return `Ferritin depleted (${c} ng/mL). Iron deficiency likely. Evaluate for blood loss and initiate iron supplementation.`;
-      if (c > 300) return `Ferritin elevated (${c} ng/mL). Rule out hemochromatosis, inflammation, or liver disease.`;
-      return `Ferritin ${d === 'stable' ? 'stable' : 'changed'} at ${c} ng/mL. Within acceptable range.`;
+      if (c < 20) return `Ferritin critically depleted at ${c} ng/mL (prev ${p}). Significant iron deficiency — evaluate for occult blood loss, evaluate GI source. Initiate iron supplementation; goal >50 ng/mL.`;
+      if (c < 30) return `Ferritin deficient at ${c} ng/mL (prev ${p}). Initiate oral iron supplementation. Goal >50 ng/mL for functional sufficiency.`;
+      if (c < 50) {
+        if (d === 'improved') return `Ferritin improving (${p} → ${c} ng/mL) — good response to supplementation. Continue to replete; clinical goal >50 ng/mL.`;
+        if (d === 'worsened') return `Ferritin declining (${p} → ${c} ng/mL) and remains suboptimal. Reassess supplementation compliance; goal >50 ng/mL.`;
+        return `Ferritin suboptimal at ${c} ng/mL. Continue iron supplementation to reach goal >50 ng/mL.`;
+      }
+      if (c > 300) return `Ferritin elevated at ${c} ng/mL (prev ${p}). Rule out hemochromatosis, chronic inflammation, or liver disease.`;
+      if (d === 'improved') return `Ferritin reached goal range at ${c} ng/mL (prev ${p}). Transition to maintenance dosing.`;
+      if (d === 'worsened') return `Ferritin declining from ${p} to ${c} ng/mL. Monitor — reassess supplementation if trending below 50 ng/mL.`;
+      return `Ferritin stable at ${c} ng/mL — within goal range (>50 ng/mL).`;
     },
     getPatientInsight: (c, p, d) => {
-      if (c < 30) return `Your ferritin (iron stores) is low at ${c}. This can contribute to fatigue and we'll address it.`;
-      if (c > 300) return `Your ferritin is elevated at ${c}. We'll investigate the cause.`;
-      return `Your iron stores (ferritin) are at ${c} - looking good.`;
+      if (c < 20) return `Your iron stores (ferritin) are critically low at ${c} — this commonly causes fatigue, brain fog, and hair loss. Iron supplementation has been initiated; goal is >50 ng/mL.`;
+      if (c < 30) return `Your ferritin (iron stores) is low at ${c} ng/mL. We're working to replete this — the goal is above 50 ng/mL for optimal energy and function.`;
+      if (c < 50) {
+        if (d === 'improved') return `Your ferritin improved from ${p} to ${c} ng/mL — great progress! Keep taking your iron supplement; the goal is above 50 ng/mL.`;
+        if (d === 'worsened') return `Your ferritin dropped from ${p} to ${c} ng/mL and is still below the goal of 50 ng/mL. Make sure to take your iron supplement consistently.`;
+        return `Your iron stores are at ${c} ng/mL — improving but still below our goal of 50 ng/mL. Continue your iron supplement.`;
+      }
+      if (c > 300) return `Your ferritin is elevated at ${c} ng/mL. We'll investigate the cause.`;
+      if (d === 'improved') return `Your iron stores (ferritin) reached the goal range — improved from ${p} to ${c} ng/mL. Well done staying consistent with supplementation.`;
+      if (d === 'worsened') return `Your ferritin dipped slightly from ${p} to ${c} ng/mL. Still in range, but we'll keep an eye on this trend.`;
+      return `Your iron stores (ferritin) are at ${c} ng/mL — in a healthy range. Keep it up.`;
+    },
+    getRecommendation: (c, d) => {
+      if (c < 30) return 'Iron supplementation recommended: Ferrous bisglycinate 25–50 mg elemental iron daily with vitamin C for absorption. Avoid taking with calcium or coffee. Recheck in 8–12 weeks. Goal ferritin >50 ng/mL.';
+      if (c < 50) return 'Continue iron supplementation. Ferrous bisglycinate preferred for tolerability. Goal ferritin >50 ng/mL. Recheck in 8–12 weeks.';
+      return undefined;
     }
   },
   {
@@ -477,7 +498,7 @@ const rangeBasedDirectionality: Record<string, (current: number, previous: numbe
     return 'stable';
   },
   ferritin: (c, p) => {
-    const optMin = 30, optMax = 300;
+    const optMin = 50, optMax = 300;
     const cDist = c < optMin ? optMin - c : c > optMax ? c - optMax : 0;
     const pDist = p < optMin ? optMin - p : p > optMax ? p - optMax : 0;
     if (cDist < pDist) return 'improved';
