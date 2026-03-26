@@ -97,7 +97,7 @@ export default function Login() {
                     <FormControl>
                       <div className="relative">
                         <User className="absolute left-3 top-1/2 -translate-y-1/2 w-4 h-4 text-muted-foreground" />
-                        <Input data-testid="input-username" placeholder="your.username" className="pl-9" autoComplete="username" {...field} />
+                        <Input data-testid="input-username" placeholder="Username or email" className="pl-9" autoComplete="username" {...field} />
                       </div>
                     </FormControl>
                     <FormMessage />
