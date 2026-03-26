@@ -9,6 +9,9 @@ const PgSession = connectPgSimple(session);
 
 const app = express();
 
+// Trust Replit's reverse proxy so secure session cookies work over HTTPS in production
+app.set("trust proxy", 1);
+
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
@@ -37,6 +40,7 @@ app.use(
       maxAge: 7 * 24 * 60 * 60 * 1000, // 7 days
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
+      sameSite: process.env.NODE_ENV === "production" ? "lax" : false,
     },
   })
 );

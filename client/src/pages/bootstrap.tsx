@@ -2,9 +2,8 @@ import { useState } from "react";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
-import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
-import { ShieldCheck, KeyRound, CheckCircle2 } from "lucide-react";
+import { ShieldCheck, CheckCircle2 } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 
@@ -12,20 +11,16 @@ export default function Bootstrap() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
-  const [token, setToken] = useState("");
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
 
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault();
-    if (!token.trim()) return;
+  const handleBootstrap = async () => {
     setLoading(true);
     try {
-      const res = await fetch("/api/admin/bootstrap", {
+      const res = await fetch("/api/admin/auto-bootstrap", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ token: token.trim() }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Failed");
@@ -81,7 +76,7 @@ export default function Bootstrap() {
   return (
     <div className="min-h-screen flex items-center justify-center bg-background p-4">
       <div className="w-full max-w-sm space-y-4">
-        <div className="text-center mb-2">
+        <div className="text-center">
           <img
             src="/realign-health-logo.png"
             alt="ReAlign Health"
@@ -98,44 +93,29 @@ export default function Bootstrap() {
               <CardTitle className="text-base">Admin Bootstrap</CardTitle>
             </div>
             <CardDescription>
-              Enter the <code className="text-xs bg-muted px-1 py-0.5 rounded">ADMIN_BOOTSTRAP_TOKEN</code> from your
-              Replit Secrets tab to grant your account admin privileges.
+              Grant your account developer admin access to manage clinician accounts.
             </CardDescription>
           </CardHeader>
-          <CardContent>
-            <form onSubmit={handleSubmit} className="space-y-4">
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>Signed in as</label>
-                <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-sm text-muted-foreground">
-                  <span className="font-medium text-foreground">@{user.username}</span>
-                  <span>— {user.title} {user.firstName} {user.lastName}</span>
-                </div>
+          <CardContent className="space-y-4">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>Signed in as</label>
+              <div className="flex items-center gap-2 px-3 py-2 rounded-md bg-muted text-sm">
+                <span className="font-medium text-foreground">@{user.username}</span>
+                <span className="text-muted-foreground">— {user.title} {user.firstName} {user.lastName}</span>
               </div>
-              <div className="space-y-1.5">
-                <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
-                  <KeyRound className="w-3.5 h-3.5 inline mr-1" />
-                  Bootstrap Token
-                </label>
-                <Input
-                  type="password"
-                  placeholder="Paste token from Replit Secrets"
-                  value={token}
-                  onChange={(e) => setToken(e.target.value)}
-                  data-testid="input-bootstrap-token"
-                  autoComplete="off"
-                />
-                <p className="text-xs text-muted-foreground">
-                  Find it in the Replit Secrets tab as <code className="bg-muted px-1 rounded">ADMIN_BOOTSTRAP_TOKEN</code>
-                </p>
-              </div>
-              <Button type="submit" className="w-full" disabled={loading || !token.trim()} data-testid="button-bootstrap-submit">
-                {loading ? "Granting access..." : "Grant Admin Access"}
-              </Button>
-            </form>
+            </div>
+            <Button
+              className="w-full"
+              onClick={handleBootstrap}
+              disabled={loading}
+              data-testid="button-bootstrap-submit"
+            >
+              {loading ? "Granting access..." : "Grant Admin Access"}
+            </Button>
           </CardContent>
         </Card>
         <p className="text-center text-xs text-muted-foreground">
-          This page is only useful once. After your account is promoted, you can ignore this URL.
+          This page is only useful once. After your account is promoted, the Admin dashboard is accessible from your main dashboard header.
         </p>
       </div>
     </div>
