@@ -17,6 +17,10 @@ import Bootstrap from "@/pages/bootstrap";
 import ForgotPassword from "@/pages/forgot-password";
 import SetPassword from "@/pages/set-password";
 import ResetPassword from "@/pages/reset-password";
+import PortalLogin from "@/pages/portal/login";
+import PortalSetPassword from "@/pages/portal/set-password";
+import PortalDashboard from "@/pages/portal/dashboard";
+import PortalSupplements from "@/pages/portal/supplements";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -108,6 +112,10 @@ function Router() {
       <Route path="/forgot-password" component={ForgotPassword} />
       <Route path="/set-password" component={SetPassword} />
       <Route path="/reset-password" component={ResetPassword} />
+      <Route path="/portal/login" component={PortalLogin} />
+      <Route path="/portal/set-password" component={PortalSetPassword} />
+      <Route path="/portal/dashboard" component={PortalDashboard} />
+      <Route path="/portal/supplements" component={PortalSupplements} />
       <Route>
         {() => <RootRedirect />}
       </Route>

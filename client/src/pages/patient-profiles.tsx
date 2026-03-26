@@ -5,10 +5,12 @@ import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
-  BarChart3, ClipboardList, Heart, Download, Trash2, Users
+  BarChart3, ClipboardList, Heart, Download, Trash2, Users,
+  Mail, Globe, Send, Share2, Leaf
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
@@ -20,6 +22,7 @@ import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
+import { apiRequest } from "@/lib/queryClient";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues } from "@shared/schema";
 
 function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patient }) {
@@ -129,7 +132,15 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
   );
 }
 
-function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId }: { labs: LabResult[]; onViewLab: (lab: LabResult) => void; onDeleteLab: (lab: LabResult) => void; deletingId: number | null }) {
+function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab, hasPortalAccount, publishingId }: {
+  labs: LabResult[];
+  onViewLab: (lab: LabResult) => void;
+  onDeleteLab: (lab: LabResult) => void;
+  deletingId: number | null;
+  onPublishLab?: (lab: LabResult) => void;
+  hasPortalAccount?: boolean;
+  publishingId?: number | null;
+}) {
   return (
     <Card data-testid="lab-history-list">
       <CardHeader className="pb-3">
@@ -185,6 +196,20 @@ function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId }: { labs: La
                         <CheckCircle2 className="h-3 w-3 mr-1" />
                         Normal
                       </Badge>
+                    )}
+                    {hasPortalAccount && onPublishLab && (interp?.supplements?.length ?? 0) > 0 && (
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={(e) => { e.stopPropagation(); onPublishLab(lab); }}
+                        disabled={publishingId === lab.id}
+                        data-testid={`button-publish-protocol-${lab.id}`}
+                        className="text-xs gap-1.5"
+                        style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                      >
+                        <Leaf className="h-3 w-3" />
+                        {publishingId === lab.id ? "Publishing…" : "Publish to Portal"}
+                      </Button>
                     )}
                     <Button
                       variant="outline"
@@ -528,6 +553,9 @@ export default function PatientProfiles() {
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [searchTerm, setSearchTerm] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
+  const [showInviteModal, setShowInviteModal] = useState(false);
+  const [inviteEmail, setInviteEmail] = useState("");
+  const [publishingLabId, setPublishingLabId] = useState<number | null>(null);
 
   const { data: allPatients = [], isLoading: patientsLoading } = useQuery<Patient[]>({
     queryKey: ['/api/patients/search', ''],
@@ -548,6 +576,68 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient,
   });
+
+  const { data: portalStatus } = useQuery<{
+    hasPortalAccount: boolean;
+    hasPassword: boolean;
+    email: string | null;
+    lastProtocolPublished: string | null;
+  }>({
+    queryKey: ['/api/portal/status', selectedPatient?.id],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/status/${selectedPatient!.id}`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch portal status');
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const inviteMutation = useMutation({
+    mutationFn: async ({ patientId, email }: { patientId: number; email: string }) => {
+      const res = await apiRequest("POST", `/api/portal/invite/${patientId}`, { email });
+      return res;
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/portal/status', selectedPatient?.id] });
+      setShowInviteModal(false);
+      setInviteEmail("");
+      toast({ title: "Invitation sent", description: "The patient will receive an email with a link to set up their portal account." });
+    },
+    onError: (error: any) => {
+      toast({ title: "Failed to send invitation", description: error.message || "Please try again.", variant: "destructive" });
+    },
+  });
+
+  const publishProtocolMutation = useMutation({
+    mutationFn: async ({ lab }: { lab: LabResult }) => {
+      const interp = lab.interpretationResult as any;
+      const supplements = interp?.supplements || [];
+      const res = await apiRequest("POST", "/api/protocols/publish", {
+        patientId: lab.patientId,
+        labResultId: lab.id,
+        supplements,
+        labDate: lab.labDate,
+      });
+      return res;
+    },
+    onSuccess: (_data, variables) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/portal/status', selectedPatient?.id] });
+      setPublishingLabId(null);
+      toast({
+        title: "Protocol published",
+        description: `${((variables.lab.interpretationResult as any)?.supplements?.length || 0)} supplements are now visible to the patient in their portal.`,
+      });
+    },
+    onError: (error: any) => {
+      setPublishingLabId(null);
+      toast({ title: "Failed to publish protocol", description: error.message || "Please try again.", variant: "destructive" });
+    },
+  });
+
+  const handlePublishLab = (lab: LabResult) => {
+    setPublishingLabId(lab.id);
+    publishProtocolMutation.mutate({ lab });
+  };
 
   const filteredPatients = useMemo(() => {
     let list = allPatients;
@@ -756,9 +846,9 @@ export default function PatientProfiles() {
           ) : (
             <div className="p-6 space-y-6">
               {/* Patient header */}
-              <div className="flex items-center gap-4 pb-2">
+              <div className="flex items-start gap-4 pb-2">
                 <PatientAvatar patient={selectedPatient} size="md" />
-                <div>
+                <div className="flex-1 min-w-0">
                   <h2 className="text-lg font-semibold">
                     {selectedPatient.firstName} {selectedPatient.lastName}
                   </h2>
@@ -779,7 +869,29 @@ export default function PatientProfiles() {
                     <Badge variant="outline" className="text-xs">
                       {labs.length} lab result{labs.length !== 1 ? 's' : ''}
                     </Badge>
+                    {portalStatus?.hasPortalAccount && (
+                      <Badge className="text-xs gap-1" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d4a8" }}>
+                        <Leaf className="w-2.5 h-2.5" />
+                        Portal Active
+                      </Badge>
+                    )}
                   </div>
+                </div>
+                <div className="flex-shrink-0">
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => {
+                      setInviteEmail(portalStatus?.email || (selectedPatient as any).email || "");
+                      setShowInviteModal(true);
+                    }}
+                    data-testid="button-invite-to-portal"
+                    className="text-xs gap-1.5"
+                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                  >
+                    <Mail className="h-3 w-3" />
+                    {portalStatus?.hasPortalAccount ? "Resend Invite" : "Invite to Portal"}
+                  </Button>
                 </div>
               </div>
 
@@ -789,6 +901,9 @@ export default function PatientProfiles() {
                 onViewLab={setViewingLab}
                 onDeleteLab={handleDeleteLab}
                 deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null}
+                onPublishLab={handlePublishLab}
+                hasPortalAccount={portalStatus?.hasPortalAccount}
+                publishingId={publishingLabId}
               />
               {labs.length >= 2 && (
                 <PatientTrendCharts
@@ -812,6 +927,62 @@ export default function PatientProfiles() {
           allLabs={labs}
           onDelete={() => handleDeleteLab(viewingLab)}
         />
+      )}
+
+      {/* Invite to Portal Modal */}
+      {showInviteModal && selectedPatient && (
+        <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" data-testid="invite-portal-modal">
+          <Card className="w-full max-w-md m-4">
+            <CardHeader className="pb-3">
+              <CardTitle className="text-lg flex items-center gap-2">
+                <Leaf className="h-5 w-5" style={{ color: "#2e3a20" }} />
+                Invite to Patient Portal
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Send <strong>{selectedPatient.firstName} {selectedPatient.lastName}</strong> an invitation to their private health portal where they can view their lab results, wellness protocol, and health journey.
+              </p>
+              {portalStatus?.hasPortalAccount && (
+                <div className="rounded-md px-3 py-2 text-xs" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>
+                  This patient already has a portal account. Sending a new invite will let them reset access.
+                </div>
+              )}
+              <div className="space-y-1.5">
+                <Label htmlFor="invite-email" className="text-sm">Patient email address</Label>
+                <Input
+                  id="invite-email"
+                  type="email"
+                  placeholder="patient@email.com"
+                  value={inviteEmail}
+                  onChange={(e) => setInviteEmail(e.target.value)}
+                  data-testid="input-invite-email"
+                />
+              </div>
+              <div className="flex items-center justify-end gap-2 pt-1">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => { setShowInviteModal(false); setInviteEmail(""); }}
+                  disabled={inviteMutation.isPending}
+                  data-testid="button-cancel-invite"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => inviteMutation.mutate({ patientId: selectedPatient.id, email: inviteEmail })}
+                  disabled={inviteMutation.isPending || !inviteEmail}
+                  data-testid="button-send-invite"
+                  style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                >
+                  <Send className="h-3.5 w-3.5 mr-1.5" />
+                  {inviteMutation.isPending ? "Sending…" : "Send Invitation"}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
       )}
 
       {confirmDelete && (

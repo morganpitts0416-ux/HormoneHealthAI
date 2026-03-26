@@ -15,7 +15,8 @@ import { evaluateMaleSupplements } from "./supplements-male";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { storage } from "./storage";
 import { passport, hashPassword } from "./auth";
-import { sendInviteEmail, sendPasswordResetEmail } from "./email-service";
+import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail } from "./email-service";
+import bcrypt from "bcrypt";
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
 function requireAuth(req: Request, res: Response, next: NextFunction) {
@@ -1297,6 +1298,235 @@ export async function registerRoutes(app: Express): Promise<Server> {
     } catch (error) {
       console.error("[ADMIN] Error deleting clinician:", error);
       res.status(500).json({ message: "Failed to delete clinician" });
+    }
+  });
+
+  // ── Portal auth middleware ──────────────────────────────────────────────────
+  function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
+    if ((req.session as any).portalPatientId) return next();
+    res.status(401).json({ message: "Portal authentication required" });
+  }
+
+  // ── Portal: Clinician invites patient ─────────────────────────────────────
+  app.post("/api/portal/invite/:patientId", requireAuth, async (req, res) => {
+    try {
+      const patientId = parseInt(req.params.patientId);
+      const clinicianId = (req.user as any).id;
+      const clinicianUser = await storage.getUserById(clinicianId);
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ message: "Patient email is required" });
+
+      const patient = await storage.getPatient(patientId, clinicianId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      // Update patient email on record
+      await storage.updatePatient(patientId, { email }, clinicianId);
+
+      // Check if portal account already exists
+      let portalAccount = await storage.getPortalAccountByPatientId(patientId);
+      const token = crypto.randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+      if (portalAccount) {
+        await storage.updatePortalAccount(patientId, { email, inviteToken: token, inviteExpires: expires });
+      } else {
+        await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
+      }
+
+      await sendPatientPortalInviteEmail(email, patient.firstName, clinicianUser?.clinicName || "Your Care Team", token, req);
+
+      res.json({ message: "Invitation sent", inviteToken: process.env.NODE_ENV === "development" ? token : undefined });
+    } catch (error) {
+      console.error("[PORTAL] Error sending invite:", error);
+      res.status(500).json({ message: "Failed to send invitation" });
+    }
+  });
+
+  // ── Portal: Patient sets password from invite ──────────────────────────────
+  app.post("/api/portal/set-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) return res.status(400).json({ message: "Token and password are required" });
+      if (password.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
+
+      const account = await storage.getPortalAccountByInviteToken(token);
+      if (!account) return res.status(400).json({ message: "Invalid or expired invite link" });
+      if (account.inviteExpires && account.inviteExpires < new Date()) {
+        return res.status(400).json({ message: "This invite link has expired. Please ask your clinic to resend the invitation." });
+      }
+
+      const passwordHash = await hashPassword(password);
+      await storage.updatePortalAccount(account.patientId, { passwordHash, inviteToken: null, inviteExpires: null });
+
+      res.json({ message: "Password set successfully. You can now log in." });
+    } catch (error) {
+      console.error("[PORTAL] Error setting password:", error);
+      res.status(500).json({ message: "Failed to set password" });
+    }
+  });
+
+  // ── Portal: Patient login ──────────────────────────────────────────────────
+  app.post("/api/portal/login", async (req, res) => {
+    try {
+      const { email, password } = req.body;
+      if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
+
+      const account = await storage.getPortalAccountByEmail(email);
+      if (!account || !account.passwordHash) {
+        return res.status(401).json({ message: "Invalid email or password" });
+      }
+      if (!account.isActive) {
+        return res.status(403).json({ message: "Your portal access has been disabled. Please contact your clinic." });
+      }
+
+      const valid = await bcrypt.compare(password, account.passwordHash);
+      if (!valid) return res.status(401).json({ message: "Invalid email or password" });
+
+      (req.session as any).portalPatientId = account.patientId;
+      await new Promise<void>((resolve, reject) => req.session.save((err) => err ? reject(err) : resolve()));
+
+      const patient = await storage.getPatient(account.patientId, -1).catch(() => undefined) ||
+        await (async () => {
+          const result = await storage.getLabResultsByPatient(account.patientId);
+          return null;
+        })();
+
+      res.json({ message: "Logged in", patientId: account.patientId });
+    } catch (error) {
+      console.error("[PORTAL] Error logging in:", error);
+      res.status(500).json({ message: "Login failed" });
+    }
+  });
+
+  // ── Portal: Patient logout ─────────────────────────────────────────────────
+  app.post("/api/portal/logout", (req, res) => {
+    delete (req.session as any).portalPatientId;
+    req.session.save(() => res.json({ message: "Logged out" }));
+  });
+
+  // ── Portal: Get current patient info ──────────────────────────────────────
+  app.get("/api/portal/me", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const [patient, account] = await Promise.all([
+        storage.getPatientById(patientId),
+        storage.getPortalAccountByPatientId(patientId),
+      ]);
+      if (!patient) return res.status(404).json({ message: "Patient record not found" });
+      // Get clinician info for display
+      const clinician = patient.userId ? await storage.getUserById(patient.userId) : null;
+      res.json({
+        patientId,
+        email: account?.email,
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        gender: patient.gender,
+        dateOfBirth: patient.dateOfBirth,
+        clinicName: clinician?.clinicName,
+        clinicianName: clinician ? `${clinician.title} ${clinician.firstName} ${clinician.lastName}` : null,
+      });
+    } catch (error) {
+      console.error("[PORTAL] Error fetching me:", error);
+      res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  // ── Portal: Get lab history ────────────────────────────────────────────────
+  app.get("/api/portal/labs", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const labs = await storage.getLabResultsByPatient(patientId);
+      // Return labs with safe fields only (no internal clinical scoring)
+      const safeLabs = labs.map((lab) => ({
+        id: lab.id,
+        labDate: lab.labDate,
+        createdAt: lab.createdAt,
+        interpretations: (lab.interpretationResult as any)?.interpretations || [],
+        supplements: (lab.interpretationResult as any)?.supplements || [],
+        patientSummary: (lab.interpretationResult as any)?.patientSummary || null,
+      }));
+      res.json(safeLabs);
+    } catch (error) {
+      console.error("[PORTAL] Error fetching labs:", error);
+      res.status(500).json({ message: "Failed to fetch lab history" });
+    }
+  });
+
+  // ── Portal: Get latest published protocol ─────────────────────────────────
+  app.get("/api/portal/protocol", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const protocol = await storage.getLatestPublishedProtocol(patientId);
+      if (!protocol) return res.json(null);
+      // Get clinician info
+      const clinician = await storage.getUserById(protocol.clinicianId);
+      res.json({ ...protocol, clinicName: clinician?.clinicName, clinicianName: clinician ? `${clinician.title} ${clinician.firstName} ${clinician.lastName}` : undefined });
+    } catch (error) {
+      console.error("[PORTAL] Error fetching protocol:", error);
+      res.status(500).json({ message: "Failed to fetch protocol" });
+    }
+  });
+
+  // ── Portal: Get all published protocol history ────────────────────────────
+  app.get("/api/portal/protocols", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const protocols = await storage.getAllPublishedProtocols(patientId);
+      res.json(protocols);
+    } catch (error) {
+      console.error("[PORTAL] Error fetching protocols:", error);
+      res.status(500).json({ message: "Failed to fetch protocol history" });
+    }
+  });
+
+  // ── Clinician: Publish protocol to patient portal ─────────────────────────
+  app.post("/api/protocols/publish", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const { patientId, labResultId, supplements, clinicianNotes, labDate } = req.body;
+      if (!patientId || !supplements) return res.status(400).json({ message: "patientId and supplements are required" });
+
+      // Verify clinician owns this patient
+      const patient = await storage.getPatient(parseInt(patientId), clinicianId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      // Verify patient has a portal account
+      const portalAccount = await storage.getPortalAccountByPatientId(parseInt(patientId));
+      if (!portalAccount) return res.status(400).json({ message: "Patient does not have a portal account. Please invite them first." });
+
+      const protocol = await storage.publishProtocol({
+        patientId: parseInt(patientId),
+        labResultId: labResultId ? parseInt(labResultId) : null,
+        clinicianId,
+        supplements,
+        clinicianNotes: clinicianNotes || null,
+        labDate: labDate ? new Date(labDate) : null,
+      });
+
+      res.json({ message: "Protocol published to patient portal", protocol });
+    } catch (error) {
+      console.error("[PORTAL] Error publishing protocol:", error);
+      res.status(500).json({ message: "Failed to publish protocol" });
+    }
+  });
+
+  // ── Portal: Check portal account status for a patient ─────────────────────
+  app.get("/api/portal/status/:patientId", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const patientId = parseInt(req.params.patientId);
+      const patient = await storage.getPatient(patientId, clinicianId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const portalAccount = await storage.getPortalAccountByPatientId(patientId);
+      const latestProtocol = await storage.getLatestPublishedProtocol(patientId);
+      res.json({
+        hasPortalAccount: !!portalAccount,
+        hasPassword: !!(portalAccount?.passwordHash),
+        email: portalAccount?.email || patient.email || null,
+        lastProtocolPublished: latestProtocol?.publishedAt || null,
+      });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch portal status" });
     }
   });
 
