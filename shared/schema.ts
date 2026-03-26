@@ -463,6 +463,9 @@ export const users = pgTable("users", {
   // can be defaulted to 'trial' at that point without affecting anyone already here.
   subscriptionStatus: varchar("subscription_status", { length: 30 }).notNull().default("active"),
   notes: text("notes"), // Internal admin notes about this account
+  // Password reset / invite tokens
+  passwordResetToken: varchar("password_reset_token", { length: 255 }),
+  passwordResetExpires: timestamp("password_reset_expires"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

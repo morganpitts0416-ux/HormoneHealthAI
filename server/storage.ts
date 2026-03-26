@@ -23,6 +23,12 @@ export interface IStorage {
   createUser(user: Omit<InsertUser, 'passwordHash'> & { passwordHash: string }): Promise<User>;
   updateUser(id: number, user: Partial<Omit<InsertUser, 'passwordHash'>>): Promise<User | undefined>;
 
+  // Password reset / invite operations
+  savePasswordResetToken(userId: number, token: string, expires: Date): Promise<void>;
+  getUserByResetToken(token: string): Promise<User | undefined>;
+  clearPasswordResetToken(userId: number): Promise<void>;
+  updatePassword(userId: number, passwordHash: string): Promise<void>;
+
   // Admin operations
   getAllUsers(): Promise<User[]>;
   promoteToAdmin(id: number): Promise<User | undefined>;
@@ -82,6 +88,36 @@ export class DbStorage implements IStorage {
       .where(eq(schema.users.id, id))
       .returning();
     return result[0];
+  }
+
+  // ── Password reset / invite operations ───────────────────────────────────────
+  async savePasswordResetToken(userId: number, token: string, expires: Date): Promise<void> {
+    await db
+      .update(schema.users)
+      .set({ passwordResetToken: token, passwordResetExpires: expires, updatedAt: new Date() })
+      .where(eq(schema.users.id, userId));
+  }
+
+  async getUserByResetToken(token: string): Promise<User | undefined> {
+    const result = await db
+      .select()
+      .from(schema.users)
+      .where(eq(schema.users.passwordResetToken, token));
+    return result[0];
+  }
+
+  async clearPasswordResetToken(userId: number): Promise<void> {
+    await db
+      .update(schema.users)
+      .set({ passwordResetToken: null, passwordResetExpires: null, updatedAt: new Date() })
+      .where(eq(schema.users.id, userId));
+  }
+
+  async updatePassword(userId: number, passwordHash: string): Promise<void> {
+    await db
+      .update(schema.users)
+      .set({ passwordHash, passwordResetToken: null, passwordResetExpires: null, updatedAt: new Date() })
+      .where(eq(schema.users.id, userId));
   }
 
   // ── Admin operations ─────────────────────────────────────────────────────────

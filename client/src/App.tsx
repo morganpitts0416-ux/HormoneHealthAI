@@ -14,6 +14,9 @@ import FemaleLabInterpretation from "@/pages/female-lab-interpretation";
 import PatientProfiles from "@/pages/patient-profiles";
 import AdminDashboard from "@/pages/admin";
 import Bootstrap from "@/pages/bootstrap";
+import ForgotPassword from "@/pages/forgot-password";
+import SetPassword from "@/pages/set-password";
+import ResetPassword from "@/pages/reset-password";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -102,6 +105,9 @@ function Router() {
         {() => <AdminRoute component={AdminDashboard} />}
       </Route>
       <Route path="/bootstrap" component={Bootstrap} />
+      <Route path="/forgot-password" component={ForgotPassword} />
+      <Route path="/set-password" component={SetPassword} />
+      <Route path="/reset-password" component={ResetPassword} />
       <Route>
         {() => <RootRedirect />}
       </Route>
