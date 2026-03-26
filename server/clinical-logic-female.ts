@@ -737,7 +737,9 @@ export class FemaleClinicalLogicEngine {
       } else if (labs.lh > 20 && phase !== 'ovulatory' && phase !== 'postmenopausal') {
         status = 'borderline';
         interpretation = 'Elevated LH outside expected phase.';
-        recommendation = 'May indicate PCOS if LH:FSH ratio >2. Correlate with other findings.';
+        recommendation = labs.onHRT === true
+          ? 'Elevated LH — exogenous hormone use can influence gonadotropin suppression. Correlate clinically with HRT protocol.'
+          : 'May indicate PCOS if LH:FSH ratio >2. Correlate with other findings.';
       } else {
         status = 'normal';
         interpretation = 'LH within expected range.';
@@ -938,8 +940,12 @@ export class FemaleClinicalLogicEngine {
         recommendation = 'Good indicator for fertility planning.';
       } else if (labs.amh > 3.5) {
         status = 'borderline';
-        interpretation = 'High AMH - may indicate PCOS.';
-        recommendation = 'Correlate with clinical findings and ultrasound for PCOS diagnosis.';
+        interpretation = labs.onHRT === true
+          ? 'Elevated AMH noted in the context of HRT use.'
+          : 'High AMH - may indicate PCOS.';
+        recommendation = labs.onHRT === true
+          ? 'Elevated AMH noted. In a patient on HRT, correlate with clinical history rather than assuming PCOS. High AMH in this context may reflect robust ovarian reserve.'
+          : 'Correlate with clinical findings and ultrasound for PCOS diagnosis.';
       }
 
       interpretations.push({
@@ -2069,34 +2075,70 @@ export class FemaleClinicalLogicEngine {
       });
     }
     
-    // Pattern C – Supraphysiologic / Pellet Pattern
-    // Total T: >100-150+, SHBG: mid-high, Free/Bioavailable: Elevated (if available)
-    // Total T >100 alone is sufficient to trigger this pattern
+    // Pattern C – Supraphysiologic / Above Goal
+    // For HRT patients: fires when T > 125 ng/dL (above the HRT optimization goal of 75-125)
+    // For non-HRT patients: fires when T > 100 ng/dL (supraphysiologic for women)
     // Common symptoms: early energy/libido boost → later insomnia, heat intolerance, acne, hair shedding, irritability, anxiety
-    if (labs.testosterone !== undefined && labs.testosterone > 100) {
+    const patternC_onHRT = labs.onHRT === true;
+    const patternC_threshold = patternC_onHRT ? 125 : 100;
+    if (labs.testosterone !== undefined && labs.testosterone > patternC_threshold) {
       
       testosteronePatternIdentified = true;
-      const labDetails: string[] = [`Total T: ${labs.testosterone} ng/dL (supraphysiologic)`];
+      const labDetails: string[] = patternC_onHRT
+        ? [`Total T: ${labs.testosterone} ng/dL (above HRT optimization goal of 75–125 ng/dL)`]
+        : [`Total T: ${labs.testosterone} ng/dL (supraphysiologic for women)`];
       if (labs.shbg !== undefined) labDetails.push(`SHBG: ${labs.shbg} nmol/L`);
       if (labs.freeTestosterone !== undefined) labDetails.push(`Free T: ${labs.freeTestosterone} pg/mL${labs.freeTestosterone > 5.0 ? ' (elevated)' : ''}`);
       if (labs.bioavailableTestosterone !== undefined) labDetails.push(`Bioavailable T: ${labs.bioavailableTestosterone} ng/dL${labs.bioavailableTestosterone > 10 ? ' (elevated)' : ''}`);
       
       interpretations.push({
-        category: 'Testosterone Pattern C: Supraphysiologic / Pellet Pattern',
+        category: patternC_onHRT
+          ? 'Testosterone Pattern C: Above HRT Optimization Goal'
+          : 'Testosterone Pattern C: Supraphysiologic / Pellet Pattern',
         value: labs.testosterone,
         unit: 'ng/dL',
         status: labs.testosterone > 150 ? 'critical' : 'abnormal',
-        referenceRange: 'Total T >100-150+ (supraphysiologic for women)',
-        interpretation: `Supraphysiologic testosterone pattern identified (${labDetails.join('; ')}). Total testosterone is well above the physiologic range for women.${labs.testosterone > 150 ? ' At >150 ng/dL, this requires urgent evaluation.' : ''} This pattern is commonly seen with testosterone pellet therapy and may initially produce an energy and libido boost, but typically leads to insomnia, heat intolerance, acne, hair shedding, irritability, and anxiety as levels remain elevated.`,
-        recommendation: `PROVIDER RECOMMENDATION: Do NOT stack testosterone — do not add more testosterone on top of existing supraphysiologic levels. Manage downstream symptoms: consider spironolactone for acne/hair loss, sleep support, anxiety management. ${labs.testosterone > 150 ? 'If NOT on testosterone therapy: Rule out androgen-secreting tumor (pelvic ultrasound, CT adrenals). ' : ''}If pellet-related: transition to titratable testosterone therapy (transdermal cream/gel) to allow dose adjustments. Target physiologic range (Total T 30-70 ng/dL naturally, or per HRT protocol). Monitor CBC, lipids, liver function. PATIENT EDUCATION: Your testosterone level is much higher than what the body typically needs. This can happen with certain forms of testosterone therapy like pellets. While it may feel good initially, sustained high levels can cause side effects. Your provider may recommend transitioning to a form of testosterone that allows more precise dosing control.`,
+        referenceRange: patternC_onHRT ? 'HRT optimization goal: 75–125 ng/dL' : 'Total T >100–150+ (supraphysiologic for women)',
+        interpretation: patternC_onHRT
+          ? `Testosterone above HRT optimization goal (${labDetails.join('; ')}). The target range for testosterone on HRT is 75–125 ng/dL. At ${labs.testosterone} ng/dL, the patient is above goal${labs.testosterone > 150 ? ' and significantly elevated — dose reduction should be prioritized' : ' — consider dose reduction or reassessment of delivery method'}.`
+          : `Supraphysiologic testosterone pattern identified (${labDetails.join('; ')}). Total testosterone is well above the physiologic range for women.${labs.testosterone > 150 ? ' At >150 ng/dL, this requires urgent evaluation.' : ''} This pattern is commonly seen with testosterone pellet therapy and may initially produce an energy and libido boost, but typically leads to insomnia, heat intolerance, acne, hair shedding, irritability, and anxiety as levels remain elevated.`,
+        recommendation: patternC_onHRT
+          ? `PROVIDER RECOMMENDATION: Testosterone is above the HRT optimization goal of 75–125 ng/dL. Reduce the testosterone dose — do NOT add additional testosterone.${labs.testosterone > 150 ? ' At >150 ng/dL, this is significantly elevated; prioritize dose reduction promptly.' : ''} Manage downstream symptoms if present: spironolactone for acne or hair thinning, sleep support for insomnia, anxiety management as needed. If using pellet therapy, consider transitioning to a titratable form (transdermal cream or gel) to allow precise dose adjustments. Monitor CBC, lipids, and liver function. PATIENT EDUCATION: Your testosterone is above the target range for your hormone therapy. Your provider will adjust your dose to bring it back into the optimal range (75–125 ng/dL) and manage any related symptoms.`
+          : `PROVIDER RECOMMENDATION: Do NOT stack testosterone — do not add more testosterone on top of existing supraphysiologic levels. Manage downstream symptoms: consider spironolactone for acne/hair loss, sleep support, anxiety management. ${labs.testosterone > 150 ? 'Rule out androgen-secreting tumor if NOT on exogenous testosterone (pelvic ultrasound, CT adrenals). ' : ''}If pellet-related: transition to titratable testosterone therapy (transdermal cream/gel) to allow dose adjustments. Target physiologic range (Total T 15–70 ng/dL for non-HRT women). Monitor CBC, lipids, liver function. PATIENT EDUCATION: Your testosterone level is much higher than what the body typically needs. This can happen with certain forms of testosterone therapy like pellets. While it may feel good initially, sustained high levels can cause side effects. Your provider may recommend transitioning to a form of testosterone that allows more precise dosing control.`,
+      });
+    }
+    
+    // Pattern E – HRT Testosterone within Optimization Goal (75–125 ng/dL)
+    // Only fires for patients on HRT whose total testosterone is within the goal range
+    // Prevents misfiring of non-HRT patterns (A/B/D) which have different reference ranges
+    if (!testosteronePatternIdentified &&
+        labs.onHRT === true &&
+        labs.testosterone !== undefined && labs.testosterone >= 75 && labs.testosterone <= 125) {
+      
+      testosteronePatternIdentified = true;
+      const labDetails: string[] = [`Total T: ${labs.testosterone} ng/dL (within HRT goal 75–125 ng/dL)`];
+      if (labs.freeTestosterone !== undefined) labDetails.push(`Free T: ${labs.freeTestosterone} pg/mL`);
+      if (labs.bioavailableTestosterone !== undefined) labDetails.push(`Bioavailable T: ${labs.bioavailableTestosterone} ng/dL`);
+      if (labs.shbg !== undefined) labDetails.push(`SHBG: ${labs.shbg} nmol/L`);
+      
+      interpretations.push({
+        category: 'Testosterone Pattern E: HRT Optimization — On Target',
+        value: labs.testosterone,
+        unit: 'ng/dL',
+        status: 'normal',
+        referenceRange: 'HRT goal: 75–125 ng/dL',
+        interpretation: `Testosterone is within the HRT optimization target range (${labDetails.join('; ')}). This is the expected therapeutic range for women on testosterone HRT. Elevated free and/or bioavailable testosterone relative to non-HRT reference ranges is expected at this total testosterone level.`,
+        recommendation: `PROVIDER RECOMMENDATION: Testosterone is at goal for HRT. Continue current dosing regimen. Monitor for androgenic side effects (acne, hair thinning, hirsutism) at follow-up — if symptoms develop, consider dose reduction to the lower end of the target range. Recheck CBC, lipids, and liver function per standard HRT monitoring intervals. PATIENT EDUCATION: Your testosterone level is right in the target range for your hormone therapy program. This is a positive finding. Your provider will continue monitoring to keep it in this optimal zone.`,
       });
     }
     
     // Pattern D – Adequate Androgens, Persistent Symptoms
     // Total, Free & Bioavailable T within range, SHBG not extreme
     // Common symptoms: fatigue, low mood, sleep disruption, low libido despite normal labs
-    // This pattern fires when all testosterone markers are in range and no other pattern (A/B/C) was identified
+    // This pattern fires when all testosterone markers are in range and no other pattern (A/B/C/E) was identified
+    // Excluded for HRT patients — their reference range is 75-125 ng/dL, not 15-70 ng/dL
     if (!testosteronePatternIdentified &&
+        labs.onHRT !== true &&
         labs.testosterone !== undefined && labs.testosterone >= 15 && labs.testosterone <= 70 &&
         (labs.freeTestosterone === undefined || (labs.freeTestosterone >= 0.5 && labs.freeTestosterone <= 5.0)) &&
         (labs.bioavailableTestosterone === undefined || (labs.bioavailableTestosterone >= 2 && labs.bioavailableTestosterone <= 10)) &&
@@ -2183,8 +2225,10 @@ export class FemaleClinicalLogicEngine {
           ftRec = 'Evaluate SHBG and total testosterone in context. Consider androgen insufficiency workup.';
         } else if (labs.freeTestosterone > 5.0) {
           ftStatus = 'abnormal';
-          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is elevated. May cause androgenic symptoms (acne, hirsutism, hair thinning).`;
-          ftRec = 'Evaluate for PCOS, exogenous testosterone, or low SHBG driving elevated free T.';
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is elevated${labs.onHRT ? ' — consistent with exogenous testosterone use' : ''}. May cause androgenic symptoms (acne, hirsutism, hair thinning).`;
+          ftRec = labs.onHRT === true
+            ? 'Elevated free testosterone is expected with exogenous testosterone therapy. Monitor for androgenic side effects (acne, hair thinning, hirsutism) and correlate with total testosterone dose and target range.'
+            : 'Evaluate for PCOS, exogenous testosterone, or low SHBG driving elevated free T.';
         } else if (labs.freeTestosterone < 1.0) {
           ftStatus = 'borderline';
           ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is on the lower end. May be associated with reduced libido or energy.`;
@@ -2216,9 +2260,11 @@ export class FemaleClinicalLogicEngine {
           batInterp = `Bioavailable testosterone ${labs.bioavailableTestosterone} ng/dL is low. May contribute to androgen insufficiency symptoms.`;
           batRec = 'Evaluate alongside SHBG and free testosterone. Consider androgen insufficiency workup.';
         } else if (labs.bioavailableTestosterone > 10) {
-          batStatus = 'abnormal';
-          batInterp = `Bioavailable testosterone ${labs.bioavailableTestosterone} ng/dL is elevated. May cause androgenic symptoms.`;
-          batRec = 'Evaluate for low SHBG, exogenous testosterone, or other causes of elevated bioavailable androgens.';
+          batStatus = labs.onHRT ? 'borderline' : 'abnormal';
+          batInterp = `Bioavailable testosterone ${labs.bioavailableTestosterone} ng/dL is elevated${labs.onHRT ? ' — consistent with exogenous testosterone use' : ''}. May cause androgenic symptoms.`;
+          batRec = labs.onHRT === true
+            ? 'Elevated bioavailable testosterone is expected with exogenous testosterone therapy. Monitor for androgenic side effects and correlate with total testosterone dose and the HRT target range (75–125 ng/dL).'
+            : 'Evaluate for low SHBG, exogenous testosterone, or other causes of elevated bioavailable androgens.';
         } else if (labs.bioavailableTestosterone < 3) {
           batStatus = 'borderline';
           batInterp = `Bioavailable testosterone ${labs.bioavailableTestosterone} ng/dL is low-normal. May correlate with symptoms of androgen insufficiency.`;
