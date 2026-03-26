@@ -551,6 +551,7 @@ export default function PatientProfiles() {
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
+  const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -746,6 +747,24 @@ export default function PatientProfiles() {
     },
   });
 
+  const deletePatientMutation = useMutation({
+    mutationFn: async (patientId: number) => {
+      const res = await fetch(`/api/patients/${patientId}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete patient');
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients/search', ''] });
+      setSelectedPatient(null);
+      setConfirmDeletePatient(false);
+      setViewingLab(null);
+      toast({ title: "Patient Deleted", description: "The patient profile and all associated lab data have been permanently removed." });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Error", description: "Failed to delete patient. Please try again." });
+    },
+  });
+
   const handleDeleteLab = (lab: LabResult) => setConfirmDelete(lab);
   const insights = labs.length >= 2 ? generateTrendInsights(labs) : [];
   const maleCount = allPatients.filter(p => p.gender === 'male').length;
@@ -938,7 +957,7 @@ export default function PatientProfiles() {
                     )}
                   </div>
                 </div>
-                <div className="flex-shrink-0">
+                <div className="flex-shrink-0 flex items-center gap-2">
                   <Button
                     variant="outline"
                     size="sm"
@@ -952,6 +971,16 @@ export default function PatientProfiles() {
                   >
                     <Mail className="h-3 w-3" />
                     {portalStatus?.hasPortalAccount ? "Resend Invite" : "Invite to Portal"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setConfirmDeletePatient(true)}
+                    data-testid="button-delete-patient"
+                    className="text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
+                  >
+                    <Trash2 className="h-3 w-3" />
+                    Delete Patient
                   </Button>
                 </div>
               </div>
@@ -1184,6 +1213,50 @@ export default function PatientProfiles() {
                 >
                   <Trash2 className="h-3.5 w-3.5 mr-1" />
                   {deleteMutation.isPending ? 'Deleting...' : 'Delete'}
+                </Button>
+              </div>
+            </CardContent>
+          </Card>
+        </div>
+      )}
+
+      {/* Delete Patient confirmation dialog */}
+      {confirmDeletePatient && selectedPatient && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 backdrop-blur-sm">
+          <Card className="w-full max-w-md mx-4 shadow-xl">
+            <CardHeader className="pb-2">
+              <CardTitle className="text-base flex items-center gap-2 text-destructive">
+                <Trash2 className="h-4 w-4" />
+                Delete Patient Profile
+              </CardTitle>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <p className="text-sm text-muted-foreground">
+                Are you sure you want to permanently delete{' '}
+                <span className="font-semibold text-foreground">
+                  {selectedPatient.firstName} {selectedPatient.lastName}
+                </span>
+                ? This will remove all their lab results, portal access, messages, and clinical data. This action cannot be undone.
+              </p>
+              <div className="flex items-center justify-end gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={() => setConfirmDeletePatient(false)}
+                  disabled={deletePatientMutation.isPending}
+                  data-testid="button-cancel-delete-patient"
+                >
+                  Cancel
+                </Button>
+                <Button
+                  variant="destructive"
+                  size="sm"
+                  onClick={() => deletePatientMutation.mutate(selectedPatient.id)}
+                  disabled={deletePatientMutation.isPending}
+                  data-testid="button-confirm-delete-patient"
+                >
+                  <Trash2 className="h-3.5 w-3.5 mr-1" />
+                  {deletePatientMutation.isPending ? 'Deleting...' : 'Delete Patient'}
                 </Button>
               </div>
             </CardContent>
