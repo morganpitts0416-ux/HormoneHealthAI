@@ -512,22 +512,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'Not calculated');
       }
 
-      // Step 4: Generate AI-powered recommendations
-      const aiRecommendations = await AIService.generateRecommendations(
-        labs,
-        redFlags,
-        interpretations,
-        'male',
-        trendContext || undefined
-      );
-
-      // Step 5: Generate patient-friendly summary (includes PREVENT-based lifestyle modifications)
-      const patientSummary = await AIService.generatePatientSummary(
-        labs,
-        interpretations,
-        redFlags.length > 0,
-        preventRisk
-      );
+      // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
+      const [aiRecommendations, patientSummary] = await Promise.all([
+        AIService.generateRecommendations(labs, redFlags, interpretations, 'male', trendContext || undefined),
+        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk),
+      ]);
 
       // Step 6: Determine recheck window
       const recheckWindow = ClinicalLogicEngine.determineRecheckWindow(
@@ -789,23 +778,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Step 4: Generate AI-powered recommendations with female context
-      const aiRecommendations = await AIService.generateRecommendations(
-        labs,
-        redFlags,
-        interpretations,
-        'female',
-        trendContext || undefined
-      );
-
-      // Step 5: Generate patient-friendly summary
-      const patientSummary = await AIService.generatePatientSummary(
-        labs,
-        interpretations,
-        redFlags.length > 0,
-        preventRisk,
-        'female'
-      );
+      // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
+      const [aiRecommendations, patientSummary] = await Promise.all([
+        AIService.generateRecommendations(labs, redFlags, interpretations, 'female', trendContext || undefined),
+        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'female'),
+      ]);
 
       // Step 6: Determine recheck window using female-specific logic
       const recheckWindow = FemaleClinicalLogicEngine.determineRecheckWindow(labs, redFlags);
