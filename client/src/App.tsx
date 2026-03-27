@@ -19,6 +19,8 @@ import SetPassword from "@/pages/set-password";
 import ResetPassword from "@/pages/reset-password";
 import PortalLogin from "@/pages/portal/login";
 import PortalSetPassword from "@/pages/portal/set-password";
+import PortalForgotPassword from "@/pages/portal/forgot-password";
+import PortalResetPassword from "@/pages/portal/reset-password";
 import PortalDashboard from "@/pages/portal/dashboard";
 import PortalSupplements from "@/pages/portal/supplements";
 import PortalMessages from "@/pages/portal/messages";
@@ -116,6 +118,8 @@ function Router() {
       <Route path="/reset-password" component={ResetPassword} />
       <Route path="/portal/login" component={PortalLogin} />
       <Route path="/portal/set-password" component={PortalSetPassword} />
+      <Route path="/portal/forgot-password" component={PortalForgotPassword} />
+      <Route path="/portal/reset-password" component={PortalResetPassword} />
       <Route path="/portal/dashboard" component={PortalDashboard} />
       <Route path="/portal/supplements" component={PortalSupplements} />
       <Route path="/portal/messages" component={PortalMessages} />

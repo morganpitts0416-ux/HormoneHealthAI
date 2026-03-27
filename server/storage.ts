@@ -82,6 +82,7 @@ export interface IStorage {
   getPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined>;
   getPortalAccountByPatientId(patientId: number): Promise<PatientPortalAccount | undefined>;
   getPortalAccountByInviteToken(token: string): Promise<PatientPortalAccount | undefined>;
+  getPortalAccountByResetToken(token: string): Promise<PatientPortalAccount | undefined>;
   createPortalAccount(account: InsertPatientPortalAccount): Promise<PatientPortalAccount>;
   updatePortalAccount(patientId: number, data: Partial<InsertPatientPortalAccount>): Promise<PatientPortalAccount | undefined>;
 
@@ -393,6 +394,14 @@ export class DbStorage implements IStorage {
       .select()
       .from(schema.patientPortalAccounts)
       .where(eq(schema.patientPortalAccounts.inviteToken, token));
+    return result[0];
+  }
+
+  async getPortalAccountByResetToken(token: string): Promise<PatientPortalAccount | undefined> {
+    const result = await db
+      .select()
+      .from(schema.patientPortalAccounts)
+      .where(eq(schema.patientPortalAccounts.passwordResetToken, token));
     return result[0];
   }
 

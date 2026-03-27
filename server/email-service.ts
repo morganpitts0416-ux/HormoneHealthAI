@@ -284,6 +284,49 @@ export async function sendNewPortalMessageEmail(
   });
 }
 
+export async function sendPortalPasswordResetEmail(
+  to: string,
+  patientFirstName: string,
+  token: string,
+  req?: any
+): Promise<void> {
+  const base = getBaseUrl(req);
+  const link = `${base}/portal/reset-password?token=${token}`;
+
+  await sendEmail({
+    to,
+    subject: "Reset your health portal password",
+    html: `
+      <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
+        <div style="background: #2e3a20; padding: 28px 32px;">
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ReAlign Health</h1>
+          <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Your Personal Health Portal</p>
+        </div>
+        <div style="padding: 36px 32px;">
+          <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hello ${patientFirstName},</p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+            We received a request to reset your health portal password. Click the button below to set a new one.
+          </p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
+              Reset My Password
+            </a>
+          </div>
+          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
+            This link expires in <strong>1 hour</strong>. If you didn't request this, you can safely ignore this email.
+          </p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 8px 0 0; word-break: break-all;">
+            Or copy this link: ${link}
+          </p>
+        </div>
+        <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
 export async function sendPasswordResetEmail(
   to: string,
   firstName: string,

@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -127,6 +127,19 @@ export default function PortalLogin() {
             >
               {loginMutation.isPending ? "Signing in…" : "Sign in"}
             </Button>
+
+            <div className="text-center">
+              <Link href="/portal/forgot-password">
+                <button
+                  type="button"
+                  className="text-xs"
+                  style={{ color: "#7a8a64" }}
+                  data-testid="link-portal-forgot-password"
+                >
+                  Forgot your password?
+                </button>
+              </Link>
+            </div>
           </form>
 
           <p
