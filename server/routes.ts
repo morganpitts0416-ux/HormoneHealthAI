@@ -1529,7 +1529,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.json({ message: "If that email is registered, you'll receive a reset link shortly." });
       }
 
-      const token = require("crypto").randomBytes(32).toString("hex");
+      const token = crypto.randomBytes(32).toString("hex");
       const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
       await storage.updatePortalAccount(account.patientId, {
         passwordResetToken: token,
