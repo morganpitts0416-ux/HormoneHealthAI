@@ -457,12 +457,12 @@ export default function PortalDashboard() {
     mutationFn: () => apiRequest("POST", "/api/portal/logout", {}),
     onSuccess: () => {
       queryClient.clear();
-      setLocation("/portal/login");
+      setLocation("/login?mode=patient");
     },
   });
 
   useEffect(() => {
-    if (patientError) setLocation("/portal/login");
+    if (patientError) setLocation("/login?mode=patient");
   }, [patientError, setLocation]);
 
   if (patientLoading) {

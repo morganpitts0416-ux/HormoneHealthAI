@@ -73,7 +73,7 @@ export default function PortalMessages() {
     mutationFn: () => apiRequest("POST", "/api/portal/logout", {}),
     onSuccess: () => {
       queryClient.clear();
-      setLocation("/portal/login");
+      setLocation("/login?mode=patient");
     },
   });
 
@@ -87,7 +87,7 @@ export default function PortalMessages() {
   });
 
   useEffect(() => {
-    if (patientError) setLocation("/portal/login");
+    if (patientError) setLocation("/login?mode=patient");
   }, [patientError, setLocation]);
 
   useEffect(() => {
