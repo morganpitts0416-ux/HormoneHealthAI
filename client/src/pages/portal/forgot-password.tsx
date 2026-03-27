@@ -59,7 +59,7 @@ export default function PortalForgotPassword() {
               <p className="text-xs" style={{ color: "#a8b090" }}>
                 Didn't get it? Check your spam folder or contact your clinic to resend your portal invitation.
               </p>
-              <Link href="/portal/login">
+              <Link href="/login?mode=patient">
                 <Button
                   variant="outline"
                   className="w-full mt-2"
@@ -115,7 +115,7 @@ export default function PortalForgotPassword() {
               </form>
 
               <div className="text-center mt-8">
-                <Link href="/portal/login">
+                <Link href="/login?mode=patient">
                   <button
                     className="text-sm inline-flex items-center gap-1"
                     style={{ color: "#7a8a64" }}

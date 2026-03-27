@@ -20,7 +20,7 @@ export default function PortalSetPassword() {
   const [done, setDone] = useState(false);
 
   useEffect(() => {
-    if (!token) setLocation("/portal/login");
+    if (!token) setLocation("/login?mode=patient");
   }, [token, setLocation]);
 
   const setPasswordMutation = useMutation({
@@ -82,7 +82,7 @@ export default function PortalSetPassword() {
                 Your health portal account is ready. Sign in to begin your wellness journey.
               </p>
               <Button
-                onClick={() => setLocation("/portal/login")}
+                onClick={() => setLocation("/login?mode=patient")}
                 className="w-full h-11 text-sm font-medium"
                 data-testid="button-go-to-login"
                 style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}

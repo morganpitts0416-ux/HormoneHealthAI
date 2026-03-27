@@ -21,7 +21,7 @@ export default function PortalResetPassword() {
     mutationFn: () => apiRequest("POST", "/api/portal/reset-password", { token, password }),
     onSuccess: () => {
       toast({ title: "Password updated", description: "You can now sign in with your new password." });
-      setLocation("/portal/login");
+      setLocation("/login?mode=patient");
     },
     onError: (error: any) => {
       toast({
