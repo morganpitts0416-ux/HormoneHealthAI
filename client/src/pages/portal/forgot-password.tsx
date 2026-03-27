@@ -5,15 +5,24 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { useToast } from "@/hooks/use-toast";
 import { Leaf, ArrowLeft, CheckCircle2 } from "lucide-react";
 
 export default function PortalForgotPassword() {
   const [email, setEmail] = useState("");
   const [sent, setSent] = useState(false);
+  const { toast } = useToast();
 
   const mutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/portal/forgot-password", { email }),
     onSuccess: () => setSent(true),
+    onError: () => {
+      toast({
+        title: "Something went wrong",
+        description: "Unable to send reset link. Please try again.",
+        variant: "destructive",
+      });
+    },
   });
 
   const handleSubmit = (e: React.FormEvent) => {
