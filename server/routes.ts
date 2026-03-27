@@ -1572,14 +1572,17 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const patientId = (req.session as any).portalPatientId as number;
       const labs = await storage.getLabResultsByPatient(patientId);
-      // Return labs with safe fields only (no internal clinical scoring)
+      // Return labs with patient-safe fields (no raw clinical scoring text)
       const safeLabs = labs.map((lab) => ({
         id: lab.id,
         labDate: lab.labDate,
         createdAt: lab.createdAt,
+        labValues: lab.labValues || null,
         interpretations: (lab.interpretationResult as any)?.interpretations || [],
         supplements: (lab.interpretationResult as any)?.supplements || [],
         patientSummary: (lab.interpretationResult as any)?.patientSummary || null,
+        preventRisk: (lab.interpretationResult as any)?.preventRisk || null,
+        insulinResistance: (lab.interpretationResult as any)?.insulinResistance || null,
       }));
       res.json(safeLabs);
     } catch (error) {
@@ -1619,7 +1622,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/protocols/publish", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const { patientId, labResultId, supplements, clinicianNotes, labDate } = req.body;
+      const { patientId, labResultId, supplements, clinicianNotes, dietaryGuidance, labDate } = req.body;
       if (!patientId || !supplements) return res.status(400).json({ message: "patientId and supplements are required" });
 
       // Verify clinician owns this patient
@@ -1636,6 +1639,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clinicianId,
         supplements,
         clinicianNotes: clinicianNotes || null,
+        dietaryGuidance: dietaryGuidance || null,
         labDate: labDate ? new Date(labDate) : null,
       });
 
