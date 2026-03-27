@@ -26,7 +26,7 @@ async function sendEmail(opts: EmailOptions): Promise<void> {
       "Content-Type": "application/json",
     },
     body: JSON.stringify({
-      from: process.env.RESEND_FROM_EMAIL || "noreply@realignhealth.com",
+      from: process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com",
       to: [opts.to],
       subject: opts.subject,
       html: opts.html,
