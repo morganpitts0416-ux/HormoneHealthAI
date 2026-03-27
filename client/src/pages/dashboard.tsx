@@ -70,7 +70,7 @@ export default function Dashboard() {
             <img
               src="/realign-health-logo.png"
               alt="ReAlign Health"
-              className="h-12 sm:h-14 w-auto flex-shrink-0"
+              className="h-14 sm:h-16 w-auto flex-shrink-0"
               style={{ mixBlendMode: "multiply" }}
             />
             <div className="h-5 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
