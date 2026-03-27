@@ -6,6 +6,8 @@ import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
+import { Textarea } from "@/components/ui/textarea";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
@@ -590,6 +592,9 @@ export default function PatientProfiles() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [publishingLabId, setPublishingLabId] = useState<number | null>(null);
+  const [publishDialogLab, setPublishDialogLab] = useState<LabResult | null>(null);
+  const [publishNotes, setPublishNotes] = useState("");
+  const [publishDietaryGuidance, setPublishDietaryGuidance] = useState("");
   const [messageDraft, setMessageDraft] = useState("");
   const [showMessages, setShowMessages] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
@@ -704,13 +709,15 @@ export default function PatientProfiles() {
   });
 
   const publishProtocolMutation = useMutation({
-    mutationFn: async ({ lab }: { lab: LabResult }) => {
+    mutationFn: async ({ lab, notes, dietaryGuidance }: { lab: LabResult; notes: string; dietaryGuidance: string }) => {
       const interp = lab.interpretationResult as any;
       const supplements = interp?.supplements || [];
       const res = await apiRequest("POST", "/api/protocols/publish", {
         patientId: lab.patientId,
         labResultId: lab.id,
         supplements,
+        clinicianNotes: notes || null,
+        dietaryGuidance: dietaryGuidance || null,
         labDate: lab.labDate,
       });
       return res;
@@ -718,6 +725,9 @@ export default function PatientProfiles() {
     onSuccess: (_data, variables) => {
       queryClient.invalidateQueries({ queryKey: ['/api/portal/status', selectedPatient?.id] });
       setPublishingLabId(null);
+      setPublishDialogLab(null);
+      setPublishNotes("");
+      setPublishDietaryGuidance("");
       toast({
         title: "Protocol published",
         description: `${((variables.lab.interpretationResult as any)?.supplements?.length || 0)} supplements are now visible to the patient in their portal.`,
@@ -730,8 +740,9 @@ export default function PatientProfiles() {
   });
 
   const handlePublishLab = (lab: LabResult) => {
-    setPublishingLabId(lab.id);
-    publishProtocolMutation.mutate({ lab });
+    setPublishDialogLab(lab);
+    setPublishNotes("");
+    setPublishDietaryGuidance("");
   };
 
   const filteredPatients = useMemo(() => {
@@ -836,8 +847,12 @@ export default function PatientProfiles() {
       {/* Split panel body */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left panel: patient list */}
-        <div className="w-72 border-r flex flex-col flex-shrink-0 bg-background">
+        {/* Left panel: patient list — hidden on mobile when a patient is selected */}
+        <div className={cn(
+          "border-r flex-col flex-shrink-0 bg-background",
+          "w-full md:w-72",
+          selectedPatient ? "hidden md:flex" : "flex"
+        )}>
           {/* Search + filter controls */}
           <div className="p-3 border-b space-y-2 flex-shrink-0">
             <div className="relative">
@@ -940,8 +955,25 @@ export default function PatientProfiles() {
           </div>
         </div>
 
-        {/* Right panel: patient detail */}
-        <div className="flex-1 overflow-y-auto">
+        {/* Right panel: patient detail — hidden on mobile when no patient selected */}
+        <div className={cn(
+          "overflow-y-auto flex-1",
+          selectedPatient ? "block" : "hidden md:block"
+        )}>
+          {/* Mobile back button */}
+          {selectedPatient && (
+            <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b bg-muted/30 flex-shrink-0">
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => { setSelectedPatient(null); setViewingLab(null); }}
+                className="h-8 text-xs gap-1.5"
+              >
+                <ArrowLeft className="h-3.5 w-3.5" />
+                Back to patients
+              </Button>
+            </div>
+          )}
           {!selectedPatient ? (
             <div className="flex flex-col items-center justify-center h-full text-center p-8 space-y-3">
               <div className="rounded-full bg-muted p-4">
@@ -1295,6 +1327,81 @@ export default function PatientProfiles() {
             </CardContent>
           </Card>
         </div>
+      )}
+
+      {/* Publish Protocol Dialog */}
+      {publishDialogLab && (
+        <Dialog open onOpenChange={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); }}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <Leaf className="h-4 w-4" style={{ color: "#2e3a20" }} />
+                Publish Protocol to Portal
+              </DialogTitle>
+            </DialogHeader>
+            <div className="space-y-4 py-1">
+              <div className="rounded-lg p-3 text-sm space-y-0.5" style={{ backgroundColor: "#edf2e6" }}>
+                <p className="font-medium" style={{ color: "#2e3a20" }}>
+                  {((publishDialogLab.interpretationResult as any)?.supplements?.length || 0)} supplements will be published
+                </p>
+                <p className="text-xs" style={{ color: "#5a7040" }}>
+                  Lab date: {publishDialogLab.labDate ? new Date(publishDialogLab.labDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown'}
+                </p>
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">Note to patient <span className="text-muted-foreground font-normal">(optional)</span></Label>
+                <Textarea
+                  placeholder="E.g. 'Take all supplements with food. We'll recheck your labs in 8 weeks.'"
+                  value={publishNotes}
+                  onChange={(e) => setPublishNotes(e.target.value)}
+                  className="text-sm min-h-[80px] resize-none"
+                  data-testid="input-publish-clinician-notes"
+                />
+              </div>
+
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium">
+                  Dietary guidance <span className="text-muted-foreground font-normal">(optional — shown in patient portal)</span>
+                </Label>
+                <Textarea
+                  placeholder={"E.g.:\nFocus on whole foods — lean proteins, colorful vegetables, and healthy fats.\n\nProtein goal: Aim for 0.8–1g per pound of lean body mass daily.\n\nLimit: Alcohol, refined sugar, processed oils."}
+                  value={publishDietaryGuidance}
+                  onChange={(e) => setPublishDietaryGuidance(e.target.value)}
+                  className="text-sm min-h-[130px] resize-none"
+                  data-testid="input-publish-dietary-guidance"
+                />
+                <p className="text-xs text-muted-foreground">
+                  This will appear in a dedicated "Your Dietary Guidance" section in the patient's portal — separate from their supplements.
+                </p>
+              </div>
+            </div>
+
+            <DialogFooter className="gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); }}
+                disabled={publishProtocolMutation.isPending}
+              >
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={publishProtocolMutation.isPending}
+                onClick={() => {
+                  setPublishingLabId(publishDialogLab.id);
+                  publishProtocolMutation.mutate({ lab: publishDialogLab, notes: publishNotes, dietaryGuidance: publishDietaryGuidance });
+                }}
+                style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                data-testid="button-confirm-publish-protocol"
+              >
+                <Leaf className="h-3.5 w-3.5 mr-1.5" />
+                {publishProtocolMutation.isPending ? "Publishing…" : "Publish to Portal"}
+              </Button>
+            </DialogFooter>
+          </DialogContent>
+        </Dialog>
       )}
     </div>
   );
