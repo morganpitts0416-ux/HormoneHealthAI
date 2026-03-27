@@ -584,6 +584,8 @@ export const patientPortalAccounts = pgTable("patient_portal_accounts", {
   passwordHash: varchar("password_hash", { length: 255 }),
   inviteToken: varchar("invite_token", { length: 255 }),
   inviteExpires: timestamp("invite_expires"),
+  passwordResetToken: varchar("password_reset_token", { length: 255 }),
+  passwordResetExpires: timestamp("password_reset_expires"),
   isActive: boolean("is_active").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });

@@ -21,7 +21,7 @@ import {
 } from "./external-messaging";
 import { storage } from "./storage";
 import { passport, hashPassword } from "./auth";
-import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail } from "./email-service";
+import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail } from "./email-service";
 import bcrypt from "bcrypt";
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -1515,6 +1515,73 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.post("/api/portal/logout", (req, res) => {
     delete (req.session as any).portalPatientId;
     req.session.save(() => res.json({ message: "Logged out" }));
+  });
+
+  // ── Portal: Forgot password ────────────────────────────────────────────────
+  app.post("/api/portal/forgot-password", async (req, res) => {
+    try {
+      const { email } = req.body;
+      if (!email) return res.status(400).json({ message: "Email is required" });
+
+      const account = await storage.getPortalAccountByEmail(email);
+      // Always return success so we don't reveal whether an email is registered
+      if (!account || !account.isActive) {
+        return res.json({ message: "If that email is registered, you'll receive a reset link shortly." });
+      }
+
+      const token = require("crypto").randomBytes(32).toString("hex");
+      const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
+      await storage.updatePortalAccount(account.patientId, {
+        passwordResetToken: token,
+        passwordResetExpires: expires,
+      } as any);
+
+      // Look up patient name for email
+      const patient = await storage.getPatientById(account.patientId);
+      const firstName = patient?.firstName || "there";
+
+      try {
+        await sendPortalPasswordResetEmail(email, firstName, token, req);
+        console.log(`[PORTAL] Password reset email sent to ${email}`);
+      } catch (emailErr) {
+        console.error("[PORTAL] Failed to send reset email:", emailErr);
+        // Log the link as fallback so it's visible in server console
+        const base = (req as any).get ? `${(req as any).get("x-forwarded-proto") || req.protocol}://${(req as any).get("host")}` : "";
+        console.log(`[PORTAL EMAIL FALLBACK] Reset link: ${base}/portal/reset-password?token=${token}`);
+      }
+
+      res.json({ message: "If that email is registered, you'll receive a reset link shortly." });
+    } catch (error) {
+      console.error("[PORTAL] Error in forgot-password:", error);
+      res.status(500).json({ message: "Something went wrong. Please try again." });
+    }
+  });
+
+  // ── Portal: Reset password ─────────────────────────────────────────────────
+  app.post("/api/portal/reset-password", async (req, res) => {
+    try {
+      const { token, password } = req.body;
+      if (!token || !password) return res.status(400).json({ message: "Token and password are required" });
+      if (password.length < 8) return res.status(400).json({ message: "Password must be at least 8 characters" });
+
+      const account = await storage.getPortalAccountByResetToken(token);
+      if (!account) return res.status(400).json({ message: "Invalid or expired reset link. Please request a new one." });
+      if (account.passwordResetExpires && account.passwordResetExpires < new Date()) {
+        return res.status(400).json({ message: "This reset link has expired. Please request a new one." });
+      }
+
+      const passwordHash = await bcrypt.hash(password, 12);
+      await storage.updatePortalAccount(account.patientId, {
+        passwordHash,
+        passwordResetToken: null,
+        passwordResetExpires: null,
+      } as any);
+
+      res.json({ message: "Password reset successfully. You can now sign in." });
+    } catch (error) {
+      console.error("[PORTAL] Error in reset-password:", error);
+      res.status(500).json({ message: "Failed to reset password. Please try again." });
+    }
   });
 
   // ── Portal: Get current patient info ──────────────────────────────────────
