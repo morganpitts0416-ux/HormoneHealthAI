@@ -848,11 +848,10 @@ export default function PatientProfiles() {
       <div className="flex flex-1 overflow-hidden">
 
         {/* Left panel: patient list — hidden on mobile when a patient is selected */}
-        <div className={cn(
-          "border-r flex-col flex-shrink-0 bg-background",
-          "w-full md:w-72",
-          selectedPatient ? "hidden md:flex" : "flex"
-        )}>
+        <div className={selectedPatient
+          ? "hidden md:flex md:flex-col md:flex-shrink-0 md:w-72 border-r bg-background"
+          : "flex flex-col flex-shrink-0 w-full md:w-72 border-r bg-background"
+        }>
           {/* Search + filter controls */}
           <div className="p-3 border-b space-y-2 flex-shrink-0">
             <div className="relative">
@@ -956,10 +955,10 @@ export default function PatientProfiles() {
         </div>
 
         {/* Right panel: patient detail — hidden on mobile when no patient selected */}
-        <div className={cn(
-          "overflow-y-auto flex-1",
-          selectedPatient ? "block" : "hidden md:block"
-        )}>
+        <div className={selectedPatient
+          ? "flex flex-col flex-1 overflow-y-auto min-w-0"
+          : "hidden md:flex md:flex-col md:flex-1 md:overflow-y-auto md:min-w-0"
+        }>
           {/* Mobile back button */}
           {selectedPatient && (
             <div className="md:hidden flex items-center gap-2 px-3 py-2 border-b bg-muted/30 flex-shrink-0">
