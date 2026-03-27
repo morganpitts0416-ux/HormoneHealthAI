@@ -690,21 +690,6 @@ export default function PortalDashboard() {
           </section>
         )}
 
-        {/* Latest lab summary */}
-        {latestLab && latestLab.patientSummary && (
-          <section className="space-y-4">
-            <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>
-              Your Most Recent Labs
-            </h2>
-            <div className="rounded-xl p-5 space-y-4" style={{ backgroundColor: "#ffffff", border: "1px solid #ede8df" }}>
-              <div className="flex items-center gap-2 text-xs" style={{ color: "#7a8a64" }}>
-                <CalendarDays className="w-3.5 h-3.5" />
-                <span>{formatDate(latestLab.labDate)}</span>
-              </div>
-              <p className="text-sm leading-relaxed" style={{ color: "#3d4a30" }}>{latestLab.patientSummary}</p>
-            </div>
-          </section>
-        )}
 
         {/* Lab visit history — all visits, clickable */}
         {labs.length > 0 && (
