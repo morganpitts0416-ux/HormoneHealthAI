@@ -326,7 +326,7 @@ export default function LabInterpretation() {
         <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center">
           <div className="flex items-center justify-between w-full gap-2 sm:gap-4">
             <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-12 sm:h-14 w-auto flex-shrink-0" style={{ mixBlendMode: "multiply" }} />
+              <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-14 sm:h-16 w-auto flex-shrink-0" style={{ mixBlendMode: "multiply" }} />
               <div className="h-4 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
               <div className="hidden sm:block">
                 <h1 className="text-sm font-semibold leading-tight" style={{ color: "#1c2414" }}>Men's Lab Interpretation</h1>

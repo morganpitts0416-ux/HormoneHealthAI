@@ -494,7 +494,7 @@ export default function PortalDashboard() {
           <img
             src="/realign-health-logo.png"
             alt="ReAlign Health"
-            className="h-[2.6rem] sm:h-9 w-auto flex-shrink-0"
+            className="h-12 sm:h-11 w-auto flex-shrink-0"
             style={{ mixBlendMode: "multiply" }}
           />
           <Button

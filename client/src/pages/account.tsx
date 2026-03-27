@@ -295,7 +295,7 @@ export default function Account() {
             <img
               src="/realign-health-logo.png"
               alt="ReAlign Health"
-              className="h-10 w-auto"
+              className="h-14 w-auto"
               style={{ mixBlendMode: "multiply" }}
             />
             <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
