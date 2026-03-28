@@ -1446,7 +1446,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
       }
 
-      const base = req.get ? `${req.get("x-forwarded-proto") || req.protocol}://${req.get("host")}` : "";
+      const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+      const base = (replitDomain && !replitDomain.startsWith("localhost"))
+        ? `https://${replitDomain}`
+        : req.get
+          ? `${req.get("x-forwarded-proto") || req.protocol}://${req.get("x-forwarded-host") || req.get("host")}`
+          : "";
       const inviteUrl = `${base}/portal/set-password?token=${token}`;
 
       let emailSent = false;
