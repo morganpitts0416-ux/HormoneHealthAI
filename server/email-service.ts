@@ -41,8 +41,15 @@ async function sendEmail(opts: EmailOptions): Promise<void> {
 
 function getBaseUrl(req?: { protocol?: string; get?: (h: string) => string | undefined }): string {
   if (process.env.APP_URL) return process.env.APP_URL;
+  // In Replit deployments, REPLIT_DOMAINS is always the correct public-facing domain
+  if (process.env.REPLIT_DOMAINS) {
+    const domain = process.env.REPLIT_DOMAINS.split(",")[0].trim();
+    if (domain && !domain.startsWith("localhost")) {
+      return `https://${domain}`;
+    }
+  }
   if (req?.get) {
-    const host = req.get("host") || "localhost:5000";
+    const host = req.get("x-forwarded-host") || req.get("host") || "localhost:5000";
     const proto = req.get("x-forwarded-proto") || req.protocol || "https";
     return `${proto}://${host}`;
   }
