@@ -12,7 +12,7 @@ import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
-  Mail, Globe, Send, Share2, Leaf, MessageSquare
+  Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
@@ -591,6 +591,8 @@ export default function PatientProfiles() {
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
+  const [inviteLink, setInviteLink] = useState<string | null>(null);
+  const [inviteEmailSent, setInviteEmailSent] = useState<boolean | null>(null);
   const [publishingLabId, setPublishingLabId] = useState<number | null>(null);
   const [publishDialogLab, setPublishDialogLab] = useState<LabResult | null>(null);
   const [publishNotes, setPublishNotes] = useState("");
@@ -695,13 +697,12 @@ export default function PatientProfiles() {
   const inviteMutation = useMutation({
     mutationFn: async ({ patientId, email }: { patientId: number; email: string }) => {
       const res = await apiRequest("POST", `/api/portal/invite/${patientId}`, { email });
-      return res;
+      return res.json() as Promise<{ message: string; inviteUrl?: string; emailSent?: boolean }>;
     },
-    onSuccess: () => {
+    onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ['/api/portal/status', selectedPatient?.id] });
-      setShowInviteModal(false);
-      setInviteEmail("");
-      toast({ title: "Invitation sent", description: "The patient will receive an email with a link to set up their portal account." });
+      setInviteLink(data?.inviteUrl || null);
+      setInviteEmailSent(data?.emailSent ?? null);
     },
     onError: (error: any) => {
       toast({ title: "Failed to send invitation", description: error.message || "Please try again.", variant: "destructive" });
@@ -1190,50 +1191,112 @@ export default function PatientProfiles() {
             <CardHeader className="pb-3">
               <CardTitle className="text-lg flex items-center gap-2">
                 <Leaf className="h-5 w-5" style={{ color: "#2e3a20" }} />
-                Invite to Patient Portal
+                {inviteLink ? "Invitation Sent" : "Invite to Patient Portal"}
               </CardTitle>
             </CardHeader>
             <CardContent className="space-y-4">
-              <p className="text-sm text-muted-foreground">
-                Send <strong>{selectedPatient.firstName} {selectedPatient.lastName}</strong> an invitation to their private health portal where they can view their lab results, wellness protocol, and health journey.
-              </p>
-              {portalStatus?.hasPortalAccount && (
-                <div className="rounded-md px-3 py-2 text-xs" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>
-                  This patient already has a portal account. Sending a new invite will let them reset access.
-                </div>
+              {inviteLink ? (
+                <>
+                  <div className="rounded-md px-3 py-2.5 text-sm flex items-start gap-2.5" style={{ backgroundColor: "#edf2e6" }}>
+                    <CheckCircle2 className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: "#2e3a20" }} />
+                    <div>
+                      <p className="font-medium" style={{ color: "#1c2414" }}>
+                        {inviteEmailSent === false
+                          ? "Portal account created — email could not be sent"
+                          : `Invite email sent to ${inviteEmail}`}
+                      </p>
+                      {inviteEmailSent === false && (
+                        <p className="text-xs mt-0.5" style={{ color: "#5a6a48" }}>
+                          Share the link below directly with {selectedPatient.firstName}.
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                  <div className="space-y-1.5">
+                    <Label className="text-xs text-muted-foreground uppercase tracking-wider">
+                      Portal setup link — share if email doesn't arrive
+                    </Label>
+                    <div className="flex items-center gap-2">
+                      <Input
+                        readOnly
+                        value={inviteLink}
+                        className="text-xs font-mono h-9"
+                        data-testid="input-invite-link"
+                        onClick={(e) => (e.target as HTMLInputElement).select()}
+                      />
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="flex-shrink-0 h-9 gap-1.5"
+                        data-testid="button-copy-invite-link"
+                        onClick={() => {
+                          navigator.clipboard.writeText(inviteLink);
+                          toast({ title: "Link copied", description: "Paste it in a text or email to the patient." });
+                        }}
+                      >
+                        <Copy className="h-3.5 w-3.5" />
+                        Copy
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      This link expires in 72 hours. Have {selectedPatient.firstName} check spam if they don't see the email.
+                    </p>
+                  </div>
+                  <div className="flex justify-end pt-1">
+                    <Button
+                      size="sm"
+                      onClick={() => { setShowInviteModal(false); setInviteEmail(""); setInviteLink(null); setInviteEmailSent(null); }}
+                      style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                      data-testid="button-done-invite"
+                    >
+                      Done
+                    </Button>
+                  </div>
+                </>
+              ) : (
+                <>
+                  <p className="text-sm text-muted-foreground">
+                    Send <strong>{selectedPatient.firstName} {selectedPatient.lastName}</strong> an invitation to their private health portal where they can view their lab results, wellness protocol, and health journey.
+                  </p>
+                  {portalStatus?.hasPortalAccount && (
+                    <div className="rounded-md px-3 py-2 text-xs" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>
+                      This patient already has a portal account. Sending a new invite will let them reset access.
+                    </div>
+                  )}
+                  <div className="space-y-1.5">
+                    <Label htmlFor="invite-email" className="text-sm">Patient email address</Label>
+                    <Input
+                      id="invite-email"
+                      type="email"
+                      placeholder="patient@email.com"
+                      value={inviteEmail}
+                      onChange={(e) => setInviteEmail(e.target.value)}
+                      data-testid="input-invite-email"
+                    />
+                  </div>
+                  <div className="flex items-center justify-end gap-2 pt-1">
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setShowInviteModal(false); setInviteEmail(""); }}
+                      disabled={inviteMutation.isPending}
+                      data-testid="button-cancel-invite"
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      onClick={() => inviteMutation.mutate({ patientId: selectedPatient.id, email: inviteEmail })}
+                      disabled={inviteMutation.isPending || !inviteEmail}
+                      data-testid="button-send-invite"
+                      style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                    >
+                      <Send className="h-3.5 w-3.5 mr-1.5" />
+                      {inviteMutation.isPending ? "Sending…" : "Send Invitation"}
+                    </Button>
+                  </div>
+                </>
               )}
-              <div className="space-y-1.5">
-                <Label htmlFor="invite-email" className="text-sm">Patient email address</Label>
-                <Input
-                  id="invite-email"
-                  type="email"
-                  placeholder="patient@email.com"
-                  value={inviteEmail}
-                  onChange={(e) => setInviteEmail(e.target.value)}
-                  data-testid="input-invite-email"
-                />
-              </div>
-              <div className="flex items-center justify-end gap-2 pt-1">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={() => { setShowInviteModal(false); setInviteEmail(""); }}
-                  disabled={inviteMutation.isPending}
-                  data-testid="button-cancel-invite"
-                >
-                  Cancel
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => inviteMutation.mutate({ patientId: selectedPatient.id, email: inviteEmail })}
-                  disabled={inviteMutation.isPending || !inviteEmail}
-                  data-testid="button-send-invite"
-                  style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
-                >
-                  <Send className="h-3.5 w-3.5 mr-1.5" />
-                  {inviteMutation.isPending ? "Sending…" : "Send Invitation"}
-                </Button>
-              </div>
             </CardContent>
           </Card>
         </div>
