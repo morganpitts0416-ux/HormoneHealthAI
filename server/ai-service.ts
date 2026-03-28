@@ -463,7 +463,12 @@ CRITICAL FORMATTING RULES:
     gender: 'male' | 'female' = 'male'
   ): string {
     const patientType = gender === 'female' ? "women's hormone clinic patient" : "men's hormone clinic patient";
-    let prompt = `Analyze these lab results from a ${patientType} and provide synthesized clinical recommendations:\n\n`;
+    const onTRT = gender === 'male' && (labs as any).onTRT === true;
+    const trtContext = onTRT ? ' Currently on Testosterone Replacement Therapy (TRT).' : '';
+    let prompt = `Analyze these lab results from a ${patientType}.${trtContext} Provide synthesized clinical recommendations:\n\n`;
+    if (onTRT) {
+      prompt += `CLINICAL CONTEXT: Patient is actively on TRT. Testosterone optimal target: 600–1200 ng/dL (trough). Interpret testosterone findings in context of TRT protocol management.\n\n`;
+    }
 
     // Add red flags if any
     if (redFlags.length > 0) {
@@ -1050,7 +1055,7 @@ HYDRATION:
 Your lab tests provide critical insights into your testosterone levels, cardiovascular health, and overall vitality. Here's what to know:
 
 Why These Tests Matter:
-- Testosterone: The foundation of male energy, muscle, mood, and libido. Optimal range is 700-1100 ng/dL.
+- Testosterone: The foundation of male energy, muscle, mood, and libido. Optimal range is 600–1200 ng/dL.
 - Hematocrit: Measures red blood cells - important to monitor with testosterone therapy. Target under 54%.
 - PSA: Prostate health marker - baseline and monitoring during treatment.
 - Vitamin D: Supports testosterone production - optimal 60-80 ng/mL.

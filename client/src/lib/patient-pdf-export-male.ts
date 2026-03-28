@@ -66,7 +66,7 @@ function getMaleLabInsight(category: string, value: number | string, status: str
       egfr: { low: 60, high: 200 },
       alt: { low: 0, high: 45 },
       ast: { low: 0, high: 45 },
-      testosterone: { low: 700, high: 1100 },
+      testosterone: { low: 600, high: 1200 },
       "free testosterone": { low: 15, high: 25 },
       estradiol: { low: 20, high: 50 },
       psa: { low: 0, high: 4 },
@@ -197,7 +197,7 @@ function getMaleLabInsight(category: string, value: number | string, status: str
     },
     testosterone: {
       what: "Testosterone is your primary male hormone affecting energy, muscle, mood, and libido.",
-      normal: "Your testosterone level is optimized (700-1100 ng/dL), supporting vitality, muscle, and overall male health.",
+      normal: "Your testosterone level is optimized (600–1200 ng/dL), supporting vitality, muscle, and overall male health.",
       low: "Lower testosterone causes fatigue, low libido, muscle loss, and mood changes. Testosterone optimization therapy can help.",
       high: "Testosterone is above the target range. Your provider may adjust dosing to optimize levels."
     },
@@ -461,11 +461,11 @@ export async function generateMalePatientWellnessPDF(
       } else if (catLower.includes('testosterone') && !catLower.includes('free') && interp.value !== undefined) {
         if (interp.value < 300) {
           statusText = 'Low';
-        } else if (interp.value < 500) {
+        } else if (interp.value < 600) {
           statusText = 'Suboptimal';
-        } else if (interp.value >= 700 && interp.value <= 1100) {
+        } else if (interp.value >= 600 && interp.value <= 1200) {
           statusText = 'Optimal';
-        } else if (interp.value > 1100) {
+        } else if (interp.value > 1200) {
           statusText = 'Elevated';
         } else {
           statusText = 'Borderline';

@@ -356,31 +356,45 @@ export class ClinicalLogicEngine {
       let interpretation = '';
       let recommendation = '';
       let recheckTiming = '';
+      const onTRT = (labs as any).onTRT === true;
 
-      if (labs.testosterone > 900) {
+      if (labs.testosterone > 1200) {
         status = 'abnormal';
-        interpretation = 'Testosterone level above target range - dose adjustment recommended.';
-        recommendation = 'Provider recommendation: Lower dose 10-20% or lengthen injection interval to avoid supraphysiologic levels.';
-        recheckTiming = '8 weeks';
-      } else if (labs.testosterone >= 700 && labs.testosterone <= 900) {
-        status = 'borderline';
-        interpretation = 'Testosterone at upper end of target range - consider symptoms.';
-        recommendation = 'Provider recommendation: If asymptomatic, maintain dose. If symptomatic (anxiety, irritability, acne), reduce 10%.';
-        recheckTiming = '8-12 weeks';
-      } else if (labs.testosterone >= 400 && labs.testosterone < 700) {
+        interpretation = `Testosterone supraphysiologic (>1200 ng/dL)${onTRT ? ' — above safe TRT range' : ''}.`;
+        recommendation = onTRT
+          ? 'Reduce testosterone dose 20-30% or extend injection interval. Recheck in 6-8 weeks. Monitor hematocrit and estradiol closely.'
+          : 'Testosterone significantly elevated. Evaluate for endogenous production abnormality or undisclosed testosterone use.';
+        recheckTiming = '6-8 weeks';
+      } else if (labs.testosterone >= 600 && labs.testosterone <= 1200) {
         status = 'normal';
-        interpretation = 'Testosterone in optimal therapeutic range (400-700 ng/dL).';
-        recommendation = 'Maintain current dose if patient reports symptom relief.';
+        interpretation = `Testosterone in optimal range (600–1200 ng/dL)${onTRT ? ' — protocol effective' : ''}.`;
+        recommendation = onTRT
+          ? 'Continue current TRT protocol. Maintain routine monitoring per standing orders.'
+          : 'Testosterone is well within the optimal range. Continue current regimen and monitor periodically.';
+      } else if (labs.testosterone >= 400 && labs.testosterone < 600) {
+        status = onTRT ? 'borderline' : 'borderline';
+        interpretation = onTRT
+          ? `Testosterone suboptimal for TRT patient (${labs.testosterone} ng/dL; goal 600–1200). May need dose adjustment.`
+          : `Testosterone in low-normal range (${labs.testosterone} ng/dL). May be adequate if asymptomatic.`;
+        recommendation = onTRT
+          ? 'Consider increasing dose 10-20% if patient reports persistent symptoms (fatigue, low libido, poor recovery). Confirm trough timing. Recheck in 8-12 weeks.'
+          : 'If symptomatic (fatigue, low libido, mood changes), evaluate for TRT candidacy. Recheck in 3-6 months or if symptoms worsen.';
+        recheckTiming = '8-12 weeks';
       } else if (labs.testosterone >= 300 && labs.testosterone < 400) {
         status = 'borderline';
-        interpretation = 'Testosterone below target range but may be adequate if asymptomatic.';
-        recommendation = 'Provider recommendation: If symptomatic (fatigue, low libido), increase dose 20-30%.';
+        interpretation = `Testosterone below optimal range (${labs.testosterone} ng/dL; goal 600–1200)${onTRT ? ' — likely subtherapeutic' : ''}.`;
+        recommendation = onTRT
+          ? 'Increase TRT dose 20-30% or shorten injection interval. Assess adherence and draw timing (confirm trough). Recheck in 8-12 weeks.'
+          : 'Below optimal range. Evaluate for TRT candidacy, lifestyle factors (sleep, stress, weight), and other causes of testosterone suppression.';
         recheckTiming = '8-12 weeks';
       } else {
+        // < 300
         status = 'abnormal';
-        interpretation = 'Testosterone below target range - dose optimization needed.';
-        recommendation = 'Provider recommendation: Increase dose 20-30% if symptomatic. Verify timing of trough draw and adherence.';
-        recheckTiming = '8-12 weeks';
+        interpretation = `Testosterone significantly low (${labs.testosterone} ng/dL)${onTRT ? ' — protocol not achieving therapeutic levels' : ' — hypogonadal range'}.`;
+        recommendation = onTRT
+          ? 'Urgent dose review. Increase TRT dose 30-50% or change delivery route. Verify adherence, injection technique, and trough timing. Recheck in 6-8 weeks.'
+          : 'Hypogonadal testosterone level. Evaluate for primary vs. secondary hypogonadism. Discuss TRT candidacy, lifestyle optimization, and refer if indicated.';
+        recheckTiming = '6-8 weeks';
       }
 
       interpretations.push({
@@ -388,7 +402,7 @@ export class ClinicalLogicEngine {
         value: labs.testosterone,
         unit: 'ng/dL',
         status,
-        referenceRange: '400-700 ng/dL (trough target)',
+        referenceRange: onTRT ? '600–1200 ng/dL (TRT trough target)' : '600–1200 ng/dL (optimal)',
         interpretation,
         recommendation,
         recheckTiming,
@@ -800,16 +814,34 @@ export class ClinicalLogicEngine {
       let status: LabInterpretation['status'] = 'normal';
       let interpretation = '';
       let recommendation = '';
+      const onTRTForLH = (labs as any).onTRT === true;
 
-      // On TRT, LH should be suppressed
-      if (labs.lh < 1.0) {
-        status = 'normal';
-        interpretation = 'LH appropriately suppressed on testosterone replacement therapy.';
-        recommendation = 'Expected finding. No action needed.';
-      } else if (labs.lh >= 1.0) {
-        status = 'borderline';
-        interpretation = 'LH not fully suppressed despite TRT. May indicate poor adherence or timing issue.';
-        recommendation = 'Verify patient adherence to testosterone protocol. Confirm timing of trough labs.';
+      if (onTRTForLH) {
+        // On TRT, LH should be suppressed
+        if (labs.lh < 1.0) {
+          status = 'normal';
+          interpretation = 'LH appropriately suppressed on testosterone replacement therapy.';
+          recommendation = 'Expected finding. No action needed.';
+        } else {
+          status = 'borderline';
+          interpretation = `LH not fully suppressed despite TRT (${labs.lh} mIU/mL). May indicate poor adherence, timing issue, or subtherapeutic dosing.`;
+          recommendation = 'Verify patient adherence to testosterone protocol. Confirm timing of trough labs. Consider dose or frequency adjustment.';
+        }
+      } else {
+        // Not on TRT — interpret LH in context of natural testosterone production
+        if (labs.lh < 1.2) {
+          status = 'borderline';
+          interpretation = `LH low-normal (${labs.lh} mIU/mL). Low LH can indicate secondary hypogonadism (hypothalamic/pituitary suppression).`;
+          recommendation = 'If testosterone is also low, evaluate for secondary hypogonadism. Consider morning cortisol, prolactin, and pituitary imaging if clinically indicated.';
+        } else if (labs.lh <= 8.6) {
+          status = 'normal';
+          interpretation = `LH within normal range (${labs.lh} mIU/mL). Hypothalamic-pituitary axis intact.`;
+          recommendation = 'No action needed.';
+        } else {
+          status = 'borderline';
+          interpretation = `LH elevated (${labs.lh} mIU/mL). Elevated LH with low testosterone suggests primary hypogonadism (testicular failure).`;
+          recommendation = 'If total testosterone is low, this pattern suggests primary hypogonadism. Consider endocrinology referral for evaluation.';
+        }
       }
 
       interpretations.push({
