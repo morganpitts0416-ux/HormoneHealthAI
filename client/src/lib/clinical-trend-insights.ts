@@ -189,33 +189,44 @@ const markerProfiles: MarkerProfile[] = [
     name: 'Testosterone', key: 'testosterone', unit: 'ng/dL',
     getClinicianInsight: (c, p, d) => {
       if (d === 'improved') {
-        if (c >= 400 && c <= 700) return `Testosterone in optimal clinical range (400-700 ng/dL). Protocol effective.`;
-        if (c > 700) return `Testosterone elevated at ${c} ng/dL. Consider dose reduction per protocol.`;
-        return `Testosterone improving (${p} -> ${c}). Continue current protocol.`;
+        if (c >= 400 && c <= 700) return `Testosterone in optimal clinical range (400–700 ng/dL). Protocol effective.`;
+        if (c > 700) return `Testosterone elevated at ${c} ng/dL (was ${p}). Now moving toward optimal range. Monitor; consider dose review if symptomatic.`;
+        return `Testosterone improving (${p} → ${c} ng/dL). Continue current protocol.`;
       }
       if (d === 'worsened') {
-        if (c < 300) return `Testosterone subtherapeutic at ${c}. Evaluate protocol adherence and consider dose adjustment.`;
-        return `Testosterone declining (${p} -> ${c}). Assess adherence and absorption.`;
+        if (c > 700) return `Testosterone above optimal range at ${c} ng/dL (was ${p} ng/dL; goal 400–700). Consider protocol dose review — supraphysiologic levels may need adjustment.`;
+        if (c < 300) return `Testosterone subtherapeutic at ${c} ng/dL (was ${p} ng/dL). Evaluate protocol adherence and consider dose adjustment.`;
+        if (c < p) return `Testosterone declining (${p} → ${c} ng/dL). Assess adherence and absorption. Still within acceptable range but trending down.`;
+        return `Testosterone moved outside optimal range (${p} → ${c} ng/dL; goal 400–700). Review protocol.`;
       }
       return `Testosterone stable at ${c} ng/dL.`;
     },
     getPatientInsight: (c, p, d) => {
-      if (d === 'improved') return `Your testosterone level has improved from ${p} to ${c} - your treatment is working well.`;
-      if (d === 'worsened') return `Your testosterone has changed from ${p} to ${c}. We may need to adjust your treatment plan.`;
-      return `Your testosterone is stable at ${c}.`;
+      if (d === 'improved') return `Your testosterone level has improved from ${p} to ${c} ng/dL — your treatment is working well.`;
+      if (d === 'worsened') {
+        if (c > 700) return `Your testosterone is slightly above our target range at ${c} ng/dL. We'll review your protocol.`;
+        return `Your testosterone has changed from ${p} to ${c} ng/dL. We may need to adjust your treatment plan.`;
+      }
+      return `Your testosterone is stable at ${c} ng/dL.`;
     }
   },
   {
     name: 'Free Testosterone', key: 'freeTestosterone', unit: 'pg/mL',
     getClinicianInsight: (c, p, d) => {
-      if (d === 'improved') return `Free testosterone improving (${p} -> ${c} pg/mL). Better bioavailable hormone activity.`;
-      if (d === 'worsened') return `Free testosterone declining (${p} -> ${c} pg/mL). Evaluate SHBG levels and consider protocol adjustment.`;
+      if (d === 'improved') return `Free testosterone improving (${p} → ${c} pg/mL). Better bioavailable hormone activity.`;
+      if (d === 'worsened') {
+        if (c > 200) return `Free testosterone elevated at ${c} pg/mL (was ${p} pg/mL). Supraphysiologic free T — consider protocol dose review.`;
+        return `Free testosterone declining (${p} → ${c} pg/mL). Evaluate SHBG levels and consider protocol adjustment.`;
+      }
       return `Free testosterone stable at ${c} pg/mL.`;
     },
     getPatientInsight: (c, p, d) => {
-      if (d === 'improved') return `Your free testosterone (the active form) has improved from ${p} to ${c}.`;
-      if (d === 'worsened') return `Your free testosterone has decreased from ${p} to ${c}. We'll look into what might be affecting this.`;
-      return `Your free testosterone is steady at ${c}.`;
+      if (d === 'improved') return `Your free testosterone (the active form) has improved from ${p} to ${c} pg/mL.`;
+      if (d === 'worsened') {
+        if (c > 200) return `Your free testosterone is on the higher side at ${c} pg/mL. We'll review your protocol.`;
+        return `Your free testosterone has decreased from ${p} to ${c} pg/mL. We'll look into what might be affecting this.`;
+      }
+      return `Your free testosterone is steady at ${c} pg/mL.`;
     }
   },
   {
