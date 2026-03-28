@@ -172,8 +172,8 @@ export default function AdminDashboard() {
   });
 
   const stats = {
-    total: clinicians.filter(c => c.role !== "admin").length,
-    active: clinicians.filter(c => c.subscriptionStatus === "active" && c.role !== "admin").length,
+    total: clinicians.length,
+    active: clinicians.filter(c => c.subscriptionStatus === "active").length,
     totalPatients: clinicians.reduce((sum, c) => sum + c.patientCount, 0),
   };
 
@@ -267,7 +267,7 @@ export default function AdminDashboard() {
           <CardContent className="p-0">
             {isLoading ? (
               <div className="px-6 py-12 text-center text-sm text-muted-foreground">Loading accounts...</div>
-            ) : clinicians.filter(c => c.role !== "admin").length === 0 ? (
+            ) : clinicians.length === 0 ? (
               <div className="px-6 py-12 text-center">
                 <Users className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-40" />
                 <p className="text-sm text-muted-foreground">No clinician accounts yet.</p>
@@ -288,7 +288,7 @@ export default function AdminDashboard() {
                     </tr>
                   </thead>
                   <tbody>
-                    {clinicians.filter(c => c.role !== "admin").map((c, i) => (
+                    {clinicians.map((c, i) => (
                       <tr
                         key={c.id}
                         className="border-b last:border-0"
@@ -304,9 +304,16 @@ export default function AdminDashboard() {
                               {c.firstName[0]}{c.lastName[0]}
                             </div>
                             <div>
-                              <p className="font-medium leading-tight" style={{ color: "#1c2414" }}>
-                                {c.title} {c.firstName} {c.lastName}
-                              </p>
+                              <div className="flex items-center gap-2">
+                                <p className="font-medium leading-tight" style={{ color: "#1c2414" }}>
+                                  {c.title} {c.firstName} {c.lastName}
+                                </p>
+                                {c.role === "admin" && (
+                                  <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: "#2e3a20", color: "white" }}>
+                                    Owner
+                                  </span>
+                                )}
+                              </div>
                               <p className="text-xs text-muted-foreground">@{c.username}</p>
                             </div>
                           </div>
