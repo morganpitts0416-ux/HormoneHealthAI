@@ -189,22 +189,22 @@ const markerProfiles: MarkerProfile[] = [
     name: 'Testosterone', key: 'testosterone', unit: 'ng/dL',
     getClinicianInsight: (c, p, d) => {
       if (d === 'improved') {
-        if (c >= 400 && c <= 700) return `Testosterone in optimal clinical range (400–700 ng/dL). Protocol effective.`;
-        if (c > 700) return `Testosterone elevated at ${c} ng/dL (was ${p}). Now moving toward optimal range. Monitor; consider dose review if symptomatic.`;
-        return `Testosterone improving (${p} → ${c} ng/dL). Continue current protocol.`;
+        if (c >= 600 && c <= 1200) return `Testosterone in optimal range (600–1200 ng/dL). Protocol effective.`;
+        if (c > 1200) return `Testosterone improving toward range but still elevated at ${c} ng/dL (was ${p}). Monitor; dose review may be needed.`;
+        return `Testosterone improving (${p} → ${c} ng/dL). Continue current protocol and recheck.`;
       }
       if (d === 'worsened') {
-        if (c > 700) return `Testosterone above optimal range at ${c} ng/dL (was ${p} ng/dL; goal 400–700). Consider protocol dose review — supraphysiologic levels may need adjustment.`;
-        if (c < 300) return `Testosterone subtherapeutic at ${c} ng/dL (was ${p} ng/dL). Evaluate protocol adherence and consider dose adjustment.`;
-        if (c < p) return `Testosterone declining (${p} → ${c} ng/dL). Assess adherence and absorption. Still within acceptable range but trending down.`;
-        return `Testosterone moved outside optimal range (${p} → ${c} ng/dL; goal 400–700). Review protocol.`;
+        if (c > 1200) return `Testosterone supraphysiologic at ${c} ng/dL (was ${p} ng/dL; goal 600–1200). Reduce dose 20-30% or extend injection interval.`;
+        if (c < 300) return `Testosterone subtherapeutic at ${c} ng/dL (was ${p} ng/dL). Evaluate TRT adherence, injection technique, and trough timing. Consider dose increase.`;
+        if (c < p) return `Testosterone declining (${p} → ${c} ng/dL; goal 600–1200). If on TRT, assess adherence and absorption. Consider dose adjustment.`;
+        return `Testosterone moved below optimal range (${p} → ${c} ng/dL; goal 600–1200). Evaluate protocol.`;
       }
       return `Testosterone stable at ${c} ng/dL.`;
     },
     getPatientInsight: (c, p, d) => {
       if (d === 'improved') return `Your testosterone level has improved from ${p} to ${c} ng/dL — your treatment is working well.`;
       if (d === 'worsened') {
-        if (c > 700) return `Your testosterone is slightly above our target range at ${c} ng/dL. We'll review your protocol.`;
+        if (c > 1200) return `Your testosterone is above our target range at ${c} ng/dL. We'll review your protocol.`;
         return `Your testosterone has changed from ${p} to ${c} ng/dL. We may need to adjust your treatment plan.`;
       }
       return `Your testosterone is stable at ${c} ng/dL.`;
@@ -457,13 +457,14 @@ const markerProfiles: MarkerProfile[] = [
 
 const rangeBasedDirectionality: Record<string, (current: number, previous: number) => 'improved' | 'worsened' | 'stable'> = {
   testosterone: (c, p) => {
-    const cInRange = c >= 400 && c <= 700;
-    const pInRange = p >= 400 && p <= 700;
+    const cInRange = c >= 600 && c <= 1200;
+    const pInRange = p >= 600 && p <= 1200;
     if (cInRange && !pInRange) return 'improved';
     if (!cInRange && pInRange) return 'worsened';
-    const cDist = Math.min(Math.abs(c - 400), Math.abs(c - 700));
-    const pDist = Math.min(Math.abs(p - 400), Math.abs(p - 700));
-    if (cInRange) return 'stable';
+    if (cInRange && pInRange) return 'stable';
+    // Both outside range — use distance to nearest range boundary
+    const cDist = c < 600 ? 600 - c : c - 1200;
+    const pDist = p < 600 ? 600 - p : p - 1200;
     return cDist < pDist ? 'improved' : cDist > pDist ? 'worsened' : 'stable';
   },
   freeTestosterone: (c, p) => {

@@ -19,6 +19,7 @@ interface LabInputFormProps {
 export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }: LabInputFormProps) {
   // Merge initialValues with default booleans to ensure calculators always receive defined values
   const defaultValues: LabValues = {
+    onTRT: false,
     demographics: {
       onBPMeds: false,
       diabetic: false,
@@ -689,6 +690,31 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
+              {/* TRT Status */}
+              <FormField
+                control={form.control}
+                name="onTRT"
+                render={({ field }) => (
+                  <FormItem className="mb-4 p-3 rounded-md border flex items-start gap-3" style={{ backgroundColor: "#f5f0e8" }}>
+                    <FormControl>
+                      <Checkbox
+                        checked={field.value ?? false}
+                        onCheckedChange={field.onChange}
+                        data-testid="checkbox-on-trt"
+                        className="mt-0.5"
+                      />
+                    </FormControl>
+                    <div className="space-y-0.5">
+                      <FormLabel className="text-sm font-semibold cursor-pointer" style={{ color: "#2e3a20" }}>
+                        Patient is currently on TRT (Testosterone Replacement Therapy)
+                      </FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Check this if the patient is actively on any form of testosterone therapy (injections, topical, pellets, etc.). This adjusts interpretation thresholds and dose recommendations.
+                      </p>
+                    </div>
+                  </FormItem>
+                )}
+              />
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
                 <FormField
                   control={form.control}

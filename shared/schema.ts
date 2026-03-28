@@ -155,6 +155,9 @@ export const labValuesSchema = z.object({
   // Previous PSA for velocity calculation
   previousPsa: z.number().optional(),
   monthsSinceLastPsa: z.number().optional(),
+
+  // Clinical context
+  onTRT: z.boolean().optional(), // Patient is currently on Testosterone Replacement Therapy
 });
 
 // Female-specific Lab Values Schema
