@@ -12,7 +12,7 @@ import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
-  Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink
+  Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
@@ -138,7 +138,7 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
   );
 }
 
-function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab, hasPortalAccount, publishingId }: {
+function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab, hasPortalAccount, publishingId, publishedLabResultIds }: {
   labs: LabResult[];
   onViewLab: (lab: LabResult) => void;
   onDeleteLab: (lab: LabResult) => void;
@@ -146,6 +146,7 @@ function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab
   onPublishLab?: (lab: LabResult) => void;
   hasPortalAccount?: boolean;
   publishingId?: number | null;
+  publishedLabResultIds?: number[];
 }) {
   return (
     <Card data-testid="lab-history-list">
@@ -203,20 +204,46 @@ function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab
                         Normal
                       </Badge>
                     )}
-                    {hasPortalAccount && onPublishLab && (interp?.supplements?.length ?? 0) > 0 && (
-                      <Button
-                        variant="outline"
-                        size="sm"
-                        onClick={(e) => { e.stopPropagation(); onPublishLab(lab); }}
-                        disabled={publishingId === lab.id}
-                        data-testid={`button-publish-protocol-${lab.id}`}
-                        className="text-xs gap-1.5"
-                        style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
-                      >
-                        <Leaf className="h-3 w-3" />
-                        {publishingId === lab.id ? "Publishing…" : "Publish to Portal"}
-                      </Button>
-                    )}
+                    {hasPortalAccount && onPublishLab && (interp?.supplements?.length ?? 0) > 0 && (() => {
+                      const alreadyPublished = publishedLabResultIds?.includes(lab.id) ?? false;
+                      return alreadyPublished ? (
+                        <div className="flex items-center gap-1.5">
+                          <Badge
+                            variant="secondary"
+                            className="text-xs gap-1 no-default-active-elevate"
+                            style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d9b0" }}
+                            data-testid={`badge-published-${lab.id}`}
+                          >
+                            <CheckCircle2 className="h-3 w-3" />
+                            Published
+                          </Badge>
+                          <Button
+                            variant="outline"
+                            size="sm"
+                            onClick={(e) => { e.stopPropagation(); onPublishLab(lab); }}
+                            disabled={publishingId === lab.id}
+                            data-testid={`button-republish-protocol-${lab.id}`}
+                            className="text-xs gap-1.5 text-amber-700 border-amber-300"
+                          >
+                            <RefreshCw className="h-3 w-3" />
+                            {publishingId === lab.id ? "Publishing…" : "Re-publish"}
+                          </Button>
+                        </div>
+                      ) : (
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={(e) => { e.stopPropagation(); onPublishLab(lab); }}
+                          disabled={publishingId === lab.id}
+                          data-testid={`button-publish-protocol-${lab.id}`}
+                          className="text-xs gap-1.5"
+                          style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                        >
+                          <Leaf className="h-3 w-3" />
+                          {publishingId === lab.id ? "Publishing…" : "Publish to Portal"}
+                        </Button>
+                      );
+                    })()}
                     <Button
                       variant="outline"
                       size="sm"
@@ -626,6 +653,7 @@ export default function PatientProfiles() {
     hasPassword: boolean;
     email: string | null;
     lastProtocolPublished: string | null;
+    publishedLabResultIds: number[];
   }>({
     queryKey: ['/api/portal/status', selectedPatient?.id],
     queryFn: async () => {
@@ -1059,6 +1087,7 @@ export default function PatientProfiles() {
                 onPublishLab={handlePublishLab}
                 hasPortalAccount={portalStatus?.hasPortalAccount}
                 publishingId={publishingLabId}
+                publishedLabResultIds={portalStatus?.publishedLabResultIds}
               />
               {labs.length >= 2 && (
                 <PatientTrendCharts
@@ -1397,11 +1426,28 @@ export default function PatientProfiles() {
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
-                <Leaf className="h-4 w-4" style={{ color: "#2e3a20" }} />
-                Publish Protocol to Portal
+                {(portalStatus?.publishedLabResultIds ?? []).includes(publishDialogLab.id) ? (
+                  <RefreshCw className="h-4 w-4 text-amber-600" />
+                ) : (
+                  <Leaf className="h-4 w-4" style={{ color: "#2e3a20" }} />
+                )}
+                {(portalStatus?.publishedLabResultIds ?? []).includes(publishDialogLab.id)
+                  ? "Re-publish Protocol to Portal"
+                  : "Publish Protocol to Portal"}
               </DialogTitle>
             </DialogHeader>
             <div className="space-y-4 py-1">
+              {(portalStatus?.publishedLabResultIds ?? []).includes(publishDialogLab.id) && (
+                <div className="rounded-md px-3 py-2.5 flex items-start gap-2.5 text-sm" style={{ backgroundColor: "#fef9ec", border: "1px solid #f5d97a" }}>
+                  <AlertTriangle className="h-4 w-4 mt-0.5 flex-shrink-0 text-amber-600" />
+                  <div>
+                    <p className="font-medium text-amber-800">These labs have already been published</p>
+                    <p className="text-xs text-amber-700 mt-0.5">
+                      Re-publishing will add a new entry to the patient's portal history. The previous version remains visible.
+                    </p>
+                  </div>
+                </div>
+              )}
               <div className="rounded-lg p-3 text-sm space-y-0.5" style={{ backgroundColor: "#edf2e6" }}>
                 <p className="font-medium" style={{ color: "#2e3a20" }}>
                   {((publishDialogLab.interpretationResult as any)?.supplements?.length || 0)} supplements will be published
@@ -1455,11 +1501,21 @@ export default function PatientProfiles() {
                   setPublishingLabId(publishDialogLab.id);
                   publishProtocolMutation.mutate({ lab: publishDialogLab, notes: publishNotes, dietaryGuidance: publishDietaryGuidance });
                 }}
-                style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                style={(portalStatus?.publishedLabResultIds ?? []).includes(publishDialogLab.id)
+                  ? { backgroundColor: "#92400e", color: "#fef3c7" }
+                  : { backgroundColor: "#2e3a20", color: "#e8ddd0" }}
                 data-testid="button-confirm-publish-protocol"
               >
-                <Leaf className="h-3.5 w-3.5 mr-1.5" />
-                {publishProtocolMutation.isPending ? "Publishing…" : "Publish to Portal"}
+                {(portalStatus?.publishedLabResultIds ?? []).includes(publishDialogLab.id) ? (
+                  <RefreshCw className="h-3.5 w-3.5 mr-1.5" />
+                ) : (
+                  <Leaf className="h-3.5 w-3.5 mr-1.5" />
+                )}
+                {publishProtocolMutation.isPending
+                  ? "Publishing…"
+                  : (portalStatus?.publishedLabResultIds ?? []).includes(publishDialogLab.id)
+                    ? "Re-publish to Portal"
+                    : "Publish to Portal"}
               </Button>
             </DialogFooter>
           </DialogContent>
