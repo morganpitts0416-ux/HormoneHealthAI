@@ -153,8 +153,8 @@ function RiskBadge({ category }: { category: string }) {
   );
 }
 
-function LabQuickViewDialog({ lab, onClose }: { lab: PortalLab; onClose: () => void }) {
-  const [expandedSection, setExpandedSection] = useState<string | null>("summary");
+function LabQuickViewDialog({ lab, dietaryGuidance, onClose }: { lab: PortalLab; dietaryGuidance?: string | null; onClose: () => void }) {
+  const [expandedSection, setExpandedSection] = useState<string | null>("labs");
 
   const grouped = lab.interpretations.reduce((acc: Record<string, typeof lab.interpretations>, interp) => {
     const cat = interp.category.includes(":") ? interp.category.split(":")[0].trim() : interp.category;
@@ -203,14 +203,7 @@ function LabQuickViewDialog({ lab, onClose }: { lab: PortalLab; onClose: () => v
         <ScrollArea className="max-h-[70vh]">
           <div className="px-4 py-4 space-y-3">
 
-            {/* Patient summary */}
-            {lab.patientSummary && (
-              <Section id="summary" title="Your Health Summary" icon={<Info className="w-4 h-4" style={{ color: "#5a7040" }} />}>
-                <p className="text-sm leading-relaxed pt-1" style={{ color: "#3d4a30" }}>{lab.patientSummary}</p>
-              </Section>
-            )}
-
-            {/* Lab values table */}
+            {/* 1. Lab values table */}
             {lab.interpretations.length > 0 && (
               <Section id="labs" title="Your Lab Values" icon={<FlaskConical className="w-4 h-4" style={{ color: "#5a7040" }} />}>
                 <div className="space-y-4 pt-1">
@@ -247,7 +240,7 @@ function LabQuickViewDialog({ lab, onClose }: { lab: PortalLab; onClose: () => v
               </Section>
             )}
 
-            {/* Cardiac assessment */}
+            {/* 2. Cardiac assessment */}
             {hasCVRisk && (
               <Section id="cardiac" title="Heart Health Assessment" icon={<Heart className="w-4 h-4" style={{ color: "#c0392b" }} />}>
                 <div className="space-y-3 pt-1">
@@ -282,7 +275,7 @@ function LabQuickViewDialog({ lab, onClose }: { lab: PortalLab; onClose: () => v
               </Section>
             )}
 
-            {/* Metabolic assessment */}
+            {/* 3. Metabolic assessment */}
             {hasIR && (
               <Section id="metabolic" title="Metabolic Health Assessment" icon={<Activity className="w-4 h-4" style={{ color: "#c9932a" }} />}>
                 <div className="space-y-3 pt-1">
@@ -307,10 +300,10 @@ function LabQuickViewDialog({ lab, onClose }: { lab: PortalLab; onClose: () => v
                     <div className="rounded-lg p-3" style={{ backgroundColor: "#f9f6f0" }}>
                       <p className="text-xs font-medium mb-1.5" style={{ color: "#5a6a48" }}>Identified patterns:</p>
                       {lab.insulinResistance.phenotypes.map((ph: any, i: number) => (
-                        <div key={i} className="mb-1.5 last:mb-0">
+                        <div key={i} className="mb-2 last:mb-0">
                           <p className="text-xs font-semibold" style={{ color: "#1c2414" }}>{ph.name}</p>
                           {ph.patientExplanation && (
-                            <p className="text-xs leading-relaxed" style={{ color: "#7a8a64" }}>{ph.patientExplanation}</p>
+                            <p className="text-xs leading-relaxed mt-0.5" style={{ color: "#7a8a64" }}>{ph.patientExplanation}</p>
                           )}
                         </div>
                       ))}
@@ -322,6 +315,27 @@ function LabQuickViewDialog({ lab, onClose }: { lab: PortalLab; onClose: () => v
                 </div>
               </Section>
             )}
+
+            {/* 4. Dietary & lifestyle guidance from published protocol */}
+            {dietaryGuidance && (
+              <Section id="dietary" title="Dietary & Lifestyle Guidance" icon={<Utensils className="w-4 h-4" style={{ color: "#5a7040" }} />}>
+                <div className="pt-1 space-y-2">
+                  <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#3d4a30" }}>{dietaryGuidance}</p>
+                  <p className="text-xs italic" style={{ color: "#a0a880" }}>
+                    Guidance provided by your care team at {" "}
+                    <span className="not-italic font-medium">{lab.labDate ? formatDate(lab.labDate) : "your last visit"}</span>.
+                  </p>
+                </div>
+              </Section>
+            )}
+
+            {/* 5. Health summary — always last */}
+            {lab.patientSummary && (
+              <Section id="summary" title="Your Health Assessment" icon={<Info className="w-4 h-4" style={{ color: "#5a7040" }} />}>
+                <p className="text-sm leading-relaxed pt-1" style={{ color: "#3d4a30" }}>{lab.patientSummary}</p>
+              </Section>
+            )}
+
           </div>
         </ScrollArea>
 
@@ -804,7 +818,7 @@ export default function PortalDashboard() {
       </nav>
 
       {/* Lab quick view dialog */}
-      {selectedLab && <LabQuickViewDialog lab={selectedLab} onClose={() => setSelectedLab(null)} />}
+      {selectedLab && <LabQuickViewDialog lab={selectedLab} dietaryGuidance={protocol?.dietaryGuidance} onClose={() => setSelectedLab(null)} />}
     </div>
   );
 }
