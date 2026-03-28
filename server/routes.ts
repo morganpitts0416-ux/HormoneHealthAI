@@ -1446,9 +1446,19 @@ export async function registerRoutes(app: Express): Promise<Server> {
         await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
       }
 
-      await sendPatientPortalInviteEmail(email, patient.firstName, clinicianUser?.clinicName || "Your Care Team", token, req);
+      const base = req.get ? `${req.get("x-forwarded-proto") || req.protocol}://${req.get("host")}` : "";
+      const inviteUrl = `${base}/portal/set-password?token=${token}`;
 
-      res.json({ message: "Invitation sent", inviteToken: process.env.NODE_ENV === "development" ? token : undefined });
+      let emailSent = false;
+      try {
+        await sendPatientPortalInviteEmail(email, patient.firstName, clinicianUser?.clinicName || "Your Care Team", token, req);
+        emailSent = true;
+      } catch (emailErr) {
+        console.error("[PORTAL] Failed to send invite email:", emailErr);
+        console.log(`[PORTAL EMAIL FALLBACK] Invite link for ${email}: ${inviteUrl}`);
+      }
+
+      res.json({ message: "Invitation sent", inviteUrl, emailSent });
     } catch (error) {
       console.error("[PORTAL] Error sending invite:", error);
       res.status(500).json({ message: "Failed to send invitation" });
