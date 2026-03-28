@@ -1725,12 +1725,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const patient = await storage.getPatient(patientId, clinicianId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       const portalAccount = await storage.getPortalAccountByPatientId(patientId);
-      const latestProtocol = await storage.getLatestPublishedProtocol(patientId);
+      const allProtocols = await storage.getAllPublishedProtocols(patientId);
+      const latestProtocol = allProtocols[0] || null;
+      // Collect the set of lab result IDs that have already been published
+      const publishedLabResultIds = allProtocols
+        .map((p) => p.labResultId)
+        .filter((id): id is number => id !== null && id !== undefined);
       res.json({
         hasPortalAccount: !!portalAccount,
         hasPassword: !!(portalAccount?.passwordHash),
         email: portalAccount?.email || patient.email || null,
         lastProtocolPublished: latestProtocol?.publishedAt || null,
+        publishedLabResultIds,
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch portal status" });
