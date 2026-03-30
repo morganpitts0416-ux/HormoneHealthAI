@@ -921,6 +921,67 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
+  // Auto-generate dietary guidance from stored AI recommendations for the portal publish dialog
+  app.post("/api/generate-dietary-guidance", requireAuth, async (req, res) => {
+    try {
+      const { labResultId } = req.body;
+      if (!labResultId) return res.status(400).json({ message: "labResultId is required" });
+
+      const labResult = await storage.getLabResult(labResultId);
+      if (!labResult) return res.status(404).json({ message: "Lab result not found" });
+
+      const aiRecommendations = (labResult.interpretationResult as any)?.aiRecommendations;
+      if (!aiRecommendations) {
+        return res.status(422).json({ message: "No AI recommendations available for this lab result" });
+      }
+
+      const client = new OpenAI({
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      });
+
+      const prompt = `You are a clinical nutritionist. A clinician has generated AI recommendations for a patient. Extract and reformat ONLY the dietary/nutrition guidance into a clear, patient-friendly format for their wellness portal.
+
+Format your response EXACTLY like this (use these exact section headers):
+
+Goal: [One clear sentence about the patient's primary nutritional goal based on their specific lab findings]
+
+Diet: [Recommended dietary pattern in 3-8 words, e.g. "Mediterranean-style diet with emphasis on iron-rich foods"]
+
+Foods to Emphasize:
+[Food name] - ([serving size and frequency, e.g. "3-4 oz, 2-3x/week"]) - [plain-language explanation of why this specific food helps their specific lab results]
+[Food name] - ([serving size and frequency]) - [explanation]
+[Food name] - ([serving size and frequency]) - [explanation]
+[Food name] - ([serving size and frequency]) - [explanation]
+[Food name] - ([serving size and frequency]) - [explanation]
+
+Rules:
+- List exactly 5-7 specific foods
+- Tie each food to their SPECIFIC lab findings (e.g. "to help raise your low ferritin", "to support your elevated LDL")  
+- Write in plain language a patient can understand — no jargon
+- Keep each food entry on ONE line only
+- Format exactly: Food Name - (serving info) - reason (include the dashes and parens)
+- Do NOT include supplement recommendations — foods only
+- Do NOT include "Foods to Avoid" or other sections — only the three sections above
+
+CLINICAL RECOMMENDATIONS TO EXTRACT FROM:
+${aiRecommendations}`;
+
+      const completion = await client.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.3,
+        max_tokens: 900,
+      });
+
+      const dietaryGuidance = completion.choices[0]?.message?.content?.trim() || "";
+      res.json({ dietaryGuidance });
+    } catch (error) {
+      console.error("[API] Error generating dietary guidance:", error);
+      res.status(500).json({ message: "Failed to generate dietary guidance" });
+    }
+  });
+
   // Generate male patient wellness plan endpoint
   app.post("/api/generate-wellness-plan-male", async (req, res) => {
     console.log('[API] POST /api/generate-wellness-plan-male - Received request');
