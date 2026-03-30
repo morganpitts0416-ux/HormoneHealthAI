@@ -20,11 +20,23 @@ import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
-import { Link } from "wouter";
+import { Link, useSearch } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { FemaleLabValues, InterpretationResult, LabValues, Patient, LabResult } from "@shared/schema";
 
+function calculateAge(dateOfBirth: Date | string): number {
+  const dob = new Date(dateOfBirth);
+  const today = new Date();
+  let age = today.getFullYear() - dob.getFullYear();
+  const m = today.getMonth() - dob.getMonth();
+  if (m < 0 || (m === 0 && today.getDate() < dob.getDate())) age--;
+  return age;
+}
+
 export default function FemaleLabInterpretation() {
+  const search = useSearch();
+  const initialPatientId = new URLSearchParams(search).get('patientId');
+
   const [labValues, setLabValues] = useState<FemaleLabValues>({});
   const [interpretationResult, setInterpretationResult] = useState<InterpretationResult | null>(null);
   const [activeTab, setActiveTab] = useState<string>("input");
@@ -410,10 +422,18 @@ export default function FemaleLabInterpretation() {
             {/* Patient Selector */}
             <PatientSelector
               gender="female"
+              initialPatientId={initialPatientId ? parseInt(initialPatientId) : undefined}
               onPatientSelect={(patient) => {
                 setSelectedPatient(patient);
                 if (patient) {
-                  setLabValues(prev => ({ ...prev, patientName: `${patient.firstName} ${patient.lastName}` }));
+                  setLabValues(prev => ({
+                    ...prev,
+                    patientName: `${patient.firstName} ${patient.lastName}`,
+                    demographics: {
+                      ...(prev.demographics ?? {}),
+                      ...(patient.dateOfBirth ? { age: calculateAge(patient.dateOfBirth) } : {}),
+                    },
+                  }));
                 }
               }}
               selectedPatient={selectedPatient}

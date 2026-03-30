@@ -12,9 +12,10 @@ interface PatientSelectorProps {
   gender: 'male' | 'female';
   onPatientSelect: (patient: Patient | null) => void;
   selectedPatient: Patient | null;
+  initialPatientId?: number;
 }
 
-export function PatientSelector({ gender, onPatientSelect, selectedPatient }: PatientSelectorProps) {
+export function PatientSelector({ gender, onPatientSelect, selectedPatient, initialPatientId }: PatientSelectorProps) {
   const [searchTerm, setSearchTerm] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
@@ -26,6 +27,19 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient }: Pa
     queryKey: [`/api/patients/search?q=${encodeURIComponent(searchTerm)}&gender=${gender}`],
     enabled: searchTerm.length >= 2,
   });
+
+  // Auto-select the patient when coming from a patient profile link
+  const { data: initialPatient } = useQuery<Patient>({
+    queryKey: [`/api/patients/${initialPatientId}`],
+    enabled: !!initialPatientId && !selectedPatient,
+  });
+
+  useEffect(() => {
+    if (initialPatient && !selectedPatient) {
+      onPatientSelect(initialPatient);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialPatient]);
 
   useEffect(() => {
     function handleClickOutside(e: MouseEvent) {
