@@ -9,7 +9,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, CheckCircle2 } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, Shield } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -38,12 +38,14 @@ const STEPS = [
   { label: "Personal Info", description: "Your name and credentials will appear on patient reports" },
   { label: "Clinic Info", description: "Your clinic name will appear on all patient-facing reports" },
   { label: "Account Setup", description: "Choose a unique username and a strong password" },
+  { label: "Agreement", description: "Review and accept our terms to complete your registration" },
 ];
 
 const STEP_FIELDS: (keyof RegisterForm)[][] = [
   ["firstName", "lastName", "title", "npi"],
   ["clinicName", "email", "phone", "address"],
   ["username", "password", "confirmPassword"],
+  [],
 ];
 
 export default function Register() {
@@ -51,6 +53,13 @@ export default function Register() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [step, setStep] = useState(0);
+  const [agreements, setAgreements] = useState({
+    terms: false,
+    hipaa: false,
+    clinical: false,
+  });
+
+  const allAgreed = agreements.terms && agreements.hipaa && agreements.clinical;
 
   useEffect(() => {
     if (!isLoading && user) setLocation("/dashboard");
@@ -74,6 +83,7 @@ export default function Register() {
   const handleBack = () => setStep((s) => Math.max(s - 1, 0));
 
   const onSubmit = async (data: RegisterForm) => {
+    if (!allAgreed) return;
     try {
       const { confirmPassword, ...payload } = data;
       await registerMutation.mutateAsync({
@@ -89,7 +99,7 @@ export default function Register() {
 
   return (
     <div className="min-h-screen flex">
-      {/* Left brand panel — tan */}
+      {/* Left brand panel */}
       <div
         className="hidden md:flex md:w-[38%] flex-col items-center justify-center p-12"
         style={{ backgroundColor: "#e8ddd0" }}
@@ -173,7 +183,7 @@ export default function Register() {
               <Form {...form}>
                 <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
 
-                  {/* Step 0 */}
+                  {/* Step 0 — Personal Info */}
                   {step === 0 && (
                     <>
                       <div className="grid grid-cols-2 gap-3">
@@ -216,7 +226,7 @@ export default function Register() {
                     </>
                   )}
 
-                  {/* Step 1 */}
+                  {/* Step 1 — Clinic Info */}
                   {step === 1 && (
                     <>
                       <FormField control={form.control} name="clinicName" render={({ field }) => (
@@ -250,7 +260,7 @@ export default function Register() {
                     </>
                   )}
 
-                  {/* Step 2 */}
+                  {/* Step 2 — Account Setup */}
                   {step === 2 && (
                     <>
                       <FormField control={form.control} name="username" render={({ field }) => (
@@ -277,6 +287,96 @@ export default function Register() {
                     </>
                   )}
 
+                  {/* Step 3 — Agreement */}
+                  {step === 3 && (
+                    <div className="space-y-4">
+                      <div className="flex items-center gap-2 mb-1">
+                        <Shield className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
+                        <span className="text-xs font-medium uppercase tracking-wider" style={{ color: "#2e3a20" }}>
+                          Terms &amp; Compliance
+                        </span>
+                      </div>
+
+                      {/* Scrollable terms box */}
+                      <div
+                        className="rounded-md border text-xs leading-relaxed overflow-y-auto space-y-4 p-4"
+                        style={{ maxHeight: "220px", borderColor: "#d4c9b5", backgroundColor: "#fdfcfb", color: "#3d4a30" }}
+                      >
+                        <div>
+                          <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>Terms of Service</p>
+                          <p>
+                            ReAlign Health is a clinical decision support tool intended solely for use by licensed healthcare professionals in authorized clinical settings. By creating an account, you agree to use the platform only for lawful clinical purposes, to maintain the confidentiality of your login credentials, and to comply with all applicable federal and state laws governing the practice of medicine and the handling of patient information. You agree not to share your account with unauthorized individuals or use the platform in any manner that could harm patients or violate professional standards of care. ReAlign Health reserves the right to suspend or terminate accounts found in violation of these terms.
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>HIPAA &amp; Patient Data Compliance</p>
+                          <p>
+                            As a covered entity or business associate under the Health Insurance Portability and Accountability Act (HIPAA), you are solely responsible for ensuring that any protected health information (PHI) you enter into ReAlign Health is handled in full compliance with HIPAA Privacy and Security Rules. You acknowledge that you are authorized to access and input the patient data you submit, that you will implement appropriate administrative, physical, and technical safeguards to protect PHI, and that you will not enter PHI for patients who have not consented to its use for clinical interpretation purposes. You agree to promptly notify ReAlign Health of any suspected security breach or unauthorized disclosure involving patient data.
+                          </p>
+                        </div>
+                        <div>
+                          <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>Clinical Decision Support Disclaimer</p>
+                          <p>
+                            ReAlign Health provides clinical decision support only. All interpretations, recommendations, risk scores, supplement suggestions, and AI-generated content are intended to assist — not replace — the independent clinical judgment of a licensed healthcare provider. You, as the treating clinician, remain solely and entirely responsible for all diagnostic, treatment, and care decisions made for your patients. ReAlign Health does not practice medicine, does not establish a provider-patient relationship, and is not liable for any clinical outcomes resulting from the use of or reliance on information generated by the platform. No output from ReAlign Health should be acted upon without independent clinical verification.
+                          </p>
+                        </div>
+                      </div>
+
+                      {/* Checkboxes */}
+                      <div className="space-y-3 pt-1">
+                        {[
+                          {
+                            key: "terms" as const,
+                            label: "I have read and agree to the Terms of Service.",
+                          },
+                          {
+                            key: "hipaa" as const,
+                            label: "I acknowledge my HIPAA compliance responsibilities and will handle all patient data accordingly.",
+                          },
+                          {
+                            key: "clinical" as const,
+                            label: "I understand that ReAlign Health provides decision support only and that I remain solely responsible for all clinical decisions.",
+                          },
+                        ].map(({ key, label }) => (
+                          <label
+                            key={key}
+                            className="flex items-start gap-3 cursor-pointer group"
+                            data-testid={`checkbox-agree-${key}`}
+                          >
+                            <div className="relative mt-0.5 flex-shrink-0">
+                              <input
+                                type="checkbox"
+                                checked={agreements[key]}
+                                onChange={(e) => setAgreements((prev) => ({ ...prev, [key]: e.target.checked }))}
+                                className="sr-only"
+                              />
+                              <div
+                                className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
+                                style={{
+                                  borderColor: agreements[key] ? "#2e3a20" : "#d4c9b5",
+                                  backgroundColor: agreements[key] ? "#2e3a20" : "white",
+                                }}
+                              >
+                                {agreements[key] && (
+                                  <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
+                                    <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
+                                  </svg>
+                                )}
+                              </div>
+                            </div>
+                            <span className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>{label}</span>
+                          </label>
+                        ))}
+                      </div>
+
+                      {!allAgreed && (
+                        <p className="text-xs text-muted-foreground pt-1">
+                          Please check all three boxes above to complete your registration.
+                        </p>
+                      )}
+                    </div>
+                  )}
+
                   {/* Navigation */}
                   <div className="flex gap-3 pt-2">
                     {step > 0 && (
@@ -289,7 +389,12 @@ export default function Register() {
                         Continue<ChevronRight className="w-4 h-4 ml-1" />
                       </Button>
                     ) : (
-                      <Button type="submit" className="flex-1" disabled={registerMutation.isPending} data-testid="button-register">
+                      <Button
+                        type="submit"
+                        className="flex-1"
+                        disabled={registerMutation.isPending || !allAgreed}
+                        data-testid="button-register"
+                      >
                         {registerMutation.isPending ? "Creating account..." : "Create Account"}
                       </Button>
                     )}

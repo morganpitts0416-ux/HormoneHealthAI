@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { useToast } from "@/hooks/use-toast";
-import { CheckCircle, Leaf } from "lucide-react";
+import { CheckCircle, Leaf, ShieldCheck } from "lucide-react";
 
 export default function PortalSetPassword() {
   const [, setLocation] = useLocation();
@@ -17,6 +17,7 @@ export default function PortalSetPassword() {
 
   const [password, setPassword] = useState("");
   const [confirm, setConfirm] = useState("");
+  const [agreed, setAgreed] = useState(false);
   const [done, setDone] = useState(false);
 
   useEffect(() => {
@@ -40,6 +41,10 @@ export default function PortalSetPassword() {
 
   const handleSubmit = (e: React.FormEvent) => {
     e.preventDefault();
+    if (!agreed) {
+      toast({ title: "Agreement required", description: "Please read and accept the portal terms before continuing.", variant: "destructive" });
+      return;
+    }
     if (password.length < 8) {
       toast({ title: "Password too short", description: "Please use at least 8 characters.", variant: "destructive" });
       return;
@@ -53,6 +58,7 @@ export default function PortalSetPassword() {
 
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#f9f6f0" }}>
+      {/* Header */}
       <div
         className="w-full py-5 px-8 border-b"
         style={{ borderColor: "#e8ddd0", backgroundColor: "#f9f6f0" }}
@@ -65,7 +71,7 @@ export default function PortalSetPassword() {
         />
       </div>
 
-      <div className="flex-1 flex items-center justify-center px-4 py-16">
+      <div className="flex-1 flex items-center justify-center px-4 py-12">
         <div className="w-full max-w-sm">
           {done ? (
             <div className="text-center">
@@ -99,13 +105,58 @@ export default function PortalSetPassword() {
                 <Leaf className="w-5 h-5" style={{ color: "#e8ddd0" }} />
               </div>
 
-              <div className="text-center mb-10">
+              <div className="text-center mb-8">
                 <h1 className="text-2xl font-semibold mb-2 tracking-tight" style={{ color: "#1c2414" }}>
                   Welcome to your portal
                 </h1>
                 <p className="text-sm leading-relaxed" style={{ color: "#7a8a64" }}>
                   Create a password to access your personal health portal.
                 </p>
+              </div>
+
+              {/* Patient notice */}
+              <div
+                className="rounded-md border mb-6"
+                style={{ borderColor: "#d4c9b5", backgroundColor: "#fdfcfb" }}
+              >
+                <div
+                  className="flex items-center gap-2 px-4 py-3 border-b"
+                  style={{ borderColor: "#e8ddd0" }}
+                >
+                  <ShieldCheck className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#2e3a20" }} />
+                  <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#2e3a20" }}>
+                    Before You Continue
+                  </span>
+                </div>
+                <div
+                  className="overflow-y-auto px-4 py-3 text-xs leading-relaxed space-y-3"
+                  style={{ maxHeight: "190px", color: "#3d4a30" }}
+                >
+                  <div>
+                    <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>What this portal is</p>
+                    <p>
+                      This portal gives you a private, secure view of the health information your care team has chosen to share with you — including your lab results explained in plain language, personalized wellness recommendations, and any messages from your provider. It is a convenience tool to help you stay informed and engaged with your care.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>Not a substitute for medical care</p>
+                    <p>
+                      The content in this portal is informational and is provided to support — not replace — direct communication with your healthcare provider. Do not make changes to your medications, supplements, or treatment plan based solely on information in this portal without first speaking with your care team. If you have questions about your results or recommendations, please contact your provider directly.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>Your privacy</p>
+                    <p>
+                      Your health information is private and can only be accessed by you and the care team at your clinic. We do not sell, share, or use your data for any purpose other than supporting your care. Your account is protected by the password you create here.
+                    </p>
+                  </div>
+                  <div>
+                    <p className="font-semibold mb-1" style={{ color: "#dc2626" }}>Medical emergencies</p>
+                    <p>
+                      This portal is not monitored around the clock and is not appropriate for urgent medical needs. If you are experiencing a medical emergency, call <strong>911</strong> or go to your nearest emergency room immediately. Do not use this portal to report emergencies or seek urgent care.
+                    </p>
+                  </div>
+                </div>
               </div>
 
               <form onSubmit={handleSubmit} className="space-y-5">
@@ -149,10 +200,38 @@ export default function PortalSetPassword() {
                   />
                 </div>
 
+                {/* Agreement checkbox */}
+                <label className="flex items-start gap-3 cursor-pointer" data-testid="checkbox-portal-agree">
+                  <div className="relative mt-0.5 flex-shrink-0">
+                    <input
+                      type="checkbox"
+                      checked={agreed}
+                      onChange={(e) => setAgreed(e.target.checked)}
+                      className="sr-only"
+                    />
+                    <div
+                      className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
+                      style={{
+                        borderColor: agreed ? "#2e3a20" : "#d4c9b5",
+                        backgroundColor: agreed ? "#2e3a20" : "white",
+                      }}
+                    >
+                      {agreed && (
+                        <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
+                          <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
+                        </svg>
+                      )}
+                    </div>
+                  </div>
+                  <span className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>
+                    I have read and understand the above. I know that this portal does not replace my care team, and that I should call 911 in a medical emergency.
+                  </span>
+                </label>
+
                 <Button
                   type="submit"
                   className="w-full h-11 text-sm font-medium mt-2"
-                  disabled={setPasswordMutation.isPending}
+                  disabled={setPasswordMutation.isPending || !agreed}
                   data-testid="button-set-portal-password"
                   style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
                 >
