@@ -970,7 +970,6 @@ ${aiRecommendations}`;
       const completion = await client.chat.completions.create({
         model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.3,
         max_completion_tokens: 900,
       });
 
@@ -1987,7 +1986,6 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const completion = await client.chat.completions.create({
         model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],
-        temperature: 0.7,
         max_completion_tokens: 1800,
       });
 
