@@ -971,7 +971,7 @@ ${aiRecommendations}`;
         model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.3,
-        max_tokens: 900,
+        max_completion_tokens: 900,
       });
 
       const dietaryGuidance = completion.choices[0]?.message?.content?.trim() || "";
@@ -1986,7 +1986,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         model: "gpt-5-mini",
         messages: [{ role: "user", content: prompt }],
         temperature: 0.7,
-        max_tokens: 1800,
+        max_completion_tokens: 1800,
       });
 
       const raw = completion.choices[0]?.message?.content?.trim() || "{}";
