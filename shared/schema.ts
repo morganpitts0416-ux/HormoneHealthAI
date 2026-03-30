@@ -643,3 +643,17 @@ export const insertPortalMessageSchema = createInsertSchema(portalMessages).omit
 
 export type InsertPortalMessage = z.infer<typeof insertPortalMessageSchema>;
 export type PortalMessage = typeof portalMessages.$inferSelect;
+
+// ─── Saved Recipes (patient portal) ──────────────────────────────────────────
+export const savedRecipes = pgTable("saved_recipes", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  foodName: text("food_name").notNull(),
+  recipeName: text("recipe_name").notNull(),
+  recipeData: jsonb("recipe_data").notNull(),
+  savedAt: timestamp("saved_at").defaultNow().notNull(),
+});
+
+export const insertSavedRecipeSchema = createInsertSchema(savedRecipes).omit({ id: true, savedAt: true });
+export type InsertSavedRecipe = z.infer<typeof insertSavedRecipeSchema>;
+export type SavedRecipe = typeof savedRecipes.$inferSelect;

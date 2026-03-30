@@ -11,7 +11,8 @@ import {
   Leaf, LogOut, FlaskConical, Sparkles, ChevronRight, CalendarDays,
   TrendingUp, TrendingDown, Minus, Package, MessageSquare, Smartphone,
   Heart, Activity, Utensils, X, ChevronDown, ChevronUp, Info,
-  ChefHat, Clock, Users, Loader2, ArrowLeft
+  ChefHat, Clock, Users, Loader2, ArrowLeft, Bookmark, BookmarkCheck,
+  Download, Trash2
 } from "lucide-react";
 import type { SupplementRecommendation } from "@shared/schema";
 import { generateTrendInsights } from "@/lib/clinical-trend-insights";
@@ -66,12 +67,50 @@ function parseFoodItems(text: string): FoodItem[] {
 // ── Recipe dialog ──────────────────────────────────────────────────────────
 interface Recipe { name: string; prepTime: string; cookTime: string; servings: string; ingredients: string[]; instructions: string[]; clinicalNote: string; }
 
+function downloadRecipe(recipe: Recipe, foodName: string) {
+  const lines = [
+    `${recipe.name}`,
+    `Recommended food: ${foodName}`,
+    ``,
+    `Prep: ${recipe.prepTime || "—"}  |  Cook: ${recipe.cookTime || "—"}  |  Serves: ${recipe.servings || "—"}`,
+    ``,
+    recipe.clinicalNote ? `Health Note: ${recipe.clinicalNote}` : "",
+    recipe.clinicalNote ? `` : "",
+    `INGREDIENTS`,
+    ...recipe.ingredients.map(i => `• ${i}`),
+    ``,
+    `INSTRUCTIONS`,
+    ...recipe.instructions.map((s, i) => `${i + 1}. ${s}`),
+  ].filter(l => l !== undefined);
+  const blob = new Blob([lines.join("\n")], { type: "text/plain" });
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = `${recipe.name.replace(/[^a-z0-9]/gi, "_")}.txt`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
 function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () => void }) {
   const [activeRecipe, setActiveRecipe] = useState(0);
+  const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const qc = useQueryClient();
 
   const recipeMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/portal/recipes", { food: food.name, reason: food.reason }),
     onError: () => {},
+  });
+
+  const saveMutation = useMutation({
+    mutationFn: (recipe: Recipe) => apiRequest("POST", "/api/portal/saved-recipes", {
+      foodName: food.name,
+      recipeName: recipe.name,
+      recipeData: recipe,
+    }),
+    onSuccess: (_data, recipe) => {
+      setSavedIds(prev => new Set([...prev, recipe.name]));
+      qc.invalidateQueries({ queryKey: ["/api/portal/saved-recipes"] });
+    },
   });
 
   useEffect(() => {
@@ -164,7 +203,33 @@ function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () => void }
                     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e8ddd0", backgroundColor: "#ffffff" }}>
                       {/* Recipe header */}
                       <div className="px-5 py-4" style={{ backgroundColor: "#2e3a20" }}>
-                        <h3 className="text-base font-semibold mb-3" style={{ color: "#e8ddd0" }}>{r.name}</h3>
+                        <div className="flex items-start justify-between gap-3 mb-3">
+                          <h3 className="text-base font-semibold leading-snug" style={{ color: "#e8ddd0" }}>{r.name}</h3>
+                          <div className="flex items-center gap-1.5 flex-shrink-0">
+                            <button
+                              data-testid={`button-download-recipe-${activeRecipe}`}
+                              onClick={() => downloadRecipe(r, food.name)}
+                              title="Download recipe"
+                              className="p-1.5 rounded-md"
+                              style={{ color: "#a8b88c" }}
+                            >
+                              <Download className="w-4 h-4" />
+                            </button>
+                            <button
+                              data-testid={`button-save-recipe-${activeRecipe}`}
+                              onClick={() => !savedIds.has(r.name) && saveMutation.mutate(r)}
+                              title={savedIds.has(r.name) ? "Saved to My Recipes" : "Save to My Recipes"}
+                              className="p-1.5 rounded-md"
+                              style={{ color: savedIds.has(r.name) ? "#c8d8a8" : "#a8b88c" }}
+                              disabled={saveMutation.isPending}
+                            >
+                              {savedIds.has(r.name)
+                                ? <BookmarkCheck className="w-4 h-4" />
+                                : <Bookmark className="w-4 h-4" />
+                              }
+                            </button>
+                          </div>
+                        </div>
                         <div className="flex gap-4 flex-wrap">
                           {r.prepTime && (
                             <div className="flex items-center gap-1.5">
@@ -692,6 +757,92 @@ function ClinicalSnapshotSection({ labs }: { labs: PortalLab[] }) {
   );
 }
 
+interface SavedRecipeRow { id: number; foodName: string; recipeName: string; recipeData: Recipe; savedAt: string; }
+
+function SavedRecipeCard({ row, onDelete }: { row: SavedRecipeRow; onDelete: () => void }) {
+  const [open, setOpen] = useState(false);
+  const r = row.recipeData;
+  return (
+    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e8ddd0", backgroundColor: "#ffffff" }}>
+      {/* Card header row */}
+      <button
+        className="w-full flex items-center gap-3 px-4 py-3.5 text-left"
+        onClick={() => setOpen(v => !v)}
+        data-testid={`button-saved-recipe-${row.id}`}
+      >
+        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
+          <ChefHat className="w-3.5 h-3.5" style={{ color: "#e8ddd0" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-sm font-medium leading-tight truncate" style={{ color: "#1c2414" }}>{r.name}</p>
+          <p className="text-xs mt-0.5 truncate" style={{ color: "#7a8a64" }}>For: {row.foodName}</p>
+        </div>
+        <div className="flex items-center gap-1 flex-shrink-0">
+          <button
+            data-testid={`button-download-saved-${row.id}`}
+            onClick={e => { e.stopPropagation(); downloadRecipe(r, row.foodName); }}
+            className="p-1.5 rounded-md"
+            style={{ color: "#7a8a64" }}
+          >
+            <Download className="w-3.5 h-3.5" />
+          </button>
+          <button
+            data-testid={`button-delete-saved-${row.id}`}
+            onClick={e => { e.stopPropagation(); onDelete(); }}
+            className="p-1.5 rounded-md"
+            style={{ color: "#c0392b" }}
+          >
+            <Trash2 className="w-3.5 h-3.5" />
+          </button>
+          {open ? <ChevronUp className="w-4 h-4 ml-1" style={{ color: "#a0a880" }} /> : <ChevronDown className="w-4 h-4 ml-1" style={{ color: "#a0a880" }} />}
+        </div>
+      </button>
+
+      {/* Expanded content */}
+      {open && (
+        <div className="px-4 pb-4 space-y-4" style={{ borderTop: "1px solid #f0ebe3" }}>
+          <div className="flex gap-4 flex-wrap pt-3">
+            {r.prepTime && <span className="text-xs" style={{ color: "#7a8a64" }}>Prep: {r.prepTime}</span>}
+            {r.cookTime && <span className="text-xs" style={{ color: "#7a8a64" }}>Cook: {r.cookTime}</span>}
+            {r.servings && <span className="text-xs" style={{ color: "#7a8a64" }}>{r.servings}</span>}
+          </div>
+          {r.clinicalNote && (
+            <div className="rounded-lg px-3 py-2.5" style={{ backgroundColor: "#eef3e8", border: "1px solid #d0dcc0" }}>
+              <p className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>
+                <span className="font-semibold" style={{ color: "#5a7040" }}>Health note: </span>{r.clinicalNote}
+              </p>
+            </div>
+          )}
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#5a7040" }}>Ingredients</p>
+            <ul className="space-y-1.5">
+              {r.ingredients.map((ing, i) => (
+                <li key={i} className="flex items-start gap-2">
+                  <div className="w-1.5 h-1.5 rounded-full mt-1.5 flex-shrink-0" style={{ backgroundColor: "#2e3a20" }} />
+                  <span className="text-sm" style={{ color: "#3d4a30" }}>{ing}</span>
+                </li>
+              ))}
+            </ul>
+          </div>
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#5a7040" }}>Instructions</p>
+            <ol className="space-y-2">
+              {r.instructions.map((step, i) => (
+                <li key={i} className="flex items-start gap-2.5">
+                  <span className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
+                    {i + 1}
+                  </span>
+                  <span className="text-sm leading-relaxed" style={{ color: "#3d4a30" }}>{step}</span>
+                </li>
+              ))}
+            </ol>
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 export default function PortalDashboard() {
   const [, setLocation] = useLocation();
   const queryClient = useQueryClient();
@@ -723,6 +874,17 @@ export default function PortalDashboard() {
     queryKey: ["/api/portal/messaging-config"],
     enabled: !!patient,
     retry: false,
+  });
+
+  const { data: savedRecipesList = [] } = useQuery<SavedRecipeRow[]>({
+    queryKey: ["/api/portal/saved-recipes"],
+    enabled: !!patient,
+    retry: false,
+  });
+
+  const deleteSavedRecipeMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/portal/saved-recipes/${id}`, {}),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/portal/saved-recipes"] }),
   });
 
   const logoutMutation = useMutation({
@@ -993,6 +1155,25 @@ export default function PortalDashboard() {
               <p className="text-sm leading-relaxed" style={{ color: "#7a8a64" }}>
                 Once your care team reviews your labs, your personalized health insights will be shared through this portal.
               </p>
+            </div>
+          </section>
+        )}
+
+        {/* Saved Recipes */}
+        {savedRecipesList.length > 0 && (
+          <section className="space-y-4">
+            <div className="flex items-center gap-2">
+              <BookmarkCheck className="w-4 h-4" style={{ color: "#5a7040" }} />
+              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>My Saved Recipes</h2>
+            </div>
+            <div className="space-y-2">
+              {savedRecipesList.map(row => (
+                <SavedRecipeCard
+                  key={row.id}
+                  row={row}
+                  onDelete={() => deleteSavedRecipeMutation.mutate(row.id)}
+                />
+              ))}
             </div>
           </section>
         )}
