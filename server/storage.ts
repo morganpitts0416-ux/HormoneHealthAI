@@ -90,6 +90,7 @@ export interface IStorage {
   publishProtocol(protocol: InsertPublishedProtocol): Promise<PublishedProtocol>;
   getLatestPublishedProtocol(patientId: number): Promise<PublishedProtocol | undefined>;
   getAllPublishedProtocols(patientId: number): Promise<PublishedProtocol[]>;
+  deleteProtocolsByLabResultId(labResultId: number): Promise<void>;
 
   // Portal messaging operations
   getPortalMessages(patientId: number): Promise<PortalMessage[]>;
@@ -447,6 +448,12 @@ export class DbStorage implements IStorage {
       .from(schema.publishedProtocols)
       .where(eq(schema.publishedProtocols.patientId, patientId))
       .orderBy(desc(schema.publishedProtocols.publishedAt));
+  }
+
+  async deleteProtocolsByLabResultId(labResultId: number): Promise<void> {
+    await db
+      .delete(schema.publishedProtocols)
+      .where(eq(schema.publishedProtocols.labResultId, labResultId));
   }
 
   // ── Portal message operations ─────────────────────────────────────────────────
