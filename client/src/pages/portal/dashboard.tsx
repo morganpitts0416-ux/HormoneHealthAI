@@ -97,16 +97,22 @@ function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () => void }
   const qc = useQueryClient();
 
   const recipeMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/portal/recipes", { food: food.name, reason: food.reason }),
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/portal/recipes", { food: food.name, reason: food.reason });
+      return res.json();
+    },
     onError: () => {},
   });
 
   const saveMutation = useMutation({
-    mutationFn: (recipe: Recipe) => apiRequest("POST", "/api/portal/saved-recipes", {
-      foodName: food.name,
-      recipeName: recipe.name,
-      recipeData: recipe,
-    }),
+    mutationFn: async (recipe: Recipe) => {
+      const res = await apiRequest("POST", "/api/portal/saved-recipes", {
+        foodName: food.name,
+        recipeName: recipe.name,
+        recipeData: recipe,
+      });
+      return res.json();
+    },
     onSuccess: (_data, recipe) => {
       setSavedIds(prev => new Set([...prev, recipe.name]));
       qc.invalidateQueries({ queryKey: ["/api/portal/saved-recipes"] });
@@ -883,7 +889,10 @@ export default function PortalDashboard() {
   });
 
   const deleteSavedRecipeMutation = useMutation({
-    mutationFn: (id: number) => apiRequest("DELETE", `/api/portal/saved-recipes/${id}`, {}),
+    mutationFn: async (id: number) => {
+      const res = await apiRequest("DELETE", `/api/portal/saved-recipes/${id}`, {});
+      return res.json();
+    },
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/portal/saved-recipes"] }),
   });
 
