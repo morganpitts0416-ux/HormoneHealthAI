@@ -12,6 +12,7 @@ import type {
   PatientPortalAccount, InsertPatientPortalAccount,
   PublishedProtocol, InsertPublishedProtocol,
   PortalMessage, InsertPortalMessage,
+  SavedRecipe, InsertSavedRecipe,
 } from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
@@ -98,6 +99,11 @@ export interface IStorage {
   markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void>;
   getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number>;
   getPortalMessageByExternalId(externalMessageId: string): Promise<PortalMessage | undefined>;
+
+  // Saved recipe operations (patient portal)
+  getSavedRecipes(patientId: number): Promise<SavedRecipe[]>;
+  saveRecipe(recipe: InsertSavedRecipe): Promise<SavedRecipe>;
+  deleteSavedRecipe(id: number, patientId: number): Promise<boolean>;
 }
 
 export class DbStorage implements IStorage {
@@ -551,6 +557,25 @@ export class DbStorage implements IStorage {
 
   async deleteClinicianStaff(id: number): Promise<boolean> {
     const result = await db.delete(schema.clinicianStaff).where(eq(schema.clinicianStaff.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ── Saved Recipes ────────────────────────────────────────────────────────────
+  async getSavedRecipes(patientId: number): Promise<SavedRecipe[]> {
+    return db.select().from(schema.savedRecipes)
+      .where(eq(schema.savedRecipes.patientId, patientId))
+      .orderBy(desc(schema.savedRecipes.savedAt));
+  }
+
+  async saveRecipe(recipe: InsertSavedRecipe): Promise<SavedRecipe> {
+    const result = await db.insert(schema.savedRecipes).values(recipe).returning();
+    return result[0];
+  }
+
+  async deleteSavedRecipe(id: number, patientId: number): Promise<boolean> {
+    const result = await db.delete(schema.savedRecipes)
+      .where(and(eq(schema.savedRecipes.id, id), eq(schema.savedRecipes.patientId, patientId)))
+      .returning();
     return result.length > 0;
   }
 }

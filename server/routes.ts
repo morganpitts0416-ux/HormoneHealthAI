@@ -1988,23 +1988,68 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       const completion = await client.chat.completions.create({
         model: "gpt-5-mini",
-        messages: [{ role: "user", content: prompt }],
-        max_completion_tokens: 1800,
+        messages: [
+          { role: "system", content: "You are a clinical nutritionist and creative home cook. You always respond with valid JSON only — no markdown, no extra text, no code fences." },
+          { role: "user", content: prompt },
+        ],
       });
 
       const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+      console.log('[PORTAL] Recipe raw response length:', raw.length, 'finish_reason:', completion.choices[0]?.finish_reason);
       let parsed: any;
       try {
         parsed = JSON.parse(raw);
       } catch {
         const match = raw.match(/\{[\s\S]*\}/);
-        parsed = match ? JSON.parse(match[0]) : { recipes: [] };
+        try {
+          parsed = match ? JSON.parse(match[0]) : { recipes: [] };
+        } catch {
+          parsed = { recipes: [] };
+        }
       }
 
       res.json({ recipes: parsed.recipes || [] });
     } catch (error) {
       console.error("[PORTAL] Error generating recipes:", error);
       res.status(500).json({ message: "Failed to generate recipes. Please try again." });
+    }
+  });
+
+  // GET /api/portal/saved-recipes
+  app.get("/api/portal/saved-recipes", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const recipes = await storage.getSavedRecipes(patientId);
+      res.json(recipes);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch saved recipes" });
+    }
+  });
+
+  // POST /api/portal/saved-recipes
+  app.post("/api/portal/saved-recipes", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const { foodName, recipeName, recipeData } = req.body;
+      if (!foodName || !recipeName || !recipeData) {
+        return res.status(400).json({ message: "foodName, recipeName, and recipeData are required" });
+      }
+      const recipe = await storage.saveRecipe({ patientId, foodName, recipeName, recipeData });
+      res.json(recipe);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to save recipe" });
+    }
+  });
+
+  // DELETE /api/portal/saved-recipes/:id
+  app.delete("/api/portal/saved-recipes/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteSavedRecipe(id, patientId);
+      res.json({ success: deleted });
+    } catch (error) {
+      res.status(500).json({ message: "Failed to delete saved recipe" });
     }
   });
 
