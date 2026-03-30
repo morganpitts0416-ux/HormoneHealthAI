@@ -2053,6 +2053,70 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // GET /api/portal/supplement-orders — patient fetches their order history
+  app.get("/api/portal/supplement-orders", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const orders = await storage.getSupplementOrdersByPatient(patientId);
+      res.json(orders);
+    } catch {
+      res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
+  // POST /api/portal/supplement-orders — patient places a supplement order (sends clinician message)
+  app.post("/api/portal/supplement-orders", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const { items, subtotal, patientNotes } = req.body;
+      if (!items || !Array.isArray(items) || items.length === 0) {
+        return res.status(400).json({ message: "No items in order" });
+      }
+
+      // Get patient + portal account for clinician ID
+      const portalAccount = await storage.getPortalAccountByPatientId(patientId);
+      if (!portalAccount) return res.status(403).json({ message: "No portal account" });
+      const patient = await storage.getPatient(patientId, portalAccount.clinicianId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      // Create order record
+      const order = await storage.createSupplementOrder({
+        patientId,
+        clinicianId: portalAccount.clinicianId,
+        items,
+        subtotal,
+        status: 'pending',
+        patientNotes: patientNotes || null,
+      });
+
+      // Build itemized message body
+      const itemLines = items.map((it: any) =>
+        `• ${it.name} (${it.dose}) × ${it.quantity} — $${it.lineTotal.toFixed(2)}`
+      ).join('\n');
+      const messageBody = [
+        `Hi, I'd like to request a supplement order. Please charge my card on file.\n`,
+        itemLines,
+        `\nOrder Total: $${parseFloat(subtotal).toFixed(2)}`,
+        patientNotes ? `\nNote: ${patientNotes}` : '',
+        `\n\n(Order #${order.id} placed via ReAlign patient portal)`,
+      ].join('');
+
+      // Send as patient portal message to clinician
+      await storage.createPortalMessage({
+        patientId,
+        senderType: 'patient',
+        body: messageBody,
+        readAt: null,
+        externalMessageId: null,
+      });
+
+      res.json({ success: true, orderId: order.id });
+    } catch (error) {
+      console.error("Supplement order error:", error);
+      res.status(500).json({ message: "Failed to place order" });
+    }
+  });
+
   // GET /api/portal/messages/unread — patient checks their own unread count
   app.get("/api/portal/messages/unread", requirePortalAuth, async (req, res) => {
     try {

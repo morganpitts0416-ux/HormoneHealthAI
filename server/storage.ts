@@ -13,6 +13,7 @@ import type {
   PublishedProtocol, InsertPublishedProtocol,
   PortalMessage, InsertPortalMessage,
   SavedRecipe, InsertSavedRecipe,
+  SupplementOrder, InsertSupplementOrder,
 } from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
@@ -104,6 +105,11 @@ export interface IStorage {
   getSavedRecipes(patientId: number): Promise<SavedRecipe[]>;
   saveRecipe(recipe: InsertSavedRecipe): Promise<SavedRecipe>;
   deleteSavedRecipe(id: number, patientId: number): Promise<boolean>;
+
+  // Supplement order operations
+  createSupplementOrder(order: InsertSupplementOrder): Promise<SupplementOrder>;
+  getSupplementOrdersByPatient(patientId: number): Promise<SupplementOrder[]>;
+  getSupplementOrdersByClinicianPatient(clinicianId: number, patientId: number): Promise<SupplementOrder[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -577,6 +583,27 @@ export class DbStorage implements IStorage {
       .where(and(eq(schema.savedRecipes.id, id), eq(schema.savedRecipes.patientId, patientId)))
       .returning();
     return result.length > 0;
+  }
+
+  // ── Supplement Orders ─────────────────────────────────────────────────────
+  async createSupplementOrder(order: InsertSupplementOrder): Promise<SupplementOrder> {
+    const result = await db.insert(schema.supplementOrders).values(order).returning();
+    return result[0];
+  }
+
+  async getSupplementOrdersByPatient(patientId: number): Promise<SupplementOrder[]> {
+    return db.select().from(schema.supplementOrders)
+      .where(eq(schema.supplementOrders.patientId, patientId))
+      .orderBy(desc(schema.supplementOrders.createdAt));
+  }
+
+  async getSupplementOrdersByClinicianPatient(clinicianId: number, patientId: number): Promise<SupplementOrder[]> {
+    return db.select().from(schema.supplementOrders)
+      .where(and(
+        eq(schema.supplementOrders.clinicianId, clinicianId),
+        eq(schema.supplementOrders.patientId, patientId),
+      ))
+      .orderBy(desc(schema.supplementOrders.createdAt));
   }
 }
 

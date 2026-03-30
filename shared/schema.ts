@@ -657,3 +657,28 @@ export const savedRecipes = pgTable("saved_recipes", {
 export const insertSavedRecipeSchema = createInsertSchema(savedRecipes).omit({ id: true, savedAt: true });
 export type InsertSavedRecipe = z.infer<typeof insertSavedRecipeSchema>;
 export type SavedRecipe = typeof savedRecipes.$inferSelect;
+
+// ─── Supplement Orders (patient portal) ──────────────────────────────────────
+export interface SupplementOrderItem {
+  name: string;
+  dose: string;
+  price: number;
+  quantity: number;
+  supplyDays: number;
+  lineTotal: number;
+}
+
+export const supplementOrders = pgTable("supplement_orders", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  items: jsonb("items").$type<SupplementOrderItem[]>().notNull(),
+  subtotal: text("subtotal").notNull(),
+  status: varchar("status", { length: 30 }).notNull().default('pending'),
+  patientNotes: text("patient_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSupplementOrderSchema = createInsertSchema(supplementOrders).omit({ id: true, createdAt: true });
+export type InsertSupplementOrder = z.infer<typeof insertSupplementOrderSchema>;
+export type SupplementOrder = typeof supplementOrders.$inferSelect;
