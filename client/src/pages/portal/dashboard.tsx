@@ -94,37 +94,48 @@ function downloadRecipe(recipe: Recipe, foodName: string) {
 function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () => void }) {
   const [activeRecipe, setActiveRecipe] = useState(0);
   const [savedIds, setSavedIds] = useState<Set<string>>(new Set());
+  const [saving, setSaving] = useState(false);
+  const [recipes, setRecipes] = useState<Recipe[]>([]);
+  const [loading, setLoading] = useState(true);
+  const [fetchError, setFetchError] = useState(false);
   const qc = useQueryClient();
 
-  const recipeMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/portal/recipes", { food: food.name, reason: food.reason });
-      return res.json();
-    },
-    onError: () => {},
-  });
-
-  const saveMutation = useMutation({
-    mutationFn: async (recipe: Recipe) => {
-      const res = await apiRequest("POST", "/api/portal/saved-recipes", {
-        foodName: food.name,
-        recipeName: recipe.name,
-        recipeData: recipe,
-      });
-      return res.json();
-    },
-    onSuccess: (_data, recipe) => {
-      setSavedIds(prev => new Set([...prev, recipe.name]));
-      qc.invalidateQueries({ queryKey: ["/api/portal/saved-recipes"] });
-    },
-  });
-
   useEffect(() => {
-    recipeMutation.mutate();
+    let cancelled = false;
+    setLoading(true);
+    setFetchError(false);
+    setRecipes([]);
+    fetch("/api/portal/recipes", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      credentials: "include",
+      body: JSON.stringify({ food: food.name, reason: food.reason }),
+    })
+      .then(r => r.json())
+      .then(data => { if (!cancelled) { setRecipes(data.recipes || []); setLoading(false); } })
+      .catch(() => { if (!cancelled) { setFetchError(true); setLoading(false); } });
+    return () => { cancelled = true; };
   // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
+  }, [food.name]);
 
-  const recipes: Recipe[] = (recipeMutation.data as any)?.recipes || [];
+  async function handleSave(recipe: Recipe) {
+    if (savedIds.has(recipe.name) || saving) return;
+    setSaving(true);
+    try {
+      const res = await fetch("/api/portal/saved-recipes", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ foodName: food.name, recipeName: recipe.name, recipeData: recipe }),
+      });
+      if (res.ok) {
+        setSavedIds(prev => new Set([...prev, recipe.name]));
+        qc.invalidateQueries({ queryKey: ["/api/portal/saved-recipes"] });
+      }
+    } finally {
+      setSaving(false);
+    }
+  }
 
   return (
     <Dialog open onOpenChange={onClose}>
@@ -162,7 +173,7 @@ function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () => void }
             </div>
 
             {/* Loading */}
-            {recipeMutation.isPending && (
+            {loading && (
               <div className="flex flex-col items-center justify-center py-12 gap-3">
                 <Loader2 className="w-8 h-8 animate-spin" style={{ color: "#2e3a20" }} />
                 <p className="text-sm font-medium" style={{ color: "#3d4a30" }}>Generating recipes just for you…</p>
@@ -173,10 +184,22 @@ function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () => void }
             )}
 
             {/* Error */}
-            {recipeMutation.isError && (
+            {fetchError && (
               <div className="text-center py-8">
                 <p className="text-sm text-muted-foreground">Couldn't load recipes right now. Please try again.</p>
-                <Button size="sm" variant="outline" className="mt-3" onClick={() => recipeMutation.mutate()}>
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => {
+                  setFetchError(false);
+                  setLoading(true);
+                  fetch("/api/portal/recipes", {
+                    method: "POST",
+                    headers: { "Content-Type": "application/json" },
+                    credentials: "include",
+                    body: JSON.stringify({ food: food.name, reason: food.reason }),
+                  })
+                    .then(r => r.json())
+                    .then(data => { setRecipes(data.recipes || []); setLoading(false); })
+                    .catch(() => { setFetchError(true); setLoading(false); });
+                }}>
                   Try again
                 </Button>
               </div>
@@ -223,11 +246,11 @@ function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () => void }
                             </button>
                             <button
                               data-testid={`button-save-recipe-${activeRecipe}`}
-                              onClick={() => !savedIds.has(r.name) && saveMutation.mutate(r)}
+                              onClick={() => handleSave(r)}
                               title={savedIds.has(r.name) ? "Saved to My Recipes" : "Save to My Recipes"}
                               className="p-1.5 rounded-md"
                               style={{ color: savedIds.has(r.name) ? "#c8d8a8" : "#a8b88c" }}
-                              disabled={saveMutation.isPending}
+                              disabled={saving}
                             >
                               {savedIds.has(r.name)
                                 ? <BookmarkCheck className="w-4 h-4" />
