@@ -969,11 +969,14 @@ ${aiRecommendations}`;
 
       const completion = await client.chat.completions.create({
         model: "gpt-5-mini",
-        messages: [{ role: "user", content: prompt }],
-        max_completion_tokens: 900,
+        messages: [
+          { role: "system", content: "You are a clinical nutritionist. Extract and format dietary guidance from clinical recommendations into a clear, patient-friendly structure. Always respond with the exact format requested." },
+          { role: "user", content: prompt },
+        ],
       });
 
       const dietaryGuidance = completion.choices[0]?.message?.content?.trim() || "";
+      console.log('[Dietary] finish_reason:', completion.choices[0]?.finish_reason, 'content length:', dietaryGuidance.length);
       res.json({ dietaryGuidance });
     } catch (error) {
       console.error("[API] Error generating dietary guidance:", error);
