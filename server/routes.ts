@@ -1204,11 +1204,13 @@ ${aiRecommendations}`;
       if (isNaN(id)) {
         return res.status(400).json({ error: "Invalid lab result ID" });
       }
+      // Remove any portal protocols tied to this lab result before deleting
+      await storage.deleteProtocolsByLabResultId(id);
       const deleted = await storage.deleteLabResult(id);
       if (!deleted) {
         return res.status(404).json({ error: "Lab result not found" });
       }
-      console.log('[API] Deleted lab result:', id);
+      console.log('[API] Deleted lab result and associated portal protocols:', id);
       res.json({ success: true });
     } catch (error) {
       console.error("Error deleting lab result:", error);

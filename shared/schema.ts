@@ -605,7 +605,7 @@ export type PatientPortalAccount = typeof patientPortalAccounts.$inferSelect;
 export const publishedProtocols = pgTable("published_protocols", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
-  labResultId: integer("lab_result_id").references(() => labResults.id, { onDelete: 'set null' }),
+  labResultId: integer("lab_result_id").references(() => labResults.id, { onDelete: 'cascade' }),
   clinicianId: integer("clinician_id").notNull().references(() => users.id),
   supplements: jsonb("supplements").$type<SupplementRecommendation[]>().notNull(),
   clinicianNotes: text("clinician_notes"),
