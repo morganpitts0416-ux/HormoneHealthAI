@@ -1139,13 +1139,11 @@ Write in second person ("your"), be warm but honest, avoid medical jargon. No bu
         model: "gpt-5-mini",
         messages: [{ role: "user", content: clinicianPrompt }],
         max_completion_tokens: 300,
-        temperature: 0.4,
       }),
       openai.chat.completions.create({
         model: "gpt-5-mini",
         messages: [{ role: "user", content: patientPrompt }],
         max_completion_tokens: 250,
-        temperature: 0.5,
       }),
     ]);
 
