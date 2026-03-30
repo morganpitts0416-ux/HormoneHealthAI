@@ -1137,13 +1137,17 @@ Write in second person ("your"), be warm but honest, avoid medical jargon. No bu
     const [clinicianResp, patientResp] = await Promise.all([
       openai.chat.completions.create({
         model: "gpt-5-mini",
-        messages: [{ role: "user", content: clinicianPrompt }],
-        max_completion_tokens: 300,
+        messages: [
+          { role: "system", content: "You are a clinical analyst writing concise lab trend summaries. Always respond with 2-3 sentences of narrative text, nothing else." },
+          { role: "user", content: clinicianPrompt },
+        ],
       }),
       openai.chat.completions.create({
         model: "gpt-5-mini",
-        messages: [{ role: "user", content: patientPrompt }],
-        max_completion_tokens: 250,
+        messages: [
+          { role: "system", content: "You are a health coach writing encouraging patient-friendly summaries of lab trends. Always respond with 2-3 sentences, nothing else." },
+          { role: "user", content: patientPrompt },
+        ],
       }),
     ]);
 
