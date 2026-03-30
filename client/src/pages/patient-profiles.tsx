@@ -15,7 +15,7 @@ import {
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles
 } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { cn } from "@/lib/utils";
 import { PatientTrendCharts } from "@/components/patient-trend-charts";
 import { generateTrendInsights, generateClinicalSnapshot, type TrendInsight } from "@/lib/clinical-trend-insights";
@@ -611,6 +611,7 @@ function PatientAvatar({ patient, size = "md" }: { patient: Patient; size?: "sm"
 
 export default function PatientProfiles() {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
@@ -1074,7 +1075,20 @@ export default function PatientProfiles() {
                     )}
                   </div>
                 </div>
-                <div className="flex-shrink-0 flex items-center gap-2">
+                <div className="flex-shrink-0 flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="sm"
+                    onClick={() => {
+                      const route = selectedPatient.gender === 'female' ? '/female' : '/male';
+                      setLocation(`${route}?patientId=${selectedPatient.id}`);
+                    }}
+                    data-testid="button-new-lab-interpretation"
+                    className="text-xs gap-1.5"
+                    style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                  >
+                    <Activity className="h-3 w-3" />
+                    New Lab Interpretation
+                  </Button>
                   <Button
                     variant="outline"
                     size="sm"
