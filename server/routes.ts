@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import crypto from "crypto";
 import multer from "multer";
+import OpenAI from "openai";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema } from "@shared/schema";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -1881,6 +1882,65 @@ export async function registerRoutes(app: Express): Promise<Server> {
       res.json(msg);
     } catch (error) {
       res.status(500).json({ message: "Failed to send message" });
+    }
+  });
+
+  // POST /api/portal/recipes — AI-generated recipes for a recommended food item
+  app.post("/api/portal/recipes", requirePortalAuth, async (req, res) => {
+    try {
+      const { food, reason } = req.body;
+      if (!food || typeof food !== "string") {
+        return res.status(400).json({ message: "food is required" });
+      }
+
+      const client = new OpenAI({
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+      });
+
+      const prompt = `You are a clinical nutritionist and creative home cook.
+A patient has been recommended to eat "${food}" by their healthcare provider.
+Clinical reason: ${reason || "to support their overall health"}
+
+Generate exactly 3 practical, delicious, and nutritious recipes using "${food}" as a primary ingredient. Vary the cooking methods and flavor profiles.
+
+Return ONLY valid JSON with this exact structure (no markdown, no extra text):
+{
+  "recipes": [
+    {
+      "name": "Recipe Name",
+      "prepTime": "10 min",
+      "cookTime": "20 min",
+      "servings": "2 servings",
+      "ingredients": ["1 lb lean ground beef", "2 cloves garlic, minced"],
+      "instructions": ["Preheat a skillet over medium-high heat.", "Add the beef and cook until browned."],
+      "clinicalNote": "One sentence explaining why this recipe supports the patient's health goal based on the clinical reason."
+    }
+  ]
+}
+
+Keep recipes simple enough for a home cook. Ingredients list should be 6-10 items. Instructions should be 4-6 clear steps.`;
+
+      const completion = await client.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [{ role: "user", content: prompt }],
+        temperature: 0.7,
+        max_tokens: 1800,
+      });
+
+      const raw = completion.choices[0]?.message?.content?.trim() || "{}";
+      let parsed: any;
+      try {
+        parsed = JSON.parse(raw);
+      } catch {
+        const match = raw.match(/\{[\s\S]*\}/);
+        parsed = match ? JSON.parse(match[0]) : { recipes: [] };
+      }
+
+      res.json({ recipes: parsed.recipes || [] });
+    } catch (error) {
+      console.error("[PORTAL] Error generating recipes:", error);
+      res.status(500).json({ message: "Failed to generate recipes. Please try again." });
     }
   });
 

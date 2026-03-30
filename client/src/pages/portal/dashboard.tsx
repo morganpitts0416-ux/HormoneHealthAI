@@ -10,10 +10,237 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Leaf, LogOut, FlaskConical, Sparkles, ChevronRight, CalendarDays,
   TrendingUp, TrendingDown, Minus, Package, MessageSquare, Smartphone,
-  Heart, Activity, Utensils, X, ChevronDown, ChevronUp, Info
+  Heart, Activity, Utensils, X, ChevronDown, ChevronUp, Info,
+  ChefHat, Clock, Users, Loader2, ArrowLeft
 } from "lucide-react";
 import type { SupplementRecommendation } from "@shared/schema";
 import { generateTrendInsights } from "@/lib/clinical-trend-insights";
+
+// ── Dietary guidance parser ────────────────────────────────────────────────
+interface FoodItem { name: string; reason: string; }
+
+function parseFoodItems(text: string): FoodItem[] {
+  const lines = text.split('\n').filter(l => l.trim());
+  const items: FoodItem[] = [];
+  let inFoodsSection = false;
+
+  for (const line of lines) {
+    const trimmed = line.trim().replace(/^[-•*\d.]+\s*/, '');
+    const lower = trimmed.toLowerCase();
+
+    if (lower.match(/^(foods? to emphasize|key foods|focus foods|beneficial foods|foods? to include|foods? to prioritize|recommended foods)/)) {
+      inFoodsSection = true; continue;
+    }
+    if (lower.match(/^(foods? to (avoid|limit|reduce)|limit:|avoid:|goal:|diet:|eating pattern|supplement|protein goal|carbohydrate|lifestyle)/)) {
+      inFoodsSection = false;
+    }
+    if (!inFoodsSection || trimmed.length < 4) continue;
+
+    // Try "Name - description" split
+    const dashSplit = trimmed.split(/\s+[-–]\s+/);
+    if (dashSplit.length >= 2) {
+      const rawName = dashSplit[0].trim();
+      // Strip leading parens from name
+      const name = rawName.replace(/^\([^)]*\)\s*/, '').trim();
+      if (name.length >= 3 && name.length <= 55) {
+        items.push({ name, reason: dashSplit.slice(1).join(' - ').trim() });
+        continue;
+      }
+    }
+    // Try "Name: description" split
+    const colonIdx = trimmed.indexOf(':');
+    if (colonIdx > 2 && colonIdx <= 50) {
+      const name = trimmed.substring(0, colonIdx).trim();
+      const reason = trimmed.substring(colonIdx + 1).trim();
+      if (reason.length > 5) { items.push({ name, reason }); continue; }
+    }
+    // Try "Name (paren content)" — no dash
+    const parenMatch = trimmed.match(/^([A-Za-z][A-Za-z\s,&/]+?)(\s*\(.+)/);
+    if (parenMatch && parenMatch[1].trim().length >= 3 && parenMatch[1].trim().length <= 50) {
+      items.push({ name: parenMatch[1].trim(), reason: parenMatch[2].trim() });
+    }
+  }
+  return items;
+}
+
+// ── Recipe dialog ──────────────────────────────────────────────────────────
+interface Recipe { name: string; prepTime: string; cookTime: string; servings: string; ingredients: string[]; instructions: string[]; clinicalNote: string; }
+
+function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () => void }) {
+  const [activeRecipe, setActiveRecipe] = useState(0);
+
+  const recipeMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/portal/recipes", { food: food.name, reason: food.reason }),
+    onError: () => {},
+  });
+
+  useEffect(() => {
+    recipeMutation.mutate();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, []);
+
+  const recipes: Recipe[] = (recipeMutation.data as any)?.recipes || [];
+
+  return (
+    <Dialog open onOpenChange={onClose}>
+      <DialogContent
+        className="max-w-lg w-full p-0 gap-0 overflow-hidden"
+        style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0", maxHeight: "90vh" }}
+      >
+        {/* Header */}
+        <div
+          className="flex items-center gap-3 px-5 py-4 border-b"
+          style={{ borderColor: "#e8ddd0", backgroundColor: "#f9f6f0" }}
+        >
+          <button onClick={onClose} className="p-1 rounded-md" style={{ color: "#7a8a64" }}>
+            <ArrowLeft className="w-4 h-4" />
+          </button>
+          <div className="flex items-center gap-2 flex-1 min-w-0">
+            <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
+              <ChefHat className="w-4 h-4" style={{ color: "#e8ddd0" }} />
+            </div>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold leading-tight truncate" style={{ color: "#1c2414" }}>Recipe Ideas</p>
+              <p className="text-xs truncate" style={{ color: "#7a8a64" }}>{food.name}</p>
+            </div>
+          </div>
+        </div>
+
+        <ScrollArea className="flex-1" style={{ maxHeight: "calc(90vh - 64px)" }}>
+          <div className="p-5 space-y-5">
+            {/* Why your provider recommends this */}
+            <div className="rounded-lg p-4" style={{ backgroundColor: "#eef3e8", border: "1px solid #d0dcc0" }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "#5a7040" }}>
+                Why your provider recommended this
+              </p>
+              <p className="text-sm leading-relaxed" style={{ color: "#3d4a30" }}>{food.reason}</p>
+            </div>
+
+            {/* Loading */}
+            {recipeMutation.isPending && (
+              <div className="flex flex-col items-center justify-center py-12 gap-3">
+                <Loader2 className="w-8 h-8 animate-spin" style={{ color: "#2e3a20" }} />
+                <p className="text-sm" style={{ color: "#7a8a64" }}>Generating recipes just for you…</p>
+              </div>
+            )}
+
+            {/* Error */}
+            {recipeMutation.isError && (
+              <div className="text-center py-8">
+                <p className="text-sm text-muted-foreground">Couldn't load recipes right now. Please try again.</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => recipeMutation.mutate()}>
+                  Try again
+                </Button>
+              </div>
+            )}
+
+            {/* Recipes */}
+            {recipes.length > 0 && (
+              <div className="space-y-4">
+                {/* Recipe tabs */}
+                <div className="flex gap-2 flex-wrap">
+                  {recipes.map((r, i) => (
+                    <button
+                      key={i}
+                      onClick={() => setActiveRecipe(i)}
+                      className="text-xs px-3 py-1.5 rounded-full font-medium transition-colors"
+                      style={{
+                        backgroundColor: activeRecipe === i ? "#2e3a20" : "#e8ddd0",
+                        color: activeRecipe === i ? "#e8ddd0" : "#3d4a30",
+                      }}
+                    >
+                      {r.name}
+                    </button>
+                  ))}
+                </div>
+
+                {/* Active recipe */}
+                {recipes[activeRecipe] && (() => {
+                  const r = recipes[activeRecipe];
+                  return (
+                    <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e8ddd0", backgroundColor: "#ffffff" }}>
+                      {/* Recipe header */}
+                      <div className="px-5 py-4" style={{ backgroundColor: "#2e3a20" }}>
+                        <h3 className="text-base font-semibold mb-3" style={{ color: "#e8ddd0" }}>{r.name}</h3>
+                        <div className="flex gap-4 flex-wrap">
+                          {r.prepTime && (
+                            <div className="flex items-center gap-1.5">
+                              <Clock className="w-3.5 h-3.5" style={{ color: "#a8b88c" }} />
+                              <span className="text-xs" style={{ color: "#c8d8a8" }}>Prep: {r.prepTime}</span>
+                            </div>
+                          )}
+                          {r.cookTime && (
+                            <div className="flex items-center gap-1.5">
+                              <ChefHat className="w-3.5 h-3.5" style={{ color: "#a8b88c" }} />
+                              <span className="text-xs" style={{ color: "#c8d8a8" }}>Cook: {r.cookTime}</span>
+                            </div>
+                          )}
+                          {r.servings && (
+                            <div className="flex items-center gap-1.5">
+                              <Users className="w-3.5 h-3.5" style={{ color: "#a8b88c" }} />
+                              <span className="text-xs" style={{ color: "#c8d8a8" }}>{r.servings}</span>
+                            </div>
+                          )}
+                        </div>
+                      </div>
+
+                      <div className="p-5 space-y-5">
+                        {/* Clinical note */}
+                        {r.clinicalNote && (
+                          <div className="rounded-lg px-4 py-3" style={{ backgroundColor: "#eef3e8", border: "1px solid #d0dcc0" }}>
+                            <p className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>
+                              <span className="font-semibold" style={{ color: "#5a7040" }}>Health note: </span>
+                              {r.clinicalNote}
+                            </p>
+                          </div>
+                        )}
+
+                        {/* Ingredients */}
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "#5a7040" }}>
+                            Ingredients
+                          </p>
+                          <ul className="space-y-2">
+                            {r.ingredients.map((ing, idx) => (
+                              <li key={idx} className="flex items-start gap-2.5">
+                                <div className="w-1.5 h-1.5 rounded-full mt-2 flex-shrink-0" style={{ backgroundColor: "#2e3a20" }} />
+                                <span className="text-sm leading-relaxed" style={{ color: "#3d4a30" }}>{ing}</span>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+
+                        {/* Instructions */}
+                        <div>
+                          <p className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "#5a7040" }}>
+                            Instructions
+                          </p>
+                          <ol className="space-y-3">
+                            {r.instructions.map((step, idx) => (
+                              <li key={idx} className="flex items-start gap-3">
+                                <span
+                                  className="w-5 h-5 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0 mt-0.5"
+                                  style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                                >
+                                  {idx + 1}
+                                </span>
+                                <span className="text-sm leading-relaxed" style={{ color: "#3d4a30" }}>{step}</span>
+                              </li>
+                            ))}
+                          </ol>
+                        </div>
+                      </div>
+                    </div>
+                  );
+                })()}
+              </div>
+            )}
+          </div>
+        </ScrollArea>
+      </DialogContent>
+    </Dialog>
+  );
+}
 
 interface PortalPatient {
   patientId: number;
@@ -155,6 +382,7 @@ function RiskBadge({ category }: { category: string }) {
 
 function LabQuickViewDialog({ lab, dietaryGuidance, onClose }: { lab: PortalLab; dietaryGuidance?: string | null; onClose: () => void }) {
   const [expandedSection, setExpandedSection] = useState<string | null>("labs");
+  const [quickViewFood, setQuickViewFood] = useState<FoodItem | null>(null);
 
   const grouped = lab.interpretations.reduce((acc: Record<string, typeof lab.interpretations>, interp) => {
     const cat = interp.category.includes(":") ? interp.category.split(":")[0].trim() : interp.category;
@@ -317,17 +545,44 @@ function LabQuickViewDialog({ lab, dietaryGuidance, onClose }: { lab: PortalLab;
             )}
 
             {/* 4. Dietary & lifestyle guidance from published protocol */}
-            {dietaryGuidance && (
-              <Section id="dietary" title="Dietary & Lifestyle Guidance" icon={<Utensils className="w-4 h-4" style={{ color: "#5a7040" }} />}>
-                <div className="pt-1 space-y-2">
-                  <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#3d4a30" }}>{dietaryGuidance}</p>
-                  <p className="text-xs italic" style={{ color: "#a0a880" }}>
-                    Guidance provided by your care team at {" "}
-                    <span className="not-italic font-medium">{lab.labDate ? formatDate(lab.labDate) : "your last visit"}</span>.
-                  </p>
-                </div>
-              </Section>
-            )}
+            {dietaryGuidance && (() => {
+              const qvFoodItems = parseFoodItems(dietaryGuidance);
+              return (
+                <Section id="dietary" title="Dietary & Lifestyle Guidance" icon={<Utensils className="w-4 h-4" style={{ color: "#5a7040" }} />}>
+                  <div className="pt-1 space-y-3">
+                    <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#3d4a30" }}>{dietaryGuidance}</p>
+                    <p className="text-xs italic" style={{ color: "#a0a880" }}>
+                      Guidance provided by your care team at {" "}
+                      <span className="not-italic font-medium">{lab.labDate ? formatDate(lab.labDate) : "your last visit"}</span>.
+                    </p>
+                    {qvFoodItems.length > 0 && (
+                      <div className="rounded-lg p-3 mt-2" style={{ backgroundColor: "#f4efe8", border: "1px solid #e0d8cc" }}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <ChefHat className="w-3.5 h-3.5" style={{ color: "#2e3a20" }} />
+                          <span className="text-xs font-semibold" style={{ color: "#1c2414" }}>Recipe Ideas</span>
+                        </div>
+                        <div className="flex flex-col gap-1.5">
+                          {qvFoodItems.map((food, i) => (
+                            <button
+                              key={i}
+                              data-testid={`button-qv-recipe-food-${i}`}
+                              onClick={() => setQuickViewFood(food)}
+                              className="flex items-center gap-2.5 text-left w-full rounded-md px-3 py-2"
+                              style={{ backgroundColor: "#ffffff", border: "1px solid #e0d8cc" }}
+                            >
+                              <ChefHat className="w-3 h-3 flex-shrink-0" style={{ color: "#5a7040" }} />
+                              <span className="text-xs font-medium flex-1 min-w-0 truncate" style={{ color: "#1c2414" }}>{food.name}</span>
+                              <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#a0a880" }} />
+                            </button>
+                          ))}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                </Section>
+              );
+            })()}
+            {quickViewFood && <RecipeDialog food={quickViewFood} onClose={() => setQuickViewFood(null)} />}
 
             {/* 5. Health summary — always last */}
             {lab.patientSummary && (
@@ -440,6 +695,7 @@ export default function PortalDashboard() {
   const unreadCount = usePortalUnreadCount();
   const [selectedLab, setSelectedLab] = useState<PortalLab | null>(null);
   const [showAllJourney, setShowAllJourney] = useState(false);
+  const [selectedFood, setSelectedFood] = useState<FoodItem | null>(null);
 
   const { data: patient, isLoading: patientLoading, error: patientError } = useQuery<PortalPatient>({
     queryKey: ["/api/portal/me"],
@@ -673,35 +929,74 @@ export default function PortalDashboard() {
         </section>
 
         {/* Dietary guidance section */}
-        {protocol?.dietaryGuidance && (
-          <section className="space-y-4">
-            <div className="flex items-center gap-2">
-              <Utensils className="w-4 h-4" style={{ color: "#5a7040" }} />
-              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>
-                Your Dietary Guidance
-              </h2>
-            </div>
-            <div className="rounded-xl p-5" style={{ backgroundColor: "#ffffff", border: "1px solid #ede8df" }}>
-              <div className="prose prose-sm max-w-none">
-                {protocol.dietaryGuidance.split('\n').filter(Boolean).map((line, i) => {
-                  const isHeader = line.startsWith('#') || (line === line.toUpperCase() && line.length < 60);
-                  if (isHeader) {
-                    const text = line.replace(/^#+\s*/, '').replace(/:$/, '');
+        {protocol?.dietaryGuidance && (() => {
+          const foodItems = parseFoodItems(protocol.dietaryGuidance);
+          return (
+            <section className="space-y-4">
+              <div className="flex items-center gap-2">
+                <Utensils className="w-4 h-4" style={{ color: "#5a7040" }} />
+                <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>
+                  Your Dietary Guidance
+                </h2>
+              </div>
+              <div className="rounded-xl p-5" style={{ backgroundColor: "#ffffff", border: "1px solid #ede8df" }}>
+                <div className="prose prose-sm max-w-none">
+                  {protocol.dietaryGuidance.split('\n').filter(Boolean).map((line, i) => {
+                    const isHeader = line.startsWith('#') || (line === line.toUpperCase() && line.length < 60);
+                    if (isHeader) {
+                      const text = line.replace(/^#+\s*/, '').replace(/:$/, '');
+                      return (
+                        <p key={i} className="text-xs font-semibold uppercase tracking-wider mt-4 first:mt-0 mb-1.5" style={{ color: "#5a7040" }}>
+                          {text}
+                        </p>
+                      );
+                    }
                     return (
-                      <p key={i} className="text-xs font-semibold uppercase tracking-wider mt-4 first:mt-0 mb-1.5" style={{ color: "#5a7040" }}>
-                        {text}
+                      <p key={i} className="text-sm leading-relaxed mb-2" style={{ color: "#3d4a30" }}>
+                        {line}
                       </p>
                     );
-                  }
-                  return (
-                    <p key={i} className="text-sm leading-relaxed mb-2" style={{ color: "#3d4a30" }}>
-                      {line}
-                    </p>
-                  );
-                })}
+                  })}
+                </div>
               </div>
-            </div>
-          </section>
+
+              {/* Recipe ideas — only shown when food items can be parsed */}
+              {foodItems.length > 0 && (
+                <div className="rounded-xl p-5" style={{ backgroundColor: "#f4efe8", border: "1px solid #e0d8cc" }}>
+                  <div className="flex items-center gap-2 mb-4">
+                    <ChefHat className="w-4 h-4" style={{ color: "#2e3a20" }} />
+                    <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>Recipe Ideas</p>
+                    <span className="text-xs ml-auto" style={{ color: "#7a8a64" }}>Tap any food for AI-generated recipes</span>
+                  </div>
+                  <div className="flex flex-col gap-2">
+                    {foodItems.map((food, i) => (
+                      <button
+                        key={i}
+                        data-testid={`button-recipe-food-${i}`}
+                        onClick={() => setSelectedFood(food)}
+                        className="flex items-center gap-3 text-left w-full rounded-lg px-4 py-3 transition-colors"
+                        style={{ backgroundColor: "#ffffff", border: "1px solid #e0d8cc" }}
+                      >
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
+                          <ChefHat className="w-3.5 h-3.5" style={{ color: "#e8ddd0" }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-medium leading-tight" style={{ color: "#1c2414" }}>{food.name}</p>
+                          <p className="text-xs mt-0.5 line-clamp-1" style={{ color: "#7a8a64" }}>{food.reason}</p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
+                      </button>
+                    ))}
+                  </div>
+                </div>
+              )}
+            </section>
+          );
+        })()}
+
+        {/* Recipe dialog */}
+        {selectedFood && (
+          <RecipeDialog food={selectedFood} onClose={() => setSelectedFood(null)} />
         )}
 
 
