@@ -12,7 +12,8 @@ import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
-  Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw
+  Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
+  Loader2, Sparkles
 } from "lucide-react";
 import { Link } from "wouter";
 import { cn } from "@/lib/utils";
@@ -624,9 +625,32 @@ export default function PatientProfiles() {
   const [publishDialogLab, setPublishDialogLab] = useState<LabResult | null>(null);
   const [publishNotes, setPublishNotes] = useState("");
   const [publishDietaryGuidance, setPublishDietaryGuidance] = useState("");
+  const [isDietaryGenerating, setIsDietaryGenerating] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const [showMessages, setShowMessages] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
+
+  // Auto-generate dietary guidance when publish dialog opens for a lab with AI recommendations
+  useEffect(() => {
+    if (!publishDialogLab) return;
+    const aiRecommendations = (publishDialogLab.interpretationResult as any)?.aiRecommendations;
+    if (!aiRecommendations || publishDietaryGuidance) return; // skip if no AI data or already filled
+
+    let cancelled = false;
+    setIsDietaryGenerating(true);
+    apiRequest("POST", "/api/generate-dietary-guidance", { labResultId: publishDialogLab.id })
+      .then(res => res.json())
+      .then(data => {
+        if (!cancelled && data.dietaryGuidance) {
+          setPublishDietaryGuidance(data.dietaryGuidance);
+        }
+      })
+      .catch(() => {}) // silently fail — clinician can fill in manually
+      .finally(() => { if (!cancelled) setIsDietaryGenerating(false); });
+
+    return () => { cancelled = true; };
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [publishDialogLab?.id]);
 
   const { data: allPatients = [], isLoading: patientsLoading } = useQuery<Patient[]>({
     queryKey: ['/api/patients/search', ''],
@@ -1469,19 +1493,57 @@ export default function PatientProfiles() {
               </div>
 
               <div className="space-y-1.5">
-                <Label className="text-xs font-medium">
-                  Dietary guidance <span className="text-muted-foreground font-normal">(optional — shown in patient portal)</span>
-                </Label>
+                <div className="flex items-center justify-between gap-2">
+                  <Label className="text-xs font-medium flex items-center gap-1.5">
+                    Dietary guidance
+                    {isDietaryGenerating ? (
+                      <span className="flex items-center gap-1 text-muted-foreground font-normal">
+                        <Loader2 className="w-3 h-3 animate-spin" />
+                        Generating from lab results…
+                      </span>
+                    ) : publishDietaryGuidance ? (
+                      <span className="flex items-center gap-1 font-normal" style={{ color: "#5a7040" }}>
+                        <Sparkles className="w-3 h-3" />
+                        AI-generated — review before publishing
+                      </span>
+                    ) : (
+                      <span className="text-muted-foreground font-normal">(shown in patient portal)</span>
+                    )}
+                  </Label>
+                  {publishDietaryGuidance && !isDietaryGenerating && (
+                    <button
+                      type="button"
+                      data-testid="button-regenerate-dietary"
+                      onClick={() => {
+                        setPublishDietaryGuidance("");
+                        setIsDietaryGenerating(true);
+                        apiRequest("POST", "/api/generate-dietary-guidance", { labResultId: publishDialogLab!.id })
+                          .then(res => res.json())
+                          .then(data => { if (data.dietaryGuidance) setPublishDietaryGuidance(data.dietaryGuidance); })
+                          .catch(() => {})
+                          .finally(() => setIsDietaryGenerating(false));
+                      }}
+                      className="flex items-center gap-1 text-xs"
+                      style={{ color: "#7a8a64" }}
+                    >
+                      <RefreshCw className="w-3 h-3" />
+                      Regenerate
+                    </button>
+                  )}
+                </div>
                 <Textarea
-                  placeholder={"E.g.:\nFocus on whole foods — lean proteins, colorful vegetables, and healthy fats.\n\nProtein goal: Aim for 0.8–1g per pound of lean body mass daily.\n\nLimit: Alcohol, refined sugar, processed oils."}
+                  placeholder={isDietaryGenerating ? "Generating dietary recommendations from this patient's lab results…" : "E.g.:\nFocus on whole foods — lean proteins, colorful vegetables, and healthy fats.\n\nProtein goal: Aim for 0.8–1g per pound of lean body mass daily.\n\nLimit: Alcohol, refined sugar, processed oils."}
                   value={publishDietaryGuidance}
                   onChange={(e) => setPublishDietaryGuidance(e.target.value)}
-                  className="text-sm min-h-[130px] resize-none"
+                  className="text-sm min-h-[160px] resize-none"
+                  disabled={isDietaryGenerating}
                   data-testid="input-publish-dietary-guidance"
                 />
-                <p className="text-xs text-muted-foreground">
-                  This will appear in a dedicated "Your Dietary Guidance" section in the patient's portal — separate from their supplements.
-                </p>
+                {!isDietaryGenerating && (
+                  <p className="text-xs text-muted-foreground">
+                    Editable before publishing. Appears as a dedicated dietary guidance section in the patient's portal, with clickable recipe ideas for each food.
+                  </p>
+                )}
               </div>
             </div>
 
@@ -1489,7 +1551,7 @@ export default function PatientProfiles() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); }}
+                onClick={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); setIsDietaryGenerating(false); }}
                 disabled={publishProtocolMutation.isPending}
               >
                 Cancel
