@@ -1527,12 +1527,15 @@ ${aiRecommendations}`;
         await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
       }
 
-      const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
-      const base = (replitDomain && !replitDomain.startsWith("localhost"))
-        ? `https://${replitDomain}`
-        : req.get
-          ? `${req.get("x-forwarded-proto") || req.protocol}://${req.get("x-forwarded-host") || req.get("host")}`
-          : "";
+      // Build base URL: APP_URL env var takes highest priority (custom domain),
+      // then REPLIT_DOMAINS, then fall back to request headers.
+      const base = (() => {
+        if (process.env.APP_URL) return process.env.APP_URL.replace(/\/$/, "");
+        const replitDomain = process.env.REPLIT_DOMAINS?.split(",")[0]?.trim();
+        if (replitDomain && !replitDomain.startsWith("localhost")) return `https://${replitDomain}`;
+        if (req.get) return `${req.get("x-forwarded-proto") || req.protocol}://${req.get("x-forwarded-host") || req.get("host")}`;
+        return "";
+      })();
       const inviteUrl = `${base}/portal/set-password?token=${token}`;
 
       let emailSent = false;
