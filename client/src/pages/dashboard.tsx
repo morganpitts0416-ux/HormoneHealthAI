@@ -1,11 +1,12 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
   Users,
   Search,
@@ -17,14 +18,48 @@ import {
   Calendar,
   Settings,
   ShieldCheck,
+  MessageSquare,
+  ShoppingBag,
+  CheckCircle,
+  Bell,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
+
+interface UnreadMessageRow {
+  patientId: number;
+  patientFirstName: string;
+  patientLastName: string;
+  count: number;
+  lastAt: string;
+}
+
+interface PendingOrderRow {
+  id: number;
+  patientId: number;
+  patientFirstName: string;
+  patientLastName: string;
+  items: Array<{ name: string; dose: string; quantity: number; lineTotal: number }>;
+  subtotal: string;
+  status: string;
+  patientNotes: string | null;
+  createdAt: string;
+}
+
+interface NotificationsData {
+  unreadMessages: UnreadMessageRow[];
+  pendingOrders: PendingOrderRow[];
+}
 
 function getGreeting() {
   const hour = new Date().getHours();
   if (hour < 12) return "Good morning";
   if (hour < 17) return "Good afternoon";
   return "Good evening";
+}
+
+function formatDate(iso: string) {
+  const d = new Date(iso);
+  return d.toLocaleDateString("en-US", { month: "short", day: "numeric" });
 }
 
 export default function Dashboard() {
@@ -53,12 +88,36 @@ export default function Dashboard() {
     staleTime: 10 * 1000,
   });
 
+  const { data: notifications } = useQuery<NotificationsData>({
+    queryKey: ["/api/clinician/notifications"],
+    refetchInterval: 30 * 1000,
+  });
+
+  const fulfillOrderMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const res = await apiRequest("PATCH", `/api/supplement-orders/${orderId}/status`, { status: "fulfilled" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinician/notifications"] });
+    },
+  });
+
   const displayedPatients = searchQuery.length >= 2 ? searchResults : patients.slice(0, 8);
   const maleCount = patients.filter((p) => p.gender === "male").length;
   const femaleCount = patients.filter((p) => p.gender === "female").length;
 
+  const unreadMessages = notifications?.unreadMessages ?? [];
+  const pendingOrders = notifications?.pendingOrders ?? [];
+  const hasNotifications = unreadMessages.length > 0 || pendingOrders.length > 0;
+
   const handleLogout = async () => {
     await logoutMutation.mutateAsync();
+  };
+
+  const goToPatient = (patientId: number, tab?: "messages" | "orders") => {
+    const url = tab ? `/patients?patient=${patientId}&tab=${tab}` : `/patients?patient=${patientId}`;
+    setLocation(url);
   };
 
   return (
@@ -123,17 +182,116 @@ export default function Dashboard() {
         </div>
       </header>
 
-      <main className="max-w-6xl mx-auto px-6 py-8">
+      <main className="max-w-6xl mx-auto px-6 py-8 space-y-8">
         {/* Welcome */}
-        <div className="mb-8">
+        <div>
           <h1 className="text-2xl font-semibold text-foreground">
             {getGreeting()}, {user?.title} {user?.lastName}
           </h1>
           <p className="text-muted-foreground mt-1">What would you like to do today?</p>
         </div>
 
+        {/* ── Notification panel ─────────────────────────────────────── */}
+        {hasNotifications && (
+          <div className="space-y-3" data-testid="notifications-panel">
+            <h2 className="text-sm font-semibold flex items-center gap-2 text-foreground">
+              <Bell className="w-4 h-4" style={{ color: "#2e3a20" }} />
+              Needs Attention
+              <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
+                {unreadMessages.length + pendingOrders.length}
+              </Badge>
+            </h2>
+
+            <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+              {/* Unread messages */}
+              {unreadMessages.map((row) => (
+                <button
+                  key={`msg-${row.patientId}`}
+                  data-testid={`notification-message-${row.patientId}`}
+                  onClick={() => goToPatient(row.patientId, "messages")}
+                  className="w-full text-left"
+                >
+                  <Card className="hover-elevate cursor-pointer border" style={{ borderColor: "#d4e0c0", backgroundColor: "#f4f8ee" }}>
+                    <CardContent className="py-3 px-4">
+                      <div className="flex items-start justify-between gap-3">
+                        <div className="flex items-start gap-3 min-w-0">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
+                            <MessageSquare className="w-4 h-4" style={{ color: "#e8ddd0" }} />
+                          </div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">
+                              {row.patientFirstName} {row.patientLastName}
+                            </p>
+                            <p className="text-xs text-muted-foreground">
+                              {row.count} unread message{row.count !== 1 ? "s" : ""}
+                            </p>
+                          </div>
+                        </div>
+                        <div className="flex items-center gap-1.5 flex-shrink-0">
+                          <span className="text-xs text-muted-foreground">{formatDate(row.lastAt)}</span>
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+                        </div>
+                      </div>
+                    </CardContent>
+                  </Card>
+                </button>
+              ))}
+
+              {/* Pending supplement orders */}
+              {pendingOrders.map((order) => (
+                <Card
+                  key={`order-${order.id}`}
+                  data-testid={`notification-order-${order.id}`}
+                  className="border"
+                  style={{ borderColor: "#e0d4b8", backgroundColor: "#fdf8ee" }}
+                >
+                  <CardContent className="py-3 px-4">
+                    <div className="flex items-start justify-between gap-3">
+                      <button
+                        className="flex items-start gap-3 min-w-0 flex-1 text-left"
+                        onClick={() => goToPatient(order.patientId, "orders")}
+                      >
+                        <div className="w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#7a5c20" }}>
+                          <ShoppingBag className="w-4 h-4" style={{ color: "#fdf8ee" }} />
+                        </div>
+                        <div className="min-w-0">
+                          <p className="text-sm font-medium text-foreground truncate">
+                            {order.patientFirstName} {order.patientLastName}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            Supplement order · ${parseFloat(order.subtotal).toFixed(2)}
+                          </p>
+                          <p className="text-xs text-muted-foreground">
+                            {order.items.length} item{order.items.length !== 1 ? "s" : ""} · {formatDate(order.createdAt)}
+                          </p>
+                        </div>
+                      </button>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <Button
+                          size="sm"
+                          variant="ghost"
+                          className="text-xs h-7 px-2 text-muted-foreground"
+                          data-testid={`button-fulfill-order-${order.id}`}
+                          onClick={(e) => { e.stopPropagation(); fulfillOrderMutation.mutate(order.id); }}
+                          disabled={fulfillOrderMutation.isPending}
+                        >
+                          <CheckCircle className="w-3.5 h-3.5 mr-1" />
+                          Mark fulfilled
+                        </Button>
+                        <button onClick={() => goToPatient(order.patientId, "orders")}>
+                          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground/50" />
+                        </button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          </div>
+        )}
+
         {/* Primary action cards */}
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
+        <div className="grid grid-cols-1 md:grid-cols-2 gap-5">
           <Card
             data-testid="card-male-eval"
             className="cursor-pointer hover-elevate overflow-hidden"
@@ -153,10 +311,7 @@ export default function Dashboard() {
               </CardDescription>
             </CardHeader>
             <CardContent>
-              <Button
-                data-testid="button-start-male"
-                className="w-full"
-              >
+              <Button data-testid="button-start-male" className="w-full">
                 Begin Evaluation
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
@@ -248,7 +403,7 @@ export default function Dashboard() {
               <CardContent className="py-10 text-center">
                 {searchQuery.length >= 2 ? (
                   <>
-                    <Search className="w-8 w-8 text-muted-foreground/40 mx-auto mb-3" />
+                    <Search className="w-8 h-8 text-muted-foreground/40 mx-auto mb-3" />
                     <p className="text-foreground font-medium">No patients found</p>
                     <p className="text-muted-foreground text-sm mt-1">Try a different search term</p>
                   </>
@@ -270,7 +425,7 @@ export default function Dashboard() {
                   key={patient.id}
                   data-testid={`card-patient-${patient.id}`}
                   className="cursor-pointer hover-elevate"
-                  onClick={() => setLocation("/patients")}
+                  onClick={() => setLocation(`/patients?patient=${patient.id}`)}
                 >
                   <CardContent className="py-3 px-4">
                     <div className="flex items-center justify-between gap-3 flex-wrap">
@@ -281,9 +436,21 @@ export default function Dashboard() {
                           {patient.firstName[0]}{patient.lastName[0]}
                         </div>
                         <div>
-                          <p className="font-medium text-foreground text-sm">
-                            {patient.firstName} {patient.lastName}
-                          </p>
+                          <div className="flex items-center gap-2">
+                            <p className="font-medium text-foreground text-sm">
+                              {patient.firstName} {patient.lastName}
+                            </p>
+                            {unreadMessages.some(m => m.patientId === patient.id) && (
+                              <Badge className="text-xs py-0" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
+                                {unreadMessages.find(m => m.patientId === patient.id)!.count} msg
+                              </Badge>
+                            )}
+                            {pendingOrders.some(o => o.patientId === patient.id) && (
+                              <Badge className="text-xs py-0" style={{ backgroundColor: "#7a5c20", color: "#fdf8ee" }}>
+                                order
+                              </Badge>
+                            )}
+                          </div>
                           <p className="text-xs text-muted-foreground capitalize">
                             {patient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
                           </p>
