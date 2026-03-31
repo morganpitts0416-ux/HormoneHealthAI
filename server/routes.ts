@@ -1207,7 +1207,7 @@ ${aiRecommendations}`;
         interpretationResult: bodyInterpretation as InterpretationResult,
         notes,
       } as InsertLabResult);
-      await storage.updatePatient(patientId, {}, userId);
+      await storage.updatePatient(patientId, {}, clinicianId);
       res.json(labResult);
     } catch (error) {
       console.error("Error saving patient labs:", error);
