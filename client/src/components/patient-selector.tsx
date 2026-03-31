@@ -28,11 +28,13 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
     enabled: searchTerm.length >= 2,
   });
 
-  // Auto-select the patient when coming from a patient profile link
-  const { data: initialPatient } = useQuery<Patient>({
+  // Auto-select the patient when coming from a patient profile link.
+  // NOTE: GET /api/patients/:id returns { patient, labHistory } so we unwrap .patient.
+  const { data: initialPatientResponse } = useQuery<{ patient: Patient; labHistory: unknown[] }>({
     queryKey: [`/api/patients/${initialPatientId}`],
     enabled: !!initialPatientId && !selectedPatient,
   });
+  const initialPatient = initialPatientResponse?.patient;
 
   useEffect(() => {
     if (initialPatient && !selectedPatient) {
