@@ -653,7 +653,7 @@ export class DbStorage implements IStorage {
         MAX(pm.created_at)::text AS last_at
       FROM portal_messages pm
       JOIN patients p ON pm.patient_id = p.id
-      WHERE p.clinician_id = ${clinicianId}
+      WHERE p.user_id = ${clinicianId}
         AND pm.sender_type = 'patient'
         AND pm.read_at IS NULL
       GROUP BY p.id, p.first_name, p.last_name
