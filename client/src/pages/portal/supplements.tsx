@@ -227,6 +227,7 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
   onClose: () => void;
   onSuccess: (orderId: number) => void;
 }) {
+  const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
@@ -243,11 +244,15 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
         supplyDays: c.supplyDays,
         lineTotal: parseFloat((c.price * c.quantity).toFixed(2)),
       }));
+      const fullNotes = [
+        `Fulfillment: ${fulfillment === "pickup" ? "In-clinic pickup" : "Ship to address on file"}`,
+        notes ? `Note: ${notes}` : "",
+      ].filter(Boolean).join(" · ");
       const res = await fetch("/api/portal/supplement-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ items, subtotal: subtotal.toFixed(2), patientNotes: notes }),
+        body: JSON.stringify({ items, subtotal: subtotal.toFixed(2), patientNotes: fullNotes }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Order failed");
@@ -294,11 +299,47 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
             <span className="text-base font-bold" style={{ color: "#2e3a20" }}>{formatPrice(subtotal)}</span>
           </div>
 
+          {/* Fulfillment toggle */}
+          <div className="px-5 pb-3 space-y-2">
+            <p className="text-xs font-medium" style={{ color: "#7a8a64" }}>How would you like to receive your order?</p>
+            <div className="flex gap-2">
+              <button
+                onClick={() => setFulfillment("pickup")}
+                data-testid="button-fulfillment-pickup"
+                className="flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold border-2 transition-colors"
+                style={{
+                  borderColor: fulfillment === "pickup" ? "#2e3a20" : "#ede8df",
+                  backgroundColor: fulfillment === "pickup" ? "#edf2e6" : "#ffffff",
+                  color: fulfillment === "pickup" ? "#2e3a20" : "#7a8a64",
+                }}
+              >
+                In-Clinic Pickup
+              </button>
+              <button
+                onClick={() => setFulfillment("delivery")}
+                data-testid="button-fulfillment-delivery"
+                className="flex-1 py-2.5 px-3 rounded-xl text-xs font-semibold border-2 transition-colors"
+                style={{
+                  borderColor: fulfillment === "delivery" ? "#2e3a20" : "#ede8df",
+                  backgroundColor: fulfillment === "delivery" ? "#edf2e6" : "#ffffff",
+                  color: fulfillment === "delivery" ? "#2e3a20" : "#7a8a64",
+                }}
+              >
+                Ship to Address on File
+              </button>
+            </div>
+            {fulfillment === "pickup" && (
+              <p className="text-xs" style={{ color: "#7a8a64" }}>
+                Your clinic will text you when your order is ready for pickup.
+              </p>
+            )}
+          </div>
+
           {/* Info box */}
           <div className="mx-5 mb-3 rounded-xl px-4 py-3 space-y-1.5" style={{ backgroundColor: "#faf7f2", border: "1px solid #ede8df" }}>
             <p className="text-xs font-semibold" style={{ color: "#7a6a50" }}>How this works</p>
             <p className="text-xs leading-relaxed" style={{ color: "#7a7060" }}>
-              Your order request will be sent to your care team. Your card on file with the clinic will be charged and your supplements will be processed for pickup or delivery.
+              Your order request will be sent to your care team. Your card on file with the clinic will be charged and your supplements will be prepared.
             </p>
           </div>
 
@@ -308,7 +349,7 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
             <textarea
               value={notes}
               onChange={e => setNotes(e.target.value)}
-              placeholder="E.g. please ship to my address on file…"
+              placeholder={fulfillment === "delivery" ? "E.g. please ship to my address on file…" : "E.g. I'll be in Wednesday afternoon…"}
               rows={2}
               className="w-full rounded-lg border px-3 py-2 text-sm resize-none focus:outline-none"
               style={{ borderColor: "#ddd8cf", backgroundColor: "#fafaf8", color: "#1c2414" }}
