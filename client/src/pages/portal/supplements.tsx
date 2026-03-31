@@ -227,10 +227,14 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
   onClose: () => void;
   onSuccess: (orderId: number) => void;
 }) {
+  const SHIPPING_FEE = 12;
   const [fulfillment, setFulfillment] = useState<"pickup" | "delivery">("pickup");
   const [notes, setNotes] = useState("");
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
+
+  const shipping = fulfillment === "delivery" ? SHIPPING_FEE : 0;
+  const finalTotal = subtotal + shipping;
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -245,14 +249,14 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
         lineTotal: parseFloat((c.price * c.quantity).toFixed(2)),
       }));
       const fullNotes = [
-        `Fulfillment: ${fulfillment === "pickup" ? "In-clinic pickup" : "Ship to address on file"}`,
+        `Fulfillment: ${fulfillment === "pickup" ? "In-clinic pickup (Free)" : `Ship to address on file (+$${SHIPPING_FEE} shipping)`}`,
         notes ? `Note: ${notes}` : "",
       ].filter(Boolean).join(" · ");
       const res = await fetch("/api/portal/supplement-orders", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ items, subtotal: subtotal.toFixed(2), patientNotes: fullNotes }),
+        body: JSON.stringify({ items, subtotal: finalTotal.toFixed(2), patientNotes: fullNotes }),
       });
       const data = await res.json();
       if (!res.ok) throw new Error(data.message || "Order failed");
@@ -293,12 +297,6 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
             ))}
           </div>
 
-          {/* Total */}
-          <div className="mx-5 my-3 rounded-xl px-4 py-3 flex items-center justify-between" style={{ backgroundColor: "#edf2e6" }}>
-            <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Order Total</span>
-            <span className="text-base font-bold" style={{ color: "#2e3a20" }}>{formatPrice(subtotal)}</span>
-          </div>
-
           {/* Fulfillment toggle */}
           <div className="px-5 pb-3 space-y-2">
             <p className="text-xs font-medium" style={{ color: "#7a8a64" }}>How would you like to receive your order?</p>
@@ -333,6 +331,26 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
                 Your clinic will text you when your order is ready for pickup.
               </p>
             )}
+          </div>
+
+          {/* Total breakdown */}
+          <div className="mx-5 my-3 rounded-xl px-4 py-3 space-y-1.5" style={{ backgroundColor: "#edf2e6" }}>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "#4a5e36" }}>Subtotal</span>
+              <span className="text-xs font-medium" style={{ color: "#2e3a20" }}>{formatPrice(subtotal)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs" style={{ color: "#4a5e36" }}>
+                {fulfillment === "delivery" ? "Shipping" : "In-Clinic Pickup"}
+              </span>
+              <span className="text-xs font-medium" style={{ color: fulfillment === "delivery" ? "#2e3a20" : "#4a8a54" }}>
+                {fulfillment === "delivery" ? `+${formatPrice(SHIPPING_FEE)}` : "Free"}
+              </span>
+            </div>
+            <div className="border-t pt-1.5 flex items-center justify-between" style={{ borderColor: "#c8dbb8" }}>
+              <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Order Total</span>
+              <span className="text-base font-bold" style={{ color: "#2e3a20" }}>{formatPrice(finalTotal)}</span>
+            </div>
           </div>
 
           {/* Info box */}
@@ -373,7 +391,7 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
             className="w-full py-3 rounded-xl font-semibold text-sm flex items-center justify-center gap-2 disabled:opacity-60"
             style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
           >
-            {submitting ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sending Order…</> : "Send Order to Clinic"}
+            {submitting ? <><RefreshCw className="w-4 h-4 animate-spin" /> Sending Order…</> : `Send Order — ${formatPrice(finalTotal)}`}
           </button>
           <button onClick={onClose} className="w-full text-center text-sm py-1" style={{ color: "#7a8a64" }}>Cancel</button>
         </div>
