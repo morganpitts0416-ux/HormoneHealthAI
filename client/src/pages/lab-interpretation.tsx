@@ -46,6 +46,7 @@ export default function LabInterpretation() {
   const [selectedSupplementNames, setSelectedSupplementNames] = useState<Set<string>>(new Set());
   const [customSupplements, setCustomSupplements] = useState<CustomSupplement[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const hasPrefilledBmiRef = useRef(false);
   const { toast } = useToast();
   const { user } = useAuth();
 
@@ -53,6 +54,24 @@ export default function LabInterpretation() {
     queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
     enabled: !!selectedPatient?.id,
   });
+
+  // Pre-fill BMI from most recent lab result once patientLabs load
+  useEffect(() => {
+    if (!selectedPatient || !patientLabs || hasPrefilledBmiRef.current) return;
+    const lastBmi = patientLabs.length > 0
+      ? (patientLabs[0].labValues as LabValues)?.demographics?.bmi
+      : undefined;
+    if (lastBmi) {
+      hasPrefilledBmiRef.current = true;
+      setLabValues(prev => ({
+        ...prev,
+        demographics: {
+          ...(prev.demographics ?? {}),
+          bmi: lastBmi,
+        },
+      }));
+    }
+  }, [selectedPatient?.id, patientLabs]);
 
   useEffect(() => {
     if (interpretationResult?.supplements) {
@@ -427,16 +446,17 @@ export default function LabInterpretation() {
               gender="male"
               initialPatientId={initialPatientId ? parseInt(initialPatientId) : undefined}
               onPatientSelect={(patient) => {
+                hasPrefilledBmiRef.current = false;
                 setSelectedPatient(patient);
                 if (patient) {
-                  setLabValues(prev => ({
-                    ...prev,
+                  setLabValues({
                     patientName: `${patient.firstName} ${patient.lastName}`,
                     demographics: {
-                      ...(prev.demographics ?? {}),
                       ...(patient.dateOfBirth ? { age: calculateAge(patient.dateOfBirth) } : {}),
                     },
-                  }));
+                  });
+                } else {
+                  setLabValues({});
                 }
               }}
               selectedPatient={selectedPatient}
@@ -530,7 +550,8 @@ export default function LabInterpretation() {
                 </CardDescription>
               </CardHeader>
               <CardContent>
-                <LabInputForm 
+                <LabInputForm
+                  key={selectedPatient?.id ?? 'no-patient'}
                   onSubmit={handleSubmit} 
                   isLoading={interpretMutation.isPending}
                   initialValues={labValues}
