@@ -1075,6 +1075,21 @@ ${aiRecommendations}`;
 
   // ===== PATIENT PROFILE ENDPOINTS =====
 
+  // GET /api/clinician/notifications — unread messages + pending supplement orders
+  app.get("/api/clinician/notifications", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const [unreadMessages, pendingOrders] = await Promise.all([
+        storage.getUnreadMessageSummaryForClinician(clinicianId),
+        storage.getPendingOrdersForClinician(clinicianId),
+      ]);
+      res.json({ unreadMessages, pendingOrders });
+    } catch (error) {
+      console.error("Clinician notifications error:", error);
+      res.json({ unreadMessages: [], pendingOrders: [] });
+    }
+  });
+
   app.post("/api/patients", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
@@ -2114,6 +2129,37 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     } catch (error) {
       console.error("Supplement order error:", error);
       res.status(500).json({ message: "Failed to place order" });
+    }
+  });
+
+  // PATCH /api/supplement-orders/:id/status — clinician marks order fulfilled/cancelled
+  app.patch("/api/supplement-orders/:id/status", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const orderId = parseInt(req.params.id);
+      const { status } = req.body;
+      if (!status || !['pending', 'fulfilled', 'cancelled'].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const updated = await storage.updateSupplementOrderStatus(orderId, clinicianId, status);
+      if (!updated) return res.status(404).json({ message: "Order not found" });
+      res.json(updated);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to update order status" });
+    }
+  });
+
+  // GET /api/patients/:id/supplement-orders — clinician views a patient's orders
+  app.get("/api/patients/:id/supplement-orders", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId, clinicianId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const orders = await storage.getSupplementOrdersByClinicianPatient(clinicianId, patientId);
+      res.json(orders);
+    } catch (error) {
+      res.status(500).json({ message: "Failed to fetch orders" });
     }
   });
 

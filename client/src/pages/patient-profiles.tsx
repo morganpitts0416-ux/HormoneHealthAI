@@ -13,9 +13,9 @@ import {
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
-  Loader2, Sparkles
+  Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle
 } from "lucide-react";
-import { Link, useLocation } from "wouter";
+import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
 import { PatientTrendCharts } from "@/components/patient-trend-charts";
 import { generateTrendInsights, generateClinicalSnapshot, type TrendInsight } from "@/lib/clinical-trend-insights";
@@ -612,6 +612,7 @@ function PatientAvatar({ patient, size = "md" }: { patient: Patient; size?: "sm"
 export default function PatientProfiles() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
+  const searchStr = useSearch();
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
@@ -629,7 +630,9 @@ export default function PatientProfiles() {
   const [isDietaryGenerating, setIsDietaryGenerating] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const [showMessages, setShowMessages] = useState(false);
+  const [showOrders, setShowOrders] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
+  const urlParamApplied = useRef(false);
 
   // Auto-generate dietary guidance when publish dialog opens for a lab with AI recommendations
   useEffect(() => {
@@ -661,6 +664,21 @@ export default function PatientProfiles() {
       return res.json();
     },
   });
+
+  // Auto-select patient from URL param (e.g. ?patient=123&tab=messages)
+  useEffect(() => {
+    if (urlParamApplied.current || allPatients.length === 0) return;
+    const params = new URLSearchParams(searchStr);
+    const patientId = params.get("patient");
+    const tab = params.get("tab");
+    if (!patientId) return;
+    const found = allPatients.find(p => p.id === Number(patientId));
+    if (!found) return;
+    urlParamApplied.current = true;
+    setSelectedPatient(found);
+    if (tab === "messages") setShowMessages(true);
+    if (tab === "orders") setShowOrders(true);
+  }, [allPatients, searchStr]);
 
   const { data: labs = [], isLoading: labsLoading } = useQuery<LabResult[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
@@ -723,6 +741,40 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient,
     refetchInterval: 30000,
+  });
+
+  interface SupplementOrderItem { name: string; dose: string; quantity: number; lineTotal: number; }
+  interface SupplementOrderRecord {
+    id: number;
+    patientId: number;
+    clinicianId: number;
+    items: SupplementOrderItem[];
+    subtotal: string;
+    status: string;
+    patientNotes: string | null;
+    createdAt: string;
+  }
+
+  const { data: patientOrders = [] } = useQuery<SupplementOrderRecord[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'supplement-orders'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/supplement-orders`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const fulfillOrderMutation = useMutation({
+    mutationFn: async (orderId: number) => {
+      const res = await apiRequest("PATCH", `/api/supplement-orders/${orderId}/status`, { status: "fulfilled" });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'supplement-orders'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clinician/notifications'] });
+    },
   });
 
   const sendMessageMutation = useMutation({
@@ -1114,6 +1166,145 @@ export default function PatientProfiles() {
                 </div>
               </div>
 
+              {/* ── Portal Messages — shown first so nothing gets missed ── */}
+              {portalStatus?.hasPortalAccount && (
+                <Card data-testid="card-portal-messages">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <MessageSquare className="w-4 h-4 text-muted-foreground" />
+                        Portal Messages
+                        {(unreadData?.count ?? 0) > 0 && (
+                          <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
+                            {unreadData!.count} unread
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <Button
+                        variant="ghost"
+                        size="sm"
+                        onClick={() => setShowMessages(!showMessages)}
+                        className="text-xs"
+                        data-testid="button-toggle-messages"
+                      >
+                        {showMessages ? "Hide" : "View messages"}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  {showMessages && (
+                    <CardContent className="space-y-4">
+                      <div className="space-y-3 max-h-72 overflow-y-auto px-1">
+                        {messages.length === 0 ? (
+                          <p className="text-sm text-muted-foreground text-center py-6">
+                            No messages yet. Send the first message to this patient.
+                          </p>
+                        ) : (
+                          messages.map((msg) => {
+                            const isClinician = msg.senderType === 'clinician';
+                            return (
+                              <div key={msg.id} className={`flex ${isClinician ? "justify-end" : "justify-start"}`}>
+                                <div className={cn("max-w-xs rounded-xl px-3 py-2 text-sm", isClinician ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
+                                  {!isClinician && (
+                                    <p className="text-xs font-medium text-muted-foreground mb-1">{selectedPatient!.firstName}</p>
+                                  )}
+                                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                                  <p className={cn("text-xs mt-1", isClinician ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                                    {new Date(msg.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                    {!isClinician && !msg.readAt && <span className="ml-2 text-amber-600 font-medium">Unread</span>}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        <div ref={messageBottomRef} />
+                      </div>
+                      <div className="flex items-end gap-2 border-t pt-3">
+                        <textarea
+                          className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[36px] max-h-24 outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="Write a message to this patient…"
+                          rows={1}
+                          value={messageDraft}
+                          onChange={(e) => setMessageDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }
+                          }}
+                          data-testid="input-clinician-message"
+                        />
+                        <Button size="icon" onClick={() => { if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }} disabled={!messageDraft.trim() || sendMessageMutation.isPending} data-testid="button-clinician-send-message">
+                          <Send className="w-4 h-4" />
+                        </Button>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Press Enter to send · Shift+Enter for new line</p>
+                    </CardContent>
+                  )}
+                </Card>
+              )}
+
+              {/* ── Supplement Orders — shown early so orders aren't missed ── */}
+              {patientOrders.length > 0 && (
+                <Card data-testid="card-supplement-orders">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <ShoppingBag className="w-4 h-4 text-muted-foreground" />
+                        Supplement Orders
+                        {patientOrders.filter(o => o.status === 'pending').length > 0 && (
+                          <Badge className="text-xs" style={{ backgroundColor: "#7a5c20", color: "#fdf8ee" }}>
+                            {patientOrders.filter(o => o.status === 'pending').length} pending
+                          </Badge>
+                        )}
+                      </CardTitle>
+                      <Button variant="ghost" size="sm" onClick={() => setShowOrders(!showOrders)} className="text-xs" data-testid="button-toggle-orders">
+                        {showOrders ? "Hide" : "View orders"}
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  {showOrders && (
+                    <CardContent className="space-y-3">
+                      {patientOrders.map((order) => (
+                        <div key={order.id} className="rounded-lg border p-3 space-y-2" style={{ borderColor: "#e0d4b8", backgroundColor: order.status === 'pending' ? "#fdfaf3" : "transparent" }}>
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              {order.status === 'pending' ? (
+                                <Badge className="text-xs" style={{ backgroundColor: "#7a5c20", color: "#fdf8ee" }}>Pending</Badge>
+                              ) : order.status === 'fulfilled' ? (
+                                <Badge variant="secondary" className="text-xs">Fulfilled</Badge>
+                              ) : (
+                                <Badge variant="outline" className="text-xs">Cancelled</Badge>
+                              )}
+                              <span className="text-xs text-muted-foreground">
+                                {new Date(order.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                              </span>
+                            </div>
+                            <div className="flex items-center gap-2">
+                              <span className="text-sm font-semibold">${parseFloat(order.subtotal).toFixed(2)}</span>
+                              {order.status === 'pending' && (
+                                <Button size="sm" variant="ghost" className="text-xs h-7 px-2 gap-1" onClick={() => fulfillOrderMutation.mutate(order.id)} disabled={fulfillOrderMutation.isPending} data-testid={`button-fulfill-${order.id}`}>
+                                  <CheckCircle className="w-3 h-3" />
+                                  Mark fulfilled
+                                </Button>
+                              )}
+                            </div>
+                          </div>
+                          <div className="space-y-1">
+                            {order.items.map((item, i) => (
+                              <div key={i} className="flex items-center justify-between text-xs text-muted-foreground">
+                                <span>{item.name} ({item.dose}) × {item.quantity}</span>
+                                <span>${item.lineTotal.toFixed(2)}</span>
+                              </div>
+                            ))}
+                          </div>
+                          {order.patientNotes && (
+                            <p className="text-xs text-muted-foreground italic border-t pt-2 mt-1">"{order.patientNotes}"</p>
+                          )}
+                        </div>
+                      ))}
+                    </CardContent>
+                  )}
+                </Card>
+              )}
+
               <ClinicalSnapshot labs={labs} patient={selectedPatient} />
               <LabHistoryList
                 labs={labs}
@@ -1134,106 +1325,6 @@ export default function PatientProfiles() {
                 />
               )}
               {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
-
-              {/* Messaging panel — available whenever patient has a portal account */}
-              {portalStatus?.hasPortalAccount && (
-                <Card>
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                        Portal Messages
-                        {(unreadData?.count ?? 0) > 0 && !showMessages && (
-                          <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
-                            {unreadData!.count} new
-                          </Badge>
-                        )}
-                      </CardTitle>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowMessages(!showMessages)}
-                        className="text-xs"
-                        data-testid="button-toggle-messages"
-                      >
-                        {showMessages ? "Hide" : "View messages"}
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  {showMessages && (
-                    <CardContent className="space-y-4">
-                      {/* Thread */}
-                      <div className="space-y-3 max-h-72 overflow-y-auto px-1">
-                        {messages.length === 0 ? (
-                          <p className="text-sm text-muted-foreground text-center py-6">
-                            No messages yet. Send the first message to this patient.
-                          </p>
-                        ) : (
-                          messages.map((msg) => {
-                            const isClinician = msg.senderType === 'clinician';
-                            return (
-                              <div key={msg.id} className={`flex ${isClinician ? "justify-end" : "justify-start"}`}>
-                                <div
-                                  className={cn(
-                                    "max-w-xs rounded-xl px-3 py-2 text-sm",
-                                    isClinician
-                                      ? "bg-primary text-primary-foreground"
-                                      : "bg-muted text-foreground"
-                                  )}
-                                >
-                                  {!isClinician && (
-                                    <p className="text-xs font-medium text-muted-foreground mb-1">
-                                      {selectedPatient!.firstName}
-                                    </p>
-                                  )}
-                                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                                  <p className={cn("text-xs mt-1", isClinician ? "text-primary-foreground/60" : "text-muted-foreground")}>
-                                    {new Date(msg.createdAt).toLocaleString("en-US", {
-                                      month: "short", day: "numeric",
-                                      hour: "numeric", minute: "2-digit"
-                                    })}
-                                    {!isClinician && !msg.readAt && (
-                                      <span className="ml-2 text-amber-600 font-medium">Unread</span>
-                                    )}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                        <div ref={messageBottomRef} />
-                      </div>
-
-                      {/* Compose */}
-                      <div className="flex items-end gap-2 border-t pt-3">
-                        <textarea
-                          className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[36px] max-h-24 outline-none focus:ring-1 focus:ring-ring"
-                          placeholder="Write a message to this patient…"
-                          rows={1}
-                          value={messageDraft}
-                          onChange={(e) => setMessageDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) {
-                              e.preventDefault();
-                              if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim());
-                            }
-                          }}
-                          data-testid="input-clinician-message"
-                        />
-                        <Button
-                          size="icon"
-                          onClick={() => { if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }}
-                          disabled={!messageDraft.trim() || sendMessageMutation.isPending}
-                          data-testid="button-clinician-send-message"
-                        >
-                          <Send className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Press Enter to send · Shift+Enter for new line</p>
-                    </CardContent>
-                  )}
-                </Card>
-              )}
             </div>
           )}
         </div>

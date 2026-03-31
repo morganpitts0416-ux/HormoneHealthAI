@@ -1,4 +1,4 @@
-import { eq, desc, ilike, or, and, isNull, count } from "drizzle-orm";
+import { eq, desc, ilike, or, and, isNull, count, sql } from "drizzle-orm";
 import { drizzle } from "drizzle-orm/neon-serverless";
 import { Pool, neonConfig } from "@neondatabase/serverless";
 import ws from "ws";
@@ -110,6 +110,11 @@ export interface IStorage {
   createSupplementOrder(order: InsertSupplementOrder): Promise<SupplementOrder>;
   getSupplementOrdersByPatient(patientId: number): Promise<SupplementOrder[]>;
   getSupplementOrdersByClinicianPatient(clinicianId: number, patientId: number): Promise<SupplementOrder[]>;
+  getPendingOrdersForClinician(clinicianId: number): Promise<Array<SupplementOrder & { patientFirstName: string; patientLastName: string }>>;
+  updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string): Promise<SupplementOrder | undefined>;
+
+  // Clinician notification helpers
+  getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>>;
 }
 
 export class DbStorage implements IStorage {
@@ -604,6 +609,63 @@ export class DbStorage implements IStorage {
         eq(schema.supplementOrders.patientId, patientId),
       ))
       .orderBy(desc(schema.supplementOrders.createdAt));
+  }
+
+  async getPendingOrdersForClinician(clinicianId: number): Promise<Array<SupplementOrder & { patientFirstName: string; patientLastName: string }>> {
+    const rows = await db
+      .select({
+        id: schema.supplementOrders.id,
+        patientId: schema.supplementOrders.patientId,
+        clinicianId: schema.supplementOrders.clinicianId,
+        items: schema.supplementOrders.items,
+        subtotal: schema.supplementOrders.subtotal,
+        status: schema.supplementOrders.status,
+        patientNotes: schema.supplementOrders.patientNotes,
+        createdAt: schema.supplementOrders.createdAt,
+        patientFirstName: schema.patients.firstName,
+        patientLastName: schema.patients.lastName,
+      })
+      .from(schema.supplementOrders)
+      .innerJoin(schema.patients, eq(schema.supplementOrders.patientId, schema.patients.id))
+      .where(and(
+        eq(schema.supplementOrders.clinicianId, clinicianId),
+        eq(schema.supplementOrders.status, 'pending'),
+      ))
+      .orderBy(desc(schema.supplementOrders.createdAt));
+    return rows;
+  }
+
+  async updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string): Promise<SupplementOrder | undefined> {
+    const result = await db.update(schema.supplementOrders)
+      .set({ status })
+      .where(and(eq(schema.supplementOrders.id, orderId), eq(schema.supplementOrders.clinicianId, clinicianId)))
+      .returning();
+    return result[0];
+  }
+
+  async getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>> {
+    const rows = await db.execute(sql`
+      SELECT
+        p.id          AS patient_id,
+        p.first_name  AS patient_first_name,
+        p.last_name   AS patient_last_name,
+        COUNT(pm.id)::int  AS count,
+        MAX(pm.created_at)::text AS last_at
+      FROM portal_messages pm
+      JOIN patients p ON pm.patient_id = p.id
+      WHERE p.clinician_id = ${clinicianId}
+        AND pm.sender_type = 'patient'
+        AND pm.read_at IS NULL
+      GROUP BY p.id, p.first_name, p.last_name
+      ORDER BY last_at DESC
+    `);
+    return (rows.rows as any[]).map(r => ({
+      patientId: Number(r.patient_id),
+      patientFirstName: r.patient_first_name as string,
+      patientLastName: r.patient_last_name as string,
+      count: Number(r.count),
+      lastAt: r.last_at as string,
+    }));
   }
 }
 
