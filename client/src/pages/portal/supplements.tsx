@@ -13,6 +13,8 @@ import { usePortalUnreadCount } from "@/hooks/use-portal-unread";
 import type { SupplementRecommendation, SupplementOrder, SupplementOrderItem } from "@shared/schema";
 import { getSupplementPrice, formatPrice } from "@/lib/supplement-prices";
 
+const MEMBER_DISCOUNT = 0.20;
+
 interface PortalPatient {
   patientId: number;
   email: string;
@@ -88,7 +90,10 @@ function ProtocolRow({ supplement, index }: { supplement: SupplementRecommendati
         </div>
         <div className="flex items-center gap-3 flex-shrink-0 ml-2">
           {priceInfo && (
-            <span className="text-sm font-semibold" style={{ color: "#2e3a20" }}>{formatPrice(priceInfo.price)}</span>
+            <div className="text-right">
+              <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>{formatPrice(priceInfo.price)}</p>
+              <p className="text-sm font-semibold" style={{ color: "#2e3a20" }}>{formatPrice(priceInfo.price * (1 - MEMBER_DISCOUNT))}</p>
+            </div>
           )}
           <span style={{ color: "#b0b8a0" }}>
             {expanded ? <ChevronUp className="w-4 h-4" /> : <ChevronDown className="w-4 h-4" />}
@@ -152,7 +157,8 @@ function ShopRow({ supplement, cartItem, onQtyChange, index }: {
         <div className="flex items-center gap-3 flex-shrink-0">
           {priceInfo ? (
             <div className="text-right">
-              <p className="text-sm font-bold" style={{ color: "#2e3a20" }}>{formatPrice(priceInfo.price)}</p>
+              <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>{formatPrice(priceInfo.price)}</p>
+              <p className="text-sm font-bold" style={{ color: "#2e3a20" }}>{formatPrice(priceInfo.price * (1 - MEMBER_DISCOUNT))}</p>
               <p className="text-xs" style={{ color: "#a0a880" }}>{priceInfo.supplyDays}-day supply</p>
             </div>
           ) : (
@@ -233,8 +239,10 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
+  const discountAmount = subtotal * MEMBER_DISCOUNT;
+  const discountedSubtotal = subtotal - discountAmount;
   const shipping = fulfillment === "delivery" ? SHIPPING_FEE : 0;
-  const finalTotal = subtotal + shipping;
+  const finalTotal = discountedSubtotal + shipping;
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -250,6 +258,7 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
       }));
       const fullNotes = [
         `Fulfillment: ${fulfillment === "pickup" ? "In-clinic pickup (Free)" : `Ship to address on file (+$${SHIPPING_FEE} shipping)`}`,
+        `Member discount: 20% off (-${formatPrice(discountAmount)})`,
         notes ? `Note: ${notes}` : "",
       ].filter(Boolean).join(" · ");
       const res = await fetch("/api/portal/supplement-orders", {
@@ -290,9 +299,14 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
                   <p className="text-sm font-medium leading-tight" style={{ color: "#1c2414" }}>{item.supplement.name}</p>
                   <p className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>{item.supplement.dose} · {item.supplyDays}-day supply × {item.quantity}</p>
                 </div>
-                <p className="text-sm font-semibold flex-shrink-0" style={{ color: "#2e3a20" }}>
-                  {formatPrice(item.price * item.quantity)}
-                </p>
+                <div className="text-right flex-shrink-0">
+                  <p className="text-sm font-semibold" style={{ color: "#2e3a20" }}>
+                    {formatPrice(item.price * (1 - MEMBER_DISCOUNT) * item.quantity)}
+                  </p>
+                  <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>
+                    {formatPrice(item.price * item.quantity)}
+                  </p>
+                </div>
               </div>
             ))}
           </div>
@@ -337,7 +351,11 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
           <div className="mx-5 my-3 rounded-xl px-4 py-3 space-y-1.5" style={{ backgroundColor: "#edf2e6" }}>
             <div className="flex items-center justify-between">
               <span className="text-xs" style={{ color: "#4a5e36" }}>Subtotal</span>
-              <span className="text-xs font-medium" style={{ color: "#2e3a20" }}>{formatPrice(subtotal)}</span>
+              <span className="text-xs font-medium line-through" style={{ color: "#a0a880" }}>{formatPrice(subtotal)}</span>
+            </div>
+            <div className="flex items-center justify-between">
+              <span className="text-xs font-medium" style={{ color: "#3a6e3a" }}>Member Discount (20%)</span>
+              <span className="text-xs font-semibold" style={{ color: "#3a6e3a" }}>-{formatPrice(discountAmount)}</span>
             </div>
             <div className="flex items-center justify-between">
               <span className="text-xs" style={{ color: "#4a5e36" }}>
@@ -642,6 +660,7 @@ export default function PortalSupplements() {
   const cartItems = Array.from(cart.values());
   const cartCount = cartItems.reduce((a, c) => a + c.quantity, 0);
   const subtotal = cartItems.reduce((a, c) => a + c.price * c.quantity, 0);
+  const discountedCartTotal = subtotal * (1 - MEMBER_DISCOUNT);
 
   const highPriority = allSupplements.filter(s => s.priority === "high");
   const medium = allSupplements.filter(s => s.priority === "medium");
@@ -695,6 +714,13 @@ export default function PortalSupplements() {
           <p className="text-sm" style={{ color: "#7a8a64" }}>
             Review your personalized protocol and order supplements directly from your care team.
           </p>
+          {/* Member discount notice */}
+          <div className="flex items-center gap-2 mt-3 rounded-lg px-3 py-2.5" style={{ backgroundColor: "#edf2e6", border: "1px solid #c8dbb8" }}>
+            <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#3a6e3a" }} />
+            <p className="text-xs font-medium" style={{ color: "#2e4a2e" }}>
+              As a member, you receive <span className="font-bold">20% off</span> all Metagenics supplement orders.
+            </p>
+          </div>
         </div>
 
         {/* Mode toggle */}
@@ -830,7 +856,10 @@ export default function PortalSupplements() {
                 </span>
                 <span className="text-sm font-semibold">Review Order</span>
               </div>
-              <span className="text-sm font-bold">{formatPrice(subtotal)}</span>
+              <div className="text-right">
+                <span className="text-sm font-bold">{formatPrice(discountedCartTotal)}</span>
+                <p className="text-xs opacity-75 line-through leading-none">{formatPrice(subtotal)}</p>
+              </div>
             </button>
           </div>
         </div>
