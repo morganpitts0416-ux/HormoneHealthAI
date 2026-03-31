@@ -58,16 +58,19 @@ export default function PortalMessages() {
     retry: false,
   });
 
-  // Both 'in_app' and 'external_api' show the in-app thread to patients
+  // Both 'in_app' and 'external_api' allow the patient to compose messages
   const isInApp = messagingConfig?.messagingPreference === 'in_app' ||
     messagingConfig?.messagingPreference === 'external_api';
 
+  // Always fetch messages — clinician-initiated messages are always visible regardless of preference
   const { data: messages = [], isLoading: messagesLoading } = useQuery<PortalMessage[]>({
     queryKey: ["/api/portal/messages"],
-    enabled: !!patient && isInApp,
+    enabled: !!patient,
     refetchInterval: 15000,
     retry: false,
   });
+
+  const hasClinicianMessages = messages.some(m => m.senderType === 'clinician');
 
   const logoutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/portal/logout", {}),
@@ -180,8 +183,8 @@ export default function PortalMessages() {
             </div>
           )}
 
-          {/* 'none' mode */}
-          {messagingConfig?.messagingPreference === 'none' && (
+          {/* 'none' mode — show thread if clinician has sent messages, otherwise show placeholder */}
+          {messagingConfig?.messagingPreference === 'none' && !hasClinicianMessages && (
             <div className="text-center py-16 space-y-3">
               <div
                 className="w-14 h-14 rounded-full flex items-center justify-center mx-auto"
@@ -190,16 +193,16 @@ export default function PortalMessages() {
                 <MessageSquare className="w-6 h-6" style={{ color: "#a0a880" }} />
               </div>
               <p className="text-sm font-medium" style={{ color: "#1c2414" }}>
-                Messaging not available
+                No messages yet
               </p>
               <p className="text-sm leading-relaxed max-w-xs mx-auto" style={{ color: "#7a8a64" }}>
-                Your care team has not enabled portal messaging. Please contact your clinic directly.
+                Messages from your care team will appear here.
               </p>
             </div>
           )}
 
-          {/* in_app mode */}
-          {isInApp && messagesLoading ? (
+          {/* in_app mode or clinician-initiated messages in any mode */}
+          {(isInApp || hasClinicianMessages) && messagesLoading ? (
             <div className="text-center py-12">
               <p className="text-sm" style={{ color: "#7a8a64" }}>Loading messages…</p>
             </div>
