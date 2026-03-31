@@ -690,8 +690,6 @@ export default function PatientProfiles() {
   });
 
   const { user } = useAuth();
-  const messagingPreference = (user as any)?.messagingPreference;
-  const messagingEnabled = messagingPreference === 'in_app' || messagingPreference === 'external_api';
 
   interface PortalMessage {
     id: number;
@@ -711,7 +709,7 @@ export default function PatientProfiles() {
       if (!res.ok) return [];
       return res.json();
     },
-    enabled: !!selectedPatient && messagingEnabled && showMessages,
+    enabled: !!selectedPatient && showMessages,
     refetchInterval: showMessages ? 15000 : false,
   });
 
@@ -723,7 +721,7 @@ export default function PatientProfiles() {
       if (!res.ok) return { count: 0 };
       return res.json();
     },
-    enabled: !!selectedPatient && messagingEnabled,
+    enabled: !!selectedPatient,
     refetchInterval: 30000,
   });
 
@@ -1137,8 +1135,8 @@ export default function PatientProfiles() {
               )}
               {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
 
-              {/* Messaging panel — only visible when clinician has in-app messaging enabled */}
-              {messagingEnabled && portalStatus?.hasPortalAccount && (
+              {/* Messaging panel — available whenever patient has a portal account */}
+              {portalStatus?.hasPortalAccount && (
                 <Card>
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">

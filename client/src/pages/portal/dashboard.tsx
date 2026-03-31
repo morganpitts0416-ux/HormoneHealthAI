@@ -994,6 +994,34 @@ export default function PortalDashboard() {
           )}
         </div>
 
+        {/* Unread message notification banner — always visible when there are unread messages */}
+        {unreadCount > 0 && (
+          <Link href="/portal/messages">
+            <div
+              className="flex items-center gap-3 rounded-xl px-4 py-4 cursor-pointer"
+              style={{ backgroundColor: "#edf2e6", border: "1px solid #c8dbb8" }}
+              data-testid="banner-unread-messages"
+            >
+              <div className="relative flex-shrink-0">
+                <MessageSquare className="w-5 h-5" style={{ color: "#2e3a20" }} />
+                <span
+                  className="absolute -top-1.5 -right-1.5 w-4 h-4 rounded-full text-xs font-bold flex items-center justify-center"
+                  style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                >
+                  {unreadCount > 9 ? "9+" : unreadCount}
+                </span>
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+                  {unreadCount === 1 ? "1 new message" : `${unreadCount} new messages`} from your care team
+                </p>
+                <p className="text-xs" style={{ color: "#7a8a64" }}>Tap to view and reply</p>
+              </div>
+              <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
+            </div>
+          </Link>
+        )}
+
         {/* Message Provider button */}
         {messagingConfig && messagingConfig.messagingPreference !== 'none' && (
           <div>
