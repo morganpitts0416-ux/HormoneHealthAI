@@ -168,7 +168,7 @@ const markerProfiles: MarkerProfile[] = [
     }
   },
   {
-    name: 'Fasting Glucose', key: 'fastingGlucose', unit: 'mg/dL', lowerIsBetter: true,
+    name: 'Fasting Glucose', key: 'glucose', unit: 'mg/dL', lowerIsBetter: true,
     optimalMax: 100, criticalMax: 200,
     getClinicianInsight: (c, p, d) => {
       if (d === 'improved') return `Fasting glucose improved (${p} -> ${c} mg/dL). ${c <= 100 ? 'Now within normal range.' : 'Continue monitoring.'}`;
@@ -276,6 +276,42 @@ const markerProfiles: MarkerProfile[] = [
       if (d === 'improved') return `Your SHBG (a protein that affects hormone availability) has improved from ${p} to ${c}.`;
       if (d === 'worsened') return `Your SHBG has shifted from ${p} to ${c}, which may affect how your body uses hormones.`;
       return `Your SHBG is stable at ${c}.`;
+    }
+  },
+  {
+    name: 'Progesterone', key: 'progesterone', unit: 'ng/mL',
+    getClinicianInsight: (c, p, d) => {
+      if (d === 'improved') return `Progesterone improved (${p} → ${c} ng/mL). ${c >= 5 ? 'Consistent with adequate luteal function.' : 'Continue monitoring — still below optimal luteal range.'}`;
+      if (d === 'worsened') {
+        if (c < 1) return `Progesterone very low at ${c} ng/mL (was ${p}). Consider cycle phase at draw — if luteal, low progesterone may indicate anovulation or luteal phase defect.`;
+        return `Progesterone declining (${p} → ${c} ng/mL). Correlate with cycle phase; consider bioidentical progesterone support if symptomatic.`;
+      }
+      return `Progesterone stable at ${c} ng/mL.`;
+    },
+    getPatientInsight: (c, p, d) => {
+      if (d === 'improved') return `Your progesterone level has improved from ${p} to ${c} ng/mL.`;
+      if (d === 'worsened') return `Your progesterone has changed from ${p} to ${c} ng/mL — we'll review this at your next visit.`;
+      return `Your progesterone is stable at ${c} ng/mL.`;
+    }
+  },
+  {
+    name: 'FSH', key: 'fsh', unit: 'mIU/mL',
+    getClinicianInsight: (c, p, d) => {
+      if (d === 'worsened') {
+        if (c > 40) return `FSH markedly elevated (${c} mIU/mL; was ${p}). Consistent with diminished ovarian reserve or menopause. Correlate with estradiol, AMH, and LH.`;
+        if (c > 10) return `FSH rising (${p} → ${c} mIU/mL). May indicate declining ovarian reserve — correlate with AMH and estradiol trends.`;
+        return `FSH increasing (${p} → ${c} mIU/mL). Monitor in context of cycle phase.`;
+      }
+      if (d === 'improved') return `FSH improving (${p} → ${c} mIU/mL). Positive trend for ovarian reserve or hormonal balance.`;
+      return `FSH stable at ${c} mIU/mL.`;
+    },
+    getPatientInsight: (c, p, d) => {
+      if (d === 'worsened') {
+        if (c > 40) return `Your FSH is elevated at ${c}, which can indicate changes in your reproductive hormones — we'll discuss what this means for you.`;
+        return `Your FSH has risen from ${p} to ${c}. We'll monitor this trend.`;
+      }
+      if (d === 'improved') return `Your FSH has improved from ${p} to ${c} — a positive sign.`;
+      return `Your FSH is stable at ${c}.`;
     }
   },
   {
