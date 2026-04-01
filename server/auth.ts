@@ -26,16 +26,28 @@ passport.use(
     { usernameField: "username", passwordField: "password" },
     async (username, password, done) => {
       try {
-        // Accept either username or email
         const user = await storage.getUserByUsername(username)
           ?? await storage.getUserByEmail(username.trim().toLowerCase());
         if (!user) {
           return done(null, false, { message: "Invalid username or password" });
         }
+
+        // HIPAA: Check if account is locked
+        if (user.lockedUntil && new Date(user.lockedUntil) > new Date()) {
+          const minutesLeft = Math.ceil((new Date(user.lockedUntil).getTime() - Date.now()) / 60000);
+          return done(null, false, {
+            message: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute${minutesLeft !== 1 ? 's' : ''}.`
+          });
+        }
+
         const valid = await bcrypt.compare(password, user.passwordHash);
         if (!valid) {
+          storage.recordLoginAttempt(user.id, false).catch(() => {});
           return done(null, false, { message: "Invalid username or password" });
         }
+
+        // Success — reset lockout counter
+        storage.recordLoginAttempt(user.id, true).catch(() => {});
         return done(null, user);
       } catch (err) {
         return done(err);

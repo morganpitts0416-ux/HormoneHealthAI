@@ -26,6 +26,7 @@ import PortalDashboard from "@/pages/portal/dashboard";
 import PortalSupplements from "@/pages/portal/supplements";
 import PortalMessages from "@/pages/portal/messages";
 import StaffSetPassword from "@/pages/staff-set-password";
+import { SessionTimeoutModal } from "@/components/session-timeout-modal";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -46,7 +47,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
 
   if (!user) return null;
-  return <Component />;
+  return (
+    <>
+      <SessionTimeoutModal />
+      <Component />
+    </>
+  );
 }
 
 function AdminRoute({ component: Component }: { component: React.ComponentType }) {

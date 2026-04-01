@@ -1,36 +1,7 @@
 # ClinIQ Lab Interpretation - Multi-Tenant SaaS Platform
 
 ## Overview
-ClinIQ is a multi-tenant SaaS clinical lab interpretation platform for staff in men's and women's hormone and primary care clinics. Clinicians register for their own account (with clinic name, NPI, credentials) and log in to access a fully isolated workspace. The platform efficiently interprets standard lab panels, applies clinical protocols, generates AI-powered recommendations, and identifies critical "red flag" values. It supports gender-specific lab interpretation, comprehensive patient wellness reports, and advanced risk assessments.
-
-## SaaS Architecture
-- **Multi-tenant**: Each clinician account has completely isolated patient data, lab results, and saved interpretations — one clinic cannot access another's data
-- **Authentication**: Session-based auth using express-session + passport-local + bcrypt; sessions stored in PostgreSQL via connect-pg-simple
-- **Enrollment**: 3-step registration wizard (personal info → clinic info → account credentials)
-- **Dashboard**: Clean home page with Male/Female eval actions, patient search, recent patients
-- **Account page**: Clinicians can update their clinic name, NPI, contact info, credentials, and manage staff
-
-## Staff Access System
-- **Staff table**: `clinician_staff` — stores email, first/last name, role (nurse/assistant/staff), bcrypt password hash, invite token + expiry, isActive flag
-- **Staff auth flow**: Clinician invites staff from Account page → staff receives email with `/staff-set-password?token=...` link (72hr) → staff sets password → staff logs in at `/login` using email address
-- **Staff sessions**: Stored in `req.session.staffId` + `req.session.staffClinicianId`; `getClinicianId(req)` helper returns the owning clinician's ID for all data operations
-- **`requireAuth` middleware**: Accepts both clinician (passport) and staff (session.staffId) sessions
-- **`requireClinicianOnly` middleware**: Blocks staff from account settings, messaging settings, and admin routes
-- **Staff workspace access**: Full read/write to all patient records, lab interpretations, protocols, and messages in the clinician's workspace
-- **Account page**: When staff is logged in — shows staff identity in profile hero, amber "Staff account" notice, hides profile/messaging forms; Team Members section (invite/remove) visible only to clinicians
-- **Routes**: `GET/POST/DELETE /api/staff`, `POST /api/auth/staff-set-password`; staff management guarded by `requireClinicianOnly`
-
-## Routing
-- `/` → Redirects to `/login` (unauthenticated) or `/dashboard` (authenticated)
-- `/login` → Login page (public)
-- `/register` → 3-step enrollment wizard (public)
-- `/bootstrap` → One-time admin bootstrap page (public, requires ADMIN_BOOTSTRAP_TOKEN)
-- `/dashboard` → Protected home page (Male/Female eval, patient search)
-- `/account` → Protected clinic account settings
-- `/male` → Protected men's lab interpretation
-- `/female` → Protected women's lab interpretation
-- `/patients` → Protected patient profiles
-- `/admin` → Developer dashboard (admin role only) — manage clinician accounts, subscription status
+ClinIQ is a multi-tenant SaaS platform designed for staff in men's and women's hormone and primary care clinics. It provides an isolated workspace for each clinician to interpret standard lab panels, apply clinical protocols, generate AI-powered recommendations, and identify critical "red flag" values. The platform supports gender-specific lab interpretation, comprehensive patient wellness reports, and advanced risk assessments, aiming to streamline clinical decision-making and enhance patient care.
 
 ## User Preferences
 - Medical-grade professional interface
@@ -40,57 +11,38 @@ ClinIQ is a multi-tenant SaaS clinical lab interpretation platform for staff in 
 - Easy-to-read monospace fonts for numerical lab values
 
 ## System Architecture
-The application features a comprehensive lab input form, results display with color-coded status indicators, a red flag alert system, AI-powered recommendations, and a patient summary generator. It supports a professional medical UI design with Inter/JetBrains Mono fonts and responsive layouts.
+The ClinIQ platform features a comprehensive lab input, results display with color-coded status indicators, a red flag alert system, AI-powered recommendations, and a patient summary generator, all within a professional medical UI.
 
-Key architectural decisions and features include:
+**Core Architectural Decisions and Features:**
+-   **Multi-tenant SaaS**: Ensures isolated patient data, lab results, and interpretations for each clinician account.
+-   **Authentication & Authorization**: Session-based authentication with `express-session`, `passport-local`, and `bcrypt` for clinicians. A dedicated staff access system allows invited staff to operate within the clinician's workspace with role-based restrictions.
+-   **AI-Powered PDF Upload**: Automatic extraction of lab values from Pathgroup and hospital PDFs.
+-   **Advanced Risk Assessments**:
+    -   **PREVENT Cardiovascular Risk Assessment (2023 AHA)**: Implements official AHA equations for 10-year and 30-year CVD, ASCVD, and Heart Failure risks.
+    -   **Advanced Lipid Marker Assessment**: Includes ApoB and Lp(a) assessment with adjusted risk.
+    -   **hs-CRP Interpretation**: Standard interpretation for risk stratification.
+-   **STOP-BANG Sleep Apnea Screening**: Integrates an 8-component questionnaire for OSA risk assessment.
+-   **Clinical Logic Engine**: Implements standing orders and red flag thresholds for various conditions (e.g., erythrocytosis, testosterone optimization, lipid management) with gender-specific logic, including platelet interpretation and FIB-4 scoring.
+-   **Female-Specific Workflows**: Dedicated routes, reference ranges, menstrual phase context for hormone interpretation, and specific lab markers. Features Female Testosterone Pattern Recognition for clinical optimization.
+-   **Insulin Resistance Screening**: Identifies likelihood and four phenotypes with trigger criteria, pathophysiology, and treatment recommendations.
+-   **AI-Generated SOAP Notes**: Creates chart-ready notes incorporating lab values, red flags, risk scores, and supplement recommendations.
+-   **Patient Profiles & Lab History Tracking**: Persistent patient profiles with searchable selection, lab history view, trend indicators, and trend charts. The system provides clinical trend insights for 21 lab markers, generating both clinician and patient-facing insights.
+-   **Patient Wellness PDF Report**: Generates comprehensive patient-facing wellness PDFs with AI-powered personalized diet, supplement, and lifestyle recommendations, including smoking cessation education.
+-   **Metagenics Supplement Catalog Integration**: Recommends Metagenics supplements based on lab values, symptoms, and detected phenotypes, with an interactive provider-facing selector for customization.
+-   **Portal Messaging System**: Supports four modes: None, In-app, SMS link, and External API (two-way bridge) for integration with external messaging platforms like Spruce or Klara via webhooks.
+-   **HIPAA Technical Controls**: Includes audit logging, login lockout mechanisms (after 5 failed attempts), client-side session timeout with warning dialogs, and robust password strength enforcement.
+-   **Email Integration**: Supports clinician invite flows and password reset functionalities, using an email service (currently stubbed, configurable for Resend API).
 
--   **AI-Powered PDF Upload**: Automatic lab value extraction and form pre-filling from Pathgroup and hospital PDFs (up to 10MB).
--   **PREVENT Cardiovascular Risk Assessment (2023 AHA)**: Implements official AHA PREVENT equations for 10-year and 30-year risks for Total CVD, ASCVD, and Heart Failure, validated to produce exact matches with the official calculator. It is a race-free model using logistic regression with specific variable transformations.
--   **Advanced Lipid Marker Assessment**: Includes ApoB and Lp(a) assessment with adjusted risk and reclassification logic based on specific thresholds and unit detection.
--   **hs-CRP Interpretation**: Standard interpretation based on mg/L units for risk stratification.
--   **STOP-BANG Sleep Apnea Screening**: Integrates an 8-component questionnaire for OSA risk assessment, scoring, and clinical guidance.
--   **Clinical Logic Engine**: Implements standing orders and red flag thresholds for various conditions (e.g., erythrocytosis, testosterone optimization, lipid management, liver/kidney function, PSA tracking, glycemic control, hormonal assessment) with gender-specific logic, including detailed platelet interpretation and FIB-4 scoring.
--   **Female Testosterone Pattern Recognition**: Defines four clinical optimization patterns (SHBG Trap, Low SHBG/High Activity, Supraphysiologic, Adequate Androgens/Persistent Symptoms) using SHBG, Free T, Bioavailable T, and Total T context.
--   **Female-Specific Workflow**: Dedicated route with female-specific reference ranges, menstrual phase context for hormone interpretation, and specific lab markers (e.g., AMH, Ferritin, Vitamin D, B12, SHBG, Free Testosterone, Bioavailable Testosterone).
--   **Insulin Resistance Screening**: Screens six metabolic markers to identify likelihood and four phenotypes (Visceral/Metabolic, Hepatic, Hormonal/PCOS-Type, Early/Lean), each with trigger criteria, pathophysiology, treatment recommendations, monitoring, and patient-facing explanations.
--   **AI-Generated SOAP Notes**: Creates chart-ready SOAP notes (Subjective, Objective, Assessment, Plan) incorporating lab values, red flags, risk scores, IR screening, and supplement recommendations, with copy-to-clipboard functionality and inclusion in provider PDFs.
--   **Patient Profiles & Lab History Tracking**: Persistent patient profiles with searchable patient selection, lab history view with trend indicators, and auto-save/manual save features. AI utilizes historical data for trend-aware recommendations and SOAP note generation.
--   **Patient Profiles Page** (`/patients`): Dedicated patient profile page with clinical snapshot (comparing latest vs prior labs with categorized improvements/concerns/urgent items/stable markers), clickable lab history with detail modals, enriched trend analysis, and visual trend charts. Accessible via "Patient Profiles" button from both lab interpretation pages. Shows all patients on load without requiring search. Lab detail modals include "Patient Report" and "Provider PDF" buttons for regenerating reports from any historical lab result. Lab results can be deleted from patient profiles with confirmation dialog (delete buttons on history items and in detail modal).
--   **Clinical Trend Insights Engine** (`client/src/lib/clinical-trend-insights.ts`): Rule-based engine producing clinician-facing and patient-facing insights for 21 lab markers. Each marker has clinical context for improved/worsened/stable directions, severity classification (positive/neutral/concern/urgent), and protocol-based recommendations (e.g., statin therapy for rising LDL, Vitamin D repletion protocols, diabetes screening for rising A1c, erythrocytosis management for elevated hematocrit).
--   **Lab Trend Charts**: Interactive Recharts-based line charts (`client/src/components/patient-trend-charts.tsx`) showing patient lab value trends over time for 21 markers grouped by category (Lipids, Metabolic, Hormones, Thyroid, Inflammation, CBC, Nutrients). Charts appear in the UI when a patient has 2+ lab results, with filterable group badges, goal/reference lines, and inline clinical insights color-coded by severity. Trend charts are also rendered natively in Patient Wellness PDFs (`client/src/lib/pdf-trend-charts.ts`) using jsPDF drawing primitives with patient-facing insight text below each chart when patient lab history is available.
--   **Smoking Cessation Education**: Includes a smoking cessation section in patient wellness PDFs with health benefits timeline and resources for current smokers.
--   **Frontend**: Built with React, TypeScript, Wouter for routing, Shadcn UI components, TanStack Query for data fetching, Tailwind CSS, and form validation using React Hook Form and Zod.
--   **Backend**: Uses Express.js.
+**Technology Stack:**
+-   **Frontend**: React, TypeScript, Wouter (routing), Shadcn UI (components), TanStack Query (data fetching), Tailwind CSS, React Hook Form and Zod (form validation).
+-   **Backend**: Express.js.
 -   **Database**: PostgreSQL with Drizzle ORM.
--   **Design System**: Employs Inter and JetBrains Mono fonts, a professional blue color scheme with medical-grade status colors, and Material Design-inspired components.
--   **Patient Wellness PDF Report (Women's Clinic)**: Generates comprehensive patient-facing wellness PDFs with AI-powered personalized diet, supplement, and lifestyle recommendations, and educational content.
--   **Metagenics Supplement Catalog**: Integrates a catalog of Metagenics supplements for both men's and women's clinics, with specific recommendation logic based on lab values, symptoms, and detected phenotypes (e.g., Vitamin D protocol, women's phenotype-driven recommendations, men's age-based recommendations). The women's supplement system uses a layered architecture for phenotype detection, supplement matching, prioritization, and explanation.
--   **Interactive Supplement Selector** (`client/src/components/supplement-selector.tsx`): Provider-facing component that displays the AI-generated supplement protocol with checkboxes (all checked by default). Providers can deselect any supplement to exclude it from the patient report, expand each row to see clinical rationale, supporting findings, linked phenotypes, and cautions, and add custom supplements (name, dose, patient-facing description) not in the standard Metagenics catalog. The curated list (selected standard + custom) is passed directly to both `generatePatientWellnessPDF` and `generateMalePatientWellnessPDF` via an optional `selectedSupplements` parameter, overriding the auto-generated supplement table in the patient PDF.
-
-## Portal Messaging System (3-mode)
-- **Mode 1 — None**: Patients see no messaging option in the portal.
-- **Mode 2 — In-app**: Full chat thread in the portal. Clinician replies from the patient profile in ReAlign.
-- **Mode 3 — SMS link**: Patients tap "Message Provider" and their native SMS app opens, pre-addressed to the clinic's Spruce (or any) number.
-- **Mode 4 — External API / Two-way bridge**: Patient messages are stored in ReAlign AND forwarded in real time to an external system (Spruce, Klara, or any webhook-capable platform) via the `server/external-messaging.ts` service layer. When the provider replies in their external app, a webhook fires to `POST /api/webhooks/messaging/:clinicianId`, which is verified via a shared secret, and the reply is stored in ReAlign so the patient sees it in-portal.
-- **External API infrastructure** (`server/external-messaging.ts`): Clean adapter pattern — Spruce adapter (ready for credentials), Klara adapter (stub), Custom/generic webhook adapter. `forwardMessageToExternalProvider()`, `parseInboundWebhook()`, `generateWebhookSecret()` functions.
-- **Account page**: Four-option radio tiles; external_api shows provider selector, API key input (never returned to client after save), channel/endpoint ID, webhook URL (read-only + copy), webhook secret (read-only + copy), and payload format reference.
-- **Schema**: `users` table has `externalMessagingProvider`, `externalMessagingApiKey`, `externalMessagingChannelId`, `externalMessagingWebhookSecret`; `portalMessages` has `externalMessageId` for deduplication.
-- **Webhook secret**: Auto-generated (64-char hex) on first save of `external_api` mode. Never regenerated unless you clear it manually.
-- **Security**: API key is stripped from `/api/auth/me` and `/api/auth/profile` responses — only an `externalMessagingApiKeySet: boolean` flag is returned. Full external config (webhook secret, webhook URL) available only via `/api/auth/messaging-settings`.
-
-## Email Integration (Pending Setup)
-- **Clinician invite flow**: Admin can add clinicians without a password — a 72-hour invite link is generated and sent via email so clinicians set their own password at `/set-password?token=...`
-- **Forgot password**: Login page has "Forgot your password?" → `/forgot-password` → generates 1-hour reset link → `/reset-password?token=...`
-- **Email service**: Uses Resend API (`RESEND_API_KEY` secret + `RESEND_FROM_EMAIL` env var). Currently in stub mode — links are logged to server console. To enable real email: store `RESEND_API_KEY` as a secret (free account at resend.com). Code is in `server/email-service.ts`.
-- **NOTE**: Resend Replit integration was dismissed. Use `RESEND_API_KEY` environment secret directly. Alternatively, SendGrid can be wired up in `server/email-service.ts`.
+-   **Design System**: Inter and JetBrains Mono fonts, professional blue color scheme, Material Design-inspired components.
 
 ## External Dependencies
 -   **OpenAI**: For AI-powered recommendations, PDF text extraction, and summary generation.
--   **PostgreSQL**: Primary database.
--   **Drizzle ORM**: Database interaction.
--   **multer**: For handling PDF uploads.
--   **jsPDF**: For generating PDF reports.
--   **Wouter**: Frontend routing.
--   **Shadcn UI**: UI component library.
--   **TanStack Query**: Data fetching and state management.
--   **Zod**: Schema validation.
+-   **PostgreSQL**: Primary database for data storage.
+-   **multer**: For handling file uploads, specifically PDFs.
+-   **jsPDF**: For programmatic generation of PDF reports.
+-   **Resend API (Optional)**: For sending emails (clinician invites, password resets).
+-   **Spruce, Klara (or other webhook-capable platforms)**: For external messaging system integration.

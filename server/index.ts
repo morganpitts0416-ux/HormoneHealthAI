@@ -36,9 +36,9 @@ app.use(
     secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
-    rolling: true, // reset the 1-hour window on every request while active
+    rolling: true, // extend session on any request so background polls don't prematurely expire it
     cookie: {
-      maxAge: 60 * 60 * 1000, // 1 hour of inactivity
+      maxAge: 30 * 60 * 1000, // HIPAA: 30-minute window; client-side idle detection logs out on inactivity
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "lax" : false,

@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Lock, CheckCircle, AlertCircle, Loader2 } from "lucide-react";
+import { PasswordStrengthIndicator } from "@/components/password-strength-indicator";
 
 export default function ResetPassword() {
   const [, setLocation] = useLocation();
@@ -158,6 +159,7 @@ export default function ResetPassword() {
                       data-testid="input-new-password"
                     />
                   </div>
+                  <PasswordStrengthIndicator password={password} />
                 </div>
                 <div>
                   <Label htmlFor="confirm" className="text-[#2e3a20]">Confirm New Password</Label>
