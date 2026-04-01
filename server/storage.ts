@@ -93,6 +93,7 @@ export interface IStorage {
   getLatestPublishedProtocol(patientId: number): Promise<PublishedProtocol | undefined>;
   getAllPublishedProtocols(patientId: number): Promise<PublishedProtocol[]>;
   deleteProtocolsByLabResultId(labResultId: number): Promise<void>;
+  markProtocolViewed(protocolId: number): Promise<void>;
 
   // Portal messaging operations
   getPortalMessages(patientId: number): Promise<PortalMessage[]>;
@@ -471,6 +472,18 @@ export class DbStorage implements IStorage {
     await db
       .delete(schema.publishedProtocols)
       .where(eq(schema.publishedProtocols.labResultId, labResultId));
+  }
+
+  async markProtocolViewed(protocolId: number): Promise<void> {
+    await db
+      .update(schema.publishedProtocols)
+      .set({ firstViewedAt: new Date() })
+      .where(
+        and(
+          eq(schema.publishedProtocols.id, protocolId),
+          isNull(schema.publishedProtocols.firstViewedAt),
+        )
+      );
   }
 
   // ── Portal message operations ─────────────────────────────────────────────────
