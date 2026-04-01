@@ -1597,11 +1597,8 @@ ${aiRecommendations}`;
       (req.session as any).portalPatientId = account.patientId;
       await new Promise<void>((resolve, reject) => req.session.save((err) => err ? reject(err) : resolve()));
 
-      const patient = await storage.getPatient(account.patientId, -1).catch(() => undefined) ||
-        await (async () => {
-          const result = await storage.getLabResultsByPatient(account.patientId);
-          return null;
-        })();
+      // Stamp last login time
+      storage.updatePortalAccount(account.patientId, { lastLoginAt: new Date() }).catch(() => {});
 
       res.json({ message: "Logged in", patientId: account.patientId });
     } catch (error) {
@@ -1740,6 +1737,10 @@ ${aiRecommendations}`;
       const patientId = (req.session as any).portalPatientId as number;
       const protocol = await storage.getLatestPublishedProtocol(patientId);
       if (!protocol) return res.json(null);
+      // Stamp first viewed timestamp (no-op if already set)
+      if (!protocol.firstViewedAt) {
+        storage.markProtocolViewed(protocol.id).catch(() => {});
+      }
       // Get clinician info
       const clinician = await storage.getUserById(protocol.clinicianId);
       res.json({ ...protocol, clinicName: clinician?.clinicName, clinicianName: clinician ? `${clinician.title} ${clinician.firstName} ${clinician.lastName}` : undefined });
@@ -1820,12 +1821,25 @@ ${aiRecommendations}`;
       const publishedLabResultIds = allProtocols
         .map((p) => p.labResultId)
         .filter((id): id is number => id !== null && id !== undefined);
+
+      // Derive engagement status
+      let portalStatus: 'not_invited' | 'invite_pending' | 'active' = 'not_invited';
+      if (portalAccount) {
+        portalStatus = portalAccount.passwordHash ? 'active' : 'invite_pending';
+      }
+
       res.json({
         hasPortalAccount: !!portalAccount,
         hasPassword: !!(portalAccount?.passwordHash),
         email: portalAccount?.email || patient.email || null,
         lastProtocolPublished: latestProtocol?.publishedAt || null,
         publishedLabResultIds,
+        // Engagement fields
+        portalStatus,
+        lastLoginAt: portalAccount?.lastLoginAt || null,
+        latestReportViewedAt: latestProtocol?.firstViewedAt || null,
+        latestReportPublishedAt: latestProtocol?.publishedAt || null,
+        inviteSentAt: portalAccount?.createdAt || null,
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch portal status" });

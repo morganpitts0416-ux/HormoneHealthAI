@@ -697,6 +697,11 @@ export default function PatientProfiles() {
     email: string | null;
     lastProtocolPublished: string | null;
     publishedLabResultIds: number[];
+    portalStatus: 'not_invited' | 'invite_pending' | 'active';
+    lastLoginAt: string | null;
+    latestReportViewedAt: string | null;
+    latestReportPublishedAt: string | null;
+    inviteSentAt: string | null;
   }>({
     queryKey: ['/api/portal/status', selectedPatient?.id],
     queryFn: async () => {
@@ -1117,10 +1122,16 @@ export default function PatientProfiles() {
                     <Badge variant="outline" className="text-xs">
                       {labs.length} lab result{labs.length !== 1 ? 's' : ''}
                     </Badge>
-                    {portalStatus?.hasPortalAccount && (
+                    {portalStatus?.portalStatus === 'active' && (
                       <Badge className="text-xs gap-1" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d4a8" }}>
                         <Leaf className="w-2.5 h-2.5" />
                         Portal Active
+                      </Badge>
+                    )}
+                    {portalStatus?.portalStatus === 'invite_pending' && (
+                      <Badge className="text-xs gap-1" style={{ backgroundColor: "#fef9e7", color: "#7a5c20", border: "1px solid #f0d060" }}>
+                        <Mail className="w-2.5 h-2.5" />
+                        Invite Pending
                       </Badge>
                     )}
                   </div>
@@ -1165,6 +1176,66 @@ export default function PatientProfiles() {
                   </Button>
                 </div>
               </div>
+
+              {/* ── Portal Engagement Panel ────────────────────────── */}
+              {portalStatus && (
+                <div
+                  className="rounded-xl border px-4 py-3"
+                  style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
+                  data-testid="portal-engagement-panel"
+                >
+                  <p className="text-xs font-semibold uppercase tracking-wide mb-2.5" style={{ color: "#a0a880" }}>
+                    Patient Portal Engagement
+                  </p>
+                  <div className="flex flex-wrap gap-x-6 gap-y-2">
+                    {/* Invite / account status */}
+                    <div className="flex items-center gap-2">
+                      {portalStatus.portalStatus === 'active' ? (
+                        <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#2e7d32" }} />
+                      ) : portalStatus.portalStatus === 'invite_pending' ? (
+                        <Mail className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#b45309" }} />
+                      ) : (
+                        <XCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#c4b9a5" }} />
+                      )}
+                      <span className="text-xs" style={{ color: "#4a5568" }}>
+                        {portalStatus.portalStatus === 'active'
+                          ? 'Account activated'
+                          : portalStatus.portalStatus === 'invite_pending'
+                            ? `Invite sent${portalStatus.inviteSentAt ? ' ' + new Date(portalStatus.inviteSentAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' }) : ''} — awaiting signup`
+                            : 'Not invited to portal'}
+                      </span>
+                    </div>
+
+                    {/* Last login */}
+                    {portalStatus.portalStatus === 'active' && (
+                      <div className="flex items-center gap-2">
+                        <Globe className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#7a8a64" }} />
+                        <span className="text-xs" style={{ color: "#4a5568" }}>
+                          {portalStatus.lastLoginAt
+                            ? `Last login: ${new Date(portalStatus.lastLoginAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                            : 'Never logged in'}
+                        </span>
+                      </div>
+                    )}
+
+                    {/* Latest report viewed */}
+                    {portalStatus.latestReportPublishedAt && (
+                      <div className="flex items-center gap-2">
+                        {portalStatus.latestReportViewedAt ? (
+                          <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#2e7d32" }} />
+                        ) : (
+                          <FileText className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#b45309" }} />
+                        )}
+                        <span className="text-xs" style={{ color: "#4a5568" }}>
+                          {portalStatus.latestReportViewedAt
+                            ? `Latest report opened ${new Date(portalStatus.latestReportViewedAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric', year: 'numeric' })}`
+                            : 'Latest report not yet opened'}
+                        </span>
+                      </div>
+                    )}
+                  </div>
+                </div>
+              )}
 
               {/* ── Portal Messages — shown first so nothing gets missed ── */}
               {portalStatus?.hasPortalAccount && (

@@ -590,6 +590,7 @@ export const patientPortalAccounts = pgTable("patient_portal_accounts", {
   passwordResetToken: varchar("password_reset_token", { length: 255 }),
   passwordResetExpires: timestamp("password_reset_expires"),
   isActive: boolean("is_active").notNull().default(true),
+  lastLoginAt: timestamp("last_login_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -612,6 +613,7 @@ export const publishedProtocols = pgTable("published_protocols", {
   dietaryGuidance: text("dietary_guidance"),
   labDate: timestamp("lab_date"),
   publishedAt: timestamp("published_at").defaultNow().notNull(),
+  firstViewedAt: timestamp("first_viewed_at"),
 });
 
 export const insertPublishedProtocolSchema = createInsertSchema(publishedProtocols).omit({
