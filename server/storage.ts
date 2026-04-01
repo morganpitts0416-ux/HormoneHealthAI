@@ -24,13 +24,15 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
-const db = drizzle(pool, { schema });
+export const db = drizzle(pool, { schema });
 
 export interface IStorage {
   // User operations
   getUserById(id: number): Promise<User | undefined>;
   getUserByUsername(username: string): Promise<User | undefined>;
   getUserByEmail(email: string): Promise<User | undefined>;
+  recordLoginAttempt(userId: number, success: boolean): Promise<void>;
+  recordStaffLoginAttempt(staffId: number, success: boolean): Promise<void>;
   createUser(user: Omit<InsertUser, 'passwordHash'> & { passwordHash: string }): Promise<User>;
   updateUser(id: number, user: Partial<Omit<InsertUser, 'passwordHash'>>): Promise<User | undefined>;
 
@@ -147,6 +149,45 @@ export class DbStorage implements IStorage {
       .where(eq(schema.users.id, id))
       .returning();
     return result[0];
+  }
+
+  // ── HIPAA: Login security (lockout tracking) ──────────────────────────────────
+  async recordLoginAttempt(userId: number, success: boolean): Promise<void> {
+    const LOCKOUT_THRESHOLD = 5;
+    const LOCKOUT_MINUTES = 15;
+    if (success) {
+      await db.update(schema.users)
+        .set({ loginAttempts: 0, lockedUntil: null, updatedAt: new Date() } as any)
+        .where(eq(schema.users.id, userId));
+    } else {
+      const user = await db.select().from(schema.users).where(eq(schema.users.id, userId)).limit(1);
+      if (!user[0]) return;
+      const attempts = (user[0].loginAttempts ?? 0) + 1;
+      const lockedUntil = attempts >= LOCKOUT_THRESHOLD
+        ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000) : null;
+      await db.update(schema.users)
+        .set({ loginAttempts: attempts, lockedUntil, updatedAt: new Date() } as any)
+        .where(eq(schema.users.id, userId));
+    }
+  }
+
+  async recordStaffLoginAttempt(staffId: number, success: boolean): Promise<void> {
+    const LOCKOUT_THRESHOLD = 5;
+    const LOCKOUT_MINUTES = 15;
+    if (success) {
+      await db.update(schema.clinicianStaff)
+        .set({ loginAttempts: 0, lockedUntil: null } as any)
+        .where(eq(schema.clinicianStaff.id, staffId));
+    } else {
+      const staff = await db.select().from(schema.clinicianStaff).where(eq(schema.clinicianStaff.id, staffId)).limit(1);
+      if (!staff[0]) return;
+      const attempts = (staff[0].loginAttempts ?? 0) + 1;
+      const lockedUntil = attempts >= LOCKOUT_THRESHOLD
+        ? new Date(Date.now() + LOCKOUT_MINUTES * 60 * 1000) : null;
+      await db.update(schema.clinicianStaff)
+        .set({ loginAttempts: attempts, lockedUntil } as any)
+        .where(eq(schema.clinicianStaff.id, staffId));
+    }
   }
 
   // ── Password reset / invite operations ───────────────────────────────────────

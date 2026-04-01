@@ -4,6 +4,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Lock, CheckCircle, AlertCircle } from "lucide-react";
+import { PasswordStrengthIndicator } from "@/components/password-strength-indicator";
 
 export default function StaffSetPassword() {
   const [, setLocation] = useLocation();
@@ -168,6 +169,7 @@ export default function StaffSetPassword() {
                       data-testid="input-new-password"
                     />
                   </div>
+                  <PasswordStrengthIndicator password={password} />
                 </div>
 
                 <div>

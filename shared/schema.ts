@@ -469,6 +469,9 @@ export const users = pgTable("users", {
   // Password reset / invite tokens
   passwordResetToken: varchar("password_reset_token", { length: 255 }),
   passwordResetExpires: timestamp("password_reset_expires"),
+  // HIPAA: login lockout tracking
+  loginAttempts: integer("login_attempts").notNull().default(0),
+  lockedUntil: timestamp("locked_until"),
   // Portal messaging preference: 'none' | 'in_app' | 'sms' | 'external_api'
   messagingPreference: varchar("messaging_preference", { length: 20 }).notNull().default("none"),
   // Phone number shown to patients for SMS messaging (e.g. Spruce Health number)
@@ -568,6 +571,9 @@ export const clinicianStaff = pgTable("clinician_staff", {
   inviteToken: varchar("invite_token", { length: 255 }),
   inviteExpires: timestamp("invite_expires"),
   isActive: boolean("is_active").notNull().default(true),
+  // HIPAA: login lockout tracking
+  loginAttempts: integer("login_attempts").notNull().default(0),
+  lockedUntil: timestamp("locked_until"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -684,3 +690,20 @@ export const supplementOrders = pgTable("supplement_orders", {
 export const insertSupplementOrderSchema = createInsertSchema(supplementOrders).omit({ id: true, createdAt: true });
 export type InsertSupplementOrder = z.infer<typeof insertSupplementOrderSchema>;
 export type SupplementOrder = typeof supplementOrders.$inferSelect;
+
+// ─── HIPAA Audit Logs ──────────────────────────────────────────────────────────
+export const auditLogs = pgTable("audit_logs", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").references(() => users.id, { onDelete: 'set null' }),
+  staffId: integer("staff_id").references(() => clinicianStaff.id, { onDelete: 'set null' }),
+  action: varchar("action", { length: 100 }).notNull(),
+  resourceType: varchar("resource_type", { length: 50 }),
+  resourceId: integer("resource_id"),
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: 'set null' }),
+  ipAddress: varchar("ip_address", { length: 45 }),
+  userAgent: text("user_agent"),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type AuditLog = typeof auditLogs.$inferSelect;

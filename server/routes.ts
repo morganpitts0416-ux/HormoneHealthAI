@@ -22,6 +22,8 @@ import {
 } from "./external-messaging";
 import { storage } from "./storage";
 import { passport, hashPassword } from "./auth";
+import { logAudit } from "./audit";
+import { validatePasswordStrength } from "@shared/password-policy";
 import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail } from "./email-service";
 import bcrypt from "bcrypt";
 
@@ -63,8 +65,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!email || !username || !password || !firstName || !lastName || !title || !clinicName) {
         return res.status(400).json({ message: "All required fields must be provided" });
       }
-      if (password.length < 8) {
-        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      const pwCheck = validatePasswordStrength(password);
+      if (!pwCheck.valid) {
+        return res.status(400).json({ message: "Password does not meet requirements: " + pwCheck.errors.join("; ") });
       }
       const existingByUsername = await storage.getUserByUsername(username);
       if (existingByUsername) {
@@ -107,6 +110,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         // Clinician login succeeded
         return req.login(user, (loginErr) => {
           if (loginErr) return next(loginErr);
+          logAudit(req, { action: "LOGIN", clinicianId: user.id });
           const { passwordHash: _ph, externalMessagingApiKey, ...safeUser } = user;
           res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey) });
         });
@@ -117,16 +121,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         const { username: emailOrUsername, password } = req.body;
         const staff = await storage.getClinicianStaffByEmail(emailOrUsername?.trim?.() || '');
         if (staff && staff.isActive && staff.passwordHash) {
+          // HIPAA: Check lockout
+          if (staff.lockedUntil && new Date(staff.lockedUntil) > new Date()) {
+            const minutesLeft = Math.ceil((new Date(staff.lockedUntil).getTime() - Date.now()) / 60000);
+            logAudit(req, { action: "LOGIN_LOCKED", clinicianId: staff.clinicianId, staffId: staff.id, details: { email: emailOrUsername } });
+            return res.status(401).json({ message: `Account locked due to too many failed attempts. Try again in ${minutesLeft} minute${minutesLeft !== 1 ? 's' : ''}.` });
+          }
+
           const valid = await bcrypt.compare(password, staff.passwordHash);
           if (valid) {
+            await storage.recordStaffLoginAttempt(staff.id, true);
             const sess = req.session as any;
             sess.staffId = staff.id;
             sess.staffClinicianId = staff.clinicianId;
             return req.session.save((saveErr) => {
               if (saveErr) return next(saveErr);
+              logAudit(req, { action: "LOGIN", clinicianId: staff.clinicianId, staffId: staff.id });
               const { passwordHash: _ph, inviteToken: _it, ...safeStaff } = staff;
               return res.json({ ...safeStaff, isStaff: true });
             });
+          } else {
+            storage.recordStaffLoginAttempt(staff.id, false).catch(() => {});
+            logAudit(req, { action: "LOGIN_FAILED", clinicianId: staff.clinicianId, staffId: staff.id, details: { email: emailOrUsername } });
           }
         }
       } catch (staffErr) {
@@ -290,8 +306,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (!token || !password) {
         return res.status(400).json({ message: "Token and new password are required" });
       }
-      if (password.length < 8) {
-        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      const pwCheck = validatePasswordStrength(password);
+      if (!pwCheck.valid) {
+        return res.status(400).json({ message: "Password does not meet requirements: " + pwCheck.errors.join("; ") });
       }
 
       const user = await storage.getUserByResetToken(token);
@@ -2413,8 +2430,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (!token || !password) {
         return res.status(400).json({ message: "Token and password are required" });
       }
-      if (password.length < 8) {
-        return res.status(400).json({ message: "Password must be at least 8 characters" });
+      const pwCheck = validatePasswordStrength(password);
+      if (!pwCheck.valid) {
+        return res.status(400).json({ message: "Password does not meet requirements: " + pwCheck.errors.join("; ") });
       }
 
       const staffMember = await storage.getClinicianStaffByInviteToken(token);

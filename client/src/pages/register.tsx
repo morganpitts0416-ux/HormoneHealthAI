@@ -10,6 +10,7 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { ChevronLeft, ChevronRight, CheckCircle2, Shield } from "lucide-react";
+import { PasswordStrengthIndicator } from "@/components/password-strength-indicator";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -23,7 +24,12 @@ const registerSchema = z.object({
   phone: z.string().optional(),
   address: z.string().optional(),
   username: z.string().min(3, "Username must be at least 3 characters").regex(/^[a-zA-Z0-9._-]+$/, "Username can only contain letters, numbers, dots, hyphens, and underscores"),
-  password: z.string().min(8, "Password must be at least 8 characters"),
+  password: z.string()
+    .min(8, "At least 8 characters")
+    .regex(/[A-Z]/, "At least one uppercase letter (A–Z)")
+    .regex(/[a-z]/, "At least one lowercase letter (a–z)")
+    .regex(/[0-9]/, "At least one number (0–9)")
+    .regex(/[^A-Za-z0-9]/, "At least one special character (!@#$%^&*)"),
   confirmPassword: z.string().min(1, "Please confirm your password"),
 }).refine((data) => data.password === data.confirmPassword, {
   message: "Passwords do not match",
@@ -274,6 +280,7 @@ export default function Register() {
                         <FormItem>
                           <FormLabel>Password <span className="text-destructive">*</span></FormLabel>
                           <FormControl><Input data-testid="input-password" type="password" placeholder="At least 8 characters" autoComplete="new-password" {...field} /></FormControl>
+                          <PasswordStrengthIndicator password={field.value || ""} />
                           <FormMessage />
                         </FormItem>
                       )} />
