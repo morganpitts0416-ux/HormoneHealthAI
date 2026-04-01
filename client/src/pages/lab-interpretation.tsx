@@ -85,18 +85,37 @@ export default function LabInterpretation() {
       const payload = selectedPatient ? { ...data, patientId: selectedPatient.id } : data;
       return labsApi.interpretLabs(payload);
     },
-    onSuccess: (data) => {
+    onSuccess: async (data) => {
       console.log('[Frontend] Interpretation successful:', data);
       setInterpretationResult(data);
       setActiveTab("results");
       const labDate = labValues.labDrawDate ? new Date(labValues.labDrawDate).toISOString() : new Date().toISOString();
-      if (selectedPatient) {
-        apiRequest('POST', `/api/patients/${selectedPatient.id}/labs`, {
+
+      // Resolve the patient — prefer selectedPatient, fall back to name lookup
+      let resolvedPatient = selectedPatient;
+      if (!resolvedPatient && labValues.patientName) {
+        try {
+          const searchRes = await fetch(`/api/patients/search?q=${encodeURIComponent(labValues.patientName)}`, { credentials: 'include' });
+          if (searchRes.ok) {
+            const matches = await searchRes.json();
+            if (matches.length === 1) {
+              resolvedPatient = matches[0];
+              setSelectedPatient(resolvedPatient);
+              console.log('[Frontend] Resolved patient by name lookup:', resolvedPatient?.id);
+            }
+          }
+        } catch (e) {
+          console.warn('[Frontend] Patient name lookup failed:', e);
+        }
+      }
+
+      if (resolvedPatient) {
+        apiRequest('POST', `/api/patients/${resolvedPatient.id}/labs`, {
           labDate,
           labValues,
           interpretationResult: data,
         }).then(() => {
-          queryClient.invalidateQueries({ queryKey: [`/api/patients/${selectedPatient.id}/labs`] });
+          queryClient.invalidateQueries({ queryKey: [`/api/patients/${resolvedPatient!.id}/labs`] });
           console.log('[Frontend] Auto-saved interpretation to patient profile');
         }).catch(err => console.error('[Frontend] Auto-save failed:', err));
       } else if (labValues.patientName) {
@@ -108,7 +127,7 @@ export default function LabInterpretation() {
           labDate,
         }).then(() => {
           queryClient.invalidateQueries({ queryKey: ['/api/saved-interpretations'] });
-          console.log('[Frontend] Auto-saved interpretation with patient name');
+          console.log('[Frontend] Auto-saved interpretation with patient name (no unique patient match)');
         }).catch(err => console.error('[Frontend] Auto-save failed:', err));
       }
     },
