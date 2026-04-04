@@ -378,6 +378,7 @@ interface PortalLab {
   patientSummary: string | null;
   preventRisk: any | null;
   insulinResistance: any | null;
+  clinicianNotes: string | null;
 }
 
 const CATEGORY_ICONS: Record<string, string> = {
@@ -478,7 +479,7 @@ function RiskBadge({ category }: { category: string }) {
 }
 
 function LabQuickViewDialog({ lab, dietaryGuidance, onClose }: { lab: PortalLab; dietaryGuidance?: string | null; onClose: () => void }) {
-  const [expandedSection, setExpandedSection] = useState<string | null>("labs");
+  const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [quickViewFood, setQuickViewFood] = useState<FoodItem | null>(null);
 
   const grouped = lab.interpretations.reduce((acc: Record<string, typeof lab.interpretations>, interp) => {
@@ -681,7 +682,14 @@ function LabQuickViewDialog({ lab, dietaryGuidance, onClose }: { lab: PortalLab;
             })()}
             {quickViewFood && <RecipeDialog food={quickViewFood} onClose={() => setQuickViewFood(null)} />}
 
-            {/* 5. Health summary — always last */}
+            {/* 5. Note from provider — shown when the clinician added a personal note */}
+            {lab.clinicianNotes && (
+              <Section id="provider-note" title="A Note from Your Provider" icon={<MessageSquare className="w-4 h-4" style={{ color: "#5a7040" }} />}>
+                <p className="text-sm leading-relaxed pt-1 whitespace-pre-wrap" style={{ color: "#3d4a30" }}>{lab.clinicianNotes}</p>
+              </Section>
+            )}
+
+            {/* 6. Health summary — always last */}
             {lab.patientSummary && (
               <Section id="summary" title="Your Health Assessment" icon={<Info className="w-4 h-4" style={{ color: "#5a7040" }} />}>
                 <p className="text-sm leading-relaxed pt-1" style={{ color: "#3d4a30" }}>{lab.patientSummary}</p>
@@ -1183,12 +1191,6 @@ export default function PortalDashboard() {
             </div>
           ) : (
             <>
-              {protocol?.clinicianNotes && (
-                <div className="rounded-xl p-4 text-sm leading-relaxed" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>
-                  <p className="font-medium text-xs uppercase tracking-wider mb-1.5" style={{ color: "#5a7040" }}>Note from your care team</p>
-                  {protocol.clinicianNotes}
-                </div>
-              )}
               {highPriority.length > 0 && (
                 <div className="space-y-3">
                   <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#7a8a64" }}>Priority</p>

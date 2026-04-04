@@ -1732,6 +1732,12 @@ ${aiRecommendations}`;
     try {
       const patientId = (req.session as any).portalPatientId as number;
       const labs = await storage.getLabResultsByPatient(patientId);
+      // Load all protocols for this patient so we can attach clinicianNotes per lab
+      const protocols = await storage.getAllPublishedProtocols(patientId);
+      const notesByLabId = new Map<number, string | null>();
+      for (const p of protocols) {
+        if (p.labResultId && p.clinicianNotes) notesByLabId.set(p.labResultId, p.clinicianNotes);
+      }
       // Return labs with patient-safe fields (no raw clinical scoring text)
       const safeLabs = labs.map((lab) => ({
         id: lab.id,
@@ -1743,6 +1749,7 @@ ${aiRecommendations}`;
         patientSummary: (lab.interpretationResult as any)?.patientSummary || null,
         preventRisk: (lab.interpretationResult as any)?.preventRisk || null,
         insulinResistance: (lab.interpretationResult as any)?.insulinResistance || null,
+        clinicianNotes: notesByLabId.get(lab.id) ?? null,
       }));
       res.json(safeLabs);
     } catch (error) {
