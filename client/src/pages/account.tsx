@@ -18,6 +18,7 @@ import {
   Zap, Copy, Eye, EyeOff, Key, Globe, Info,
   Users, UserPlus, Trash2, ShieldAlert, Mail,
 } from "lucide-react";
+import { PreferencesPanel } from "@/components/preferences-panel";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -868,6 +869,9 @@ export default function Account() {
             </CardContent>
           </Card>
         )}
+
+        {/* Clinical Preferences — clinicians only */}
+        {!isStaff && <PreferencesPanel />}
 
         {/* Billing placeholder */}
         <Card className="border-slate-200 border-dashed">

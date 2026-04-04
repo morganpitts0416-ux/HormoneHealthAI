@@ -24,6 +24,7 @@ import { storage } from "./storage";
 import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
+import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
 import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail } from "./email-service";
 import bcrypt from "bcrypt";
 
@@ -2455,6 +2456,255 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     } catch (error) {
       console.error('[API] Error setting staff password:', error);
       res.status(500).json({ message: "Failed to set password" });
+    }
+  });
+
+  // ── Clinician Preferences: Defaults Reference ─────────────────────────────
+  app.get("/api/preferences/defaults", requireAuth, async (req, res) => {
+    res.json({
+      labMarkers: LAB_MARKER_DEFAULTS,
+      symptomKeys: SYMPTOM_KEYS,
+      supplementCategories: SUPPLEMENT_CATEGORIES,
+      labMarkerKeys: LAB_MARKER_KEYS,
+    });
+  });
+
+  // ── Clinician Preferences: Supplement Discount Settings ───────────────────
+  app.get("/api/preferences/discount", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const settings = await storage.getClinicianSupplementSettings(clinicianId);
+      // Return defaults if not yet configured
+      res.json(settings || { clinicianId, discountType: 'percent', discountPercent: 20, discountFlat: 0 });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch discount settings" });
+    }
+  });
+
+  app.put("/api/preferences/discount", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const { discountType, discountPercent, discountFlat } = req.body;
+      const updated = await storage.upsertClinicianSupplementSettings(clinicianId, {
+        discountType: discountType || 'percent',
+        discountPercent: discountPercent ?? 20,
+        discountFlat: discountFlat ?? 0,
+      } as any);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save discount settings" });
+    }
+  });
+
+  // ── Clinician Preferences: Supplement Library ─────────────────────────────
+  app.get("/api/preferences/supplements", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const supplements = await storage.getClinicianSupplements(clinicianId);
+      const rules = await storage.getAllClinicianSupplementRules(clinicianId);
+      const supplementsWithRules = supplements.map(s => ({
+        ...s,
+        rules: rules.filter(r => r.supplementId === s.id),
+      }));
+      res.json(supplementsWithRules);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch supplements" });
+    }
+  });
+
+  app.post("/api/preferences/supplements", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const { name, brand, dose, category, description, clinicalRationale, priceCents, gender, sortOrder } = req.body;
+      if (!name || !dose) return res.status(400).json({ message: "Name and dose are required" });
+      const supplement = await storage.createClinicianSupplement({
+        clinicianId,
+        name,
+        brand: brand || null,
+        dose,
+        category: category || 'general',
+        description: description || null,
+        clinicalRationale: clinicalRationale || null,
+        priceCents: priceCents || 0,
+        isActive: true,
+        gender: gender || 'both',
+        sortOrder: sortOrder || 0,
+      });
+      res.json(supplement);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create supplement" });
+    }
+  });
+
+  app.put("/api/preferences/supplements/:id", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const { name, brand, dose, category, description, clinicalRationale, priceCents, isActive, gender, sortOrder } = req.body;
+      const updated = await storage.updateClinicianSupplement(id, clinicianId, {
+        name, brand, dose, category, description, clinicalRationale, priceCents, isActive, gender, sortOrder,
+      });
+      if (!updated) return res.status(404).json({ message: "Supplement not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update supplement" });
+    }
+  });
+
+  app.delete("/api/preferences/supplements/:id", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteClinicianSupplement(id, clinicianId);
+      if (!deleted) return res.status(404).json({ message: "Supplement not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete supplement" });
+    }
+  });
+
+  // ── Clinician Preferences: Supplement Rules ───────────────────────────────
+  app.get("/api/preferences/supplements/:id/rules", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const supplementId = parseInt(req.params.id);
+      const rules = await storage.getClinicianSupplementRules(supplementId, clinicianId);
+      res.json(rules);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch rules" });
+    }
+  });
+
+  app.post("/api/preferences/supplements/:id/rules", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const supplementId = parseInt(req.params.id);
+      // Verify supplement belongs to clinician
+      const supplement = await storage.getClinicianSupplement(supplementId, clinicianId);
+      if (!supplement) return res.status(404).json({ message: "Supplement not found" });
+      const { triggerType, labMarker, labMin, labMax, symptomKey, combinationLogic, priority, indicationText } = req.body;
+      const rule = await storage.createClinicianSupplementRule({
+        supplementId,
+        clinicianId,
+        triggerType: triggerType || 'lab',
+        labMarker: labMarker || null,
+        labMin: labMin ?? null,
+        labMax: labMax ?? null,
+        symptomKey: symptomKey || null,
+        combinationLogic: combinationLogic || 'OR',
+        priority: priority || 'medium',
+        indicationText: indicationText || null,
+      });
+      res.json(rule);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create rule" });
+    }
+  });
+
+  app.put("/api/preferences/supplements/rules/:ruleId", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const ruleId = parseInt(req.params.ruleId);
+      const { triggerType, labMarker, labMin, labMax, symptomKey, combinationLogic, priority, indicationText } = req.body;
+      const updated = await storage.updateClinicianSupplementRule(ruleId, clinicianId, {
+        triggerType, labMarker, labMin, labMax, symptomKey, combinationLogic, priority, indicationText,
+      });
+      if (!updated) return res.status(404).json({ message: "Rule not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update rule" });
+    }
+  });
+
+  app.delete("/api/preferences/supplements/rules/:ruleId", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const ruleId = parseInt(req.params.ruleId);
+      const deleted = await storage.deleteClinicianSupplementRule(ruleId, clinicianId);
+      if (!deleted) return res.status(404).json({ message: "Rule not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete rule" });
+    }
+  });
+
+  // ── Clinician Preferences: AI Description Generation ─────────────────────
+  app.post("/api/preferences/supplements/generate-description", requireClinicianOnly, async (req, res) => {
+    try {
+      const { name, brand, dose, category, clinicalRationale } = req.body;
+      if (!name || !dose) return res.status(400).json({ message: "Name and dose are required" });
+
+      const openai = new OpenAI({ apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY, baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL });
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: "You are a clinical supplement educator writing clear, patient-friendly explanations for supplements used in hormone and primary care clinics. Write in plain English, warm but professional, 2-3 sentences max. No medical jargon. Focus on the benefit and purpose from the patient's perspective.",
+          },
+          {
+            role: "user",
+            content: `Write a patient-facing description for this supplement:
+Product: ${name}${brand ? ` by ${brand}` : ''}
+Dose: ${dose}
+Category: ${category || 'general'}
+Clinical notes: ${clinicalRationale || 'Not provided'}
+
+Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`,
+          },
+        ],
+      });
+      const description = completion.choices[0]?.message?.content?.trim() || '';
+      res.json({ description });
+    } catch (err) {
+      console.error('[API] AI description generation error:', err);
+      res.status(500).json({ message: "Failed to generate description" });
+    }
+  });
+
+  // ── Clinician Preferences: Lab Range Overrides ────────────────────────────
+  app.get("/api/preferences/lab-ranges", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const preferences = await storage.getClinicianLabPreferences(clinicianId);
+      res.json({ preferences, defaults: LAB_MARKER_DEFAULTS });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch lab range preferences" });
+    }
+  });
+
+  app.put("/api/preferences/lab-ranges", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const { markerKey, gender, displayName, unit, optimalMin, optimalMax, normalMin, normalMax, notes } = req.body;
+      if (!markerKey) return res.status(400).json({ message: "markerKey is required" });
+      const pref = await storage.upsertClinicianLabPreference(clinicianId, {
+        clinicianId,
+        markerKey,
+        gender: gender || 'both',
+        displayName: displayName || null,
+        unit: unit || null,
+        optimalMin: optimalMin ?? null,
+        optimalMax: optimalMax ?? null,
+        normalMin: normalMin ?? null,
+        normalMax: normalMax ?? null,
+        notes: notes || null,
+      });
+      res.json(pref);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save lab range preference" });
+    }
+  });
+
+  app.delete("/api/preferences/lab-ranges/:id", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteClinicianLabPreference(id, clinicianId);
+      if (!deleted) return res.status(404).json({ message: "Preference not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete lab range preference" });
     }
   });
 
