@@ -13,7 +13,7 @@ import {
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
-  Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle
+  Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -26,11 +26,20 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues } from "@shared/schema";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
 import { RedFlagAlert } from "@/components/red-flag-alert";
+
+// ── Safe date display utility ─────────────────────────────────────────────────
+// Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
+// the off-by-one-day rendering bug in US timezones. Also guards against epoch dates.
+function safeDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' }) {
+  const d = new Date(dateStr as string);
+  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return "Unknown date";
+  return d.toLocaleDateString('en-US', { timeZone: 'UTC', ...opts });
+}
 
 function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patient }) {
   const insights = generateTrendInsights(labs);
@@ -180,9 +189,7 @@ function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab
                     <div className="flex items-center gap-2">
                       <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
                       <span className="text-sm font-medium">
-                        {new Date(lab.labDate).toLocaleDateString('en-US', {
-                          month: 'long', day: 'numeric', year: 'numeric'
-                        })}
+                        {safeDate(lab.labDate)}
                       </span>
                       {idx === 0 && <Badge variant="default" className="text-xs">Latest</Badge>}
                     </div>
@@ -349,7 +356,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
         <div className="flex-shrink-0 px-5 py-3 border-b bg-card flex items-start justify-between gap-3 flex-wrap">
           <div>
             <h2 className="text-base font-semibold">
-              Full Evaluation — {new Date(lab.labDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' })}
+              Full Evaluation — {safeDate(lab.labDate)}
             </h2>
             <p className="text-xs text-muted-foreground mt-0.5">{patientName} · {isFemale ? "Women's Clinic" : "Men's Clinic"}</p>
           </div>
@@ -631,6 +638,7 @@ export default function PatientProfiles() {
   const [messageDraft, setMessageDraft] = useState("");
   const [showMessages, setShowMessages] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
+  const [showEncounters, setShowEncounters] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
 
@@ -665,7 +673,7 @@ export default function PatientProfiles() {
     },
   });
 
-  // Auto-select patient from URL param (e.g. ?patient=123&tab=messages)
+  // Auto-select patient from URL param (e.g. ?patient=123&tab=encounters)
   useEffect(() => {
     if (urlParamApplied.current || allPatients.length === 0) return;
     const params = new URLSearchParams(searchStr);
@@ -678,6 +686,7 @@ export default function PatientProfiles() {
     setSelectedPatient(found);
     if (tab === "messages") setShowMessages(true);
     if (tab === "orders") setShowOrders(true);
+    if (tab === "encounters") setShowEncounters(true);
   }, [allPatients, searchStr]);
 
   const { data: labs = [], isLoading: labsLoading } = useQuery<LabResult[]>({
@@ -780,6 +789,19 @@ export default function PatientProfiles() {
       queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'supplement-orders'] });
       queryClient.invalidateQueries({ queryKey: ['/api/clinician/notifications'] });
     },
+  });
+
+  type EncounterSummary = Pick<ClinicalEncounter, 'id' | 'patientId' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'transcription' | 'soapNote' | 'patientSummary' | 'summaryPublished'> & { patientName: string };
+
+  const { data: patientEncounters = [] } = useQuery<EncounterSummary[]>({
+    queryKey: ['/api/encounters', selectedPatient?.id],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/encounters?patientId=${selectedPatient.id}`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient,
   });
 
   const sendMessageMutation = useMutation({
@@ -1114,9 +1136,7 @@ export default function PatientProfiles() {
                     )}
                     {selectedPatient.dateOfBirth && (
                       <span className="text-xs text-muted-foreground">
-                        DOB: {new Date(selectedPatient.dateOfBirth).toLocaleDateString('en-US', {
-                          month: 'long', day: 'numeric', year: 'numeric'
-                        })}
+                        DOB: {safeDate(selectedPatient.dateOfBirth as unknown as string)}
                       </span>
                     )}
                     <Badge variant="outline" className="text-xs">
@@ -1149,6 +1169,19 @@ export default function PatientProfiles() {
                   >
                     <Activity className="h-3 w-3" />
                     New Lab Interpretation
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => {
+                      setLocation(`/encounters?patientId=${selectedPatient.id}`);
+                    }}
+                    data-testid="button-start-encounter"
+                    className="text-xs gap-1.5"
+                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                  >
+                    <Stethoscope className="h-3 w-3" />
+                    New Encounter
                   </Button>
                   <Button
                     variant="outline"
@@ -1236,6 +1269,91 @@ export default function PatientProfiles() {
                   </div>
                 </div>
               )}
+
+              {/* ── Clinical Encounters ─────────────────────────────────── */}
+              <Card data-testid="card-encounters">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <Stethoscope className="w-4 h-4 text-muted-foreground" />
+                      Clinical Encounters
+                      {patientEncounters.length > 0 && (
+                        <Badge variant="secondary" className="text-xs">{patientEncounters.length}</Badge>
+                      )}
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      {patientEncounters.length > 0 && (
+                        <Button
+                          variant="ghost"
+                          size="sm"
+                          onClick={() => setShowEncounters(!showEncounters)}
+                          className="text-xs"
+                          data-testid="button-toggle-encounters"
+                        >
+                          {showEncounters ? "Hide" : "View visits"}
+                        </Button>
+                      )}
+                      <Button
+                        size="sm"
+                        onClick={() => setLocation(`/encounters?patientId=${selectedPatient.id}`)}
+                        data-testid="button-new-encounter-from-profile"
+                        className="text-xs gap-1.5"
+                        style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                      >
+                        <Plus className="h-3 w-3" />
+                        New Encounter
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                {patientEncounters.length === 0 && (
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">No encounters documented yet. Start one above to create an audio-transcribed SOAP note for this patient.</p>
+                  </CardContent>
+                )}
+                {showEncounters && patientEncounters.length > 0 && (
+                  <CardContent className="space-y-2">
+                    {patientEncounters.map(enc => {
+                      const VISIT_LABELS: Record<string, string> = {
+                        "new-patient": "New Patient", "follow-up": "Follow-up", "acute": "Acute Visit",
+                        "wellness": "Wellness / Annual", "procedure": "Procedure", "telemedicine": "Telemedicine", "lab-review": "Lab Review",
+                      };
+                      return (
+                        <button
+                          key={enc.id}
+                          data-testid={`encounter-row-${enc.id}`}
+                          onClick={() => setLocation(`/encounters?encounterId=${enc.id}`)}
+                          className="w-full text-left rounded-md border p-3 hover-elevate transition-colors"
+                        >
+                          <div className="flex items-center justify-between gap-2 flex-wrap">
+                            <div className="flex items-center gap-2">
+                              <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                              <span className="text-sm font-medium">{safeDate(enc.visitDate as unknown as string)}</span>
+                              <Badge variant="outline" className="text-[10px] py-0 h-4">
+                                {VISIT_LABELS[enc.visitType] ?? enc.visitType}
+                              </Badge>
+                            </div>
+                            <div className="flex items-center gap-1.5">
+                              {enc.soapNote && (
+                                <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-600 border-emerald-200">SOAP</Badge>
+                              )}
+                              {enc.summaryPublished ? (
+                                <Badge variant="outline" className="text-[10px] py-0 h-4 text-violet-600 border-violet-200">Published</Badge>
+                              ) : enc.patientSummary ? (
+                                <Badge variant="outline" className="text-[10px] py-0 h-4 text-amber-600 border-amber-200">Draft</Badge>
+                              ) : null}
+                              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                            </div>
+                          </div>
+                          {enc.chiefComplaint && (
+                            <p className="text-xs text-muted-foreground mt-1.5 truncate">{enc.chiefComplaint}</p>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </CardContent>
+                )}
+              </Card>
 
               {/* ── Portal Messages — shown first so nothing gets missed ── */}
               {portalStatus?.hasPortalAccount && (
@@ -1542,9 +1660,7 @@ export default function PatientProfiles() {
               <p className="text-sm text-muted-foreground">
                 Are you sure you want to delete the lab result from{' '}
                 <span className="font-medium text-foreground">
-                  {new Date(confirmDelete.labDate).toLocaleDateString('en-US', {
-                    month: 'long', day: 'numeric', year: 'numeric'
-                  })}
+                  {safeDate(confirmDelete.labDate)}
                 </span>
                 ? This action cannot be undone.
               </p>
@@ -1651,7 +1767,7 @@ export default function PatientProfiles() {
                   {((publishDialogLab.interpretationResult as any)?.supplements?.length || 0)} supplements will be published
                 </p>
                 <p className="text-xs" style={{ color: "#5a7040" }}>
-                  Lab date: {publishDialogLab.labDate ? new Date(publishDialogLab.labDate).toLocaleDateString('en-US', { month: 'long', day: 'numeric', year: 'numeric' }) : 'Unknown'}
+                  Lab date: {publishDialogLab.labDate ? safeDate(publishDialogLab.labDate) : 'Unknown'}
                 </p>
               </div>
 

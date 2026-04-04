@@ -1,13 +1,13 @@
-import { useState, useRef, useCallback } from "react";
+import { useState, useRef, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { format } from "date-fns";
 import {
   Mic, Upload, FileText, FlaskConical, ChevronLeft, Plus,
   Sparkles, Send, CheckCircle2, Circle, AlertCircle, Trash2,
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
   ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
-  TriangleAlert,
+  TriangleAlert, ExternalLink,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -23,6 +23,13 @@ import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import type { Patient, LabResult, ClinicalEncounter } from "@shared/schema";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
+
+// Safe UTC date display — avoids the off-by-one-day bug from UTC midnight
+function displayDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }) {
+  const d = new Date(dateStr as string);
+  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return "Unknown date";
+  return d.toLocaleDateString('en-US', { timeZone: 'UTC', ...opts });
+}
 
 const VISIT_TYPES = [
   { value: "new-patient", label: "New Patient" },
@@ -86,7 +93,7 @@ function EncounterListItem({
         </div>
         <div className="flex-1 min-w-0">
           <div className="text-sm font-medium text-foreground truncate">{enc.patientName}</div>
-          <div className="text-xs text-muted-foreground">{format(new Date(enc.visitDate), "MMM d, yyyy")}</div>
+          <div className="text-xs text-muted-foreground">{displayDate(enc.visitDate as unknown as string)}</div>
           {enc.chiefComplaint && (
             <div className="text-xs text-muted-foreground truncate mt-0.5 italic">"{enc.chiefComplaint}"</div>
           )}
@@ -217,17 +224,20 @@ function EncounterEditor({
   patients,
   onClose,
   onDeleted,
+  initialPatientId,
 }: {
   encounter: EncounterWithPatient | null;
   patients: Patient[];
   onClose: () => void;
   onDeleted: () => void;
+  initialPatientId?: string;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
+  const [, setLocation] = useLocation();
 
   // Form state
-  const [patientId, setPatientId] = useState<string>(encounter?.patientId?.toString() ?? "");
+  const [patientId, setPatientId] = useState<string>(encounter?.patientId?.toString() ?? initialPatientId ?? "");
   const [visitDate, setVisitDate] = useState<string>(
     encounter ? format(new Date(encounter.visitDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd")
   );
@@ -410,7 +420,7 @@ function EncounterEditor({
           <div className="text-sm font-semibold truncate">
             {savedId ? (encounter?.patientName ?? (() => { const p = patients.find(p => p.id.toString() === patientId); return p ? `${p.firstName} ${p.lastName}` : "Encounter"; })()) : "New Encounter"}
           </div>
-          {savedId && <div className="text-xs text-muted-foreground">{format(new Date(visitDate), "MMMM d, yyyy")} · {VISIT_TYPES.find(v => v.value === visitType)?.label}</div>}
+          {savedId && <div className="text-xs text-muted-foreground">{displayDate(visitDate, { month: 'long', day: 'numeric', year: 'numeric' })} · {VISIT_TYPES.find(v => v.value === visitType)?.label}</div>}
         </div>
         <div className="flex items-center gap-2">
           {savedId && (
@@ -523,11 +533,17 @@ function EncounterEditor({
                   </SelectTrigger>
                   <SelectContent>
                     <SelectItem value="">No lab linkage</SelectItem>
-                    {patientLabs.map(lab => (
-                      <SelectItem key={lab.id} value={lab.id.toString()}>
-                        Lab panel — {format(new Date(lab.labDate), "MMM d, yyyy")}
-                      </SelectItem>
-                    ))}
+                    {patientLabs.map(lab => {
+                      const d = new Date(lab.labDate as unknown as string);
+                      const displayLab = !isNaN(d.getTime()) && d.getFullYear() >= 2000
+                        ? d.toLocaleDateString('en-US', { timeZone: 'UTC', month: 'short', day: 'numeric', year: 'numeric' })
+                        : "Unknown date";
+                      return (
+                        <SelectItem key={lab.id} value={lab.id.toString()}>
+                          Lab panel — {displayLab}
+                        </SelectItem>
+                      );
+                    })}
                   </SelectContent>
                 </Select>
               ) : (
@@ -536,10 +552,24 @@ function EncounterEditor({
                 </div>
               )}
               {linkedLabResultId && (
-                <p className="text-xs text-emerald-700 mt-1.5 flex items-center gap-1">
-                  <CheckCircle2 className="w-3 h-3" />
-                  Lab results will be referenced in SOAP Assessment and Plan
-                </p>
+                <div className="flex items-center justify-between mt-1.5">
+                  <p className="text-xs text-emerald-700 flex items-center gap-1">
+                    <CheckCircle2 className="w-3 h-3" />
+                    Lab results will be referenced in SOAP Assessment and Plan
+                  </p>
+                  {patientId && (
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      className="text-xs h-6 px-2 gap-1 text-muted-foreground"
+                      onClick={() => setLocation(`/patients?patient=${patientId}`)}
+                      data-testid="button-view-lab-in-profile"
+                    >
+                      <ExternalLink className="w-3 h-3" />
+                      View in Patient Profile
+                    </Button>
+                  )}
+                </div>
               )}
             </div>
 
@@ -833,9 +863,12 @@ function EncounterEditor({
 export default function EncountersPage() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+  const searchStr = useSearch();
   const [selectedId, setSelectedId] = useState<number | null>(null);
   const [isNew, setIsNew] = useState(false);
+  const [initialPatientId, setInitialPatientId] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
+  const urlParamApplied = useRef(false);
 
   const { data: encounters = [], isLoading: encountersLoading } = useQuery<EncounterWithPatient[]>({
     queryKey: ["/api/encounters"],
@@ -849,6 +882,23 @@ export default function EncountersPage() {
       return res.json();
     },
   });
+
+  // Apply URL params — patientId opens a new encounter pre-filled; encounterId opens an existing one
+  useEffect(() => {
+    if (urlParamApplied.current) return;
+    const params = new URLSearchParams(searchStr);
+    const encounterId = params.get("encounterId");
+    const patientIdParam = params.get("patientId");
+    if (patientIdParam) {
+      setInitialPatientId(patientIdParam);
+      setIsNew(true);
+      setSelectedId(null);
+      urlParamApplied.current = true;
+    } else if (encounterId && encounters.length > 0) {
+      const enc = encounters.find(e => e.id === Number(encounterId));
+      if (enc) { setSelectedId(enc.id); setIsNew(false); urlParamApplied.current = true; }
+    }
+  }, [searchStr, encounters]);
 
   const selectedEncounter = selectedId ? encounters.find(e => e.id === selectedId) ?? null : null;
   const showEditor = isNew || selectedId !== null;
@@ -941,11 +991,12 @@ export default function EncountersPage() {
         {showEditor ? (
           <div className="flex-1 overflow-hidden flex flex-col bg-background">
             <EncounterEditor
-              key={selectedId ?? "new"}
+              key={selectedId ?? `new-${initialPatientId ?? ""}`}
               encounter={selectedEncounter}
               patients={patients}
-              onClose={() => { setSelectedId(null); setIsNew(false); }}
-              onDeleted={() => { setSelectedId(null); setIsNew(false); }}
+              onClose={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); }}
+              onDeleted={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); }}
+              initialPatientId={isNew ? initialPatientId : undefined}
             />
           </div>
         ) : (
