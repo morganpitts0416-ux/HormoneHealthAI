@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real } from "drizzle-orm/pg-core";
 
 // Patient Demographics & ASCVD Risk Factors Schema
 export const patientDemographicsSchema = z.object({
@@ -707,3 +707,81 @@ export const auditLogs = pgTable("audit_logs", {
 });
 
 export type AuditLog = typeof auditLogs.$inferSelect;
+
+// ─── Clinician Supplement Customization ────────────────────────────────────────
+
+// Discount/pricing settings per clinician
+export const clinicianSupplementSettings = pgTable("clinician_supplement_settings", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }).unique(),
+  discountType: varchar("discount_type", { length: 20 }).notNull().default("percent"), // 'percent' | 'flat' | 'none'
+  discountPercent: integer("discount_percent").notNull().default(20), // e.g. 20 for 20%
+  discountFlat: integer("discount_flat_cents").notNull().default(0),  // flat $ off in cents
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ClinicianSupplementSettings = typeof clinicianSupplementSettings.$inferSelect;
+export const insertClinicianSupplementSettingsSchema = createInsertSchema(clinicianSupplementSettings).omit({ id: true, updatedAt: true });
+export type InsertClinicianSupplementSettings = z.infer<typeof insertClinicianSupplementSettingsSchema>;
+
+// Custom supplement catalog entry per clinician
+export const clinicianSupplements = pgTable("clinician_supplements", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  name: varchar("name", { length: 200 }).notNull(),
+  brand: varchar("brand", { length: 100 }),
+  dose: varchar("dose", { length: 200 }).notNull(),
+  category: varchar("category", { length: 50 }).notNull().default("general"), // cardiovascular, hormone-support, thyroid, etc.
+  description: text("description"), // AI-generated patient-facing description
+  clinicalRationale: text("clinical_rationale"), // clinical notes for provider
+  priceCents: integer("price_cents").notNull().default(0), // price in cents
+  isActive: boolean("is_active").notNull().default(true),
+  gender: varchar("gender", { length: 10 }).notNull().default("both"), // 'male' | 'female' | 'both'
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type ClinicianSupplement = typeof clinicianSupplements.$inferSelect;
+export const insertClinicianSupplementSchema = createInsertSchema(clinicianSupplements).omit({ id: true, createdAt: true });
+export type InsertClinicianSupplement = z.infer<typeof insertClinicianSupplementSchema>;
+
+// Trigger rules per custom supplement
+export const clinicianSupplementRules = pgTable("clinician_supplement_rules", {
+  id: serial("id").primaryKey(),
+  supplementId: integer("supplement_id").notNull().references(() => clinicianSupplements.id, { onDelete: 'cascade' }),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  triggerType: varchar("trigger_type", { length: 20 }).notNull().default("lab"), // 'lab' | 'symptom' | 'both'
+  // Lab trigger fields
+  labMarker: varchar("lab_marker", { length: 50 }), // e.g. 'vitaminD', 'testosterone'
+  labMin: real("lab_min"),   // lower bound of trigger range (null = no lower bound)
+  labMax: real("lab_max"),   // upper bound of trigger range (null = no upper bound)
+  // Symptom trigger fields
+  symptomKey: varchar("symptom_key", { length: 50 }), // e.g. 'brainFog', 'fatigue', 'hairLoss'
+  // When triggerType='both': how to combine lab + symptom conditions
+  combinationLogic: varchar("combination_logic", { length: 5 }).notNull().default("OR"), // 'AND' | 'OR'
+  priority: varchar("priority", { length: 10 }).notNull().default("medium"), // 'high' | 'medium' | 'low'
+  indicationText: text("indication_text"), // what shows as the clinical indication
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type ClinicianSupplementRule = typeof clinicianSupplementRules.$inferSelect;
+export const insertClinicianSupplementRuleSchema = createInsertSchema(clinicianSupplementRules).omit({ id: true, createdAt: true });
+export type InsertClinicianSupplementRule = z.infer<typeof insertClinicianSupplementRuleSchema>;
+
+// Per-clinician lab range overrides
+export const clinicianLabPreferences = pgTable("clinician_lab_preferences", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  markerKey: varchar("marker_key", { length: 50 }).notNull(), // e.g. 'testosterone', 'vitaminD'
+  gender: varchar("gender", { length: 10 }).notNull().default("both"), // 'male' | 'female' | 'both'
+  displayName: varchar("display_name", { length: 100 }),
+  unit: varchar("unit", { length: 30 }),
+  // Optimal range (clinician's preferred goal range)
+  optimalMin: real("optimal_min"),
+  optimalMax: real("optimal_max"),
+  // Standard reference (clinician may adjust if using functional ranges)
+  normalMin: real("normal_min"),
+  normalMax: real("normal_max"),
+  notes: text("notes"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ClinicianLabPreference = typeof clinicianLabPreferences.$inferSelect;
+export const insertClinicianLabPreferenceSchema = createInsertSchema(clinicianLabPreferences).omit({ id: true, updatedAt: true });
+export type InsertClinicianLabPreference = z.infer<typeof insertClinicianLabPreferenceSchema>;

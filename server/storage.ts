@@ -14,6 +14,10 @@ import type {
   PortalMessage, InsertPortalMessage,
   SavedRecipe, InsertSavedRecipe,
   SupplementOrder, InsertSupplementOrder,
+  ClinicianSupplementSettings, InsertClinicianSupplementSettings,
+  ClinicianSupplement, InsertClinicianSupplement,
+  ClinicianSupplementRule, InsertClinicianSupplementRule,
+  ClinicianLabPreference, InsertClinicianLabPreference,
 } from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
@@ -118,6 +122,30 @@ export interface IStorage {
 
   // Clinician notification helpers
   getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>>;
+
+  // Clinician Supplement Settings (discount)
+  getClinicianSupplementSettings(clinicianId: number): Promise<ClinicianSupplementSettings | undefined>;
+  upsertClinicianSupplementSettings(clinicianId: number, data: Partial<InsertClinicianSupplementSettings>): Promise<ClinicianSupplementSettings>;
+
+  // Clinician Supplement Library
+  getClinicianSupplements(clinicianId: number): Promise<ClinicianSupplement[]>;
+  getClinicianSupplement(id: number, clinicianId: number): Promise<ClinicianSupplement | undefined>;
+  createClinicianSupplement(supplement: InsertClinicianSupplement): Promise<ClinicianSupplement>;
+  updateClinicianSupplement(id: number, clinicianId: number, data: Partial<InsertClinicianSupplement>): Promise<ClinicianSupplement | undefined>;
+  deleteClinicianSupplement(id: number, clinicianId: number): Promise<boolean>;
+
+  // Clinician Supplement Rules
+  getClinicianSupplementRules(supplementId: number, clinicianId: number): Promise<ClinicianSupplementRule[]>;
+  getAllClinicianSupplementRules(clinicianId: number): Promise<ClinicianSupplementRule[]>;
+  createClinicianSupplementRule(rule: InsertClinicianSupplementRule): Promise<ClinicianSupplementRule>;
+  updateClinicianSupplementRule(id: number, clinicianId: number, data: Partial<InsertClinicianSupplementRule>): Promise<ClinicianSupplementRule | undefined>;
+  deleteClinicianSupplementRule(id: number, clinicianId: number): Promise<boolean>;
+
+  // Clinician Lab Preferences
+  getClinicianLabPreferences(clinicianId: number): Promise<ClinicianLabPreference[]>;
+  getClinicianLabPreference(clinicianId: number, markerKey: string, gender: string): Promise<ClinicianLabPreference | undefined>;
+  upsertClinicianLabPreference(clinicianId: number, data: InsertClinicianLabPreference): Promise<ClinicianLabPreference>;
+  deleteClinicianLabPreference(id: number, clinicianId: number): Promise<boolean>;
 }
 
 export class DbStorage implements IStorage {
@@ -720,6 +748,132 @@ export class DbStorage implements IStorage {
       count: Number(r.count),
       lastAt: r.last_at as string,
     }));
+  }
+
+  // ── Clinician Supplement Settings ───────────────────────────────────────────
+  async getClinicianSupplementSettings(clinicianId: number): Promise<ClinicianSupplementSettings | undefined> {
+    const result = await db.select().from(schema.clinicianSupplementSettings).where(eq(schema.clinicianSupplementSettings.clinicianId, clinicianId));
+    return result[0];
+  }
+
+  async upsertClinicianSupplementSettings(clinicianId: number, data: Partial<InsertClinicianSupplementSettings>): Promise<ClinicianSupplementSettings> {
+    const existing = await this.getClinicianSupplementSettings(clinicianId);
+    if (existing) {
+      const result = await db.update(schema.clinicianSupplementSettings)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(schema.clinicianSupplementSettings.clinicianId, clinicianId))
+        .returning();
+      return result[0];
+    }
+    const result = await db.insert(schema.clinicianSupplementSettings)
+      .values({ clinicianId, ...data } as InsertClinicianSupplementSettings)
+      .returning();
+    return result[0];
+  }
+
+  // ── Clinician Supplement Library ─────────────────────────────────────────────
+  async getClinicianSupplements(clinicianId: number): Promise<ClinicianSupplement[]> {
+    return db.select().from(schema.clinicianSupplements)
+      .where(eq(schema.clinicianSupplements.clinicianId, clinicianId))
+      .orderBy(schema.clinicianSupplements.sortOrder, schema.clinicianSupplements.name);
+  }
+
+  async getClinicianSupplement(id: number, clinicianId: number): Promise<ClinicianSupplement | undefined> {
+    const result = await db.select().from(schema.clinicianSupplements)
+      .where(and(eq(schema.clinicianSupplements.id, id), eq(schema.clinicianSupplements.clinicianId, clinicianId)));
+    return result[0];
+  }
+
+  async createClinicianSupplement(supplement: InsertClinicianSupplement): Promise<ClinicianSupplement> {
+    const result = await db.insert(schema.clinicianSupplements).values(supplement).returning();
+    return result[0];
+  }
+
+  async updateClinicianSupplement(id: number, clinicianId: number, data: Partial<InsertClinicianSupplement>): Promise<ClinicianSupplement | undefined> {
+    const result = await db.update(schema.clinicianSupplements)
+      .set(data)
+      .where(and(eq(schema.clinicianSupplements.id, id), eq(schema.clinicianSupplements.clinicianId, clinicianId)))
+      .returning();
+    return result[0];
+  }
+
+  async deleteClinicianSupplement(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db.delete(schema.clinicianSupplements)
+      .where(and(eq(schema.clinicianSupplements.id, id), eq(schema.clinicianSupplements.clinicianId, clinicianId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ── Clinician Supplement Rules ───────────────────────────────────────────────
+  async getClinicianSupplementRules(supplementId: number, clinicianId: number): Promise<ClinicianSupplementRule[]> {
+    return db.select().from(schema.clinicianSupplementRules)
+      .where(and(
+        eq(schema.clinicianSupplementRules.supplementId, supplementId),
+        eq(schema.clinicianSupplementRules.clinicianId, clinicianId)
+      ))
+      .orderBy(schema.clinicianSupplementRules.priority);
+  }
+
+  async getAllClinicianSupplementRules(clinicianId: number): Promise<ClinicianSupplementRule[]> {
+    return db.select().from(schema.clinicianSupplementRules)
+      .where(eq(schema.clinicianSupplementRules.clinicianId, clinicianId));
+  }
+
+  async createClinicianSupplementRule(rule: InsertClinicianSupplementRule): Promise<ClinicianSupplementRule> {
+    const result = await db.insert(schema.clinicianSupplementRules).values(rule).returning();
+    return result[0];
+  }
+
+  async updateClinicianSupplementRule(id: number, clinicianId: number, data: Partial<InsertClinicianSupplementRule>): Promise<ClinicianSupplementRule | undefined> {
+    const result = await db.update(schema.clinicianSupplementRules)
+      .set(data)
+      .where(and(eq(schema.clinicianSupplementRules.id, id), eq(schema.clinicianSupplementRules.clinicianId, clinicianId)))
+      .returning();
+    return result[0];
+  }
+
+  async deleteClinicianSupplementRule(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db.delete(schema.clinicianSupplementRules)
+      .where(and(eq(schema.clinicianSupplementRules.id, id), eq(schema.clinicianSupplementRules.clinicianId, clinicianId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ── Clinician Lab Preferences ────────────────────────────────────────────────
+  async getClinicianLabPreferences(clinicianId: number): Promise<ClinicianLabPreference[]> {
+    return db.select().from(schema.clinicianLabPreferences)
+      .where(eq(schema.clinicianLabPreferences.clinicianId, clinicianId))
+      .orderBy(schema.clinicianLabPreferences.markerKey);
+  }
+
+  async getClinicianLabPreference(clinicianId: number, markerKey: string, gender: string): Promise<ClinicianLabPreference | undefined> {
+    const result = await db.select().from(schema.clinicianLabPreferences)
+      .where(and(
+        eq(schema.clinicianLabPreferences.clinicianId, clinicianId),
+        eq(schema.clinicianLabPreferences.markerKey, markerKey),
+        eq(schema.clinicianLabPreferences.gender, gender)
+      ));
+    return result[0];
+  }
+
+  async upsertClinicianLabPreference(clinicianId: number, data: InsertClinicianLabPreference): Promise<ClinicianLabPreference> {
+    const existing = await this.getClinicianLabPreference(clinicianId, data.markerKey, data.gender ?? 'both');
+    if (existing) {
+      const result = await db.update(schema.clinicianLabPreferences)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(schema.clinicianLabPreferences.id, existing.id))
+        .returning();
+      return result[0];
+    }
+    const result = await db.insert(schema.clinicianLabPreferences).values({ ...data, clinicianId }).returning();
+    return result[0];
+  }
+
+  async deleteClinicianLabPreference(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db.delete(schema.clinicianLabPreferences)
+      .where(and(eq(schema.clinicianLabPreferences.id, id), eq(schema.clinicianLabPreferences.clinicianId, clinicianId)))
+      .returning();
+    return result.length > 0;
   }
 }
 
