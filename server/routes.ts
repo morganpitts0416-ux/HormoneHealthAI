@@ -1,6 +1,8 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import crypto from "crypto";
+import fs from "fs";
+import path from "path";
 import multer from "multer";
 import OpenAI from "openai";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema } from "@shared/schema";
@@ -2705,6 +2707,343 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       res.json({ success: true });
     } catch (err) {
       res.status(500).json({ message: "Failed to delete lab range preference" });
+    }
+  });
+
+  // ── Clinical Encounter Documentation ─────────────────────────────────────────
+
+  // Audio multer — disk storage in /tmp, deleted immediately after Whisper processing
+  const audioUpload = multer({
+    storage: multer.diskStorage({
+      destination: '/tmp',
+      filename: (req, file, cb) => {
+        const ext = path.extname(file.originalname) || '.webm';
+        cb(null, `encounter-${Date.now()}-${crypto.randomBytes(6).toString('hex')}${ext}`);
+      },
+    }),
+    limits: { fileSize: 200 * 1024 * 1024 }, // 200MB
+    fileFilter: (req, file, cb) => {
+      if (file.mimetype.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|webm|mp4|flac)$/i.test(file.originalname)) {
+        cb(null, true);
+      } else {
+        cb(new Error('Invalid audio file type'));
+      }
+    },
+  });
+
+  // POST /api/encounters/transcribe — upload audio, transcribe via Whisper, delete file
+  app.post("/api/encounters/transcribe", requireAuth, audioUpload.single('audio'), async (req, res) => {
+    const filePath = (req as any).file?.path;
+    if (!filePath) return res.status(400).json({ message: "No audio file provided" });
+    const cleanup = () => fs.unlink(filePath, () => {});
+    try {
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+      const fileStream = fs.createReadStream(filePath);
+      const transcriptionResult = await openai.audio.transcriptions.create({
+        model: 'whisper-1',
+        file: fileStream,
+        response_format: 'text',
+      });
+      cleanup();
+      res.json({ transcription: transcriptionResult });
+    } catch (err) {
+      cleanup();
+      console.error('[Encounters] Whisper transcription error:', err);
+      res.status(500).json({ message: "Transcription failed. Please try again or paste the text manually." });
+    }
+  });
+
+  // GET /api/encounters — list encounters for this clinician
+  app.get("/api/encounters", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const patientId = req.query.patientId ? parseInt(req.query.patientId as string) : undefined;
+      const encounters = await storage.getEncountersByClinicianId(clinicianId, patientId);
+      res.json(encounters);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load encounters" });
+    }
+  });
+
+  // POST /api/encounters — create new encounter
+  app.post("/api/encounters", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const { patientId, visitDate, visitType, chiefComplaint, linkedLabResultId, clinicianNotes } = req.body;
+      if (!patientId || !visitDate) return res.status(400).json({ message: "patientId and visitDate are required" });
+      const encounter = await storage.createEncounter({
+        clinicianId,
+        patientId: parseInt(patientId),
+        visitDate: new Date(visitDate),
+        visitType: visitType || 'follow-up',
+        chiefComplaint: chiefComplaint || null,
+        linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null,
+        clinicianNotes: clinicianNotes || null,
+        transcription: null,
+        audioProcessed: false,
+        soapNote: null,
+        patientSummary: null,
+        summaryPublished: false,
+      });
+      res.json(encounter);
+    } catch (err) {
+      console.error('[Encounters] Create error:', err);
+      res.status(500).json({ message: "Failed to create encounter" });
+    }
+  });
+
+  // GET /api/encounters/:id — get single encounter
+  app.get("/api/encounters/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const encounter = await storage.getEncounter(parseInt(req.params.id), clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+      res.json(encounter);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load encounter" });
+    }
+  });
+
+  // PUT /api/encounters/:id — update encounter metadata / transcription / notes
+  app.put("/api/encounters/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes } = req.body;
+      const updated = await storage.updateEncounter(id, clinicianId, {
+        ...(visitDate !== undefined && { visitDate: new Date(visitDate) }),
+        ...(visitType !== undefined && { visitType }),
+        ...(chiefComplaint !== undefined && { chiefComplaint }),
+        ...(transcription !== undefined && { transcription }),
+        ...(audioProcessed !== undefined && { audioProcessed }),
+        ...(linkedLabResultId !== undefined && { linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null }),
+        ...(clinicianNotes !== undefined && { clinicianNotes }),
+      });
+      if (!updated) return res.status(404).json({ message: "Encounter not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update encounter" });
+    }
+  });
+
+  // PUT /api/encounters/:id/soap — save SOAP note (after editing)
+  app.put("/api/encounters/:id/soap", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const { soapNote } = req.body;
+      const updated = await storage.updateEncounter(id, clinicianId, { soapNote });
+      if (!updated) return res.status(404).json({ message: "Encounter not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save SOAP note" });
+    }
+  });
+
+  // PUT /api/encounters/:id/summary — save patient summary (after editing)
+  app.put("/api/encounters/:id/summary", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const { patientSummary } = req.body;
+      const updated = await storage.updateEncounter(id, clinicianId, { patientSummary });
+      if (!updated) return res.status(404).json({ message: "Encounter not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save patient summary" });
+    }
+  });
+
+  // POST /api/encounters/:id/publish — publish patient summary to portal
+  app.post("/api/encounters/:id/publish", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+      if (!encounter.patientSummary) return res.status(400).json({ message: "No patient summary to publish" });
+      const updated = await storage.updateEncounter(id, clinicianId, {
+        summaryPublished: true,
+        summaryPublishedAt: new Date(),
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to publish encounter summary" });
+    }
+  });
+
+  // POST /api/encounters/:id/unpublish — unpublish patient summary
+  app.post("/api/encounters/:id/unpublish", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateEncounter(id, clinicianId, {
+        summaryPublished: false,
+      });
+      if (!updated) return res.status(404).json({ message: "Encounter not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to unpublish encounter summary" });
+    }
+  });
+
+  // DELETE /api/encounters/:id
+  app.delete("/api/encounters/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const deleted = await storage.deleteEncounter(parseInt(req.params.id), clinicianId);
+      if (!deleted) return res.status(404).json({ message: "Encounter not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete encounter" });
+    }
+  });
+
+  // POST /api/encounters/:id/generate-soap — generate AI SOAP note
+  app.post("/api/encounters/:id/generate-soap", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+      if (!encounter.transcription) return res.status(400).json({ message: "No transcription available. Please add a transcription first." });
+
+      // Fetch linked lab result for context
+      let labContext = "";
+      if (encounter.linkedLabResultId) {
+        const labResult = await storage.getLabResult(encounter.linkedLabResultId);
+        if (labResult) {
+          const labVals = labResult.labValues as Record<string, any>;
+          const labLines = Object.entries(labVals)
+            .filter(([, v]) => v !== null && v !== undefined && v !== "")
+            .map(([k, v]) => `  ${k}: ${v}`)
+            .join("\n");
+          labContext = `\n\nLINKED LAB RESULTS (${labResult.gender === 'female' ? 'Female' : 'Male'} panel, collected ${new Date(labResult.createdAt).toLocaleDateString()}):\n${labLines}`;
+        }
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const systemPrompt = `You are an expert clinical documentation specialist for a hormone and primary care clinic. Generate a comprehensive, structured SOAP note from the provided encounter transcription.
+
+Guidelines:
+- Use professional medical terminology appropriate for chart documentation
+- Include evidence-based clinical references where appropriate (e.g., AHA guidelines, endocrine society recommendations)
+- In the Assessment, directly reference and interpret any linked lab values
+- In the Plan, provide specific, actionable recommendations including medication adjustments, lab orders, lifestyle modifications, and follow-up intervals
+- Review of Systems should be thorough and systematic
+- Be concise but clinically complete
+
+Return ONLY a JSON object with these exact keys:
+{
+  "subjective": "Patient-reported symptoms, history, and concerns from the encounter...",
+  "objective": "Vital signs, physical examination findings, and objective observations...",
+  "reviewOfSystems": "Systematic review: Constitutional: ... Cardiovascular: ... Respiratory: ... Gastrointestinal: ... Musculoskeletal: ... Neurological: ... Endocrine: ... Psychiatric: ...",
+  "assessment": "Clinical impressions, diagnoses, and interpretation of lab values with evidence-based context...",
+  "plan": "Specific treatment plan including medications, labs, lifestyle, referrals, and follow-up..."
+}`;
+
+      const userPrompt = `Visit Type: ${encounter.visitType}
+Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}
+
+ENCOUNTER TRANSCRIPTION:
+${encounter.transcription}
+
+Generate a complete SOAP note based on this encounter. Reference the lab values in your Assessment and Plan sections.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const raw = completion.choices[0].message.content || "{}";
+      const soapNote = JSON.parse(raw);
+
+      const updated = await storage.updateEncounter(id, clinicianId, {
+        soapNote,
+        soapGeneratedAt: new Date(),
+      });
+
+      res.json({ soapNote, encounter: updated });
+    } catch (err) {
+      console.error('[Encounters] SOAP generation error:', err);
+      res.status(500).json({ message: "Failed to generate SOAP note. Please try again." });
+    }
+  });
+
+  // POST /api/encounters/:id/generate-summary — generate patient-facing summary
+  app.post("/api/encounters/:id/generate-summary", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+      if (!encounter.soapNote) return res.status(400).json({ message: "Please generate the SOAP note first." });
+
+      const soap = encounter.soapNote as any;
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a healthcare communication specialist. Transform clinical SOAP note content into a warm, clear, patient-friendly visit summary. Write in second person ("you", "your"). Avoid medical jargon — explain terms if used. Keep it encouraging and empowering. Structure as: a brief intro paragraph, then "What We Discussed", "Your Care Plan", and "Next Steps". Do not include information from Objective findings unless patient-relevant.`,
+          },
+          {
+            role: "user",
+            content: `Visit Type: ${encounter.visitType}
+Chief Complaint: ${encounter.chiefComplaint || "General visit"}
+Date: ${new Date(encounter.visitDate).toLocaleDateString()}
+
+Assessment:
+${soap.assessment || ""}
+
+Plan:
+${soap.plan || ""}
+
+Subjective:
+${soap.subjective || ""}
+
+Generate a warm, plain-language patient visit summary that the clinician can review and publish to the patient portal.`,
+          },
+        ],
+      });
+
+      const patientSummary = completion.choices[0].message.content || "";
+      const updated = await storage.updateEncounter(id, clinicianId, { patientSummary });
+
+      res.json({ patientSummary, encounter: updated });
+    } catch (err) {
+      console.error('[Encounters] Summary generation error:', err);
+      res.status(500).json({ message: "Failed to generate patient summary. Please try again." });
+    }
+  });
+
+  // GET /api/portal/encounters — published summaries for portal patient
+  app.get("/api/portal/encounters", async (req, res) => {
+    try {
+      const portalPatientId = (req.session as any).portalPatientId;
+      if (!portalPatientId) return res.status(401).json({ message: "Portal authentication required" });
+      const encounters = await storage.getPublishedEncountersByPatient(portalPatientId);
+      res.json(encounters);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load visit summaries" });
     }
   });
 

@@ -785,3 +785,39 @@ export const clinicianLabPreferences = pgTable("clinician_lab_preferences", {
 export type ClinicianLabPreference = typeof clinicianLabPreferences.$inferSelect;
 export const insertClinicianLabPreferenceSchema = createInsertSchema(clinicianLabPreferences).omit({ id: true, updatedAt: true });
 export type InsertClinicianLabPreference = z.infer<typeof insertClinicianLabPreferenceSchema>;
+
+// ── Clinical Encounter Documentation ─────────────────────────────────────────
+
+export type SoapNote = {
+  subjective: string;
+  objective: string;
+  reviewOfSystems: string;
+  assessment: string;
+  plan: string;
+};
+
+export const clinicalEncounters = pgTable("clinical_encounters", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  visitDate: timestamp("visit_date").notNull(),
+  visitType: varchar("visit_type", { length: 50 }).notNull().default("follow-up"),
+  chiefComplaint: text("chief_complaint"),
+  transcription: text("transcription"),
+  audioProcessed: boolean("audio_processed").notNull().default(false),
+  linkedLabResultId: integer("linked_lab_result_id").references(() => labResults.id, { onDelete: 'set null' }),
+  soapNote: jsonb("soap_note").$type<SoapNote>(),
+  soapGeneratedAt: timestamp("soap_generated_at"),
+  patientSummary: text("patient_summary"),
+  summaryPublished: boolean("summary_published").notNull().default(false),
+  summaryPublishedAt: timestamp("summary_published_at"),
+  clinicianNotes: text("clinician_notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type ClinicalEncounter = typeof clinicalEncounters.$inferSelect;
+export const insertClinicalEncounterSchema = createInsertSchema(clinicalEncounters).omit({
+  id: true, createdAt: true, updatedAt: true, soapGeneratedAt: true, summaryPublishedAt: true,
+});
+export type InsertClinicalEncounter = z.infer<typeof insertClinicalEncounterSchema>;

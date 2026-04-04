@@ -18,6 +18,7 @@ import type {
   ClinicianSupplement, InsertClinicianSupplement,
   ClinicianSupplementRule, InsertClinicianSupplementRule,
   ClinicianLabPreference, InsertClinicianLabPreference,
+  ClinicalEncounter, InsertClinicalEncounter,
 } from "@shared/schema";
 
 neonConfig.webSocketConstructor = ws;
@@ -146,6 +147,14 @@ export interface IStorage {
   getClinicianLabPreference(clinicianId: number, markerKey: string, gender: string): Promise<ClinicianLabPreference | undefined>;
   upsertClinicianLabPreference(clinicianId: number, data: InsertClinicianLabPreference): Promise<ClinicianLabPreference>;
   deleteClinicianLabPreference(id: number, clinicianId: number): Promise<boolean>;
+
+  // Clinical Encounters
+  getEncountersByClinicianId(clinicianId: number, patientId?: number): Promise<(ClinicalEncounter & { patientName: string })[]>;
+  getEncounter(id: number, clinicianId: number): Promise<ClinicalEncounter | undefined>;
+  createEncounter(data: InsertClinicalEncounter): Promise<ClinicalEncounter>;
+  updateEncounter(id: number, clinicianId: number, data: Partial<InsertClinicalEncounter> & { soapNote?: any; soapGeneratedAt?: Date; summaryPublished?: boolean; summaryPublishedAt?: Date; updatedAt?: Date }): Promise<ClinicalEncounter | undefined>;
+  deleteEncounter(id: number, clinicianId: number): Promise<boolean>;
+  getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]>;
 }
 
 export class DbStorage implements IStorage {
@@ -874,6 +883,85 @@ export class DbStorage implements IStorage {
       .where(and(eq(schema.clinicianLabPreferences.id, id), eq(schema.clinicianLabPreferences.clinicianId, clinicianId)))
       .returning();
     return result.length > 0;
+  }
+
+  // ── Clinical Encounters ──────────────────────────────────────────────────────
+  async getEncountersByClinicianId(clinicianId: number, patientId?: number): Promise<(ClinicalEncounter & { patientName: string })[]> {
+    const rows = await db
+      .select({
+        id: schema.clinicalEncounters.id,
+        clinicianId: schema.clinicalEncounters.clinicianId,
+        patientId: schema.clinicalEncounters.patientId,
+        visitDate: schema.clinicalEncounters.visitDate,
+        visitType: schema.clinicalEncounters.visitType,
+        chiefComplaint: schema.clinicalEncounters.chiefComplaint,
+        transcription: schema.clinicalEncounters.transcription,
+        audioProcessed: schema.clinicalEncounters.audioProcessed,
+        linkedLabResultId: schema.clinicalEncounters.linkedLabResultId,
+        soapNote: schema.clinicalEncounters.soapNote,
+        soapGeneratedAt: schema.clinicalEncounters.soapGeneratedAt,
+        patientSummary: schema.clinicalEncounters.patientSummary,
+        summaryPublished: schema.clinicalEncounters.summaryPublished,
+        summaryPublishedAt: schema.clinicalEncounters.summaryPublishedAt,
+        clinicianNotes: schema.clinicalEncounters.clinicianNotes,
+        createdAt: schema.clinicalEncounters.createdAt,
+        updatedAt: schema.clinicalEncounters.updatedAt,
+        patientName: sql<string>`${schema.patients.firstName} || ' ' || ${schema.patients.lastName}`,
+      })
+      .from(schema.clinicalEncounters)
+      .innerJoin(schema.patients, eq(schema.clinicalEncounters.patientId, schema.patients.id))
+      .where(
+        patientId
+          ? and(eq(schema.clinicalEncounters.clinicianId, clinicianId), eq(schema.clinicalEncounters.patientId, patientId))
+          : eq(schema.clinicalEncounters.clinicianId, clinicianId)
+      )
+      .orderBy(desc(schema.clinicalEncounters.visitDate));
+    return rows as (ClinicalEncounter & { patientName: string })[];
+  }
+
+  async getEncounter(id: number, clinicianId: number): Promise<ClinicalEncounter | undefined> {
+    const result = await db.select().from(schema.clinicalEncounters)
+      .where(and(eq(schema.clinicalEncounters.id, id), eq(schema.clinicalEncounters.clinicianId, clinicianId)));
+    return result[0];
+  }
+
+  async createEncounter(data: InsertClinicalEncounter): Promise<ClinicalEncounter> {
+    const result = await db.insert(schema.clinicalEncounters).values(data).returning();
+    return result[0];
+  }
+
+  async updateEncounter(id: number, clinicianId: number, data: any): Promise<ClinicalEncounter | undefined> {
+    const result = await db.update(schema.clinicalEncounters)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(schema.clinicalEncounters.id, id), eq(schema.clinicalEncounters.clinicianId, clinicianId)))
+      .returning();
+    return result[0];
+  }
+
+  async deleteEncounter(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db.delete(schema.clinicalEncounters)
+      .where(and(eq(schema.clinicalEncounters.id, id), eq(schema.clinicalEncounters.clinicianId, clinicianId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]> {
+    const result = await db
+      .select({
+        id: schema.clinicalEncounters.id,
+        visitDate: schema.clinicalEncounters.visitDate,
+        visitType: schema.clinicalEncounters.visitType,
+        chiefComplaint: schema.clinicalEncounters.chiefComplaint,
+        patientSummary: schema.clinicalEncounters.patientSummary,
+        summaryPublishedAt: schema.clinicalEncounters.summaryPublishedAt,
+      })
+      .from(schema.clinicalEncounters)
+      .where(and(
+        eq(schema.clinicalEncounters.patientId, patientId),
+        eq(schema.clinicalEncounters.summaryPublished, true)
+      ))
+      .orderBy(desc(schema.clinicalEncounters.visitDate));
+    return result;
   }
 }
 
