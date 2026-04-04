@@ -12,7 +12,7 @@ import {
   TrendingUp, TrendingDown, Minus, Package, MessageSquare, Smartphone,
   Heart, Activity, Utensils, X, ChevronDown, ChevronUp, Info,
   ChefHat, Clock, Users, Loader2, ArrowLeft, Bookmark, BookmarkCheck,
-  Download, Trash2
+  Download, Trash2, Stethoscope, FileText
 } from "lucide-react";
 import type { SupplementRecommendation } from "@shared/schema";
 import { generateTrendInsights } from "@/lib/clinical-trend-insights";
@@ -788,6 +788,50 @@ function ClinicalSnapshotSection({ labs }: { labs: PortalLab[] }) {
 
 interface SavedRecipeRow { id: number; foodName: string; recipeName: string; recipeData: Recipe; savedAt: string; }
 
+const VISIT_TYPE_LABELS: Record<string, string> = {
+  "new-patient": "New Patient", "follow-up": "Follow-up", "acute": "Acute Visit",
+  "wellness": "Wellness", "procedure": "Procedure", "telemedicine": "Telemedicine", "lab-review": "Lab Review",
+};
+
+function PortalVisitSummaryCard({ vs }: {
+  vs: { id: number; visitDate: string; visitType: string; chiefComplaint: string | null; patientSummary: string | null; summaryPublishedAt: string | null };
+}) {
+  const [expanded, setExpanded] = useState(false);
+  return (
+    <div className="rounded-xl border p-4" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
+      <div className="flex items-start justify-between gap-3">
+        <div>
+          <div className="flex items-center gap-2 flex-wrap">
+            <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+              {VISIT_TYPE_LABELS[vs.visitType] ?? vs.visitType}
+            </span>
+            <span className="text-xs" style={{ color: "#a0a880" }}>
+              {formatDate(new Date(vs.visitDate).toISOString().split("T")[0])}
+            </span>
+          </div>
+          {vs.chiefComplaint && (
+            <p className="text-xs mt-0.5 italic" style={{ color: "#7a8a64" }}>"{vs.chiefComplaint}"</p>
+          )}
+        </div>
+        <button
+          className="text-xs font-medium flex items-center gap-1 flex-shrink-0"
+          style={{ color: "#5a7040" }}
+          onClick={() => setExpanded(e => !e)}
+          data-testid={`button-toggle-visit-${vs.id}`}
+        >
+          {expanded ? <ChevronUp className="w-3.5 h-3.5" /> : <ChevronDown className="w-3.5 h-3.5" />}
+          {expanded ? "Collapse" : "Read summary"}
+        </button>
+      </div>
+      {expanded && vs.patientSummary && (
+        <div className="mt-3 pt-3 border-t text-sm whitespace-pre-wrap leading-relaxed" style={{ color: "#3a3a3a", borderColor: "#e8ddd0" }}>
+          {vs.patientSummary}
+        </div>
+      )}
+    </div>
+  );
+}
+
 function SavedRecipeCard({ row, onDelete }: { row: SavedRecipeRow; onDelete: () => void }) {
   const [open, setOpen] = useState(false);
   const r = row.recipeData;
@@ -909,6 +953,17 @@ export default function PortalDashboard() {
     queryKey: ["/api/portal/saved-recipes"],
     enabled: !!patient,
     retry: false,
+  });
+
+  const { data: visitSummaries = [] } = useQuery<{ id: number; visitDate: string; visitType: string; chiefComplaint: string | null; patientSummary: string | null; summaryPublishedAt: string | null }[]>({
+    queryKey: ["/api/portal/encounters"],
+    enabled: !!patient,
+    retry: false,
+    queryFn: async () => {
+      const res = await fetch("/api/portal/encounters", { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
   });
 
   const deleteSavedRecipeMutation = useMutation({
@@ -1215,6 +1270,21 @@ export default function PortalDashboard() {
               <p className="text-sm leading-relaxed" style={{ color: "#7a8a64" }}>
                 Once your care team reviews your labs, your personalized health insights will be shared through this portal.
               </p>
+            </div>
+          </section>
+        )}
+
+        {/* Visit Summaries from clinician */}
+        {visitSummaries.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Stethoscope className="w-4 h-4" style={{ color: "#5a7040" }} />
+              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>My Visit Summaries</h2>
+            </div>
+            <div className="space-y-3">
+              {visitSummaries.map(vs => (
+                <PortalVisitSummaryCard key={vs.id} vs={vs} />
+              ))}
             </div>
           </section>
         )}

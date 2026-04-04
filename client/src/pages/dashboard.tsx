@@ -20,6 +20,7 @@ import {
   Package,
   Clock,
   Users,
+  Stethoscope,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -375,6 +376,28 @@ export default function Dashboard() {
               )}
             </div>
           </div>
+        </div>
+
+        {/* ── Encounters quick link ─────────────────────────────────── */}
+        <div>
+          <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#a0a880" }}>Clinical Documentation</p>
+          <button
+            data-testid="card-encounters"
+            className="w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all"
+            style={{ backgroundColor: "#ffffff", borderColor: "#d4c9b5" }}
+            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2e3a20"; (e.currentTarget as HTMLElement).style.backgroundColor = "#f4f8ee"; }}
+            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#d4c9b5"; (e.currentTarget as HTMLElement).style.backgroundColor = "#ffffff"; }}
+            onClick={() => setLocation("/encounters")}
+          >
+            <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#edf4e4" }}>
+              <Stethoscope className="w-6 h-6" style={{ color: "#2e3a20" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="font-semibold text-sm" style={{ color: "#1c2414" }}>Encounter Documentation</p>
+              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Audio transcription, AI SOAP notes, patient visit summaries</p>
+            </div>
+            <ArrowRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4b9a5" }} />
+          </button>
         </div>
 
         {/* ── Quick actions ────────────────────────────────────────── */}

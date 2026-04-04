@@ -26,6 +26,7 @@ import PortalDashboard from "@/pages/portal/dashboard";
 import PortalSupplements from "@/pages/portal/supplements";
 import PortalMessages from "@/pages/portal/messages";
 import StaffSetPassword from "@/pages/staff-set-password";
+import EncountersPage from "@/pages/encounters";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
@@ -115,6 +116,9 @@ function Router() {
       </Route>
       <Route path="/patients">
         {() => <ProtectedRoute component={PatientProfiles} />}
+      </Route>
+      <Route path="/encounters">
+        {() => <ProtectedRoute component={EncountersPage} />}
       </Route>
       <Route path="/admin">
         {() => <AdminRoute component={AdminDashboard} />}
