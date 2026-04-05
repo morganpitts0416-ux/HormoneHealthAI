@@ -91,8 +91,12 @@ app.use((req, res, next) => {
     throw err;
   });
 
-  if (app.get("env") === "development") {
-    const { setupVite } = await import("./vite");
+  if (process.env.NODE_ENV === "development") {
+    // new Function prevents esbuild from statically analyzing this import,
+    // so server/vite.ts and its "import from 'vite'" are never bundled into
+    // dist/index.js — vite stays a dev-only dependency.
+    const importDynamic = new Function("m", "return import(m)");
+    const { setupVite } = await importDynamic("./vite.js");
     await setupVite(app, server);
   } else {
     serveStatic(app);
