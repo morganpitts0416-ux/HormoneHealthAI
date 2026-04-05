@@ -3,7 +3,8 @@ import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import { passport } from "./auth";
 import { registerRoutes } from "./routes";
-import { setupVite, serveStatic, log } from "./vite";
+import { log } from "./logger";
+import { serveStatic } from "./static-serve";
 
 const PgSession = connectPgSimple(session);
 
@@ -91,6 +92,7 @@ app.use((req, res, next) => {
   });
 
   if (app.get("env") === "development") {
+    const { setupVite } = await import("./vite");
     await setupVite(app, server);
   } else {
     serveStatic(app);
