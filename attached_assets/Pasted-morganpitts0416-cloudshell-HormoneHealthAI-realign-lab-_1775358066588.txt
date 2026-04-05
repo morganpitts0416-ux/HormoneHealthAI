@@ -1,0 +1,169 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ cd ~/HormoneHealthAI
+grep -R "vite" -n server
+grep -n "vite" dist/index.js
+server/storage.ts:44:  // Password reset / invite operations
+server/storage.ts:83:  getClinicianStaffByInviteToken(token: string): Promise<ClinicianStaff | undefined>;
+server/storage.ts:93:  getPortalAccountByInviteToken(token: string): Promise<PatientPortalAccount | undefined>;
+server/storage.ts:230:  // ── Password reset / invite operations ───────────────────────────────────────
+server/storage.ts:489:  async getPortalAccountByInviteToken(token: string): Promise<PatientPortalAccount | undefined> {
+server/storage.ts:493:      .where(eq(schema.patientPortalAccounts.inviteToken, token));
+server/storage.ts:635:  async getClinicianStaffByInviteToken(token: string): Promise<ClinicianStaff | undefined> {
+server/storage.ts:636:    const result = await db.select().from(schema.clinicianStaff).where(eq(schema.clinicianStaff.inviteToken, token));
+server/index.ts:95:    const { setupVite } = await import("./vite");
+server/email-service.ts:59:export async function sendInviteEmail(
+server/email-service.ts:70:    subject: "You've been invited to ReAlign Health — set your password",
+server/email-service.ts:89:            This invite link expires in <strong>72 hours</strong>. If you didn't expect this email, you can safely ignore it.
+server/email-service.ts:103:export async function sendPatientPortalInviteEmail(
+server/email-service.ts:115:    subject: `${clinicName} has invited you to your personal health portal`,
+server/email-service.ts:154:export async function sendStaffInviteEmail(
+server/email-service.ts:167:    subject: `You've been invited to join ${clinicName} on ReAlign Health`,
+server/email-service.ts:177:            <strong>${clinicianName}</strong> at <strong>${clinicName}</strong> has invited you to join their ReAlign Health workspace.
+server/email-service.ts:188:            This invite link expires in <strong>72 hours</strong>. Once you set your password, you can log in at any time using your email address.
+server/vite.ts:4:import { createServer as createViteServer, createLogger } from "vite";
+server/vite.ts:6:import viteConfig from "../vite.config";
+server/vite.ts:9:const viteLogger = createLogger();
+server/vite.ts:29:  const vite = await createViteServer({
+server/vite.ts:30:    ...viteConfig,
+server/vite.ts:33:      ...viteLogger,
+server/vite.ts:35:        viteLogger.error(msg, options);
+server/vite.ts:43:  app.use(vite.middlewares);
+server/vite.ts:61:      const page = await vite.transformIndexHtml(url, template);
+server/vite.ts:64:      vite.ssrFixStacktrace(e as Error);
+server/routes.ts:31:import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail } from "./email-service";
+server/routes.ts:144:              const { passwordHash: _ph, inviteToken: _it, ...safeStaff } = staff;
+server/routes.ts:288:  // Validate a reset/invite token (check it's valid + not expired)
+server/routes.ts:1439:  // Create a new clinician account via invite (admin only — no password required)
+server/routes.ts:1451:      // Create account with a random placeholder password — invite token required to activate
+server/routes.ts:1464:      // Generate invite token (72-hour expiry)
+server/routes.ts:1469:      // Send invite email (best-effort — don't fail if email errors)
+server/routes.ts:1471:        await sendInviteEmail(user.email, user.firstName, token, req);
+server/routes.ts:1472:        console.log(`[ADMIN] Invite email sent to ${user.email}`);
+server/routes.ts:1474:        console.error("[ADMIN] Failed to send invite email:", emailErr);
+server/routes.ts:1478:        message: "Clinician account created and invite email sent",
+server/routes.ts:1480:        inviteToken: process.env.NODE_ENV === "development" ? token : undefined,
+server/routes.ts:1525:  // ── Portal: Clinician invites patient ─────────────────────────────────────
+server/routes.ts:1526:  app.post("/api/portal/invite/:patientId", requireAuth, async (req, res) => {
+server/routes.ts:1546:        await storage.updatePortalAccount(patientId, { email, inviteToken: token, inviteExpires: expires });
+server/routes.ts:1548:        await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
+server/routes.ts:1560:      const inviteUrl = `${base}/portal/set-password?token=${token}`;
+server/routes.ts:1564:        await sendPatientPortalInviteEmail(email, patient.firstName, clinicianUser?.clinicName || "Your Care Team", token, req);
+server/routes.ts:1567:        console.error("[PORTAL] Failed to send invite email:", emailErr);
+server/routes.ts:1568:        console.log(`[PORTAL EMAIL FALLBACK] Invite link for ${email}: ${inviteUrl}`);
+server/routes.ts:1571:      res.json({ message: "Invitation sent", inviteUrl, emailSent });
+server/routes.ts:1573:      console.error("[PORTAL] Error sending invite:", error);
+server/routes.ts:1578:  // ── Portal: Patient sets password from invite ──────────────────────────────
+server/routes.ts:1585:      const account = await storage.getPortalAccountByInviteToken(token);
+server/routes.ts:1586:      if (!account) return res.status(400).json({ message: "Invalid or expired invite link" });
+server/routes.ts:1587:      if (account.inviteExpires && account.inviteExpires < new Date()) {
+server/routes.ts:1588:        return res.status(400).json({ message: "This invite link has expired. Please ask your clinic to resend the invitation." });
+server/routes.ts:1592:      await storage.updatePortalAccount(account.patientId, { passwordHash, inviteToken: null, inviteExpires: null });
+server/routes.ts:1806:      if (!portalAccount) return res.status(400).json({ message: "Patient does not have a portal account. Please invite them first." });
+server/routes.ts:1854:      let portalStatus: 'not_invited' | 'invite_pending' | 'active' = 'not_invited';
+server/routes.ts:1856:        portalStatus = portalAccount.passwordHash ? 'active' : 'invite_pending';
+server/routes.ts:1870:        inviteSentAt: portalAccount?.createdAt || null,
+server/routes.ts:2360:      const safeStaff = staff.map(({ passwordHash: _ph, inviteToken: _it, ...s }) => s);
+server/routes.ts:2368:  // POST /api/staff — invite a new staff member
+server/routes.ts:2383:      const inviteToken = crypto.randomBytes(32).toString('hex');
+server/routes.ts:2384:      const inviteExpires = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+server/routes.ts:2392:        inviteToken,
+server/routes.ts:2393:        inviteExpires,
+server/routes.ts:2397:      // Send invite email (fire-and-forget)
+server/routes.ts:2399:      sendStaffInviteEmail({
+server/routes.ts:2404:        inviteToken,
+server/routes.ts:2405:      }).catch(err => console.error('[EMAIL] Staff invite email failed:', err));
+server/routes.ts:2407:      const { passwordHash: _ph, inviteToken: _it, ...safeStaff } = staffMember;
+server/routes.ts:2411:      res.status(500).json({ message: "Failed to invite staff member" });
+server/routes.ts:2437:  // POST /api/auth/staff-set-password — staff member accepts invite and sets password
+server/routes.ts:2449:      const staffMember = await storage.getClinicianStaffByInviteToken(token);
+server/routes.ts:2451:        return res.status(400).json({ message: "Invalid or expired invite link" });
+server/routes.ts:2453:      if (staffMember.inviteExpires && staffMember.inviteExpires < new Date()) {
+server/routes.ts:2454:        return res.status(400).json({ message: "Invite link has expired. Please ask your clinician to resend the invite." });
+server/routes.ts:2460:        inviteToken: null,
+server/routes.ts:2461:        inviteExpires: null,
+11:// vite.config.ts
+12:import { defineConfig } from "vite";
+13:import react from "@vitejs/plugin-react";
+15:import runtimeErrorOverlay from "@replit/vite-plugin-runtime-error-modal";
+16:var vite_config_default;
+17:var init_vite_config = __esm({
+18:  async "vite.config.ts"() {
+20:    vite_config_default = defineConfig({
+25:          await import("@replit/vite-plugin-cartographer").then(
+28:          await import("@replit/vite-plugin-dev-banner").then(
+55:// server/vite.ts
+56:var vite_exports = {};
+57:__export(vite_exports, {
+65:import { createServer as createViteServer, createLogger } from "vite";
+82:  const vite = await createViteServer({
+83:    ...vite_config_default,
+86:      ...viteLogger,
+88:        viteLogger.error(msg, options);
+95:  app2.use(vite.middlewares);
+110:      const page = await vite.transformIndexHtml(url, template);
+113:      vite.ssrFixStacktrace(e);
+130:var viteLogger;
+131:var init_vite = __esm({
+132:  async "server/vite.ts"() {
+134:    await init_vite_config();
+135:    viteLogger = createLogger();
+625:  // Password reset / invite tokens
+709:  inviteToken: varchar("invite_token", { length: 255 }),
+710:  inviteExpires: timestamp("invite_expires"),
+726:  inviteToken: varchar("invite_token", { length: 255 }),
+727:  inviteExpires: timestamp("invite_expires"),
+966:  // ── Password reset / invite operations ───────────────────────────────────────
+1109:  async getPortalAccountByInviteToken(token) {
+1110:    const result = await db.select().from(patientPortalAccounts).where(eq(patientPortalAccounts.inviteToken, token));
+1190:  async getClinicianStaffByInviteToken(token) {
+1191:    const result = await db.select().from(clinicianStaff).where(eq(clinicianStaff.inviteToken, token));
+8840:async function sendInviteEmail(to, firstName, token, req) {
+8845:    subject: "You've been invited to ReAlign Health \u2014 set your password",
+8864:            This invite link expires in <strong>72 hours</strong>. If you didn't expect this email, you can safely ignore it.
+8877:async function sendPatientPortalInviteEmail(to, patientFirstName, clinicName, token, req) {
+8882:    subject: `${clinicName} has invited you to your personal health portal`,
+8920:async function sendStaffInviteEmail(to, staffFirstName, clinicName, clinicianName, token, req) {
+8925:    subject: `You've been invited to join ${clinicName} on ReAlign Health`,
+8935:            <strong>${clinicianName}</strong> at <strong>${clinicName}</strong> has invited you to join their ReAlign Health workspace.
+8946:            This invite link expires in <strong>72 hours</strong>. Once you set your password, you can log in at any time using your email address.
+9193:              const { passwordHash: _ph, inviteToken: _it, ...safeStaff } = staff;
+10314:        await sendInviteEmail(user.email, user.firstName, token, req);
+10315:        console.log(`[ADMIN] Invite email sent to ${user.email}`);
+10317:        console.error("[ADMIN] Failed to send invite email:", emailErr);
+10320:        message: "Clinician account created and invite email sent",
+10322:        inviteToken: process.env.NODE_ENV === "development" ? token : void 0
+10360:  app2.post("/api/portal/invite/:patientId", requireAuth, async (req, res) => {
+10374:        await storage.updatePortalAccount(patientId, { email, inviteToken: token, inviteExpires: expires });
+10376:        await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
+10385:      const inviteUrl = `${base}/portal/set-password?token=${token}`;
+10388:        await sendPatientPortalInviteEmail(email, patient.firstName, clinicianUser?.clinicName || "Your Care Team", token, req);
+10391:        console.error("[PORTAL] Failed to send invite email:", emailErr);
+10392:        console.log(`[PORTAL EMAIL FALLBACK] Invite link for ${email}: ${inviteUrl}`);
+10394:      res.json({ message: "Invitation sent", inviteUrl, emailSent });
+10396:      console.error("[PORTAL] Error sending invite:", error);
+10405:      const account = await storage.getPortalAccountByInviteToken(token);
+10406:      if (!account) return res.status(400).json({ message: "Invalid or expired invite link" });
+10407:      if (account.inviteExpires && account.inviteExpires < /* @__PURE__ */ new Date()) {
+10408:        return res.status(400).json({ message: "This invite link has expired. Please ask your clinic to resend the invitation." });
+10411:      await storage.updatePortalAccount(account.patientId, { passwordHash, inviteToken: null, inviteExpires: null });
+10582:      if (!portalAccount) return res.status(400).json({ message: "Patient does not have a portal account. Please invite them first." });
+10619:      let portalStatus = "not_invited";
+10621:        portalStatus = portalAccount.passwordHash ? "active" : "invite_pending";
+10634:        inviteSentAt: portalAccount?.createdAt || null
+11026:      const safeStaff = staff.map(({ passwordHash: _ph, inviteToken: _it, ...s }) => s);
+11044:      const inviteToken = crypto2.randomBytes(32).toString("hex");
+11045:      const inviteExpires = new Date(Date.now() + 72 * 60 * 60 * 1e3);
+11052:        inviteToken,
+11053:        inviteExpires,
+11057:      sendStaffInviteEmail({
+11062:        inviteToken
+11063:      }).catch((err) => console.error("[EMAIL] Staff invite email failed:", err));
+11064:      const { passwordHash: _ph, inviteToken: _it, ...safeStaff } = staffMember;
+11068:      res.status(500).json({ message: "Failed to invite staff member" });
+11098:      const staffMember = await storage.getClinicianStaffByInviteToken(token);
+11100:        return res.status(400).json({ message: "Invalid or expired invite link" });
+11102:      if (staffMember.inviteExpires && staffMember.inviteExpires < /* @__PURE__ */ new Date()) {
+11103:        return res.status(400).json({ message: "Invite link has expired. Please ask your clinician to resend the invite." });
+11108:        inviteToken: null,
+11109:        inviteExpires: null,
+11798:    const { setupVite: setupVite2 } = await init_vite().then(() => vite_exports);
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
