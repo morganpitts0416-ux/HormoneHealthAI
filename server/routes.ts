@@ -3,6 +3,7 @@ import { createServer, type Server } from "http";
 import crypto from "crypto";
 import fs from "fs";
 import path from "path";
+import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema } from "@shared/schema";
@@ -2738,26 +2739,83 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     },
   });
 
+  // Helper: split audio into 20-min segments via ffmpeg, returns list of temp file paths
+  function splitAudioSegments(inputPath: string, ext: string): Promise<string[]> {
+    return new Promise((resolve, reject) => {
+      const segmentPattern = inputPath.replace(/\.[^.]+$/, '') + '_seg_%03d' + ext;
+      execFile('ffmpeg', [
+        '-i', inputPath,
+        '-f', 'segment',
+        '-segment_time', '1200',  // 20 minutes per chunk
+        '-c', 'copy',
+        '-reset_timestamps', '1',
+        segmentPattern,
+      ], (err, _stdout, stderr) => {
+        if (err) {
+          console.error('[Encounters] ffmpeg split error:', stderr);
+          return reject(err);
+        }
+        // Collect the produced segment files in order
+        const dir = path.dirname(inputPath);
+        const base = path.basename(inputPath.replace(/\.[^.]+$/, '')) + '_seg_';
+        const files = fs.readdirSync(dir)
+          .filter(f => f.startsWith(base))
+          .sort()
+          .map(f => path.join(dir, f));
+        resolve(files);
+      });
+    });
+  }
+
   // POST /api/encounters/transcribe — upload audio, transcribe via Whisper, delete file
+  // Files > 24 MB are auto-split into 20-min segments so long recordings always work
   app.post("/api/encounters/transcribe", requireAuth, audioUpload.single('audio'), async (req, res) => {
     const filePath = (req as any).file?.path;
     if (!filePath) return res.status(400).json({ message: "No audio file provided" });
-    const cleanup = () => fs.unlink(filePath, () => {});
+
+    const cleanupFiles = (paths: string[]) => paths.forEach(p => fs.unlink(p, () => {}));
+
     try {
       const openai = new OpenAI({
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
-      const fileStream = fs.createReadStream(filePath);
-      const transcriptionResult = await openai.audio.transcriptions.create({
-        model: 'whisper-1',
-        file: fileStream,
-        response_format: 'text',
-      });
-      cleanup();
-      res.json({ transcription: transcriptionResult });
+
+      const WHISPER_LIMIT = 24.5 * 1024 * 1024; // 24.5 MB — stay under OpenAI's 25 MB cap
+      const fileSize = fs.statSync(filePath).size;
+      const ext = path.extname(filePath) || '.webm';
+
+      let segments: string[] = [];
+      let splitUsed = false;
+
+      if (fileSize > WHISPER_LIMIT) {
+        console.log(`[Encounters] File ${fileSize} bytes > limit — splitting into 20-min segments`);
+        segments = await splitAudioSegments(filePath, ext);
+        splitUsed = true;
+        console.log(`[Encounters] Created ${segments.length} segments`);
+      } else {
+        segments = [filePath];
+      }
+
+      // Transcribe each segment sequentially (Whisper is stateful — order matters)
+      const parts: string[] = [];
+      for (const seg of segments) {
+        const stream = fs.createReadStream(seg);
+        const result = await openai.audio.transcriptions.create({
+          model: 'whisper-1',
+          file: stream,
+          response_format: 'text',
+        });
+        parts.push(result as unknown as string);
+      }
+
+      // Clean up — always delete everything
+      cleanupFiles(splitUsed ? [filePath, ...segments] : [filePath]);
+
+      const transcription = parts.join(' ').trim();
+      res.json({ transcription });
     } catch (err) {
-      cleanup();
+      cleanupFiles([filePath]);
       console.error('[Encounters] Whisper transcription error:', err);
       res.status(500).json({ message: "Transcription failed. Please try again or paste the text manually." });
     }
