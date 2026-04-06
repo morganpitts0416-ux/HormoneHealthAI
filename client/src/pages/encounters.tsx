@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect, Component, type ReactNode } from "react";
+import { useState, useRef, useCallback, useEffect, Component, type ReactNode, type ReactElement } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { format } from "date-fns";
@@ -111,23 +111,87 @@ function EncounterListItem({
     <button
       data-testid={`encounter-item-${enc.id}`}
       onClick={onClick}
-      className={`w-full text-left px-3 py-3 rounded-md transition-colors ${isSelected ? "bg-[#e8ddd0]" : "hover-elevate"}`}
+      className={`w-full text-left px-3 py-2.5 rounded-md transition-colors relative ${isSelected ? "bg-accent" : "hover-elevate"}`}
     >
-      <div className="flex items-start gap-2">
-        <div className="flex-shrink-0 w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold text-white mt-0.5" style={{ background: "#7a8a64" }}>
+      {isSelected && <span className="absolute left-0 top-2 bottom-2 w-0.5 rounded-full bg-primary" />}
+      <div className="flex items-start gap-2.5 pl-1.5">
+        <div className={`flex-shrink-0 w-7 h-7 rounded-full flex items-center justify-center text-[10px] font-bold text-white mt-0.5 ${isSelected ? "ring-2 ring-primary/30" : ""}`} style={{ background: "#7a8a64" }}>
           {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-foreground truncate">{enc.patientName}</div>
-          <div className="text-xs text-muted-foreground">{displayDate(enc.visitDate as unknown as string)}</div>
+          <div className="text-sm font-medium text-foreground truncate leading-snug">{enc.patientName}</div>
+          <div className="text-[11px] text-muted-foreground leading-tight">{displayDate(enc.visitDate as unknown as string)}</div>
           {enc.chiefComplaint && (
-            <div className="text-xs text-muted-foreground truncate mt-0.5 italic">"{enc.chiefComplaint}"</div>
+            <div className="text-[11px] text-muted-foreground/70 truncate mt-0.5 italic">"{enc.chiefComplaint}"</div>
           )}
           <EncounterStatusBadges enc={enc} />
         </div>
       </div>
     </button>
   );
+}
+
+// ── SOAP Note Rendered Viewer ─────────────────────────────────────────────────
+const MAJOR_SECTIONS = /^(SUBJECTIVE|OBJECTIVE|ASSESSMENT\/PLAN|CARE PLAN|FOLLOW-UP|FOLLOW UP)$/i;
+const CC_LINE = /^CC\/Reason:\s*(.*)/i;
+const SUB_LABEL = /^([A-Z][A-Za-z\s\/\-]+):(\s*.*)$/;
+
+function SoapNoteViewer({ text }: { text: string }) {
+  const lines = text.split("\n");
+  const nodes: ReactElement[] = [];
+
+  lines.forEach((raw, i) => {
+    const line = raw;
+    const trimmed = line.trim();
+    if (!trimmed) { nodes.push(<div key={i} className="h-1" />); return; }
+
+    const ccMatch = trimmed.match(CC_LINE);
+    if (ccMatch) {
+      nodes.push(
+        <div key={i} className="soap-cc">
+          <span className="soap-label">Chief Complaint / Reason for Visit — </span>
+          {ccMatch[1]}
+        </div>
+      );
+      return;
+    }
+
+    if (MAJOR_SECTIONS.test(trimmed)) {
+      nodes.push(<span key={i} className="soap-section-major">{trimmed}</span>);
+      return;
+    }
+
+    const subMatch = trimmed.match(SUB_LABEL);
+    if (subMatch && subMatch[1].length < 32) {
+      const isIndented = trimmed.startsWith("-");
+      nodes.push(
+        <p key={i} className={`soap-body ${isIndented ? "pl-4" : ""}`}>
+          <span className="soap-label">{subMatch[1]}: </span>
+          {subMatch[2].trim()}
+        </p>
+      );
+      return;
+    }
+
+    if (trimmed.startsWith("-") || trimmed.startsWith("•")) {
+      nodes.push(
+        <p key={i} className="soap-body pl-4">
+          <span className="text-primary/60 mr-1 select-none">·</span>
+          {trimmed.slice(1).trim()}
+        </p>
+      );
+      return;
+    }
+
+    if (/^\d+\./.test(trimmed)) {
+      nodes.push(<p key={i} className="soap-body font-semibold mt-1">{trimmed}</p>);
+      return;
+    }
+
+    nodes.push(<p key={i} className="soap-body">{trimmed}</p>);
+  });
+
+  return <div className="soap-rendered">{nodes}</div>;
 }
 
 // ── Audio Recorder + Upload Component ────────────────────────────────────────
@@ -421,6 +485,7 @@ function EncounterEditor({
   );
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "evidence" | "validating" | null>(null);
+  const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
@@ -697,18 +762,19 @@ function EncounterEditor({
       </div>
 
       {/* Progress Steps */}
-      <div className="flex items-center gap-0 px-5 py-2 border-b bg-muted/20">
-        {steps.map((step, i) => {
+      <div className="flex items-center gap-0 px-4 border-b bg-background">
+        {steps.map((step) => {
           const Icon = step.icon;
+          const isActive = activeTab === step.id;
           return (
             <button
               key={step.id}
               data-testid={`tab-${step.id}`}
               onClick={() => setActiveTab(step.id)}
-              className={`flex items-center gap-1.5 px-3 py-1.5 rounded-md text-xs font-medium transition-colors ${activeTab === step.id ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${isActive ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"}`}
             >
-              {step.done ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-500" /> : <Circle className="w-3.5 h-3.5 opacity-40" />}
-              <Icon className="w-3.5 h-3.5" />
+              {step.done ? <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" /> : <Circle className="w-3 h-3 opacity-30 flex-shrink-0" />}
+              <Icon className="w-3 h-3 flex-shrink-0" />
               <span className="hidden sm:inline">{step.label}</span>
             </button>
           );
@@ -1437,17 +1503,24 @@ function EncounterEditor({
 
             {hasSoap && !soapMutation.isPending && (
               <div className="space-y-3">
-                <p className="text-xs text-muted-foreground">Edit the note directly below, then save when ready.</p>
-                <Textarea
-                  value={soap.fullNote ?? legacySoapToText(soap)}
-                  onChange={e => setSoap({ fullNote: e.target.value })}
-                  rows={32}
-                  className="text-sm font-mono resize-y leading-relaxed"
-                  data-testid="soap-full-note"
-                  spellCheck
-                />
-                <div className="flex justify-between items-center pt-1">
-                  <p className="text-xs text-muted-foreground">All edits saved to chart.</p>
+                {/* View / Edit toggle row */}
+                <div className="flex items-center justify-between">
+                  <div className="flex items-center gap-0.5 rounded-md border p-0.5 bg-muted/40">
+                    <button
+                      data-testid="soap-view-toggle"
+                      onClick={() => setSoapViewMode("view")}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "view" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <Eye className="w-3 h-3" /> View
+                    </button>
+                    <button
+                      data-testid="soap-edit-toggle"
+                      onClick={() => setSoapViewMode("edit")}
+                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "edit" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                    >
+                      <ClipboardList className="w-3 h-3" /> Edit
+                    </button>
+                  </div>
                   <div className="flex gap-2">
                     <Button
                       size="sm"
@@ -1466,10 +1539,29 @@ function EncounterEditor({
                       data-testid="button-generate-summary"
                     >
                       <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                      {summaryMutation.isPending ? "Generating..." : "Generate Patient Summary"}
+                      {summaryMutation.isPending ? "Generating..." : "Patient Summary"}
                     </Button>
                   </div>
                 </div>
+
+                {soapViewMode === "view" ? (
+                  <div className="rounded-md border bg-card px-5 py-4 min-h-[24rem]">
+                    <SoapNoteViewer text={soap.fullNote ?? legacySoapToText(soap)} />
+                  </div>
+                ) : (
+                  <Textarea
+                    value={soap.fullNote ?? legacySoapToText(soap)}
+                    onChange={e => setSoap({ fullNote: e.target.value })}
+                    rows={32}
+                    className="text-sm font-mono resize-y leading-relaxed"
+                    data-testid="soap-full-note"
+                    spellCheck
+                  />
+                )}
+
+                <p className="text-xs text-muted-foreground">
+                  {soapViewMode === "edit" ? "Editing raw note — save when ready." : "Review the formatted note above, or switch to Edit to make changes."}
+                </p>
               </div>
             )}
           </>
