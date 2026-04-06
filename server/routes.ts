@@ -2995,33 +2995,91 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
-      const systemPrompt = `You are an expert clinical documentation specialist for a hormone and primary care clinic. Generate a comprehensive, structured SOAP note from the provided encounter transcription.
+      const systemPrompt = `You are an expert clinical documentation specialist for a hormone and primary care clinic. Generate a comprehensive, chart-ready SOAP note from the provided encounter session notes.
 
 Guidelines:
 - Use professional medical terminology appropriate for chart documentation
-- Include evidence-based clinical references where appropriate (e.g., AHA guidelines, endocrine society recommendations)
-- In the Assessment, directly reference and interpret any linked lab values
-- In the Plan, provide specific, actionable recommendations including medication adjustments, lab orders, lifestyle modifications, and follow-up intervals
-- Review of Systems should be thorough and systematic
-- Be concise but clinically complete
+- Include evidence-based clinical references where appropriate (e.g., AHA guidelines, Endocrine Society recommendations)
+- In Assessment/Plan, directly reference and interpret any linked lab values with clinical context
+- For each diagnosis in Assessment/Plan, provide specific, actionable details and plan items
+- Review of Systems and Physical Exam: document findings for each system listed; use "Negative" or "WNL" for unremarkable findings
+- Be concise but clinically complete — every section must be filled in based on available information
 
-Return ONLY a JSON object with these exact keys:
-{
-  "subjective": "Patient-reported symptoms, history, and concerns from the encounter...",
-  "objective": "Vital signs, physical examination findings, and objective observations...",
-  "reviewOfSystems": "Systematic review: Constitutional: ... Cardiovascular: ... Respiratory: ... Gastrointestinal: ... Musculoskeletal: ... Neurological: ... Endocrine: ... Psychiatric: ...",
-  "assessment": "Clinical impressions, diagnoses, and interpretation of lab values with evidence-based context...",
-  "plan": "Specific treatment plan including medications, labs, lifestyle, referrals, and follow-up..."
-}`;
+Return ONLY a JSON object with one key "fullNote" containing the complete SOAP note as a plain text string, using this EXACT format and headers verbatim:
+
+CC/Reason: [chief complaint / reason for visit]
+
+SUBJECTIVE
+
+HPI: [detailed history of present illness — onset, duration, character, associated symptoms, modifying factors]
+
+Medical History:
+- Allergies: [list or NKDA]
+- Past Medical Hx: [relevant diagnoses]
+- Past Surgical Hx: [surgeries or None]
+- Social Hx: [occupation, tobacco, alcohol, exercise habits, relationship status]
+- Family Hx: [relevant family history]
+
+ROS:
+- General: 
+- Diet/Exercise: 
+- Eyes: 
+- HENT: 
+- Respiratory: 
+- CVS: 
+- GI: 
+- GU: 
+- Gyne: 
+- MSS: 
+- NS: 
+- Skin: 
+- Hematology: 
+- Endocrine: 
+- Psych: 
+
+OBJECTIVE
+
+Physical Exam:
+- General: 
+- Eyes: 
+- HENT: 
+- Respiratory: 
+- CVS: 
+- GI: 
+- GU: 
+- Gyne: 
+- MSS: 
+- NS: 
+- Skin: 
+
+ASSESSMENT/PLAN
+
+[Brief overview paragraph summarizing clinical impressions and overall approach]
+
+1. [Diagnosis]:
+   - Details: [symptoms, findings, relevant lab values and interpretation]
+   - Plan: [specific treatment, medications with doses, lifestyle modifications, referrals]
+
+2. [Diagnosis]:
+   - Details: 
+   - Plan: 
+
+[Continue the same Diagnosis / Details / Plan pattern for every additional problem identified]
+
+CARE PLAN
+[Bulleted action items and summary the patient should take away]
+
+FOLLOW-UP
+[Specific follow-up plan with timeframes, labs to recheck, and conditions warranting earlier return]`;
 
       const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
 Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}
 
-ENCOUNTER TRANSCRIPTION:
+SESSION NOTES / TRANSCRIPTION:
 ${encounter.transcription}
 
-Generate a complete SOAP note based on this encounter. Reference the lab values in your Assessment and Plan sections.`;
+Generate a complete SOAP note following the exact template in the system prompt. Return { "fullNote": "..." } with the complete formatted note as a single string.`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
