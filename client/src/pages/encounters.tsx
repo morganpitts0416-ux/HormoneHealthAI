@@ -139,27 +139,28 @@ function formatDuration(seconds: number) {
   return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
 }
 
-function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => void }) {
-  const [mode, setMode] = useState<"record" | "upload">("record");
+type RecorderState = "idle" | "recording" | "transcribing";
 
-  // ── recording state ──
+function AudioCapture({
+  onTranscribed,
+  onStateChange,
+}: {
+  onTranscribed: (text: string) => void;
+  onStateChange: (state: RecorderState) => void;
+}) {
+  const [mode, setMode] = useState<"record" | "upload">("record");
   const [recState, setRecState] = useState<"idle" | "recording" | "stopped">("idle");
   const [elapsed, setElapsed] = useState(0);
-  const [recordedFile, setRecordedFile] = useState<File | null>(null);
+  const [isTranscribing, setIsTranscribing] = useState(false);
+  const [dragging, setDragging] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
-
-  // ── upload state ──
-  const [dragging, setDragging] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
-
-  const [transcribing, setTranscribing] = useState(false);
   const { toast } = useToast();
 
-  // clean up on unmount
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
@@ -167,20 +168,44 @@ function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => voi
     };
   }, []);
 
+  // Keep parent in sync with recorder state
+  useEffect(() => {
+    if (isTranscribing) { onStateChange("transcribing"); return; }
+    if (recState === "recording") { onStateChange("recording"); return; }
+    onStateChange("idle");
+  }, [recState, isTranscribing]);
+
+  const sendToWhisper = async (file: File) => {
+    setIsTranscribing(true);
+    try {
+      const formData = new FormData();
+      formData.append("audio", file);
+      const res = await fetch("/api/encounters/transcribe", {
+        method: "POST", body: formData, credentials: "include",
+      });
+      if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Transcription failed"); }
+      const data = await res.json();
+      onTranscribed(data.transcription);
+      setRecState("idle");
+      setElapsed(0);
+      setUploadFile(null);
+    } catch (err: any) {
+      toast({ variant: "destructive", title: "Transcription failed", description: err.message || "Please try again or paste notes manually." });
+    } finally {
+      setIsTranscribing(false);
+    }
+  };
+
   const startRecording = async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
       streamRef.current = stream;
       chunksRef.current = [];
       setElapsed(0);
-      setRecordedFile(null);
 
-      // prefer webm/opus, fall back to whatever the browser supports
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm")
-        ? "audio/webm"
-        : "";
+        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
       const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
       mediaRecorderRef.current = mr;
 
@@ -188,22 +213,17 @@ function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => voi
       mr.onstop = () => {
         const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
         const ext = (mr.mimeType || "audio/webm").includes("ogg") ? "ogg" : "webm";
-        const file = new File([blob], `recording.${ext}`, { type: blob.type });
-        setRecordedFile(file);
+        const file = new File([blob], `session.${ext}`, { type: blob.type });
         stream.getTracks().forEach(t => t.stop());
         streamRef.current = null;
+        sendToWhisper(file);
       };
 
-      mr.start(1000); // collect chunks every second
+      mr.start(1000);
       setRecState("recording");
-
       timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
-    } catch (err: any) {
-      toast({
-        variant: "destructive",
-        title: "Microphone access denied",
-        description: "Please allow microphone access in your browser settings and try again.",
-      });
+    } catch {
+      toast({ variant: "destructive", title: "Microphone access denied", description: "Please allow microphone access in your browser settings and try again." });
     }
   };
 
@@ -215,13 +235,6 @@ function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => voi
     setRecState("stopped");
   };
 
-  const discardRecording = () => {
-    setRecordedFile(null);
-    setElapsed(0);
-    setRecState("idle");
-  };
-
-  // ── upload helpers ──
   const handleUploadFile = (f: File) => {
     if (!f.type.startsWith("audio/") && !f.name.match(/\.(mp3|wav|ogg|m4a|webm|mp4|flac)$/i)) {
       toast({ variant: "destructive", title: "Invalid file", description: "Please upload an audio file (MP3, WAV, M4A, WebM, etc.)" });
@@ -241,164 +254,65 @@ function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => voi
     if (f) handleUploadFile(f);
   }, []);
 
-  // ── shared transcribe ──
-  const transcribe = async (file: File) => {
-    setTranscribing(true);
-    try {
-      const formData = new FormData();
-      formData.append("audio", file);
-      const res = await fetch("/api/encounters/transcribe", {
-        method: "POST",
-        body: formData,
-        credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json();
-        throw new Error(err.message || "Transcription failed");
-      }
-      const data = await res.json();
-      onTranscribed(data.transcription);
-      setRecordedFile(null);
-      setUploadFile(null);
-      setRecState("idle");
-      setElapsed(0);
-      toast({ title: "Transcription complete", description: "Audio transcribed successfully. Review and edit as needed." });
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Transcription failed", description: err.message || "Please try again or paste text manually." });
-    } finally {
-      setTranscribing(false);
-    }
-  };
-
-  const activeFile = mode === "record" ? recordedFile : uploadFile;
-
   return (
-    <div className="space-y-3">
+    <div className="space-y-2">
       {/* Mode toggle */}
       <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
-        <button
-          data-testid="button-mode-record"
-          onClick={() => setMode("record")}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "record" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          <Mic className="w-3.5 h-3.5" />
-          Record
+        <button data-testid="button-mode-record" onClick={() => setMode("record")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "record" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+          <Mic className="w-3.5 h-3.5" />Record
         </button>
-        <button
-          data-testid="button-mode-upload"
-          onClick={() => setMode("upload")}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "upload" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-        >
-          <Upload className="w-3.5 h-3.5" />
-          Upload File
+        <button data-testid="button-mode-upload" onClick={() => setMode("upload")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "upload" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+          <Upload className="w-3.5 h-3.5" />Upload File
         </button>
       </div>
 
-      {/* ── RECORD MODE ── */}
+      {/* RECORD MODE */}
       {mode === "record" && (
-        <div className="space-y-3">
-          {recState === "idle" && (
-            <div className="border-2 border-dashed rounded-md p-8 flex flex-col items-center justify-center gap-3">
-              <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
-                <Mic className="w-6 h-6 text-muted-foreground" />
-              </div>
-              <div className="text-center">
-                <p className="text-sm font-medium">Ready to record</p>
-                <p className="text-xs text-muted-foreground mt-0.5">Click the button below to start capturing the session audio</p>
-              </div>
-              <Button
-                data-testid="button-start-recording"
-                onClick={startRecording}
-                className="gap-2"
-              >
-                <Mic className="w-4 h-4" />
-                Start Recording
-              </Button>
-            </div>
+        <div>
+          {recState === "idle" && !isTranscribing && (
+            <Button data-testid="button-start-recording" onClick={startRecording} className="gap-2 w-full" variant="outline">
+              <Mic className="w-4 h-4 text-red-500" />
+              Start Recording Session
+            </Button>
           )}
-
           {recState === "recording" && (
-            <div className="border-2 border-red-400/60 bg-red-50/40 dark:bg-red-950/20 rounded-md p-6 flex flex-col items-center gap-4">
-              <div className="flex items-center gap-2">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
-                <span className="text-sm font-semibold text-red-600 dark:text-red-400">Recording</span>
-              </div>
-              <div className="text-3xl font-mono font-bold tabular-nums text-foreground" data-testid="recording-timer">
-                {formatDuration(elapsed)}
-              </div>
-              <Button
-                data-testid="button-stop-recording"
-                variant="destructive"
-                onClick={stopRecording}
-                className="gap-2"
-              >
-                <Square className="w-4 h-4 fill-current" />
-                Stop Recording
+            <div className="flex items-center gap-3 px-4 py-3 rounded-md border-2 border-red-400/60 bg-red-50/40 dark:bg-red-950/20">
+              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+              <span className="text-sm font-semibold text-red-600 dark:text-red-400">Recording</span>
+              <span className="text-sm font-mono tabular-nums text-foreground flex-1" data-testid="recording-timer">{formatDuration(elapsed)}</span>
+              <Button data-testid="button-stop-recording" variant="destructive" size="sm" onClick={stopRecording} className="gap-1.5">
+                <Square className="w-3.5 h-3.5 fill-current" />Stop
               </Button>
             </div>
           )}
-
-          {recState === "stopped" && recordedFile && (
-            <div className="border rounded-md p-4 space-y-3 bg-muted/20">
-              <div className="flex items-center gap-2">
-                <MicOff className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-                <span className="text-sm flex-1">Recording complete</span>
-                <span className="text-xs text-muted-foreground font-mono">{formatDuration(elapsed)}</span>
-                <span className="text-xs text-muted-foreground">{(recordedFile.size / 1024 / 1024).toFixed(1)} MB</span>
-              </div>
-              <div className="flex gap-2">
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={discardRecording}
-                  disabled={transcribing}
-                  data-testid="button-discard-recording"
-                  className="gap-1.5"
-                >
-                  <Trash2 className="w-3.5 h-3.5" />
-                  Discard
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => transcribe(recordedFile)}
-                  disabled={transcribing}
-                  data-testid="button-transcribe-recording"
-                  className="gap-1.5 flex-1"
-                >
-                  {transcribing
-                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Transcribing...</>
-                    : <><Sparkles className="w-3.5 h-3.5" />Transcribe with AI</>}
-                </Button>
-              </div>
+          {(recState === "stopped" || isTranscribing) && (
+            <div className="flex items-center gap-2 px-4 py-3 rounded-md border bg-muted/30">
+              <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />
+              <span className="text-sm text-muted-foreground">Transcribing session audio — notes will appear below...</span>
             </div>
           )}
         </div>
       )}
 
-      {/* ── UPLOAD MODE ── */}
+      {/* UPLOAD MODE */}
       {mode === "upload" && (
-        <div className="space-y-3">
+        <div className="space-y-2">
           <div
             data-testid="audio-drop-zone"
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
             onDrop={onDrop}
             onClick={() => fileRef.current?.click()}
-            className={`border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"}`}
+            className={`border-2 border-dashed rounded-md p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"}`}
           >
-            <input
-              ref={fileRef}
-              type="file"
-              accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.mp4,.flac"
-              className="hidden"
+            <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.mp4,.flac" className="hidden"
               data-testid="input-audio-file"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); e.target.value = ""; }}
-            />
-            <Upload className="w-8 h-8 text-muted-foreground" />
-            <div className="text-center">
-              <p className="text-sm font-medium">Drop audio file here or click to browse</p>
-              <p className="text-xs text-muted-foreground mt-0.5">MP3, WAV, M4A, WebM, OGG — up to 200 MB</p>
-            </div>
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); e.target.value = ""; }} />
+            <Upload className="w-6 h-6 text-muted-foreground" />
+            <p className="text-sm font-medium">Drop audio file or click to browse</p>
+            <p className="text-xs text-muted-foreground">MP3, WAV, M4A, WebM, OGG — up to 200 MB</p>
           </div>
           {uploadFile && (
             <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-md">
@@ -408,15 +322,8 @@ function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => voi
               <Button size="icon" variant="ghost" onClick={() => setUploadFile(null)} data-testid="button-remove-audio">
                 <X className="w-3.5 h-3.5" />
               </Button>
-              <Button
-                size="sm"
-                onClick={() => transcribe(uploadFile)}
-                disabled={transcribing}
-                data-testid="button-transcribe"
-              >
-                {transcribing
-                  ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Transcribing...</>
-                  : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Transcribe</>}
+              <Button size="sm" onClick={() => sendToWhisper(uploadFile)} disabled={isTranscribing} data-testid="button-transcribe">
+                {isTranscribing ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Transcribing...</> : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Transcribe</>}
               </Button>
             </div>
           )}
@@ -425,22 +332,39 @@ function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => voi
 
       <p className="text-[11px] text-muted-foreground flex items-center gap-1">
         <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-        Audio is processed by OpenAI Whisper and deleted immediately — never stored
+        Audio is processed by OpenAI Whisper and never stored
       </p>
     </div>
   );
 }
 
 // ── SOAP Note Section ─────────────────────────────────────────────────────────
-type SoapNote = { subjective: string; objective: string; reviewOfSystems: string; assessment: string; plan: string };
+// fullNote = new single-block format; legacy fields kept for backward compat display
+type SoapNote = {
+  fullNote?: string;
+  subjective?: string;
+  objective?: string;
+  reviewOfSystems?: string;
+  assessment?: string;
+  plan?: string;
+};
 
-const SOAP_FIELDS: { key: keyof SoapNote; label: string; rows: number; description: string }[] = [
-  { key: "subjective", label: "Subjective", rows: 5, description: "Patient-reported symptoms, history, and concerns" },
-  { key: "objective", label: "Objective", rows: 4, description: "Vital signs, physical exam findings" },
-  { key: "reviewOfSystems", label: "Review of Systems", rows: 5, description: "Systematic review by organ system" },
-  { key: "assessment", label: "Assessment", rows: 5, description: "Clinical impressions, diagnoses, lab interpretation" },
-  { key: "plan", label: "Plan", rows: 6, description: "Treatment, medications, labs, referrals, follow-up" },
-];
+function legacySoapToText(s: SoapNote): string {
+  const parts: string[] = [];
+  if (s.subjective) parts.push(`SUBJECTIVE\n${s.subjective}`);
+  if (s.objective) parts.push(`OBJECTIVE\n${s.objective}`);
+  if (s.reviewOfSystems) parts.push(`REVIEW OF SYSTEMS\n${s.reviewOfSystems}`);
+  if (s.assessment) parts.push(`ASSESSMENT\n${s.assessment}`);
+  if (s.plan) parts.push(`PLAN\n${s.plan}`);
+  return parts.join("\n\n");
+}
+
+function initSoap(raw: any): SoapNote {
+  if (!raw) return { fullNote: "" };
+  if (raw.fullNote !== undefined) return raw as SoapNote;
+  // Legacy: convert old multi-field format to fullNote
+  return { fullNote: legacySoapToText(raw) };
+}
 
 // ── Main Encounter Editor ─────────────────────────────────────────────────────
 function EncounterEditor({
@@ -472,9 +396,8 @@ function EncounterEditor({
     encounter?.linkedLabResultId?.toString() ?? ""
   );
   const [transcription, setTranscription] = useState<string>(encounter?.transcription ?? "");
-  const [soap, setSoap] = useState<SoapNote>(
-    encounter?.soapNote ? (encounter.soapNote as SoapNote) : { subjective: "", objective: "", reviewOfSystems: "", assessment: "", plan: "" }
-  );
+  const [recorderState, setRecorderState] = useState<RecorderState>("idle");
+  const [soap, setSoap] = useState<SoapNote>(initSoap(encounter?.soapNote));
   const [patientSummary, setPatientSummary] = useState<string>(encounter?.patientSummary ?? "");
   const [activeTab, setActiveTab] = useState<"details" | "soap" | "summary">("details");
   const [savedId, setSavedId] = useState<number | null>(encounter?.id ?? null);
@@ -624,7 +547,7 @@ function EncounterEditor({
   });
 
   const hasTranscription = transcription.trim().length > 0;
-  const hasSoap = !!(soap.assessment || soap.plan || soap.subjective);
+  const hasSoap = !!(soap.fullNote?.trim() || soap.assessment || soap.subjective);
   const hasSummary = patientSummary.trim().length > 0;
 
   const steps = [
@@ -799,31 +722,46 @@ function EncounterEditor({
 
             <Separator />
 
-            {/* Transcription */}
-            <div>
-              <div className="flex items-center justify-between mb-3">
-                <div>
-                  <h3 className="text-sm font-semibold flex items-center gap-1.5"><Mic className="w-4 h-4" />Encounter Transcription</h3>
-                  <p className="text-xs text-muted-foreground mt-0.5">Upload audio to auto-transcribe, or paste/type the encounter notes below</p>
-                </div>
+            {/* Session Recording + Notes */}
+            <div className="space-y-3">
+              <div className="flex items-center justify-between">
+                <h3 className="text-sm font-semibold flex items-center gap-1.5">
+                  <Mic className="w-4 h-4" />Session Notes
+                </h3>
                 {hasTranscription && (
                   <Badge variant="outline" className="text-emerald-600 border-emerald-200 text-[10px]">
-                    <CheckCircle2 className="w-3 h-3 mr-1" />{transcription.split(/\s+/).length} words
+                    <CheckCircle2 className="w-3 h-3 mr-1" />{transcription.split(/\s+/).filter(Boolean).length} words
                   </Badge>
                 )}
               </div>
 
-              <AudioUploader onTranscribed={(text) => setTranscription(prev => prev ? prev + "\n\n" + text : text)} />
+              <AudioCapture
+                onTranscribed={(text) => setTranscription(prev => prev ? prev + "\n\n" + text : text)}
+                onStateChange={setRecorderState}
+              />
 
-              <div className="mt-3">
-                <Label className="text-xs font-medium mb-1.5 block">Transcription / Notes</Label>
+              {/* Live notes area — shows recording animation or transcript */}
+              <div className="relative">
+                {recorderState === "recording" && (
+                  <div className="absolute inset-0 rounded-md bg-red-50/60 dark:bg-red-950/20 border-2 border-red-300/50 flex items-start gap-2 px-3 py-3 pointer-events-none z-10">
+                    <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mt-1 flex-shrink-0" />
+                    <span className="text-sm text-red-600/80 dark:text-red-400/80 italic">Listening... notes will appear here when you stop recording.</span>
+                  </div>
+                )}
+                {recorderState === "transcribing" && (
+                  <div className="absolute inset-0 rounded-md bg-muted/60 flex items-center justify-center gap-2 z-10">
+                    <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
+                    <span className="text-sm text-muted-foreground">Transcribing...</span>
+                  </div>
+                )}
                 <Textarea
                   value={transcription}
                   onChange={e => setTranscription(e.target.value)}
-                  placeholder="Paste encounter notes or transcription here, or upload audio above to auto-generate..."
-                  rows={10}
-                  className="text-sm font-mono resize-y"
+                  placeholder="Session notes will appear here after recording, or type / paste notes directly..."
+                  rows={12}
+                  className={`text-sm font-mono resize-y transition-opacity ${recorderState !== "idle" ? "opacity-40" : ""}`}
                   data-testid="textarea-transcription"
+                  disabled={recorderState !== "idle"}
                 />
               </div>
             </div>
@@ -840,19 +778,19 @@ function EncounterEditor({
               />
             </div>
 
-            {hasTranscription && (
-              <div className="flex justify-end">
-                <Button
-                  onClick={() => soapMutation.mutate()}
-                  disabled={soapMutation.isPending}
-                  data-testid="button-generate-soap"
-                >
-                  {soapMutation.isPending
-                    ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Generating SOAP Note...</>
-                    : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Generate SOAP Note</>}
-                </Button>
-              </div>
-            )}
+            {/* Create SOAP Note — single action */}
+            <div className="flex justify-end pt-1">
+              <Button
+                onClick={() => soapMutation.mutate()}
+                disabled={soapMutation.isPending || !hasTranscription}
+                data-testid="button-generate-soap"
+                size="default"
+              >
+                {soapMutation.isPending
+                  ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Creating SOAP Note...</>
+                  : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Create SOAP Note</>}
+              </Button>
+            </div>
           </>
         )}
 
@@ -891,12 +829,8 @@ function EncounterEditor({
               <div className="rounded-md border-2 border-dashed border-border p-8 text-center">
                 <ClipboardList className="w-10 h-10 mx-auto text-muted-foreground mb-3" />
                 <p className="text-sm font-medium">No SOAP note yet</p>
-                <p className="text-xs text-muted-foreground mt-1 mb-4">Add a transcription on the Details tab, then generate the SOAP note</p>
-                <Button
-                  onClick={() => setActiveTab("details")}
-                  variant="outline"
-                  size="sm"
-                >
+                <p className="text-xs text-muted-foreground mt-1 mb-4">Add session notes on the Details tab, then click "Create SOAP Note"</p>
+                <Button onClick={() => setActiveTab("details")} variant="outline" size="sm">
                   <ChevronLeft className="w-3.5 h-3.5 mr-1.5" /> Go to Details
                 </Button>
               </div>
@@ -906,41 +840,35 @@ function EncounterEditor({
               <div className="flex flex-col items-center justify-center py-16 gap-4">
                 <Sparkles className="w-10 h-10 text-primary animate-pulse" />
                 <div className="text-center">
-                  <p className="text-sm font-medium">Generating SOAP note with GPT-4o...</p>
-                  <p className="text-xs text-muted-foreground mt-1">Analyzing transcription and lab values</p>
+                  <p className="text-sm font-medium">Creating SOAP note with GPT-4o...</p>
+                  <p className="text-xs text-muted-foreground mt-1">Analyzing session notes{linkedLabResultId ? " and lab values" : ""}</p>
                 </div>
               </div>
             )}
 
             {hasSoap && !soapMutation.isPending && (
-              <div className="space-y-4">
-                {SOAP_FIELDS.map((field) => (
-                  <div key={field.key}>
-                    <Label className="text-xs font-semibold uppercase tracking-wide text-primary mb-1 block">
-                      {field.label}
-                    </Label>
-                    <p className="text-[11px] text-muted-foreground mb-1.5">{field.description}</p>
-                    <Textarea
-                      value={soap[field.key]}
-                      onChange={e => setSoap(prev => ({ ...prev, [field.key]: e.target.value }))}
-                      rows={field.rows}
-                      className="text-sm resize-y"
-                      data-testid={`soap-${field.key}`}
-                    />
-                  </div>
-                ))}
-
-                <div className="flex justify-between items-center pt-2">
-                  <p className="text-xs text-muted-foreground">All sections saved to chart. Edit freely.</p>
+              <div className="space-y-3">
+                <p className="text-xs text-muted-foreground">Edit the note directly below, then save when ready.</p>
+                <Textarea
+                  value={soap.fullNote ?? legacySoapToText(soap)}
+                  onChange={e => setSoap({ fullNote: e.target.value })}
+                  rows={32}
+                  className="text-sm font-mono resize-y leading-relaxed"
+                  data-testid="soap-full-note"
+                  spellCheck
+                />
+                <div className="flex justify-between items-center pt-1">
+                  <p className="text-xs text-muted-foreground">All edits saved to chart.</p>
                   <div className="flex gap-2">
                     <Button
                       size="sm"
                       variant="outline"
                       onClick={() => saveSoapMutation.mutate()}
                       disabled={saveSoapMutation.isPending || !savedId}
+                      data-testid="button-save-soap"
                     >
                       <Save className="w-3.5 h-3.5 mr-1.5" />
-                      {saveSoapMutation.isPending ? "Saving..." : "Save Changes"}
+                      {saveSoapMutation.isPending ? "Saving..." : "Save Note"}
                     </Button>
                     <Button
                       size="sm"
