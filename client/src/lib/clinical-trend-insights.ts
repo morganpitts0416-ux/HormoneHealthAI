@@ -613,7 +613,7 @@ function determineSeverity(
   return 'concern';
 }
 
-export function generateTrendInsights(labs: LabResult[]): TrendInsight[] {
+export function generateTrendInsights(labs: LabResult[], gender?: 'male' | 'female'): TrendInsight[] {
   if (labs.length < 2) return [];
 
   const sorted = [...labs].sort((a, b) => new Date(b.labDate).getTime() - new Date(a.labDate).getTime());
@@ -651,6 +651,119 @@ export function generateTrendInsights(labs: LabResult[]): TrendInsight[] {
       patientInsight: profile.getPatientInsight(c, p, direction),
       recommendation: profile.getRecommendation?.(c, direction),
     });
+  }
+
+  // ── Female Testosterone Override ─────────────────────────────────────────
+  // The default rangeBasedDirectionality uses male optimal (600–1200 ng/dL).
+  // For female patients, the HRT optimization goal is 75–125 ng/dL. Rising
+  // testosterone on a female panel is NOT an improvement — it is a worsening
+  // that requires dose reduction. Override direction, severity, and messaging.
+  if (gender === 'female') {
+    // Total Testosterone — Female HRT goal: 75–125 ng/dL
+    const tIdx = insights.findIndex(i => i.markerKey === 'testosterone');
+    if (tIdx !== -1) {
+      const ti = insights[tIdx];
+      const c = ti.currentValue;
+      const p = ti.previousValue;
+      const OPT_MIN = 75, OPT_MAX = 125;
+      const cDist = c < OPT_MIN ? OPT_MIN - c : c > OPT_MAX ? c - OPT_MAX : 0;
+      const pDist = p < OPT_MIN ? OPT_MIN - p : p > OPT_MAX ? p - OPT_MAX : 0;
+      const femaleDir: 'improved' | 'worsened' | 'stable' =
+        cDist < pDist ? 'improved' : cDist > pDist ? 'worsened' : 'stable';
+
+      let clinicianInsight: string;
+      let patientInsight: string;
+      let severity: 'positive' | 'neutral' | 'concern' | 'urgent';
+      let recommendation: string | undefined;
+
+      if (femaleDir === 'worsened') {
+        if (c > 200) {
+          clinicianInsight = `Testosterone critically elevated at ${c} ng/dL (was ${p} ng/dL; HRT optimization goal: 75–125 ng/dL). Dose reduction is urgent — do NOT add testosterone. Manage downstream androgenic symptoms (acne, hair thinning, insomnia, anxiety). Consider transitioning to titratable transdermal form if on pellets to allow precise adjustments.`;
+          severity = 'urgent';
+          recommendation = 'Reduce testosterone dose immediately. Monitor CBC, lipids, and liver function. Recheck in 6–8 weeks.';
+        } else if (c > 125) {
+          clinicianInsight = `Testosterone above HRT optimization goal (${p} → ${c} ng/dL; goal: 75–125 ng/dL). Reduce dose — do NOT add additional testosterone. Monitor for androgenic side effects (acne, hair thinning, SHBG changes).`;
+          severity = 'urgent';
+          recommendation = 'Reduce testosterone dose. Assess for androgenic symptoms. Recheck in 6–8 weeks.';
+        } else {
+          clinicianInsight = `Testosterone trending away from HRT optimization goal (${p} → ${c} ng/dL; goal: 75–125 ng/dL). Evaluate protocol.`;
+          severity = 'concern';
+        }
+        patientInsight = `Your testosterone has moved outside the target range (${p} → ${c} ng/dL; goal: 75–125 ng/dL). Your provider will adjust your protocol.`;
+      } else if (femaleDir === 'improved') {
+        if (c >= OPT_MIN && c <= OPT_MAX) {
+          clinicianInsight = `Testosterone now within HRT optimization goal (${p} → ${c} ng/dL; goal: 75–125 ng/dL). Protocol effective.`;
+          patientInsight = `Your testosterone has reached the target range (${c} ng/dL; goal: 75–125). Your protocol is working well.`;
+          severity = 'positive';
+        } else if (c > OPT_MAX) {
+          clinicianInsight = `Testosterone trending toward HRT optimization goal but still above range (${p} → ${c} ng/dL; goal: 75–125 ng/dL). Continue dose reduction protocol.`;
+          patientInsight = `Your testosterone is moving in the right direction (${p} → ${c} ng/dL) but is still above the target range. Continue your adjusted protocol.`;
+          severity = 'concern';
+          recommendation = 'Continue dose reduction. Recheck in 6–8 weeks.';
+        } else {
+          clinicianInsight = `Testosterone trending toward HRT optimization goal (${p} → ${c} ng/dL; goal: 75–125 ng/dL).`;
+          patientInsight = `Your testosterone is trending toward the target range (${c} ng/dL; goal: 75–125).`;
+          severity = 'positive';
+        }
+      } else {
+        if (c >= OPT_MIN && c <= OPT_MAX) {
+          clinicianInsight = `Testosterone stable within HRT optimization goal (${c} ng/dL; goal: 75–125 ng/dL). Protocol effective.`;
+          severity = 'neutral';
+        } else if (c > OPT_MAX) {
+          clinicianInsight = `Testosterone stable but above HRT optimization goal (${c} ng/dL; goal: 75–125 ng/dL). Dose review warranted.`;
+          severity = 'concern';
+          recommendation = 'Review testosterone dosing. Consider dose reduction.';
+        } else {
+          clinicianInsight = `Testosterone stable but below HRT optimization goal (${c} ng/dL; goal: 75–125 ng/dL). Consider dose adjustment.`;
+          severity = 'concern';
+        }
+        patientInsight = `Your testosterone is stable at ${c} ng/dL (target: 75–125 ng/dL).`;
+      }
+
+      insights[tIdx] = { ...ti, direction: femaleDir, severity, clinicianInsight, patientInsight, recommendation };
+    }
+
+    // Free Testosterone — Female optimal: 1–8.5 pg/mL
+    const ftIdx = insights.findIndex(i => i.markerKey === 'freeTestosterone');
+    if (ftIdx !== -1) {
+      const fti = insights[ftIdx];
+      const c = fti.currentValue;
+      const p = fti.previousValue;
+      const OPT_MIN = 1, OPT_MAX = 8.5;
+      const cDist = c < OPT_MIN ? OPT_MIN - c : c > OPT_MAX ? c - OPT_MAX : 0;
+      const pDist = p < OPT_MIN ? OPT_MIN - p : p > OPT_MAX ? p - OPT_MAX : 0;
+      const ftDir: 'improved' | 'worsened' | 'stable' =
+        cDist < pDist ? 'improved' : cDist > pDist ? 'worsened' : 'stable';
+
+      let clinicianInsight: string;
+      let patientInsight: string;
+      let severity: 'positive' | 'neutral' | 'concern' | 'urgent';
+      let recommendation: string | undefined;
+
+      if (ftDir === 'worsened') {
+        if (c > 10) {
+          clinicianInsight = `Free testosterone elevated at ${c} pg/mL (was ${p} pg/mL; female optimal: 1–8.5 pg/mL). Consistent with supraphysiologic total testosterone — reduce dose.`;
+          severity = 'urgent';
+          recommendation = 'Reduce testosterone dose. Correlate with SHBG and total testosterone. Recheck in 6–8 weeks.';
+        } else {
+          clinicianInsight = `Free testosterone trending away from optimal range (${p} → ${c} pg/mL; female optimal: 1–8.5 pg/mL). Evaluate SHBG and total testosterone.`;
+          severity = 'concern';
+        }
+        patientInsight = `Your free (active) testosterone is outside the target range. Your provider will review your protocol.`;
+      } else if (ftDir === 'improved') {
+        clinicianInsight = c >= OPT_MIN && c <= OPT_MAX
+          ? `Free testosterone now within optimal range (${p} → ${c} pg/mL; female optimal: 1–8.5 pg/mL).`
+          : `Free testosterone trending toward optimal range (${p} → ${c} pg/mL; female optimal: 1–8.5 pg/mL).`;
+        patientInsight = `Your free testosterone is trending in the right direction.`;
+        severity = 'positive';
+      } else {
+        clinicianInsight = `Free testosterone stable at ${c} pg/mL (female optimal: 1–8.5 pg/mL).`;
+        patientInsight = `Your free testosterone is stable at ${c} pg/mL.`;
+        severity = c >= OPT_MIN && c <= OPT_MAX ? 'neutral' : 'concern';
+      }
+
+      insights[ftIdx] = { ...fti, direction: ftDir, severity, clinicianInsight, patientInsight, recommendation };
+    }
   }
 
   // ── Erratic Estradiol Detection (perimenopausal volatility flag) ──
@@ -696,8 +809,8 @@ export function generateTrendInsights(labs: LabResult[]): TrendInsight[] {
   return insights;
 }
 
-export function generateClinicalSnapshot(labs: LabResult[], patientName: string): string {
-  const insights = generateTrendInsights(labs);
+export function generateClinicalSnapshot(labs: LabResult[], patientName: string, gender?: 'male' | 'female'): string {
+  const insights = generateTrendInsights(labs, gender);
   if (insights.length === 0) return '';
 
   const improvements = insights.filter(i => i.direction === 'improved');

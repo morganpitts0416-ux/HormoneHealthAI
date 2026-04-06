@@ -42,8 +42,8 @@ function safeDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { m
 }
 
 function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patient }) {
-  const insights = generateTrendInsights(labs);
-  const snapshot = generateClinicalSnapshot(labs, `${patient.firstName} ${patient.lastName}`);
+  const insights = generateTrendInsights(labs, patient.gender as 'male' | 'female');
+  const snapshot = generateClinicalSnapshot(labs, `${patient.firstName} ${patient.lastName}`, patient.gender as 'male' | 'female');
 
   if (insights.length === 0) {
     return (
@@ -941,7 +941,7 @@ export default function PatientProfiles() {
   });
 
   const handleDeleteLab = (lab: LabResult) => setConfirmDelete(lab);
-  const insights = labs.length >= 2 ? generateTrendInsights(labs) : [];
+  const insights = labs.length >= 2 ? generateTrendInsights(labs, selectedPatient?.gender as 'male' | 'female') : [];
   const maleCount = allPatients.filter(p => p.gender === 'male').length;
   const femaleCount = allPatients.filter(p => p.gender === 'female').length;
 
