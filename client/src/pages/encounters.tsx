@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
-import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceSuggestion } from "@shared/schema";
+import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult } from "@shared/schema";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -416,10 +416,11 @@ function EncounterEditor({
   const [clinicalExtraction, setClinicalExtraction] = useState<ClinicalExtraction | null>(
     (encounter?.clinicalExtraction as ClinicalExtraction | null) ?? null
   );
-  const [evidenceSuggestions, setEvidenceSuggestions] = useState<EvidenceSuggestion[] | null>(
-    (encounter?.evidenceSuggestions as EvidenceSuggestion[] | null) ?? null
+  const [evidenceOverlay, setEvidenceOverlay] = useState<EvidenceOverlay | null>(
+    (encounter?.evidenceSuggestions as EvidenceOverlay | null) ?? null
   );
-  const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "evidence" | null>(null);
+  const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "evidence" | "validating" | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
@@ -594,17 +595,40 @@ function EncounterEditor({
 
   const runEvidence = async () => {
     if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running evidence lookup." }); return; }
-    if (!clinicalExtraction) { toast({ variant: "destructive", title: "Extract first", description: "Run clinical extraction before evidence lookup." }); return; }
+    if (!clinicalExtraction) { toast({ variant: "destructive", title: "Extract first", description: "Run clinical extraction (Stage 3) before evidence lookup." }); return; }
     setPipelineLoading("evidence");
     try {
       const res = await apiRequest("POST", `/api/encounters/${savedId}/evidence`, {});
       const data = await res.json();
-      setEvidenceSuggestions(data.evidenceSuggestions);
+      setEvidenceOverlay(data.evidenceSuggestions);
       invalidate();
       setActiveTab("evidence");
-      toast({ title: "Evidence loaded", description: "Review citations in the Evidence tab. Not auto-inserted into chart." });
+      toast({ title: "Evidence overlay ready", description: "Review citations. These are informational only — not auto-inserted into your chart." });
     } catch (e: any) {
       toast({ variant: "destructive", title: "Evidence lookup failed", description: e.message });
+    } finally {
+      setPipelineLoading(null);
+    }
+  };
+
+  const runValidate = async () => {
+    if (!savedId) { toast({ variant: "destructive", title: "Save first" }); return; }
+    if (!hasSoap) { toast({ variant: "destructive", title: "No SOAP note", description: "Generate a SOAP note before running validation." }); return; }
+    setPipelineLoading("validating");
+    try {
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/validate`, {});
+      const data = await res.json();
+      setValidationResult(data.validation);
+      invalidate();
+      setActiveTab("soap");
+      const status = data.validation?.overall_status;
+      toast({
+        title: status === "pass" ? "Validation passed" : status === "fail" ? "Validation found errors" : "Validation complete — review flags",
+        description: status === "pass" ? "No unsupported claims detected in SOAP note." : "Review flagged items in the SOAP Note tab.",
+        variant: status === "fail" ? "destructive" : "default",
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Validation failed", description: e.message });
     } finally {
       setPipelineLoading(null);
     }
@@ -624,7 +648,7 @@ function EncounterEditor({
   const hasSoap = !!(soap.fullNote?.trim() || soap.assessment || soap.subjective);
   const hasSummary = patientSummary.trim().length > 0;
   const hasExtraction = !!clinicalExtraction;
-  const hasEvidence = (evidenceSuggestions?.length ?? 0) > 0;
+  const hasEvidence = (evidenceOverlay?.suggestions?.length ?? 0) > 0;
 
   const steps = [
     { id: "details",    label: "Details",    done: hasTranscription, icon: Stethoscope },
@@ -956,6 +980,17 @@ function EncounterEditor({
                     ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Loading…</>
                     : <><BookOpen className="w-3 h-3 mr-1.5" />5 · Evidence</>}
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={runValidate}
+                  disabled={!hasSoap || pipelineLoading !== null}
+                  data-testid="button-validate-soap"
+                >
+                  {pipelineLoading === "validating"
+                    ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Validating…</>
+                    : <><CheckCircle2 className="w-3 h-3 mr-1.5" />Validate SOAP</>}
+                </Button>
               </div>
             </div>
 
@@ -1053,82 +1088,175 @@ function EncounterEditor({
           </>
         )}
 
-        {/* ── Tab: Evidence Suggestions ───────────────────────────────── */}
+        {/* ── Tab: Evidence Overlay ─────────────────────────────────────── */}
         {activeTab === "evidence" && (
           <>
-            <div className="flex items-center justify-between">
+            {/* Safety banner — always visible */}
+            <div className="rounded-md border border-blue-200 bg-blue-50/60 px-4 py-2.5 flex items-start gap-3">
+              <AlertCircle className="w-4 h-4 text-blue-600 flex-shrink-0 mt-0.5" />
               <div>
-                <h3 className="text-sm font-semibold">Evidence Suggestions</h3>
+                <p className="text-xs font-semibold text-blue-800">Evidence Overlay — Clinician Review Only</p>
+                <p className="text-xs text-blue-700 mt-0.5">
+                  These evidence suggestions are informational and <strong>never auto-inserted</strong> into the signed chart. All treatment decisions require clinician judgement.
+                </p>
+              </div>
+            </div>
+
+            {/* Header + refresh button */}
+            <div className="flex items-center justify-between gap-2 flex-wrap">
+              <div>
+                <h3 className="text-sm font-semibold">Evidence-Based Suggestions</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  AI-suggested references for identified diagnoses. Review critically — citations are not auto-inserted into the chart.
+                  Generated from {evidenceOverlay?.clinical_questions?.length ?? 0} focused clinical question{evidenceOverlay?.clinical_questions?.length === 1 ? "" : "s"} derived from today's visit.
                 </p>
               </div>
               <Button
                 size="sm"
                 variant="outline"
                 onClick={runEvidence}
-                disabled={!hasExtraction || pipelineLoading === "evidence"}
+                disabled={!hasExtraction || pipelineLoading !== null}
                 data-testid="button-refresh-evidence"
               >
                 {pipelineLoading === "evidence"
-                  ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Loading…</>
-                  : <><RefreshCw className="w-3 h-3 mr-1.5" />Refresh</>}
+                  ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Generating…</>
+                  : <><RefreshCw className="w-3 h-3 mr-1.5" />Regenerate</>}
               </Button>
             </div>
 
             {!hasExtraction ? (
               <div className="rounded-md border border-dashed p-8 text-center">
                 <BookOpen className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-40" />
-                <p className="text-sm text-muted-foreground">Run clinical extraction first (Stage 3) to generate evidence suggestions.</p>
-                <Button size="sm" variant="outline" className="mt-3" onClick={() => setActiveTab("transcript")}>
+                <p className="text-sm font-medium mb-1">Clinical extraction required</p>
+                <p className="text-xs text-muted-foreground mb-4">Run Stages 2 and 3 in the Transcript tab to extract clinical facts before generating evidence.</p>
+                <Button size="sm" variant="outline" onClick={() => setActiveTab("transcript")}>
                   Go to Transcript tab
                 </Button>
               </div>
-            ) : !evidenceSuggestions?.length ? (
+            ) : pipelineLoading === "evidence" ? (
+              <div className="flex flex-col items-center justify-center py-14 gap-4">
+                <BookOpen className="w-9 h-9 text-primary animate-pulse" />
+                <div className="text-center">
+                  <p className="text-sm font-medium">Generating clinical questions and searching evidence…</p>
+                  <p className="text-xs text-muted-foreground mt-1">This may take 15–30 seconds</p>
+                </div>
+              </div>
+            ) : !evidenceOverlay ? (
               <div className="rounded-md border border-dashed p-8 text-center">
                 <BookOpen className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-40" />
-                <p className="text-sm text-muted-foreground">No evidence suggestions yet. Click Refresh to generate.</p>
+                <p className="text-sm text-muted-foreground">Click <strong>Regenerate</strong> to generate evidence-based suggestions for this visit.</p>
               </div>
             ) : (
-              <div className="space-y-4">
-                {evidenceSuggestions.map((ev, i) => (
-                  <div key={i} className="rounded-md border p-4">
-                    <div className="flex items-start justify-between gap-3 mb-2">
-                      <div>
-                        <h4 className="text-sm font-semibold">{ev.topic}</h4>
-                        {ev.diagnosis && <p className="text-xs text-muted-foreground mt-0.5">Diagnosis: {ev.diagnosis}</p>}
-                      </div>
-                      {ev.confidence && (
-                        <Badge
-                          variant="secondary"
-                          className={`text-[10px] flex-shrink-0 ${ev.confidence === "high" ? "text-emerald-700 bg-emerald-50" : ev.confidence === "medium" ? "text-amber-700 bg-amber-50" : "text-muted-foreground"}`}
-                        >
-                          {ev.confidence} confidence
-                        </Badge>
-                      )}
+              <>
+                {/* Clinical questions panel */}
+                {evidenceOverlay.clinical_questions?.length > 0 && (
+                  <div className="rounded-md border bg-muted/20 p-4">
+                    <div className="flex items-center gap-2 mb-3">
+                      <FlaskConical className="w-3.5 h-3.5 text-primary" />
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Clinical Questions Generated</h4>
                     </div>
-                    <p className="text-sm text-muted-foreground leading-relaxed mb-3">{ev.recommendation}</p>
-                    {ev.citations?.length > 0 && (
-                      <div className="space-y-1.5">
-                        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">References</div>
-                        {ev.citations.map((cite, ci) => (
-                          <div key={ci} className="text-xs bg-muted/30 rounded px-2.5 py-1.5">
-                            <span className="font-medium">{cite.source}</span>
-                            {cite.year && <span className="text-muted-foreground ml-1.5">({cite.year})</span>}
-                            {cite.finding && <span className="text-muted-foreground"> · {cite.finding}</span>}
-                          </div>
-                        ))}
-                      </div>
-                    )}
-                    {ev.caveat && (
-                      <p className="text-xs text-amber-700 mt-2 flex items-start gap-1.5">
-                        <TriangleAlert className="w-3 h-3 flex-shrink-0 mt-0.5" />
-                        {ev.caveat}
-                      </p>
-                    )}
+                    <ol className="space-y-1.5">
+                      {evidenceOverlay.clinical_questions.map((q, i) => (
+                        <li key={i} className="text-sm flex items-start gap-2">
+                          <span className="text-xs font-mono text-muted-foreground flex-shrink-0 mt-0.5 w-4">{i + 1}.</span>
+                          <span className="italic text-foreground/80">{q}</span>
+                        </li>
+                      ))}
+                    </ol>
                   </div>
-                ))}
-              </div>
+                )}
+
+                {/* Suggestion cards */}
+                {evidenceOverlay.suggestions?.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-6 text-center">
+                    <p className="text-sm text-muted-foreground">No evidence suggestions with verified citations were returned. Try regenerating or adding more clinical context in the Transcript tab.</p>
+                  </div>
+                ) : (
+                  <div className="space-y-4">
+                    {evidenceOverlay.suggestions.map((ev, i) => {
+                      const strengthColors: Record<string, string> = {
+                        strong: "text-emerald-700 bg-emerald-50 border-emerald-200",
+                        moderate: "text-blue-700 bg-blue-50 border-blue-200",
+                        limited: "text-amber-700 bg-amber-50 border-amber-200",
+                        mixed: "text-orange-700 bg-orange-50 border-orange-200",
+                        insufficient: "text-muted-foreground bg-muted border-border",
+                      };
+                      const strengthColor = strengthColors[ev.strength_of_support] ?? strengthColors.insufficient;
+                      return (
+                        <div key={i} className="rounded-md border p-4 space-y-3">
+                          {/* Card header */}
+                          <div className="flex items-start justify-between gap-3 flex-wrap">
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <h4 className="text-sm font-semibold">{ev.title}</h4>
+                                {ev.is_evidence_informed_consideration && (
+                                  <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                                    Possible consideration
+                                  </Badge>
+                                )}
+                              </div>
+                            </div>
+                            <Badge variant="outline" className={`text-[10px] flex-shrink-0 border ${strengthColor}`}>
+                              {ev.strength_of_support ?? "unknown"} evidence
+                            </Badge>
+                          </div>
+
+                          {/* Summary */}
+                          <p className="text-sm text-foreground/80 leading-relaxed">{ev.summary}</p>
+
+                          {/* Relevance to visit */}
+                          {ev.relevance_to_visit && (
+                            <div className="text-xs text-muted-foreground bg-muted/30 rounded px-3 py-2">
+                              <span className="font-medium text-foreground/70">Relevance to this visit: </span>
+                              {ev.relevance_to_visit}
+                            </div>
+                          )}
+
+                          {/* Cautions */}
+                          {ev.cautions?.length > 0 && (
+                            <div className="space-y-1">
+                              {ev.cautions.map((c, ci) => (
+                                <div key={ci} className="flex items-start gap-1.5 text-xs text-amber-800">
+                                  <TriangleAlert className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-500" />
+                                  <span>{c}</span>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+
+                          {/* Citations */}
+                          {ev.citations?.length > 0 && (
+                            <div className="space-y-1.5 pt-1 border-t">
+                              <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">References</div>
+                              {ev.citations.map((cite, ci) => (
+                                <div key={ci} className="text-xs flex items-start gap-2 bg-muted/20 rounded px-2.5 py-2">
+                                  <BookOpen className="w-3 h-3 flex-shrink-0 mt-0.5 text-muted-foreground" />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="font-medium text-foreground/80 leading-snug">{cite.title}</div>
+                                    <div className="text-muted-foreground mt-0.5">
+                                      {cite.source}{cite.year ? ` · ${cite.year}` : ""}
+                                    </div>
+                                    {cite.url && (
+                                      <a
+                                        href={cite.url}
+                                        target="_blank"
+                                        rel="noopener noreferrer"
+                                        className="text-primary hover:underline flex items-center gap-0.5 mt-0.5"
+                                      >
+                                        <ExternalLink className="w-2.5 h-2.5" />
+                                        View source
+                                      </a>
+                                    )}
+                                  </div>
+                                </div>
+                              ))}
+                            </div>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+              </>
             )}
           </>
         )}
@@ -1141,7 +1269,18 @@ function EncounterEditor({
                 <h3 className="text-sm font-semibold">SOAP Note</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">AI-generated from encounter transcription{linkedLabResultId ? " + linked lab results" : ""}. Edit any section as needed.</p>
               </div>
-              <div className="flex items-center gap-2">
+              <div className="flex items-center gap-2 flex-wrap">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={runValidate}
+                  disabled={!hasSoap || pipelineLoading === "validating"}
+                  data-testid="button-validate-soap-header"
+                >
+                  {pipelineLoading === "validating"
+                    ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Validating…</>
+                    : <><CheckCircle2 className={`w-3.5 h-3.5 mr-1.5 ${validationResult?.overall_status === "pass" ? "text-emerald-500" : validationResult?.overall_status === "fail" ? "text-destructive" : ""}`} />Validate</>}
+                </Button>
                 <Button
                   size="sm"
                   variant="outline"
@@ -1203,6 +1342,77 @@ function EncounterEditor({
                 </div>
               );
             })()}
+
+            {/* Validation results panel */}
+            {validationResult && hasSoap && (
+              <div className={`rounded-md border p-4 space-y-3 ${validationResult.overall_status === "fail" ? "border-destructive/40 bg-destructive/5" : validationResult.overall_status === "flag" ? "border-amber-200 bg-amber-50/40" : "border-emerald-200 bg-emerald-50/40"}`}>
+                <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-2">
+                    {validationResult.overall_status === "pass" ? (
+                      <CheckCircle2 className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                    ) : validationResult.overall_status === "fail" ? (
+                      <AlertCircle className="w-4 h-4 text-destructive flex-shrink-0" />
+                    ) : (
+                      <TriangleAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    )}
+                    <h4 className={`text-sm font-semibold ${validationResult.overall_status === "pass" ? "text-emerald-800" : validationResult.overall_status === "fail" ? "text-destructive" : "text-amber-800"}`}>
+                      SOAP Validation — {validationResult.overall_status === "pass" ? "No issues found" : validationResult.overall_status === "fail" ? "Errors require attention" : "Review flags present"}
+                    </h4>
+                  </div>
+                  <button
+                    onClick={() => setValidationResult(null)}
+                    className="text-muted-foreground hover:text-foreground text-xs"
+                    data-testid="button-dismiss-validation"
+                  >
+                    <X className="w-3.5 h-3.5" />
+                  </button>
+                </div>
+
+                {validationResult.soap_flags?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">SOAP Flags ({validationResult.soap_flags.length})</p>
+                    <div className="space-y-2">
+                      {validationResult.soap_flags.map((flag, i) => (
+                        <div key={i} className={`rounded px-3 py-2 text-xs ${flag.severity === "error" ? "bg-destructive/10 border border-destructive/20" : "bg-amber-50 border border-amber-200"}`}>
+                          <div className="flex items-start gap-1.5">
+                            {flag.severity === "error"
+                              ? <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5 text-destructive" />
+                              : <TriangleAlert className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-600" />}
+                            <div>
+                              <span className={`font-semibold ${flag.severity === "error" ? "text-destructive" : "text-amber-800"}`}>
+                                {flag.type.replace(/_/g, " ")}:
+                              </span>
+                              <span className="ml-1 text-foreground/70">{flag.item}</span>
+                              {flag.detail && <p className="mt-0.5 text-muted-foreground">{flag.detail}</p>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+
+                {validationResult.evidence_flags?.length > 0 && (
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Evidence Flags ({validationResult.evidence_flags.length})</p>
+                    <div className="space-y-2">
+                      {validationResult.evidence_flags.map((flag, i) => (
+                        <div key={i} className="rounded px-3 py-2 text-xs bg-amber-50 border border-amber-200">
+                          <div className="flex items-start gap-1.5">
+                            <TriangleAlert className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-600" />
+                            <div>
+                              <span className="font-semibold text-amber-800">{flag.type.replace(/_/g, " ")}:</span>
+                              <span className="ml-1 text-foreground/70">{flag.item}</span>
+                              {flag.detail && <p className="mt-0.5 text-muted-foreground">{flag.detail}</p>}
+                            </div>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            )}
 
             {!hasSoap && !soapMutation.isPending && (
               <div className="rounded-md border-2 border-dashed border-border p-8 text-center">
