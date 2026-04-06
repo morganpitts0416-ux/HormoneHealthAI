@@ -1,7 +1,7 @@
 import { eq, desc, ilike, or, and, isNull, count, sql } from "drizzle-orm";
-import { drizzle } from "drizzle-orm/neon-serverless";
-import { Pool, neonConfig } from "@neondatabase/serverless";
-import ws from "ws";
+import { drizzle } from "drizzle-orm/node-postgres";
+import pg from "pg";
+const { Pool } = pg;
 import * as schema from "@shared/schema";
 import type {
   Patient, InsertPatient,
@@ -20,8 +20,6 @@ import type {
   ClinicianLabPreference, InsertClinicianLabPreference,
   ClinicalEncounter, InsertClinicalEncounter,
 } from "@shared/schema";
-
-neonConfig.webSocketConstructor = ws;
 
 const pool = new Pool({
   connectionString: process.env.DATABASE_URL,
