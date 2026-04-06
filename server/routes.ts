@@ -2797,6 +2797,11 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         segments = [filePath];
       }
 
+      // Clinical terminology prompt — primes Whisper to correctly recognize
+      // medical words, lab names, hormones, and medications used in this clinic.
+      // Whisper treats this as a "prior transcript" style hint (max ~224 tokens).
+      const clinicalPrompt = `Hormone and primary care clinic visit. Labs: testosterone, estradiol, progesterone, DHEA-S, DHEA, TSH, free T4, free T3, T3, PSA, HbA1c, fasting insulin, fasting glucose, CRP, hs-CRP, ferritin, CBC, CMP, lipid panel, LDL, HDL, triglycerides, ApoB, Lp(a), SHBG, LH, FSH, IGF-1, cortisol, vitamin D, homocysteine, fibrinogen. Medications: levothyroxine, liothyronine, metformin, testosterone cypionate, testosterone enanthate, anastrozole, clomiphene, progesterone, estradiol, DHEA, pregnenolone, semaglutide, tirzepatide, compounded HRT, berberine, magnesium glycinate. Clinical terms: erythrocytosis, hematocrit, venipuncture, cardiovascular risk, PREVENT score, ASCVD, atherosclerosis, insulin resistance, metabolic syndrome, STOP-BANG, sleep apnea, hypothyroidism, hyperthyroidism, hypogonadism, subcutaneous, intramuscular injection, phlebotomy, menopause, perimenopause, follicular phase, luteal phase, FIB-4 score, hepatic steatosis.`;
+
       // Transcribe each segment sequentially (Whisper is stateful — order matters)
       const parts: string[] = [];
       for (const seg of segments) {
@@ -2805,6 +2810,8 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
           model: 'whisper-1',
           file: stream,
           response_format: 'text',
+          language: 'en',
+          prompt: clinicalPrompt,
         });
         parts.push(result as unknown as string);
       }
