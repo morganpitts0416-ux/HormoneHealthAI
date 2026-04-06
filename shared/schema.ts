@@ -851,6 +851,52 @@ export type EvidenceOverlay = {
   not_for_auto_insertion: true;
 };
 
+// ── Pattern / Phenotype Matching ─────────────────────────────────────────────
+
+export type PatternEvidenceBasis =
+  | "symptom_based"     // derived from transcript symptoms only, no lab confirmation
+  | "lab_backed"        // confirmed by linked lab values
+  | "combined"          // transcript + lab data together
+  | "insufficient";     // not enough data to assess
+
+export type PatternConfidence =
+  | "possible"          // early signal — needs confirmation
+  | "probable"          // strong symptomatic or lab signal
+  | "confirmed";        // meets diagnostic/clinical criteria with evidence
+
+export type PatternCategory =
+  | "perimenopause"
+  | "testosterone_optimization"
+  | "insulin_resistance"
+  | "thyroid"
+  | "lipid_cardiometabolic"
+  | "adrenal_hpa"
+  | "nutrient_deficiency"
+  | "other";
+
+export type PatternMatch = {
+  pattern_name: string;
+  category: PatternCategory;
+  evidence_basis: PatternEvidenceBasis;
+  confidence: PatternConfidence;
+  supporting_evidence: string[];    // quotes or facts from transcript/labs
+  contradicting_evidence: string[]; // things that argue against this pattern
+  recommended_considerations: string[];
+  requires_lab_confirmation: boolean;
+  lab_markers_to_evaluate?: string[];
+  notes: string;
+};
+
+export type PatternMatchResult = {
+  mode: "transcript_only" | "context_linked";
+  matched_patterns: PatternMatch[];
+  symptom_clusters: string[];        // symptom groupings noted in the visit
+  unmatched_concerns: string[];      // things discussed that don't fit a pattern
+  lab_context_used: boolean;         // whether linked lab data was incorporated
+  lab_result_id?: number;            // which lab result was used (if any)
+  generated_at: string;              // ISO timestamp
+};
+
 export type ValidationFlag = {
   type: "unsupported_diagnosis" | "unsupported_medication" | "unsupported_exam" | "missing_citation" | "contradicts_visit" | "unsupported_plan_jump";
   item: string;
@@ -884,6 +930,7 @@ export const clinicalEncounters = pgTable("clinical_encounters", {
   diarizedTranscript: jsonb("diarized_transcript").$type<DiarizedUtterance[]>(),
   clinicalExtraction: jsonb("clinical_extraction").$type<ClinicalExtraction>(),
   evidenceSuggestions: jsonb("evidence_suggestions").$type<EvidenceOverlay>(),
+  patternMatch: jsonb("pattern_match").$type<PatternMatchResult>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
