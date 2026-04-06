@@ -3352,10 +3352,14 @@ Return a JSON object matching this schema:
         if (labResult) {
           labContextUsed = true;
           labResultId = labResult.id;
+          const NON_LAB_KEYS_PM = new Set(["patientName","labDrawDate","demographics","menstrualPhase","lastMenstrualPeriod","onHRT","onBirthControl","onTRT"]);
           const vals = labResult.labValues as Record<string, any>;
           const labLines = Object.entries(vals)
-            .filter(([k, v]) => v !== null && v !== undefined && v !== "" && k !== "demographics" && k !== "patientName" && k !== "labDrawDate" && typeof v === "number")
-            .map(([k, v]) => `  ${k}: ${v}`)
+            .filter(([k, v]) => !NON_LAB_KEYS_PM.has(k) && v !== null && v !== undefined && v !== "" && typeof v !== "object")
+            .map(([k, v]) => {
+              if (typeof v === "boolean") return `  ${k}: ${v ? "Yes" : "No"}`;
+              return `  ${k}: ${v}`;
+            })
             .join("\n");
           const interp = labResult.interpretationResult as any;
           const priorPatterns = interp?.insulinResistance
@@ -3364,7 +3368,14 @@ Return a JSON object matching this schema:
           const priorRedFlags = interp?.redFlags?.length
             ? `\n  Prior red flags: ${interp.redFlags.map((f: any) => f.title ?? f).join("; ")}`
             : "";
-          labContext = `\n\nLINKED LAB RESULTS (${labResult.gender === 'female' ? 'Female' : 'Male'} panel):\n${labLines}${priorPatterns}${priorRedFlags}`;
+          // Gender from patient record (lab_results has no gender column)
+          const pmPatient = await storage.getPatient(labResult.patientId, clinicianId);
+          const pmGender = pmPatient?.gender === "female" ? "Female" : "Male";
+          const pmDrawDate = new Date(labResult.labDate as unknown as string);
+          const pmDateLabel = !isNaN(pmDrawDate.getTime())
+            ? pmDrawDate.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" })
+            : "";
+          labContext = `\n\nLINKED LAB RESULTS (${pmGender} panel${pmDateLabel ? ", drawn " + pmDateLabel : ""}):\n${labLines}${priorPatterns}${priorRedFlags}`;
         }
       }
 
@@ -3707,12 +3718,66 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
       if (encounter.linkedLabResultId) {
         const labResult = await storage.getLabResult(encounter.linkedLabResultId);
         if (labResult) {
+          // Metadata/context keys that are NOT numeric lab markers — exclude from AI prompt
+          const NON_LAB_KEYS = new Set([
+            "patientName", "labDrawDate", "demographics",
+            "menstrualPhase", "lastMenstrualPeriod",
+            "onHRT", "onBirthControl", "onTRT",
+          ]);
+          // Human-readable labels for camelCase lab keys
+          const KEY_LABELS: Record<string, string> = {
+            hemoglobin: "Hemoglobin (g/dL)", hematocrit: "Hematocrit (%)", mcv: "MCV (fL)",
+            rbc: "RBC (M/µL)", wbc: "WBC (K/µL)", platelets: "Platelets (K/µL)",
+            ast: "AST (U/L)", alt: "ALT (U/L)", bilirubin: "Bilirubin (mg/dL)",
+            creatinine: "Creatinine (mg/dL)", egfr: "eGFR (mL/min/1.73m²)", bun: "BUN (mg/dL)",
+            sodium: "Sodium (mEq/L)", potassium: "Potassium (mEq/L)", chloride: "Chloride (mEq/L)",
+            co2: "CO2 (mEq/L)", glucose: "Glucose (mg/dL)", fastingGlucose: "Fasting Glucose (mg/dL)",
+            calcium: "Calcium (mg/dL)", albumin: "Albumin (g/dL)", totalProtein: "Total Protein (g/dL)",
+            ldl: "LDL-C (mg/dL)", hdl: "HDL-C (mg/dL)", totalCholesterol: "Total Cholesterol (mg/dL)",
+            triglycerides: "Triglycerides (mg/dL)", apoB: "ApoB (mg/dL)", lpa: "Lp(a) (nmol/L)",
+            testosterone: "Testosterone (ng/dL)", estradiol: "Estradiol (pg/mL)", lh: "LH (mIU/mL)",
+            fsh: "FSH (mIU/mL)", prolactin: "Prolactin (ng/mL)", shbg: "SHBG (nmol/L)",
+            freeTestosterone: "Free Testosterone (pg/mL)", progesterone: "Progesterone (ng/mL)",
+            tsh: "TSH (µIU/mL)", freeT4: "Free T4 (ng/dL)", freeT3: "Free T3 (pg/mL)",
+            psa: "PSA (ng/mL)", previousPsa: "Previous PSA (ng/mL)", monthsSinceLastPsa: "Months Since Last PSA",
+            a1c: "HbA1c (%)", hsCRP: "hs-CRP (mg/L)", vitaminD: "Vitamin D 25-OH (ng/mL)",
+            vitaminB12: "Vitamin B12 (pg/mL)", ferritin: "Ferritin (ng/mL)", iron: "Iron (µg/dL)",
+            tibc: "TIBC (µg/dL)", dhea: "DHEA (µg/dL)", dheas: "DHEA-S (µg/dL)",
+            igf1: "IGF-1 (ng/mL)", cortisol: "Cortisol (µg/dL)", insulin: "Fasting Insulin (µIU/mL)",
+            homocysteine: "Homocysteine (µmol/L)", uricAcid: "Uric Acid (mg/dL)",
+          };
+          // Special boolean flags to render as text
+          const BOOL_LABELS: Record<string, string> = {
+            onTRT: "On TRT", onHRT: "On HRT", onBirthControl: "On Birth Control",
+          };
           const labVals = labResult.labValues as Record<string, any>;
           const labLines = Object.entries(labVals)
-            .filter(([, v]) => v !== null && v !== undefined && v !== "")
-            .map(([k, v]) => `  ${k}: ${v}`)
+            .filter(([k, v]) => {
+              if (NON_LAB_KEYS.has(k)) return false;
+              if (v === null || v === undefined || v === "") return false;
+              if (typeof v === "object") return false; // skip nested objects like demographics
+              return true;
+            })
+            .map(([k, v]) => {
+              const label = KEY_LABELS[k] ?? k;
+              if (typeof v === "boolean") return `  ${BOOL_LABELS[k] ?? label}: ${v ? "Yes" : "No"}`;
+              return `  ${label}: ${v}`;
+            })
             .join("\n");
-          labContext = `\n\nLINKED LAB RESULTS (${labResult.gender === 'female' ? 'Female' : 'Male'} panel, collected ${new Date(labResult.createdAt).toLocaleDateString()}):\n${labLines}`;
+
+          // Gender from patient record (lab_results has no gender column)
+          const labPatient = await storage.getPatient(labResult.patientId, clinicianId);
+          const genderLabel = labPatient?.gender === "female" ? "Female" : "Male";
+
+          // Use actual lab draw date, not DB insertion timestamp
+          const drawDate = new Date(labResult.labDate as unknown as string);
+          const dateLabel = !isNaN(drawDate.getTime())
+            ? drawDate.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" })
+            : "Unknown date";
+
+          labContext = labLines
+            ? `\n\nLINKED LAB RESULTS (${genderLabel} panel, drawn ${dateLabel}):\n${labLines}`
+            : "";
         }
       }
 
