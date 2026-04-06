@@ -1,0 +1,82 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run services logs read hormonehealthai --region=us-central1 --limit=80
+2026-04-06 20:32:34   - AI recommendations length: 8504
+2026-04-06 20:32:34   - Patient summary length: 3299
+2026-04-06 20:32:34   - Recheck window: 3-6 months (routine follow-up)
+2026-04-06 20:32:34   - Supplements: 2
+2026-04-06 20:32:34   - CV Risk Flags computed
+2026-04-06 20:32:34   - Insulin Resistance: LOW LIKELIHOOD
+2026-04-06 20:32:34   - SOAP note length: 9062
+2026-04-06 20:32:34 8:32:34 PM [express] POST /api/interpret-labs-female 200 in 83815ms :: {"redFlags":[],"interpretatio…
+2026-04-06 20:32:34 GET 304 https://app.realignlabeval.com/api/patients/search?q=Joy%20Averett
+2026-04-06 20:32:35 8:32:35 PM [express] GET /api/patients/search 304 in 46ms :: []
+2026-04-06 20:32:35 POST 201 https://app.realignlabeval.com/api/saved-interpretations
+2026-04-06 20:32:35 8:32:35 PM [express] POST /api/saved-interpretations 201 in 48ms :: {"id":115,"userId":1,"patientNam…
+2026-04-06 20:39:03 GET 200 https://app.realignlabeval.com/sitemap.xml
+2026-04-06 20:45:20 POST 200 https://app.realignlabeval.com/api/auth/logout
+2026-04-06 20:45:20 8:45:20 PM [express] POST /api/auth/logout 200 in 43ms :: {"success":true}
+2026-04-06 20:45:20 GET 401 https://app.realignlabeval.com/api/auth/me
+2026-04-06 20:45:20 8:45:20 PM [express] GET /api/auth/me 401 in 6ms :: {"message":"Not authenticated"}
+2026-04-06 20:45:20 GET 200 https://app.realignlabeval.com/apple-touch-icon.png
+2026-04-06 20:45:20 GET 200 https://app.realignlabeval.com/favicon.png
+2026-04-06 20:45:20 GET 304 https://app.realignlabeval.com/favicon.png
+2026-04-06 20:45:25 POST 200 https://app.realignlabeval.com/api/auth/login
+2026-04-06 20:45:25 8:45:25 PM [express] POST /api/auth/login 200 in 398ms :: {"id":1,"email":"morganpitts0416@gmail.com…
+2026-04-06 20:45:25 GET 304 https://app.realignlabeval.com/api/clinician/notifications
+2026-04-06 20:45:25 GET 304 https://app.realignlabeval.com/api/patients/search
+2026-04-06 20:45:25 GET 304 https://app.realignlabeval.com/apple-touch-icon.png
+2026-04-06 20:45:25 GET 304 https://app.realignlabeval.com/favicon.png
+2026-04-06 20:45:25 8:45:25 PM [express] GET /api/patients/search 304 in 13ms :: [{"id":45,"userId":1,"firstName":"Sarah…
+2026-04-06 20:45:26 8:45:26 PM [express] GET /api/clinician/notifications 304 in 43ms :: {"unreadMessages":[],"pendingOr…
+2026-04-06 20:45:26 GET 304 https://app.realignlabeval.com/favicon.png
+2026-04-06 20:45:27 GET 304 https://app.realignlabeval.com/api/patients/search
+2026-04-06 20:45:27 GET 304 https://app.realignlabeval.com/apple-touch-icon.png
+2026-04-06 20:45:27 GET 304 https://app.realignlabeval.com/favicon.png
+2026-04-06 20:45:27 8:45:27 PM [express] GET /api/patients/search 304 in 10ms :: [{"id":45,"userId":1,"firstName":"Sarah…
+2026-04-06 20:45:27 GET 304 https://app.realignlabeval.com/favicon.png
+2026-04-06 20:45:27 GET 500 https://app.realignlabeval.com/api/encounters?patientId=45
+2026-04-06 20:45:27 GET 304 https://app.realignlabeval.com/api/portal/status/45
+2026-04-06 20:45:27 GET 304 https://app.realignlabeval.com/api/patients/45/supplement-orders
+2026-04-06 20:45:27 GET 304 https://app.realignlabeval.com/api/patients/45/messages/unread
+2026-04-06 20:45:27 GET 304 https://app.realignlabeval.com/api/patients/45/labs
+2026-04-06 20:45:27 8:45:27 PM [express] GET /api/encounters 500 in 31ms :: {"message":"Failed to load encounters"}
+2026-04-06 20:45:27 8:45:27 PM [express] GET /api/portal/status/45 304 in 38ms :: {"hasPortalAccount":false,"hasPassword…
+2026-04-06 20:45:27 8:45:27 PM [express] GET /api/patients/45/supplement-orders 304 in 17ms :: []
+2026-04-06 20:45:27 8:45:27 PM [express] GET /api/patients/45/messages/unread 304 in 14ms :: {"count":0}
+2026-04-06 20:45:27 8:45:27 PM [express] GET /api/patients/45/labs 304 in 21ms :: [{"id":101,"patientId":45,"labDate":"2…
+2026-04-06 20:45:28 GET 500 https://app.realignlabeval.com/api/encounters
+2026-04-06 20:45:28 GET 304 https://app.realignlabeval.com/api/patients/45/labs
+2026-04-06 20:45:28 GET 304 https://app.realignlabeval.com/apple-touch-icon.png
+2026-04-06 20:45:28 GET 304 https://app.realignlabeval.com/favicon.png
+2026-04-06 20:45:28 8:45:28 PM [express] GET /api/encounters 500 in 19ms :: {"message":"Failed to load encounters"}
+2026-04-06 20:45:28 8:45:28 PM [express] GET /api/patients/45/labs 304 in 26ms :: [{"id":101,"patientId":45,"labDate":"2…
+2026-04-06 20:45:28 GET 304 https://app.realignlabeval.com/favicon.png
+2026-04-06 20:51:35 POST 200 https://app.realignlabeval.com/api/encounters/transcribe
+2026-04-06 20:51:46 [Transcribe] gpt-4o-transcribe unavailable, falling back to whisper-1: 400 response_format 'verbose_json' is not compatible with model 'gpt-4o-transcribe-api-ev3'. Use 'json' or 'text' instead.
+2026-04-06 20:52:08 8:52:08 PM [express] POST /api/encounters/transcribe 200 in 33461ms :: {"transcription":"serotonin. …
+2026-04-06 20:52:32 POST 500 https://app.realignlabeval.com/api/encounters
+2026-04-06 20:52:32 [Encounters] Create error: error: relation "clinical_encounters" does not exist
+2026-04-06 20:52:32     at /app/node_modules/pg-pool/index.js:45:11
+2026-04-06 20:52:32     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-06 20:52:32     at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-06 20:52:32     at async DbStorage.createEncounter (file:///app/dist/index.js:1268:20)
+2026-04-06 20:52:32     at async file:///app/dist/index.js:11880:25 {
+2026-04-06 20:52:32   length: 118,
+2026-04-06 20:52:32   severity: 'ERROR',
+2026-04-06 20:52:32   code: '42P01',
+2026-04-06 20:52:32   detail: undefined,
+2026-04-06 20:52:32   hint: undefined,
+2026-04-06 20:52:32   position: '13',
+2026-04-06 20:52:32   internalPosition: undefined,
+2026-04-06 20:52:32   internalQuery: undefined,
+2026-04-06 20:52:32   where: undefined,
+2026-04-06 20:52:32   schema: undefined,
+2026-04-06 20:52:32   table: undefined,
+2026-04-06 20:52:32   column: undefined,
+2026-04-06 20:52:32   dataType: undefined,
+2026-04-06 20:52:32   constraint: undefined,
+2026-04-06 20:52:32   file: 'parse_relation.c',
+2026-04-06 20:52:32   line: '1469',
+2026-04-06 20:52:32   routine: 'parserOpenTable'
+2026-04-06 20:52:32 }
+2026-04-06 20:52:32 8:52:32 PM [express] POST /api/encounters 500 in 29ms :: {"message":"Failed to create encounter"}
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 

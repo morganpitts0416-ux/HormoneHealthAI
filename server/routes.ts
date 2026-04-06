@@ -2823,15 +2823,17 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
         let verboseResult: any = null;
 
-        // Try gpt-4o-transcribe first (verbose_json for timestamps)
+        // Try gpt-4o-transcribe first — uses 'json' format (verbose_json not supported)
         try {
-          verboseResult = await openai.audio.transcriptions.create({
+          const result = await openai.audio.transcriptions.create({
             model: 'gpt-4o-transcribe',
             file: stream,
-            response_format: 'verbose_json',
+            response_format: 'json',
             language: 'en',
             prompt: clinicalPrompt,
           } as any);
+          // json format returns { text } only — no segments
+          verboseResult = { text: typeof result === 'string' ? result : (result as any).text || '', segments: [] };
         } catch (modelErr: any) {
           console.warn('[Transcribe] gpt-4o-transcribe unavailable, falling back to whisper-1:', modelErr.message);
           const stream2 = fs.createReadStream(seg);
