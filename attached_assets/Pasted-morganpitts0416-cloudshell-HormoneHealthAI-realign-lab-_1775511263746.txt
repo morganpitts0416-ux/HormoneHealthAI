@@ -1,0 +1,51 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ CREATE TABLE clinical_encounters (
+  id                    SERIAL PRIMARY KEY,
+  clinician_id          INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  patient_id            INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  visit_date            TIMESTAMP NOT NULL,
+  visit_type            VARCHAR(50) NOT NULL DEFAULT 'follow-up',
+  chief_complaint       TEXT,
+  transcription         TEXT,
+  audio_processed       BOOLEAN NOT NULL DEFAULT false,
+  linked_lab_result_id  INTEGER REFERENCES lab_results(id) ON DELETE SET NULL,
+  soap_note             JSONB,
+  soap_generated_at     TIMESTAMP,
+  patient_summary       TEXT,
+  summary_published     BOOLEAN NOT NULL DEFAULT false,
+  summary_published_at  TIMESTAMP,
+  clinician_notes       TEXT,
+  diarized_transcript   JSONB,
+  clinical_extraction   JSONB,
+  evidence_suggestions  JSONB,
+  pattern_match         JSONB,
+  created_at            TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMP NOT NULL DEFAULT NOW()
+);
+-bash: syntax error near unexpected token `('
+id: ‘SERIAL’: no such user
+id: ‘PRIMARY’: no such user
+id: ‘KEY,’: no such user
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: visit_date: command not found
+-bash: syntax error near unexpected token `('
+-bash: chief_complaint: command not found
+-bash: transcription: command not found
+-bash: audio_processed: command not found
+-bash: syntax error near unexpected token `('
+-bash: soap_note: command not found
+-bash: soap_generated_at: command not found
+-bash: patient_summary: command not found
+-bash: summary_published: command not found
+-bash: summary_published_at: command not found
+-bash: clinician_notes: command not found
+-bash: diarized_transcript: command not found
+-bash: clinical_extraction: command not found
+-bash: evidence_suggestions: command not found
+-bash: pattern_match: command not found
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `)'
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ \dt
+-bash: dt: command not found
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
