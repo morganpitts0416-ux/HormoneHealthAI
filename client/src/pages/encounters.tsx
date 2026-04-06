@@ -622,16 +622,38 @@ function EncounterEditor({
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
                 <Label htmlFor="patient-select" className="text-xs font-medium mb-1.5 block">Patient *</Label>
-                <Select value={patientId} onValueChange={setPatientId}>
-                  <SelectTrigger data-testid="select-patient" id="patient-select">
-                    <SelectValue placeholder="Select patient..." />
-                  </SelectTrigger>
-                  <SelectContent>
-                    {patients.map(p => (
-                      <SelectItem key={p.id} value={p.id.toString()}>{p.firstName} {p.lastName}</SelectItem>
-                    ))}
-                  </SelectContent>
-                </Select>
+                {/* When opened from a patient profile, lock the patient field */}
+                {initialPatientId && !encounter ? (
+                  <div className="flex items-center gap-2 h-9 px-3 border rounded-md bg-muted/30 text-sm">
+                    <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                    <span className="flex-1 font-medium">
+                      {(() => { const p = patients.find(pt => pt.id.toString() === patientId); return p ? `${p.firstName} ${p.lastName}` : "Loading patient..."; })()}
+                    </span>
+                    <button
+                      onClick={() => setLocation(`/patients?patient=${patientId}`)}
+                      className="text-xs text-primary hover:underline flex items-center gap-0.5 flex-shrink-0"
+                      data-testid="button-back-to-profile"
+                    >
+                      <ExternalLink className="w-3 h-3" />Profile
+                    </button>
+                  </div>
+                ) : (
+                  <Select
+                    value={patientId || "none"}
+                    onValueChange={(v) => setPatientId(v === "none" ? "" : v)}
+                  >
+                    <SelectTrigger data-testid="select-patient" id="patient-select">
+                      <SelectValue placeholder="Select patient..." />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {patients.filter(p => p.id != null).map(p => (
+                        <SelectItem key={p.id} value={p.id.toString()}>
+                          {p.firstName} {p.lastName}
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                )}
               </div>
               <div>
                 <Label htmlFor="visit-date" className="text-xs font-medium mb-1.5 block">Visit Date *</Label>
