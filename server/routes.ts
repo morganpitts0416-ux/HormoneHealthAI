@@ -2901,7 +2901,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.post("/api/encounters", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const { patientId, visitDate, visitType, chiefComplaint, linkedLabResultId, clinicianNotes } = req.body;
+      const { patientId, visitDate, visitType, chiefComplaint, linkedLabResultId, clinicianNotes, transcription } = req.body;
       if (!patientId || !visitDate) return res.status(400).json({ message: "patientId and visitDate are required" });
       const encounter = await storage.createEncounter({
         clinicianId,
@@ -2911,7 +2911,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         chiefComplaint: chiefComplaint || null,
         linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null,
         clinicianNotes: clinicianNotes || null,
-        transcription: null,
+        transcription: transcription || null,
         audioProcessed: false,
         soapNote: null,
         patientSummary: null,
