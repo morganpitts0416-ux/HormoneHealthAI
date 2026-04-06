@@ -67,6 +67,26 @@ const VISIT_TYPES = [
   { value: "lab-review", label: "Lab Review" },
 ];
 
+// ── Transcript formatter ───────────────────────────────────────────────────────
+// Converts a raw running-paragraph transcription into readable note paragraphs.
+// Splits on sentence endings, groups ~3 sentences per paragraph.
+function formatTranscriptAsNotes(text: string): string[] {
+  if (!text?.trim()) return [];
+  // Split on sentence-ending punctuation, keeping the delimiter
+  const sentences = text
+    .replace(/([.!?])\s+/g, "$1\n")
+    .split("\n")
+    .map(s => s.trim())
+    .filter(Boolean);
+
+  const paragraphs: string[] = [];
+  const SENTENCES_PER_PARA = 3;
+  for (let i = 0; i < sentences.length; i += SENTENCES_PER_PARA) {
+    paragraphs.push(sentences.slice(i, i + SENTENCES_PER_PARA).join(" "));
+  }
+  return paragraphs;
+}
+
 // ── Status helpers ─────────────────────────────────────────────────────────────
 function EncounterStatusBadges({ enc }: { enc: EncounterWithPatient }) {
   return (
@@ -1133,8 +1153,14 @@ function EncounterEditor({
                   })}
                 </div>
               ) : transcription ? (
-                <div className="rounded-md border p-3 bg-background text-sm text-muted-foreground whitespace-pre-wrap max-h-[280px] overflow-y-auto font-mono text-xs">
-                  {transcription}
+                <div className="rounded-md border p-4 bg-background max-h-[340px] overflow-y-auto space-y-3">
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Raw Transcript — run Normalize to add speaker labels</span>
+                    <span className="text-[10px] text-muted-foreground">{transcription.split(/\s+/).filter(Boolean).length} words</span>
+                  </div>
+                  {formatTranscriptAsNotes(transcription).map((para, i) => (
+                    <p key={i} className="text-sm leading-relaxed text-foreground">{para}</p>
+                  ))}
                 </div>
               ) : (
                 <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">

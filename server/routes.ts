@@ -29,7 +29,7 @@ import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
 import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
 import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail } from "./email-service";
-import { buildMedicalTermsList, buildNormalizationRules, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
+import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
 import bcrypt from "bcrypt";
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -2811,7 +2811,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         audioSegments = [filePath];
       }
 
-      const clinicalPrompt = `Hormone and primary care clinic visit. ${buildMedicalTermsList(visitType).slice(0, 800)}`;
+      const clinicalPrompt = buildWhisperPrompt(visitType);
 
       type RawSegment = { id: number; start: number; end: number; text: string };
       const allSegments: RawSegment[] = [];
