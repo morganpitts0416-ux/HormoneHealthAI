@@ -5,13 +5,21 @@ interface EmailOptions {
   to: string;
   subject: string;
   html: string;
+  fromName?: string; // Display name shown in inbox — e.g. "Vitality Men's Health"
+  replyTo?: string;
 }
 
 async function sendEmail(opts: EmailOptions): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
+  const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com";
+  // Build display-name "from" if a clinic name is provided
+  const fromField = opts.fromName
+    ? `"${opts.fromName}" <${sendingDomain}>`
+    : sendingDomain;
 
   if (!apiKey) {
     console.log("[EMAIL STUB] Would send email:", {
+      from: fromField,
       to: opts.to,
       subject: opts.subject,
     });
@@ -19,18 +27,21 @@ async function sendEmail(opts: EmailOptions): Promise<void> {
     return;
   }
 
+  const body: Record<string, unknown> = {
+    from: fromField,
+    to: [opts.to],
+    subject: opts.subject,
+    html: opts.html,
+  };
+  if (opts.replyTo) body.reply_to = opts.replyTo;
+
   const response = await fetch("https://api.resend.com/emails", {
     method: "POST",
     headers: {
       Authorization: `Bearer ${apiKey}`,
       "Content-Type": "application/json",
     },
-    body: JSON.stringify({
-      from: process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com",
-      to: [opts.to],
-      subject: opts.subject,
-      html: opts.html,
-    }),
+    body: JSON.stringify(body),
   });
 
   if (!response.ok) {
@@ -55,6 +66,9 @@ function getBaseUrl(req?: { protocol?: string; get?: (h: string) => string | und
   }
   return "https://realignhealth.com";
 }
+
+// ── Platform-level emails (clinician-facing) ───────────────────────────────
+// These always brand as "ReAlign Health" — the clinician knows the platform.
 
 export async function sendInviteEmail(
   to: string,
@@ -100,6 +114,54 @@ export async function sendInviteEmail(
   });
 }
 
+export async function sendPasswordResetEmail(
+  to: string,
+  firstName: string,
+  token: string,
+  req?: any
+): Promise<void> {
+  const base = getBaseUrl(req);
+  const link = `${base}/reset-password?token=${token}`;
+
+  await sendEmail({
+    to,
+    subject: "Reset your ReAlign Health password",
+    html: `
+      <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
+        <div style="background: #2e3a20; padding: 28px 32px;">
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ReAlign Health</h1>
+          <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Clinical Lab Interpretation Platform</p>
+        </div>
+        <div style="padding: 36px 32px;">
+          <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hello ${firstName},</p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+            We received a request to reset your ReAlign Health password. Click the button below to choose a new one.
+          </p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
+              Reset My Password
+            </a>
+          </div>
+          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
+            This link expires in <strong>1 hour</strong>. If you didn't request a password reset, you can safely ignore this email — your password will not change.
+          </p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 8px 0 0; word-break: break-all;">
+            Or copy this link: ${link}
+          </p>
+        </div>
+        <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; Clinician Lab Interpretation Platform</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
+// ── Patient / portal-facing emails ─────────────────────────────────────────
+// These brand as the clinic — patients should never see "ReAlign Health" in
+// the header or the inbox display name.  "Powered by ReAlign Health" stays
+// in the footer as a platform credit only.
+
 export async function sendPatientPortalInviteEmail(
   to: string,
   patientFirstName: string,
@@ -112,11 +174,12 @@ export async function sendPatientPortalInviteEmail(
 
   await sendEmail({
     to,
+    fromName: clinicName,
     subject: `${clinicName} has invited you to your personal health portal`,
     html: `
       <div style="font-family: 'Inter', Georgia, serif; max-width: 560px; margin: 0 auto; background: #fffdf9;">
         <div style="background: #2e3a20; padding: 28px 32px; text-align: center;">
-          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">ReAlign Health</h1>
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">${clinicName}</h1>
           <p style="color: #a8b88c; margin: 6px 0 0; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">Your Personal Wellness Portal</p>
         </div>
         <div style="padding: 40px 32px; background: #fffdf9;">
@@ -164,20 +227,21 @@ export async function sendStaffInviteEmail(
 
   await sendEmail({
     to,
-    subject: `You've been invited to join ${clinicName} on ReAlign Health`,
+    fromName: clinicName,
+    subject: `You've been invited to join the ${clinicName} care team`,
     html: `
       <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
         <div style="background: #2e3a20; padding: 28px 32px;">
-          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ReAlign Health</h1>
-          <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Clinical Lab Interpretation Platform</p>
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">${clinicName}</h1>
+          <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Care Team Access</p>
         </div>
         <div style="padding: 36px 32px;">
           <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hi ${staffFirstName},</p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-            <strong>${clinicianName}</strong> at <strong>${clinicName}</strong> has invited you to join their ReAlign Health workspace.
+            <strong>${clinicianName}</strong> at <strong>${clinicName}</strong> has invited you to join their care team workspace.
           </p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-            As a team member, you'll have access to patient lab evaluations, supplement protocols, and portal messaging — all within their clinic account.
+            As a team member, you'll have access to patient lab evaluations, supplement protocols, and portal messaging — all within the clinic account.
           </p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
@@ -192,7 +256,7 @@ export async function sendStaffInviteEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; Clinician Lab Interpretation Platform</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Clinical Lab Interpretation Platform</p>
         </div>
       </div>
     `,
@@ -212,11 +276,12 @@ export async function sendProtocolPublishedEmail(
 
   await sendEmail({
     to,
+    fromName: clinicName,
     subject: `${clinicName} has updated your wellness protocol`,
     html: `
       <div style="font-family: 'Inter', Georgia, serif; max-width: 560px; margin: 0 auto; background: #fffdf9;">
         <div style="background: #2e3a20; padding: 28px 32px; text-align: center;">
-          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">ReAlign Health</h1>
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">${clinicName}</h1>
           <p style="color: #a8b88c; margin: 6px 0 0; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">Your Wellness Portal</p>
         </div>
         <div style="padding: 40px 32px; background: #fffdf9;">
@@ -261,11 +326,12 @@ export async function sendNewPortalMessageEmail(
 
   await sendEmail({
     to,
+    fromName: clinicName,
     subject: `New message from ${clinicName}`,
     html: `
       <div style="font-family: 'Inter', Georgia, serif; max-width: 560px; margin: 0 auto; background: #fffdf9;">
         <div style="background: #2e3a20; padding: 28px 32px; text-align: center;">
-          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">ReAlign Health</h1>
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 24px; font-weight: 700; letter-spacing: -0.5px;">${clinicName}</h1>
           <p style="color: #a8b88c; margin: 6px 0 0; font-size: 13px; letter-spacing: 0.5px; text-transform: uppercase;">Your Wellness Portal</p>
         </div>
         <div style="padding: 40px 32px; background: #fffdf9;">
@@ -295,24 +361,29 @@ export async function sendPortalPasswordResetEmail(
   to: string,
   patientFirstName: string,
   token: string,
-  req?: any
+  req?: any,
+  clinicName?: string,
+  clinicianName?: string
 ): Promise<void> {
   const base = getBaseUrl(req);
   const link = `${base}/portal/reset-password?token=${token}`;
+  const displayClinic = clinicName || "Your Care Team";
+  const fromName = clinicName || undefined;
 
   await sendEmail({
     to,
-    subject: "Reset your health portal password",
+    fromName,
+    subject: `Reset your ${displayClinic} health portal password`,
     html: `
       <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
         <div style="background: #2e3a20; padding: 28px 32px;">
-          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ReAlign Health</h1>
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">${displayClinic}</h1>
           <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Your Personal Health Portal</p>
         </div>
         <div style="padding: 36px 32px;">
           <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hello ${patientFirstName},</p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-            We received a request to reset your health portal password. Click the button below to set a new one.
+            We received a request to reset your health portal password${clinicianName ? ` for your account with ${clinicianName}` : ''}. Click the button below to set a new one.
           </p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
@@ -328,49 +399,6 @@ export async function sendPortalPasswordResetEmail(
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
           <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
-        </div>
-      </div>
-    `,
-  });
-}
-
-export async function sendPasswordResetEmail(
-  to: string,
-  firstName: string,
-  token: string,
-  req?: any
-): Promise<void> {
-  const base = getBaseUrl(req);
-  const link = `${base}/reset-password?token=${token}`;
-
-  await sendEmail({
-    to,
-    subject: "Reset your ReAlign Health password",
-    html: `
-      <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
-        <div style="background: #2e3a20; padding: 28px 32px;">
-          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ReAlign Health</h1>
-          <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Clinical Lab Interpretation Platform</p>
-        </div>
-        <div style="padding: 36px 32px;">
-          <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hello ${firstName},</p>
-          <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-            We received a request to reset your ReAlign Health password. Click the button below to choose a new one.
-          </p>
-          <div style="text-align: center; margin: 32px 0;">
-            <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
-              Reset My Password
-            </a>
-          </div>
-          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
-            This link expires in <strong>1 hour</strong>. If you didn't request a password reset, you can safely ignore this email — your password will not change.
-          </p>
-          <p style="color: #7a8a64; font-size: 12px; margin: 8px 0 0; word-break: break-all;">
-            Or copy this link: ${link}
-          </p>
-        </div>
-        <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; Clinician Lab Interpretation Platform</p>
         </div>
       </div>
     `,

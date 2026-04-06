@@ -1654,12 +1654,21 @@ ${aiRecommendations}`;
         passwordResetExpires: expires,
       } as any);
 
-      // Look up patient name for email
+      // Look up patient and their clinician for branded email
       const patient = await storage.getPatientById(account.patientId);
       const firstName = patient?.firstName || "there";
+      let clinicName: string | undefined;
+      let clinicianName: string | undefined;
+      if (patient?.userId) {
+        const clinician = await storage.getUserById(patient.userId);
+        if (clinician) {
+          clinicName = clinician.clinicName;
+          clinicianName = `${clinician.title ? clinician.title + ' ' : ''}${clinician.firstName} ${clinician.lastName}`.trim();
+        }
+      }
 
       try {
-        await sendPortalPasswordResetEmail(email, firstName, token, req);
+        await sendPortalPasswordResetEmail(email, firstName, token, req, clinicName, clinicianName);
         console.log(`[PORTAL] Password reset email sent to ${email}`);
       } catch (emailErr) {
         console.error("[PORTAL] Failed to send reset email:", emailErr);
