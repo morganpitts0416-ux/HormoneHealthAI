@@ -10,6 +10,59 @@ ClinIQ is a multi-tenant SaaS platform designed for staff in men's and women's h
 - Prominent red flag alerts
 - Easy-to-read monospace fonts for numerical lab values
 
+## Production Deployment — Google Cloud Run (MANDATORY RULES)
+
+**This app is deployed to Google Cloud Run. Every code change must respect these rules:**
+
+### NEVER use in any server-side file (outside of server/vite.ts):
+- `import ... from 'vite'` or any Vite APIs at runtime
+- `@neondatabase/serverless`
+- `drizzle-orm/neon-serverless`
+- `neonConfig` or any Neon-specific WebSocket configuration
+
+### ALWAYS use for database:
+- `drizzle-orm/node-postgres` (standard node-postgres driver)
+- `pg` Pool with `process.env.DATABASE_URL`
+- Schema changes: run `npm run db:push` (never handwrite SQL migrations)
+
+### Frontend serving (production):
+- Run `npm run build` — output goes to `dist/public/`
+- `server/static-serve.ts` serves `dist/public/` via `express.static`
+- Falls back to `index.html` for all non-API routes (SPA support)
+- Do NOT add Vite proxy config or any dev-only middleware to production paths
+
+### Vite isolation pattern (already in place — do not change):
+- `server/vite.ts` is the only file that imports from `vite`
+- `server/index.ts` loads it via `new Function("m","return import(m)")("./vite.js")` so esbuild never bundles it into `dist/index.js`
+- This means `dist/index.js` must NEVER contain `setupVite`, `createServer` from vite, or any Neon imports
+
+### Pre-deploy verification checklist:
+```bash
+# Zero Neon references in bundle:
+grep -c "neondatabase\|neon-serverless\|neonConfig" dist/index.js   # must be 0
+
+# Zero real Vite references in bundle (invite* is fine, vite-the-tool is not):
+grep -n "from 'vite'\|require.*vite\|setupVite" dist/index.js       # must be empty
+
+# Correct DB driver in bundle:
+grep -c "drizzle-orm/node-postgres" dist/index.js                   # must be ≥ 1
+
+# Static serve present:
+grep -c "express.static" dist/index.js                              # must be ≥ 1
+```
+
+### Cloud Run deploy command:
+```bash
+git push origin main
+gcloud run deploy hormonehealthai \
+  --source . \
+  --region YOUR-REGION \
+  --allow-unauthenticated \
+  --clear-base-image
+```
+
+---
+
 ## System Architecture
 The ClinIQ platform features a comprehensive lab input, results display with color-coded status indicators, a red flag alert system, AI-powered recommendations, and a patient summary generator, all within a professional medical UI.
 
@@ -40,7 +93,7 @@ The ClinIQ platform features a comprehensive lab input, results display with col
 **Technology Stack:**
 -   **Frontend**: React, TypeScript, Wouter (routing), Shadcn UI (components), TanStack Query (data fetching), Tailwind CSS, React Hook Form and Zod (form validation).
 -   **Backend**: Express.js.
--   **Database**: PostgreSQL with Drizzle ORM.
+-   **Database**: PostgreSQL with Drizzle ORM (`drizzle-orm/node-postgres` + `pg` Pool).
 -   **Design System**: Inter and JetBrains Mono fonts, professional blue color scheme, Material Design-inspired components.
 
 ## External Dependencies
