@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
-import type { Patient, LabResult, ClinicalEncounter } from "@shared/schema";
+import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceSuggestion } from "@shared/schema";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -144,9 +144,11 @@ type RecorderState = "idle" | "recording" | "transcribing";
 function AudioCapture({
   onTranscribed,
   onStateChange,
+  visitType = "follow-up",
 }: {
-  onTranscribed: (text: string) => void;
+  onTranscribed: (text: string, utterances: DiarizedUtterance[] | null) => void;
   onStateChange: (state: RecorderState) => void;
+  visitType?: string;
 }) {
   const [mode, setMode] = useState<"record" | "upload">("record");
   const [recState, setRecState] = useState<"idle" | "recording" | "stopped">("idle");
@@ -180,12 +182,13 @@ function AudioCapture({
     try {
       const formData = new FormData();
       formData.append("audio", file);
+      formData.append("visitType", visitType);
       const res = await fetch("/api/encounters/transcribe", {
         method: "POST", body: formData, credentials: "include",
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Transcription failed"); }
       const data = await res.json();
-      onTranscribed(data.transcription);
+      onTranscribed(data.transcription, data.utterances ?? null);
       setRecState("idle");
       setElapsed(0);
       setUploadFile(null);
@@ -399,9 +402,24 @@ function EncounterEditor({
   const [recorderState, setRecorderState] = useState<RecorderState>("idle");
   const [soap, setSoap] = useState<SoapNote>(initSoap(encounter?.soapNote));
   const [patientSummary, setPatientSummary] = useState<string>(encounter?.patientSummary ?? "");
-  const [activeTab, setActiveTab] = useState<"details" | "soap" | "summary">("details");
+  const [activeTab, setActiveTab] = useState<"details" | "transcript" | "soap" | "evidence" | "summary">("details");
   const [savedId, setSavedId] = useState<number | null>(encounter?.id ?? null);
   const [published, setPublished] = useState<boolean>(encounter?.summaryPublished ?? false);
+
+  // Pipeline state — clinical AI stages
+  const [rawUtterances, setRawUtterances] = useState<DiarizedUtterance[] | null>(
+    (encounter?.diarizedTranscript as DiarizedUtterance[] | null) ?? null
+  );
+  const [diarizedTranscript, setDiarizedTranscript] = useState<DiarizedUtterance[] | null>(
+    (encounter?.diarizedTranscript as DiarizedUtterance[] | null) ?? null
+  );
+  const [clinicalExtraction, setClinicalExtraction] = useState<ClinicalExtraction | null>(
+    (encounter?.clinicalExtraction as ClinicalExtraction | null) ?? null
+  );
+  const [evidenceSuggestions, setEvidenceSuggestions] = useState<EvidenceSuggestion[] | null>(
+    (encounter?.evidenceSuggestions as EvidenceSuggestion[] | null) ?? null
+  );
+  const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "evidence" | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
@@ -536,6 +554,62 @@ function EncounterEditor({
     onError: (e: any) => toast({ variant: "destructive", title: "Action failed", description: e.message }),
   });
 
+  // ── Pipeline action helpers ──────────────────────────────────────────────────
+
+  const runNormalize = async () => {
+    if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save the encounter before running normalization." }); return; }
+    setPipelineLoading("normalizing");
+    try {
+      const body: any = {};
+      if (rawUtterances?.length) body.utterances = rawUtterances;
+      else body.transcription = transcription;
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/normalize`, body);
+      const data = await res.json();
+      setDiarizedTranscript(data.diarizedTranscript);
+      invalidate();
+      setActiveTab("transcript");
+      toast({ title: "Transcript normalized", description: "Speaker labels and medical terms corrected." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Normalization failed", description: e.message });
+    } finally {
+      setPipelineLoading(null);
+    }
+  };
+
+  const runExtract = async () => {
+    if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running extraction." }); return; }
+    setPipelineLoading("extracting");
+    try {
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/extract`, {});
+      const data = await res.json();
+      setClinicalExtraction(data.clinicalExtraction);
+      invalidate();
+      toast({ title: "Clinical facts extracted", description: "Review extracted data in the Transcript tab." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Extraction failed", description: e.message });
+    } finally {
+      setPipelineLoading(null);
+    }
+  };
+
+  const runEvidence = async () => {
+    if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running evidence lookup." }); return; }
+    if (!clinicalExtraction) { toast({ variant: "destructive", title: "Extract first", description: "Run clinical extraction before evidence lookup." }); return; }
+    setPipelineLoading("evidence");
+    try {
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/evidence`, {});
+      const data = await res.json();
+      setEvidenceSuggestions(data.evidenceSuggestions);
+      invalidate();
+      setActiveTab("evidence");
+      toast({ title: "Evidence loaded", description: "Review citations in the Evidence tab. Not auto-inserted into chart." });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Evidence lookup failed", description: e.message });
+    } finally {
+      setPipelineLoading(null);
+    }
+  };
+
   // Delete encounter
   const deleteMutation = useMutation({
     mutationFn: async () => {
@@ -546,14 +620,18 @@ function EncounterEditor({
     onError: (e: any) => toast({ variant: "destructive", title: "Delete failed", description: e.message }),
   });
 
-  const hasTranscription = transcription.trim().length > 0;
+  const hasTranscription = transcription.trim().length > 0 || (diarizedTranscript?.length ?? 0) > 0;
   const hasSoap = !!(soap.fullNote?.trim() || soap.assessment || soap.subjective);
   const hasSummary = patientSummary.trim().length > 0;
+  const hasExtraction = !!clinicalExtraction;
+  const hasEvidence = (evidenceSuggestions?.length ?? 0) > 0;
 
   const steps = [
-    { id: "details", label: "Details & Transcription", done: hasTranscription, icon: Stethoscope },
-    { id: "soap", label: "SOAP Note", done: hasSoap, icon: ClipboardList },
-    { id: "summary", label: "Patient Summary", done: hasSummary, icon: FileText },
+    { id: "details",    label: "Details",    done: hasTranscription, icon: Stethoscope },
+    { id: "transcript", label: "Transcript", done: hasExtraction,    icon: FileText },
+    { id: "soap",       label: "SOAP Note",  done: hasSoap,          icon: ClipboardList },
+    { id: "evidence",   label: "Evidence",   done: hasEvidence,      icon: BookOpen },
+    { id: "summary",    label: "Summary",    done: hasSummary,       icon: User },
   ] as const;
 
   return (
@@ -758,7 +836,14 @@ function EncounterEditor({
               </div>
 
               <AudioCapture
-                onTranscribed={(text) => setTranscription(prev => prev ? prev + "\n\n" + text : text)}
+                visitType={visitType}
+                onTranscribed={(text, utterances) => {
+                  setTranscription(prev => prev ? prev + "\n\n" + text : text);
+                  if (utterances?.length) {
+                    setRawUtterances(utterances);
+                    setDiarizedTranscript(utterances);
+                  }
+                }}
                 onStateChange={setRecorderState}
               />
 
@@ -816,6 +901,238 @@ function EncounterEditor({
           </>
         )}
 
+        {/* ── Tab: Transcript & Pipeline ─────────────────────────────── */}
+        {activeTab === "transcript" && (
+          <>
+            {/* Pipeline buttons */}
+            <div className="rounded-md border bg-muted/20 p-4">
+              <div className="flex items-center gap-2 mb-3">
+                <Sparkles className="w-4 h-4 text-primary" />
+                <h3 className="text-sm font-semibold">Clinical AI Pipeline</h3>
+                <span className="text-xs text-muted-foreground ml-1">Run stages in order</span>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={runNormalize}
+                  disabled={(!hasTranscription) || pipelineLoading !== null}
+                  data-testid="button-normalize"
+                >
+                  {pipelineLoading === "normalizing"
+                    ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Normalizing…</>
+                    : <><CheckCircle2 className="w-3 h-3 mr-1.5" />2 · Normalize</>}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={runExtract}
+                  disabled={!diarizedTranscript?.length || pipelineLoading !== null}
+                  data-testid="button-extract"
+                >
+                  {pipelineLoading === "extracting"
+                    ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Extracting…</>
+                    : <><FlaskConical className="w-3 h-3 mr-1.5" />3 · Extract Facts</>}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { soapMutation.mutate(); setActiveTab("soap"); }}
+                  disabled={!hasTranscription || soapMutation.isPending}
+                  data-testid="button-generate-soap-pipeline"
+                >
+                  {soapMutation.isPending
+                    ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Generating…</>
+                    : <><ClipboardList className="w-3 h-3 mr-1.5" />4 · Generate SOAP</>}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={runEvidence}
+                  disabled={!hasExtraction || pipelineLoading !== null}
+                  data-testid="button-evidence"
+                >
+                  {pipelineLoading === "evidence"
+                    ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Loading…</>
+                    : <><BookOpen className="w-3 h-3 mr-1.5" />5 · Evidence</>}
+                </Button>
+              </div>
+            </div>
+
+            {/* Diarized transcript view */}
+            <div>
+              <h3 className="text-sm font-semibold mb-2">Transcript</h3>
+              {diarizedTranscript?.length ? (
+                <div className="space-y-2 max-h-[380px] overflow-y-auto rounded-md border p-3 bg-background">
+                  {diarizedTranscript.map((u, i) => {
+                    const isClinicianSpeaker = u.speaker.toLowerCase().includes("clinician") || u.speaker.toLowerCase().includes("provider") || u.speaker.toLowerCase() === "speaker 0" || u.speaker.toLowerCase() === "a";
+                    return (
+                      <div key={i} className={`flex gap-2.5 ${isClinicianSpeaker ? "" : "justify-end"}`}>
+                        {isClinicianSpeaker && (
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-primary/10 flex items-center justify-center mt-0.5">
+                            <Stethoscope className="w-3 h-3 text-primary" />
+                          </div>
+                        )}
+                        <div className={`max-w-[80%] rounded-md px-3 py-2 text-sm ${isClinicianSpeaker ? "bg-muted/40" : "bg-primary/5 text-right"}`}>
+                          <div className="text-[10px] font-medium text-muted-foreground mb-0.5 uppercase tracking-wide">
+                            {u.speaker}
+                            {u.start != null && <span className="ml-1.5 font-normal">{Math.floor(u.start / 60)}:{String(Math.round(u.start % 60)).padStart(2, "0")}</span>}
+                          </div>
+                          <p className="leading-relaxed">{u.normalizedText ?? u.text}</p>
+                          {u.normalizedText && u.normalizedText !== u.text && (
+                            <p className="text-[10px] text-muted-foreground mt-0.5 italic">Original: {u.text}</p>
+                          )}
+                        </div>
+                        {!isClinicianSpeaker && (
+                          <div className="flex-shrink-0 w-6 h-6 rounded-full bg-muted flex items-center justify-center mt-0.5">
+                            <User className="w-3 h-3 text-muted-foreground" />
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              ) : transcription ? (
+                <div className="rounded-md border p-3 bg-background text-sm text-muted-foreground whitespace-pre-wrap max-h-[280px] overflow-y-auto font-mono text-xs">
+                  {transcription}
+                </div>
+              ) : (
+                <div className="rounded-md border border-dashed p-6 text-center text-sm text-muted-foreground">
+                  No transcript yet. Record or upload audio in the Details tab, then run Normalize.
+                </div>
+              )}
+            </div>
+
+            {/* Clinical extraction results */}
+            {clinicalExtraction && (
+              <div>
+                <div className="flex items-center gap-2 mb-3">
+                  <FlaskConical className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Extracted Clinical Facts</h3>
+                  <Badge variant="secondary" className="text-[10px]">Stage 3</Badge>
+                </div>
+                <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                  {[
+                    { key: "chief_concerns", label: "Chief Concerns" },
+                    { key: "symptoms_reported", label: "Symptoms Reported" },
+                    { key: "symptoms_denied", label: "Symptoms Denied" },
+                    { key: "medications_current", label: "Current Medications" },
+                    { key: "medication_changes_discussed", label: "Medication Changes" },
+                    { key: "labs_reviewed", label: "Labs Reviewed" },
+                    { key: "diagnoses_discussed", label: "Diagnoses Discussed" },
+                    { key: "assessment_candidates", label: "Assessment Candidates" },
+                    { key: "plan_candidates", label: "Plan Items" },
+                    { key: "follow_up_items", label: "Follow-Up" },
+                    { key: "red_flags", label: "Red Flags" },
+                    { key: "uncertain_items", label: "Uncertain Items" },
+                  ].map(({ key, label }) => {
+                    const items = (clinicalExtraction as any)[key] as string[] | undefined;
+                    if (!items?.length) return null;
+                    const isRedFlag = key === "red_flags";
+                    const isUncertain = key === "uncertain_items";
+                    return (
+                      <div key={key} className="rounded-md border p-3">
+                        <div className={`text-[10px] font-semibold uppercase tracking-wide mb-2 ${isRedFlag ? "text-destructive" : isUncertain ? "text-amber-600" : "text-muted-foreground"}`}>
+                          {isRedFlag && <TriangleAlert className="w-3 h-3 inline mr-1" />}
+                          {label}
+                        </div>
+                        <ul className="space-y-0.5">
+                          {items.map((item, idx) => (
+                            <li key={idx} className="text-xs flex items-start gap-1.5">
+                              <span className="text-muted-foreground mt-0.5">·</span>
+                              <span>{item}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+            )}
+          </>
+        )}
+
+        {/* ── Tab: Evidence Suggestions ───────────────────────────────── */}
+        {activeTab === "evidence" && (
+          <>
+            <div className="flex items-center justify-between">
+              <div>
+                <h3 className="text-sm font-semibold">Evidence Suggestions</h3>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  AI-suggested references for identified diagnoses. Review critically — citations are not auto-inserted into the chart.
+                </p>
+              </div>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={runEvidence}
+                disabled={!hasExtraction || pipelineLoading === "evidence"}
+                data-testid="button-refresh-evidence"
+              >
+                {pipelineLoading === "evidence"
+                  ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Loading…</>
+                  : <><RefreshCw className="w-3 h-3 mr-1.5" />Refresh</>}
+              </Button>
+            </div>
+
+            {!hasExtraction ? (
+              <div className="rounded-md border border-dashed p-8 text-center">
+                <BookOpen className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-40" />
+                <p className="text-sm text-muted-foreground">Run clinical extraction first (Stage 3) to generate evidence suggestions.</p>
+                <Button size="sm" variant="outline" className="mt-3" onClick={() => setActiveTab("transcript")}>
+                  Go to Transcript tab
+                </Button>
+              </div>
+            ) : !evidenceSuggestions?.length ? (
+              <div className="rounded-md border border-dashed p-8 text-center">
+                <BookOpen className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-40" />
+                <p className="text-sm text-muted-foreground">No evidence suggestions yet. Click Refresh to generate.</p>
+              </div>
+            ) : (
+              <div className="space-y-4">
+                {evidenceSuggestions.map((ev, i) => (
+                  <div key={i} className="rounded-md border p-4">
+                    <div className="flex items-start justify-between gap-3 mb-2">
+                      <div>
+                        <h4 className="text-sm font-semibold">{ev.topic}</h4>
+                        {ev.diagnosis && <p className="text-xs text-muted-foreground mt-0.5">Diagnosis: {ev.diagnosis}</p>}
+                      </div>
+                      {ev.confidence && (
+                        <Badge
+                          variant="secondary"
+                          className={`text-[10px] flex-shrink-0 ${ev.confidence === "high" ? "text-emerald-700 bg-emerald-50" : ev.confidence === "medium" ? "text-amber-700 bg-amber-50" : "text-muted-foreground"}`}
+                        >
+                          {ev.confidence} confidence
+                        </Badge>
+                      )}
+                    </div>
+                    <p className="text-sm text-muted-foreground leading-relaxed mb-3">{ev.recommendation}</p>
+                    {ev.citations?.length > 0 && (
+                      <div className="space-y-1.5">
+                        <div className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">References</div>
+                        {ev.citations.map((cite, ci) => (
+                          <div key={ci} className="text-xs bg-muted/30 rounded px-2.5 py-1.5">
+                            <span className="font-medium">{cite.source}</span>
+                            {cite.year && <span className="text-muted-foreground ml-1.5">({cite.year})</span>}
+                            {cite.finding && <span className="text-muted-foreground"> · {cite.finding}</span>}
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {ev.caveat && (
+                      <p className="text-xs text-amber-700 mt-2 flex items-start gap-1.5">
+                        <TriangleAlert className="w-3 h-3 flex-shrink-0 mt-0.5" />
+                        {ev.caveat}
+                      </p>
+                    )}
+                  </div>
+                ))}
+              </div>
+            )}
+          </>
+        )}
+
         {/* ── Tab: SOAP Note ──────────────────────────────────────────── */}
         {activeTab === "soap" && (
           <>
@@ -846,6 +1163,46 @@ function EncounterEditor({
                 </Button>
               </div>
             </div>
+
+            {/* Clinician review flags from AI pipeline */}
+            {hasSoap && (() => {
+              const soapData = soap as any;
+              const uncertainItems: string[] = soapData.uncertain_items ?? [];
+              const reviewFlags: string[] = soapData.needs_clinician_review ?? [];
+              if (!uncertainItems.length && !reviewFlags.length) return null;
+              return (
+                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+                  <div className="flex items-center gap-2">
+                    <TriangleAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                    <h4 className="text-sm font-semibold text-amber-800">Clinician Review Required</h4>
+                  </div>
+                  {reviewFlags.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1.5">Flagged for Review</p>
+                      <ul className="space-y-1">
+                        {reviewFlags.map((f, i) => (
+                          <li key={i} className="text-xs text-amber-900 flex items-start gap-1.5">
+                            <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-600" />{f}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                  {uncertainItems.length > 0 && (
+                    <div>
+                      <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1.5">Uncertain / Unresolved</p>
+                      <ul className="space-y-1">
+                        {uncertainItems.map((u, i) => (
+                          <li key={i} className="text-xs text-amber-900 flex items-start gap-1.5">
+                            <Circle className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-500" />{u}
+                          </li>
+                        ))}
+                      </ul>
+                    </div>
+                  )}
+                </div>
+              );
+            })()}
 
             {!hasSoap && !soapMutation.isPending && (
               <div className="rounded-md border-2 border-dashed border-border p-8 text-center">
