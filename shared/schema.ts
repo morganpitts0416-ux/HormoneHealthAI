@@ -828,15 +828,41 @@ export type ClinicalExtraction = {
   source_utterance_ids: number[];
 };
 
-export type EvidenceSuggestion = {
-  topic: string;
-  claim: string;
-  confidence: "high" | "moderate" | "low";
-  evidenceLevel: string;
+export type EvidenceCitation = {
+  title: string;
   source: string;
-  citation: string;
-  clinicalNote: string;
-  applicableTo: string[];
+  year: string;
+  url?: string;
+};
+
+export type EvidenceSuggestion = {
+  title: string;
+  summary: string;
+  relevance_to_visit: string;
+  strength_of_support: "strong" | "moderate" | "limited" | "mixed" | "insufficient";
+  cautions: string[];
+  citations: EvidenceCitation[];
+  is_evidence_informed_consideration?: boolean;
+};
+
+export type EvidenceOverlay = {
+  clinical_questions: string[];
+  suggestions: EvidenceSuggestion[];
+  not_for_auto_insertion: true;
+};
+
+export type ValidationFlag = {
+  type: "unsupported_diagnosis" | "unsupported_medication" | "unsupported_exam" | "missing_citation" | "contradicts_visit" | "unsupported_plan_jump";
+  item: string;
+  detail: string;
+  severity: "warning" | "error";
+};
+
+export type ValidationResult = {
+  soap_flags: ValidationFlag[];
+  evidence_flags: ValidationFlag[];
+  validated_at: string;
+  overall_status: "pass" | "flag" | "fail";
 };
 
 export const clinicalEncounters = pgTable("clinical_encounters", {
@@ -857,7 +883,7 @@ export const clinicalEncounters = pgTable("clinical_encounters", {
   clinicianNotes: text("clinician_notes"),
   diarizedTranscript: jsonb("diarized_transcript").$type<DiarizedUtterance[]>(),
   clinicalExtraction: jsonb("clinical_extraction").$type<ClinicalExtraction>(),
-  evidenceSuggestions: jsonb("evidence_suggestions").$type<EvidenceSuggestion[]>(),
+  evidenceSuggestions: jsonb("evidence_suggestions").$type<EvidenceOverlay>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

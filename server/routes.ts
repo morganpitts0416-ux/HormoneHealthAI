@@ -3140,8 +3140,9 @@ Return this exact JSON structure (all arrays, even if empty):
     }
   });
 
-  // POST /api/encounters/:id/evidence — Stage 5: Evidence-based clinical support
-  // Separate from SOAP. Never auto-inserts into chart. Clinician-reviewable only.
+  // POST /api/encounters/:id/evidence — Stage 5: Evidence Overlay
+  // Two-step: (1) generate focused clinical questions, (2) synthesize evidence per question.
+  // NEVER auto-inserts into chart. Clinician-facing, informational only.
   app.post("/api/encounters/:id/evidence", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
@@ -3150,70 +3151,265 @@ Return this exact JSON structure (all arrays, even if empty):
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       const extraction = encounter.clinicalExtraction as any;
-      if (!extraction) return res.status(400).json({ message: "Run clinical extraction first" });
-
-      const topics = [
-        ...(extraction.assessment_candidates ?? []),
-        ...(extraction.diagnoses_discussed ?? []),
-        ...(extraction.medication_changes_discussed ?? []),
-        ...(extraction.red_flags ?? []),
-      ].filter(Boolean).slice(0, 8);
-
-      if (topics.length === 0) {
-        return res.status(400).json({ message: "No clinical topics found for evidence lookup" });
-      }
+      if (!extraction) return res.status(400).json({ message: "Run clinical extraction (Stage 3) first" });
 
       const openai = new OpenAI({
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
-      const systemPrompt = `You are a clinical evidence specialist for a hormone and primary care clinic. 
-For each clinical topic provided, generate evidence-based clinical guidance.
+      // ── Step 1: Generate focused clinical questions ──────────────────────────
+      const visitContext = [
+        `Visit type: ${encounter.visitType}`,
+        extraction.chief_concerns?.length ? `Chief concerns: ${extraction.chief_concerns.join('; ')}` : null,
+        extraction.symptoms_reported?.length ? `Symptoms: ${extraction.symptoms_reported.join('; ')}` : null,
+        extraction.diagnoses_discussed?.length ? `Diagnoses discussed: ${extraction.diagnoses_discussed.join('; ')}` : null,
+        extraction.assessment_candidates?.length ? `Assessment candidates: ${extraction.assessment_candidates.join('; ')}` : null,
+        extraction.medications_current?.length ? `Current meds: ${extraction.medications_current.join('; ')}` : null,
+        extraction.medication_changes_discussed?.length ? `Medication changes: ${extraction.medication_changes_discussed.join('; ')}` : null,
+        extraction.labs_reviewed?.length ? `Labs reviewed: ${extraction.labs_reviewed.join('; ')}` : null,
+        extraction.red_flags?.length ? `Red flags: ${extraction.red_flags.join('; ')}` : null,
+      ].filter(Boolean).join('\n');
 
-RULES:
-- Only cite real, established guidelines and studies (AHA, Endocrine Society, ACOG, AACE, etc.)
-- Do NOT invent dosing, diagnoses, or treatment plans
-- Confidence levels: "high" = RCT or guideline-level evidence, "moderate" = observational studies or expert consensus, "low" = case reports or emerging data
-- evidenceLevel: "Level A" (RCTs/meta-analyses), "Level B" (cohort studies), "Level C" (case reports), "Expert Opinion"
-- Keep citations concise: "Author, Journal, Year" or "Guideline Name, Year"
-- clinicalNote should be 1-2 sentences of practical clinical relevance
-
-Return a JSON array:
-[
-  {
-    "topic": "clinical topic",
-    "claim": "specific evidence-based statement",
-    "confidence": "high" | "moderate" | "low",
-    "evidenceLevel": "Level A" | "Level B" | "Level C" | "Expert Opinion",
-    "source": "guideline or study name",
-    "citation": "Author/Org, Journal/Publication, Year",
-    "clinicalNote": "clinical implication for this patient",
-    "applicableTo": ["relevant assessment candidate or topic"]
-  }
-]`;
-
-      const completion = await openai.chat.completions.create({
+      const questionsCompletion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
-          { role: "system", content: systemPrompt },
+          {
+            role: "system",
+            content: `You are an expert clinical evidence librarian for a hormone and primary care clinic.
+Given structured visit data, generate 1 to 5 focused, searchable clinical evidence questions.
+Each question should be specific, clinically meaningful, and answerable by medical literature.
+
+RULES:
+- Only generate questions for clinically significant topics (diagnoses, treatment decisions, medication questions, risk stratification)
+- Do NOT generate questions about appointment logistics, follow-up scheduling, or administrative items
+- Questions should be framed as "What is the evidence for..." or "What are evidence-based options for..." or "How should X be interpreted in the context of Y..."
+- Prefer specific clinical scenarios over generic questions
+
+EXAMPLES:
+- "What is the current evidence for transdermal estradiol in symptomatic perimenopause with sleep disturbance?"
+- "What are evidence-based options for GSM with dyspareunia despite vaginal estrogen?"
+- "How should hs-CRP be interpreted alongside ApoB and Lp(a) in cardiometabolic risk assessment?"
+- "What is the evidence for metformin in insulin resistance with GLP-1 therapy already in place?"
+
+Return a JSON object: { "clinical_questions": ["question1", "question2", ...] }`,
+          },
+          { role: "user", content: visitContext },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const questionsRaw = JSON.parse(questionsCompletion.choices[0].message.content || "{}");
+      const clinicalQuestions: string[] = (questionsRaw.clinical_questions ?? []).slice(0, 5);
+
+      if (clinicalQuestions.length === 0) {
+        const overlay = { clinical_questions: [], suggestions: [], not_for_auto_insertion: true as const };
+        await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: overlay });
+        return res.json({ evidenceSuggestions: overlay });
+      }
+
+      // ── Step 2: Generate evidence-based suggestions per question ─────────────
+      const evidenceCompletion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are an expert clinical evidence synthesizer for a hormone and primary care clinic.
+For each clinical question provided, synthesize evidence-based guidance from authoritative sources.
+
+EVIDENCE SOURCE PRIORITY:
+1. Clinical practice guidelines (Endocrine Society, ACOG, AACE, AHA/ACC, USPSTF, North American Menopause Society, etc.)
+2. Society position statements and consensus documents
+3. Systematic reviews and meta-analyses (PubMed-indexed)
+4. Large prospective cohort studies
+5. Randomized controlled trials
+6. Observational studies and expert opinion (clearly labeled)
+
+RULES:
+- Only cite real, established guidelines and peer-reviewed literature
+- Do NOT fabricate citations, DOIs, or study names
+- strength_of_support must honestly reflect the evidence base:
+  * "strong" = consistent guideline recommendations + Level A/B evidence
+  * "moderate" = some guideline support or consistent observational evidence
+  * "limited" = mainly expert opinion or small studies
+  * "mixed" = conflicting evidence across sources
+  * "insufficient" = emerging data only, no consensus
+- If evidence is mixed or weak, state that explicitly in summary and cautions
+- is_evidence_informed_consideration = true if the suggestion goes beyond what was explicitly discussed in the visit
+- Citations must include real source names, publication/journal, year, and a plausible PubMed or guideline URL when available
+- Each suggestion should have 1-3 high-quality citations minimum; reject suggestions with zero citations
+
+Return a JSON object matching this schema:
+{
+  "suggestions": [
+    {
+      "title": "concise evidence topic title",
+      "summary": "2-4 sentence evidence synthesis with specific findings",
+      "relevance_to_visit": "1-2 sentences explaining why this is relevant to today's visit",
+      "strength_of_support": "strong" | "moderate" | "limited" | "mixed" | "insufficient",
+      "cautions": ["any important caveats, contraindications, or evidence gaps"],
+      "citations": [
+        {
+          "title": "full citation/guideline title",
+          "source": "journal or publisher name",
+          "year": "YYYY",
+          "url": "https://... (PubMed, guideline site, or leave empty string if unknown)"
+        }
+      ],
+      "is_evidence_informed_consideration": false
+    }
+  ]
+}`,
+          },
           {
             role: "user",
-            content: `Visit type: ${encounter.visitType}\nClinical topics from today's visit:\n${topics.map((t: string, i: number) => `${i + 1}. ${t}`).join('\n')}\n\nProvide 1-2 evidence citations per topic. Return JSON array only.`,
+            content: `Visit context:\n${visitContext}\n\nClinical questions to answer:\n${clinicalQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nGenerate one suggestion per question. Do not include any suggestion that has zero real citations.`,
           },
         ],
         response_format: { type: "json_object" },
       });
 
-      let raw = JSON.parse(completion.choices[0].message.content || "{}");
-      const suggestions = Array.isArray(raw) ? raw : (raw.suggestions ?? raw.evidence ?? raw.results ?? []);
+      const evidenceRaw = JSON.parse(evidenceCompletion.choices[0].message.content || "{}");
+      const rawSuggestions: any[] = evidenceRaw.suggestions ?? [];
 
-      await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: suggestions });
+      // Post-process: reject suggestions with no citations
+      const validSuggestions = rawSuggestions.filter(s => Array.isArray(s.citations) && s.citations.length > 0);
 
-      res.json({ evidenceSuggestions: suggestions });
+      const overlay = {
+        clinical_questions: clinicalQuestions,
+        suggestions: validSuggestions,
+        not_for_auto_insertion: true as const,
+      };
+
+      await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: overlay });
+      res.json({ evidenceSuggestions: overlay });
     } catch (err) {
       console.error('[Evidence] Error:', err);
       res.status(500).json({ message: "Evidence lookup failed. Please try again." });
+    }
+  });
+
+  // POST /api/encounters/:id/validate — SOAP + Evidence Validator
+  // Checks SOAP content against transcript/extraction; validates evidence citations.
+  app.post("/api/encounters/:id/validate", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      const soapNote = encounter.soapNote as any;
+      const extraction = encounter.clinicalExtraction as any;
+      const overlay = encounter.evidenceSuggestions as any;
+      const diarized = encounter.diarizedTranscript as any[] | null;
+
+      if (!soapNote) return res.status(400).json({ message: "No SOAP note to validate" });
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      // Build transcript text for validation context
+      const transcriptText = diarized?.length
+        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : (encounter.transcription ?? "");
+
+      const soapText = typeof soapNote === 'string' ? soapNote : (soapNote.fullNote ?? JSON.stringify(soapNote));
+
+      const extractionContext = extraction ? JSON.stringify({
+        symptoms_reported: extraction.symptoms_reported ?? [],
+        symptoms_denied: extraction.symptoms_denied ?? [],
+        diagnoses_discussed: extraction.diagnoses_discussed ?? [],
+        assessment_candidates: extraction.assessment_candidates ?? [],
+        medications_current: extraction.medications_current ?? [],
+        medication_changes_discussed: extraction.medication_changes_discussed ?? [],
+        labs_reviewed: extraction.labs_reviewed ?? [],
+        red_flags: extraction.red_flags ?? [],
+        uncertain_items: extraction.uncertain_items ?? [],
+      }) : "{}";
+
+      const evidenceSuggestions = overlay?.suggestions ?? [];
+
+      const validationCompletion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a clinical documentation safety validator.
+
+Your job is to check:
+
+SOAP VALIDATION — flag any item in the SOAP note that:
+1. Contains a definitive diagnosis NOT supported by the transcript or structured extraction
+2. Contains a specific medication dose NOT mentioned in the transcript or chart
+3. Contains a physical exam finding documented as performed when no exam was documented
+4. Represents an unsupported clinical claim not derivable from the provided transcript
+5. Makes an unjustified jump from evidence suggestion to a confirmed treatment plan
+
+EVIDENCE VALIDATION — flag any evidence suggestion that:
+1. Has zero or clearly fabricated citations
+2. Directly contradicts facts extracted from the visit transcript
+3. Presents speculative treatment options as confirmed recommendations
+
+Flag severity:
+- "error" = clinically dangerous inaccuracy requiring immediate correction
+- "warning" = uncertain or potentially unsupported item requiring clinician review
+
+Return a JSON object:
+{
+  "soap_flags": [
+    {
+      "type": "unsupported_diagnosis" | "unsupported_medication" | "unsupported_exam" | "missing_citation" | "contradicts_visit" | "unsupported_plan_jump",
+      "item": "the specific text/item that was flagged",
+      "detail": "concise explanation of why it was flagged",
+      "severity": "warning" | "error"
+    }
+  ],
+  "evidence_flags": [
+    {
+      "type": "missing_citation" | "contradicts_visit" | "unsupported_plan_jump",
+      "item": "evidence suggestion title that was flagged",
+      "detail": "reason for flag",
+      "severity": "warning" | "error"
+    }
+  ],
+  "overall_status": "pass" | "flag" | "fail"
+}
+Where: "pass" = no flags, "flag" = warnings present, "fail" = one or more errors present.`,
+          },
+          {
+            role: "user",
+            content: `TRANSCRIPT:
+${transcriptText || "(no transcript available)"}
+
+STRUCTURED EXTRACTION:
+${extractionContext}
+
+SOAP NOTE TO VALIDATE:
+${soapText}
+
+EVIDENCE SUGGESTIONS TO VALIDATE:
+${evidenceSuggestions.length ? JSON.stringify(evidenceSuggestions.map((s: any) => ({ title: s.title, citations: s.citations ?? [] }))) : "none"}
+
+Validate the SOAP note against the transcript and extraction. Validate evidence suggestions have real citations. Return JSON with soap_flags, evidence_flags, and overall_status.`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const validationRaw = JSON.parse(validationCompletion.choices[0].message.content || "{}");
+      const result = {
+        soap_flags: validationRaw.soap_flags ?? [],
+        evidence_flags: validationRaw.evidence_flags ?? [],
+        validated_at: new Date().toISOString(),
+        overall_status: validationRaw.overall_status ?? "pass",
+      };
+
+      res.json({ validation: result });
+    } catch (err) {
+      console.error('[Validate] Error:', err);
+      res.status(500).json({ message: "Validation failed. Please try again." });
     }
   });
 
