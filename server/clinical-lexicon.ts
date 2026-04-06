@@ -204,6 +204,51 @@ export function buildMedicalTermsList(visitType: string): string {
   return [...terms].join(", ");
 }
 
+/**
+ * Build a Whisper transcription prompt that reads like natural clinical notes.
+ * Whisper treats the prompt as "prior context", so it biases toward spellings
+ * that appear in the prompt. Front-loading the most commonly mispronounced
+ * drug names and clinical acronyms significantly improves accuracy.
+ *
+ * Whisper caps the useful prompt at ~224 tokens — we stay well under that.
+ */
+export function buildWhisperPrompt(visitType: string): string {
+  // Core vocabulary that Whisper almost always gets wrong — always included
+  const coreTerms =
+    "semaglutide, tirzepatide, Ozempic, Wegovy, Mounjaro, Zepbound, " +
+    "testosterone, estradiol, progesterone, DHEA, DHEA-S, SHBG, " +
+    "HbA1c, HOMA-IR, ApoB, Lp(a), hs-CRP, eGFR, FIB-4, IGF-1, " +
+    "anastrozole, metformin, berberine, myo-inositol, " +
+    "micronized progesterone, testosterone cypionate, testosterone pellet, " +
+    "PCOS, GLP-1, ASCVD, HRT, LH, FSH";
+
+  // Visit-type extras layered on top
+  const groups = getRelevantLexiconGroups(visitType);
+  const extras = new Set<string>();
+  for (const g of groups) {
+    if (g === "lipid_and_cardiometabolic") {
+      ["rosuvastatin", "atorvastatin", "ezetimibe", "PCSK9 inhibitor",
+       "triglycerides", "LDL-C", "HDL-C", "VLDL", "homocysteine"].forEach(t => extras.add(t));
+    }
+    if (g === "hormones_and_menopause") {
+      ["perimenopause", "menopause", "vasomotor symptoms",
+       "compounded HRT", "bioidentical hormone therapy", "aromatase inhibitor"].forEach(t => extras.add(t));
+    }
+    if (g === "metabolic_and_weight") {
+      ["insulin resistance", "metabolic syndrome", "hepatic steatosis",
+       "NAFLD", "MASLD", "hyperinsulinemia", "adiponectin"].forEach(t => extras.add(t));
+    }
+  }
+
+  const extrasStr = extras.size ? `, ${[...extras].join(", ")}` : "";
+
+  // Written as a natural partial sentence so Whisper uses it as prior context
+  return (
+    `Hormone and primary care clinic visit. ` +
+    `Medications and lab markers discussed: ${coreTerms}${extrasStr}.`
+  );
+}
+
 export function buildNormalizationRules(visitType: string): string {
   const groups = getRelevantLexiconGroups(visitType);
   const lines: string[] = [];
