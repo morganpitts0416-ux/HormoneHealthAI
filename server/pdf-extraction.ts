@@ -7,6 +7,11 @@ const openai = new OpenAI({
 });
 
 export interface ExtractedLabValues {
+  // Patient demographics extracted from report header
+  patientName?: string;      // e.g. "John Smith"
+  dateOfBirth?: string;      // ISO string or MM/DD/YYYY — used to calculate age
+  collectionDate?: string;   // Lab draw date — forwarded as labDrawDate
+
   // CBC
   hemoglobin?: number;
   hematocrit?: number;
@@ -106,16 +111,19 @@ export class PDFExtractionService {
   }
 
   private static async parseLabValuesWithAI(text: string): Promise<ExtractedLabValues> {
-    const prompt = `You are a medical lab report parser. Extract numerical lab values from this lab report text.
+    const prompt = `You are a medical lab report parser. Extract patient demographics and numerical lab values from this lab report text.
 
 LAB REPORT TEXT:
 ${text}
 
 EXTRACTION RULES:
-1. Extract ONLY numeric values (e.g., 48, 165, 5.8)
-2. Match values to the correct lab test names
-3. For values like "<5" or ">20", extract the number (5 or 20)
-4. Common test name variations:
+1. Extract the patient's full name if present (look for "Patient:", "Patient Name:", "Name:", or the name printed at the top of the report)
+2. Extract the date of birth if present (look for "DOB:", "Date of Birth:", "Birth Date:") — return as MM/DD/YYYY or YYYY-MM-DD
+3. Extract the collection/draw date if present (look for "Collection Date:", "Date Collected:", "Specimen Date:", "Draw Date:", "Report Date:") — return as MM/DD/YYYY or YYYY-MM-DD
+4. Extract ONLY numeric lab values (e.g., 48, 165, 5.8)
+5. Match values to the correct lab test names
+6. For values like "<5" or ">20", extract the number (5 or 20)
+7. Common test name variations:
    - Hematocrit: HCT, Hct, Hematocrit
    - Hemoglobin: HGB, Hgb, Hemoglobin (NOT Hemoglobin A1C)
    - MCV: Mean Corpuscular Volume, MCV (fL)
