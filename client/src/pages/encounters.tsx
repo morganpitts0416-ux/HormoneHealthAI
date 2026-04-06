@@ -7,7 +7,7 @@ import {
   Sparkles, Send, CheckCircle2, Circle, AlertCircle, Trash2,
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
   ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
-  TriangleAlert, ExternalLink,
+  TriangleAlert, ExternalLink, Square, MicOff,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -130,15 +130,99 @@ function EncounterListItem({
   );
 }
 
-// ── Audio Upload Component ────────────────────────────────────────────────────
+// ── Audio Recorder + Upload Component ────────────────────────────────────────
+function formatDuration(seconds: number) {
+  const h = Math.floor(seconds / 3600);
+  const m = Math.floor((seconds % 3600) / 60);
+  const s = seconds % 60;
+  if (h > 0) return `${h}:${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+  return `${String(m).padStart(2, "0")}:${String(s).padStart(2, "0")}`;
+}
+
 function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => void }) {
+  const [mode, setMode] = useState<"record" | "upload">("record");
+
+  // ── recording state ──
+  const [recState, setRecState] = useState<"idle" | "recording" | "stopped">("idle");
+  const [elapsed, setElapsed] = useState(0);
+  const [recordedFile, setRecordedFile] = useState<File | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
+  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const streamRef = useRef<MediaStream | null>(null);
+
+  // ── upload state ──
   const [dragging, setDragging] = useState(false);
-  const [file, setFile] = useState<File | null>(null);
-  const [uploading, setUploading] = useState(false);
+  const [uploadFile, setUploadFile] = useState<File | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+
+  const [transcribing, setTranscribing] = useState(false);
   const { toast } = useToast();
 
-  const handleFile = (f: File) => {
+  // clean up on unmount
+  useEffect(() => {
+    return () => {
+      if (timerRef.current) clearInterval(timerRef.current);
+      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+    };
+  }, []);
+
+  const startRecording = async () => {
+    try {
+      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+      streamRef.current = stream;
+      chunksRef.current = [];
+      setElapsed(0);
+      setRecordedFile(null);
+
+      // prefer webm/opus, fall back to whatever the browser supports
+      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+        ? "audio/webm;codecs=opus"
+        : MediaRecorder.isTypeSupported("audio/webm")
+        ? "audio/webm"
+        : "";
+      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      mediaRecorderRef.current = mr;
+
+      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
+      mr.onstop = () => {
+        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
+        const ext = (mr.mimeType || "audio/webm").includes("ogg") ? "ogg" : "webm";
+        const file = new File([blob], `recording.${ext}`, { type: blob.type });
+        setRecordedFile(file);
+        stream.getTracks().forEach(t => t.stop());
+        streamRef.current = null;
+      };
+
+      mr.start(1000); // collect chunks every second
+      setRecState("recording");
+
+      timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
+    } catch (err: any) {
+      toast({
+        variant: "destructive",
+        title: "Microphone access denied",
+        description: "Please allow microphone access in your browser settings and try again.",
+      });
+    }
+  };
+
+  const stopRecording = () => {
+    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
+    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
+      mediaRecorderRef.current.stop();
+    }
+    setRecState("stopped");
+  };
+
+  const discardRecording = () => {
+    setRecordedFile(null);
+    setElapsed(0);
+    setRecState("idle");
+  };
+
+  // ── upload helpers ──
+  const handleUploadFile = (f: File) => {
     if (!f.type.startsWith("audio/") && !f.name.match(/\.(mp3|wav|ogg|m4a|webm|mp4|flac)$/i)) {
       toast({ variant: "destructive", title: "Invalid file", description: "Please upload an audio file (MP3, WAV, M4A, WebM, etc.)" });
       return;
@@ -147,19 +231,19 @@ function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => voi
       toast({ variant: "destructive", title: "File too large", description: "Audio files must be under 200 MB." });
       return;
     }
-    setFile(f);
+    setUploadFile(f);
   };
 
   const onDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setDragging(false);
     const f = e.dataTransfer.files[0];
-    if (f) handleFile(f);
+    if (f) handleUploadFile(f);
   }, []);
 
-  const transcribe = async () => {
-    if (!file) return;
-    setUploading(true);
+  // ── shared transcribe ──
+  const transcribe = async (file: File) => {
+    setTranscribing(true);
     try {
       const formData = new FormData();
       formData.append("audio", file);
@@ -174,57 +258,171 @@ function AudioUploader({ onTranscribed }: { onTranscribed: (text: string) => voi
       }
       const data = await res.json();
       onTranscribed(data.transcription);
-      setFile(null);
+      setRecordedFile(null);
+      setUploadFile(null);
+      setRecState("idle");
+      setElapsed(0);
       toast({ title: "Transcription complete", description: "Audio transcribed successfully. Review and edit as needed." });
     } catch (err: any) {
       toast({ variant: "destructive", title: "Transcription failed", description: err.message || "Please try again or paste text manually." });
     } finally {
-      setUploading(false);
+      setTranscribing(false);
     }
   };
 
+  const activeFile = mode === "record" ? recordedFile : uploadFile;
+
   return (
     <div className="space-y-3">
-      <div
-        data-testid="audio-drop-zone"
-        onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-        onDragLeave={() => setDragging(false)}
-        onDrop={onDrop}
-        onClick={() => fileRef.current?.click()}
-        className={`border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"}`}
-      >
-        <input
-          ref={fileRef}
-          type="file"
-          accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.mp4,.flac"
-          className="hidden"
-          data-testid="input-audio-file"
-          onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); e.target.value = ""; }}
-        />
-        <Mic className="w-8 h-8 text-muted-foreground" />
-        <div className="text-center">
-          <p className="text-sm font-medium">Drop audio file here or click to browse</p>
-          <p className="text-xs text-muted-foreground mt-0.5">MP3, WAV, M4A, WebM, OGG — up to 200 MB</p>
-        </div>
+      {/* Mode toggle */}
+      <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
+        <button
+          data-testid="button-mode-record"
+          onClick={() => setMode("record")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "record" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Mic className="w-3.5 h-3.5" />
+          Record
+        </button>
+        <button
+          data-testid="button-mode-upload"
+          onClick={() => setMode("upload")}
+          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "upload" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+        >
+          <Upload className="w-3.5 h-3.5" />
+          Upload File
+        </button>
       </div>
-      {file && (
-        <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-md">
-          <Mic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-          <span className="text-sm flex-1 truncate">{file.name}</span>
-          <span className="text-xs text-muted-foreground">{(file.size / 1024 / 1024).toFixed(1)} MB</span>
-          <Button size="icon" variant="ghost" onClick={() => setFile(null)} data-testid="button-remove-audio">
-            <X className="w-3.5 h-3.5" />
-          </Button>
-          <Button
-            size="sm"
-            onClick={transcribe}
-            disabled={uploading}
-            data-testid="button-transcribe"
-          >
-            {uploading ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Transcribing...</> : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Transcribe</>}
-          </Button>
+
+      {/* ── RECORD MODE ── */}
+      {mode === "record" && (
+        <div className="space-y-3">
+          {recState === "idle" && (
+            <div className="border-2 border-dashed rounded-md p-8 flex flex-col items-center justify-center gap-3">
+              <div className="w-14 h-14 rounded-full bg-muted flex items-center justify-center">
+                <Mic className="w-6 h-6 text-muted-foreground" />
+              </div>
+              <div className="text-center">
+                <p className="text-sm font-medium">Ready to record</p>
+                <p className="text-xs text-muted-foreground mt-0.5">Click the button below to start capturing the session audio</p>
+              </div>
+              <Button
+                data-testid="button-start-recording"
+                onClick={startRecording}
+                className="gap-2"
+              >
+                <Mic className="w-4 h-4" />
+                Start Recording
+              </Button>
+            </div>
+          )}
+
+          {recState === "recording" && (
+            <div className="border-2 border-red-400/60 bg-red-50/40 dark:bg-red-950/20 rounded-md p-6 flex flex-col items-center gap-4">
+              <div className="flex items-center gap-2">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse" />
+                <span className="text-sm font-semibold text-red-600 dark:text-red-400">Recording</span>
+              </div>
+              <div className="text-3xl font-mono font-bold tabular-nums text-foreground" data-testid="recording-timer">
+                {formatDuration(elapsed)}
+              </div>
+              <Button
+                data-testid="button-stop-recording"
+                variant="destructive"
+                onClick={stopRecording}
+                className="gap-2"
+              >
+                <Square className="w-4 h-4 fill-current" />
+                Stop Recording
+              </Button>
+            </div>
+          )}
+
+          {recState === "stopped" && recordedFile && (
+            <div className="border rounded-md p-4 space-y-3 bg-muted/20">
+              <div className="flex items-center gap-2">
+                <MicOff className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm flex-1">Recording complete</span>
+                <span className="text-xs text-muted-foreground font-mono">{formatDuration(elapsed)}</span>
+                <span className="text-xs text-muted-foreground">{(recordedFile.size / 1024 / 1024).toFixed(1)} MB</span>
+              </div>
+              <div className="flex gap-2">
+                <Button
+                  variant="outline"
+                  size="sm"
+                  onClick={discardRecording}
+                  disabled={transcribing}
+                  data-testid="button-discard-recording"
+                  className="gap-1.5"
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                  Discard
+                </Button>
+                <Button
+                  size="sm"
+                  onClick={() => transcribe(recordedFile)}
+                  disabled={transcribing}
+                  data-testid="button-transcribe-recording"
+                  className="gap-1.5 flex-1"
+                >
+                  {transcribing
+                    ? <><RefreshCw className="w-3.5 h-3.5 animate-spin" />Transcribing...</>
+                    : <><Sparkles className="w-3.5 h-3.5" />Transcribe with AI</>}
+                </Button>
+              </div>
+            </div>
+          )}
         </div>
       )}
+
+      {/* ── UPLOAD MODE ── */}
+      {mode === "upload" && (
+        <div className="space-y-3">
+          <div
+            data-testid="audio-drop-zone"
+            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+            onDragLeave={() => setDragging(false)}
+            onDrop={onDrop}
+            onClick={() => fileRef.current?.click()}
+            className={`border-2 border-dashed rounded-md p-6 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"}`}
+          >
+            <input
+              ref={fileRef}
+              type="file"
+              accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.mp4,.flac"
+              className="hidden"
+              data-testid="input-audio-file"
+              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); e.target.value = ""; }}
+            />
+            <Upload className="w-8 h-8 text-muted-foreground" />
+            <div className="text-center">
+              <p className="text-sm font-medium">Drop audio file here or click to browse</p>
+              <p className="text-xs text-muted-foreground mt-0.5">MP3, WAV, M4A, WebM, OGG — up to 200 MB</p>
+            </div>
+          </div>
+          {uploadFile && (
+            <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-md">
+              <Mic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+              <span className="text-sm flex-1 truncate">{uploadFile.name}</span>
+              <span className="text-xs text-muted-foreground">{(uploadFile.size / 1024 / 1024).toFixed(1)} MB</span>
+              <Button size="icon" variant="ghost" onClick={() => setUploadFile(null)} data-testid="button-remove-audio">
+                <X className="w-3.5 h-3.5" />
+              </Button>
+              <Button
+                size="sm"
+                onClick={() => transcribe(uploadFile)}
+                disabled={transcribing}
+                data-testid="button-transcribe"
+              >
+                {transcribing
+                  ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Transcribing...</>
+                  : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Transcribe</>}
+              </Button>
+            </div>
+          )}
+        </div>
+      )}
+
       <p className="text-[11px] text-muted-foreground flex items-center gap-1">
         <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
         Audio is processed by OpenAI Whisper and deleted immediately — never stored
