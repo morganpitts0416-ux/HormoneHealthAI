@@ -674,12 +674,12 @@ function EncounterEditor({
                 <span className="text-muted-foreground font-normal">(optional — AI will reference these in SOAP)</span>
               </Label>
               {selectedPatientId && patientLabs.length > 0 ? (
-                <Select value={linkedLabResultId} onValueChange={setLinkedLabResultId}>
+                <Select value={linkedLabResultId || "none"} onValueChange={(v) => setLinkedLabResultId(v === "none" ? "" : v)}>
                   <SelectTrigger data-testid="select-lab-result">
                     <SelectValue placeholder="Select lab panel to reference..." />
                   </SelectTrigger>
                   <SelectContent>
-                    <SelectItem value="">No lab linkage</SelectItem>
+                    <SelectItem value="none">No lab linkage</SelectItem>
                     {patientLabs.map(lab => {
                       const d = new Date(lab.labDate as unknown as string);
                       const displayLab = !isNaN(d.getTime()) && d.getFullYear() >= 2000
