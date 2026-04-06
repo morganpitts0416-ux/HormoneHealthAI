@@ -150,7 +150,7 @@ export interface IStorage {
   getEncountersByClinicianId(clinicianId: number, patientId?: number): Promise<(ClinicalEncounter & { patientName: string })[]>;
   getEncounter(id: number, clinicianId: number): Promise<ClinicalEncounter | undefined>;
   createEncounter(data: InsertClinicalEncounter): Promise<ClinicalEncounter>;
-  updateEncounter(id: number, clinicianId: number, data: Partial<InsertClinicalEncounter> & { soapNote?: any; soapGeneratedAt?: Date; summaryPublished?: boolean; summaryPublishedAt?: Date; updatedAt?: Date }): Promise<ClinicalEncounter | undefined>;
+  updateEncounter(id: number, clinicianId: number, data: Partial<InsertClinicalEncounter> & { soapNote?: any; soapGeneratedAt?: Date; summaryPublished?: boolean; summaryPublishedAt?: Date; diarizedTranscript?: any; clinicalExtraction?: any; evidenceSuggestions?: any; updatedAt?: Date }): Promise<ClinicalEncounter | undefined>;
   deleteEncounter(id: number, clinicianId: number): Promise<boolean>;
   getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]>;
 }

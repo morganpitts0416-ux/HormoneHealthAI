@@ -789,11 +789,54 @@ export type InsertClinicianLabPreference = z.infer<typeof insertClinicianLabPref
 // ── Clinical Encounter Documentation ─────────────────────────────────────────
 
 export type SoapNote = {
-  subjective: string;
-  objective: string;
-  reviewOfSystems: string;
-  assessment: string;
-  plan: string;
+  fullNote?: string;
+  subjective?: string;
+  objective?: string;
+  reviewOfSystems?: string;
+  assessment?: string;
+  plan?: string;
+  uncertain_items?: string[];
+  needs_clinician_review?: string[];
+};
+
+export type DiarizedUtterance = {
+  id: number;
+  speaker: "clinician" | "patient" | "unknown";
+  speakerRaw: string;
+  start: number;
+  end: number;
+  text: string;
+  normalizedText?: string;
+  corrections?: string[];
+};
+
+export type ClinicalExtraction = {
+  visit_type: string;
+  chief_concerns: string[];
+  symptoms_reported: string[];
+  symptoms_denied: string[];
+  medications_current: string[];
+  medication_changes_discussed: string[];
+  labs_reviewed: string[];
+  diagnoses_discussed: string[];
+  assessment_candidates: string[];
+  plan_candidates: string[];
+  follow_up_items: string[];
+  patient_questions: string[];
+  red_flags: string[];
+  uncertain_items: string[];
+  source_utterance_ids: number[];
+};
+
+export type EvidenceSuggestion = {
+  topic: string;
+  claim: string;
+  confidence: "high" | "moderate" | "low";
+  evidenceLevel: string;
+  source: string;
+  citation: string;
+  clinicalNote: string;
+  applicableTo: string[];
 };
 
 export const clinicalEncounters = pgTable("clinical_encounters", {
@@ -812,6 +855,9 @@ export const clinicalEncounters = pgTable("clinical_encounters", {
   summaryPublished: boolean("summary_published").notNull().default(false),
   summaryPublishedAt: timestamp("summary_published_at"),
   clinicianNotes: text("clinician_notes"),
+  diarizedTranscript: jsonb("diarized_transcript").$type<DiarizedUtterance[]>(),
+  clinicalExtraction: jsonb("clinical_extraction").$type<ClinicalExtraction>(),
+  evidenceSuggestions: jsonb("evidence_suggestions").$type<EvidenceSuggestion[]>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

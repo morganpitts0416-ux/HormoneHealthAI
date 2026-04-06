@@ -29,6 +29,7 @@ import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
 import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
 import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail } from "./email-service";
+import { buildMedicalTermsList, buildNormalizationRules, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
 import bcrypt from "bcrypt";
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -2767,13 +2768,14 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     });
   }
 
-  // POST /api/encounters/transcribe — upload audio, transcribe via Whisper, delete file
-  // Files > 24 MB are auto-split into 20-min segments so long recordings always work
+  // POST /api/encounters/transcribe — upload audio → raw segments + text (no diarization here)
+  // Stage 1 of the clinical AI pipeline. Tries gpt-4o-transcribe first, falls back to whisper-1.
   app.post("/api/encounters/transcribe", requireAuth, audioUpload.single('audio'), async (req, res) => {
     const filePath = (req as any).file?.path;
     if (!filePath) return res.status(400).json({ message: "No audio file provided" });
 
     const cleanupFiles = (paths: string[]) => paths.forEach(p => fs.unlink(p, () => {}));
+    const visitType: string = (req.body?.visitType as string) || "follow-up";
 
     try {
       const openai = new OpenAI({
@@ -2781,50 +2783,90 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
-      const WHISPER_LIMIT = 24.5 * 1024 * 1024; // 24.5 MB — stay under OpenAI's 25 MB cap
+      const LIMIT = 24.5 * 1024 * 1024;
       const fileSize = fs.statSync(filePath).size;
       const ext = path.extname(filePath) || '.webm';
 
-      let segments: string[] = [];
+      let audioSegments: string[] = [];
       let splitUsed = false;
 
-      if (fileSize > WHISPER_LIMIT) {
-        console.log(`[Encounters] File ${fileSize} bytes > limit — splitting into 20-min segments`);
-        segments = await splitAudioSegments(filePath, ext);
+      if (fileSize > LIMIT) {
+        console.log(`[Transcribe] ${fileSize} bytes > limit — splitting into segments`);
+        audioSegments = await splitAudioSegments(filePath, ext);
         splitUsed = true;
-        console.log(`[Encounters] Created ${segments.length} segments`);
       } else {
-        segments = [filePath];
+        audioSegments = [filePath];
       }
 
-      // Clinical terminology prompt — primes Whisper to correctly recognize
-      // medical words, lab names, hormones, and medications used in this clinic.
-      // Whisper treats this as a "prior transcript" style hint (max ~224 tokens).
-      const clinicalPrompt = `Hormone and primary care clinic visit. Labs: testosterone, estradiol, progesterone, DHEA-S, DHEA, TSH, free T4, free T3, T3, PSA, HbA1c, fasting insulin, fasting glucose, CRP, hs-CRP, ferritin, CBC, CMP, lipid panel, LDL, HDL, triglycerides, ApoB, Lp(a), SHBG, LH, FSH, IGF-1, cortisol, vitamin D, homocysteine, fibrinogen. Medications: levothyroxine, liothyronine, metformin, testosterone cypionate, testosterone enanthate, anastrozole, clomiphene, progesterone, estradiol, DHEA, pregnenolone, semaglutide, tirzepatide, compounded HRT, berberine, magnesium glycinate. Clinical terms: erythrocytosis, hematocrit, venipuncture, cardiovascular risk, PREVENT score, ASCVD, atherosclerosis, insulin resistance, metabolic syndrome, STOP-BANG, sleep apnea, hypothyroidism, hyperthyroidism, hypogonadism, subcutaneous, intramuscular injection, phlebotomy, menopause, perimenopause, follicular phase, luteal phase, FIB-4 score, hepatic steatosis.`;
+      const clinicalPrompt = `Hormone and primary care clinic visit. ${buildMedicalTermsList(visitType).slice(0, 800)}`;
 
-      // Transcribe each segment sequentially (Whisper is stateful — order matters)
-      const parts: string[] = [];
-      for (const seg of segments) {
+      type RawSegment = { id: number; start: number; end: number; text: string };
+      const allSegments: RawSegment[] = [];
+      const textParts: string[] = [];
+      let segOffset = 0;
+
+      for (const seg of audioSegments) {
         const stream = fs.createReadStream(seg);
-        const result = await openai.audio.transcriptions.create({
-          model: 'whisper-1',
-          file: stream,
-          response_format: 'text',
-          language: 'en',
-          prompt: clinicalPrompt,
-        });
-        parts.push(result as unknown as string);
+
+        let verboseResult: any = null;
+
+        // Try gpt-4o-transcribe first (verbose_json for timestamps)
+        try {
+          verboseResult = await openai.audio.transcriptions.create({
+            model: 'gpt-4o-transcribe',
+            file: stream,
+            response_format: 'verbose_json',
+            language: 'en',
+            prompt: clinicalPrompt,
+          } as any);
+        } catch (modelErr: any) {
+          console.warn('[Transcribe] gpt-4o-transcribe unavailable, falling back to whisper-1:', modelErr.message);
+          const stream2 = fs.createReadStream(seg);
+          verboseResult = await openai.audio.transcriptions.create({
+            model: 'whisper-1',
+            file: stream2,
+            response_format: 'verbose_json',
+            language: 'en',
+            prompt: clinicalPrompt,
+          } as any);
+        }
+
+        const text: string = verboseResult?.text || (typeof verboseResult === 'string' ? verboseResult : '');
+        textParts.push(text.trim());
+
+        const segs: any[] = verboseResult?.segments || [];
+        for (const s of segs) {
+          allSegments.push({
+            id: segOffset + (s.id ?? allSegments.length),
+            start: (s.start ?? 0),
+            end: (s.end ?? s.start ?? 0),
+            text: (s.text || '').trim(),
+          });
+        }
+        segOffset += segs.length || 1;
       }
 
-      // Clean up — always delete everything
-      cleanupFiles(splitUsed ? [filePath, ...segments] : [filePath]);
+      cleanupFiles(splitUsed ? [filePath, ...audioSegments] : [filePath]);
 
-      const transcription = parts.join(' ').trim();
-      res.json({ transcription });
+      const transcription = textParts.join(' ').trim();
+
+      // Convert segments to raw utterances with unknown speaker (diarization is next stage)
+      const rawUtterances = allSegments.length > 0
+        ? allSegments.map(s => ({
+            id: s.id,
+            speaker: 'unknown' as const,
+            speakerRaw: 'SPEAKER_UNKNOWN',
+            start: s.start,
+            end: s.end,
+            text: s.text,
+          }))
+        : null;
+
+      res.json({ transcription, utterances: rawUtterances });
     } catch (err) {
       cleanupFiles([filePath]);
-      console.error('[Encounters] Whisper transcription error:', err);
-      res.status(500).json({ message: "Transcription failed. Please try again or paste the text manually." });
+      console.error('[Transcribe] Error:', err);
+      res.status(500).json({ message: "Transcription failed. Please try again or paste notes manually." });
     }
   });
 
@@ -2884,7 +2926,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     try {
       const clinicianId = getClinicianId(req);
       const id = parseInt(req.params.id);
-      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes } = req.body;
+      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, diarizedTranscript, clinicalExtraction, evidenceSuggestions } = req.body;
       const updated = await storage.updateEncounter(id, clinicianId, {
         ...(visitDate !== undefined && { visitDate: new Date(visitDate) }),
         ...(visitType !== undefined && { visitType }),
@@ -2893,6 +2935,9 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         ...(audioProcessed !== undefined && { audioProcessed }),
         ...(linkedLabResultId !== undefined && { linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null }),
         ...(clinicianNotes !== undefined && { clinicianNotes }),
+        ...(diarizedTranscript !== undefined && { diarizedTranscript }),
+        ...(clinicalExtraction !== undefined && { clinicalExtraction }),
+        ...(evidenceSuggestions !== undefined && { evidenceSuggestions }),
       });
       if (!updated) return res.status(404).json({ message: "Encounter not found" });
       res.json(updated);
@@ -2912,6 +2957,263 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to save SOAP note" });
+    }
+  });
+
+  // POST /api/encounters/:id/normalize — Stage 2: Diarize + normalize medical terms
+  // Input: raw utterances (from transcription) or raw transcription text
+  // Output: diarized utterances with speaker labels and corrected medical terms
+  app.post("/api/encounters/:id/normalize", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      const rawUtterances: any[] | null = req.body.utterances ?? null;
+      const rawText: string = req.body.transcription ?? encounter.transcription ?? "";
+
+      if (!rawText && (!rawUtterances || rawUtterances.length === 0)) {
+        return res.status(400).json({ message: "No transcription or utterances to normalize" });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const visitType = encounter.visitType ?? "follow-up";
+      const lexiconRules = buildNormalizationRules(visitType);
+
+      // Build input for normalization
+      const inputText = rawUtterances && rawUtterances.length > 0
+        ? rawUtterances.map((u: any, i: number) => `[${i}] (${u.start?.toFixed(1) ?? '?'}s) ${u.text}`).join('\n')
+        : rawText;
+
+      const systemPrompt = `You are a clinical medical transcription specialist. Your task has TWO parts:
+
+PART 1 — SPEAKER DIARIZATION:
+Analyze the transcript and assign each segment to either "clinician" or "patient".
+Rules:
+- Clinicians ask medical questions, interpret lab values, prescribe treatments, give instructions
+- Patients describe symptoms, answer questions, ask about their condition
+- If uncertain, label as "unknown"
+- Preserve the original segment text exactly — do not alter content in PART 1
+
+PART 2 — MEDICAL TERM NORMALIZATION:
+Correct speech-to-text errors for medical terminology. Rules:
+- Fix acronyms, lab names, medication names, clinical terms
+- NEVER silently change the clinical meaning
+- NEVER invent diagnoses or findings not in the original
+- If a correction is uncertain, keep original and mark uncertain: true
+- Preserve negations (e.g., "no chest pain" must not become "chest pain")
+- Preserve patient-reported uncertainty (e.g., "I think", "maybe")
+- Only correct obvious speech-to-text errors, not clinical content
+
+AVAILABLE MEDICAL LEXICONS FOR THIS VISIT TYPE:
+${lexiconRules}
+
+${NORMALIZATION_EXAMPLES}
+
+Return a JSON array of utterance objects. Each object must have:
+{
+  "id": <original segment index>,
+  "speaker": "clinician" | "patient" | "unknown",
+  "speakerRaw": "CLINICIAN" | "PATIENT" | "UNKNOWN",
+  "start": <original start seconds or 0>,
+  "end": <original end seconds or 0>,
+  "text": <original text, unchanged>,
+  "normalizedText": <corrected text, or same as text if no corrections needed>,
+  "corrections": [<list of corrections made, e.g., "HS CRP → hs-CRP">],
+  "uncertain": <true if speaker assignment is uncertain>
+}
+
+Return ONLY the JSON array, no explanation.`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Transcript segments to process:\n${inputText}` },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      let raw = completion.choices[0].message.content || "{}";
+      let parsed: any = JSON.parse(raw);
+      // Handle both { utterances: [...] } and [...] formats
+      const normalized = Array.isArray(parsed) ? parsed : (parsed.utterances ?? parsed.segments ?? []);
+
+      // If no timestamps were in the original (plain text fallback), generate from order
+      const diarized = normalized.map((u: any, i: number) => ({
+        id: u.id ?? i,
+        speaker: u.speaker ?? "unknown",
+        speakerRaw: u.speakerRaw ?? "UNKNOWN",
+        start: u.start ?? i * 30,
+        end: u.end ?? (i + 1) * 30,
+        text: u.text ?? "",
+        normalizedText: u.normalizedText ?? u.text ?? "",
+        corrections: u.corrections ?? [],
+      }));
+
+      await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized });
+
+      res.json({ diarizedTranscript: diarized });
+    } catch (err) {
+      console.error('[Normalize] Error:', err);
+      res.status(500).json({ message: "Normalization failed. Please try again." });
+    }
+  });
+
+  // POST /api/encounters/:id/extract — Stage 3: Structured clinical extraction
+  // Extracts clinical facts from normalized transcript, mapped to source utterance IDs.
+  // NEVER invents diagnoses or findings — only extracts what is explicitly stated.
+  app.post("/api/encounters/:id/extract", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      const diarized = encounter.diarizedTranscript as any[] | null;
+      const rawText = encounter.transcription ?? "";
+
+      if (!diarized?.length && !rawText) {
+        return res.status(400).json({ message: "Normalize the transcript first" });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const transcriptInput = diarized?.length
+        ? diarized.map((u: any) => `[ID:${u.id}] ${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : rawText;
+
+      const systemPrompt = `You are a clinical documentation specialist. Extract structured clinical facts from the provided visit transcript.
+
+CRITICAL RULES — SAFETY GUARDRAILS:
+1. Only extract facts EXPLICITLY stated in the transcript
+2. NEVER infer, assume, or add diagnoses, vitals, exam findings, or lab values not mentioned
+3. NEVER create a diagnosis from symptoms alone — it goes in "assessment_candidates" as uncertain
+4. PRESERVE all negations: if patient said "no chest pain", put "denies chest pain" in symptoms_denied
+5. PRESERVE uncertainty: if clinician said "possible" or "might be", put in uncertain_items
+6. Map every extracted fact to source_utterance_ids (the [ID:N] numbers in the transcript)
+7. If something is only mentioned as a possibility, put it in assessment_candidates, NOT diagnoses_discussed
+
+Return this exact JSON structure (all arrays, even if empty):
+{
+  "visit_type": "",
+  "chief_concerns": [],
+  "symptoms_reported": [],
+  "symptoms_denied": [],
+  "medications_current": [],
+  "medication_changes_discussed": [],
+  "labs_reviewed": [],
+  "diagnoses_discussed": [],
+  "assessment_candidates": [],
+  "plan_candidates": [],
+  "follow_up_items": [],
+  "patient_questions": [],
+  "red_flags": [],
+  "uncertain_items": [],
+  "source_utterance_ids": []
+}`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: `Visit Type: ${encounter.visitType}\nChief Complaint: ${encounter.chiefComplaint ?? "Not specified"}\n\nTranscript:\n${transcriptInput}` },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const extraction = JSON.parse(completion.choices[0].message.content || "{}");
+      await storage.updateEncounter(id, clinicianId, { clinicalExtraction: extraction });
+
+      res.json({ clinicalExtraction: extraction });
+    } catch (err) {
+      console.error('[Extract] Error:', err);
+      res.status(500).json({ message: "Clinical extraction failed. Please try again." });
+    }
+  });
+
+  // POST /api/encounters/:id/evidence — Stage 5: Evidence-based clinical support
+  // Separate from SOAP. Never auto-inserts into chart. Clinician-reviewable only.
+  app.post("/api/encounters/:id/evidence", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      const extraction = encounter.clinicalExtraction as any;
+      if (!extraction) return res.status(400).json({ message: "Run clinical extraction first" });
+
+      const topics = [
+        ...(extraction.assessment_candidates ?? []),
+        ...(extraction.diagnoses_discussed ?? []),
+        ...(extraction.medication_changes_discussed ?? []),
+        ...(extraction.red_flags ?? []),
+      ].filter(Boolean).slice(0, 8);
+
+      if (topics.length === 0) {
+        return res.status(400).json({ message: "No clinical topics found for evidence lookup" });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const systemPrompt = `You are a clinical evidence specialist for a hormone and primary care clinic. 
+For each clinical topic provided, generate evidence-based clinical guidance.
+
+RULES:
+- Only cite real, established guidelines and studies (AHA, Endocrine Society, ACOG, AACE, etc.)
+- Do NOT invent dosing, diagnoses, or treatment plans
+- Confidence levels: "high" = RCT or guideline-level evidence, "moderate" = observational studies or expert consensus, "low" = case reports or emerging data
+- evidenceLevel: "Level A" (RCTs/meta-analyses), "Level B" (cohort studies), "Level C" (case reports), "Expert Opinion"
+- Keep citations concise: "Author, Journal, Year" or "Guideline Name, Year"
+- clinicalNote should be 1-2 sentences of practical clinical relevance
+
+Return a JSON array:
+[
+  {
+    "topic": "clinical topic",
+    "claim": "specific evidence-based statement",
+    "confidence": "high" | "moderate" | "low",
+    "evidenceLevel": "Level A" | "Level B" | "Level C" | "Expert Opinion",
+    "source": "guideline or study name",
+    "citation": "Author/Org, Journal/Publication, Year",
+    "clinicalNote": "clinical implication for this patient",
+    "applicableTo": ["relevant assessment candidate or topic"]
+  }
+]`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          {
+            role: "user",
+            content: `Visit type: ${encounter.visitType}\nClinical topics from today's visit:\n${topics.map((t: string, i: number) => `${i + 1}. ${t}`).join('\n')}\n\nProvide 1-2 evidence citations per topic. Return JSON array only.`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      let raw = JSON.parse(completion.choices[0].message.content || "{}");
+      const suggestions = Array.isArray(raw) ? raw : (raw.suggestions ?? raw.evidence ?? raw.results ?? []);
+
+      await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: suggestions });
+
+      res.json({ evidenceSuggestions: suggestions });
+    } catch (err) {
+      console.error('[Evidence] Error:', err);
+      res.status(500).json({ message: "Evidence lookup failed. Please try again." });
     }
   });
 
@@ -2974,14 +3276,17 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     }
   });
 
-  // POST /api/encounters/:id/generate-soap — generate AI SOAP note
+  // POST /api/encounters/:id/generate-soap — Stage 4: Generate SOAP note
+  // Uses clinical extraction when available. NEVER invents unsupported facts.
   app.post("/api/encounters/:id/generate-soap", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const id = parseInt(req.params.id);
       const encounter = await storage.getEncounter(id, clinicianId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
-      if (!encounter.transcription) return res.status(400).json({ message: "No transcription available. Please add a transcription first." });
+      if (!encounter.transcription && !encounter.diarizedTranscript) {
+        return res.status(400).json({ message: "No transcription available. Please record or add session notes first." });
+      }
 
       // Fetch linked lab result for context
       let labContext = "";
@@ -3002,91 +3307,96 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
-      const systemPrompt = `You are an expert clinical documentation specialist for a hormone and primary care clinic. Generate a comprehensive, chart-ready SOAP note from the provided encounter session notes.
+      // Build clinical extraction context if available
+      const extraction = encounter.clinicalExtraction as any;
+      let extractionContext = "";
+      if (extraction) {
+        const lines: string[] = [];
+        if (extraction.chief_concerns?.length) lines.push(`Chief concerns: ${extraction.chief_concerns.join("; ")}`);
+        if (extraction.symptoms_reported?.length) lines.push(`Symptoms reported: ${extraction.symptoms_reported.join("; ")}`);
+        if (extraction.symptoms_denied?.length) lines.push(`Symptoms denied: ${extraction.symptoms_denied.join("; ")}`);
+        if (extraction.medications_current?.length) lines.push(`Current medications: ${extraction.medications_current.join("; ")}`);
+        if (extraction.medication_changes_discussed?.length) lines.push(`Medication changes discussed: ${extraction.medication_changes_discussed.join("; ")}`);
+        if (extraction.labs_reviewed?.length) lines.push(`Labs reviewed: ${extraction.labs_reviewed.join("; ")}`);
+        if (extraction.diagnoses_discussed?.length) lines.push(`Diagnoses discussed: ${extraction.diagnoses_discussed.join("; ")}`);
+        if (extraction.assessment_candidates?.length) lines.push(`Assessment candidates (uncertain): ${extraction.assessment_candidates.join("; ")}`);
+        if (extraction.plan_candidates?.length) lines.push(`Plan items discussed: ${extraction.plan_candidates.join("; ")}`);
+        if (extraction.follow_up_items?.length) lines.push(`Follow-up items: ${extraction.follow_up_items.join("; ")}`);
+        if (extraction.red_flags?.length) lines.push(`Red flags noted: ${extraction.red_flags.join("; ")}`);
+        if (extraction.uncertain_items?.length) lines.push(`Uncertain/unresolved: ${extraction.uncertain_items.join("; ")}`);
+        if (lines.length) extractionContext = `\n\nSTRUCTURED CLINICAL EXTRACTION (verified from transcript):\n${lines.join('\n')}`;
+      }
 
-Guidelines:
-- Use professional medical terminology appropriate for chart documentation
-- Include evidence-based clinical references where appropriate (e.g., AHA guidelines, Endocrine Society recommendations)
-- In Assessment/Plan, directly reference and interpret any linked lab values with clinical context
-- For each diagnosis in Assessment/Plan, provide specific, actionable details and plan items
-- Review of Systems and Physical Exam: document findings for each system listed; use "Negative" or "WNL" for unremarkable findings
-- Be concise but clinically complete — every section must be filled in based on available information
+      // Build normalized transcript context
+      const diarized = encounter.diarizedTranscript as any[] | null;
+      const transcriptText = diarized?.length
+        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : (encounter.transcription ?? "");
 
-Return ONLY a JSON object with one key "fullNote" containing the complete SOAP note as a plain text string, using this EXACT format and headers verbatim:
+      const systemPrompt = `You are an expert clinical documentation specialist for a hormone and primary care clinic. Generate a chart-ready SOAP note.
 
-CC/Reason: [chief complaint / reason for visit]
+CRITICAL SAFETY RULES — MUST FOLLOW:
+1. ONLY document what is explicitly stated in the transcript or structured data provided
+2. Do NOT invent physical exam findings if none were performed or documented
+3. Do NOT invent vitals if none were provided
+4. Do NOT assign a definitive diagnosis if only "assessment candidates" are present — use "possible" or "under evaluation"
+5. Do NOT add lab values, medications, or clinical facts not present in the input
+6. If exam sections are not documented, write "Not performed / Not documented" — NOT "WNL" or "Normal"
+7. Preserve all meaningful negatives (denied symptoms)
+8. If uncertain, flag in needs_clinician_review
+9. Physical Exam section: ONLY document systems that were actually examined. If no physical exam was performed, write: "Physical examination not performed at this encounter."
+
+Return a JSON object with these keys:
+{
+  "fullNote": "<complete formatted SOAP note as plain text>",
+  "uncertain_items": ["<list of items needing clinician review>"],
+  "needs_clinician_review": ["<specific flags for clinician attention>"]
+}
+
+Use this EXACT format for fullNote (verbatim headers):
+
+CC/Reason: [chief complaint]
 
 SUBJECTIVE
 
-HPI: [detailed history of present illness — onset, duration, character, associated symptoms, modifying factors]
+HPI: [history of present illness — only from transcript]
 
 Medical History:
-- Allergies: [list or NKDA]
-- Past Medical Hx: [relevant diagnoses]
-- Past Surgical Hx: [surgeries or None]
-- Social Hx: [occupation, tobacco, alcohol, exercise habits, relationship status]
-- Family Hx: [relevant family history]
+- Allergies: [only if mentioned, else "Not reported in this visit"]
+- Past Medical Hx: [only if mentioned]
+- Past Surgical Hx: [only if mentioned]
+- Social Hx: [only if mentioned]
+- Family Hx: [only if mentioned]
 
-ROS:
-- General: 
-- Diet/Exercise: 
-- Eyes: 
-- HENT: 
-- Respiratory: 
-- CVS: 
-- GI: 
-- GU: 
-- Gyne: 
-- MSS: 
-- NS: 
-- Skin: 
-- Hematology: 
-- Endocrine: 
-- Psych: 
+ROS: [only document systems explicitly discussed — mark others as "Not reviewed at this visit"]
 
 OBJECTIVE
 
-Physical Exam:
-- General: 
-- Eyes: 
-- HENT: 
-- Respiratory: 
-- CVS: 
-- GI: 
-- GU: 
-- Gyne: 
-- MSS: 
-- NS: 
-- Skin: 
+[If no physical exam was performed, state that clearly]
+[If vitals were provided, list them. If not, do not list vitals]
 
 ASSESSMENT/PLAN
 
-[Brief overview paragraph summarizing clinical impressions and overall approach]
+[Use assessment_candidates with appropriate uncertainty language if extraction is available]
 
-1. [Diagnosis]:
-   - Details: [symptoms, findings, relevant lab values and interpretation]
-   - Plan: [specific treatment, medications with doses, lifestyle modifications, referrals]
-
-2. [Diagnosis]:
-   - Details: 
-   - Plan: 
-
-[Continue the same Diagnosis / Details / Plan pattern for every additional problem identified]
+1. [Diagnosis or working diagnosis]:
+   - Details: [from transcript/extraction]
+   - Plan: [from transcript/extraction]
 
 CARE PLAN
-[Bulleted action items and summary the patient should take away]
+[Only items explicitly discussed]
 
 FOLLOW-UP
-[Specific follow-up plan with timeframes, labs to recheck, and conditions warranting earlier return]`;
+[Only if discussed or chart-provided]`;
 
       const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}${extractionContext}
 
-SESSION NOTES / TRANSCRIPTION:
-${encounter.transcription}
+TRANSCRIPT (normalized):
+${transcriptText}
 
-Generate a complete SOAP note following the exact template in the system prompt. Return { "fullNote": "..." } with the complete formatted note as a single string.`;
+Generate the SOAP note. Flag anything uncertain in needs_clinician_review. Return JSON with fullNote, uncertain_items, needs_clinician_review.`;
 
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
@@ -3097,8 +3407,7 @@ Generate a complete SOAP note following the exact template in the system prompt.
         response_format: { type: "json_object" },
       });
 
-      const raw = completion.choices[0].message.content || "{}";
-      const soapNote = JSON.parse(raw);
+      const soapNote = JSON.parse(completion.choices[0].message.content || "{}");
 
       const updated = await storage.updateEncounter(id, clinicianId, {
         soapNote,
@@ -3107,7 +3416,7 @@ Generate a complete SOAP note following the exact template in the system prompt.
 
       res.json({ soapNote, encounter: updated });
     } catch (err) {
-      console.error('[Encounters] SOAP generation error:', err);
+      console.error('[SOAP] Generation error:', err);
       res.status(500).json({ message: "Failed to generate SOAP note. Please try again." });
     }
   });
