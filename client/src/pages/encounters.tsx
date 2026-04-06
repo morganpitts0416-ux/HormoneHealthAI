@@ -561,19 +561,31 @@ function EncounterEditor({
   // Generate SOAP note
   const soapMutation = useMutation({
     mutationFn: async () => {
-      if (!savedId) {
-        // Auto-save first
-        if (!patientId) throw new Error("Please select a patient and save first");
-        const body = { patientId: parseInt(patientId), visitDate, visitType, chiefComplaint: chiefComplaint || null, linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null, transcription: transcription || null };
+      if (!patientId) throw new Error("Please select a patient first");
+
+      let encounterId = savedId;
+
+      if (!encounterId) {
+        // No encounter saved yet — create one, including transcription in the body
+        const body = {
+          patientId: parseInt(patientId), visitDate, visitType,
+          chiefComplaint: chiefComplaint || null,
+          linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null,
+          clinicianNotes: clinicianNotes || null,
+          transcription: transcription || null,
+        };
         const saveRes = await apiRequest("POST", "/api/encounters", body);
         const saved = await saveRes.json();
         setSavedId(saved.id);
-        const res = await apiRequest("POST", `/api/encounters/${saved.id}/generate-soap`, {});
-        return res.json();
+        encounterId = saved.id;
       }
-      // Save transcription first
-      await apiRequest("PUT", `/api/encounters/${savedId}`, { transcription });
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/generate-soap`, {});
+
+      // Always persist the current transcription to the encounter before generating SOAP.
+      // This ensures the server reads the latest text even if the encounter was created
+      // without it (e.g. save → record → generate) or diarizedTranscript was set instead.
+      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null });
+
+      const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, {});
       return res.json();
     },
     onSuccess: (data) => {
