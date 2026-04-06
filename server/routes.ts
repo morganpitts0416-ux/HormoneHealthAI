@@ -2787,9 +2787,13 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     const visitType: string = (req.body?.visitType as string) || "follow-up";
 
     try {
+      // Audio transcription requires a direct OpenAI key — the AI Integration proxy
+      // does not support the /audio/transcriptions endpoint. Fall back gracefully.
+      const audioApiKey = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
       const openai = new OpenAI({
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+        apiKey: audioApiKey,
+        // Only pass baseURL when NOT using the direct OPENAI_API_KEY
+        baseURL: process.env.OPENAI_API_KEY ? undefined : process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
       const LIMIT = 24.5 * 1024 * 1024;
