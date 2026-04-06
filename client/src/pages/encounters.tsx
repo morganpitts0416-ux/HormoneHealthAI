@@ -1,4 +1,4 @@
-import { useState, useRef, useCallback, useEffect } from "react";
+import { useState, useRef, useCallback, useEffect, Component, type ReactNode } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation, useSearch } from "wouter";
 import { format } from "date-fns";
@@ -23,6 +23,32 @@ import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import type { Patient, LabResult, ClinicalEncounter } from "@shared/schema";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
+
+// Error boundary to catch rendering crashes and show a message instead of a blank screen
+class EncounterErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+  constructor(props: { children: ReactNode }) {
+    super(props);
+    this.state = { error: null };
+  }
+  static getDerivedStateFromError(error: unknown) {
+    return { error: error instanceof Error ? error.message : String(error) };
+  }
+  render() {
+    if (this.state.error) {
+      return (
+        <div className="flex flex-col items-center justify-center h-full p-8 text-center gap-4">
+          <AlertCircle className="w-10 h-10 text-destructive" />
+          <div>
+            <p className="font-semibold text-sm">Something went wrong loading this encounter</p>
+            <p className="text-xs text-muted-foreground mt-1">{this.state.error}</p>
+          </div>
+          <button className="text-xs underline text-muted-foreground" onClick={() => this.setState({ error: null })}>Try again</button>
+        </div>
+      );
+    }
+    return this.props.children;
+  }
+}
 
 // Safe UTC date display — avoids the off-by-one-day bug from UTC midnight
 function displayDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { month: 'short', day: 'numeric', year: 'numeric' }) {
@@ -410,7 +436,7 @@ function EncounterEditor({
   ] as const;
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0">
       {/* Header */}
       <div className="flex items-center gap-3 px-5 py-3 border-b">
         <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-back-encounters">
@@ -990,14 +1016,16 @@ export default function EncountersPage() {
         {/* Editor Panel */}
         {showEditor ? (
           <div className="flex-1 overflow-hidden flex flex-col bg-background">
-            <EncounterEditor
-              key={selectedId ?? `new-${initialPatientId ?? ""}`}
-              encounter={selectedEncounter}
-              patients={patients}
-              onClose={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); }}
-              onDeleted={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); }}
-              initialPatientId={isNew ? initialPatientId : undefined}
-            />
+            <EncounterErrorBoundary>
+              <EncounterEditor
+                key={selectedId ?? `new-${initialPatientId ?? ""}`}
+                encounter={selectedEncounter}
+                patients={patients}
+                onClose={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); }}
+                onDeleted={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); }}
+                initialPatientId={isNew ? initialPatientId : undefined}
+              />
+            </EncounterErrorBoundary>
           </div>
         ) : (
           <div className="hidden lg:flex flex-1 items-center justify-center text-center p-8">
