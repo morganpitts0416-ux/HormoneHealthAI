@@ -76,9 +76,9 @@
   --chart-4: 262 55% 55%;
   --chart-5: 24 80% 50%;
 
-  --font-sans: Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
-  --font-serif: Georgia, serif;
-  --font-mono: "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
+  --font-sans: "IBM Plex Sans", Inter, -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto, sans-serif;
+  --font-serif: "Source Serif 4", Georgia, serif;
+  --font-mono: "IBM Plex Mono", "JetBrains Mono", Menlo, Monaco, Consolas, monospace;
   --radius: .5rem;
   --shadow-2xs: 0px 1px 2px 0px hsl(80 18% 10% / 0.05);
   --shadow-xs: 0px 1px 2px 0px hsl(80 18% 10% / 0.06);
@@ -301,4 +301,79 @@
   .border.hover-elevate:not(.no-hover-interaction-elevate)::after {
     inset: -1px;
   }
+}
+
+/* ── SOAP Note Rendered View ───────────────────────────────────────────────── */
+.soap-rendered {
+  font-family: var(--font-serif);
+  font-size: 0.875rem;
+  line-height: 1.75;
+  color: hsl(var(--foreground));
+}
+
+.soap-rendered .soap-section-major {
+  font-family: var(--font-sans);
+  font-size: 0.65rem;
+  font-weight: 700;
+  letter-spacing: 0.1em;
+  text-transform: uppercase;
+  color: hsl(var(--primary));
+  margin-top: 1.25rem;
+  margin-bottom: 0.35rem;
+  padding-bottom: 0.25rem;
+  border-bottom: 1px solid hsl(var(--border));
+  display: block;
+}
+
+.soap-rendered .soap-section-major:first-child {
+  margin-top: 0;
+}
+
+.soap-rendered .soap-label {
+  font-family: var(--font-sans);
+  font-size: 0.72rem;
+  font-weight: 600;
+  color: hsl(var(--foreground) / 0.75);
+  letter-spacing: 0.015em;
+}
+
+.soap-rendered .soap-cc {
+  font-family: var(--font-sans);
+  font-size: 0.9rem;
+  font-weight: 600;
+  color: hsl(var(--foreground));
+  margin-bottom: 0.5rem;
+}
+
+.soap-rendered p {
+  margin: 0.2rem 0;
+  white-space: pre-wrap;
+}
+
+.soap-rendered .soap-body {
+  color: hsl(var(--foreground) / 0.85);
+}
+
+.soap-rendered .soap-indent {
+  padding-left: 1rem;
+  border-left: 2px solid hsl(var(--border));
+  margin-left: 0.25rem;
+}
+
+/* Encounter tab nav — bottom border indicator style */
+.enc-tab-active {
+  color: hsl(var(--foreground));
+  font-weight: 500;
+  box-shadow: 0 2px 0 0 hsl(var(--primary)) inset;
+}
+
+/* Pipeline step chips */
+.pipeline-step-done {
+  background-color: hsl(var(--primary) / 0.08);
+  border-color: hsl(var(--primary) / 0.25);
+  color: hsl(var(--primary));
+}
+
+.pipeline-step-active {
+  border-color: hsl(var(--primary) / 0.4);
 }
