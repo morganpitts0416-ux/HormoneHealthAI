@@ -3298,6 +3298,209 @@ Return a JSON object matching this schema:
     }
   });
 
+  // POST /api/encounters/:id/match-patterns — Pattern / Phenotype Matching Stage
+  // MODE 1 (transcript_only): uses symptoms/facts from visit conversation only
+  // MODE 2 (context_linked): also incorporates linked lab values and prior interpretations
+  // Works gracefully in either mode. Labs are optional context, never required.
+  app.post("/api/encounters/:id/match-patterns", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      const extraction = encounter.clinicalExtraction as any;
+      if (!extraction && !encounter.transcription && !encounter.diarizedTranscript) {
+        return res.status(400).json({ message: "Run at least Stage 2 (Normalize) before pattern matching" });
+      }
+
+      // ── Build transcript context ─────────────────────────────────────────────
+      const diarized = encounter.diarizedTranscript as any[] | null;
+      const transcriptText = diarized?.length
+        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : (encounter.transcription ?? "");
+
+      // ── Build extraction context ─────────────────────────────────────────────
+      const extractionLines: string[] = [];
+      if (extraction) {
+        if (extraction.chief_concerns?.length)           extractionLines.push(`Chief concerns: ${extraction.chief_concerns.join("; ")}`);
+        if (extraction.symptoms_reported?.length)         extractionLines.push(`Symptoms reported: ${extraction.symptoms_reported.join("; ")}`);
+        if (extraction.symptoms_denied?.length)           extractionLines.push(`Symptoms denied: ${extraction.symptoms_denied.join("; ")}`);
+        if (extraction.medications_current?.length)       extractionLines.push(`Current medications: ${extraction.medications_current.join("; ")}`);
+        if (extraction.diagnoses_discussed?.length)       extractionLines.push(`Diagnoses discussed: ${extraction.diagnoses_discussed.join("; ")}`);
+        if (extraction.assessment_candidates?.length)     extractionLines.push(`Assessment candidates: ${extraction.assessment_candidates.join("; ")}`);
+        if (extraction.plan_candidates?.length)           extractionLines.push(`Plan items: ${extraction.plan_candidates.join("; ")}`);
+        if (extraction.red_flags?.length)                 extractionLines.push(`Red flags: ${extraction.red_flags.join("; ")}`);
+        if (extraction.medication_changes_discussed?.length) extractionLines.push(`Medication changes: ${extraction.medication_changes_discussed.join("; ")}`);
+      }
+      const extractionContext = extractionLines.length
+        ? `\n\nSTRUCTURED CLINICAL FACTS (extracted from transcript):\n${extractionLines.join('\n')}`
+        : "";
+
+      // ── Optionally load linked lab result ───────────────────────────────────
+      let labContext = "";
+      let labContextUsed = false;
+      let labResultId: number | undefined;
+      if (encounter.linkedLabResultId) {
+        const labResult = await storage.getLabResult(encounter.linkedLabResultId);
+        if (labResult) {
+          labContextUsed = true;
+          labResultId = labResult.id;
+          const vals = labResult.labValues as Record<string, any>;
+          const labLines = Object.entries(vals)
+            .filter(([k, v]) => v !== null && v !== undefined && v !== "" && k !== "demographics" && k !== "patientName" && k !== "labDrawDate" && typeof v === "number")
+            .map(([k, v]) => `  ${k}: ${v}`)
+            .join("\n");
+          const interp = labResult.interpretationResult as any;
+          const priorPatterns = interp?.insulinResistance
+            ? `\n  Prior IR screening: ${interp.insulinResistance.likelihood ?? "assessed"}`
+            : "";
+          const priorRedFlags = interp?.redFlags?.length
+            ? `\n  Prior red flags: ${interp.redFlags.map((f: any) => f.title ?? f).join("; ")}`
+            : "";
+          labContext = `\n\nLINKED LAB RESULTS (${labResult.gender === 'female' ? 'Female' : 'Male'} panel):\n${labLines}${priorPatterns}${priorRedFlags}`;
+        }
+      }
+
+      const mode = labContextUsed ? "context_linked" : "transcript_only";
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const systemPrompt = `You are an expert clinical pattern recognition engine for a hormone and primary care clinic.
+Your task is to identify clinically relevant patterns and phenotypes from a patient encounter.
+
+OPERATING MODE: ${mode === "context_linked" ? "CONTEXT-LINKED (transcript + lab data available)" : "TRANSCRIPT-ONLY (no linked labs — use symptoms and chart context only)"}
+
+CLINICAL FRAMEWORKS YOU KNOW:
+
+1. PERIMENOPAUSE PATTERNS
+   - Estrogen dominance: heavy periods, bloating, breast tenderness, mood swings, weight gain
+   - Estrogen deficiency: hot flashes, night sweats, vaginal dryness, brain fog, poor sleep, bone loss concern
+   - Progesterone deficiency: sleep disruption, anxiety, PMS, irregular cycles, heavy periods
+   - Androgen excess: acne, hirsutism, hair thinning at crown, oily skin
+   - Complete transition / surgical menopause context
+   - Lab confirmation markers: E2, progesterone, FSH, LH, testosterone, SHBG, DHEA-S
+
+2. TESTOSTERONE OPTIMIZATION (male and female)
+   - Male: low libido, fatigue, decreased motivation, poor sleep, reduced muscle mass, mood changes, cognitive fog
+   - Female: low libido, fatigue, reduced muscle tone, mood flatness, cognitive fog (low-normal testosterone)
+   - TRT monitoring patterns: erythrocytosis risk (hematocrit >50%), PSA velocity, estradiol elevation
+   - Lab confirmation markers: total T, free T, SHBG, E2, LH, FSH, hematocrit, PSA
+
+3. INSULIN RESISTANCE SCREENING
+   - Classic IR: acanthosis nigricans, central adiposity, fatigue after meals, sugar cravings, frequent hunger
+   - PCOS-related IR: irregular cycles, androgen excess signs, polycystic ovaries, anovulation
+   - Lean IR (metabolically obese normal weight): normal BMI but metabolic dysfunction signs
+   - Post-GLP-1 IR: prior GLP-1 use, improved glucose markers, possible rebound concerns
+   - Lab confirmation markers: fasting glucose, fasting insulin, HOMA-IR, HbA1c, triglycerides, HDL
+
+4. THYROID PATTERNS
+   - Hypothyroid: fatigue, cold intolerance, hair loss, constipation, weight gain, brain fog, dry skin
+   - Hyperthyroid / overtreatment: palpitations, heat intolerance, anxiety, weight loss, tremor
+   - Hashimoto's: fluctuating symptoms, positive TPO antibodies context, autoimmune history
+   - Lab confirmation: TSH, free T4, free T3, TPO antibodies
+
+5. LIPID / CARDIOMETABOLIC
+   - Atherogenic dyslipidemia: high TG, low HDL, small dense LDL pattern
+   - Elevated cardiovascular risk: family history, smoking, hypertension combined with lab markers
+   - Statin consideration: high LDL, high ApoB, elevated Lp(a) context
+   - Lab confirmation: LDL, HDL, TG, ApoB, Lp(a), hs-CRP, glucose
+
+6. ADRENAL / HPA AXIS
+   - Cortisol dysregulation: fatigue (especially AM), salt cravings, poor stress response, crash after exertion
+   - DHEA deficiency: low energy, poor mood, reduced libido (especially postmenopause)
+   - Lab confirmation: DHEA-S, morning cortisol, 4-point salivary cortisol (if discussed)
+
+7. NUTRIENT DEFICIENCY PATTERNS
+   - Vitamin D deficiency: fatigue, musculoskeletal aches, immune concerns, mood depression
+   - B12 deficiency: neuropathy symptoms, fatigue, cognitive fog (especially with metformin use)
+   - Iron/ferritin: fatigue, hair loss, poor exercise tolerance, restless legs
+   - Lab confirmation: 25-OH vitamin D, B12, ferritin, iron panel
+
+EVIDENCE BASIS RULES:
+- "symptom_based": pattern inferred from symptoms alone, no lab confirmation in this encounter
+- "lab_backed": pattern supported by linked lab values meeting clinical thresholds
+- "combined": both symptom evidence AND lab values support the pattern
+- "insufficient": mentioned or possible, but not enough information to assess
+
+CONFIDENCE RULES:
+- "possible": 1-2 symptoms loosely matching the pattern; may need further evaluation
+- "probable": 3+ symptoms clearly fitting the pattern OR strong lab signal alone
+- "confirmed": meets established clinical criteria (symptom cluster + lab threshold OR clear clinical diagnosis stated)
+
+CRITICAL RULES:
+- NEVER require labs to run this analysis — transcript-only mode is fully valid
+- In transcript-only mode: label evidence_basis as "symptom_based", set requires_lab_confirmation: true when appropriate
+- In context-linked mode: use lab values to upgrade or downgrade confidence
+- NEVER fabricate lab values not provided
+- NEVER assign "confirmed" confidence from symptoms alone if lab confirmation is clinically standard
+- If a pattern is partially supported, include it with appropriate confidence and note what would confirm it
+- Symptom-based impressions are clinically valid — label them honestly, not dismissively
+- Only include patterns with at least "possible" confidence — do not force patterns with no evidence
+- If no clear patterns are identified, return an empty matched_patterns array with clear unmatched_concerns
+
+Return a JSON object with this exact schema:
+{
+  "matched_patterns": [
+    {
+      "pattern_name": "concise pattern name (e.g., Estrogen Deficiency Pattern)",
+      "category": "perimenopause" | "testosterone_optimization" | "insulin_resistance" | "thyroid" | "lipid_cardiometabolic" | "adrenal_hpa" | "nutrient_deficiency" | "other",
+      "evidence_basis": "symptom_based" | "lab_backed" | "combined" | "insufficient",
+      "confidence": "possible" | "probable" | "confirmed",
+      "supporting_evidence": ["list of specific symptoms, facts, or lab values supporting this pattern"],
+      "contradicting_evidence": ["list of anything arguing against this pattern"],
+      "recommended_considerations": ["specific clinical actions to consider"],
+      "requires_lab_confirmation": true | false,
+      "lab_markers_to_evaluate": ["specific markers if lab confirmation is recommended"],
+      "notes": "any important clinical nuance, uncertainty, or context"
+    }
+  ],
+  "symptom_clusters": ["grouped symptom patterns noted in the visit, even if no formal pattern matched"],
+  "unmatched_concerns": ["concerns or topics discussed that don't fit the above frameworks"],
+  "lab_context_used": ${labContextUsed}
+}`;
+
+      const userPrompt = `Visit Type: ${encounter.visitType}
+Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}${extractionContext}
+
+TRANSCRIPT:
+${transcriptText}
+
+Analyze this encounter and identify clinical patterns. Remember: operate in ${mode} mode. ${!labContextUsed ? "No labs are linked — base your analysis on transcript and symptom evidence only." : "Lab values are available — use them to support or refute patterns."}`;
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userPrompt },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const raw = JSON.parse(completion.choices[0].message.content || "{}");
+
+      const result: import("@shared/schema").PatternMatchResult = {
+        mode,
+        matched_patterns: raw.matched_patterns ?? [],
+        symptom_clusters: raw.symptom_clusters ?? [],
+        unmatched_concerns: raw.unmatched_concerns ?? [],
+        lab_context_used: labContextUsed,
+        ...(labResultId !== undefined && { lab_result_id: labResultId }),
+        generated_at: new Date().toISOString(),
+      };
+
+      await storage.updateEncounter(id, clinicianId, { patternMatch: result });
+      res.json({ patternMatch: result });
+    } catch (err) {
+      console.error('[PatternMatch] Error:', err);
+      res.status(500).json({ message: "Pattern matching failed. Please try again." });
+    }
+  });
+
   // POST /api/encounters/:id/validate — SOAP + Evidence Validator
   // Checks SOAP content against transcript/extraction; validates evidence citations.
   app.post("/api/encounters/:id/validate", requireAuth, async (req, res) => {
@@ -3532,6 +3735,21 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
         if (lines.length) extractionContext = `\n\nSTRUCTURED CLINICAL EXTRACTION (verified from transcript):\n${lines.join('\n')}`;
       }
 
+      // Build pattern match context if available (optional — improves SOAP assessment)
+      const patternMatchData = encounter.patternMatch as any;
+      let patternContext = "";
+      if (patternMatchData?.matched_patterns?.length) {
+        const mode = patternMatchData.mode === "context_linked" ? "transcript + lab data" : "transcript symptoms only";
+        const patternLines = patternMatchData.matched_patterns.map((p: any) =>
+          `- ${p.pattern_name} [${p.confidence}, ${p.evidence_basis}]: ${p.supporting_evidence?.join("; ") ?? "no detail"}`
+        );
+        patternContext = `\n\nCLINICAL PATTERN MATCHING (${mode}):\n${patternLines.join('\n')}`;
+        if (patternMatchData.symptom_clusters?.length) {
+          patternContext += `\nSymptom clusters: ${patternMatchData.symptom_clusters.join("; ")}`;
+        }
+        patternContext += `\n\nIMPORTANT: Reference pattern findings in your Assessment with appropriate confidence language. "possible", "probable", or "confirmed" based on evidence_basis. Do NOT assert "confirmed" if evidence_basis is "symptom_based".`;
+      }
+
       // Build normalized transcript context
       const diarized = encounter.diarizedTranscript as any[] | null;
       const transcriptText = diarized?.length
@@ -3596,7 +3814,7 @@ FOLLOW-UP
 
       const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}${extractionContext}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}${extractionContext}${patternContext}
 
 TRANSCRIPT (normalized):
 ${transcriptText}

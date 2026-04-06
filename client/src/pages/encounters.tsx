@@ -20,7 +20,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
-import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult } from "@shared/schema";
+import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult, PatternMatchResult, PatternMatch } from "@shared/schema";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -483,8 +483,11 @@ function EncounterEditor({
   const [evidenceOverlay, setEvidenceOverlay] = useState<EvidenceOverlay | null>(
     (encounter?.evidenceSuggestions as EvidenceOverlay | null) ?? null
   );
+  const [patternMatch, setPatternMatch] = useState<PatternMatchResult | null>(
+    (encounter?.patternMatch as PatternMatchResult | null) ?? null
+  );
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
-  const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "evidence" | "validating" | null>(null);
+  const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "matching" | "evidence" | "validating" | null>(null);
   const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
 
   const invalidate = () => {
@@ -658,6 +661,30 @@ function EncounterEditor({
     }
   };
 
+  const runMatchPatterns = async () => {
+    if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running pattern matching." }); return; }
+    if (!diarizedTranscript?.length && !transcription.trim()) {
+      toast({ variant: "destructive", title: "Normalize first", description: "Run at least Stage 2 (Normalize) before pattern matching." }); return;
+    }
+    setPipelineLoading("matching");
+    try {
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/match-patterns`, {});
+      const data = await res.json();
+      setPatternMatch(data.patternMatch);
+      invalidate();
+      toast({
+        title: "Pattern matching complete",
+        description: data.patternMatch.mode === "context_linked"
+          ? "Patterns identified using transcript + linked lab context."
+          : "Patterns identified from transcript symptoms only. Lab linkage optional.",
+      });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Pattern matching failed", description: e.message });
+    } finally {
+      setPipelineLoading(null);
+    }
+  };
+
   const runEvidence = async () => {
     if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running evidence lookup." }); return; }
     if (!clinicalExtraction) { toast({ variant: "destructive", title: "Extract first", description: "Run clinical extraction (Stage 3) before evidence lookup." }); return; }
@@ -713,6 +740,7 @@ function EncounterEditor({
   const hasSoap = !!(soap.fullNote?.trim() || soap.assessment || soap.subjective);
   const hasSummary = patientSummary.trim().length > 0;
   const hasExtraction = !!clinicalExtraction;
+  const hasPatternMatch = (patternMatch?.matched_patterns?.length ?? 0) > 0;
   const hasEvidence = (evidenceOverlay?.suggestions?.length ?? 0) > 0;
 
   const steps = [
@@ -1027,13 +1055,24 @@ function EncounterEditor({
                 <Button
                   size="sm"
                   variant="outline"
+                  onClick={runMatchPatterns}
+                  disabled={!hasTranscription || pipelineLoading !== null}
+                  data-testid="button-match-patterns"
+                >
+                  {pipelineLoading === "matching"
+                    ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Matching…</>
+                    : <><Sparkles className="w-3 h-3 mr-1.5" />4 · Match Patterns</>}
+                </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
                   onClick={() => { soapMutation.mutate(); setActiveTab("soap"); }}
                   disabled={!hasTranscription || soapMutation.isPending}
                   data-testid="button-generate-soap-pipeline"
                 >
                   {soapMutation.isPending
                     ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Generating…</>
-                    : <><ClipboardList className="w-3 h-3 mr-1.5" />4 · Generate SOAP</>}
+                    : <><ClipboardList className="w-3 h-3 mr-1.5" />5 · Generate SOAP</>}
                 </Button>
                 <Button
                   size="sm"
@@ -1044,7 +1083,7 @@ function EncounterEditor({
                 >
                   {pipelineLoading === "evidence"
                     ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Loading…</>
-                    : <><BookOpen className="w-3 h-3 mr-1.5" />5 · Evidence</>}
+                    : <><BookOpen className="w-3 h-3 mr-1.5" />6 · Evidence</>}
                 </Button>
                 <Button
                   size="sm"
@@ -1103,6 +1142,192 @@ function EncounterEditor({
                 </div>
               )}
             </div>
+
+            {/* Pattern / Phenotype Match results */}
+            {pipelineLoading === "matching" && (
+              <div className="flex flex-col items-center justify-center py-10 gap-4">
+                <Sparkles className="w-8 h-8 text-primary animate-pulse" />
+                <div className="text-center">
+                  <p className="text-sm font-medium">Identifying clinical patterns…</p>
+                  <p className="text-xs text-muted-foreground mt-1">Analyzing symptoms{encounter?.linkedLabResultId ? ", labs," : ""} and visit context</p>
+                </div>
+              </div>
+            )}
+
+            {patternMatch && pipelineLoading !== "matching" && (
+              <div>
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <Sparkles className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Pattern / Phenotype Matching</h3>
+                  <Badge variant="secondary" className="text-[10px]">Stage 4</Badge>
+                  <Badge
+                    variant="outline"
+                    className={`text-[10px] ${patternMatch.mode === "context_linked" ? "border-emerald-300 text-emerald-700" : "border-blue-300 text-blue-700"}`}
+                  >
+                    {patternMatch.mode === "context_linked" ? "Transcript + Labs" : "Transcript Only"}
+                  </Badge>
+                  {patternMatch.matched_patterns.length === 0 && (
+                    <span className="text-xs text-muted-foreground ml-1">No clear patterns identified</span>
+                  )}
+                  <Button
+                    size="sm"
+                    variant="ghost"
+                    className="ml-auto h-6 px-2 text-xs text-muted-foreground gap-1"
+                    onClick={runMatchPatterns}
+                    disabled={!hasTranscription || pipelineLoading !== null}
+                    data-testid="button-refresh-patterns"
+                  >
+                    <RefreshCw className="w-3 h-3" />Re-run
+                  </Button>
+                </div>
+
+                {/* Mode note */}
+                <div className={`rounded-md px-3 py-2 text-xs mb-3 flex items-start gap-2 ${patternMatch.mode === "context_linked" ? "bg-emerald-50 border border-emerald-200 text-emerald-800" : "bg-blue-50 border border-blue-200 text-blue-800"}`}>
+                  <AlertCircle className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" />
+                  <span>
+                    {patternMatch.mode === "context_linked"
+                      ? "Analysis incorporates linked lab results alongside transcript context."
+                      : "Operating in transcript-only mode. Link a lab set to this encounter for lab-backed pattern confirmation."}
+                  </span>
+                </div>
+
+                {/* Pattern cards */}
+                {patternMatch.matched_patterns.length > 0 && (
+                  <div className="space-y-3 mb-4">
+                    {patternMatch.matched_patterns.map((p: PatternMatch, i: number) => {
+                      const basisColors: Record<string, string> = {
+                        symptom_based:  "border-blue-200 bg-blue-50/40",
+                        lab_backed:     "border-emerald-200 bg-emerald-50/40",
+                        combined:       "border-violet-200 bg-violet-50/40",
+                        insufficient:   "border-border bg-muted/20",
+                      };
+                      const basisBadge: Record<string, string> = {
+                        symptom_based:  "text-blue-700 border-blue-300",
+                        lab_backed:     "text-emerald-700 border-emerald-300",
+                        combined:       "text-violet-700 border-violet-300",
+                        insufficient:   "text-muted-foreground border-border",
+                      };
+                      const confidenceColors: Record<string, string> = {
+                        possible:   "text-amber-700 bg-amber-50 border-amber-200",
+                        probable:   "text-blue-700 bg-blue-50 border-blue-200",
+                        confirmed:  "text-emerald-700 bg-emerald-50 border-emerald-200",
+                      };
+                      const cardClass = basisColors[p.evidence_basis] ?? "border-border";
+                      const badgeClass = basisBadge[p.evidence_basis] ?? "text-muted-foreground border-border";
+                      const confClass  = confidenceColors[p.confidence] ?? "text-muted-foreground border-border";
+                      const basisLabel: Record<string, string> = {
+                        symptom_based:  "Symptom-Based",
+                        lab_backed:     "Lab-Backed",
+                        combined:       "Combined",
+                        insufficient:   "Insufficient Data",
+                      };
+                      return (
+                        <div key={i} className={`rounded-md border p-4 space-y-2.5 ${cardClass}`}>
+                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                            <div className="flex-1 min-w-0">
+                              <p className="text-sm font-semibold leading-snug">{p.pattern_name}</p>
+                              <p className="text-[10px] text-muted-foreground mt-0.5 uppercase tracking-wide">{p.category.replace(/_/g, " ")}</p>
+                            </div>
+                            <div className="flex items-center gap-1.5 flex-shrink-0 flex-wrap">
+                              <Badge variant="outline" className={`text-[10px] border ${confClass}`}>
+                                {p.confidence}
+                              </Badge>
+                              <Badge variant="outline" className={`text-[10px] border ${badgeClass}`}>
+                                {basisLabel[p.evidence_basis] ?? p.evidence_basis}
+                              </Badge>
+                            </div>
+                          </div>
+
+                          {p.supporting_evidence.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Supporting Evidence</p>
+                              <ul className="space-y-0.5">
+                                {p.supporting_evidence.map((ev, ei) => (
+                                  <li key={ei} className="text-xs flex items-start gap-1.5">
+                                    <span className="text-emerald-600 mt-0.5">·</span><span>{ev}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {p.contradicting_evidence.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1">Contradicting Evidence</p>
+                              <ul className="space-y-0.5">
+                                {p.contradicting_evidence.map((ev, ei) => (
+                                  <li key={ei} className="text-xs flex items-start gap-1.5">
+                                    <TriangleAlert className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" /><span>{ev}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {p.recommended_considerations.length > 0 && (
+                            <div>
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Considerations</p>
+                              <ul className="space-y-0.5">
+                                {p.recommended_considerations.map((rc, ri) => (
+                                  <li key={ri} className="text-xs flex items-start gap-1.5">
+                                    <ChevronRight className="w-3 h-3 text-primary flex-shrink-0 mt-0.5" /><span>{rc}</span>
+                                  </li>
+                                ))}
+                              </ul>
+                            </div>
+                          )}
+
+                          {p.requires_lab_confirmation && p.lab_markers_to_evaluate && p.lab_markers_to_evaluate.length > 0 && (
+                            <div className="pt-1 border-t">
+                              <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">Lab Confirmation Recommended</p>
+                              <div className="flex flex-wrap gap-1">
+                                {p.lab_markers_to_evaluate.map((m, mi) => (
+                                  <Badge key={mi} variant="outline" className="text-[10px]">{m}</Badge>
+                                ))}
+                              </div>
+                            </div>
+                          )}
+
+                          {p.notes && (
+                            <p className="text-[10px] text-muted-foreground italic border-t pt-1.5">{p.notes}</p>
+                          )}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Symptom clusters + unmatched concerns */}
+                {(patternMatch.symptom_clusters.length > 0 || patternMatch.unmatched_concerns.length > 0) && (
+                  <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                    {patternMatch.symptom_clusters.length > 0 && (
+                      <div className="rounded-md border p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Symptom Clusters</p>
+                        <ul className="space-y-0.5">
+                          {patternMatch.symptom_clusters.map((s, si) => (
+                            <li key={si} className="text-xs flex items-start gap-1.5">
+                              <span className="text-muted-foreground mt-0.5">·</span><span>{s}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                    {patternMatch.unmatched_concerns.length > 0 && (
+                      <div className="rounded-md border p-3">
+                        <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-2">Unmatched Concerns</p>
+                        <ul className="space-y-0.5">
+                          {patternMatch.unmatched_concerns.map((c, ci) => (
+                            <li key={ci} className="text-xs flex items-start gap-1.5">
+                              <span className="text-muted-foreground mt-0.5">·</span><span>{c}</span>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Clinical extraction results */}
             {clinicalExtraction && (
