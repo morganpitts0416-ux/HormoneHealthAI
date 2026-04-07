@@ -4244,6 +4244,54 @@ Generate a warm, plain-language patient visit summary that the clinician can rev
     }
   });
 
+  // ─── BAA e-Signature Routes ───────────────────────────────────────────────────
+
+  // GET /api/baa/status — has the current clinician signed the BAA?
+  app.get("/api/baa/status", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const sig = await storage.getBaaSignature(user.id);
+      res.json({
+        signed: !!sig,
+        signedAt: sig?.signedAt ?? null,
+        signatureName: sig?.signatureName ?? null,
+        baaVersion: sig?.baaVersion ?? null,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load BAA status" });
+    }
+  });
+
+  // POST /api/baa/sign — record electronic signature
+  app.post("/api/baa/sign", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const { signatureName } = req.body;
+      if (!signatureName || typeof signatureName !== "string" || signatureName.trim().length < 2) {
+        return res.status(400).json({ message: "Full legal name is required to sign the BAA" });
+      }
+      // Prevent double-signing
+      const existing = await storage.getBaaSignature(user.id);
+      if (existing) {
+        return res.json({ signed: true, signedAt: existing.signedAt, signatureName: existing.signatureName });
+      }
+      const ip = (req.headers["x-forwarded-for"] as string)?.split(",")[0]?.trim()
+        || req.socket?.remoteAddress
+        || "unknown";
+      const sig = await storage.createBaaSignature({
+        userId: user.id,
+        signatureName: signatureName.trim(),
+        ipAddress: ip,
+        userAgent: req.headers["user-agent"] || null,
+        baaVersion: "1.0",
+      });
+      res.json({ signed: true, signedAt: sig.signedAt, signatureName: sig.signatureName });
+    } catch (err: any) {
+      console.error("[BAA] Sign error:", err);
+      res.status(500).json({ message: "Failed to record BAA signature" });
+    }
+  });
+
   // ─── Stripe Billing Routes ────────────────────────────────────────────────────
 
   const STRIPE_PRICE_ID = "price_1TJb7eKbgudErHaMxs1B2BzZ";
