@@ -509,6 +509,7 @@ function EncounterEditor({
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "matching" | "evidence" | "validating" | null>(null);
   const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
+  const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
@@ -596,6 +597,72 @@ function EncounterEditor({
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
   });
+
+  // Auto-generate SOAP + evidence in parallel after ensuring transcript is saved
+  const autoGenerateAll = async () => {
+    if (!patientId) { toast({ variant: "destructive", title: "Select a patient first" }); return; }
+    const hasContent = transcription.trim().length > 0 || (diarizedTranscript?.length ?? 0) > 0;
+    if (!hasContent) { toast({ variant: "destructive", title: "No transcript", description: "Record or paste a transcript before generating." }); return; }
+
+    setAutoGenerating("both");
+    try {
+      let encounterId = savedId;
+
+      // Step 1: Ensure encounter exists and transcript is persisted
+      if (!encounterId) {
+        const body = {
+          patientId: parseInt(patientId), visitDate, visitType,
+          chiefComplaint: chiefComplaint || null,
+          linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null,
+          clinicianNotes: clinicianNotes || null,
+          transcription: transcription || null,
+        };
+        const saveRes = await apiRequest("POST", "/api/encounters", body);
+        const saved = await saveRes.json();
+        setSavedId(saved.id);
+        encounterId = saved.id;
+      } else {
+        await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null });
+      }
+
+      // Step 2: Fire SOAP and evidence simultaneously
+      toast({ title: "Generating…", description: "SOAP note and evidence running in parallel." });
+
+      const [soapResult, evidenceResult] = await Promise.allSettled([
+        apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, {}).then(r => r.json()),
+        apiRequest("POST", `/api/encounters/${encounterId}/evidence`, {}).then(r => r.json()),
+      ]);
+
+      if (soapResult.status === "fulfilled") {
+        setSoap(soapResult.value.soapNote);
+        setActiveTab("soap");
+      } else {
+        toast({ variant: "destructive", title: "SOAP generation failed", description: (soapResult.reason as any)?.message });
+      }
+
+      if (evidenceResult.status === "fulfilled") {
+        setEvidenceOverlay(evidenceResult.value.evidenceSuggestions);
+      } else {
+        toast({ variant: "destructive", title: "Evidence generation failed", description: (evidenceResult.reason as any)?.message });
+      }
+
+      invalidate();
+
+      if (soapResult.status === "fulfilled") {
+        const evidenceOk = evidenceResult.status === "fulfilled";
+        toast({
+          title: "Done",
+          description: evidenceOk
+            ? "SOAP note ready. Evidence overlay available in the Evidence tab."
+            : "SOAP note ready. Evidence generation failed — try again from the Evidence tab.",
+        });
+      }
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Auto-generation failed", description: e.message });
+    } finally {
+      setAutoGenerating(null);
+    }
+  };
 
   // Save SOAP edits
   const saveSoapMutation = useMutation({
@@ -988,10 +1055,16 @@ function EncounterEditor({
               <AudioCapture
                 visitType={visitType}
                 onTranscribed={(text, utterances) => {
-                  setTranscription(prev => prev ? prev + "\n\n" + text : text);
+                  const updated = transcription ? transcription + "\n\n" + text : text;
+                  setTranscription(updated);
                   if (utterances?.length) {
                     setRawUtterances(utterances);
                     setDiarizedTranscript(utterances);
+                  }
+                  // Auto-save transcript to encounter immediately if already saved
+                  if (savedId) {
+                    apiRequest("PUT", `/api/encounters/${savedId}`, { transcription: updated })
+                      .catch(() => {}); // silent — user can manually save if this fails
                   }
                 }}
                 onStateChange={setRecorderState}
@@ -1035,17 +1108,30 @@ function EncounterEditor({
               />
             </div>
 
-            {/* Create SOAP Note — single action */}
-            <div className="flex justify-end pt-1">
+            {/* Generate SOAP + Evidence in parallel */}
+            <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
+              {/* Secondary: SOAP only */}
               <Button
+                variant="outline"
+                size="sm"
                 onClick={() => soapMutation.mutate()}
-                disabled={soapMutation.isPending || !hasTranscription}
+                disabled={soapMutation.isPending || autoGenerating !== null || !hasTranscription}
                 data-testid="button-generate-soap"
-                size="default"
               >
                 {soapMutation.isPending
-                  ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Creating SOAP Note...</>
-                  : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Create SOAP Note</>}
+                  ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />SOAP only…</>
+                  : <><FileText className="w-3 h-3 mr-1.5" />SOAP only</>}
+              </Button>
+              {/* Primary: SOAP + Evidence in parallel */}
+              <Button
+                onClick={autoGenerateAll}
+                disabled={autoGenerating !== null || soapMutation.isPending || !hasTranscription}
+                data-testid="button-auto-generate-all"
+                size="default"
+              >
+                {autoGenerating === "both"
+                  ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Generating SOAP &amp; Evidence…</>
+                  : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Generate SOAP &amp; Evidence</>}
               </Button>
             </div>
           </>
@@ -1110,7 +1196,7 @@ function EncounterEditor({
                   size="sm"
                   variant="outline"
                   onClick={runEvidence}
-                  disabled={!hasExtraction || pipelineLoading !== null}
+                  disabled={!hasTranscription || pipelineLoading !== null}
                   data-testid="button-evidence"
                 >
                   {pipelineLoading === "evidence"
@@ -1443,7 +1529,7 @@ function EncounterEditor({
                 size="sm"
                 variant="outline"
                 onClick={runEvidence}
-                disabled={!hasExtraction || pipelineLoading !== null}
+                disabled={!hasTranscription || pipelineLoading !== null}
                 data-testid="button-refresh-evidence"
               >
                 {pipelineLoading === "evidence"
@@ -1452,13 +1538,13 @@ function EncounterEditor({
               </Button>
             </div>
 
-            {!hasExtraction ? (
+            {!hasTranscription ? (
               <div className="rounded-md border border-dashed p-8 text-center">
                 <BookOpen className="w-8 h-8 text-muted-foreground mx-auto mb-3 opacity-40" />
-                <p className="text-sm font-medium mb-1">Clinical extraction required</p>
-                <p className="text-xs text-muted-foreground mb-4">Run Stages 2 and 3 in the Transcript tab to extract clinical facts before generating evidence.</p>
-                <Button size="sm" variant="outline" onClick={() => setActiveTab("transcript")}>
-                  Go to Transcript tab
+                <p className="text-sm font-medium mb-1">Transcript required</p>
+                <p className="text-xs text-muted-foreground mb-4">Record or paste a session transcript in the Details tab, then click Generate SOAP &amp; Evidence.</p>
+                <Button size="sm" variant="outline" onClick={() => setActiveTab("details")}>
+                  Go to Details tab
                 </Button>
               </div>
             ) : pipelineLoading === "evidence" ? (

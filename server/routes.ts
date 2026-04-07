@@ -3166,7 +3166,7 @@ Return this exact JSON structure (all arrays, even if empty):
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       const extraction = encounter.clinicalExtraction as any;
-      if (!extraction) return res.status(400).json({ message: "Run clinical extraction (Stage 3) first" });
+      // No hard guard — evidence falls back to raw transcription if extraction hasn't been run yet
 
       const openai = new OpenAI({
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
@@ -3216,19 +3216,34 @@ Return this exact JSON structure (all arrays, even if empty):
       }
 
       // ── Step 1: Generate focused clinical questions ──────────────────────────
-      const visitContext = [
-        `Visit type: ${encounter.visitType}`,
-        extraction.chief_concerns?.length ? `Chief concerns: ${extraction.chief_concerns.join('; ')}` : null,
-        extraction.symptoms_reported?.length ? `Symptoms: ${extraction.symptoms_reported.join('; ')}` : null,
-        extraction.diagnoses_discussed?.length ? `Diagnoses discussed: ${extraction.diagnoses_discussed.join('; ')}` : null,
-        extraction.assessment_candidates?.length ? `Assessment candidates: ${extraction.assessment_candidates.join('; ')}` : null,
-        extraction.medications_current?.length ? `Current meds: ${extraction.medications_current.join('; ')}` : null,
-        extraction.medication_changes_discussed?.length ? `Medication changes: ${extraction.medication_changes_discussed.join('; ')}` : null,
-        extraction.labs_reviewed?.length ? `Labs reviewed: ${extraction.labs_reviewed.join('; ')}` : null,
-        extraction.red_flags?.length ? `Red flags: ${extraction.red_flags.join('; ')}` : null,
-        labInterpContext || null,
-        soapPlan ? `Current documented plan:\n${soapPlan}` : null,
-      ].filter(Boolean).join('\n');
+      // Build visitContext from clinical extraction when available, otherwise fall
+      // back to raw transcription so evidence can run in parallel with SOAP generation.
+      const diarizedForEvidence = encounter.diarizedTranscript as any[] | null;
+      const rawTranscriptFallback = diarizedForEvidence?.length
+        ? diarizedForEvidence.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : (encounter.transcription ?? "");
+
+      const visitContext = extraction
+        ? [
+            `Visit type: ${encounter.visitType}`,
+            extraction.chief_concerns?.length ? `Chief concerns: ${extraction.chief_concerns.join('; ')}` : null,
+            extraction.symptoms_reported?.length ? `Symptoms: ${extraction.symptoms_reported.join('; ')}` : null,
+            extraction.diagnoses_discussed?.length ? `Diagnoses discussed: ${extraction.diagnoses_discussed.join('; ')}` : null,
+            extraction.assessment_candidates?.length ? `Assessment candidates: ${extraction.assessment_candidates.join('; ')}` : null,
+            extraction.medications_current?.length ? `Current meds: ${extraction.medications_current.join('; ')}` : null,
+            extraction.medication_changes_discussed?.length ? `Medication changes: ${extraction.medication_changes_discussed.join('; ')}` : null,
+            extraction.labs_reviewed?.length ? `Labs reviewed: ${extraction.labs_reviewed.join('; ')}` : null,
+            extraction.red_flags?.length ? `Red flags: ${extraction.red_flags.join('; ')}` : null,
+            labInterpContext || null,
+            soapPlan ? `Current documented plan:\n${soapPlan}` : null,
+          ].filter(Boolean).join('\n')
+        : [
+            `Visit type: ${encounter.visitType}`,
+            `Chief complaint: ${encounter.chiefComplaint ?? "Not specified"}`,
+            labInterpContext || null,
+            soapPlan ? `Current documented plan:\n${soapPlan}` : null,
+            rawTranscriptFallback ? `Transcript:\n${rawTranscriptFallback}` : null,
+          ].filter(Boolean).join('\n');
 
       const questionsCompletion = await openai.chat.completions.create({
         model: "gpt-4o",
