@@ -7,7 +7,8 @@ import {
   Sparkles, Send, CheckCircle2, Circle, AlertCircle, Trash2,
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
   ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
-  TriangleAlert, ExternalLink, Square, MicOff, ShieldCheck,
+  TriangleAlert, ExternalLink, Square, MicOff, ShieldCheck, Copy, Check,
+  Layers,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -153,16 +154,75 @@ function EncounterListItem({
 
 // ── SOAP Note Rendered Viewer ─────────────────────────────────────────────────
 const MAJOR_SECTIONS = /^(SUBJECTIVE|OBJECTIVE|ASSESSMENT\/PLAN|CARE PLAN|FOLLOW-UP|FOLLOW UP)$/i;
+const ASSESSMENT_SECTION = /^(ASSESSMENT\/PLAN|ASSESSMENT)$/i;
 const CC_LINE = /^CC\/Reason:\s*(.*)/i;
 const SUB_LABEL = /^([A-Z][A-Za-z\s\/\-]+):(\s*.*)$/;
 
-function SoapNoteViewer({ text }: { text: string }) {
+const guidelineClassBadge: Record<string, string> = {
+  "I":   "bg-emerald-50 border-emerald-200 text-emerald-800",
+  "IIa": "bg-blue-50 border-blue-200 text-blue-800",
+  "IIb": "bg-amber-50 border-amber-200 text-amber-800",
+  "III": "bg-red-50 border-red-200 text-red-800",
+};
+
+function EvidenceCallout({ sug }: { sug: EvidenceSuggestion }) {
+  return (
+    <div className="ml-4 mr-1 my-1.5 rounded-md border border-primary/20 bg-primary/5 px-3 py-2 flex items-start gap-2">
+      <Sparkles className="w-3 h-3 text-primary/70 flex-shrink-0 mt-0.5" />
+      <div className="flex-1 min-w-0">
+        <p className="text-xs text-foreground/80 leading-snug">{sug.summary}</p>
+        {sug.citations?.[0] && (
+          <p className="text-[10px] text-muted-foreground mt-0.5 truncate">
+            {sug.citations[0].source}{sug.citations[0].year ? ` (${sug.citations[0].year})` : ""}
+          </p>
+        )}
+      </div>
+      <div className="flex items-center gap-1 flex-shrink-0">
+        {sug.guideline_class && (
+          <span className={`text-[9px] font-bold px-1 py-0.5 rounded border ${guidelineClassBadge[sug.guideline_class] ?? guidelineClassBadge["III"]}`}>
+            {sug.guideline_class}
+          </span>
+        )}
+        {sug.level_of_evidence && (
+          <span className="text-[9px] font-semibold px-1 py-0.5 rounded border border-muted-foreground/30 text-muted-foreground">
+            {sug.level_of_evidence}
+          </span>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function extractKeywords(text: string): string[] {
+  return text.toLowerCase()
+    .replace(/[^a-z0-9\s]/g, " ")
+    .split(/\s+/)
+    .filter(w => w.length > 4 && !["about","which","these","their","there","should","would","could","after","before","since","where","while","other","every","using","based"].includes(w));
+}
+
+function SoapNoteViewer({ text, evidence }: { text: string; evidence?: EvidenceSuggestion[] }) {
   const lines = text.split("\n");
   const nodes: ReactElement[] = [];
+  let inAssessmentPlan = false;
+  const usedIndices = new Set<number>();
+
+  function matchEvidence(lineText: string): EvidenceSuggestion[] {
+    if (!evidence?.length) return [];
+    const words = extractKeywords(lineText);
+    const matched: EvidenceSuggestion[] = [];
+    evidence.forEach((sug, idx) => {
+      if (usedIndices.has(idx)) return;
+      const haystack = extractKeywords(sug.title + " " + sug.relevance_to_visit + " " + sug.summary);
+      if (words.some(w => haystack.includes(w))) {
+        usedIndices.add(idx);
+        matched.push(sug);
+      }
+    });
+    return matched;
+  }
 
   lines.forEach((raw, i) => {
-    const line = raw;
-    const trimmed = line.trim();
+    const trimmed = raw.trim();
     if (!trimmed) { nodes.push(<div key={i} className="h-1" />); return; }
 
     const ccMatch = trimmed.match(CC_LINE);
@@ -177,6 +237,7 @@ function SoapNoteViewer({ text }: { text: string }) {
     }
 
     if (MAJOR_SECTIONS.test(trimmed)) {
+      inAssessmentPlan = ASSESSMENT_SECTION.test(trimmed);
       nodes.push(<span key={i} className="soap-section-major">{trimmed}</span>);
       return;
     }
@@ -194,22 +255,53 @@ function SoapNoteViewer({ text }: { text: string }) {
     }
 
     if (trimmed.startsWith("-") || trimmed.startsWith("•")) {
+      const bulletText = trimmed.slice(1).trim();
       nodes.push(
         <p key={i} className="soap-body pl-4">
           <span className="text-primary/60 mr-1 select-none">·</span>
-          {trimmed.slice(1).trim()}
+          {bulletText}
         </p>
       );
+      if (inAssessmentPlan && evidence?.length) {
+        matchEvidence(bulletText).forEach((sug, si) =>
+          nodes.push(<EvidenceCallout key={`ev-b${i}-${si}`} sug={sug} />)
+        );
+      }
       return;
     }
 
     if (/^\d+\./.test(trimmed)) {
       nodes.push(<p key={i} className="soap-body font-semibold mt-1">{trimmed}</p>);
+      if (inAssessmentPlan && evidence?.length) {
+        matchEvidence(trimmed).forEach((sug, si) =>
+          nodes.push(<EvidenceCallout key={`ev-n${i}-${si}`} sug={sug} />)
+        );
+      }
       return;
     }
 
     nodes.push(<p key={i} className="soap-body">{trimmed}</p>);
+    if (inAssessmentPlan && evidence?.length) {
+      matchEvidence(trimmed).forEach((sug, si) =>
+        nodes.push(<EvidenceCallout key={`ev-p${i}-${si}`} sug={sug} />)
+      );
+    }
   });
+
+  // Unmatched suggestions appended at end
+  if (evidence?.length) {
+    const unmatched = evidence.filter((_, idx) => !usedIndices.has(idx));
+    if (unmatched.length) {
+      nodes.push(
+        <div key="ev-unmatched-header" className="mt-3 mb-1">
+          <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">Additional Evidence</span>
+        </div>
+      );
+      unmatched.forEach((sug, i) =>
+        nodes.push(<EvidenceCallout key={`ev-um-${i}`} sug={sug} />)
+      );
+    }
+  }
 
   return <div className="soap-rendered">{nodes}</div>;
 }
@@ -508,7 +600,8 @@ function EncounterEditor({
   );
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "matching" | "evidence" | "validating" | null>(null);
-  const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
+  const [soapViewMode, setSoapViewMode] = useState<"view" | "evidence" | "edit">("view");
+  const [copiedSoap, setCopiedSoap] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
 
   const invalidate = () => {
@@ -642,6 +735,10 @@ function EncounterEditor({
 
       if (evidenceResult.status === "fulfilled") {
         setEvidenceOverlay(evidenceResult.value.evidenceSuggestions);
+        // Auto-switch SOAP view to "evidence" mode so citations appear inline immediately
+        if (soapResult.status === "fulfilled") {
+          setSoapViewMode("evidence");
+        }
       } else {
         toast({ variant: "destructive", title: "Evidence generation failed", description: (evidenceResult.reason as any)?.message });
       }
@@ -653,7 +750,7 @@ function EncounterEditor({
         toast({
           title: "Done",
           description: evidenceOk
-            ? "SOAP note ready. Evidence overlay available in the Evidence tab."
+            ? "SOAP note ready with evidence overlay. Switch to View for a clean copy."
             : "SOAP note ready. Evidence generation failed — try again from the Evidence tab.",
         });
       }
@@ -1950,7 +2047,7 @@ function EncounterEditor({
             {hasSoap && !soapMutation.isPending && (
               <div className="space-y-3">
                 {/* View / Edit toggle row */}
-                <div className="flex items-center justify-between">
+                <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-0.5 rounded-md border p-0.5 bg-muted/40">
                     <button
                       data-testid="soap-view-toggle"
@@ -1959,6 +2056,19 @@ function EncounterEditor({
                     >
                       <Eye className="w-3 h-3" /> View
                     </button>
+                    {(() => {
+                      const evOverlay = encounter?.evidenceSuggestions as EvidenceOverlay | null;
+                      const hasEvidence = !!(evOverlay?.suggestions?.length);
+                      return hasEvidence ? (
+                        <button
+                          data-testid="soap-evidence-toggle"
+                          onClick={() => setSoapViewMode("evidence")}
+                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "evidence" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                        >
+                          <Layers className="w-3 h-3" /> With Evidence
+                        </button>
+                      ) : null;
+                    })()}
                     <button
                       data-testid="soap-edit-toggle"
                       onClick={() => setSoapViewMode("edit")}
@@ -1967,7 +2077,23 @@ function EncounterEditor({
                       <ClipboardList className="w-3 h-3" /> Edit
                     </button>
                   </div>
-                  <div className="flex gap-2">
+                  <div className="flex gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid="button-copy-soap"
+                      onClick={() => {
+                        const text = soap.fullNote ?? legacySoapToText(soap);
+                        navigator.clipboard.writeText(text).then(() => {
+                          setCopiedSoap(true);
+                          setTimeout(() => setCopiedSoap(false), 2000);
+                        });
+                      }}
+                    >
+                      {copiedSoap
+                        ? <><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />Copied!</>
+                        : <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Note</>}
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -1994,6 +2120,13 @@ function EncounterEditor({
                   <div className="rounded-md border bg-card px-5 py-4 min-h-[24rem]">
                     <SoapNoteViewer text={soap.fullNote ?? legacySoapToText(soap)} />
                   </div>
+                ) : soapViewMode === "evidence" ? (
+                  <div className="rounded-md border bg-card px-5 py-4 min-h-[24rem]">
+                    <SoapNoteViewer
+                      text={soap.fullNote ?? legacySoapToText(soap)}
+                      evidence={(encounter?.evidenceSuggestions as EvidenceOverlay | null)?.suggestions}
+                    />
+                  </div>
                 ) : (
                   <Textarea
                     value={soap.fullNote ?? legacySoapToText(soap)}
@@ -2006,7 +2139,11 @@ function EncounterEditor({
                 )}
 
                 <p className="text-xs text-muted-foreground">
-                  {soapViewMode === "edit" ? "Editing raw note — save when ready." : "Review the formatted note above, or switch to Edit to make changes."}
+                  {soapViewMode === "edit"
+                    ? "Editing raw note — save when ready. This is what will be copied and pasted into your EHR."
+                    : soapViewMode === "evidence"
+                    ? "Evidence callouts are shown inline for reference only — they are not included when you copy the note."
+                    : "Use Copy Note to paste the clean note into your EHR. Switch to With Evidence to see guideline citations alongside the note."}
                 </p>
               </div>
             )}
