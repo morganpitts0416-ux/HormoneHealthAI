@@ -87,9 +87,22 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   return <Component />;
 }
 
-// Returns true when the visitor is on the app subdomain (app.*)
+// Returns true only when on the real production app subdomain (app.realignlabeval.com).
+// Dev/Replit environments always show the marketing landing page at the root.
 function isAppSubdomain() {
-  return window.location.hostname.startsWith("app.");
+  const hostname = window.location.hostname;
+  // Never treat local or Replit preview URLs as the app subdomain
+  if (
+    hostname === "localhost" ||
+    hostname.includes(".replit.dev") ||
+    hostname.includes(".repl.co") ||
+    hostname.includes(".replit.app") ||
+    hostname.includes(".proxy.replit") ||
+    hostname.includes("replit")
+  ) {
+    return false;
+  }
+  return hostname.startsWith("app.");
 }
 
 function RootRedirect() {
