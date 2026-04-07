@@ -4244,6 +4244,241 @@ Generate a warm, plain-language patient visit summary that the clinician can rev
     }
   });
 
+  // ─── Stripe Billing Routes ────────────────────────────────────────────────────
+
+  const STRIPE_PRICE_ID = "price_1TJb7eKbgudErHaMxs1B2BzZ";
+
+  // GET /api/billing/config — expose publishable key to frontend
+  app.get("/api/billing/config", requireAuth, (_req, res) => {
+    res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "" });
+  });
+
+  function getStripe() {
+    const Stripe = require("stripe");
+    return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-03-31.basil" });
+  }
+
+  // GET /api/billing/status — return subscription info for the current clinician
+  app.get("/api/billing/status", requireAuth, async (req, res) => {
+    try {
+      const user = req.user as any;
+      res.json({
+        subscriptionStatus: user.subscriptionStatus,
+        stripeCustomerId: user.stripeCustomerId,
+        stripeSubscriptionId: user.stripeSubscriptionId,
+        stripeCurrentPeriodEnd: user.stripeCurrentPeriodEnd,
+        stripeCancelAtPeriodEnd: user.stripeCancelAtPeriodEnd ?? false,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load billing status" });
+    }
+  });
+
+  // POST /api/billing/create-setup-intent — create a SetupIntent for card collection
+  app.post("/api/billing/create-setup-intent", requireAuth, async (req, res) => {
+    try {
+      const stripe = getStripe();
+      const user = req.user as any;
+
+      // Get or create a Stripe customer
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: `${user.firstName} ${user.lastName}`,
+          metadata: { userId: String(user.id), clinicName: user.clinicName },
+        });
+        customerId = customer.id;
+        await storage.updateUserStripe(user.id, { stripeCustomerId: customerId });
+      }
+
+      const setupIntent = await stripe.setupIntents.create({
+        customer: customerId,
+        payment_method_types: ["card"],
+        usage: "off_session",
+      });
+
+      res.json({ clientSecret: setupIntent.client_secret, customerId });
+    } catch (err: any) {
+      console.error("[Billing] SetupIntent error:", err);
+      res.status(500).json({ message: err.message || "Failed to initialize payment setup" });
+    }
+  });
+
+  // POST /api/billing/subscribe — create subscription after card is saved
+  app.post("/api/billing/subscribe", requireAuth, async (req, res) => {
+    try {
+      const stripe = getStripe();
+      const user = req.user as any;
+      const { paymentMethodId } = req.body;
+      if (!paymentMethodId) return res.status(400).json({ message: "paymentMethodId is required" });
+
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: `${user.firstName} ${user.lastName}`,
+          metadata: { userId: String(user.id) },
+        });
+        customerId = customer.id;
+      }
+
+      // Attach payment method and set as default
+      await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+      await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+
+      // Create subscription with 14-day trial
+      const subscription = await stripe.subscriptions.create({
+        customer: customerId,
+        items: [{ price: STRIPE_PRICE_ID }],
+        trial_period_days: 14,
+        payment_settings: {
+          payment_method_types: ["card"],
+          save_default_payment_method: "on_subscription",
+        },
+        expand: ["latest_invoice.payment_intent"],
+      });
+
+      const periodEnd = new Date((subscription as any).current_period_end * 1000);
+      const updated = await storage.updateUserStripe(user.id, {
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscription.id,
+        stripeCurrentPeriodEnd: periodEnd,
+        stripeCancelAtPeriodEnd: false,
+        subscriptionStatus: subscription.status === "trialing" ? "trial" : subscription.status,
+      });
+
+      // Refresh session user
+      if (updated) (req as any).user = updated;
+
+      res.json({
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        trialEnd: (subscription as any).trial_end,
+        currentPeriodEnd: (subscription as any).current_period_end,
+      });
+    } catch (err: any) {
+      console.error("[Billing] Subscribe error:", err);
+      res.status(500).json({ message: err.message || "Failed to create subscription" });
+    }
+  });
+
+  // POST /api/billing/cancel — cancel at end of current period
+  app.post("/api/billing/cancel", requireAuth, async (req, res) => {
+    try {
+      const stripe = getStripe();
+      const user = req.user as any;
+      if (!user.stripeSubscriptionId) return res.status(400).json({ message: "No active subscription found" });
+
+      const subscription = await stripe.subscriptions.update(user.stripeSubscriptionId, {
+        cancel_at_period_end: true,
+      });
+
+      const updated = await storage.updateUserStripe(user.id, { stripeCancelAtPeriodEnd: true });
+      if (updated) (req as any).user = updated;
+
+      res.json({ cancelAtPeriodEnd: true, currentPeriodEnd: (subscription as any).current_period_end });
+    } catch (err: any) {
+      console.error("[Billing] Cancel error:", err);
+      res.status(500).json({ message: err.message || "Failed to cancel subscription" });
+    }
+  });
+
+  // POST /api/billing/reactivate — undo cancellation
+  app.post("/api/billing/reactivate", requireAuth, async (req, res) => {
+    try {
+      const stripe = getStripe();
+      const user = req.user as any;
+      if (!user.stripeSubscriptionId) return res.status(400).json({ message: "No active subscription found" });
+
+      await stripe.subscriptions.update(user.stripeSubscriptionId, {
+        cancel_at_period_end: false,
+      });
+
+      const updated = await storage.updateUserStripe(user.id, { stripeCancelAtPeriodEnd: false });
+      if (updated) (req as any).user = updated;
+
+      res.json({ cancelAtPeriodEnd: false });
+    } catch (err: any) {
+      console.error("[Billing] Reactivate error:", err);
+      res.status(500).json({ message: err.message || "Failed to reactivate subscription" });
+    }
+  });
+
+  // POST /api/stripe/webhook — handle Stripe events
+  app.post("/api/stripe/webhook", async (req, res) => {
+    const sig = req.headers["stripe-signature"] as string;
+    const webhookSecret = process.env.STRIPE_WEBHOOK_SECRET;
+    let event: any;
+
+    try {
+      if (webhookSecret && sig) {
+        const stripe = getStripe();
+        event = stripe.webhooks.constructEvent((req as any).rawBody || req.body, sig, webhookSecret);
+      } else {
+        event = req.body;
+      }
+    } catch (err: any) {
+      console.error("[Stripe Webhook] Signature verification failed:", err.message);
+      return res.status(400).json({ message: `Webhook error: ${err.message}` });
+    }
+
+    try {
+      const subscription = event.data?.object;
+
+      switch (event.type) {
+        case "customer.subscription.updated":
+        case "customer.subscription.deleted": {
+          const customerId = subscription.customer as string;
+          const allUsers = await storage.getAllUsers();
+          const user = allUsers.find(u => u.stripeCustomerId === customerId);
+          if (!user) break;
+
+          let status = subscription.status;
+          if (status === "trialing") status = "trial";
+          else if (status === "active") status = "active";
+          else if (status === "past_due") status = "past_due";
+          else if (status === "canceled" || status === "unpaid") status = "canceled";
+
+          await storage.updateUserStripe(user.id, {
+            stripeSubscriptionId: subscription.id,
+            stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            stripeCancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
+            subscriptionStatus: status,
+          });
+          break;
+        }
+
+        case "invoice.payment_failed": {
+          const customerId = subscription.customer as string;
+          const allUsers = await storage.getAllUsers();
+          const user = allUsers.find(u => u.stripeCustomerId === customerId);
+          if (user) {
+            await storage.updateUserStripe(user.id, { subscriptionStatus: "past_due" });
+          }
+          break;
+        }
+
+        case "invoice.payment_succeeded": {
+          const customerId = subscription.customer as string;
+          const allUsers = await storage.getAllUsers();
+          const user = allUsers.find(u => u.stripeCustomerId === customerId);
+          if (user && user.subscriptionStatus === "past_due") {
+            await storage.updateUserStripe(user.id, { subscriptionStatus: "active" });
+          }
+          break;
+        }
+      }
+
+      res.json({ received: true });
+    } catch (err: any) {
+      console.error("[Stripe Webhook] Handler error:", err);
+      res.status(500).json({ message: "Webhook handler error" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
