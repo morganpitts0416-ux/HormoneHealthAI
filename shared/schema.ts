@@ -496,6 +496,22 @@ export const insertUserSchema = createInsertSchema(users).omit({
   updatedAt: true,
 });
 
+// ─── BAA Signatures ────────────────────────────────────────────────────────────
+
+export const baaSignatures = pgTable("baa_signatures", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").references(() => users.id, { onDelete: "cascade" }).notNull(),
+  signedAt: timestamp("signed_at").defaultNow().notNull(),
+  signatureName: varchar("signature_name", { length: 255 }).notNull(),
+  ipAddress: varchar("ip_address", { length: 100 }),
+  userAgent: text("user_agent"),
+  baaVersion: varchar("baa_version", { length: 20 }).notNull().default("1.0"),
+});
+
+export const insertBaaSignatureSchema = createInsertSchema(baaSignatures).omit({ id: true, signedAt: true });
+export type InsertBaaSignature = z.infer<typeof insertBaaSignatureSchema>;
+export type BaaSignature = typeof baaSignatures.$inferSelect;
+
 export type InsertUser = z.infer<typeof insertUserSchema>;
 export type User = typeof users.$inferSelect;
 

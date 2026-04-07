@@ -120,6 +120,66 @@ interface MessagingSettings {
   webhookUrl: string | null;
 }
 
+// ── BAA status card ───────────────────────────────────────────────────────────
+
+interface BaaStatus {
+  signed: boolean;
+  signedAt: string | null;
+  signatureName: string | null;
+  baaVersion: string | null;
+}
+
+function BaaStatusCard() {
+  const { data: baa, isLoading } = useQuery<BaaStatus>({
+    queryKey: ["/api/baa/status"],
+  });
+
+  function formatDate(iso: string | null) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleString("en-US", {
+      year: "numeric", month: "long", day: "numeric",
+      hour: "numeric", minute: "2-digit",
+    });
+  }
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-base font-semibold">HIPAA Business Associate Agreement</CardTitle>
+          <a href="/baa" target="_blank" rel="noopener noreferrer">
+            <Button size="sm" variant="outline" data-testid="button-view-baa">
+              View Agreement
+            </Button>
+          </a>
+        </div>
+        <CardDescription>Required for HIPAA compliance · Version {baa?.baaVersion ?? "1.0"}</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="h-10 animate-pulse rounded-md bg-muted" />
+        ) : baa?.signed ? (
+          <div className="flex items-start gap-2 text-sm">
+            <CheckCircle className="h-4 w-4 mt-0.5 shrink-0 text-green-600 dark:text-green-400" />
+            <div>
+              <p className="font-medium">Signed by <span className="italic">{baa.signatureName}</span></p>
+              <p className="text-muted-foreground text-xs mt-0.5">{formatDate(baa.signedAt)}</p>
+              <p className="text-muted-foreground text-xs mt-0.5">
+                Electronically signed · Recorded on file · ESIGN Act compliant
+              </p>
+            </div>
+          </div>
+        ) : (
+          <div className="flex items-center gap-2 text-sm text-orange-600 dark:text-orange-400">
+            <AlertTriangle className="h-4 w-4 shrink-0" />
+            <span>BAA not yet signed. You will be prompted to sign on next login.</span>
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ── Billing status card ───────────────────────────────────────────────────────
 
 interface BillingStatus {
@@ -970,6 +1030,9 @@ export default function Account() {
 
         {/* Clinical Preferences — clinicians only */}
         {!isStaff && <PreferencesPanel />}
+
+        {/* BAA Status */}
+        {!isStaff && <BaaStatusCard />}
 
         {/* Billing & Subscription */}
         {!isStaff && <BillingCard onNavigate={() => setLocation("/billing")} />}

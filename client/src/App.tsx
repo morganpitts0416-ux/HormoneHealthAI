@@ -32,6 +32,7 @@ import BillingPage from "@/pages/billing";
 import PrivacyPolicy from "@/pages/privacy";
 import TermsOfService from "@/pages/terms";
 import BusinessAssociateAgreement from "@/pages/baa";
+import { BaaGate } from "@/components/baa-gate";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
 import { GlobalLoadingProvider } from "@/hooks/use-global-loading";
 import { GlobalLoadingOverlay } from "@/components/global-loading-overlay";
@@ -56,10 +57,10 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   if (!user) return null;
   return (
-    <>
+    <BaaGate>
       <SessionTimeoutModal />
       <Component />
-    </>
+    </BaaGate>
   );
 }
 

@@ -45,6 +45,10 @@ export interface IStorage {
   clearPasswordResetToken(userId: number): Promise<void>;
   updatePassword(userId: number, passwordHash: string): Promise<void>;
 
+  // BAA e-signatures
+  getBaaSignature(userId: number): Promise<schema.BaaSignature | undefined>;
+  createBaaSignature(data: schema.InsertBaaSignature): Promise<schema.BaaSignature>;
+
   // Stripe billing
   updateUserStripe(id: number, data: {
     stripeCustomerId?: string;
@@ -283,6 +287,24 @@ export class DbStorage implements IStorage {
       .update(schema.users)
       .set({ ...data, updatedAt: new Date() })
       .where(eq(schema.users.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async getBaaSignature(userId: number): Promise<schema.BaaSignature | undefined> {
+    const result = await db
+      .select()
+      .from(schema.baaSignatures)
+      .where(eq(schema.baaSignatures.userId, userId))
+      .orderBy(schema.baaSignatures.signedAt)
+      .limit(1);
+    return result[0];
+  }
+
+  async createBaaSignature(data: schema.InsertBaaSignature): Promise<schema.BaaSignature> {
+    const result = await db
+      .insert(schema.baaSignatures)
+      .values(data)
       .returning();
     return result[0];
   }
