@@ -566,6 +566,13 @@ function EncounterEditor({
 
   // Form state
   const [patientId, setPatientId] = useState<string>(encounter?.patientId?.toString() ?? initialPatientId ?? "");
+
+  // Inline new-patient form state
+  const [showNewPatient, setShowNewPatient] = useState(false);
+  const [npFirst, setNpFirst] = useState("");
+  const [npLast, setNpLast] = useState("");
+  const [npGender, setNpGender] = useState("male");
+  const [npDob, setNpDob] = useState("");
   const [visitDate, setVisitDate] = useState<string>(
     encounter ? format(new Date(encounter.visitDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd")
   );
@@ -621,6 +628,33 @@ function EncounterEditor({
       return res.json();
     },
     enabled: !!selectedPatientId,
+  });
+
+  // Create new patient inline from encounter form
+  const createPatientMutation = useMutation({
+    mutationFn: async () => {
+      if (!npFirst.trim() || !npLast.trim()) throw new Error("First and last name are required");
+      const body: Record<string, unknown> = {
+        firstName: npFirst.trim(),
+        lastName: npLast.trim(),
+        gender: npGender,
+      };
+      if (npDob) body.dateOfBirth = new Date(npDob).toISOString();
+      const res = await apiRequest("POST", "/api/patients", body);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message ?? "Failed to create patient");
+      }
+      return res.json();
+    },
+    onSuccess: (newPatient) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients/search"] });
+      setPatientId(newPatient.id.toString());
+      setShowNewPatient(false);
+      setNpFirst(""); setNpLast(""); setNpGender("male"); setNpDob("");
+      toast({ title: "Patient added", description: `${newPatient.firstName} ${newPatient.lastName} has been created and selected.` });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Could not create patient", description: e.message }),
   });
 
   // Save / create encounter
@@ -1044,7 +1078,22 @@ function EncounterEditor({
           <>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
               <div>
-                <Label htmlFor="patient-select" className="text-xs font-medium mb-1.5 block">Patient *</Label>
+                <div className="flex items-center justify-between mb-1.5">
+                  <Label htmlFor="patient-select" className="text-xs font-medium">Patient *</Label>
+                  {!initialPatientId && !encounter && (
+                    <button
+                      type="button"
+                      onClick={() => setShowNewPatient(v => !v)}
+                      className={`flex items-center gap-1 text-xs font-medium transition-colors ${showNewPatient ? "text-muted-foreground" : "text-primary hover:text-primary/80"}`}
+                      data-testid="button-toggle-new-patient"
+                    >
+                      {showNewPatient
+                        ? <><X className="w-3 h-3" />Cancel</>
+                        : <><Plus className="w-3 h-3" />New Patient</>}
+                    </button>
+                  )}
+                </div>
+
                 {/* When opened from a patient profile, lock the patient field */}
                 {initialPatientId && !encounter ? (
                   <div className="flex items-center gap-2 h-9 px-3 border rounded-md bg-muted/30 text-sm">
@@ -1059,6 +1108,67 @@ function EncounterEditor({
                     >
                       <ExternalLink className="w-3 h-3" />Profile
                     </button>
+                  </div>
+                ) : showNewPatient ? (
+                  /* ── Inline new-patient form ── */
+                  <div className="rounded-md border bg-muted/20 p-3 space-y-3">
+                    <p className="text-[11px] font-semibold uppercase tracking-wide text-muted-foreground">New Patient</p>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs mb-1 block">First Name *</Label>
+                        <Input
+                          value={npFirst}
+                          onChange={e => setNpFirst(e.target.value)}
+                          placeholder="First"
+                          data-testid="input-new-patient-first"
+                          autoFocus
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs mb-1 block">Last Name *</Label>
+                        <Input
+                          value={npLast}
+                          onChange={e => setNpLast(e.target.value)}
+                          placeholder="Last"
+                          data-testid="input-new-patient-last"
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-2 gap-2">
+                      <div>
+                        <Label className="text-xs mb-1 block">Date of Birth</Label>
+                        <Input
+                          type="date"
+                          value={npDob}
+                          onChange={e => setNpDob(e.target.value)}
+                          data-testid="input-new-patient-dob"
+                        />
+                      </div>
+                      <div>
+                        <Label className="text-xs mb-1 block">Biological Sex *</Label>
+                        <Select value={npGender} onValueChange={setNpGender}>
+                          <SelectTrigger data-testid="select-new-patient-gender">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="male">Male</SelectItem>
+                            <SelectItem value="female">Female</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
+                    </div>
+                    <div className="flex gap-2 pt-1">
+                      <Button
+                        type="button"
+                        size="sm"
+                        onClick={() => createPatientMutation.mutate()}
+                        disabled={createPatientMutation.isPending || !npFirst.trim() || !npLast.trim()}
+                        data-testid="button-create-patient"
+                        className="flex-1"
+                      >
+                        {createPatientMutation.isPending ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Creating…</> : <><Plus className="w-3 h-3 mr-1.5" />Add Patient</>}
+                      </Button>
+                    </div>
                   </div>
                 ) : (
                   <Select
