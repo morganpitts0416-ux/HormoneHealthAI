@@ -45,6 +45,15 @@ export interface IStorage {
   clearPasswordResetToken(userId: number): Promise<void>;
   updatePassword(userId: number, passwordHash: string): Promise<void>;
 
+  // Stripe billing
+  updateUserStripe(id: number, data: {
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    stripeCurrentPeriodEnd?: Date | null;
+    stripeCancelAtPeriodEnd?: boolean;
+    subscriptionStatus?: string;
+  }): Promise<User | undefined>;
+
   // Admin operations
   getAllUsers(): Promise<User[]>;
   promoteToAdmin(id: number): Promise<User | undefined>;
@@ -270,6 +279,21 @@ export class DbStorage implements IStorage {
   }
 
   async updateUserAdmin(id: number, data: Partial<Pick<User, 'subscriptionStatus' | 'role' | 'notes'>>): Promise<User | undefined> {
+    const result = await db
+      .update(schema.users)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.users.id, id))
+      .returning();
+    return result[0];
+  }
+
+  async updateUserStripe(id: number, data: {
+    stripeCustomerId?: string;
+    stripeSubscriptionId?: string;
+    stripeCurrentPeriodEnd?: Date | null;
+    stripeCancelAtPeriodEnd?: boolean;
+    subscriptionStatus?: string;
+  }): Promise<User | undefined> {
     const result = await db
       .update(schema.users)
       .set({ ...data, updatedAt: new Date() })

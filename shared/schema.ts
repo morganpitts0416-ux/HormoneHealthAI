@@ -465,6 +465,11 @@ export const users = pgTable("users", {
   // accounts keep full access when payment is added later. New self-registered users
   // can be defaulted to 'trial' at that point without affecting anyone already here.
   subscriptionStatus: varchar("subscription_status", { length: 30 }).notNull().default("active"),
+  // Stripe billing
+  stripeCustomerId: varchar("stripe_customer_id", { length: 100 }),
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 100 }),
+  stripeCurrentPeriodEnd: timestamp("stripe_current_period_end"),
+  stripeCancelAtPeriodEnd: boolean("stripe_cancel_at_period_end").notNull().default(false),
   notes: text("notes"), // Internal admin notes about this account
   // Password reset / invite tokens
   passwordResetToken: varchar("password_reset_token", { length: 255 }),
