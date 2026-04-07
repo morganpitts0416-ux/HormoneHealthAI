@@ -377,3 +377,40 @@
 .pipeline-step-active {
   border-color: hsl(var(--primary) / 0.4);
 }
+
+/* ── ReAlign Global Loading Overlay Animations ───────────────────────────── */
+@keyframes realign-breathe {
+  0%, 100% { transform: scale(1); opacity: 0.88; }
+  50%       { transform: scale(1.07); opacity: 1; }
+}
+
+@keyframes realign-orbit-cw {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(360deg); }
+}
+
+@keyframes realign-orbit-ccw {
+  from { transform: rotate(0deg); }
+  to   { transform: rotate(-360deg); }
+}
+
+@keyframes realign-dot-fade {
+  0%, 100% { opacity: 0.3; }
+  50%       { opacity: 1; }
+}
+
+.realign-breathe {
+  animation: realign-breathe 3s ease-in-out infinite;
+}
+
+.realign-orbit-cw {
+  animation: realign-orbit-cw 3.5s linear infinite;
+}
+
+.realign-orbit-ccw {
+  animation: realign-orbit-ccw 5.5s linear infinite;
+}
+
+.realign-dot-pulse {
+  animation: realign-dot-fade 1.6s ease-in-out infinite;
+}

@@ -28,6 +28,8 @@ import PortalMessages from "@/pages/portal/messages";
 import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
+import { GlobalLoadingProvider } from "@/hooks/use-global-loading";
+import { GlobalLoadingOverlay } from "@/components/global-loading-overlay";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -151,11 +153,14 @@ function FaviconSpinner() {
 function App() {
   return (
     <QueryClientProvider client={queryClient}>
-      <TooltipProvider>
-        <FaviconSpinner />
-        <Toaster />
-        <Router />
-      </TooltipProvider>
+      <GlobalLoadingProvider>
+        <TooltipProvider>
+          <FaviconSpinner />
+          <GlobalLoadingOverlay />
+          <Toaster />
+          <Router />
+        </TooltipProvider>
+      </GlobalLoadingProvider>
     </QueryClientProvider>
   );
 }
