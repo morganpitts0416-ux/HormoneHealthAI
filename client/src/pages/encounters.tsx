@@ -612,6 +612,31 @@ function EncounterEditor({
   const [copiedSoap, setCopiedSoap] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
 
+  // Sync JSONB states when detail fetch arrives after initial mount
+  // (list query strips these fields; detail fetch brings them in asynchronously)
+  useEffect(() => {
+    if (!encounter) return;
+    if (encounter.evidenceSuggestions && !evidenceOverlay) {
+      setEvidenceOverlay(encounter.evidenceSuggestions as EvidenceOverlay);
+    }
+    if (encounter.soapNote && !(soap as any).fullNote?.trim()) {
+      setSoap(initSoap(encounter.soapNote));
+    }
+    if (encounter.transcription && !transcription) {
+      setTranscription(encounter.transcription);
+    }
+    if (encounter.diarizedTranscript && !diarizedTranscript?.length) {
+      setDiarizedTranscript(encounter.diarizedTranscript as DiarizedUtterance[]);
+    }
+    if (encounter.clinicalExtraction && !clinicalExtraction) {
+      setClinicalExtraction(encounter.clinicalExtraction as ClinicalExtraction);
+    }
+    if (encounter.patternMatch && !patternMatch) {
+      setPatternMatch(encounter.patternMatch as PatternMatchResult);
+    }
+  }, [encounter?.id, encounter?.evidenceSuggestions, encounter?.soapNote, encounter?.transcription,
+      encounter?.diarizedTranscript, encounter?.clinicalExtraction, encounter?.patternMatch]);
+
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
     if (savedId) queryClient.invalidateQueries({ queryKey: ["/api/encounters", savedId] });
@@ -2431,6 +2456,19 @@ export default function EncountersPage() {
     queryKey: ["/api/encounters"],
   });
 
+  // Fetch full encounter detail (includes evidenceSuggestions, diarizedTranscript,
+  // clinicalExtraction, patternMatch — stripped from the list query for performance)
+  const { data: selectedEncounterDetail } = useQuery<ClinicalEncounter>({
+    queryKey: ["/api/encounters", selectedId],
+    queryFn: async () => {
+      const res = await fetch(`/api/encounters/${selectedId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load encounter");
+      return res.json();
+    },
+    enabled: selectedId !== null,
+    staleTime: 0, // always re-fetch when selected to catch updates from other devices
+  });
+
   const { data: patients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients/search"],
     queryFn: async () => {
@@ -2457,7 +2495,11 @@ export default function EncountersPage() {
     }
   }, [searchStr, encounters]);
 
-  const selectedEncounter = selectedId ? encounters.find(e => e.id === selectedId) ?? null : null;
+  // Merge list entry (has patientName) with detail fetch (has JSONB columns: evidenceSuggestions, etc.)
+  const selectedEncounterBase = selectedId ? encounters.find(e => e.id === selectedId) ?? null : null;
+  const selectedEncounter: EncounterWithPatient | null = selectedEncounterBase && selectedEncounterDetail
+    ? { ...selectedEncounterDetail, patientName: selectedEncounterBase.patientName } as EncounterWithPatient
+    : selectedEncounterBase;
   const showEditor = isNew || selectedId !== null;
 
   const filtered = encounters.filter(e => {
