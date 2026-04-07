@@ -3775,8 +3775,67 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
             ? drawDate.toLocaleDateString("en-US", { timeZone: "UTC", month: "short", day: "numeric", year: "numeric" })
             : "Unknown date";
 
+          // ── Build clinical interpretation context from stored interpretationResult ──
+          const interp = labResult.interpretationResult as any;
+          const interpSections: string[] = [];
+
+          // 1. Red flags — always include, highest priority
+          if (interp?.redFlags?.length) {
+            const flagLines = interp.redFlags
+              .map((f: any) => `  ⚑ [${(f.severity ?? "WARNING").toUpperCase()}] ${f.marker}: ${f.message}`)
+              .join("\n");
+            interpSections.push(`RED FLAGS (require immediate attention):\n${flagLines}`);
+          }
+
+          // 2. Per-marker clinical status — only abnormal/critical/borderline markers
+          if (interp?.interpretations?.length) {
+            const notable = interp.interpretations.filter(
+              (i: any) => i.status && i.status !== "normal"
+            );
+            if (notable.length) {
+              const notableLines = notable
+                .map((i: any) => {
+                  const rec = i.recommendation ? ` → ${i.recommendation}` : "";
+                  return `  ${i.marker} [${i.status?.toUpperCase()}]: ${i.interpretation ?? ""}${rec}`;
+                })
+                .join("\n");
+              interpSections.push(`NOTABLE LAB FINDINGS (non-normal status):\n${notableLines}`);
+            }
+          }
+
+          // 3. Insulin resistance phenotype
+          if (interp?.insulinResistance?.detected) {
+            const ir = interp.insulinResistance;
+            const phenoNames = ir.phenotypes?.map((p: any) => p.name).join(", ") ?? "unspecified phenotype";
+            interpSections.push(
+              `INSULIN RESISTANCE SCREENING: Likely detected — ${phenoNames}. Likelihood: ${ir.likelihood ?? "moderate"}.`
+            );
+          }
+
+          // 4. PREVENT cardiovascular risk
+          if (interp?.preventRisk) {
+            const pr = interp.preventRisk;
+            const riskLines: string[] = [];
+            if (pr.tenYearCVD != null) riskLines.push(`10-yr CVD risk: ${pr.tenYearCVD}%`);
+            if (pr.thirtyYearCVD != null) riskLines.push(`30-yr CVD risk: ${pr.thirtyYearCVD}%`);
+            if (pr.tenYearASCVD != null) riskLines.push(`10-yr ASCVD risk: ${pr.tenYearASCVD}%`);
+            if (pr.riskCategory) riskLines.push(`Category: ${pr.riskCategory}`);
+            if (riskLines.length) {
+              interpSections.push(`PREVENT CARDIOVASCULAR RISK (2023 AHA):\n  ${riskLines.join(", ")}`);
+            }
+          }
+
+          // 5. hs-CRP interpretation
+          if (interp?.hsCrpInterpretation) {
+            interpSections.push(`hs-CRP RISK STRATIFICATION: ${interp.hsCrpInterpretation}`);
+          }
+
+          const clinicalInterpContext = interpSections.length
+            ? `\n\nCLINICAL INTERPRETATION (computed from linked labs):\n${interpSections.join("\n\n")}`
+            : "";
+
           labContext = labLines
-            ? `\n\nLINKED LAB RESULTS (${genderLabel} panel, drawn ${dateLabel}):\n${labLines}`
+            ? `\n\nLINKED LAB RESULTS (${genderLabel} panel, drawn ${dateLabel}):\n${labLines}${clinicalInterpContext}`
             : "";
         }
       }
