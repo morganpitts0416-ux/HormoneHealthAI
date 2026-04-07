@@ -22,6 +22,7 @@ import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult, PatternMatchResult, PatternMatch } from "@shared/schema";
+import { useGlobalLoading } from "@/hooks/use-global-loading";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -787,6 +788,36 @@ function EncounterEditor({
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
   });
+
+  // ── Global loading overlay sync ───────────────────────────────────────────
+  const { setLoading: setGlobalLoading, clearLoading: clearGlobalLoading } = useGlobalLoading();
+
+  useEffect(() => {
+    if (recorderState === "transcribing") {
+      setGlobalLoading("Transcribing audio…");
+    } else if (autoGenerating !== null) {
+      setGlobalLoading("Analyzing encounter…");
+    } else if (soapMutation.isPending) {
+      setGlobalLoading("Generating SOAP note…");
+    } else if (summaryMutation.isPending) {
+      setGlobalLoading("Generating patient summary…");
+    } else if (pipelineLoading === "normalizing") {
+      setGlobalLoading("Normalizing transcript…");
+    } else if (pipelineLoading === "extracting") {
+      setGlobalLoading("Extracting clinical facts…");
+    } else if (pipelineLoading === "matching") {
+      setGlobalLoading("Identifying clinical patterns…");
+    } else if (pipelineLoading === "evidence") {
+      setGlobalLoading("Searching clinical evidence…");
+    } else if (pipelineLoading === "validating") {
+      setGlobalLoading("Validating SOAP note…");
+    } else {
+      clearGlobalLoading();
+    }
+  }, [recorderState, autoGenerating, soapMutation.isPending, summaryMutation.isPending, pipelineLoading]);
+
+  // Ensure overlay clears on unmount
+  useEffect(() => () => { clearGlobalLoading(); }, []);
 
   // Save patient summary edits
   const saveSummaryMutation = useMutation({
