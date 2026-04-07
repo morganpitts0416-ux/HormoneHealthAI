@@ -3953,6 +3953,20 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
             interpSections.push(`hs-CRP RISK STRATIFICATION: ${interp.hsCrpInterpretation}`);
           }
 
+          // 6. Supplement recommendations from lab evaluation — always include so SOAP CARE PLAN documents them
+          const rawSupplements: any[] = interp?.supplements ?? [];
+          if (rawSupplements.length) {
+            const suppLines = rawSupplements.map((s: any) => {
+              const name = s.name ?? s.productName ?? "Unnamed supplement";
+              const dose = s.dosage ?? s.dose ?? "";
+              const reason = s.reason ?? s.rationale ?? s.indication ?? "";
+              return `  • ${name}${dose ? ` — ${dose}` : ""}${reason ? ` (${reason})` : ""}`;
+            }).join("\n");
+            interpSections.push(
+              `SUPPLEMENT RECOMMENDATIONS (from linked lab evaluation — document in CARE PLAN):\n${suppLines}\nNOTE: These supplements were clinically indicated by the lab evaluation and/or discussed in the transcript. They MUST be listed in the CARE PLAN section of the SOAP note.`
+            );
+          }
+
           const clinicalInterpContext = interpSections.length
             ? `\n\nCLINICAL INTERPRETATION (computed from linked labs):\n${interpSections.join("\n\n")}`
             : "";
@@ -4142,7 +4156,14 @@ ASSESSMENT/PLAN
    - Plan: [specific medications with dose/frequency, monitoring, referrals, patient education]
 
 CARE PLAN
-[All active management items including labs ordered, medications adjusted, lifestyle counseling]
+[All active management items in a clear, numbered list that a patient could read and understand their complete plan from this visit. Include:
+- All medications continued, adjusted, or started (name, dose, frequency)
+- All supplements recommended (from lab evaluation context or discussed in transcript) — list each by name with dosage and purpose. Example: "Omega-3 Fish Oil 2g daily — to support cardiovascular health and reduce triglycerides"
+- Labs ordered
+- Lifestyle recommendations discussed (diet, exercise, sleep, etc.)
+- Patient education points covered
+- Any referrals made
+Write this section as a patient-readable action list — specific, named, and complete. "Continue treatment" is NOT acceptable — every item must be explicit.]
 
 FOLLOW-UP
 [Specific interval with clinical rationale — e.g., "Return in 8 weeks for weight check and GLP-1 dose evaluation"]`;
@@ -4190,6 +4211,33 @@ Generate the SOAP note. Flag anything uncertain in needs_clinician_review. Retur
 
       const soap = encounter.soapNote as any;
 
+      // Pull the full CARE PLAN text from the SOAP note (stored in fullNote)
+      const fullNote: string = soap.fullNote ?? "";
+      const carePlanMatch = fullNote.match(/CARE PLAN\s*([\s\S]*?)(?=\nFOLLOW-UP|\nSOAP NOTE END|$)/i);
+      const carePlanText = carePlanMatch ? carePlanMatch[1].trim() : (soap.plan ?? "");
+
+      const followUpMatch = fullNote.match(/FOLLOW-UP\s*([\s\S]*?)$/i);
+      const followUpText = followUpMatch ? followUpMatch[1].trim() : "";
+
+      // Pull supplement recommendations from linked lab result
+      let supplementContext = "";
+      if (encounter.linkedLabResultId) {
+        const labResult = await storage.getLabResult(encounter.linkedLabResultId);
+        if (labResult) {
+          const interp = labResult.interpretationResult as any;
+          const rawSupps: any[] = interp?.supplements ?? [];
+          if (rawSupps.length) {
+            const suppLines = rawSupps.map((s: any) => {
+              const name = s.name ?? s.productName ?? "Supplement";
+              const dose = s.dosage ?? s.dose ?? "";
+              const reason = s.reason ?? s.rationale ?? s.indication ?? "";
+              return `• ${name}${dose ? ` (${dose})` : ""}${reason ? ` — ${reason}` : ""}`;
+            }).join("\n");
+            supplementContext = `\n\nSUPPLEMENT RECOMMENDATIONS (from lab evaluation):\n${suppLines}`;
+          }
+        }
+      }
+
       const openai = new OpenAI({
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
@@ -4200,7 +4248,15 @@ Generate the SOAP note. Flag anything uncertain in needs_clinician_review. Retur
         messages: [
           {
             role: "system",
-            content: `You are a healthcare communication specialist. Transform clinical SOAP note content into a warm, clear, patient-friendly visit summary. Write in second person ("you", "your"). Avoid medical jargon — explain terms if used. Keep it encouraging and empowering. Structure as: a brief intro paragraph, then "What We Discussed", "Your Care Plan", and "Next Steps". Do not include information from Objective findings unless patient-relevant.`,
+            content: `You are a healthcare communication specialist writing a patient-facing visit summary. 
+
+CRITICAL REQUIREMENTS:
+1. Write in second person ("you", "your"). Warm, clear, and encouraging tone.
+2. Avoid medical jargon — if a medical term is necessary, explain it in plain language immediately after.
+3. The "Your Care Plan" section MUST be specific and actionable — list every item by name. If supplements were recommended, list each supplement by name with its dosage and a plain-language explanation of why it was recommended. If medications were discussed, list them specifically. Never write vague filler like "adjusting your current treatment" or "we may consider options."
+4. Every item in the care plan must be something the patient could go home and act on immediately.
+5. Structure: brief warm intro paragraph → "**What We Discussed**" → "**Your Care Plan**" → "**Next Steps**"
+6. The care plan should be a numbered or bulleted list — concrete, named items only. No vague or generic statements.`,
           },
           {
             role: "user",
@@ -4208,16 +4264,20 @@ Generate the SOAP note. Flag anything uncertain in needs_clinician_review. Retur
 Chief Complaint: ${encounter.chiefComplaint || "General visit"}
 Date: ${new Date(encounter.visitDate).toLocaleDateString()}
 
-Assessment:
+SOAP Assessment:
 ${soap.assessment || ""}
 
-Plan:
-${soap.plan || ""}
+CARE PLAN (from SOAP note — include ALL items in patient summary):
+${carePlanText}
 
-Subjective:
+Follow-Up Plan:
+${followUpText}
+
+Subjective (what patient reported):
 ${soap.subjective || ""}
+${supplementContext}
 
-Generate a warm, plain-language patient visit summary that the clinician can review and publish to the patient portal.`,
+Generate a warm, plain-language patient visit summary. The "Your Care Plan" section must list every specific supplement, medication, lifestyle change, and lab follow-up by name — never use vague or generic language. This summary will be published directly to the patient portal for the patient to read and follow.`,
           },
         ],
       });
