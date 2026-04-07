@@ -7,7 +7,7 @@ import {
   Sparkles, Send, CheckCircle2, Circle, AlertCircle, Trash2,
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
   ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
-  TriangleAlert, ExternalLink, Square, MicOff,
+  TriangleAlert, ExternalLink, Square, MicOff, ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -1494,7 +1494,50 @@ function EncounterEditor({
                   </div>
                 )}
 
-                {/* Suggestion cards */}
+                {/* ── Guideline Validations ──────────────────────────────── */}
+                {(evidenceOverlay.guideline_validations?.length ?? 0) > 0 && (
+                  <div className="space-y-2">
+                    <div className="flex items-center gap-2">
+                      <ShieldCheck className="w-3.5 h-3.5 text-primary" />
+                      <h4 className="text-xs font-semibold uppercase tracking-wide text-muted-foreground">Guideline Validation</h4>
+                      <span className="text-[10px] text-muted-foreground">— plan checked against applicable clinical guidelines</span>
+                    </div>
+                    {evidenceOverlay.guideline_validations!.map((gv, gi) => {
+                      const statusConfig: Record<string, { color: string; icon: React.ReactNode; label: string }> = {
+                        aligned:       { color: "border-emerald-200 bg-emerald-50/60", icon: <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0 mt-0.5" />, label: "Aligned" },
+                        gap:           { color: "border-amber-200 bg-amber-50/60",    icon: <TriangleAlert className="w-3.5 h-3.5 text-amber-600 flex-shrink-0 mt-0.5" />, label: "Gap identified" },
+                        conflict:      { color: "border-red-200 bg-red-50/60",        icon: <AlertCircle className="w-3.5 h-3.5 text-red-600 flex-shrink-0 mt-0.5" />,    label: "Potential conflict" },
+                        not_addressed: { color: "border-border bg-muted/20",          icon: <Circle className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0 mt-0.5" />, label: "Not addressed" },
+                      };
+                      const cfg = statusConfig[gv.current_plan_status] ?? statusConfig.not_addressed;
+                      return (
+                        <div key={gi} className={`rounded-md border px-4 py-3 space-y-1.5 ${cfg.color}`}>
+                          <div className="flex items-start gap-2">
+                            {cfg.icon}
+                            <div className="flex-1 min-w-0">
+                              <div className="flex items-center gap-2 flex-wrap">
+                                <span className="text-xs font-semibold text-foreground/90">{gv.guideline}</span>
+                                <Badge variant="outline" className={`text-[10px] ${
+                                  gv.current_plan_status === "aligned" ? "border-emerald-300 text-emerald-700" :
+                                  gv.current_plan_status === "gap" ? "border-amber-300 text-amber-700" :
+                                  gv.current_plan_status === "conflict" ? "border-red-300 text-red-700" :
+                                  "text-muted-foreground"
+                                }`}>{cfg.label}</Badge>
+                                {gv.clinician_decision_needed && (
+                                  <Badge variant="outline" className="text-[10px] border-blue-300 text-blue-700">Decision needed</Badge>
+                                )}
+                              </div>
+                              <p className="text-xs text-foreground/70 mt-0.5 leading-snug"><span className="font-medium">Finding:</span> {gv.finding}</p>
+                              <p className="text-xs text-foreground/70 leading-snug"><span className="font-medium">Guideline recommends:</span> {gv.recommendation}</p>
+                            </div>
+                          </div>
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* ── Evidence Suggestion Cards ───────────────────────────── */}
                 {evidenceOverlay.suggestions?.length === 0 ? (
                   <div className="rounded-md border border-dashed p-6 text-center">
                     <p className="text-sm text-muted-foreground">No evidence suggestions with verified citations were returned. Try regenerating or adding more clinical context in the Transcript tab.</p>
@@ -1509,13 +1552,32 @@ function EncounterEditor({
                         mixed: "text-orange-700 bg-orange-50 border-orange-200",
                         insufficient: "text-muted-foreground bg-muted border-border",
                       };
+                      const guidelineClassColors: Record<string, string> = {
+                        "I":   "bg-emerald-100 text-emerald-800 border-emerald-300",
+                        "IIa": "bg-blue-100 text-blue-800 border-blue-300",
+                        "IIb": "bg-sky-100 text-sky-800 border-sky-300",
+                        "III": "bg-muted text-muted-foreground border-border",
+                      };
+                      const levelColors: Record<string, string> = {
+                        A: "bg-violet-100 text-violet-800 border-violet-300",
+                        B: "bg-indigo-100 text-indigo-800 border-indigo-300",
+                        C: "bg-slate-100 text-slate-700 border-slate-300",
+                        E: "bg-muted text-muted-foreground border-border",
+                      };
+                      const alignmentConfig: Record<string, { color: string; label: string; icon: React.ReactNode }> = {
+                        aligned:          { color: "text-emerald-700", label: "Plan aligned", icon: <CheckCircle2 className="w-3 h-3" /> },
+                        gap_identified:   { color: "text-amber-700",   label: "Gap identified", icon: <TriangleAlert className="w-3 h-3" /> },
+                        potential_conflict: { color: "text-red-700",   label: "Potential conflict", icon: <AlertCircle className="w-3 h-3" /> },
+                        not_applicable:   { color: "text-muted-foreground", label: "Not applicable", icon: <Circle className="w-3 h-3" /> },
+                      };
                       const strengthColor = strengthColors[ev.strength_of_support] ?? strengthColors.insufficient;
+                      const alignCfg = ev.plan_alignment ? alignmentConfig[ev.plan_alignment] : null;
                       return (
                         <div key={i} className="rounded-md border p-4 space-y-3">
                           {/* Card header */}
                           <div className="flex items-start justify-between gap-3 flex-wrap">
                             <div className="flex-1 min-w-0">
-                              <div className="flex items-center gap-2 flex-wrap">
+                              <div className="flex items-center gap-2 flex-wrap mb-1">
                                 <h4 className="text-sm font-semibold">{ev.title}</h4>
                                 {ev.is_evidence_informed_consideration && (
                                   <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
@@ -1523,14 +1585,49 @@ function EncounterEditor({
                                   </Badge>
                                 )}
                               </div>
+                              {/* Guideline class + level of evidence badges */}
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                {ev.guideline_class && (
+                                  <span className={`inline-flex items-center text-[10px] font-bold px-1.5 py-0.5 rounded border ${guidelineClassColors[ev.guideline_class] ?? guidelineClassColors["III"]}`}>
+                                    Class {ev.guideline_class}
+                                  </span>
+                                )}
+                                {ev.level_of_evidence && (
+                                  <span className={`inline-flex items-center text-[10px] font-semibold px-1.5 py-0.5 rounded border ${levelColors[ev.level_of_evidence] ?? levelColors["E"]}`}>
+                                    Level {ev.level_of_evidence}
+                                  </span>
+                                )}
+                                <Badge variant="outline" className={`text-[10px] border ${strengthColor}`}>
+                                  {ev.strength_of_support ?? "unknown"} evidence
+                                </Badge>
+                              </div>
                             </div>
-                            <Badge variant="outline" className={`text-[10px] flex-shrink-0 border ${strengthColor}`}>
-                              {ev.strength_of_support ?? "unknown"} evidence
-                            </Badge>
+                            {/* Plan alignment indicator */}
+                            {alignCfg && (
+                              <div className={`flex items-center gap-1 text-[10px] font-semibold flex-shrink-0 ${alignCfg.color}`}>
+                                {alignCfg.icon}
+                                {alignCfg.label}
+                              </div>
+                            )}
                           </div>
 
                           {/* Summary */}
                           <p className="text-sm text-foreground/80 leading-relaxed">{ev.summary}</p>
+
+                          {/* Plan alignment note */}
+                          {ev.plan_alignment_note && ev.plan_alignment !== "not_applicable" && (
+                            <div className={`text-xs rounded px-3 py-2 flex items-start gap-1.5 ${
+                              ev.plan_alignment === "aligned" ? "bg-emerald-50 text-emerald-800" :
+                              ev.plan_alignment === "gap_identified" ? "bg-amber-50 text-amber-800" :
+                              ev.plan_alignment === "potential_conflict" ? "bg-red-50 text-red-800" :
+                              "bg-muted/30 text-muted-foreground"
+                            }`}>
+                              {ev.plan_alignment === "aligned" ? <CheckCircle2 className="w-3 h-3 flex-shrink-0 mt-0.5" /> :
+                               ev.plan_alignment === "gap_identified" ? <TriangleAlert className="w-3 h-3 flex-shrink-0 mt-0.5" /> :
+                               <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5" />}
+                              <span>{ev.plan_alignment_note}</span>
+                            </div>
+                          )}
 
                           {/* Relevance to visit */}
                           {ev.relevance_to_visit && (

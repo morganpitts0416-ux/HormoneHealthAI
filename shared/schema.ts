@@ -840,14 +840,27 @@ export type EvidenceSuggestion = {
   summary: string;
   relevance_to_visit: string;
   strength_of_support: "strong" | "moderate" | "limited" | "mixed" | "insufficient";
+  guideline_class?: "I" | "IIa" | "IIb" | "III";
+  level_of_evidence?: "A" | "B" | "C" | "E";
+  plan_alignment?: "aligned" | "gap_identified" | "potential_conflict" | "not_applicable";
+  plan_alignment_note?: string;
   cautions: string[];
   citations: EvidenceCitation[];
   is_evidence_informed_consideration?: boolean;
 };
 
+export type GuidelineValidation = {
+  guideline: string;
+  finding: string;
+  current_plan_status: "aligned" | "gap" | "conflict" | "not_addressed";
+  recommendation: string;
+  clinician_decision_needed: boolean;
+};
+
 export type EvidenceOverlay = {
   clinical_questions: string[];
   suggestions: EvidenceSuggestion[];
+  guideline_validations?: GuidelineValidation[];
   not_for_auto_insertion: true;
 };
 
