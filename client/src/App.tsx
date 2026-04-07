@@ -27,6 +27,10 @@ import PortalSupplements from "@/pages/portal/supplements";
 import PortalMessages from "@/pages/portal/messages";
 import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
+import Landing from "@/pages/landing";
+import PrivacyPolicy from "@/pages/privacy";
+import TermsOfService from "@/pages/terms";
+import BusinessAssociateAgreement from "@/pages/baa";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
 import { GlobalLoadingProvider } from "@/hooks/use-global-loading";
 import { GlobalLoadingOverlay } from "@/components/global-loading-overlay";
@@ -86,14 +90,26 @@ function RootRedirect() {
   const [, setLocation] = useLocation();
 
   useEffect(() => {
-    if (!isLoading) {
-      setLocation(user ? "/dashboard" : "/login");
+    if (!isLoading && user) {
+      setLocation("/dashboard");
     }
   }, [user, isLoading, setLocation]);
 
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f9f6f0" }}>
+        <div className="text-sm" style={{ color: "#9aaa84" }}>Loading…</div>
+      </div>
+    );
+  }
+
+  // Unauthenticated — show the marketing landing page
+  if (!user) return <Landing />;
+
+  // Authenticated — briefly shown while redirect fires
   return (
-    <div className="min-h-screen flex items-center justify-center bg-slate-50">
-      <div className="text-slate-400 text-sm">Loading...</div>
+    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f9f6f0" }}>
+      <div className="text-sm" style={{ color: "#9aaa84" }}>Redirecting…</div>
     </div>
   );
 }
@@ -102,6 +118,10 @@ function Router() {
   return (
     <Switch>
       <Route path="/" component={RootRedirect} />
+      <Route path="/home" component={Landing} />
+      <Route path="/privacy" component={PrivacyPolicy} />
+      <Route path="/terms" component={TermsOfService} />
+      <Route path="/baa" component={BusinessAssociateAgreement} />
       <Route path="/login" component={Login} />
       <Route path="/register" component={Register} />
       <Route path="/dashboard">
