@@ -87,15 +87,25 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   return <Component />;
 }
 
+// Returns true when the visitor is on the app subdomain (app.*)
+function isAppSubdomain() {
+  return window.location.hostname.startsWith("app.");
+}
+
 function RootRedirect() {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
+  const appSubdomain = isAppSubdomain();
 
   useEffect(() => {
-    if (!isLoading && user) {
+    if (isLoading) return;
+    if (user) {
       setLocation("/dashboard");
+    } else if (appSubdomain) {
+      // app.realignlabeval.com — unauthenticated users go straight to login
+      setLocation("/login");
     }
-  }, [user, isLoading, setLocation]);
+  }, [user, isLoading, appSubdomain, setLocation]);
 
   if (isLoading) {
     return (
@@ -105,15 +115,26 @@ function RootRedirect() {
     );
   }
 
-  // Unauthenticated — show the marketing landing page
-  if (!user) return <Landing />;
+  // app subdomain — briefly shown while redirect to /login fires
+  if (appSubdomain && !user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f9f6f0" }}>
+        <div className="text-sm" style={{ color: "#9aaa84" }}>Loading…</div>
+      </div>
+    );
+  }
 
-  // Authenticated — briefly shown while redirect fires
-  return (
-    <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f9f6f0" }}>
-      <div className="text-sm" style={{ color: "#9aaa84" }}>Redirecting…</div>
-    </div>
-  );
+  // Authenticated — briefly shown while redirect to /dashboard fires
+  if (user) {
+    return (
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f9f6f0" }}>
+        <div className="text-sm" style={{ color: "#9aaa84" }}>Redirecting…</div>
+      </div>
+    );
+  }
+
+  // Main domain — unauthenticated users see the marketing homepage
+  return <Landing />;
 }
 
 function Router() {
