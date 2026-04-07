@@ -1147,73 +1147,26 @@ export default function PortalDashboard() {
         {/* Clinical snapshot (trend insights) */}
         {!labsLoading && <ClinicalSnapshotSection labs={labs} />}
 
-        {/* Supplement protocol section */}
-        <section className="space-y-4">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div>
-              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>
-                Your Wellness Protocol
-              </h2>
-              {protocol?.publishedAt && (
-                <p className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>
-                  Updated {formatDate(protocol.publishedAt)}
-                  {protocol.clinicianName ? ` by ${protocol.clinicianName}` : ""}
-                </p>
-              )}
+        {/* Visit Summaries from clinician */}
+        {visitSummaries.length > 0 && (
+          <section className="space-y-3">
+            <div className="flex items-center gap-2">
+              <Stethoscope className="w-4 h-4" style={{ color: "#5a7040" }} />
+              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>My Visit Summaries</h2>
             </div>
-            {supplements.length > 0 && (
-              <div className="flex items-center gap-2">
-                <Badge variant="secondary" className="text-xs" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "none" }}>
-                  <Leaf className="w-3 h-3 mr-1" />
-                  Active
-                </Badge>
-                <Link href="/portal/supplements">
-                  <button className="text-xs flex items-center gap-0.5" style={{ color: "#7a8a64" }} data-testid="link-view-full-protocol">
-                    View all
-                    <ChevronRight className="w-3 h-3" />
-                  </button>
-                </Link>
-              </div>
-            )}
-          </div>
-
-          {protocolLoading ? (
-            <div className="rounded-xl p-8 text-center" style={{ backgroundColor: "#ffffff", border: "1px solid #ede8df" }}>
-              <p className="text-sm" style={{ color: "#7a8a64" }}>Loading your protocol…</p>
+            <div className="space-y-3">
+              {visitSummaries.map(vs => (
+                <PortalVisitSummaryCard key={vs.id} vs={vs} />
+              ))}
             </div>
-          ) : supplements.length === 0 ? (
-            <div className="rounded-xl p-8 text-center space-y-2" style={{ backgroundColor: "#ffffff", border: "1px solid #ede8df" }}>
-              <Sparkles className="w-7 h-7 mx-auto mb-3" style={{ color: "#c4b9a5" }} />
-              <p className="text-sm font-medium" style={{ color: "#1c2414" }}>Your protocol is being prepared</p>
-              <p className="text-sm leading-relaxed" style={{ color: "#7a8a64" }}>
-                Your care team will share your personalized supplement recommendations here after your lab results have been reviewed.
-              </p>
-            </div>
-          ) : (
-            <>
-              {highPriority.length > 0 && (
-                <div className="space-y-3">
-                  <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#7a8a64" }}>Priority</p>
-                  {highPriority.map((s, i) => <SupplementCard key={i} supplement={s} />)}
-                </div>
-              )}
-              {otherSupplements.length > 0 && (
-                <div className="space-y-3">
-                  {highPriority.length > 0 && (
-                    <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#7a8a64" }}>Also recommended</p>
-                  )}
-                  {otherSupplements.map((s, i) => <SupplementCard key={i} supplement={s} />)}
-                </div>
-              )}
-            </>
-          )}
-        </section>
+          </section>
+        )}
 
         {/* Lab visit history — all visits, clickable */}
         {labs.length > 0 && (
           <section className="space-y-4">
             <div className="flex items-center justify-between gap-2">
-              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>Your Health Journey</h2>
+              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>My Lab Evaluations</h2>
               <p className="text-xs" style={{ color: "#7a8a64" }}>Tap to view details</p>
             </div>
             <div className="space-y-2">
@@ -1276,20 +1229,67 @@ export default function PortalDashboard() {
           </section>
         )}
 
-        {/* Visit Summaries from clinician */}
-        {visitSummaries.length > 0 && (
-          <section className="space-y-3">
-            <div className="flex items-center gap-2">
-              <Stethoscope className="w-4 h-4" style={{ color: "#5a7040" }} />
-              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>My Visit Summaries</h2>
+        {/* Supplement protocol section */}
+        <section className="space-y-4">
+          <div className="flex items-center justify-between gap-3 flex-wrap">
+            <div>
+              <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>
+                Your Wellness Protocol
+              </h2>
+              {protocol?.publishedAt && (
+                <p className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>
+                  Updated {formatDate(protocol.publishedAt)}
+                  {protocol.clinicianName ? ` by ${protocol.clinicianName}` : ""}
+                </p>
+              )}
             </div>
-            <div className="space-y-3">
-              {visitSummaries.map(vs => (
-                <PortalVisitSummaryCard key={vs.id} vs={vs} />
-              ))}
+            {supplements.length > 0 && (
+              <div className="flex items-center gap-2">
+                <Badge variant="secondary" className="text-xs" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "none" }}>
+                  <Leaf className="w-3 h-3 mr-1" />
+                  Active
+                </Badge>
+                <Link href="/portal/supplements">
+                  <button className="text-xs flex items-center gap-0.5" style={{ color: "#7a8a64" }} data-testid="link-view-full-protocol">
+                    View all
+                    <ChevronRight className="w-3 h-3" />
+                  </button>
+                </Link>
+              </div>
+            )}
+          </div>
+
+          {protocolLoading ? (
+            <div className="rounded-xl p-8 text-center" style={{ backgroundColor: "#ffffff", border: "1px solid #ede8df" }}>
+              <p className="text-sm" style={{ color: "#7a8a64" }}>Loading your protocol…</p>
             </div>
-          </section>
-        )}
+          ) : supplements.length === 0 ? (
+            <div className="rounded-xl p-8 text-center space-y-2" style={{ backgroundColor: "#ffffff", border: "1px solid #ede8df" }}>
+              <Sparkles className="w-7 h-7 mx-auto mb-3" style={{ color: "#c4b9a5" }} />
+              <p className="text-sm font-medium" style={{ color: "#1c2414" }}>Your protocol is being prepared</p>
+              <p className="text-sm leading-relaxed" style={{ color: "#7a8a64" }}>
+                Your care team will share your personalized supplement recommendations here after your lab results have been reviewed.
+              </p>
+            </div>
+          ) : (
+            <>
+              {highPriority.length > 0 && (
+                <div className="space-y-3">
+                  <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#7a8a64" }}>Priority</p>
+                  {highPriority.map((s, i) => <SupplementCard key={i} supplement={s} />)}
+                </div>
+              )}
+              {otherSupplements.length > 0 && (
+                <div className="space-y-3">
+                  {highPriority.length > 0 && (
+                    <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#7a8a64" }}>Also recommended</p>
+                  )}
+                  {otherSupplements.map((s, i) => <SupplementCard key={i} supplement={s} />)}
+                </div>
+              )}
+            </>
+          )}
+        </section>
 
         {/* Saved Recipes */}
         {savedRecipesList.length > 0 && (
