@@ -3795,7 +3795,7 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
             if (notable.length) {
               const notableLines = notable
                 .map((i: any) => {
-                  const rec = i.recommendation ? ` → ${i.recommendation}` : "";
+                  const rec = i.recommendation ? `\n    [SUGGESTED — clinician must approve before charting: ${i.recommendation}]` : "";
                   return `  ${i.marker} [${i.status?.toUpperCase()}]: ${i.interpretation ?? ""}${rec}`;
                 })
                 .join("\n");
@@ -3929,6 +3929,15 @@ Do NOT fabricate specific data points not present in the transcript or provided 
 - Do NOT assign a definitive diagnosis if explicitly marked as uncertain — use "possible" or "working diagnosis"
 - Preserve all documented negatives (denied symptoms stay denied)
 - If uncertain, flag in needs_clinician_review
+
+CRITICAL — HANDLING [SUGGESTED] ITEMS FROM CLINICAL INTERPRETATION:
+Any item from the CLINICAL INTERPRETATION section that is labeled [SUGGESTED — clinician must approve before charting: ...] MUST be treated as follows:
+- Do NOT write the suggested action as a plan item, order, or clinical decision in the SOAP note body
+- Do NOT present it as something that was ordered, decided, or agreed upon
+- Instead, copy the suggestion verbatim into the "needs_clinician_review" array with a prefix: "SUGGESTED (awaiting clinician approval): ..."
+- The Plan section of the SOAP note must only contain actions explicitly discussed in the transcript or clearly within standard monitoring for the stated medications
+- The clinician will review and choose which suggestions to incorporate — the AI must not make that decision
+- Red flags (⚑) from the CLINICAL INTERPRETATION are factual findings and SHOULD be documented in the SOAP as "noted finding requiring clinician review" — but the response to a red flag (e.g., "hold dose", "order phlebotomy") is a [SUGGESTED] action unless the clinician stated it in the transcript
 
 Physical Exam: If no exam was performed, write: "Physical examination not performed at this encounter." — do NOT write "WNL" or "Normal" for unexamined systems.
 
