@@ -17,6 +17,7 @@ import {
   ArrowLeft, Save, CheckCircle, MessageSquare, Phone, BanIcon, Smartphone,
   Zap, Copy, Eye, EyeOff, Key, Globe, Info,
   Users, UserPlus, Trash2, ShieldAlert, Mail,
+  CreditCard, Clock, AlertTriangle, XCircle,
 } from "lucide-react";
 import { PreferencesPanel } from "@/components/preferences-panel";
 import { useToast } from "@/hooks/use-toast";
@@ -117,6 +118,103 @@ interface MessagingSettings {
   externalMessagingChannelId: string | null;
   externalMessagingWebhookSecret: string | null;
   webhookUrl: string | null;
+}
+
+// ── Billing status card ───────────────────────────────────────────────────────
+
+interface BillingStatus {
+  subscriptionStatus: string;
+  stripeSubscriptionId: string | null;
+  stripeCurrentPeriodEnd: string | null;
+  stripeCancelAtPeriodEnd: boolean;
+}
+
+function BillingCard({ onNavigate }: { onNavigate: () => void }) {
+  const { data: billing, isLoading } = useQuery<BillingStatus>({
+    queryKey: ["/api/billing/status"],
+  });
+
+  function formatDate(iso: string | null) {
+    if (!iso) return "—";
+    return new Date(iso).toLocaleDateString("en-US", { year: "numeric", month: "long", day: "numeric" });
+  }
+
+  function daysLeft(iso: string | null) {
+    if (!iso) return null;
+    const diff = new Date(iso).getTime() - Date.now();
+    return Math.max(0, Math.ceil(diff / 86400000));
+  }
+
+  const status = billing?.subscriptionStatus ?? "active";
+  const hasSubscription = !!billing?.stripeSubscriptionId;
+  const periodEnd = billing?.stripeCurrentPeriodEnd ?? null;
+  const cancelAtEnd = billing?.stripeCancelAtPeriodEnd ?? false;
+  const days = daysLeft(periodEnd);
+
+  const statusConfig: Record<string, { label: string; icon: React.ReactNode; color: string }> = {
+    trial:    { label: "Free Trial",   icon: <Clock className="h-3.5 w-3.5" />,         color: "text-blue-600 dark:text-blue-400" },
+    active:   { label: "Active",       icon: <CheckCircle className="h-3.5 w-3.5" />,    color: "text-green-600 dark:text-green-400" },
+    past_due: { label: "Past Due",     icon: <AlertTriangle className="h-3.5 w-3.5" />,  color: "text-orange-600 dark:text-orange-400" },
+    canceled: { label: "Canceled",     icon: <XCircle className="h-3.5 w-3.5" />,        color: "text-red-600 dark:text-red-400" },
+  };
+  const sc = statusConfig[status] ?? statusConfig["active"];
+
+  return (
+    <Card>
+      <CardHeader className="pb-3">
+        <div className="flex items-center justify-between gap-2 flex-wrap">
+          <CardTitle className="text-base font-semibold">Billing &amp; Subscription</CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={onNavigate}
+            data-testid="button-manage-billing"
+          >
+            <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+            Manage Billing
+          </Button>
+        </div>
+        <CardDescription>ClinIQ Clinical Intelligence Platform — $97/month</CardDescription>
+      </CardHeader>
+      <CardContent>
+        {isLoading ? (
+          <div className="h-12 animate-pulse rounded-md bg-muted" />
+        ) : (
+          <div className="space-y-3">
+            <div className="flex items-center gap-4 flex-wrap">
+              <div className="flex items-center gap-1.5 text-sm">
+                <span className={sc.color}>{sc.icon}</span>
+                <span className="font-medium">{sc.label}</span>
+              </div>
+              {hasSubscription && periodEnd && (
+                <span className="text-sm text-muted-foreground">
+                  {cancelAtEnd
+                    ? `Access ends ${formatDate(periodEnd)}`
+                    : status === "trial"
+                    ? `Trial ends in ${days} day${days !== 1 ? "s" : ""} · ${formatDate(periodEnd)}`
+                    : `Renews ${formatDate(periodEnd)}`}
+                </span>
+              )}
+              {!hasSubscription && (
+                <span className="text-sm text-muted-foreground">No payment method on file</span>
+              )}
+            </div>
+            {status === "past_due" && (
+              <p className="text-xs text-orange-600 dark:text-orange-400">
+                A payment failed. Visit the billing page to update your payment method.
+              </p>
+            )}
+            {!hasSubscription && (
+              <Button size="sm" onClick={onNavigate} data-testid="button-start-subscription">
+                <CreditCard className="h-3.5 w-3.5 mr-1.5" />
+                Start Free Trial
+              </Button>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export default function Account() {
@@ -873,18 +971,8 @@ export default function Account() {
         {/* Clinical Preferences — clinicians only */}
         {!isStaff && <PreferencesPanel />}
 
-        {/* Billing placeholder */}
-        <Card className="border-slate-200 border-dashed">
-          <CardHeader>
-            <CardTitle className="text-base text-slate-600">Billing & Subscription</CardTitle>
-            <CardDescription>Payment management coming soon</CardDescription>
-          </CardHeader>
-          <CardContent>
-            <p className="text-sm text-slate-400">
-              Subscription billing will be available in a future update. You will be able to manage your plan and payment method here.
-            </p>
-          </CardContent>
-        </Card>
+        {/* Billing & Subscription */}
+        {!isStaff && <BillingCard onNavigate={() => setLocation("/billing")} />}
       </main>
     </div>
   );
