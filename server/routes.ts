@@ -3173,6 +3173,48 @@ Return this exact JSON structure (all arrays, even if empty):
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
+      // ── Build rich visit context including SOAP plan and lab interpretation ──
+      const soapNote = encounter.soapNote as any;
+      const soapPlan = soapNote?.fullNote
+        ? (() => {
+            const note: string = soapNote.fullNote;
+            const apIdx = note.indexOf("ASSESSMENT/PLAN");
+            const fuIdx = note.indexOf("FOLLOW-UP");
+            const start = apIdx !== -1 ? apIdx : 0;
+            const end = fuIdx !== -1 ? fuIdx + note.slice(fuIdx).indexOf("\n\n") : note.length;
+            return note.slice(start, end > start ? end : note.length).trim();
+          })()
+        : null;
+
+      // Lab interpretation context for patient-specific guideline applicability
+      let labInterpContext = "";
+      if (encounter.linkedLabResultId) {
+        const linkedLab = await storage.getLabResult(encounter.linkedLabResultId);
+        if (linkedLab?.interpretationResult) {
+          const li = linkedLab.interpretationResult as any;
+          const labCtxLines: string[] = [];
+          if (li.redFlags?.length) labCtxLines.push(`Red flags: ${li.redFlags.map((f: any) => `${f.marker} (${f.severity})`).join(', ')}`);
+          if (li.preventRisk) {
+            const pr = li.preventRisk;
+            const rParts = [
+              pr.tenYearCVD != null ? `10yr CVD ${pr.tenYearCVD}%` : null,
+              pr.thirtyYearCVD != null ? `30yr CVD ${pr.thirtyYearCVD}%` : null,
+              pr.riskCategory ? `category: ${pr.riskCategory}` : null,
+            ].filter(Boolean);
+            if (rParts.length) labCtxLines.push(`PREVENT CVD risk: ${rParts.join(', ')}`);
+          }
+          if (li.insulinResistance?.detected) {
+            labCtxLines.push(`Insulin resistance: detected — ${li.insulinResistance.phenotypes?.map((p: any) => p.name).join(', ') ?? 'unspecified'}`);
+          }
+          const notableAbnormal = (li.interpretations ?? [])
+            .filter((i: any) => i.status && i.status !== "normal")
+            .slice(0, 6)
+            .map((i: any) => `${i.marker} [${i.status}]`);
+          if (notableAbnormal.length) labCtxLines.push(`Notable lab findings: ${notableAbnormal.join(', ')}`);
+          if (labCtxLines.length) labInterpContext = `\nLab interpretation: ${labCtxLines.join(' | ')}`;
+        }
+      }
+
       // ── Step 1: Generate focused clinical questions ──────────────────────────
       const visitContext = [
         `Visit type: ${encounter.visitType}`,
@@ -3184,6 +3226,8 @@ Return this exact JSON structure (all arrays, even if empty):
         extraction.medication_changes_discussed?.length ? `Medication changes: ${extraction.medication_changes_discussed.join('; ')}` : null,
         extraction.labs_reviewed?.length ? `Labs reviewed: ${extraction.labs_reviewed.join('; ')}` : null,
         extraction.red_flags?.length ? `Red flags: ${extraction.red_flags.join('; ')}` : null,
+        labInterpContext || null,
+        soapPlan ? `Current documented plan:\n${soapPlan}` : null,
       ].filter(Boolean).join('\n');
 
       const questionsCompletion = await openai.chat.completions.create({
@@ -3230,15 +3274,23 @@ Return a JSON object: { "clinical_questions": ["question1", "question2", ...] }`
           {
             role: "system",
             content: `You are an expert clinical evidence synthesizer for a hormone and primary care clinic.
-For each clinical question provided, synthesize evidence-based guidance from authoritative sources.
+For each clinical question provided, synthesize evidence-based guidance from authoritative sources — like Open Evidence or UpToDate, but tailored to this specific patient encounter.
 
 EVIDENCE SOURCE PRIORITY:
-1. Clinical practice guidelines (Endocrine Society, ACOG, AACE, AHA/ACC, USPSTF, North American Menopause Society, etc.)
+1. Clinical practice guidelines (Endocrine Society, ACOG, AACE, AHA/ACC, USPSTF, North American Menopause Society, AASLD, etc.)
 2. Society position statements and consensus documents
 3. Systematic reviews and meta-analyses (PubMed-indexed)
-4. Large prospective cohort studies
-5. Randomized controlled trials
-6. Observational studies and expert opinion (clearly labeled)
+4. Large prospective cohort studies and RCTs
+5. Observational studies and expert opinion (clearly labeled as such)
+
+GUIDELINE CLASS AND LEVEL OF EVIDENCE (AHA/ACC style — use for all suggestions):
+- guideline_class: "I" (benefit >> risk, should be done), "IIa" (benefit > risk, reasonable), "IIb" (benefit ≥ risk, may be considered), "III" (no benefit or harm)
+- level_of_evidence: "A" (multiple RCTs or meta-analyses), "B" (single RCT or large nonrandomized), "C" (expert opinion/small studies/standard of care), "E" (emerging/insufficient)
+- If no formal guideline class exists for this topic, use the best approximation based on evidence quality
+
+PLAN ALIGNMENT (compare each suggestion against the documented current plan):
+- plan_alignment: "aligned" (plan already addresses this), "gap_identified" (guideline recommends this but plan doesn't address it), "potential_conflict" (plan may conflict with guideline), "not_applicable" (guideline doesn't directly apply to this patient)
+- plan_alignment_note: 1-2 sentence specific note — e.g. "Current plan does not include statin therapy; AHA 2023 PREVENT indicates high CVD risk threshold met" or "Plan already includes recommended monitoring"
 
 RULES:
 - Only cite real, established guidelines and peer-reviewed literature
@@ -3252,23 +3304,27 @@ RULES:
 - If evidence is mixed or weak, state that explicitly in summary and cautions
 - is_evidence_informed_consideration = true if the suggestion goes beyond what was explicitly discussed in the visit
 - Citations must include real source names, publication/journal, year, and a plausible PubMed or guideline URL when available
-- Each suggestion should have 1-3 high-quality citations minimum; reject suggestions with zero citations
+- Each suggestion must have 1-3 high-quality citations; reject suggestions with zero citations
 
-Return a JSON object matching this schema:
+Return a JSON object matching this schema exactly:
 {
   "suggestions": [
     {
       "title": "concise evidence topic title",
-      "summary": "2-4 sentence evidence synthesis with specific findings",
-      "relevance_to_visit": "1-2 sentences explaining why this is relevant to today's visit",
+      "summary": "2-4 sentence evidence synthesis with specific findings and guideline references",
+      "relevance_to_visit": "1-2 sentences explaining why this is relevant to today's visit and this patient",
       "strength_of_support": "strong" | "moderate" | "limited" | "mixed" | "insufficient",
-      "cautions": ["any important caveats, contraindications, or evidence gaps"],
+      "guideline_class": "I" | "IIa" | "IIb" | "III",
+      "level_of_evidence": "A" | "B" | "C" | "E",
+      "plan_alignment": "aligned" | "gap_identified" | "potential_conflict" | "not_applicable",
+      "plan_alignment_note": "specific note comparing this guideline to the current plan",
+      "cautions": ["important caveats, contraindications, or evidence gaps"],
       "citations": [
         {
           "title": "full citation/guideline title",
           "source": "journal or publisher name",
           "year": "YYYY",
-          "url": "https://... (PubMed, guideline site, or leave empty string if unknown)"
+          "url": "https://... (PubMed, guideline site, or empty string)"
         }
       ],
       "is_evidence_informed_consideration": false
@@ -3278,7 +3334,7 @@ Return a JSON object matching this schema:
           },
           {
             role: "user",
-            content: `Visit context:\n${visitContext}\n\nClinical questions to answer:\n${clinicalQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nGenerate one suggestion per question. Do not include any suggestion that has zero real citations.`,
+            content: `Visit context:\n${visitContext}\n\nClinical questions to answer:\n${clinicalQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nGenerate one suggestion per question. Do not include any suggestion that has zero real citations. For plan_alignment, compare against the "Current documented plan" in the visit context if provided.`,
           },
         ],
         response_format: { type: "json_object" },
@@ -3286,13 +3342,65 @@ Return a JSON object matching this schema:
 
       const evidenceRaw = JSON.parse(evidenceCompletion.choices[0].message.content || "{}");
       const rawSuggestions: any[] = evidenceRaw.suggestions ?? [];
-
-      // Post-process: reject suggestions with no citations
       const validSuggestions = rawSuggestions.filter(s => Array.isArray(s.citations) && s.citations.length > 0);
+
+      // ── Step 3: Guideline validation against the current plan ────────────────
+      let guidelineValidations: import("@shared/schema").GuidelineValidation[] = [];
+      if (soapPlan || visitContext) {
+        const validationCompl = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are a clinical guideline compliance checker for a hormone and primary care clinic.
+
+Given a clinical encounter, identify 2-5 major applicable clinical guidelines and validate whether the current plan aligns with each.
+
+Focus on guidelines that are directly triggered by this patient's diagnoses, medications, lab values, or risk factors:
+- AHA/ACC cholesterol/ASCVD guidelines (statin thresholds, LDL targets)
+- AHA 2023 PREVENT cardiovascular risk framework
+- Endocrine Society testosterone/hypogonadism guidelines
+- NAMS/ACOG hormone therapy guidelines
+- Endocrine Society obesity/GLP-1 management guidelines (SURMOUNT, STEP trial basis)
+- AASLD liver guidelines (if elevated transaminases)
+- USPSTF screening recommendations (diabetes, HTN, depression, cancer screening)
+- AACE/ACE diabetes management guidelines
+- Any other guideline directly applicable to the visit context
+
+For each guideline finding, return:
+{
+  "guideline": "exact guideline name and year (e.g., AHA 2023 PREVENT Framework)",
+  "finding": "specific finding from this patient's encounter that triggers this guideline",
+  "current_plan_status": "aligned" | "gap" | "conflict" | "not_addressed",
+  "recommendation": "what this guideline specifically recommends for this patient profile",
+  "clinician_decision_needed": true | false
+}
+
+current_plan_status definitions:
+- "aligned": the documented plan already addresses this guideline recommendation
+- "gap": guideline recommends something that the current plan does not include
+- "conflict": documented plan may be inconsistent with guideline recommendation
+- "not_addressed": guideline is applicable but no plan exists yet (no SOAP generated)
+
+Return JSON: { "guideline_validations": [...] }
+Only return validations for guidelines that are directly and specifically applicable — not generic or speculative.`,
+            },
+            {
+              role: "user",
+              content: `Visit context:\n${visitContext}\n\n${soapPlan ? `Current documented plan:\n${soapPlan}` : "No SOAP note generated yet."}`,
+            },
+          ],
+          response_format: { type: "json_object" },
+        });
+
+        const valRaw = JSON.parse(validationCompl.choices[0].message.content || "{}");
+        guidelineValidations = valRaw.guideline_validations ?? [];
+      }
 
       const overlay = {
         clinical_questions: clinicalQuestions,
         suggestions: validSuggestions,
+        guideline_validations: guidelineValidations,
         not_for_auto_insertion: true as const,
       };
 
