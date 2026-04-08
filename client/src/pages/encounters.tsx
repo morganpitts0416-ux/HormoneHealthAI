@@ -995,6 +995,18 @@ function EncounterEditor({
   // Ensure overlay clears on unmount
   useEffect(() => () => { clearGlobalLoading(); }, []);
 
+  // ── Recording activity heartbeat ──────────────────────────────────────────
+  // Prevent the session-timeout idle timer from firing during an active
+  // recording. Every 60 s we dispatch a synthetic activity event so the
+  // modal's idle clock stays reset for as long as the mic is live.
+  useEffect(() => {
+    if (recorderState !== "recording") return;
+    const id = setInterval(() => {
+      window.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+    }, 60_000);
+    return () => clearInterval(id);
+  }, [recorderState]);
+
   // Save patient summary edits
   const saveSummaryMutation = useMutation({
     mutationFn: async () => {
