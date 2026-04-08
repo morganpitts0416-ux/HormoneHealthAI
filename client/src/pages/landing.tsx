@@ -11,43 +11,43 @@ import { appUrl } from "@/lib/app-url";
 const CLINICIAN_FEATURES = [
   {
     icon: Brain,
-    title: "AI-Powered Lab Interpretation",
-    desc: "Gender-specific reference ranges, color-coded status indicators, and plain-language clinical insights for 60+ lab markers — instantly.",
+    title: "See beyond "normal" labs",
+    desc: "Instantly interpret 60+ markers with clinical context — not just reference ranges — so you can understand what's actually happening, not just what's flagged.",
   },
   {
     icon: Heart,
-    title: "PREVENT Cardiovascular Risk",
-    desc: "Full 2023 AHA PREVENT equations for 10-year and 30-year CVD, ASCVD, and Heart Failure risk, plus advanced lipid and Lp(a) assessment.",
+    title: "Know your patient's real risk",
+    desc: "Built-in PREVENT scoring with ApoB and Lp(a) context — helping you assess true cardiovascular risk, not just standard lipid panels.",
   },
   {
     icon: Activity,
-    title: "Insulin Resistance Phenotyping",
-    desc: "Identifies likelihood and four distinct IR phenotypes with trigger criteria, pathophysiology, and targeted treatment recommendations.",
+    title: "Catch insulin resistance early",
+    desc: "Identify insulin resistance phenotypes before A1c rises — with pattern-based insights and targeted intervention guidance.",
   },
   {
     icon: Stethoscope,
-    title: "Clinical Encounter Documentation",
-    desc: "Record or upload audio — Whisper transcribes, AI diarizes speakers, and a 6-stage pipeline generates chart-ready SOAP notes with evidence flags.",
+    title: "Document without slowing down",
+    desc: "Record visits, generate AI-assisted SOAP notes, and capture key clinical insights — without adding time to your day.",
   },
   {
     icon: BarChart3,
-    title: "Pattern & Trend Recognition",
-    desc: "Female testosterone optimization, perimenopause patterns, FIB-4 scoring, STOP-BANG sleep apnea screening, and iron deficiency phenotyping.",
+    title: "Identify patterns most clinicians miss",
+    desc: "From perimenopause shifts to iron deficiency and hormone optimization — ReAlign connects patterns across labs so nothing important gets overlooked.",
   },
   {
     icon: BookOpen,
-    title: "Evidence-Based Guidance",
-    desc: "Guideline citations (Class I–III, Level A–C) surfaced inline within SOAP notes — click any flag to see the supporting evidence without leaving the note.",
+    title: "Know the "why" behind every decision",
+    desc: "Evidence-backed recommendations surfaced directly in your workflow — so you can move confidently without second-guessing.",
   },
   {
     icon: ClipboardList,
-    title: "Lab History & Trend Charts",
-    desc: "Persistent patient profiles, searchable lab history, trend indicators, and visual charts for 21 key markers with longitudinal clinical insights.",
+    title: "Track progress over time",
+    desc: "Visualize trends across key markers and follow patient progress longitudinally — not just visit by visit.",
   },
   {
     icon: Shield,
-    title: "HIPAA Technical Controls",
-    desc: "Audit logging, login lockout, session timeouts with warning dialogs, and robust password enforcement. Audio is deleted immediately after transcription.",
+    title: "Built with clinical-grade security",
+    desc: "HIPAA-compliant infrastructure with secure data handling, audit logging, and protected patient information at every step.",
   },
 ];
 
@@ -195,7 +195,7 @@ export default function Landing() {
         <div className="text-center mb-12">
           <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7a8a64" }}>For Clinicians</span>
           <h2 className="text-2xl sm:text-3xl font-bold mt-2" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
-            Every angle, in one platform
+            See what others miss — in seconds
           </h2>
         </div>
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
