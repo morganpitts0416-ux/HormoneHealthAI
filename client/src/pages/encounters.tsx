@@ -445,15 +445,17 @@ function formatDuration(seconds: number) {
 
 type RecorderState = "idle" | "recording" | "transcribing";
 
-// How long each recording segment runs before being sent to Whisper (10 minutes)
-const SEGMENT_MS = 10 * 60 * 1000;
+// How long each recording segment runs before being sent to Whisper (60 seconds)
+const SEGMENT_MS = 60 * 1000;
 
 function AudioCapture({
   onTranscribed,
+  onPartialTranscription,
   onStateChange,
   visitType = "follow-up",
 }: {
   onTranscribed: (text: string, utterances: DiarizedUtterance[] | null) => void;
+  onPartialTranscription?: (accumulatedText: string) => void;
   onStateChange: (state: RecorderState) => void;
   visitType?: string;
 }) {
@@ -580,6 +582,12 @@ function AudioCapture({
       transcribedSegmentsRef.current.set(segIdx, data.transcription ?? "");
       transcribedUtterancesRef.current.set(segIdx, data.utterances ?? null);
       setSegmentsDone(d => d + 1);
+      // If recording is still live, surface accumulated text so far
+      if (!recordingStoppedRef.current && onPartialTranscription) {
+        const partialIndices = Array.from(transcribedSegmentsRef.current.keys()).sort((a, b) => a - b);
+        const partialText = partialIndices.map(i => transcribedSegmentsRef.current.get(i) ?? "").filter(Boolean).join(" ").trim();
+        if (partialText) onPartialTranscription(partialText);
+      }
     } catch (err: any) {
       // Store empty string so segment doesn't block finalization
       transcribedSegmentsRef.current.set(segIdx, "");
@@ -906,6 +914,9 @@ function EncounterEditor({
   );
   const [transcription, setTranscription] = useState<string>(encounter?.transcription ?? "");
   const [recorderState, setRecorderState] = useState<RecorderState>("idle");
+  // Captures what was in the textarea before a recording session starts, so partial
+  // transcription updates can be prepended correctly without doubling text.
+  const preRecordingTranscriptionRef = useRef<string>("");
   const [soap, setSoap] = useState<SoapNote>(initSoap(encounter?.soapNote));
   const [patientSummary, setPatientSummary] = useState<string>(encounter?.patientSummary ?? "");
   const [activeTab, setActiveTab] = useState<"details" | "transcript" | "soap" | "evidence" | "summary">("details");
@@ -1649,8 +1660,11 @@ function EncounterEditor({
               <AudioCapture
                 visitType={visitType}
                 onTranscribed={(text, utterances) => {
-                  const updated = transcription ? transcription + "\n\n" + text : text;
+                  // Use the pre-recording snapshot so we don't double-append partial text
+                  const base = preRecordingTranscriptionRef.current;
+                  const updated = base ? base + "\n\n" + text : text;
                   setTranscription(updated);
+                  preRecordingTranscriptionRef.current = "";
                   if (utterances?.length) {
                     setRawUtterances(utterances);
                     setDiarizedTranscript(utterances);
@@ -1661,31 +1675,42 @@ function EncounterEditor({
                       .catch(() => {}); // silent — user can manually save if this fails
                   }
                 }}
-                onStateChange={setRecorderState}
+                onPartialTranscription={(accumulatedText) => {
+                  // Prepend pre-existing text so the box shows old + new live text
+                  const base = preRecordingTranscriptionRef.current;
+                  setTranscription(base ? base + "\n\n" + accumulatedText : accumulatedText);
+                }}
+                onStateChange={(state) => {
+                  if (state === "recording") {
+                    // Snapshot whatever is already in the box before this recording session
+                    preRecordingTranscriptionRef.current = transcription;
+                  }
+                  setRecorderState(state);
+                }}
               />
 
-              {/* Live notes area — shows recording animation or transcript */}
+              {/* Live notes area — shows transcript building in real time */}
               <div className="relative">
-                {recorderState === "recording" && (
+                {recorderState === "recording" && !transcription && (
                   <div className="absolute inset-0 rounded-md bg-red-50/60 dark:bg-red-950/20 border-2 border-red-300/50 flex items-start gap-2 px-3 py-3 pointer-events-none z-10">
                     <span className="w-2 h-2 rounded-full bg-red-500 animate-pulse mt-1 flex-shrink-0" />
-                    <span className="text-sm text-red-600/80 dark:text-red-400/80 italic">Listening... notes will appear here when you stop recording.</span>
+                    <span className="text-sm text-red-600/80 dark:text-red-400/80 italic">Recording… transcript will appear here in about 60 seconds.</span>
                   </div>
                 )}
                 {recorderState === "transcribing" && (
-                  <div className="absolute inset-0 rounded-md bg-muted/60 flex items-center justify-center gap-2 z-10">
-                    <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground" />
-                    <span className="text-sm text-muted-foreground">Transcribing...</span>
+                  <div className="absolute bottom-2 right-2 flex items-center gap-1.5 bg-background/90 rounded-md px-2 py-1 z-10 pointer-events-none border text-xs text-muted-foreground">
+                    <RefreshCw className="w-3 h-3 animate-spin" />
+                    Finalizing…
                   </div>
                 )}
                 <Textarea
                   value={transcription}
                   onChange={e => setTranscription(e.target.value)}
-                  placeholder="Session notes will appear here after recording, or type / paste notes directly..."
+                  placeholder="Session notes will appear here as you record, or type / paste notes directly..."
                   rows={12}
-                  className={`text-sm font-mono resize-y transition-opacity ${recorderState !== "idle" ? "opacity-40" : ""}`}
+                  className={`text-sm font-mono resize-y transition-opacity ${recorderState === "transcribing" ? "opacity-60" : ""}`}
                   data-testid="textarea-transcription"
-                  disabled={recorderState !== "idle"}
+                  disabled={recorderState === "transcribing"}
                 />
               </div>
             </div>
