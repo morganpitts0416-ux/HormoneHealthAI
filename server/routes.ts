@@ -1115,7 +1115,11 @@ ${aiRecommendations}`;
   app.post("/api/patients", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const parseResult = insertPatientSchema.safeParse({ ...req.body, userId: clinicianId });
+      const body = { ...req.body, userId: clinicianId };
+      if (body.dateOfBirth && typeof body.dateOfBirth === "string") {
+        body.dateOfBirth = new Date(body.dateOfBirth);
+      }
+      const parseResult = insertPatientSchema.safeParse(body);
       if (!parseResult.success) {
         return res.status(400).json({ error: "Invalid patient data", details: parseResult.error.errors });
       }
