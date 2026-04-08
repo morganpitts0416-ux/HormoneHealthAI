@@ -4177,10 +4177,12 @@ ASSESSMENT/PLAN
 
 [Assessment Summary paragraph — 2–4 sentences synthesizing the overall clinical picture BEFORE the numbered list. This paragraph MUST come first, before item 1. Do NOT skip it.]
 
-1. [Diagnosis Name (ICD-10 code)]: [Clinical reasoning prose on the SAME LINE as the number — 2–3 sentences explaining the diagnosis in context, linking relevant symptoms, labs, and medication response. All reasoning runs continuously on this same line as the diagnosis, not on a separate indented line.]
+1. Diagnosis Name (ICD-10 code)
+[Supporting evidence and clinical reasoning — 2–3 sentences on their own line(s) below the diagnosis. Explain the diagnosis in context, link relevant symptoms, labs, and medication response. Do NOT put this on the same line as the number.]
 Plan: [specific medications with dose/frequency/route, monitoring parameters, referrals, patient education]
 
-2. [Diagnosis Name (ICD-10 code)]: [Clinical reasoning prose on the SAME LINE — 2–3 sentences.]
+2. Diagnosis Name (ICD-10 code)
+[Supporting evidence and clinical reasoning — 2–3 sentences.]
 Plan: [...]
 
 [Continue for each diagnosis in the same pattern]
@@ -4199,11 +4201,11 @@ FOLLOW-UP
 [Specific interval with clinical rationale — e.g., "Return in 8 weeks for weight check and GLP-1 dose evaluation"]
 
 CRITICAL LAYOUT RULES — READ CAREFULLY:
-- Each numbered diagnosis item MUST be on a single line: "1. Diagnosis Name (ICD-10): reasoning text here."
-- The "Plan:" for each diagnosis goes on the NEXT line immediately below, starting with "Plan:" as a label.
-- Do NOT put the clinical reasoning on an indented line below the diagnosis number — it goes on the same line after the colon.
-- Do NOT use sub-bullets for the clinical reasoning — it is inline prose on the numbered line.
-- The Assessment Summary paragraph comes BEFORE item 1 with no number.`;
+- The numbered line contains ONLY the diagnosis name and ICD-10 code: "1. Obesity, Class I (E66.01)"
+- The supporting clinical reasoning goes on the NEXT line as its own paragraph — NOT on the same line as the number.
+- The "Plan:" goes on its own line immediately after the supporting reasoning, starting with "Plan:" as a label.
+- Do NOT merge the diagnosis name and clinical reasoning onto the same line.
+- The Assessment Summary paragraph (no number) comes BEFORE item 1.`;
 
       const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
