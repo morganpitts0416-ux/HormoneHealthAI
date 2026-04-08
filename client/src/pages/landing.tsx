@@ -96,12 +96,8 @@ export default function Landing() {
       {/* ── Navigation ──────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-4">
-            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-14 w-auto" />
-            <div className="hidden sm:flex flex-col leading-none gap-0.5">
-              <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#7a8a64" }}>ReAlign Health</span>
-              <span className="text-xl font-bold" style={{ color: "#1c2414" }}>ClinIQ</span>
-            </div>
+          <div className="flex items-center">
+            <img src="/cliniq-logo.png" alt="ClinIQ by ReAlign Health" className="h-14 w-auto" />
           </div>
           <nav className="flex items-center gap-2">
             <a href={appUrl("/login")}>
