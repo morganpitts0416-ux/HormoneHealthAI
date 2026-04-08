@@ -400,28 +400,36 @@ OBJECTIVE:
 - Include vital signs if available (BMI, BP)
 - Include risk scores (cardiovascular, insulin resistance) if calculated
 
-ASSESSMENT:
-- Number each problem identified from the lab results
-- Reference specific values and clinical significance
-- Include differential considerations where appropriate
-- Note red flags requiring physician review
+ASSESSMENT/PLAN:
 
-PLAN:
-- For each assessment item, provide specific plan steps
-- Include medication adjustments with specific doses when applicable
-- Include supplement recommendations if provided
-- Include lifestyle modifications
-- Include follow-up lab orders with timing
-- State that results were reviewed and discussed with the patient
-- Include care plan and follow-up appointment timing
+Begin with an Assessment Summary paragraph BEFORE the numbered problem list. This paragraph (2–4 sentences) should:
+- Synthesize the overall clinical picture: most significant findings, symptom patterns, metabolic trends, and monitoring priorities
+- Sound like a clinician's opening synthesis — medically grounded and professional, not a list restated as a sentence
+- Connect related findings when appropriate (e.g., insulin resistance + dyslipidemia + elevated hs-CRP reflect a broader cardiometabolic pattern rather than isolated problems)
+- Stay strictly grounded in the lab data and clinical context provided — do not invent findings
+
+For each numbered problem (diagnosis), write a substantive entry in this style:
+
+1. [Diagnosis]:
+   [2–3 sentences of clinical reasoning — explain what the finding means in this patient's context, reference the relevant lab value(s), note any pertinent history or trend, and state the rationale for the management approach chosen. Do not write a bare label with a one-line generic action.]
+   Plan: [specific steps — medication with dose/frequency if applicable, supplements with dosing, lifestyle recommendations, labs to recheck with timing, follow-up interval with rationale]
+
+Tone guidance:
+- Write like a thoughtful NP/PA/MD would document in a polished outpatient note
+- Be concise but meaningful — not padded, not robotic, not repetitive
+- BAD: "Hyperlipidemia. Will continue lifestyle changes. Repeat labs in 3 months."
+- GOOD: "Hyperlipidemia with persistence of atherogenic markers on this panel, including LDL and triglycerides above optimal thresholds. Ongoing dietary modification was reinforced at this visit, particularly in the context of the patient's broader cardiometabolic risk. Will continue lifestyle intervention and recheck lipid markers at the scheduled follow-up interval to assess trajectory and determine whether pharmacologic therapy is indicated."
+- BAD: "Testosterone optimization. Continue current protocol."
+- GOOD: "Testosterone optimization with current values reflecting [status relative to target range]. The patient's hormonal picture is being managed within the framework of this clinic's protocol, with attention to [relevant secondary markers]. Current management will be continued with monitoring for [relevant parameters] at follow-up."
 
 End with:
 "Results reviewed and discussed with patient. Questions answered. Patient verbalized understanding. Follow-up as above."
 
 CRITICAL FORMATTING RULES:
-- Use standard SOAP format with clear S/O/A/P headers
-- Use numbered problem list in Assessment
-- Be thorough but concise - this goes directly into a medical chart
+- Use standard SOAP format with clear S/O/A headers, then combined ASSESSMENT/PLAN
+- Assessment Summary paragraph appears FIRST in the Assessment/Plan section, before any numbered items
+- Use numbered problem list after the summary paragraph
+- Be thorough but concise — this goes directly into a medical chart
 - Use professional medical terminology
 - NO emojis
 - Include today's date: ${today}`;
@@ -433,7 +441,7 @@ CRITICAL FORMATTING RULES:
         messages: [
           {
             role: "system",
-            content: `You are an experienced clinical documentation specialist generating SOAP notes for a ${clinicType}. Your notes are thorough, professionally formatted, and ready for direct entry into an EMR/EHR system. You write in standard medical documentation style with appropriate terminology. Every SOAP note you produce is chart-ready.`
+            content: `You are an experienced clinician-level documentation specialist generating chart-ready SOAP notes for a ${clinicType}. Your notes synthesize clinical findings the way an experienced NP, PA, or physician would — integrating lab data, clinical context, and medical reasoning into a polished, professional document. You do NOT merely restate findings as a list. You write substantive Assessment/Plan entries with clinical reasoning, appropriate treatment rationale, and follow-up logic. Your Assessment section always begins with a 2–4 sentence summary paragraph synthesizing the overall clinical picture before the numbered problem list. Every note you produce is ready to sign with minimal editing. You never invent facts not present in the provided data.`
           },
           {
             role: "user",
