@@ -2351,19 +2351,15 @@ function EncounterEditor({
                     >
                       <Eye className="w-3 h-3" /> View
                     </button>
-                    {(() => {
-                      const evOverlay = encounter?.evidenceSuggestions as EvidenceOverlay | null;
-                      const hasEvidence = !!(evOverlay?.suggestions?.length);
-                      return hasEvidence ? (
-                        <button
-                          data-testid="soap-evidence-toggle"
-                          onClick={() => setSoapViewMode("evidence")}
-                          className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "evidence" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                        >
-                          <Layers className="w-3 h-3" /> With Evidence
-                        </button>
-                      ) : null;
-                    })()}
+                    {(evidenceOverlay?.suggestions?.length ?? 0) > 0 && (
+                      <button
+                        data-testid="soap-evidence-toggle"
+                        onClick={() => setSoapViewMode("evidence")}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "evidence" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        <Layers className="w-3 h-3" /> With Evidence
+                      </button>
+                    )}
                     <button
                       data-testid="soap-edit-toggle"
                       onClick={() => setSoapViewMode("edit")}
@@ -2432,7 +2428,7 @@ function EncounterEditor({
                   <div className="rounded-md border bg-card px-5 py-4 min-h-[24rem]">
                     <SoapNoteViewer
                       text={soap.fullNote ?? legacySoapToText(soap)}
-                      evidence={(encounter?.evidenceSuggestions as EvidenceOverlay | null)?.suggestions}
+                      evidence={evidenceOverlay?.suggestions}
                       mode="callouts"
                     />
                   </div>
