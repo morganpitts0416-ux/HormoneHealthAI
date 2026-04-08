@@ -305,13 +305,21 @@ export default function Landing() {
           <p className="text-sm mt-3" style={{ color: "#6a7a58" }}>Everything included. No per-patient fees. No feature tiers.</p>
         </div>
         <div className="max-w-lg mx-auto rounded-2xl overflow-hidden" style={{ border: "2px solid #2e3a20" }}>
+          {/* Founder ribbon */}
+          <div className="px-6 py-2.5 text-center text-xs font-semibold" style={{ backgroundColor: "#5a7040", color: "#f9f6f0", letterSpacing: "0.03em" }}>
+            Founder Access — first 50 members get $97/mo forever · use code <span className="font-mono tracking-widest">FOUNDER50</span>
+          </div>
           <div className="px-8 py-8 text-center" style={{ backgroundColor: "#2e3a20" }}>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#a0b880" }}>ClinIQ Monthly</p>
-            <div className="flex items-end justify-center gap-1 mb-2">
-              <span className="text-5xl font-bold" style={{ color: "#f9f6f0" }}>$97</span>
+            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#a0b880" }}>Solo ClinIQ Plan</p>
+            <div className="flex items-end justify-center gap-2 mb-1">
+              <span className="text-5xl font-bold" style={{ color: "#f9f6f0" }}>$149</span>
               <span className="text-sm mb-2" style={{ color: "#a0b880" }}>/month</span>
             </div>
-            <p className="text-sm" style={{ color: "#c4d4a8" }}>After your 14-day free trial</p>
+            <div className="flex items-center justify-center gap-2 mb-2">
+              <span className="text-sm line-through opacity-50" style={{ color: "#c4d4a8" }}>$149/mo</span>
+              <span className="text-sm font-semibold" style={{ color: "#c4d4a8" }}>→ $97/mo with <span className="font-mono">FOUNDER50</span></span>
+            </div>
+            <p className="text-xs" style={{ color: "#a0b880" }}>After your 14-day free trial</p>
           </div>
           <div className="px-8 py-7" style={{ backgroundColor: "#ffffff" }}>
             <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-7">

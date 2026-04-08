@@ -4429,7 +4429,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     try {
       const stripe = getStripe();
       const user = req.user as any;
-      const { paymentMethodId } = req.body;
+      const { paymentMethodId, promoCode } = req.body;
       if (!paymentMethodId) return res.status(400).json({ message: "paymentMethodId is required" });
 
       let customerId = user.stripeCustomerId;
@@ -4448,8 +4448,19 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         invoice_settings: { default_payment_method: paymentMethodId },
       });
 
+      // Resolve promo code → promotion_code ID if provided
+      let promotionCodeId: string | undefined;
+      if (promoCode) {
+        const promoCodes = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
+        if (promoCodes.data.length > 0) {
+          promotionCodeId = promoCodes.data[0].id;
+        } else {
+          return res.status(400).json({ message: `Promo code "${promoCode}" is not valid or has expired.` });
+        }
+      }
+
       // Create subscription with 14-day trial
-      const subscription = await stripe.subscriptions.create({
+      const subscriptionParams: any = {
         customer: customerId,
         items: [{ price: STRIPE_PRICE_ID }],
         trial_period_days: 14,
@@ -4458,7 +4469,11 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
           save_default_payment_method: "on_subscription",
         },
         expand: ["latest_invoice.payment_intent"],
-      });
+      };
+      if (promotionCodeId) {
+        subscriptionParams.discounts = [{ promotion_code: promotionCodeId }];
+      }
+      const subscription = await stripe.subscriptions.create(subscriptionParams);
 
       const periodEnd = new Date((subscription as any).current_period_end * 1000);
       const updated = await storage.updateUserStripe(user.id, {
