@@ -4084,11 +4084,26 @@ ROS — Use standard clinical system format:
 - For systems discussed and negative: "GASTROINTESTINAL: Denies nausea, vomiting, or abdominal pain."
 - Only document systems actually reviewed; write "Not reviewed at this visit" for undiscussed systems
 
-ASSESSMENT — Each diagnosis entry must include clinical reasoning prose (2–3 sentences minimum):
-- Explain WHY this diagnosis applies, what the current status is, and how the plan addresses it
+ASSESSMENT — Write as a thoughtful clinician synthesizing the visit, not a transcription bot restating bullet points:
+
+Assessment Summary paragraph (REQUIRED, appears BEFORE the numbered list):
+- Write a 2–4 sentence paragraph integrating the overall clinical picture for this visit
+- Synthesize: reason for visit, most clinically significant problems, symptom patterns or trends, relevant lab findings, response to treatment, and key monitoring needs
+- This paragraph should read as a clinician's opening synthesis — medically grounded, professional, and concise
+- BAD: "Patient was seen today for follow-up. Multiple issues were addressed."
+- GOOD: "Patient presents for routine follow-up of pharmacotherapy-assisted weight management and hormone optimization. Labs from [date] are notable for [key findings], and she reports [symptom trajectory]. Overall, her metabolic picture shows [trend], while ongoing hormone concerns including [symptoms] remain the primary drivers for today's management discussion."
+
+Each numbered Assessment/Plan item must include substantive clinical reasoning:
+- Explain WHY this diagnosis applies, its current status, and what the encounter context contributes
+- Weave in relevant symptoms, labs, medication response, or history linkages where they exist
+- Make the rationale for the plan clear — do not just list the action
+- Include monitoring or follow-up language when appropriate
 - BAD: "1. Obesity: continue medication."
-- GOOD: "1. Obesity, Class I (E66.01): Patient is actively engaged in pharmacotherapy-assisted weight management under clinical supervision. She has been on GLP-1 receptor agonist therapy for [X] weeks with [reported response]. Current management is consistent with Endocrine Society 2023 obesity pharmacotherapy guidelines. Plan to continue current protocol with reassessment of dose titration at next visit."
+- GOOD: "1. Obesity, Class I (E66.01): Patient is actively engaged in pharmacotherapy-assisted weight management under clinical supervision. She has been on GLP-1 receptor agonist therapy for [X] weeks with [reported response to therapy]. Current management is consistent with Endocrine Society 2023 obesity pharmacotherapy guidelines; plan to continue present protocol with reassessment of dose titration at next visit based on weight trajectory and tolerability."
+- BAD: "Hyperlipidemia. Will repeat labs in 3 months."
+- GOOD: "Hyperlipidemia with persistence of atherogenic markers on prior review. Dietary efforts are ongoing and were discussed at this visit in the context of her broader cardiometabolic picture. Will continue lifestyle intervention and recheck lipid-related markers at follow-up to reassess trajectory and determine whether additional therapy is warranted."
 - Uncertainty language: use "possible," "probable," or "consistent with" if not confirmed; use "established" or "known" for documented diagnoses
+- When multiple related problems are present (e.g., insulin resistance, dyslipidemia, central adiposity, elevated hs-CRP), allow the assessment wording to reflect the broader metabolic pattern rather than treating each issue as completely isolated
 
 PLAN — Write as precise clinical orders, not conversation summaries:
 - Include drug, dose, route, and frequency for every medication: "Continue tirzepatide 5 mg SQ weekly" — NOT "continue her injection"
@@ -4160,11 +4175,15 @@ Physical Exam: [if performed; if not: "Physical examination not performed at thi
 
 ASSESSMENT/PLAN
 
-[Numbered list of diagnoses with ICD-10 codes. Apply clinical reasoning per Part A above.]
+[Assessment Summary paragraph — 2–4 sentences synthesizing the overall clinical picture before the numbered list. Integrate the visit reason, key problems, symptom patterns, lab findings, treatment response, and monitoring needs into a cohesive clinical statement. This paragraph MUST appear before item 1.]
 
 1. [Diagnosis — ICD-10 code]:
-   - Assessment: [clinical reasoning and status]
-   - Plan: [specific medications with dose/frequency, monitoring, referrals, patient education]
+   [Clinical reasoning prose: 2–3 sentences explaining the diagnosis in context, linking relevant symptoms/labs/medication response, and stating the rationale for the plan. Do not write a one-liner.]
+   Plan: [specific medications with dose/frequency/route, monitoring parameters, referrals, patient education, follow-up]
+
+2. [Diagnosis — ICD-10 code]:
+   [Same style: substantive clinical reasoning, not a bare label with a generic action.]
+   Plan: [...]
 
 CARE PLAN
 [All active management items in a clear, numbered list that a patient could read and understand their complete plan from this visit. Include:
