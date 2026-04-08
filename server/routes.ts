@@ -4150,7 +4150,7 @@ Return a JSON object with exactly these keys:
   "needs_clinician_review": ["<specific flags requiring clinician attention before signing>"]
 }
 
-Use this EXACT format for fullNote (verbatim section headers):
+Use this EXACT format for fullNote (verbatim section headers). Do NOT deviate from this layout:
 
 CC/Reason: [chief complaint or visit reason]
 
@@ -4175,15 +4175,15 @@ Physical Exam: [if performed; if not: "Physical examination not performed at thi
 
 ASSESSMENT/PLAN
 
-[Assessment Summary paragraph — 2–4 sentences synthesizing the overall clinical picture before the numbered list. Integrate the visit reason, key problems, symptom patterns, lab findings, treatment response, and monitoring needs into a cohesive clinical statement. This paragraph MUST appear before item 1.]
+[Assessment Summary paragraph — 2–4 sentences synthesizing the overall clinical picture BEFORE the numbered list. This paragraph MUST come first, before item 1. Do NOT skip it.]
 
-1. [Diagnosis — ICD-10 code]:
-   [Clinical reasoning prose: 2–3 sentences explaining the diagnosis in context, linking relevant symptoms/labs/medication response, and stating the rationale for the plan. Do not write a one-liner.]
-   Plan: [specific medications with dose/frequency/route, monitoring parameters, referrals, patient education, follow-up]
+1. [Diagnosis Name (ICD-10 code)]: [Clinical reasoning prose on the SAME LINE as the number — 2–3 sentences explaining the diagnosis in context, linking relevant symptoms, labs, and medication response. All reasoning runs continuously on this same line as the diagnosis, not on a separate indented line.]
+Plan: [specific medications with dose/frequency/route, monitoring parameters, referrals, patient education]
 
-2. [Diagnosis — ICD-10 code]:
-   [Same style: substantive clinical reasoning, not a bare label with a generic action.]
-   Plan: [...]
+2. [Diagnosis Name (ICD-10 code)]: [Clinical reasoning prose on the SAME LINE — 2–3 sentences.]
+Plan: [...]
+
+[Continue for each diagnosis in the same pattern]
 
 CARE PLAN
 [All active management items in a clear, numbered list that a patient could read and understand their complete plan from this visit. Include:
@@ -4196,7 +4196,14 @@ CARE PLAN
 Write this section as a patient-readable action list — specific, named, and complete. "Continue treatment" is NOT acceptable — every item must be explicit.]
 
 FOLLOW-UP
-[Specific interval with clinical rationale — e.g., "Return in 8 weeks for weight check and GLP-1 dose evaluation"]`;
+[Specific interval with clinical rationale — e.g., "Return in 8 weeks for weight check and GLP-1 dose evaluation"]
+
+CRITICAL LAYOUT RULES — READ CAREFULLY:
+- Each numbered diagnosis item MUST be on a single line: "1. Diagnosis Name (ICD-10): reasoning text here."
+- The "Plan:" for each diagnosis goes on the NEXT line immediately below, starting with "Plan:" as a label.
+- Do NOT put the clinical reasoning on an indented line below the diagnosis number — it goes on the same line after the colon.
+- Do NOT use sub-bullets for the clinical reasoning — it is inline prose on the numbered line.
+- The Assessment Summary paragraph comes BEFORE item 1 with no number.`;
 
       const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
