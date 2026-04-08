@@ -4890,17 +4890,22 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
-  // GET /api/medication-dictionary/entries — all entries for this clinician
+  // GET /api/medication-dictionary/entries — all entries for this clinician (system + custom)
   app.get("/api/medication-dictionary/entries", requireAuth, async (req: any, res) => {
     try {
       const entries = await storage.getAllMedicationEntries(req.user.id);
       const dicts = await storage.getMedicationDictionaries(req.user.id);
       const dictMap = new Map(dicts.map(d => [d.id, d]));
-      const enriched = entries.map(e => ({
-        ...e,
-        dictFilename: dictMap.get(e.dictionaryId)?.filename ?? "unknown",
-        isManual: dictMap.get(e.dictionaryId)?.filename === "__manual__",
-      }));
+      const enriched = entries.map(e => {
+        const isSystem = e.id < 0; // negative IDs = system seed entries
+        const dict = dictMap.get(e.dictionaryId);
+        return {
+          ...e,
+          dictFilename: isSystem ? "__system__" : (dict?.filename ?? "unknown"),
+          isSystem,
+          isManual: !isSystem && dict?.filename === "__manual__",
+        };
+      });
       res.json({ entries: enriched, total: entries.length });
     } catch (err: any) {
       console.error("[Med Entries]", err);

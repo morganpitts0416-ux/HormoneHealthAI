@@ -1,4 +1,5 @@
 import { eq, desc, ilike, or, and, isNull, count, sql } from "drizzle-orm";
+import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
 const { Pool } = pg;
@@ -1131,10 +1132,30 @@ export class DbStorage implements IStorage {
   }
 
   async getAllMedicationEntries(clinicianId: number): Promise<schema.MedicationEntry[]> {
-    return db
+    const dbEntries = await db
       .select()
       .from(schema.medicationEntries)
       .where(eq(schema.medicationEntries.clinicianId, clinicianId));
+
+    // Merge system seed entries — clinician DB entries take precedence for same generic name
+    const dbNames = new Set(dbEntries.map(e => e.genericName.toLowerCase()));
+    const seedEntries = getSeedAsEntries()
+      .filter(s => !dbNames.has(s.genericName.toLowerCase()))
+      .map(s => ({
+        id: s.id,
+        dictionaryId: s.dictionaryId,
+        clinicianId: clinicianId,
+        genericName: s.genericName,
+        brandNames: s.brandNames,
+        commonSpokenVariants: s.commonSpokenVariants,
+        commonMisspellings: s.commonMisspellings,
+        drugClass: s.drugClass,
+        subclass: s.subclass,
+        route: s.route,
+        notes: s.notes,
+      })) as schema.MedicationEntry[];
+
+    return [...dbEntries, ...seedEntries];
   }
 
   async updateMedicationDictionaryCount(id: number, count: number): Promise<void> {

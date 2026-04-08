@@ -17,7 +17,7 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import type { MedicationDictionary, MedicationEntry } from "@shared/schema";
 
-type EnrichedEntry = MedicationEntry & { dictFilename: string; isManual: boolean };
+type EnrichedEntry = MedicationEntry & { dictFilename: string; isManual: boolean; isSystem: boolean };
 
 const MATCH_TYPE_LABELS: Record<string, string> = {
   spoken_variant: "Spoken variant",
@@ -149,8 +149,10 @@ export default function MedicationDictionaryPage() {
       else body.commonMisspellings = [qaAlias.trim()];
       if (qaClass.trim()) body.drugClass = qaClass.trim();
 
-      // Check if entry already exists for this generic name — if so, patch it
-      const existing = allEntries.find(e => e.genericName.toLowerCase() === qaGeneric.trim().toLowerCase());
+      // Check if a custom (non-system) DB entry already exists for this generic name
+      const existing = allEntries.find(e =>
+        !e.isSystem && e.genericName.toLowerCase() === qaGeneric.trim().toLowerCase()
+      );
       if (existing) {
         const fieldMap = { spoken_variant: "commonSpokenVariants", brand: "brandNames", misspelling: "commonMisspellings" } as const;
         const field = fieldMap[qaType];
@@ -165,6 +167,8 @@ export default function MedicationDictionaryPage() {
         }
         return { alreadyExists: true };
       }
+      // If a system entry exists with the same generic name, create a new custom DB entry
+      // so the DB version (with the new alias) takes precedence over the system version
       const res = await apiRequest("POST", "/api/medication-dictionary/entry", body);
       if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.message ?? "Failed"); }
       return res.json();
@@ -249,8 +253,9 @@ export default function MedicationDictionaryPage() {
   };
 
   const displayDicts = dictionaries.filter(d => d.filename !== "__manual__");
-  const manualDict = dictionaries.find(d => d.filename === "__manual__");
   const totalEntries = entriesData?.total ?? 0;
+  const systemCount = allEntries.filter(e => e.isSystem).length;
+  const customCount = allEntries.filter(e => !e.isSystem).length;
   const manualCount = allEntries.filter(e => e.isManual).length;
 
   return (
@@ -263,8 +268,12 @@ export default function MedicationDictionaryPage() {
         <div className="flex-1 min-w-0">
           <h1 className="text-xl font-semibold">Medication Dictionary</h1>
           <p className="text-sm text-muted-foreground">
-            Teach the AI how your patients refer to medications — "estrogen patch," "thyroid pill," "rescue inhaler," and more.
-            {totalEntries > 0 && <span className="ml-1">{totalEntries} entries total{manualCount > 0 ? ` · ${manualCount} manual` : ""}.</span>}
+            The system includes a built-in library. Add custom aliases on top — "estrogen patch," "thyroid pill," "fluid pill," "rescue inhaler."
+            {totalEntries > 0 && (
+              <span className="ml-1">
+                {systemCount} system entries{customCount > 0 ? `, ${customCount} custom` : ""}.
+              </span>
+            )}
           </p>
         </div>
         <Button size="sm" onClick={() => setShowAddEntry(true)} data-testid="button-add-full-entry">
@@ -403,20 +412,24 @@ export default function MedicationDictionaryPage() {
                     </td>
                     <td className="px-3 py-2 text-muted-foreground">{entry.drugClass ?? "—"}</td>
                     <td className="px-3 py-2">
-                      {entry.isManual
-                        ? <Badge variant="outline" className="text-[10px]">Manual</Badge>
-                        : <Badge variant="secondary" className="text-[10px]">CSV</Badge>}
+                      {entry.isSystem
+                        ? <Badge variant="secondary" className="text-[10px] text-muted-foreground">System</Badge>
+                        : entry.isManual
+                        ? <Badge variant="outline" className="text-[10px]">Custom</Badge>
+                        : <Badge variant="outline" className="text-[10px]">CSV</Badge>}
                     </td>
                     <td className="px-3 py-2">
-                      <Button
-                        size="icon"
-                        variant="ghost"
-                        onClick={() => openEdit(entry)}
-                        data-testid={`button-edit-entry-${entry.id}`}
-                        title="Edit aliases"
-                      >
-                        <Pencil className="w-3.5 h-3.5" />
-                      </Button>
+                      {!entry.isSystem && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={() => openEdit(entry)}
+                          data-testid={`button-edit-entry-${entry.id}`}
+                          title="Edit aliases"
+                        >
+                          <Pencil className="w-3.5 h-3.5" />
+                        </Button>
+                      )}
                     </td>
                   </tr>
                 ))}
