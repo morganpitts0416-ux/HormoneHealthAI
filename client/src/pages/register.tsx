@@ -3,6 +3,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation } from "wouter";
+import { isMarketingDomain, appUrl } from "@/lib/app-url";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -66,6 +67,13 @@ export default function Register() {
   });
 
   const allAgreed = agreements.terms && agreements.hipaa && agreements.clinical;
+
+  // If someone manually navigates to /register on the marketing domain, send them to the app
+  useEffect(() => {
+    if (isMarketingDomain()) {
+      window.location.href = appUrl("/register");
+    }
+  }, []);
 
   useEffect(() => {
     if (!isLoading && user) setLocation("/dashboard");

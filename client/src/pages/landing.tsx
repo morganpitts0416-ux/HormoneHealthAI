@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
+import { appUrl } from "@/lib/app-url";
 
 const CLINICIAN_FEATURES = [
   {
@@ -103,14 +104,14 @@ export default function Landing() {
             </div>
           </div>
           <nav className="flex items-center gap-2">
-            <Link href="/login">
+            <a href={appUrl("/login")}>
               <Button variant="ghost" size="sm" data-testid="link-signin">Sign In</Button>
-            </Link>
-            <Link href="/register">
+            </a>
+            <a href={appUrl("/register")}>
               <Button size="sm" data-testid="link-start-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
                 Start Free Trial
               </Button>
-            </Link>
+            </a>
           </nav>
         </div>
       </header>
@@ -130,17 +131,17 @@ export default function Landing() {
             A clinical intelligence platform that transforms lab data and patient encounters into clear, actionable insights — helping clinicians deliver more precise care while empowering patients to understand their health.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
-            <Link href="/register">
+            <a href={appUrl("/register")}>
               <Button size="lg" data-testid="link-hero-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0", fontSize: "1rem", padding: "0 2rem" }}>
                 Start your 14-day free trial
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
-            </Link>
-            <Link href="/login">
+            </a>
+            <a href={appUrl("/login")}>
               <Button size="lg" variant="outline" data-testid="link-hero-signin" style={{ borderColor: "#c4b9a5", color: "#3d4a30" }}>
                 Sign in to your account
               </Button>
-            </Link>
+            </a>
           </div>
           <p className="text-xs mt-4" style={{ color: "#9aaa84" }}>No charge for 14 days · Card required · Cancel anytime</p>
         </div>
@@ -261,12 +262,12 @@ export default function Landing() {
                 </div>
               ))}
             </div>
-            <Link href="/register">
+            <a href={appUrl("/register")} className="w-full">
               <Button className="w-full" size="lg" data-testid="link-pricing-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
                 Start your 14-day free trial
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
-            </Link>
+            </a>
             <p className="text-center text-xs mt-3" style={{ color: "#9aaa84" }}>
               Card required to start trial · No charge for 14 days · Cancel anytime
             </p>
@@ -304,9 +305,9 @@ export default function Landing() {
             <Link href="/baa">
               <span className="text-xs cursor-pointer" style={{ color: "#7a8a64" }}>BAA</span>
             </Link>
-            <Link href="/login">
+            <a href={appUrl("/login")}>
               <span className="text-xs cursor-pointer" style={{ color: "#7a8a64" }}>Sign In</span>
-            </Link>
+            </a>
           </div>
         </div>
       </footer>
