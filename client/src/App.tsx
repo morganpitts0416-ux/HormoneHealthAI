@@ -6,6 +6,7 @@ import { Toaster } from "@/components/ui/toaster";
 import { TooltipProvider } from "@/components/ui/tooltip";
 import { useAuth } from "@/hooks/use-auth";
 import { useSpinningFavicon } from "@/hooks/use-spinning-favicon";
+import { isAppSubdomain as checkAppSubdomain, isMarketingDomain, appUrl } from "@/lib/app-url";
 import Login from "@/pages/login";
 import Register from "@/pages/register";
 import Dashboard from "@/pages/dashboard";
@@ -42,6 +43,11 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   const [, setLocation] = useLocation();
 
   useEffect(() => {
+    // On the marketing domain, all app routes redirect to the app subdomain
+    if (isMarketingDomain()) {
+      window.location.href = appUrl(window.location.pathname);
+      return;
+    }
     if (!isLoading && !user) {
       setLocation("/login");
     }
@@ -87,28 +93,10 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   return <Component />;
 }
 
-// Returns true only when on the real production app subdomain (app.realignlabeval.com).
-// Dev/Replit environments always show the marketing landing page at the root.
-function isAppSubdomain() {
-  const hostname = window.location.hostname;
-  // Never treat local or Replit preview URLs as the app subdomain
-  if (
-    hostname === "localhost" ||
-    hostname.includes(".replit.dev") ||
-    hostname.includes(".repl.co") ||
-    hostname.includes(".replit.app") ||
-    hostname.includes(".proxy.replit") ||
-    hostname.includes("replit")
-  ) {
-    return false;
-  }
-  return hostname.startsWith("app.");
-}
-
 function RootRedirect() {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
-  const appSubdomain = isAppSubdomain();
+  const appSubdomain = checkAppSubdomain();
 
   useEffect(() => {
     if (isLoading) return;

@@ -4,6 +4,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useLocation, Link } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
+import { isMarketingDomain, appUrl } from "@/lib/app-url";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
@@ -31,6 +32,13 @@ export default function Login() {
   const { toast } = useToast();
   const initialMode = typeof window !== "undefined" && new URLSearchParams(window.location.search).get("mode") === "patient" ? "patient" : "clinician";
   const [mode, setMode] = useState<"clinician" | "patient">(initialMode);
+
+  // If someone manually navigates to /login on the marketing domain, send them to the app
+  useEffect(() => {
+    if (isMarketingDomain()) {
+      window.location.href = appUrl("/login");
+    }
+  }, []);
 
   useEffect(() => {
     if (!isLoading && user) setLocation("/dashboard");
