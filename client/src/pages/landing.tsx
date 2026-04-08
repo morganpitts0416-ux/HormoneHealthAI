@@ -122,18 +122,18 @@ export default function Landing() {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28 text-center">
           <Badge variant="outline" className="mb-5 text-xs font-medium" style={{ borderColor: "#a0b880", color: "#3d4a30", backgroundColor: "#edf2e6" }}>
             <Zap className="w-3 h-3 mr-1" />
-            Clinical Intelligence Platform — 14-Day Free Trial
+            Built by a practicing clinician for real-world care
           </Badge>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 leading-tight" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
-            Clinical intelligence,<br />not just lab results.
+            Stop guessing. Start seeing<br />the full clinical picture.
           </h1>
           <p className="text-lg sm:text-xl leading-relaxed max-w-2xl mx-auto mb-8" style={{ color: "#4a5a38" }}>
-            A clinical intelligence platform that transforms lab data and patient encounters into clear, actionable insights — helping clinicians deliver more precise care while empowering patients to understand their health.
+            Built for clinicians who know there's more to the story — ClinIQ by ReAlign Health helps you connect the dots, identify patterns, and confidently guide your patients with care that actually makes sense.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
             <a href={appUrl("/register")}>
               <Button size="lg" data-testid="link-hero-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0", fontSize: "1rem", padding: "0 2rem" }}>
-                Start your 14-day free trial
+                Start your free 14-day trial
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </a>
@@ -143,7 +143,7 @@ export default function Landing() {
               </Button>
             </a>
           </div>
-          <p className="text-xs mt-4" style={{ color: "#9aaa84" }}>No charge for 14 days · Card required · Cancel anytime</p>
+          <p className="text-xs mt-4" style={{ color: "#9aaa84" }}>Built by a Nurse Practitioner. Designed for real clinical workflows.</p>
         </div>
       </section>
 
