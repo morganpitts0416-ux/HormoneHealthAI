@@ -5,9 +5,9 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Search, ChevronRight, FlaskConical, Users, Mic, FileText,
-  Heart, Moon, BarChart3, MessageSquare, CreditCard, Settings, ShieldCheck,
+  Heart, Moon, BarChart3, MessageSquare, Settings, ShieldCheck,
   Pill, BookOpen, Star, AlertTriangle, ZoomIn, X,
-  HelpCircle, Video,
+  HelpCircle, Video, SlidersHorizontal,
 } from "lucide-react";
 
 // ── Screenshot types & lightbox ────────────────────────────────────────────
@@ -125,7 +125,7 @@ const SECTIONS: Section[] = [
   { id: "supplements", icon: Pill, label: "Supplement Recommendations" },
   { id: "wellness-report", icon: BookOpen, label: "Patient Wellness Reports" },
   { id: "portal", icon: MessageSquare, label: "Patient Portal & Messaging" },
-  { id: "billing", icon: CreditCard, label: "Billing & Subscription" },
+  { id: "clinic-preferences", icon: SlidersHorizontal, label: "Clinic Preferences" },
   { id: "account", icon: Settings, label: "Account & Staff Management" },
 ];
 
@@ -472,26 +472,73 @@ const CONTENT: Record<string, React.ReactNode> = {
     </div>
   ),
 
-  "billing": (
+  "clinic-preferences": (
     <div className="space-y-6">
-      <VideoPlaceholder title="Billing & Subscription Management" />
-      <Guide title="Starting Your Subscription">
-        <Steps steps={[
-          "Your 14-day free trial starts automatically at registration — no credit card required.",
-          "Before the trial ends, navigate to Billing (top-right header button).",
-          "Click Add Payment Method and enter your card details securely via Stripe.",
-          "Click Subscribe — your subscription starts at $97/month and renews automatically.",
+
+      <Guide title="Patient Portal Messaging">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/account-messaging.png", caption: "Patient Portal Messaging settings — choose how patients can contact you through the portal." },
         ]} />
-      </Guide>
-      <Guide title="Managing Your Subscription">
+        <p className="text-sm mt-3 mb-3" style={{ color: "#5a6a4a" }}>
+          Found in Account Settings, the Portal Messaging section controls how patients can reach you from their portal. There are four modes:
+        </p>
         <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="Billing page" desc="Shows your current plan status, next billing date, and payment method on file." />
-          <Bullet label="Cancel" desc="Click Cancel Subscription to stop renewal. Access continues until the end of the current billing period." />
-          <Bullet label="Reactivate" desc="If cancelled, click Reactivate before the period ends to resume without re-entering payment details." />
-          <Bullet label="Failed payments" desc="You will receive an email notification if a payment fails. Update your payment method in the Billing page." />
-          <Bullet label="Complimentary access" desc="If granted by the ReAlign Health team, the Billing page shows a Complimentary Access banner and no payment is required." />
+          <Bullet label="No messaging" desc="Patients do not see a messaging option in their portal." />
+          <Bullet label="In-app messaging" desc="Patients send messages through the portal and you reply from within the patient's profile in ClinIQ. Full two-way messaging entirely inside the platform." />
+          <Bullet label="Text / SMS link" desc="When patients tap Message Provider, their SMS app opens pre-addressed to your clinic phone number. Enter your Spruce Health number (or any clinic number) in the Messaging Phone Number field. Replies come in through your SMS or Spruce inbox as normal." />
+          <Bullet label="Two-way bridge — coming soon" desc="A direct API bridge to Spruce, Klara, or any webhook-capable messaging platform so portal messages and replies flow through your existing system. This integration is in development and will be available in a future update." />
+        </ul>
+        <div className="mt-4 rounded-md px-4 py-3 text-sm" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>
+          <span className="font-semibold">Current recommendation:</span> Use <span className="font-semibold">Text / SMS link</span> with your Spruce Health number for seamless hand-off to your existing Spruce inbox, or use <span className="font-semibold">In-app messaging</span> to keep all patient communication inside ClinIQ.
+        </div>
+      </Guide>
+
+      <Guide title="Custom Supplement Library">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/account-supplement-library.png", caption: "Supplement Library — your custom supplements are appended to AI recommendations when trigger rules match the patient's labs or symptoms." },
+          { src: "/help-shots/account-add-supplement.png", caption: "Add Custom Supplement — name, brand, dose, category, pricing, clinical rationale, and AI-generated patient-facing description." },
+        ]} />
+        <p className="text-sm mt-3 mb-3" style={{ color: "#5a6a4a" }}>
+          Under Clinical Preferences → Supplement Library, you can build your own supplement catalog that works alongside the built-in Metagenics recommendations.
+        </p>
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Adding a supplement" desc="Click Add Supplement. Enter the product name, brand, dose/directions, category, and which patients it applies to (All, Male Only, or Female Only)." />
+          <Bullet label="Pricing" desc="Enter the retail price in USD. This is used for the patient portal ordering display and discount calculations." />
+          <Bullet label="Clinical rationale" desc="Provider-only internal notes explaining why this supplement is recommended. Patients do not see this." />
+          <Bullet label="Patient-facing description" desc="A plain-language explanation shown to patients. Click AI Generate to have ClinIQ write this automatically based on the supplement details." />
+          <Bullet label="Trigger rules" desc="Supplements without trigger rules always appear. Supplements with rules only appear when at least one lab or symptom condition is met for that patient." />
         </ul>
       </Guide>
+
+      <Guide title="Lab Range Overrides">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/account-lab-ranges.png", caption: "Lab Ranges — override optimal and reference ranges for any of 60+ markers on a per-gender basis." },
+        ]} />
+        <p className="text-sm mt-3 mb-3" style={{ color: "#5a6a4a" }}>
+          Under Clinical Preferences → Lab Ranges, you can set your own optimal and reference ranges for any marker. Your overrides replace the system defaults shown in interpretation results and AI recommendations. Leave a field unchanged to keep the system default.
+        </p>
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Filtering" desc="Use the search bar to find a specific marker, or filter by gender using the All Genders dropdown." />
+          <Bullet label="Per-gender overrides" desc="Male and female ranges can be set independently. Each marker row shows its current system defaults so you know what you are overriding." />
+          <Bullet label="Editing a range" desc="Click the pencil icon on any marker row to open the override editor. Set your preferred optimal low, optimal high, reference low, and reference high values." />
+          <Bullet label="Fallback behavior" desc="If no override is set for a marker, the system default is used automatically. You only need to enter ranges where your clinical protocol differs from the defaults." />
+        </ul>
+      </Guide>
+
+      <Guide title="Supplement Pricing & Discounts">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/account-pricing.png", caption: "Pricing & Discount — set a default discount applied to all supplement orders through the patient portal." },
+        ]} />
+        <p className="text-sm mt-3 mb-3" style={{ color: "#5a6a4a" }}>
+          Under Clinical Preferences → Pricing & Discount, you can set a discount that is automatically applied to all supplement prices shown in the patient portal.
+        </p>
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Discount type" desc="Choose Percentage off (e.g. 20% off retail) or Flat amount off (e.g. $10 off each item)." />
+          <Bullet label="How it applies" desc="The discount is calculated against the price you set on each supplement in your library. Patients see only the discounted price — they never see the original retail price." />
+          <Bullet label="No price set" desc="If a supplement has no price entered in the library, no price is shown to the patient in the portal." />
+        </ul>
+      </Guide>
+
     </div>
   ),
 
