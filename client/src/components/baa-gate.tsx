@@ -100,7 +100,13 @@ export function BaaGate({ children }: { children: React.ReactNode }) {
       const res = await apiRequest("POST", "/api/baa/sign", { signatureName: name });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (data, name) => {
+      qc.setQueryData(["/api/baa/status"], {
+        signed: true,
+        signedAt: data?.signedAt ?? new Date().toISOString(),
+        signatureName: name,
+        baaVersion: BAA_VERSION,
+      });
       qc.invalidateQueries({ queryKey: ["/api/baa/status"] });
       toast({ title: "BAA signed", description: "Your Business Associate Agreement is on file." });
     },
