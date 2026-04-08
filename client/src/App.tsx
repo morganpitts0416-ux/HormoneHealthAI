@@ -33,6 +33,7 @@ import BillingPage from "@/pages/billing";
 import PrivacyPolicy from "@/pages/privacy";
 import TermsOfService from "@/pages/terms";
 import BusinessAssociateAgreement from "@/pages/baa";
+import HelpCenter from "@/pages/help";
 import { BaaGate } from "@/components/baa-gate";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
 import { GlobalLoadingProvider } from "@/hooks/use-global-loading";
@@ -168,6 +169,9 @@ function Router() {
       </Route>
       <Route path="/billing">
         {() => <ProtectedRoute component={BillingPage} />}
+      </Route>
+      <Route path="/help">
+        {() => <ProtectedRoute component={HelpCenter} />}
       </Route>
       <Route path="/admin">
         {() => <AdminRoute component={AdminDashboard} />}

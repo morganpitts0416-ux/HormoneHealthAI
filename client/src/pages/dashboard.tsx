@@ -22,6 +22,7 @@ import {
   Users,
   Stethoscope,
   CreditCard,
+  HelpCircle,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -166,6 +167,10 @@ export default function Dashboard() {
                 <span className="hidden sm:inline ml-2">Admin</span>
               </Button>
             )}
+            <Button data-testid="button-help" variant="ghost" size="icon" onClick={() => setLocation("/help")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Help">
+              <HelpCircle className="w-4 h-4" />
+              <span className="hidden sm:inline ml-2">Help</span>
+            </Button>
             <Button data-testid="button-billing" variant="ghost" size="icon" onClick={() => setLocation("/billing")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Billing">
               <CreditCard className="w-4 h-4" />
               <span className="hidden sm:inline ml-2">Billing</span>
