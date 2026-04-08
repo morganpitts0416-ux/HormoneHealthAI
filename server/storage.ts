@@ -182,6 +182,10 @@ export interface IStorage {
   createMedicationEntries(entries: schema.InsertMedicationEntry[]): Promise<void>;
   getAllMedicationEntries(clinicianId: number): Promise<schema.MedicationEntry[]>;
   updateMedicationDictionaryCount(id: number, count: number): Promise<void>;
+  getOrCreateManualDictionary(clinicianId: number): Promise<schema.MedicationDictionary>;
+  addSingleMedicationEntry(entry: schema.InsertMedicationEntry): Promise<schema.MedicationEntry>;
+  updateMedicationEntryAliases(id: number, clinicianId: number, fields: Partial<Pick<schema.MedicationEntry, "brandNames" | "commonSpokenVariants" | "commonMisspellings" | "drugClass" | "subclass" | "route" | "notes">>): Promise<schema.MedicationEntry | null>;
+  deleteMedicationEntry(id: number, clinicianId: number): Promise<boolean>;
 }
 
 export class DbStorage implements IStorage {
@@ -1138,6 +1142,70 @@ export class DbStorage implements IStorage {
       .update(schema.medicationDictionaries)
       .set({ entryCount: count })
       .where(eq(schema.medicationDictionaries.id, id));
+  }
+
+  async getOrCreateManualDictionary(clinicianId: number): Promise<schema.MedicationDictionary> {
+    const existing = await db
+      .select()
+      .from(schema.medicationDictionaries)
+      .where(and(
+        eq(schema.medicationDictionaries.clinicianId, clinicianId),
+        eq(schema.medicationDictionaries.filename, "__manual__")
+      ))
+      .limit(1);
+    if (existing.length) return existing[0];
+    const [created] = await db
+      .insert(schema.medicationDictionaries)
+      .values({ clinicianId, filename: "__manual__", entryCount: 0 })
+      .returning();
+    return created;
+  }
+
+  async addSingleMedicationEntry(entry: schema.InsertMedicationEntry): Promise<schema.MedicationEntry> {
+    const [row] = await db.insert(schema.medicationEntries).values(entry).returning();
+    await db
+      .update(schema.medicationDictionaries)
+      .set({ entryCount: sql`entry_count + 1` })
+      .where(eq(schema.medicationDictionaries.id, entry.dictionaryId));
+    return row;
+  }
+
+  async updateMedicationEntryAliases(
+    id: number,
+    clinicianId: number,
+    fields: Partial<Pick<schema.MedicationEntry, "brandNames" | "commonSpokenVariants" | "commonMisspellings" | "drugClass" | "subclass" | "route" | "notes">>
+  ): Promise<schema.MedicationEntry | null> {
+    const [updated] = await db
+      .update(schema.medicationEntries)
+      .set(fields)
+      .where(and(
+        eq(schema.medicationEntries.id, id),
+        eq(schema.medicationEntries.clinicianId, clinicianId)
+      ))
+      .returning();
+    return updated ?? null;
+  }
+
+  async deleteMedicationEntry(id: number, clinicianId: number): Promise<boolean> {
+    const entry = await db
+      .select()
+      .from(schema.medicationEntries)
+      .where(and(
+        eq(schema.medicationEntries.id, id),
+        eq(schema.medicationEntries.clinicianId, clinicianId)
+      ))
+      .limit(1);
+    if (!entry.length) return false;
+    const dictId = entry[0].dictionaryId;
+    await db.delete(schema.medicationEntries).where(and(
+      eq(schema.medicationEntries.id, id),
+      eq(schema.medicationEntries.clinicianId, clinicianId)
+    ));
+    await db
+      .update(schema.medicationDictionaries)
+      .set({ entryCount: sql`GREATEST(entry_count - 1, 0)` })
+      .where(eq(schema.medicationDictionaries.id, dictId));
+    return true;
   }
 }
 
