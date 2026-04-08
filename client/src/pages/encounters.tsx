@@ -8,7 +8,7 @@ import {
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
   ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
   TriangleAlert, ExternalLink, Square, MicOff, ShieldCheck, Copy, Check,
-  Layers,
+  Layers, Pill,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -941,6 +941,8 @@ function EncounterEditor({
   );
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "matching" | "evidence" | "validating" | null>(null);
+  const [medMatches, setMedMatches] = useState<import("@shared/schema").MedicationMatch[] | null>(null);
+  const [medDetecting, setMedDetecting] = useState(false);
   const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
   const [copiedSoap, setCopiedSoap] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
@@ -1833,6 +1835,34 @@ function EncounterEditor({
                     ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Validating…</>
                     : <><CheckCircle2 className="w-3 h-3 mr-1.5" />Validate SOAP</>}
                 </Button>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={async () => {
+                    const text = transcription?.trim();
+                    if (!text) return;
+                    setMedDetecting(true);
+                    setMedMatches(null);
+                    try {
+                      const res = await apiRequest("POST", "/api/medication-dictionary/normalize", { text });
+                      const data = await res.json();
+                      setMedMatches(data.matches ?? []);
+                      if (data.dictionarySize === 0) {
+                        toast({ title: "No dictionary loaded", description: "Upload a medication CSV in Med Dictionary first." });
+                      }
+                    } catch {
+                      toast({ title: "Detection failed", variant: "destructive" });
+                    } finally {
+                      setMedDetecting(false);
+                    }
+                  }}
+                  disabled={!hasTranscription || medDetecting || pipelineLoading !== null}
+                  data-testid="button-detect-medications"
+                >
+                  {medDetecting
+                    ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Detecting…</>
+                    : <><Pill className="w-3 h-3 mr-1.5" />Detect Medications</>}
+                </Button>
               </div>
             </div>
 
@@ -1885,6 +1915,73 @@ function EncounterEditor({
                 </div>
               )}
             </div>
+
+            {/* Medication Detection Results */}
+            {medMatches !== null && (
+              <div>
+                <div className="flex items-center gap-2 mb-3 flex-wrap">
+                  <Pill className="w-4 h-4 text-primary" />
+                  <h3 className="text-sm font-semibold">Detected Medications</h3>
+                  <Badge variant="secondary" className="text-[10px]">{medMatches.length} found</Badge>
+                  {medMatches.some(m => m.needsReview) && (
+                    <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
+                      {medMatches.filter(m => m.needsReview).length} need review
+                    </Badge>
+                  )}
+                  <button
+                    className="ml-auto text-xs text-muted-foreground hover:text-foreground"
+                    onClick={() => setMedMatches(null)}
+                  >
+                    Clear
+                  </button>
+                </div>
+
+                {medMatches.length === 0 ? (
+                  <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
+                    No medications from your dictionary were found in this transcript.
+                  </div>
+                ) : (
+                  <div className="rounded-md border overflow-hidden">
+                    <table className="w-full text-xs">
+                      <thead className="bg-muted/50">
+                        <tr>
+                          <th className="text-left px-3 py-2 font-semibold">Spoken Term</th>
+                          <th className="text-left px-3 py-2 font-semibold">Canonical Name</th>
+                          <th className="text-left px-3 py-2 font-semibold">Class</th>
+                          <th className="text-left px-3 py-2 font-semibold">Match</th>
+                          <th className="text-left px-3 py-2 font-semibold">Confidence</th>
+                          <th className="text-left px-3 py-2 font-semibold">Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {medMatches.map((m, i) => (
+                          <tr key={i} data-testid={`row-med-match-${i}`} className={`border-t ${m.needsReview ? "bg-amber-50/40 dark:bg-amber-950/10" : i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
+                            <td className="px-3 py-2 font-mono">{m.originalTerm}</td>
+                            <td className="px-3 py-2 font-medium">{m.canonicalName}</td>
+                            <td className="px-3 py-2 text-muted-foreground">{m.drugClass ?? "—"}</td>
+                            <td className="px-3 py-2">
+                              <Badge variant="outline" className="text-[10px] capitalize">
+                                {m.matchType.replace(/_/g, " ")}
+                              </Badge>
+                            </td>
+                            <td className="px-3 py-2">
+                              <span className={`font-semibold ${m.confidence >= 0.85 ? "text-emerald-600" : m.confidence >= 0.75 ? "text-amber-600" : "text-red-500"}`}>
+                                {Math.round(m.confidence * 100)}%
+                              </span>
+                            </td>
+                            <td className="px-3 py-2">
+                              {m.needsReview
+                                ? <span className="flex items-center gap-1 text-amber-600"><AlertCircle className="w-3 h-3" />Review</span>
+                                : <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3 h-3" />Confirmed</span>}
+                            </td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Pattern / Phenotype Match results */}
             {pipelineLoading === "matching" && (

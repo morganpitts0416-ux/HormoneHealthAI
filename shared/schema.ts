@@ -1004,3 +1004,48 @@ export const insertAppointmentSchema = createInsertSchema(appointments).omit({
 });
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 export type Appointment = typeof appointments.$inferSelect;
+
+// ─── Medication Dictionary ─────────────────────────────────────────────────
+export const medicationDictionaries = pgTable("medication_dictionaries", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  entryCount: integer("entry_count").notNull().default(0),
+  uploadedAt: timestamp("uploaded_at").defaultNow().notNull(),
+});
+
+export const insertMedicationDictionarySchema = createInsertSchema(medicationDictionaries).omit({ id: true, uploadedAt: true });
+export type InsertMedicationDictionary = z.infer<typeof insertMedicationDictionarySchema>;
+export type MedicationDictionary = typeof medicationDictionaries.$inferSelect;
+
+export const medicationEntries = pgTable("medication_entries", {
+  id: serial("id").primaryKey(),
+  dictionaryId: integer("dictionary_id").notNull().references(() => medicationDictionaries.id, { onDelete: "cascade" }),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  genericName: varchar("generic_name", { length: 255 }).notNull(),
+  brandNames: text("brand_names").array().notNull().default([]),
+  commonSpokenVariants: text("common_spoken_variants").array().notNull().default([]),
+  commonMisspellings: text("common_misspellings").array().notNull().default([]),
+  drugClass: varchar("drug_class", { length: 255 }),
+  subclass: varchar("subclass", { length: 255 }),
+  route: varchar("route", { length: 100 }),
+  notes: text("notes"),
+});
+
+export const insertMedicationEntrySchema = createInsertSchema(medicationEntries).omit({ id: true });
+export type InsertMedicationEntry = z.infer<typeof insertMedicationEntrySchema>;
+export type MedicationEntry = typeof medicationEntries.$inferSelect;
+
+export type MedicationMatch = {
+  originalTerm: string;
+  canonicalName: string;
+  drugClass: string | null;
+  subclass: string | null;
+  route: string | null;
+  matchType: "generic" | "brand" | "spoken_variant" | "misspelling" | "fuzzy";
+  confidence: number;
+  needsReview: boolean;
+  notes: string | null;
+  startIndex: number;
+  endIndex: number;
+};
