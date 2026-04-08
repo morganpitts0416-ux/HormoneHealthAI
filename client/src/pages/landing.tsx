@@ -11,7 +11,7 @@ import { appUrl } from "@/lib/app-url";
 const CLINICIAN_FEATURES = [
   {
     icon: Brain,
-    title: "See beyond "normal" labs",
+    title: 'See beyond "normal" labs',
     desc: "Instantly interpret 60+ markers with clinical context — not just reference ranges — so you can understand what's actually happening, not just what's flagged.",
   },
   {
@@ -36,7 +36,7 @@ const CLINICIAN_FEATURES = [
   },
   {
     icon: BookOpen,
-    title: "Know the "why" behind every decision",
+    title: 'Know the "why" behind every decision',
     desc: "Evidence-backed recommendations surfaced directly in your workflow — so you can move confidently without second-guessing.",
   },
   {
@@ -54,23 +54,23 @@ const CLINICIAN_FEATURES = [
 const PATIENT_FEATURES = [
   {
     icon: FileText,
-    title: "Understandable Health Reports",
-    desc: "Patients receive plain-language explanations of their labs — not just numbers, but what they mean for their health and what comes next.",
+    title: "Clear, understandable reports",
+    desc: "Patients see what their labs actually mean — not just numbers — so they can understand their health and what to do next.",
   },
   {
     icon: Leaf,
-    title: "Personalized Supplement Protocol",
-    desc: "AI-matched supplement recommendations based on lab values, symptoms, and detected phenotypes — curated and approved by the clinician.",
+    title: "Personalized supplement guidance",
+    desc: "Recommendations based on labs, symptoms, and clinical patterns — reviewed and curated by you before reaching the patient.",
   },
   {
     icon: Sparkles,
-    title: "Diet & Lifestyle Recommendations",
-    desc: "AI-generated, lab-informed dietary guidance, lifestyle recommendations, and personalized recipes delivered directly to the patient portal.",
+    title: "Actionable diet & lifestyle support",
+    desc: "Lab-informed nutrition and lifestyle guidance patients can actually follow — delivered directly through the portal.",
   },
   {
     icon: Users,
-    title: "Visit Summary Access",
-    desc: "Clinicians can publish patient-facing encounter summaries to the portal — keeping patients informed and engaged between visits.",
+    title: "Stay connected between visits",
+    desc: "Share visit summaries, recommendations, and updates — keeping patients informed, engaged, and aligned with their care plan.",
   },
 ];
 
@@ -217,10 +217,10 @@ export default function Landing() {
           <div className="text-center mb-12">
             <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7a8a64" }}>For Patients</span>
             <h2 className="text-2xl sm:text-3xl font-bold mt-2" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
-              A portal patients actually understand
+              Finally — a patient portal that actually makes sense
             </h2>
             <p className="text-sm mt-3 max-w-xl mx-auto" style={{ color: "#5a6a4a" }}>
-              Built originally to give patients a meaningful, educational window into their own health — not just numbers on a page.
+              ClinIQ by ReAlign Health was built to help patients truly understand their health — not just see numbers on a page. Clear explanations, personalized guidance, and real insight — all in one place.
             </p>
           </div>
           <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
