@@ -31,6 +31,7 @@ import { CheckCircle2, Clock, CreditCard, AlertTriangle, XCircle, ShieldCheck, Z
 
 interface BillingStatus {
   subscriptionStatus: string;
+  freeAccount: boolean;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
   stripeCurrentPeriodEnd: string | null;
@@ -212,6 +213,7 @@ export default function BillingPage() {
     },
   });
 
+  const isFreeAccount = status?.freeAccount === true;
   const hasSubscription = !!(status?.stripeSubscriptionId);
   const isTrial = status?.subscriptionStatus === "trial";
   const isActive = status?.subscriptionStatus === "active";
@@ -244,6 +246,21 @@ export default function BillingPage() {
           <CardContent className="space-y-4">
             {isLoading ? (
               <div className="h-16 animate-pulse rounded-md bg-muted" />
+            ) : isFreeAccount ? (
+              <div className="space-y-3">
+                <div className="flex items-center gap-2 rounded-md p-3 text-sm" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>
+                  <ShieldCheck className="h-4 w-4 shrink-0" style={{ color: "#5a7040" }} />
+                  <div>
+                    <p className="font-semibold">Complimentary Access</p>
+                    <p className="text-xs mt-0.5" style={{ color: "#5a7040" }}>
+                      This account has been granted full access at no charge. No payment method is required.
+                    </p>
+                  </div>
+                </div>
+                <div className="text-xs text-muted-foreground">
+                  For questions about your account, please contact your administrator.
+                </div>
+              </div>
             ) : (
               <>
                 {/* Plan details row */}

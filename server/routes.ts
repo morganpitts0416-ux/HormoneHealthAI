@@ -1425,6 +1425,7 @@ ${aiRecommendations}`;
           npi: u.npi,
           role: u.role,
           subscriptionStatus: u.subscriptionStatus,
+          freeAccount: u.freeAccount,
           notes: u.notes,
           createdAt: u.createdAt,
           patientCount: await storage.getPatientCountByUser(u.id),
@@ -1440,7 +1441,7 @@ ${aiRecommendations}`;
   // Create a new clinician account via invite (admin only — no password required)
   app.post("/api/admin/clinicians", requireAdmin, async (req, res) => {
     try {
-      const { email, username, firstName, lastName, title, npi, clinicName, phone, address, subscriptionStatus, notes } = req.body;
+      const { email, username, firstName, lastName, title, npi, clinicName, phone, address, subscriptionStatus, freeAccount, notes } = req.body;
       if (!email || !username || !firstName || !lastName || !title || !clinicName) {
         return res.status(400).json({ message: "All required fields must be provided" });
       }
@@ -1459,6 +1460,7 @@ ${aiRecommendations}`;
         npi: npi || null, clinicName, phone: phone || null, address: address || null,
         role: "clinician",
         subscriptionStatus: subscriptionStatus || "active",
+        freeAccount: freeAccount === true,
         notes: notes || null,
       } as any);
 
@@ -1491,8 +1493,13 @@ ${aiRecommendations}`;
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid user ID" });
-      const { subscriptionStatus, role, notes } = req.body;
-      const updated = await storage.updateUserAdmin(id, { subscriptionStatus, role, notes });
+      const { subscriptionStatus, role, notes, freeAccount } = req.body;
+      const updated = await storage.updateUserAdmin(id, {
+        subscriptionStatus,
+        role,
+        notes,
+        ...(freeAccount !== undefined && { freeAccount: freeAccount === true }),
+      });
       if (!updated) return res.status(404).json({ message: "User not found" });
       res.json({ message: "Updated successfully", user: updated });
     } catch (error) {
@@ -4372,6 +4379,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       const user = req.user as any;
       res.json({
         subscriptionStatus: user.subscriptionStatus,
+        freeAccount: user.freeAccount ?? false,
         stripeCustomerId: user.stripeCustomerId,
         stripeSubscriptionId: user.stripeSubscriptionId,
         stripeCurrentPeriodEnd: user.stripeCurrentPeriodEnd,
@@ -4385,8 +4393,11 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // POST /api/billing/create-setup-intent — create a SetupIntent for card collection
   app.post("/api/billing/create-setup-intent", requireAuth, async (req, res) => {
     try {
-      const stripe = getStripe();
       const user = req.user as any;
+      if (user.freeAccount) {
+        return res.status(400).json({ message: "Free accounts do not require a payment method." });
+      }
+      const stripe = getStripe();
 
       // Get or create a Stripe customer
       let customerId = user.stripeCustomerId;

@@ -470,6 +470,8 @@ export const users = pgTable("users", {
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 100 }),
   stripeCurrentPeriodEnd: timestamp("stripe_current_period_end"),
   stripeCancelAtPeriodEnd: boolean("stripe_cancel_at_period_end").notNull().default(false),
+  // Free/internal accounts — set by admin to bypass billing entirely
+  freeAccount: boolean("free_account").notNull().default(false),
   notes: text("notes"), // Internal admin notes about this account
   // Password reset / invite tokens
   passwordResetToken: varchar("password_reset_token", { length: 255 }),

@@ -6,6 +6,7 @@ import { queryClient } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Checkbox } from "@/components/ui/checkbox";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
@@ -50,6 +51,7 @@ const createClinicianSchema = z.object({
   npi: z.string().optional(),
   phone: z.string().optional(),
   subscriptionStatus: z.string().default("active"),
+  freeAccount: z.boolean().default(false),
   notes: z.string().optional(),
 });
 type CreateClinicianForm = z.infer<typeof createClinicianSchema>;
@@ -66,6 +68,7 @@ type Clinician = {
   npi: string | null;
   role: string;
   subscriptionStatus: string;
+  freeAccount: boolean;
   notes: string | null;
   createdAt: string;
   patientCount: number;
@@ -128,12 +131,12 @@ export default function AdminDashboard() {
   });
 
   const updateStatusMutation = useMutation({
-    mutationFn: async ({ id, subscriptionStatus, notes }: { id: number; subscriptionStatus: string; notes: string }) => {
+    mutationFn: async ({ id, subscriptionStatus, freeAccount, notes }: { id: number; subscriptionStatus: string; freeAccount: boolean; notes: string }) => {
       const res = await fetch(`/api/admin/clinicians/${id}`, {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         credentials: "include",
-        body: JSON.stringify({ subscriptionStatus, notes }),
+        body: JSON.stringify({ subscriptionStatus, freeAccount, notes }),
       });
       if (!res.ok) throw new Error("Update failed");
       return res.json();
@@ -167,7 +170,7 @@ export default function AdminDashboard() {
     resolver: zodResolver(createClinicianSchema),
     defaultValues: {
       firstName: "", lastName: "", title: "", email: "", clinicName: "",
-      username: "", npi: "", phone: "", subscriptionStatus: "active", notes: "",
+      username: "", npi: "", phone: "", subscriptionStatus: "active", freeAccount: false, notes: "",
     },
   });
 
@@ -330,7 +333,17 @@ export default function AdminDashboard() {
                           <span className="font-medium" style={{ color: "#2e3a20" }}>{c.patientCount}</span>
                         </td>
                         <td className="px-4 py-4">
-                          <StatusBadge status={c.subscriptionStatus} />
+                          <div className="flex items-center gap-1.5 flex-wrap">
+                            <StatusBadge status={c.subscriptionStatus} />
+                            {c.freeAccount && (
+                              <span
+                                className="text-[10px] font-semibold px-1.5 py-0.5 rounded"
+                                style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}
+                              >
+                                Free
+                              </span>
+                            )}
+                          </div>
                         </td>
                         <td className="px-4 py-4">
                           <p className="text-xs text-muted-foreground">
@@ -484,6 +497,29 @@ export default function AdminDashboard() {
                   </FormItem>
                 )} />
               </div>
+              <FormField control={form.control} name="freeAccount" render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-start gap-3 rounded-md border p-3">
+                    <FormControl>
+                      <Checkbox
+                        id="create-freeAccount"
+                        checked={field.value}
+                        onCheckedChange={field.onChange}
+                        data-testid="checkbox-freeAccount"
+                      />
+                    </FormControl>
+                    <div className="space-y-0.5">
+                      <FormLabel htmlFor="create-freeAccount" className="cursor-pointer leading-snug">
+                        Complimentary Access
+                      </FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Grants full platform access at no charge. The billing page will show "Complimentary Access" and no payment method will be required.
+                      </p>
+                    </div>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )} />
               <FormField control={form.control} name="notes" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Internal Notes <span className="text-muted-foreground font-normal text-xs">(admin only)</span></FormLabel>
@@ -528,6 +564,24 @@ export default function AdminDashboard() {
                   </SelectContent>
                 </Select>
               </div>
+              <div className="flex items-start gap-3 rounded-md border p-3">
+                <Checkbox
+                  id="edit-freeAccount"
+                  checked={editStatusTarget.freeAccount ?? false}
+                  onCheckedChange={(checked) =>
+                    setEditStatusTarget({ ...editStatusTarget, freeAccount: checked === true })
+                  }
+                  data-testid="checkbox-edit-freeAccount"
+                />
+                <div className="space-y-0.5">
+                  <label htmlFor="edit-freeAccount" className="text-sm font-medium cursor-pointer leading-snug">
+                    Complimentary Access
+                  </label>
+                  <p className="text-xs text-muted-foreground">
+                    Bypasses billing — no payment method required.
+                  </p>
+                </div>
+              </div>
               <div className="space-y-2">
                 <label className="text-sm font-medium">Internal Notes</label>
                 <Textarea
@@ -545,6 +599,7 @@ export default function AdminDashboard() {
                 onClick={() => updateStatusMutation.mutate({
                   id: editStatusTarget.id,
                   subscriptionStatus: editStatusTarget.subscriptionStatus,
+                  freeAccount: editStatusTarget.freeAccount ?? false,
                   notes: editNotes,
                 })}
                 disabled={updateStatusMutation.isPending}
