@@ -1081,7 +1081,16 @@ function EncounterEditor({
       setSoap(data.soapNote);
       invalidate();
       setActiveTab("soap");
-      toast({ title: "SOAP note generated", description: "Review and edit each section as needed." });
+      if (data.medicationMatches?.length) {
+        setMedMatches(data.medicationMatches);
+        const needsReview = data.medicationMatches.filter((m: any) => m.needsReview).length;
+        toast({
+          title: "SOAP note generated",
+          description: `${data.medicationMatches.length} medication${data.medicationMatches.length !== 1 ? "s" : ""} detected${needsReview ? ` · ${needsReview} flagged for review` : ""}. Switch to Transcript tab to review.`,
+        });
+      } else {
+        toast({ title: "SOAP note generated", description: "Review and edit each section as needed." });
+      }
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
   });
@@ -1124,6 +1133,9 @@ function EncounterEditor({
       if (soapResult.status === "fulfilled") {
         setSoap(soapResult.value.soapNote);
         setActiveTab("soap");
+        if (soapResult.value.medicationMatches?.length) {
+          setMedMatches(soapResult.value.medicationMatches);
+        }
       } else {
         toast({ variant: "destructive", title: "SOAP generation failed", description: (soapResult.reason as any)?.message });
       }
@@ -1429,11 +1441,16 @@ function EncounterEditor({
               key={step.id}
               data-testid={`tab-${step.id}`}
               onClick={() => setActiveTab(step.id)}
-              className={`flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${isActive ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"}`}
+              className={`relative flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium transition-colors border-b-2 -mb-px ${isActive ? "border-primary text-foreground" : "border-transparent text-muted-foreground hover:text-foreground hover:border-border"}`}
             >
               {step.done ? <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" /> : <Circle className="w-3 h-3 opacity-30 flex-shrink-0" />}
               <Icon className="w-3 h-3 flex-shrink-0" />
               <span className="hidden sm:inline">{step.label}</span>
+              {step.id === "transcript" && medMatches && medMatches.length > 0 && (
+                <span className={`ml-1 inline-flex items-center justify-center rounded-full text-[9px] font-bold leading-none px-1.5 py-0.5 ${medMatches.some(m => m.needsReview) ? "bg-amber-500 text-white" : "bg-emerald-500 text-white"}`}>
+                  {medMatches.length}
+                </span>
+              )}
             </button>
           );
         })}
