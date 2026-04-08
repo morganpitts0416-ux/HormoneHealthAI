@@ -20,6 +20,7 @@ import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
+import { useGlobalLoading } from "@/hooks/use-global-loading";
 import { Link, useSearch } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { FemaleLabValues, InterpretationResult, LabValues, Patient, LabResult } from "@shared/schema";
@@ -365,6 +366,19 @@ export default function FemaleLabInterpretation() {
     setInterpretationResult(loadedInterpretation);
     setActiveTab("results");
   };
+
+  // ── Global loading overlay ────────────────────────────────────────────────
+  const { setLoading: setGlobalLoading, clearLoading: clearGlobalLoading } = useGlobalLoading();
+  useEffect(() => {
+    if (interpretMutation.isPending) {
+      setGlobalLoading("Evaluating lab results…");
+    } else if (wellnessPlanMutation.isPending) {
+      setGlobalLoading("Generating patient report…");
+    } else {
+      clearGlobalLoading();
+    }
+  }, [interpretMutation.isPending, wellnessPlanMutation.isPending]);
+  useEffect(() => () => { clearGlobalLoading(); }, []);
 
   return (
     <div className="min-h-screen bg-background">
