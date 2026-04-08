@@ -298,8 +298,8 @@ function extractKeywords(text: string): string[] {
     .filter(w => w.length > 4 && !["about","which","these","their","there","should","would","could","after","before","since","where","while","other","every","using","based"].includes(w));
 }
 
-// mode="flags"    → inline EvidenceFlagButton chips on matched lines (default "View" mode)
-// mode="callouts" → EvidenceCallout blocks below each matched line ("With Evidence" mode)
+// mode="flags"    → inline EvidenceFlagButton chips anchored to numbered diagnosis lines (default)
+// mode="callouts" → EvidenceCallout blocks below each matched numbered line
 function SoapNoteViewer({ text, evidence, mode = "flags" }: {
   text: string;
   evidence?: EvidenceSuggestion[];
@@ -308,6 +308,10 @@ function SoapNoteViewer({ text, evidence, mode = "flags" }: {
   const lines = text.split("\n");
   const nodes: ReactElement[] = [];
   let inAssessmentPlan = false;
+  // Track whether we have passed the first numbered diagnosis in the Assessment.
+  // Evidence pills only anchor to numbered items and their sub-content,
+  // NOT to the Assessment Summary paragraph that precedes them.
+  let inNumberedItem = false;
   const usedIndices = new Set<number>();
 
   function matchEvidence(lineText: string): EvidenceSuggestion[] {
@@ -351,15 +355,15 @@ function SoapNoteViewer({ text, evidence, mode = "flags" }: {
 
     if (MAJOR_SECTIONS.test(trimmed)) {
       inAssessmentPlan = ASSESSMENT_SECTION.test(trimmed);
+      inNumberedItem = false; // reset on new major section
       nodes.push(<span key={i} className="soap-section-major">{trimmed}</span>);
       return;
     }
 
     const subMatch = trimmed.match(SUB_LABEL);
     if (subMatch && subMatch[1].length < 32) {
-      const isIndented = trimmed.startsWith("-");
       nodes.push(
-        <p key={i} className={`soap-body ${isIndented ? "pl-4" : ""}`}>
+        <p key={i} className="soap-body">
           <span className="soap-label">{subMatch[1]}: </span>
           {subMatch[2].trim()}
         </p>
@@ -369,7 +373,9 @@ function SoapNoteViewer({ text, evidence, mode = "flags" }: {
 
     if (trimmed.startsWith("-") || trimmed.startsWith("•")) {
       const bulletText = trimmed.slice(1).trim();
-      const evNodes = inAssessmentPlan ? renderEvidenceFor(bulletText, `b${i}`) : [];
+      // Only attach evidence to bullets that are under a numbered diagnosis item,
+      // not to top-level bulleted lists elsewhere in the note.
+      const evNodes = (inAssessmentPlan && inNumberedItem) ? renderEvidenceFor(bulletText, `b${i}`) : [];
       nodes.push(
         <p key={i} className="soap-body pl-4">
           <span className="text-primary/60 mr-1 select-none">·</span>
@@ -382,6 +388,7 @@ function SoapNoteViewer({ text, evidence, mode = "flags" }: {
     }
 
     if (/^\d+\./.test(trimmed)) {
+      inNumberedItem = true; // from here on, prose belongs to a specific diagnosis
       const evNodes = inAssessmentPlan ? renderEvidenceFor(trimmed, `n${i}`) : [];
       nodes.push(
         <p key={i} className="soap-body font-semibold mt-1">
@@ -393,7 +400,10 @@ function SoapNoteViewer({ text, evidence, mode = "flags" }: {
       return;
     }
 
-    const evNodes = inAssessmentPlan ? renderEvidenceFor(trimmed, `p${i}`) : [];
+    // Plain prose: only attach evidence if we're inside a specific numbered diagnosis.
+    // The Assessment Summary paragraph (before item 1) is plain prose but inNumberedItem
+    // is false there, so it correctly gets no pills.
+    const evNodes = (inAssessmentPlan && inNumberedItem) ? renderEvidenceFor(trimmed, `p${i}`) : [];
     nodes.push(
       <p key={i} className="soap-body">
         {trimmed}
@@ -534,7 +544,10 @@ function AudioCapture({
       const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
-      const mr = new MediaRecorder(stream, mimeType ? { mimeType } : undefined);
+      const mr = new MediaRecorder(stream, {
+        ...(mimeType ? { mimeType } : {}),
+        audioBitsPerSecond: 16000,
+      });
       mediaRecorderRef.current = mr;
 
       mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
@@ -758,7 +771,7 @@ function EncounterEditor({
   );
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
   const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "matching" | "evidence" | "validating" | null>(null);
-  const [soapViewMode, setSoapViewMode] = useState<"view" | "evidence" | "edit">("view");
+  const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
   const [copiedSoap, setCopiedSoap] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
 
@@ -945,10 +958,7 @@ function EncounterEditor({
 
       if (evidenceResult.status === "fulfilled") {
         setEvidenceOverlay(evidenceResult.value.evidenceSuggestions);
-        // Auto-switch SOAP view to "evidence" mode so citations appear inline immediately
-        if (soapResult.status === "fulfilled") {
-          setSoapViewMode("evidence");
-        }
+        // Evidence pills appear automatically in View mode — no mode switch needed
       } else {
         toast({ variant: "destructive", title: "Evidence generation failed", description: (evidenceResult.reason as any)?.message });
       }
@@ -2384,15 +2394,6 @@ function EncounterEditor({
                     >
                       <Eye className="w-3 h-3" /> View
                     </button>
-                    {(evidenceOverlay?.suggestions?.length ?? 0) > 0 && (
-                      <button
-                        data-testid="soap-evidence-toggle"
-                        onClick={() => setSoapViewMode("evidence")}
-                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "evidence" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                      >
-                        <Layers className="w-3 h-3" /> With Evidence
-                      </button>
-                    )}
                     <button
                       data-testid="soap-edit-toggle"
                       onClick={() => setSoapViewMode("edit")}
@@ -2440,14 +2441,14 @@ function EncounterEditor({
                   </div>
                 </div>
 
-                {soapViewMode === "view" && evidenceOverlay?.suggestions?.length ? (
+                {soapViewMode === "view" && (evidenceOverlay?.suggestions?.length ?? 0) > 0 && (
                   <div className="flex items-center gap-1.5 px-1 py-0.5">
                     <Sparkles className="w-3 h-3 text-primary/60 flex-shrink-0" />
                     <p className="text-[10px] text-muted-foreground">
-                      Evidence flags are embedded in the Assessment — click any <span className="font-semibold text-primary/70">Evidence</span> pill to view supporting citations.
+                      Evidence flags are embedded in the Assessment — click any <span className="font-semibold text-primary/70">Evidence</span> pill to view supporting citations. Full citations are in the Evidence tab.
                     </p>
                   </div>
-                ) : null}
+                )}
 
                 {soapViewMode === "view" ? (
                   <div className="rounded-md border bg-card px-5 py-4 min-h-[24rem]">
@@ -2455,14 +2456,6 @@ function EncounterEditor({
                       text={soap.fullNote ?? legacySoapToText(soap)}
                       evidence={evidenceOverlay?.suggestions}
                       mode="flags"
-                    />
-                  </div>
-                ) : soapViewMode === "evidence" ? (
-                  <div className="rounded-md border bg-card px-5 py-4 min-h-[24rem]">
-                    <SoapNoteViewer
-                      text={soap.fullNote ?? legacySoapToText(soap)}
-                      evidence={evidenceOverlay?.suggestions}
-                      mode="callouts"
                     />
                   </div>
                 ) : (
@@ -2479,9 +2472,7 @@ function EncounterEditor({
                 <p className="text-xs text-muted-foreground">
                   {soapViewMode === "edit"
                     ? "Editing raw note — save when ready. This is what will be copied and pasted into your EHR."
-                    : soapViewMode === "evidence"
-                    ? "Evidence callouts are shown inline for reference only — they are not included when you copy the note."
-                    : "Use Copy Note to paste the clean note into your EHR. Switch to With Evidence to see guideline citations alongside the note."}
+                    : "Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline."}
                 </p>
               </div>
             )}
