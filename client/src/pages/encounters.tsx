@@ -455,12 +455,43 @@ function AudioCapture({
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
   const fileRef = useRef<HTMLInputElement>(null);
+  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const { toast } = useToast();
+
+  // Request screen wake lock so the phone doesn't suspend the mic during recording
+  const acquireWakeLock = async () => {
+    if (!("wakeLock" in navigator)) return;
+    try {
+      wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
+    } catch {
+      // Wake lock not granted — not a fatal error, recording continues
+    }
+  };
+
+  const releaseWakeLock = () => {
+    if (wakeLockRef.current) {
+      wakeLockRef.current.release().catch(() => {});
+      wakeLockRef.current = null;
+    }
+  };
+
+  // Re-acquire wake lock if the page becomes visible again while still recording
+  // (mobile browsers release wake locks when the tab goes to the background)
+  useEffect(() => {
+    const onVisibility = () => {
+      if (document.visibilityState === "visible" && recState === "recording") {
+        acquireWakeLock();
+      }
+    };
+    document.addEventListener("visibilitychange", onVisibility);
+    return () => document.removeEventListener("visibilitychange", onVisibility);
+  }, [recState]);
 
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
+      releaseWakeLock();
     };
   }, []);
 
@@ -519,6 +550,7 @@ function AudioCapture({
       mr.start(1000);
       setRecState("recording");
       timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
+      acquireWakeLock();
     } catch {
       toast({ variant: "destructive", title: "Microphone access denied", description: "Please allow microphone access in your browser settings and try again." });
     }
@@ -529,6 +561,7 @@ function AudioCapture({
     if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
       mediaRecorderRef.current.stop();
     }
+    releaseWakeLock();
     setRecState("stopped");
   };
 
