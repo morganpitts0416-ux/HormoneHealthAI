@@ -165,7 +165,7 @@ export default function Landing() {
               {
                 icon: FlaskConical,
                 heading: "For the Clinician",
-                body: "Go beyond "normal" and "abnormal." ReAlign connects the dots across labs — helping you identify patterns, stratify risk, and make decisions with clarity and confidence.",
+                body: 'Go beyond "normal" and "abnormal." ReAlign connects the dots across labs — helping you identify patterns, stratify risk, and make decisions with clarity and confidence.',
               },
               {
                 icon: Users,
