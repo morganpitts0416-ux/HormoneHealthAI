@@ -943,6 +943,7 @@ function EncounterEditor({
   const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "matching" | "evidence" | "validating" | null>(null);
   const [medMatches, setMedMatches] = useState<import("@shared/schema").MedicationMatch[] | null>(null);
   const [medDetecting, setMedDetecting] = useState(false);
+  const [confirmingTermIdx, setConfirmingTermIdx] = useState<number | null>(null);
   const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
   const [copiedSoap, setCopiedSoap] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
@@ -1864,9 +1865,6 @@ function EncounterEditor({
                       const res = await apiRequest("POST", "/api/medication-dictionary/normalize", { text });
                       const data = await res.json();
                       setMedMatches(data.matches ?? []);
-                      if (data.dictionarySize === 0) {
-                        toast({ title: "No dictionary loaded", description: "Upload a medication CSV in Med Dictionary first." });
-                      }
                     } catch {
                       toast({ title: "Detection failed", variant: "destructive" });
                     } finally {
@@ -1933,68 +1931,97 @@ function EncounterEditor({
               )}
             </div>
 
-            {/* Medication Detection Results */}
+            {/* Medication Recognition Panel */}
             {medMatches !== null && (
               <div>
                 <div className="flex items-center gap-2 mb-3 flex-wrap">
                   <Pill className="w-4 h-4 text-primary" />
-                  <h3 className="text-sm font-semibold">Detected Medications</h3>
-                  <Badge variant="secondary" className="text-[10px]">{medMatches.length} found</Badge>
+                  <h3 className="text-sm font-semibold">Medications Identified</h3>
+                  {medMatches.length > 0 && (
+                    <Badge variant="secondary" className="text-[10px]">{medMatches.length}</Badge>
+                  )}
                   {medMatches.some(m => m.needsReview) && (
                     <Badge variant="outline" className="text-[10px] border-amber-300 text-amber-700">
-                      {medMatches.filter(m => m.needsReview).length} need review
+                      {medMatches.filter(m => m.needsReview).length} to verify
                     </Badge>
                   )}
                   <button
                     className="ml-auto text-xs text-muted-foreground hover:text-foreground"
                     onClick={() => setMedMatches(null)}
                   >
-                    Clear
+                    Dismiss
                   </button>
                 </div>
 
                 {medMatches.length === 0 ? (
                   <div className="rounded-md border border-dashed p-4 text-center text-sm text-muted-foreground">
-                    No medications from your dictionary were found in this transcript.
+                    No medications were identified in this transcript.
                   </div>
                 ) : (
                   <div className="rounded-md border overflow-hidden">
                     <table className="w-full text-xs">
-                      <thead className="bg-muted/50">
+                      <thead className="bg-muted/50 border-b">
                         <tr>
-                          <th className="text-left px-3 py-2 font-semibold">Spoken Term</th>
-                          <th className="text-left px-3 py-2 font-semibold">Canonical Name</th>
-                          <th className="text-left px-3 py-2 font-semibold">Class</th>
-                          <th className="text-left px-3 py-2 font-semibold">Match</th>
-                          <th className="text-left px-3 py-2 font-semibold">Confidence</th>
+                          <th className="text-left px-3 py-2 font-semibold">As Spoken</th>
+                          <th className="text-left px-3 py-2 font-semibold">Generic Name</th>
+                          <th className="text-left px-3 py-2 font-semibold">Drug Class</th>
                           <th className="text-left px-3 py-2 font-semibold">Status</th>
                         </tr>
                       </thead>
                       <tbody>
                         {medMatches.map((m, i) => (
                           <tr key={i} data-testid={`row-med-match-${i}`} className={`border-t ${m.needsReview ? "bg-amber-50/40 dark:bg-amber-950/10" : i % 2 === 0 ? "bg-background" : "bg-muted/20"}`}>
-                            <td className="px-3 py-2 font-mono">{m.originalTerm}</td>
-                            <td className="px-3 py-2 font-medium">{m.canonicalName}</td>
-                            <td className="px-3 py-2 text-muted-foreground">{m.drugClass ?? "—"}</td>
-                            <td className="px-3 py-2">
-                              <Badge variant="outline" className="text-[10px] capitalize">
-                                {m.matchType.replace(/_/g, " ")}
-                              </Badge>
-                            </td>
-                            <td className="px-3 py-2">
-                              <span className={`font-semibold ${m.confidence >= 0.85 ? "text-emerald-600" : m.confidence >= 0.75 ? "text-amber-600" : "text-red-500"}`}>
-                                {Math.round(m.confidence * 100)}%
-                              </span>
-                            </td>
-                            <td className="px-3 py-2">
-                              {m.needsReview
-                                ? <span className="flex items-center gap-1 text-amber-600"><AlertCircle className="w-3 h-3" />Review</span>
-                                : <span className="flex items-center gap-1 text-emerald-600"><CheckCircle2 className="w-3 h-3" />Confirmed</span>}
+                            <td className="px-3 py-2.5 font-mono text-muted-foreground">{m.originalTerm}</td>
+                            <td className="px-3 py-2.5 font-medium">{m.canonicalName}</td>
+                            <td className="px-3 py-2.5 text-muted-foreground">{m.drugClass ?? "—"}</td>
+                            <td className="px-3 py-2.5">
+                              {m.needsReview ? (
+                                <button
+                                  data-testid={`button-confirm-term-${i}`}
+                                  disabled={confirmingTermIdx === i}
+                                  onClick={async () => {
+                                    setConfirmingTermIdx(i);
+                                    try {
+                                      await apiRequest("POST", "/api/medication-dictionary/entry", {
+                                        genericName: m.canonicalName,
+                                        commonSpokenVariants: [m.originalTerm],
+                                        drugClass: m.drugClass ?? undefined,
+                                      });
+                                      setMedMatches(prev => prev
+                                        ? prev.map((match, idx) =>
+                                            idx === i ? { ...match, needsReview: false, confidence: 0.85, matchType: "spoken_variant" as const } : match
+                                          )
+                                        : prev
+                                      );
+                                      toast({ title: "Term saved", description: `"${m.originalTerm}" will be recognized as ${m.canonicalName} in future visits.` });
+                                    } catch {
+                                      toast({ title: "Could not save term", variant: "destructive" });
+                                    } finally {
+                                      setConfirmingTermIdx(null);
+                                    }
+                                  }}
+                                  className="flex items-center gap-1.5 text-amber-700 dark:text-amber-400 hover:text-amber-900 dark:hover:text-amber-200 transition-colors"
+                                >
+                                  {confirmingTermIdx === i
+                                    ? <><RefreshCw className="w-3 h-3 animate-spin" /><span>Saving…</span></>
+                                    : <><AlertCircle className="w-3 h-3" /><span>Verify — confirm as {m.canonicalName}</span></>}
+                                </button>
+                              ) : (
+                                <span className="flex items-center gap-1 text-emerald-600">
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Recognized
+                                </span>
+                              )}
                             </td>
                           </tr>
                         ))}
                       </tbody>
                     </table>
+                    {medMatches.some(m => m.needsReview) && (
+                      <div className="px-3 py-2 bg-muted/30 border-t text-[11px] text-muted-foreground">
+                        Click "Verify" on any uncertain term to confirm it — the system will recognize it automatically in future encounters.
+                      </div>
+                    )}
                   </div>
                 )}
               </div>
