@@ -50,6 +50,7 @@ export default function FemaleLabInterpretation() {
   const hasPrefilledBmiRef = useRef(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  const { setLoading: setGlobalLoading, clearLoading: clearGlobalLoading } = useGlobalLoading();
 
   const { data: patientLabs } = useQuery<LabResult[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
@@ -86,6 +87,8 @@ export default function FemaleLabInterpretation() {
       const payload = selectedPatient ? { ...data, patientId: selectedPatient.id } : data;
       return femaleLabsApi.interpretLabs(payload);
     },
+    onMutate: () => { setGlobalLoading("Evaluating lab results…"); },
+    onSettled: () => { clearGlobalLoading(); },
     onSuccess: async (data) => {
       console.log('[Frontend] Female interpretation successful:', data);
       setInterpretationResult(data);
@@ -191,6 +194,8 @@ export default function FemaleLabInterpretation() {
         interpretationResult.preventRisk
       );
     },
+    onMutate: () => { setGlobalLoading("Generating patient report…"); },
+    onSettled: () => { clearGlobalLoading(); },
     onSuccess: async (wellnessPlan) => {
       console.log('[Frontend] Wellness plan generated:', wellnessPlan);
       if (interpretationResult) {
@@ -367,17 +372,7 @@ export default function FemaleLabInterpretation() {
     setActiveTab("results");
   };
 
-  // ── Global loading overlay ────────────────────────────────────────────────
-  const { setLoading: setGlobalLoading, clearLoading: clearGlobalLoading } = useGlobalLoading();
-  useEffect(() => {
-    if (interpretMutation.isPending) {
-      setGlobalLoading("Evaluating lab results…");
-    } else if (wellnessPlanMutation.isPending) {
-      setGlobalLoading("Generating patient report…");
-    } else {
-      clearGlobalLoading();
-    }
-  }, [interpretMutation.isPending, wellnessPlanMutation.isPending]);
+  // Cleanup overlay on unmount
   useEffect(() => () => { clearGlobalLoading(); }, []);
 
   return (
