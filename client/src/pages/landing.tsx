@@ -152,10 +152,11 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
           <div className="max-w-3xl mx-auto text-center mb-12">
             <h2 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
-              Built to see what a busy visit can miss
+              Because busy visits miss things
             </h2>
             <p className="text-base leading-relaxed" style={{ color: "#5a6a4a" }}>
-              ClinIQ wasn't designed to replace clinical judgment — it was built to expand it. While a clinician is focused on the chief complaint, ClinIQ is simultaneously evaluating cardiovascular risk, insulin resistance phenotype, iron deficiency patterns, perimenopause markers, and more. It surfaces what matters, even when the visit doesn't have time to go there.
+              ReAlign doesn't replace your clinical judgment — it expands it.<br className="hidden sm:block" />
+              While you're focused on the visit, it's identifying patterns across cardiovascular risk, insulin resistance, iron deficiency, perimenopause, and more — surfacing what matters, even when time doesn't allow you to go there.
             </p>
           </div>
 
@@ -164,17 +165,17 @@ export default function Landing() {
               {
                 icon: FlaskConical,
                 heading: "For the Clinician",
-                body: "A reasoning tool that interprets labs through multiple clinical lenses simultaneously — not just flagging out-of-range values, but providing differential context, risk stratification, and evidence-guided recommendations.",
+                body: "Go beyond "normal" and "abnormal." ReAlign connects the dots across labs — helping you identify patterns, stratify risk, and make decisions with clarity and confidence.",
               },
               {
                 icon: Users,
                 heading: "For the Patient",
-                body: "A boutique portal that replaces the confusing PDF printout with educational, plain-language insights — personalized diet, supplements, and lifestyle guidance their clinician has curated specifically for them.",
+                body: "No more confusing lab printouts. Patients receive clear, personalized insights — with guidance on nutrition, supplements, and lifestyle they can actually understand and follow.",
               },
               {
                 icon: Brain,
                 heading: "For the Practice",
-                body: "Encounter documentation, AI SOAP notes with evidence flags, and trend tracking across visits — reducing documentation time while increasing the depth of clinical insight captured.",
+                body: "Less documentation. More insight. Generate AI-supported SOAP notes, track trends over time, and capture deeper clinical insight — without adding time to your day.",
               },
             ].map(({ icon: Icon, heading, body }) => (
               <div key={heading} className="rounded-xl p-6 text-center" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
