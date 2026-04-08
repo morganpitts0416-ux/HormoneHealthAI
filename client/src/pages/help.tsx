@@ -6,418 +6,74 @@ import { Input } from "@/components/ui/input";
 import {
   ArrowLeft, Search, ChevronRight, FlaskConical, Users, Mic, FileText,
   Heart, Moon, BarChart3, MessageSquare, CreditCard, Settings, ShieldCheck,
-  Pill, BookOpen, Star, CheckCircle2, AlertTriangle, Zap, Upload, TrendingUp,
+  Pill, BookOpen, Star, AlertTriangle, ZoomIn, X,
   HelpCircle, Video,
 } from "lucide-react";
 
-interface Section {
-  id: string;
-  icon: React.ElementType;
-  label: string;
-  badge?: string;
+// ── Screenshot types & lightbox ────────────────────────────────────────────
+
+interface Shot { src: string; caption: string; }
+
+function ScreenshotGallery({ shots }: { shots: Shot[] }) {
+  const [lightbox, setLightbox] = useState<Shot | null>(null);
+
+  return (
+    <>
+      <div className={`grid gap-3 mb-2 ${shots.length === 1 ? "grid-cols-1" : "grid-cols-1 sm:grid-cols-2"}`}>
+        {shots.map((shot) => (
+          <button
+            key={shot.src}
+            onClick={() => setLightbox(shot)}
+            className="group relative rounded-md overflow-hidden border text-left"
+            style={{ borderColor: "#d4c9b5" }}
+          >
+            <img
+              src={shot.src}
+              alt={shot.caption}
+              className="w-full object-cover object-top"
+              style={{ maxHeight: 220 }}
+            />
+            <div
+              className="absolute inset-0 flex items-center justify-center opacity-0 group-hover:opacity-100 transition-opacity"
+              style={{ backgroundColor: "rgba(44,58,32,0.35)" }}
+            >
+              <ZoomIn className="h-7 w-7 text-white drop-shadow" />
+            </div>
+            <p className="text-xs px-2 py-1.5 font-medium" style={{ color: "#5a6a4a", backgroundColor: "#fdf9f5" }}>
+              {shot.caption}
+            </p>
+          </button>
+        ))}
+      </div>
+
+      {lightbox && (
+        <div
+          className="fixed inset-0 z-[9999] flex items-center justify-center p-4"
+          style={{ backgroundColor: "rgba(0,0,0,0.82)" }}
+          onClick={() => setLightbox(null)}
+        >
+          <div className="relative max-w-5xl w-full" onClick={e => e.stopPropagation()}>
+            <button
+              onClick={() => setLightbox(null)}
+              className="absolute -top-9 right-0 text-white flex items-center gap-1 text-sm opacity-80 hover:opacity-100"
+            >
+              <X className="h-4 w-4" /> Close
+            </button>
+            <img src={lightbox.src} alt={lightbox.caption} className="w-full rounded-md shadow-xl" />
+            <p className="text-center text-white text-sm mt-2 opacity-75">{lightbox.caption}</p>
+          </div>
+        </div>
+      )}
+    </>
+  );
 }
-
-const SECTIONS: Section[] = [
-  { id: "getting-started", icon: Star, label: "Getting Started" },
-  { id: "male-labs", icon: FlaskConical, label: "Male Lab Interpretation" },
-  { id: "female-labs", icon: FlaskConical, label: "Female Lab Interpretation" },
-  { id: "patients", icon: Users, label: "Patient Profiles & History" },
-  { id: "encounters", icon: Mic, label: "Clinical Encounters & AI Pipeline", badge: "AI" },
-  { id: "soap", icon: FileText, label: "SOAP Notes" },
-  { id: "cardiovascular", icon: Heart, label: "PREVENT Cardiovascular Risk" },
-  { id: "sleep", icon: Moon, label: "STOP-BANG Sleep Screening" },
-  { id: "supplements", icon: Pill, label: "Supplement Recommendations" },
-  { id: "wellness-report", icon: BookOpen, label: "Patient Wellness Reports" },
-  { id: "portal", icon: MessageSquare, label: "Patient Portal & Messaging" },
-  { id: "billing", icon: CreditCard, label: "Billing & Subscription" },
-  { id: "account", icon: Settings, label: "Account & Staff Management" },
-];
-
-const CONTENT: Record<string, React.ReactNode> = {
-  "getting-started": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Getting Started with ClinIQ" />
-      <Guide title="First Login & Setup">
-        <Steps steps={[
-          "After registering, you will be prompted to sign the HIPAA Business Associate Agreement (BAA). Scroll through the full document, type your full legal name, and click I Agree & Sign.",
-          "You will land on your Dashboard. This is your command center — all features are accessible from here.",
-          "Navigate to Account (top right) to complete your profile: clinic name, title, and contact info.",
-          "Invite staff members from the Account page under the Staff Access section if your clinic has multiple users.",
-          "Your 14-day free trial begins automatically. No payment is required until the trial ends.",
-        ]} />
-      </Guide>
-      <Guide title="Dashboard Overview">
-        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
-          The dashboard is divided into two main columns:
-        </p>
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="Left column" desc="Quick-start tiles for Male Interpretation, Female Interpretation, Clinical Encounters, and Patient Profiles." />
-          <Bullet label="Right column" desc="Notifications, red flag alerts, pending reviews, and clinical action items surfaced by the AI." />
-          <Bullet label="Header" desc="Access Billing, Account settings, and Help from the top-right buttons." />
-        </ul>
-      </Guide>
-      <Guide title="Navigation Quick Reference">
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
-          {[
-            { label: "Male Labs", path: "/male", desc: "Enter and interpret male lab panels" },
-            { label: "Female Labs", path: "/female", desc: "Hormone and female-specific interpretation" },
-            { label: "Patients", path: "/patients", desc: "Patient profiles and lab history" },
-            { label: "Encounters", path: "/encounters", desc: "Audio transcription and SOAP notes" },
-          ].map(item => (
-            <div key={item.path} className="rounded-md p-3 border text-sm" style={{ borderColor: "#e8ddd0", backgroundColor: "#fdf9f5" }}>
-              <p className="font-semibold" style={{ color: "#1c2414" }}>{item.label}</p>
-              <p style={{ color: "#7a8a64" }}>{item.desc}</p>
-            </div>
-          ))}
-        </div>
-      </Guide>
-    </div>
-  ),
-
-  "male-labs": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Male Lab Interpretation Walkthrough" />
-      <Guide title="Entering Lab Values">
-        <Steps steps={[
-          "From the Dashboard, click Male Lab Interpretation or navigate to the Labs tab.",
-          "Select or create a patient using the Patient selector at the top. Type a name to search, or click New Patient to add one.",
-          "You can upload a PDF lab report — ClinIQ will auto-extract the values using AI. Supported formats: Pathgroup and most standard hospital PDFs.",
-          "Alternatively, enter values manually into each lab field. Fields are organized by category: Hormones, Metabolic, CBC, Lipids, Thyroid, etc.",
-          "Select the correct units for each value where applicable.",
-          "Click Interpret Results when all values are entered.",
-        ]} />
-      </Guide>
-      <Guide title="Understanding Results">
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="Color coding" desc="Green = Optimal, Yellow = Borderline, Orange = Abnormal, Red = Critical / Red Flag." />
-          <Bullet label="Red Flag alerts" desc="Critical values appear at the top of results in a red alert box with recommended clinical actions." />
-          <Bullet label="Reference vs Optimal ranges" desc="ClinIQ shows both standard lab reference ranges and clinically optimal ranges side by side." />
-          <Bullet label="AI Recommendations" desc="Scroll down to see AI-generated clinical recommendations including supplement, lifestyle, and follow-up suggestions." />
-          <Bullet label="Custom ranges" desc="Override reference or optimal ranges per marker in Account > Lab Range Preferences." />
-        </ul>
-      </Guide>
-      <Guide title="Standing Orders & Clinical Logic">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          ClinIQ automatically checks for clinical patterns including erythrocytosis thresholds, testosterone optimization protocols, insulin resistance phenotypes, FIB-4 liver scoring, and lipid management guidelines. Any triggered standing order appears as an alert card in the results.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "female-labs": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Female Lab Interpretation Walkthrough" />
-      <Guide title="Female-Specific Workflow">
-        <Steps steps={[
-          "Navigate to Female Lab Interpretation from the dashboard.",
-          "Select or create a patient, then choose the patient's menstrual cycle phase (Follicular, Ovulatory, Luteal, Menstrual, or Postmenopausal). This adjusts hormone reference ranges dynamically.",
-          "Upload a PDF or enter lab values manually. Female-specific markers include estradiol, progesterone, FSH, LH, DHEA-S, and more.",
-          "Click Interpret Results to generate the full interpretation.",
-        ]} />
-      </Guide>
-      <Guide title="Female-Specific Features">
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="Hormone phase context" desc="Reference ranges automatically adjust based on the selected menstrual phase or menopausal status." />
-          <Bullet label="Testosterone pattern recognition" desc="ClinIQ identifies female testosterone patterns for clinical optimization — low-normal, optimal, or elevated with context." />
-          <Bullet label="Perimenopause indicators" desc="Specific pattern detection for perimenopause transitions based on FSH, estradiol, and symptom markers." />
-          <Bullet label="Iron & thyroid" desc="Female-specific iron deficiency thresholds and expanded thyroid panel interpretation including reverse T3." />
-        </ul>
-      </Guide>
-      <Guide title="Insulin Resistance Screening">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          ClinIQ screens for insulin resistance likelihood and identifies one of four phenotypes: Classic IR, Lean IR, Hyperinsulinemic Normoglycemic, and Post-prandial IR. Each phenotype includes trigger criteria, pathophysiology summary, and treatment recommendations.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "patients": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Patient Profiles & Lab History" />
-      <Guide title="Creating & Finding Patients">
-        <Steps steps={[
-          "Navigate to Patient Profiles from the dashboard or the patients link.",
-          "Click New Patient to create a profile — enter name, date of birth, gender, and optional contact info.",
-          "Use the search bar to find existing patients by name.",
-          "Click a patient card to open their full profile including all past lab results.",
-        ]} />
-      </Guide>
-      <Guide title="Lab History & Trends">
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="History view" desc="All past lab result sessions are listed in reverse chronological order. Click any session to expand the full panel." />
-          <Bullet label="Trend indicators" desc="Each lab marker shows an arrow (up, down, stable) comparing the current value to the previous result." />
-          <Bullet label="Trend charts" desc="Click the chart icon next to any marker to view a time-series chart of that value across all sessions." />
-          <Bullet label="21 tracked markers" desc="ClinIQ tracks clinical trends for 21 key markers and generates both clinician-facing and patient-facing trend insights." />
-        </ul>
-      </Guide>
-      <Guide title="Patient Portal Access">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          From a patient profile, you can invite the patient to their portal. They will receive an email with a link to set their password and view their results, wellness reports, supplement recommendations, and messages.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "encounters": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Clinical Encounters & 6-Stage AI Pipeline" />
-      <Guide title="Creating an Encounter">
-        <Steps steps={[
-          "Navigate to Clinical Encounters from the dashboard.",
-          "Click New Encounter and select the patient this encounter is for.",
-          "Fill in the visit Details tab: visit type, chief complaint, and any relevant notes.",
-          "Optionally link existing lab results to provide AI context for SOAP generation.",
-        ]} />
-      </Guide>
-      <Guide title="Audio Upload & Transcription (Stage 1)">
-        <Steps steps={[
-          "In the Details tab, click Upload Audio or use Record to capture the visit audio directly.",
-          "ClinIQ uses OpenAI Whisper to transcribe the audio. The audio file is deleted immediately after processing — it is never stored in the database.",
-          "Click Run Transcription to start Stage 1. Progress is shown in the pipeline status bar.",
-          "The raw transcript appears in the Transcript tab once Stage 1 completes.",
-        ]} />
-      </Guide>
-      <Guide title="The 6-Stage AI Pipeline">
-        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>Run stages in order using the pipeline buttons in the Transcript tab:</p>
-        <div className="space-y-2">
-          {[
-            { stage: "1", label: "Transcribe", desc: "Converts audio to raw text using Whisper." },
-            { stage: "2", label: "Normalize", desc: "Corrects medical terminology and applies speaker diarization — labels each line as Clinician or Patient." },
-            { stage: "3", label: "Extract Facts", desc: "Identifies chief concerns, symptoms, diagnoses, and plan items from the transcript." },
-            { stage: "4", label: "Generate SOAP", desc: "Builds a chart-ready SOAP note using extracted facts and linked lab context. Flags uncertain items for clinician review." },
-            { stage: "5", label: "Evidence", desc: "Suggests clinical guideline citations and evidence for each diagnosis with confidence levels." },
-            { stage: "6", label: "Patient Summary", desc: "Generates a patient-facing plain-language summary publishable to the patient portal." },
-          ].map(item => (
-            <div key={item.stage} className="flex gap-3 items-start text-sm">
-              <span className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>{item.stage}</span>
-              <div>
-                <span className="font-semibold" style={{ color: "#1c2414" }}>{item.label}: </span>
-                <span style={{ color: "#5a6a4a" }}>{item.desc}</span>
-              </div>
-            </div>
-          ))}
-        </div>
-      </Guide>
-      <Guide title="Reviewing & Editing the SOAP Note">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          The SOAP Note tab displays the AI-generated note. Items flagged as uncertain or requiring clinician review are highlighted. You can edit any section of the note directly — the AI output is a starting point, not a final document. Once satisfied, the note can be copied to your EHR.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "soap": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="SOAP Notes from Lab Interpretation" />
-      <Guide title="Generating a SOAP Note from Lab Results">
-        <Steps steps={[
-          "After running lab interpretation (male or female), scroll to the AI Recommendations section.",
-          "Click Generate SOAP Note. ClinIQ will draft a chart-ready note incorporating all lab values, red flags, risk scores, and supplement recommendations.",
-          "Review the generated note in the SOAP modal. All four sections (Subjective, Objective, Assessment, Plan) are editable.",
-          "Copy the note to your clipboard or EHR system.",
-        ]} />
-      </Guide>
-      <Guide title="SOAP Safety Guardrails">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          ClinIQ's SOAP generation is designed to be clinically conservative. It will not invent physical exam findings, vitals, or clinical observations that are not supported by the data provided. Items with insufficient evidence are flagged with a review indicator rather than stated as fact.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "cardiovascular": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="PREVENT Cardiovascular Risk Assessment" />
-      <Guide title="Running a PREVENT Assessment">
-        <Steps steps={[
-          "PREVENT risk scores are calculated automatically when you enter a complete lipid panel and basic patient demographics.",
-          "Ensure the patient profile has accurate age, sex, and that you have entered: total cholesterol, HDL, LDL, systolic blood pressure, diabetes status, and smoking status.",
-          "The assessment appears in the results section under Cardiovascular Risk.",
-          "Review the 10-year and 30-year risk scores for CVD, ASCVD, and Heart Failure.",
-        ]} />
-      </Guide>
-      <Guide title="Understanding the Risk Output">
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="10-year CVD risk" desc="Probability of a cardiovascular event in the next 10 years using the 2023 AHA PREVENT equations." />
-          <Bullet label="30-year CVD risk" desc="Long-term risk estimate for younger patients where 10-year risk may understate lifetime burden." />
-          <Bullet label="ASCVD vs Heart Failure" desc="Separate risk estimates for atherosclerotic cardiovascular disease and heart failure are provided." />
-          <Bullet label="ApoB & Lp(a) adjustment" desc="If ApoB and Lp(a) are entered, the advanced lipid marker section adjusts the overall risk stratification." />
-          <Bullet label="hs-CRP" desc="High-sensitivity CRP is interpreted separately for inflammatory risk stratification." />
-        </ul>
-      </Guide>
-    </div>
-  ),
-
-  "sleep": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="STOP-BANG Sleep Apnea Screening" />
-      <Guide title="Running the STOP-BANG Questionnaire">
-        <Steps steps={[
-          "STOP-BANG is available within the lab interpretation results for applicable patients.",
-          "Answer the 8 yes/no questions based on patient-reported history and clinical observation.",
-          "ClinIQ calculates the risk score and classifies the patient as Low, Intermediate, or High risk for obstructive sleep apnea (OSA).",
-          "The result and recommended next steps appear in the interpretation output and are included in the SOAP note if generated.",
-        ]} />
-      </Guide>
-      <Guide title="STOP-BANG Components">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          The 8 components are: Snoring, Tiredness, Observed apnea, Pressure (high blood pressure), BMI greater than 35, Age greater than 50, Neck circumference greater than 40 cm, and Gender (male). A score of 0–2 = Low risk, 3–4 = Intermediate, 5–8 = High risk.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "supplements": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Supplement Recommendations & Custom Library" />
-      <Guide title="How Supplement Recommendations Work">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          ClinIQ recommends supplements based on three sources: the built-in Metagenics catalog mapped to lab values, your custom supplement library, and detected clinical phenotypes (e.g. insulin resistance subtype, iron deficiency pattern). Recommendations appear automatically after lab interpretation.
-        </p>
-      </Guide>
-      <Guide title="Customizing the Supplement Selector">
-        <Steps steps={[
-          "After running interpretation, scroll to the Supplement Recommendations section.",
-          "Use the interactive selector to add, remove, or reorder supplements for this patient's report.",
-          "Supplements can be filtered by category, gender, and relevance.",
-          "The selected supplements are included in the Patient Wellness PDF Report and visible in the patient portal.",
-        ]} />
-      </Guide>
-      <Guide title="Building Your Custom Supplement Library">
-        <Steps steps={[
-          "Navigate to Account > Custom Supplements.",
-          "Click Add Supplement and fill in the name, description, pricing, and gender filter.",
-          "Set trigger rules: lab-value based (e.g. Ferritin < 30), symptom-based, or combined lab + symptom conditions.",
-          "Add a patient-facing description — ClinIQ can generate one using AI based on the supplement's purpose.",
-          "Supplements with matching trigger rules will automatically appear in recommendations when the conditions are met.",
-        ]} />
-      </Guide>
-      <Guide title="Discount Settings">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          In Account > Supplement Pricing, set a clinic-wide discount — either a percentage or flat dollar amount — applied to all supplement orders placed through the patient portal.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "wellness-report": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Generating Patient Wellness PDF Reports" />
-      <Guide title="Generating a Wellness Report">
-        <Steps steps={[
-          "After completing lab interpretation and selecting supplements, scroll to the bottom of the results page.",
-          "Click Generate Patient Wellness Report.",
-          "ClinIQ will compile the full report including: lab summary with plain-language explanations, personalized diet recommendations, supplement plan, lifestyle guidance, and smoking cessation education if applicable.",
-          "The PDF is generated and opens in a new tab for download or printing.",
-          "You can also publish the report to the patient's portal so they can access it directly.",
-        ]} />
-      </Guide>
-      <Guide title="What the Report Includes">
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="Lab summary" desc="Patient-friendly explanations of every value with color-coded status and plain-language descriptions." />
-          <Bullet label="AI diet recommendations" desc="Personalized dietary guidance generated based on detected patterns and phenotypes." />
-          <Bullet label="Supplement plan" desc="The selected supplements with patient-facing descriptions, dosing context, and pricing." />
-          <Bullet label="Lifestyle guidance" desc="Exercise, sleep, and stress recommendations tailored to the clinical findings." />
-          <Bullet label="Follow-up reminders" desc="Recommended timeframes for repeat testing based on the clinical picture." />
-        </ul>
-      </Guide>
-    </div>
-  ),
-
-  "portal": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Patient Portal & Messaging Setup" />
-      <Guide title="Inviting Patients to the Portal">
-        <Steps steps={[
-          "Open the patient's profile from Patient Profiles.",
-          "Click Invite to Portal and confirm the patient's email address.",
-          "The patient receives an email with a link to set their password and access their portal.",
-          "From their portal, patients can view lab results, wellness reports, supplement recommendations, and messages.",
-        ]} />
-      </Guide>
-      <Guide title="Messaging Modes">
-        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>Configure messaging in Account > Portal Settings. Four modes are available:</p>
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="None" desc="Messaging is disabled. The message tab is hidden from the patient portal." />
-          <Bullet label="In-app" desc="Patients and clinicians exchange messages directly within ClinIQ." />
-          <Bullet label="SMS link" desc="Patients are shown a phone number or SMS link to message the clinic outside the app." />
-          <Bullet label="External API" desc="Two-way bridge connects to your existing messaging platform (Spruce, Klara, etc.) via webhook. Requires webhook URL configuration." />
-        </ul>
-      </Guide>
-      <Guide title="Publishing Encounter Summaries">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          In the Encounters page, after completing Stage 6 (Patient Summary), click Publish to Portal. The patient-facing summary will appear in the patient's portal under their visit history.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "billing": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Billing & Subscription Management" />
-      <Guide title="Starting Your Subscription">
-        <Steps steps={[
-          "Your 14-day free trial starts automatically at registration — no credit card required.",
-          "Before the trial ends, navigate to Billing (top-right header button).",
-          "Click Add Payment Method and enter your card details securely via Stripe.",
-          "Click Subscribe — your subscription starts at $97/month and renews automatically.",
-        ]} />
-      </Guide>
-      <Guide title="Managing Your Subscription">
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="Billing page" desc="Shows your current plan status, next billing date, and payment method on file." />
-          <Bullet label="Cancel" desc="Click Cancel Subscription to stop renewal. Access continues until the end of the current billing period." />
-          <Bullet label="Reactivate" desc="If cancelled, click Reactivate before the period ends to resume without re-entering payment details." />
-          <Bullet label="Failed payments" desc="You will receive an email notification if a payment fails. Update your payment method in the Billing page." />
-        </ul>
-      </Guide>
-      <Guide title="Complimentary Access">
-        <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          Some accounts are granted complimentary access by the ReAlign Health team. If your account has complimentary access, the Billing page will show a Complimentary Access banner and no payment method is required.
-        </p>
-      </Guide>
-    </div>
-  ),
-
-  "account": (
-    <div className="space-y-6">
-      <VideoPlaceholder title="Account Settings & Staff Management" />
-      <Guide title="Account Settings">
-        <Steps steps={[
-          "Click Account in the top-right header to open your account settings.",
-          "Update your profile: clinic name, title, first and last name.",
-          "Change your password under Security Settings.",
-          "Set your Lab Range Preferences to override default optimal or reference ranges for any of 60+ markers, per gender.",
-        ]} />
-      </Guide>
-      <Guide title="Inviting Staff Members">
-        <Steps steps={[
-          "In Account, scroll to the Staff Access section.",
-          "Click Invite Staff Member and enter their email address and role.",
-          "They will receive an invitation email with a link to set their password.",
-          "Staff members operate within your clinic workspace with role-based access restrictions.",
-          "Remove staff access at any time by clicking the remove button next to their name.",
-        ]} />
-      </Guide>
-      <Guide title="Security & HIPAA Controls">
-        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="Login lockout" desc="Accounts are locked after 5 failed login attempts to prevent unauthorized access." />
-          <Bullet label="Session timeout" desc="Inactive sessions show a warning dialog and auto-logout to protect patient data." />
-          <Bullet label="Password requirements" desc="Strong password enforcement is required for all accounts." />
-          <Bullet label="Audit logging" desc="All data access and changes are audit-logged for HIPAA compliance." />
-          <Bullet label="BAA on file" desc="Your signed Business Associate Agreement is viewable and downloadable from the Account page at any time." />
-        </ul>
-      </Guide>
-    </div>
-  ),
-};
 
 function VideoPlaceholder({ title }: { title: string }) {
   return (
-    <div className="rounded-md border-2 border-dashed flex flex-col items-center justify-center p-8 text-center" style={{ borderColor: "#d4c9b5", backgroundColor: "#fdf9f5" }}>
-      <Video className="h-8 w-8 mb-2" style={{ color: "#c4b9a5" }} />
-      <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>Video walkthrough coming soon</p>
-      <p className="text-xs mt-1" style={{ color: "#a0aa90" }}>{title}</p>
+    <div className="rounded-md border-2 border-dashed flex flex-col items-center justify-center p-6 text-center mb-2" style={{ borderColor: "#d4c9b5", backgroundColor: "#fdf9f5" }}>
+      <Video className="h-7 w-7 mb-1.5" style={{ color: "#c4b9a5" }} />
+      <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>Screenshots coming soon</p>
+      <p className="text-xs mt-0.5" style={{ color: "#a0aa90" }}>{title}</p>
     </div>
   );
 }
@@ -452,6 +108,401 @@ function Bullet({ label, desc }: { label: string; desc: string }) {
     </li>
   );
 }
+
+// ── Section definitions ────────────────────────────────────────────────────
+
+interface Section { id: string; icon: React.ElementType; label: string; badge?: string; }
+
+const SECTIONS: Section[] = [
+  { id: "getting-started", icon: Star, label: "Getting Started" },
+  { id: "male-labs", icon: FlaskConical, label: "Male Lab Interpretation" },
+  { id: "female-labs", icon: FlaskConical, label: "Female Lab Interpretation" },
+  { id: "patients", icon: Users, label: "Patient Profiles & History" },
+  { id: "encounters", icon: Mic, label: "Clinical Encounters & AI Pipeline", badge: "AI" },
+  { id: "soap", icon: FileText, label: "SOAP Notes" },
+  { id: "cardiovascular", icon: Heart, label: "PREVENT Cardiovascular Risk" },
+  { id: "sleep", icon: Moon, label: "STOP-BANG Sleep Screening" },
+  { id: "supplements", icon: Pill, label: "Supplement Recommendations" },
+  { id: "wellness-report", icon: BookOpen, label: "Patient Wellness Reports" },
+  { id: "portal", icon: MessageSquare, label: "Patient Portal & Messaging" },
+  { id: "billing", icon: CreditCard, label: "Billing & Subscription" },
+  { id: "account", icon: Settings, label: "Account & Staff Management" },
+];
+
+// ── Section content ────────────────────────────────────────────────────────
+
+const CONTENT: Record<string, React.ReactNode> = {
+
+  "getting-started": (
+    <div className="space-y-6">
+      <Guide title="The Clinician Dashboard">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/dashboard.png", caption: "Dashboard — your command center with notifications, patient messages, supplement orders, recent patients, and quick-launch tiles for all workflows." },
+        ]} />
+        <ul className="space-y-2 text-sm mt-3" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Top section" desc="Notifications panel — shows unread patient messages, pending supplement orders, and clinical action items." />
+          <Bullet label="Clinical Documentation" desc="Launches Encounter Documentation for audio transcription and SOAP note generation." />
+          <Bullet label="Lab Evaluations" desc="Quick access to Male and Female Lab Interpretation workflows." />
+          <Bullet label="Recent Patients" desc="Jump directly into a patient's profile or start a new lab session from the bottom of the dashboard." />
+        </ul>
+      </Guide>
+      <Guide title="First Login & Setup">
+        <Steps steps={[
+          "After registering, you will be prompted to sign the HIPAA Business Associate Agreement (BAA). Scroll through the full document, type your full legal name, and click I Agree & Sign.",
+          "You will land on your Dashboard. All features are accessible from the tiles and header buttons.",
+          "Navigate to Account (top right) to complete your profile: clinic name, title, and contact info.",
+          "Invite staff members from the Account page under the Staff Access section if your clinic has multiple users.",
+          "Your 14-day free trial starts automatically. No payment is required until the trial ends.",
+        ]} />
+      </Guide>
+    </div>
+  ),
+
+  "male-labs": (
+    <div className="space-y-6">
+      <Guide title="Lab Entry & Results">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/female-lab-entry-1.png", caption: "Lab entry form — upload a PDF for AI extraction or enter values manually. Demographics and cardiovascular risk factors are at the top." },
+          { src: "/help-shots/lab-results.png", caption: "Clinical Interpretation Summary — every marker shows value, status, reference range, clinical assessment, and management guidance." },
+        ]} />
+      </Guide>
+      <Guide title="Entering Lab Values">
+        <Steps steps={[
+          "From the Dashboard, click Male Lab Interpretation.",
+          "Select or create a patient using the patient search at the top. Type a name to search, or click New to add one.",
+          "Upload a PDF lab report — ClinIQ will auto-extract the values using AI. Supported formats include Pathgroup and most standard hospital PDFs.",
+          "Alternatively, enter values manually into each lab field. Fields are organized by category: Hormones, Metabolic, CBC, Lipids, Thyroid, etc.",
+          "Click Interpret Labs when all values are entered.",
+        ]} />
+      </Guide>
+      <Guide title="Understanding the Results Table">
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Color coding" desc="Green = Normal/Optimal, Yellow/Orange = Borderline, Red = Critical or Red Flag." />
+          <Bullet label="Assessment column" desc="Plain-language clinical interpretation for each marker." />
+          <Bullet label="Management column" desc="Recommended clinical action for each finding." />
+          <Bullet label="Alert column" desc="Critical values and standing-order triggers appear as red alert flags." />
+          <Bullet label="AI Recommendations" desc="Scroll below the table for AI-generated clinical recommendations including supplement, lifestyle, and follow-up suggestions." />
+        </ul>
+      </Guide>
+    </div>
+  ),
+
+  "female-labs": (
+    <div className="space-y-6">
+      <Guide title="Female Lab Entry — Step by Step">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/female-lab-entry-1.png", caption: "Step 1 — Upload a PDF for AI extraction or enter patient demographics and cardiovascular risk factors manually." },
+          { src: "/help-shots/female-lab-entry-2.png", caption: "Step 2 — Complete the STOP-BANG sleep apnea screening, then set the Menstrual & Hormonal Context and check any active symptoms." },
+          { src: "/help-shots/female-lab-entry-3.png", caption: "Step 3 — Enter hormone markers (SHBG, Estradiol, Progesterone, DHEA-S, AMH), Iron Studies, Vitamins, and Inflammation markers, then click Interpret Labs." },
+        ]} />
+      </Guide>
+      <Guide title="Female-Specific Features">
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="AI-Powered PDF Upload" desc="Click Upload PDF to have ClinIQ automatically extract and fill in lab values from a Pathgroup or hospital PDF report." />
+          <Bullet label="Menstrual phase" desc="Select the patient's cycle phase (Follicular, Ovulatory, Luteal, Menstrual, or Postmenopausal) — hormone reference ranges adjust automatically." />
+          <Bullet label="HRT & birth control flags" desc="Check On HRT or On Birth Control to adjust relevant reference ranges and clinical interpretation." />
+          <Bullet label="Symptom assessment" desc="Check any current symptoms (Hot Flashes, Night Sweats, Sleep Disruption, etc.) — these drive phenotype detection and supplement recommendations." />
+          <Bullet label="AMH (ovarian reserve)" desc="Enter Anti-Mullerian Hormone for ovarian reserve assessment, particularly relevant for perimenopause evaluation." />
+        </ul>
+      </Guide>
+      <Guide title="Insulin Resistance Screening">
+        <p className="text-sm" style={{ color: "#5a6a4a" }}>
+          ClinIQ screens for insulin resistance likelihood and identifies one of four phenotypes: Classic IR, Lean IR, Hyperinsulinemic Normoglycemic, and Post-prandial IR. Each phenotype includes trigger criteria, pathophysiology summary, and treatment recommendations. This appears automatically in the interpretation results when the pattern is detected.
+        </p>
+      </Guide>
+    </div>
+  ),
+
+  "patients": (
+    <div className="space-y-6">
+      <Guide title="Patient Profiles">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/patient-profiles.png", caption: "Patient Profiles — search by name or MRN, filter by gender, view clinical encounters, clinical snapshot, and full lab history." },
+          { src: "/help-shots/lab-results.png", caption: "Lab History — click View Details on any past session to open the full Clinical Interpretation Summary with every marker, status, and management note." },
+        ]} />
+      </Guide>
+      <Guide title="Creating & Finding Patients">
+        <Steps steps={[
+          "Navigate to Patient Profiles from the dashboard or the header.",
+          "Click New to create a profile — enter name, clinic, and gender.",
+          "Use the search bar to find existing patients by name or MRN.",
+          "Click a patient in the left panel to open their full profile.",
+          "From the profile, use the top buttons: New Lab Interpretation, New Encounter, Invite to Portal, or Delete Patient.",
+        ]} />
+      </Guide>
+      <Guide title="Lab History & Clinical Snapshot">
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Lab History" desc="All past lab sessions are listed in the Lab History section with date and overall status. Click View Details to open the full interpretation." />
+          <Bullet label="Clinical Snapshot" desc="After at least 2 lab sessions, ClinIQ generates a clinical snapshot comparing trends across key markers with clinician and patient-facing insights." />
+          <Bullet label="Trend indicators" desc="Each marker shows an arrow (improving, worsening, stable) relative to the prior result." />
+          <Bullet label="Clinical Encounters" desc="All documented encounters for this patient are listed with status badges (Transcribed, SOAP, Draft Summary)." />
+        </ul>
+      </Guide>
+    </div>
+  ),
+
+  "encounters": (
+    <div className="space-y-6">
+      <Guide title="Creating an Encounter & Recording Audio">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/encounter-details.png", caption: "New Encounter — Details tab. Select the patient, visit type, and chief complaint. Optionally link lab results for AI context. Then record or upload the session audio." },
+          { src: "/help-shots/encounter-transcript.png", caption: "After recording or uploading, the raw transcription appears in the Session Notes area. ClinIQ shows a word count and the HIPAA notice confirming audio is never stored." },
+        ]} />
+        <Steps steps={[
+          "Click New Encounter from the Encounters page or from a patient's profile.",
+          "Select the patient, visit type (e.g. Follow-up), and enter the chief complaint.",
+          "Optionally link existing lab results — the AI will reference these when generating the SOAP note.",
+          "In Session Notes, click Record to capture live audio, or Upload File to upload a pre-recorded audio file.",
+          "Click Start Recording Session. When finished, click Stop — the transcript will appear in the text area.",
+          "Click Save before moving to the next pipeline stage.",
+        ]} />
+      </Guide>
+      <Guide title="The 6-Stage AI Pipeline">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/encounter-processing.png", caption: "AI Processing — the pipeline shows an animated indicator while analyzing the encounter. Each stage runs sequentially." },
+        ]} />
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>Run each stage in order using the pipeline buttons in the Transcript tab:</p>
+        <div className="space-y-2">
+          {[
+            { stage: "1", label: "Transcribe", desc: "Converts audio to raw text using OpenAI Whisper. Audio is deleted immediately — never stored." },
+            { stage: "2", label: "Normalize", desc: "Corrects medical terminology and applies speaker diarization, labeling each line as Clinician or Patient." },
+            { stage: "3", label: "Extract Facts", desc: "Identifies chief concerns, symptoms, diagnoses, and plan items from the transcript." },
+            { stage: "4", label: "Generate SOAP", desc: "Builds a chart-ready SOAP note using extracted facts and linked lab context. Flags uncertain items for clinician review." },
+            { stage: "5", label: "Evidence", desc: "Suggests clinical guideline citations for each diagnosis with confidence levels and alignment status." },
+            { stage: "6", label: "Patient Summary", desc: "Generates a plain-language patient-facing summary publishable directly to the patient portal." },
+          ].map(item => (
+            <div key={item.stage} className="flex gap-3 items-start text-sm">
+              <span className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center font-bold text-xs" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>{item.stage}</span>
+              <div>
+                <span className="font-semibold" style={{ color: "#1c2414" }}>{item.label}: </span>
+                <span style={{ color: "#5a6a4a" }}>{item.desc}</span>
+              </div>
+            </div>
+          ))}
+        </div>
+      </Guide>
+    </div>
+  ),
+
+  "soap": (
+    <div className="space-y-6">
+      <Guide title="The SOAP Note">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/soap-note-1.png", caption: "SOAP Note tab — AI-generated chart note with Chief Complaint, Subjective (HPI, Medical History, ROS), Objective, and Assessment/Plan sections." },
+          { src: "/help-shots/soap-note-2.png", caption: "Assessment/Plan — each diagnosis includes ICD-10 code, clinical evidence citations, and a detailed care plan. Use Copy Note to paste into your EHR." },
+          { src: "/help-shots/soap-evidence-popup.png", caption: "Clinical Evidence popup — click any citation badge to view the full evidence summary, evidence class, level of evidence, and journal citation." },
+        ]} />
+      </Guide>
+      <Guide title="Working with the SOAP Note">
+        <Steps steps={[
+          "After running the pipeline through Stage 4, open the SOAP Note tab.",
+          "Review the AI-generated note. Click Edit at the top to make changes to any section directly.",
+          "Click any citation badge (e.g. 4 citations) in the Assessment/Plan to open the Clinical Evidence popup with the supporting guidelines.",
+          "Use Validate to check for any flagged uncertain items that need clinician review before signing.",
+          "Click Regenerate to rerun Stage 4 if you need a fresh SOAP note after editing the transcript.",
+          "When satisfied, click Copy Note to copy the clean text, or Save SOAP to lock it to the encounter record.",
+          "Switch to the Evidence tab to see all guideline citations and gap analysis alongside the note.",
+        ]} />
+      </Guide>
+      <Guide title="SOAP Safety Guardrails">
+        <p className="text-sm" style={{ color: "#5a6a4a" }}>
+          ClinIQ will not invent physical exam findings, vitals, or clinical observations that are not supported by the audio transcript or linked lab data. Items with insufficient evidence are flagged with a review indicator rather than stated as fact. The SOAP note is a starting point — always review before copying to your EHR.
+        </p>
+      </Guide>
+    </div>
+  ),
+
+  "cardiovascular": (
+    <div className="space-y-6">
+      <Guide title="PREVENT Risk Factors Entry">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/female-lab-entry-1.png", caption: "Patient Demographics & Cardiovascular Risk Factors — enter age, race, systolic BP, BMI, and check diabetes, smoking, statin therapy, and family history flags before running interpretation." },
+        ]} />
+      </Guide>
+      <Guide title="Running a PREVENT Assessment">
+        <Steps steps={[
+          "PREVENT risk scores are calculated automatically when you enter a complete lipid panel and patient demographics.",
+          "In the lab entry form, complete the Patient Demographics & Cardiovascular Risk Factors section: age, systolic blood pressure, BMI, and all checkboxes (diabetes, current smoker, statin therapy, family history of premature ASCVD).",
+          "Enter the lipid panel values: Total Cholesterol, HDL, LDL.",
+          "Click Interpret Labs — the PREVENT assessment appears automatically in the results under Cardiovascular Risk.",
+        ]} />
+      </Guide>
+      <Guide title="Understanding the Risk Output">
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="10-year CVD risk" desc="Probability of a cardiovascular event in the next 10 years using the 2023 AHA PREVENT equations." />
+          <Bullet label="30-year CVD risk" desc="Long-term risk estimate — most useful for younger patients where 10-year risk understates lifetime burden." />
+          <Bullet label="ASCVD vs Heart Failure" desc="Separate risk estimates for atherosclerotic cardiovascular disease and heart failure are provided." />
+          <Bullet label="ApoB & Lp(a)" desc="If entered, the advanced lipid marker section adjusts overall risk stratification and flags elevated values." />
+          <Bullet label="hs-CRP" desc="High-sensitivity CRP is interpreted separately for inflammatory risk stratification." />
+        </ul>
+      </Guide>
+    </div>
+  ),
+
+  "sleep": (
+    <div className="space-y-6">
+      <Guide title="STOP-BANG in the Lab Entry Form">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/female-lab-entry-2.png", caption: "STOP-BANG Sleep Apnea Screening — five checkboxes visible here: Snoring (loud), Excessive Daytime Tiredness, Observed Breathing Pauses, BMI over 35, and Neck Circumference over 40 cm. Age and gender are pulled from demographics automatically." },
+        ]} />
+      </Guide>
+      <Guide title="Completing the STOP-BANG Questionnaire">
+        <Steps steps={[
+          "The STOP-BANG section appears in the lab entry form below the cardiovascular risk factors.",
+          "Answer all 8 yes/no questions based on patient-reported history and your clinical observation.",
+          "Age (over 50) and Gender (male) are factored in automatically from the patient demographics you entered above.",
+          "Run lab interpretation — the STOP-BANG score and risk classification appear in the results.",
+        ]} />
+      </Guide>
+      <Guide title="STOP-BANG Scoring">
+        <p className="text-sm" style={{ color: "#5a6a4a" }}>
+          The 8 components are: <strong>S</strong>noring (loud), <strong>T</strong>iredness (excessive daytime), <strong>O</strong>bserved apnea, blood <strong>P</strong>ressure (hypertension), <strong>B</strong>MI greater than 35, <strong>A</strong>ge greater than 50, <strong>N</strong>eck circumference greater than 40 cm, and <strong>G</strong>ender (male). A score of 0–2 = Low risk, 3–4 = Intermediate risk, 5–8 = High risk for obstructive sleep apnea. Recommended next steps are included in the interpretation output and SOAP note.
+        </p>
+      </Guide>
+    </div>
+  ),
+
+  "supplements": (
+    <div className="space-y-6">
+      <VideoPlaceholder title="Supplement Recommendations & Custom Library" />
+      <Guide title="How Supplement Recommendations Work">
+        <p className="text-sm" style={{ color: "#5a6a4a" }}>
+          ClinIQ recommends supplements based on three sources: the built-in Metagenics catalog mapped to lab values, your custom supplement library, and detected clinical phenotypes (e.g. insulin resistance subtype, iron deficiency pattern). Recommendations appear automatically after lab interpretation.
+        </p>
+      </Guide>
+      <Guide title="Customizing the Supplement Selector">
+        <Steps steps={[
+          "After running interpretation, scroll to the Supplement Recommendations section.",
+          "Use the interactive selector to add, remove, or reorder supplements for this patient's report.",
+          "Supplements can be filtered by category, gender, and relevance to the current findings.",
+          "The selected supplements are included in the Patient Wellness PDF Report and visible in the patient portal.",
+        ]} />
+      </Guide>
+      <Guide title="Building Your Custom Supplement Library">
+        <Steps steps={[
+          "Navigate to Account, then Custom Supplements.",
+          "Click Add Supplement and fill in the name, description, pricing, and gender filter.",
+          "Set trigger rules: lab-value based (e.g. Ferritin under 30), symptom-based, or combined lab + symptom conditions.",
+          "Add a patient-facing description — ClinIQ can generate one using AI based on the supplement's purpose.",
+          "Supplements with matching trigger rules will automatically appear in recommendations when the conditions are met.",
+        ]} />
+      </Guide>
+      <Guide title="Discount Settings">
+        <p className="text-sm" style={{ color: "#5a6a4a" }}>
+          In Account under Supplement Pricing, set a clinic-wide discount — either a percentage or flat dollar amount — applied to all supplement orders placed through the patient portal.
+        </p>
+      </Guide>
+    </div>
+  ),
+
+  "wellness-report": (
+    <div className="space-y-6">
+      <VideoPlaceholder title="Patient Wellness PDF Report Generation" />
+      <Guide title="Generating a Wellness Report">
+        <Steps steps={[
+          "After completing lab interpretation and selecting supplements, scroll to the bottom of the results page.",
+          "Click Generate Patient Wellness Report.",
+          "ClinIQ compiles the full report including: lab summary with plain-language explanations, personalized diet recommendations, supplement plan, lifestyle guidance, and smoking cessation education if applicable.",
+          "The PDF opens in a new tab for download or printing.",
+          "You can also publish the report to the patient portal so they can access it directly from their account.",
+        ]} />
+      </Guide>
+      <Guide title="What the Report Includes">
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Lab summary" desc="Patient-friendly explanations of every value with color-coded status and plain-language descriptions." />
+          <Bullet label="AI diet recommendations" desc="Personalized dietary guidance generated based on detected patterns and phenotypes." />
+          <Bullet label="Supplement plan" desc="The selected supplements with patient-facing descriptions, dosing context, and pricing." />
+          <Bullet label="Lifestyle guidance" desc="Exercise, sleep, and stress recommendations tailored to the clinical findings." />
+          <Bullet label="Follow-up reminders" desc="Recommended timeframes for repeat testing based on the overall clinical picture." />
+        </ul>
+      </Guide>
+    </div>
+  ),
+
+  "portal": (
+    <div className="space-y-6">
+      <Guide title="Publishing a Patient Visit Summary">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/patient-summary.png", caption: "Patient Visit Summary tab — plain-language summary editable before publishing. Click Publish to Patient Portal to make it visible in the patient's portal account." },
+        ]} />
+      </Guide>
+      <Guide title="Inviting Patients to the Portal">
+        <Steps steps={[
+          "Open the patient's profile from Patient Profiles.",
+          "Click Invite to Portal and confirm the patient's email address.",
+          "The patient receives an email with a link to set their password and access their portal.",
+          "From their portal, patients can view lab results, wellness reports, supplement recommendations, and messages.",
+        ]} />
+      </Guide>
+      <Guide title="Messaging Modes">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>Configure messaging in Account > Portal Settings. Four modes are available:</p>
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="None" desc="Messaging is disabled. The message tab is hidden from the patient portal." />
+          <Bullet label="In-app" desc="Patients and clinicians exchange messages directly within ClinIQ." />
+          <Bullet label="SMS link" desc="Patients are shown a phone number or SMS link to message the clinic outside the app." />
+          <Bullet label="External API" desc="Two-way bridge connects to your existing messaging platform (Spruce, Klara, etc.) via webhook. Requires webhook URL configuration." />
+        </ul>
+      </Guide>
+    </div>
+  ),
+
+  "billing": (
+    <div className="space-y-6">
+      <VideoPlaceholder title="Billing & Subscription Management" />
+      <Guide title="Starting Your Subscription">
+        <Steps steps={[
+          "Your 14-day free trial starts automatically at registration — no credit card required.",
+          "Before the trial ends, navigate to Billing (top-right header button).",
+          "Click Add Payment Method and enter your card details securely via Stripe.",
+          "Click Subscribe — your subscription starts at $97/month and renews automatically.",
+        ]} />
+      </Guide>
+      <Guide title="Managing Your Subscription">
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Billing page" desc="Shows your current plan status, next billing date, and payment method on file." />
+          <Bullet label="Cancel" desc="Click Cancel Subscription to stop renewal. Access continues until the end of the current billing period." />
+          <Bullet label="Reactivate" desc="If cancelled, click Reactivate before the period ends to resume without re-entering payment details." />
+          <Bullet label="Failed payments" desc="You will receive an email notification if a payment fails. Update your payment method in the Billing page." />
+          <Bullet label="Complimentary access" desc="If granted by the ReAlign Health team, the Billing page shows a Complimentary Access banner and no payment is required." />
+        </ul>
+      </Guide>
+    </div>
+  ),
+
+  "account": (
+    <div className="space-y-6">
+      <VideoPlaceholder title="Account Settings & Staff Management" />
+      <Guide title="Account Settings">
+        <Steps steps={[
+          "Click Account in the top-right header to open your account settings.",
+          "Update your profile: clinic name, title, first and last name.",
+          "Change your password under Security Settings.",
+          "Set Lab Range Preferences to override default optimal or reference ranges for any of 60+ markers, per gender.",
+          "Configure Portal Settings to set your messaging mode and patient portal preferences.",
+        ]} />
+      </Guide>
+      <Guide title="Inviting Staff Members">
+        <Steps steps={[
+          "In Account, scroll to the Staff Access section.",
+          "Click Invite Staff Member and enter their email address and role.",
+          "They will receive an invitation email with a link to set their password.",
+          "Staff members operate within your clinic workspace with role-based access restrictions.",
+          "Remove staff access at any time by clicking the remove button next to their name.",
+        ]} />
+      </Guide>
+      <Guide title="Security & HIPAA Controls">
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Login lockout" desc="Accounts are locked after 5 failed login attempts to prevent unauthorized access." />
+          <Bullet label="Session timeout" desc="Inactive sessions show a warning dialog and auto-logout to protect patient data." />
+          <Bullet label="Audit logging" desc="All data access and changes are audit-logged for HIPAA compliance." />
+          <Bullet label="BAA on file" desc="Your signed Business Associate Agreement is viewable and downloadable from the Account page at any time." />
+        </ul>
+      </Guide>
+    </div>
+  ),
+};
+
+// ── Main component ─────────────────────────────────────────────────────────
 
 export default function HelpCenter() {
   const [, setLocation] = useLocation();
@@ -504,7 +555,7 @@ export default function HelpCenter() {
                 key={section.id}
                 onClick={() => { setActiveSection(section.id); setSearch(""); }}
                 data-testid={`nav-help-${section.id}`}
-                className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-left transition-colors w-full"
+                className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm text-left w-full transition-colors"
                 style={{
                   backgroundColor: isActive ? "#2e3a20" : "transparent",
                   color: isActive ? "#f9f6f0" : "#3d4a30",
@@ -564,9 +615,9 @@ export default function HelpCenter() {
               </h2>
             </div>
           </div>
+
           {CONTENT[activeSection]}
 
-          {/* Footer note */}
           <div className="mt-10 pt-6 border-t flex items-start gap-2 text-xs" style={{ borderColor: "#e8ddd0", color: "#9aaa84" }}>
             <AlertTriangle className="h-3.5 w-3.5 mt-0.5 flex-shrink-0" style={{ color: "#c07800" }} />
             <span>
