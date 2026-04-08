@@ -84,10 +84,25 @@ function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
   const qc = useQueryClient();
   const [ready, setReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
+  const [promoCode, setPromoCode] = useState("");
+  const [promoApplied, setPromoApplied] = useState(false);
+
+  function handlePromoCheck() {
+    const code = promoCode.trim().toUpperCase();
+    if (code === "FOUNDER50") {
+      setPromoApplied(true);
+      toast({ title: "Promo code applied", description: "FOUNDER50 — your rate will be locked at $97/month." });
+    } else if (code) {
+      toast({ title: "Invalid code", description: "That promo code wasn't recognised.", variant: "destructive" });
+    }
+  }
 
   const subscribeMutation = useMutation({
     mutationFn: async (paymentMethodId: string) =>
-      apiRequest("POST", "/api/billing/subscribe", { paymentMethodId }),
+      apiRequest("POST", "/api/billing/subscribe", {
+        paymentMethodId,
+        promoCode: promoApplied ? promoCode.trim().toUpperCase() : undefined,
+      }),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/billing/status"] });
       qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
@@ -105,7 +120,6 @@ function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
     setSubmitting(true);
 
     try {
-      // Get SetupIntent client secret
       const configRes = await apiRequest("POST", "/api/billing/create-setup-intent", {});
       const { clientSecret } = await configRes.json();
 
@@ -131,8 +145,34 @@ function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
+  const monthlyRate = promoApplied ? "$97" : "$149";
+
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
+      {/* Promo code */}
+      <div className="space-y-1.5">
+        <label className="text-xs font-medium text-muted-foreground">Promo code (optional)</label>
+        <div className="flex gap-2">
+          <input
+            type="text"
+            value={promoCode}
+            onChange={e => { setPromoCode(e.target.value); setPromoApplied(false); }}
+            placeholder="e.g. FOUNDER50"
+            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-ring"
+            data-testid="input-promo-code"
+          />
+          <Button type="button" variant="outline" onClick={handlePromoCheck} data-testid="button-apply-promo">
+            Apply
+          </Button>
+        </div>
+        {promoApplied && (
+          <p className="text-xs font-semibold" style={{ color: "#5a7040" }}>
+            FOUNDER50 applied — locked at $97/month
+          </p>
+        )}
+      </div>
+
+      {/* Card element */}
       <div className="rounded-md border p-3 bg-background">
         <CardElement
           onReady={() => setReady(true)}
@@ -159,7 +199,9 @@ function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
         disabled={!stripe || !ready || submitting || subscribeMutation.isPending}
         data-testid="button-start-trial"
       >
-        {submitting || subscribeMutation.isPending ? "Processing…" : "Start Free Trial — $97/month after"}
+        {submitting || subscribeMutation.isPending
+          ? "Processing…"
+          : `Start Free Trial — ${monthlyRate}/month after`}
       </Button>
     </form>
   );
@@ -238,7 +280,7 @@ export default function BillingPage() {
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <CardTitle className="text-base font-semibold">Current Plan</CardTitle>
+              <CardTitle className="text-base font-semibold">Solo ClinIQ Plan</CardTitle>
               {status && <StatusBadge status={status.subscriptionStatus} />}
             </div>
             <CardDescription>ClinIQ Clinical Intelligence Platform</CardDescription>
@@ -266,7 +308,7 @@ export default function BillingPage() {
                 {/* Plan details row */}
                 <div className="flex items-baseline justify-between">
                   <div>
-                    <span className="text-3xl font-bold">$97</span>
+                    <span className="text-3xl font-bold">$149</span>
                     <span className="text-muted-foreground text-sm ml-1">/ month</span>
                   </div>
                   {isTrial && daysLeft !== null && (
