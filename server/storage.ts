@@ -166,6 +166,14 @@ export interface IStorage {
   updateEncounter(id: number, clinicianId: number, data: Partial<InsertClinicalEncounter> & { soapNote?: any; soapGeneratedAt?: Date; summaryPublished?: boolean; summaryPublishedAt?: Date; diarizedTranscript?: any; clinicalExtraction?: any; evidenceSuggestions?: import("@shared/schema").EvidenceOverlay | any; patternMatch?: import("@shared/schema").PatternMatchResult | any; updatedAt?: Date }): Promise<ClinicalEncounter | undefined>;
   deleteEncounter(id: number, clinicianId: number): Promise<boolean>;
   getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]>;
+
+  // Appointments (Boulevard sync via Zapier)
+  upsertAppointment(userId: number, boulevardId: string, data: Omit<schema.InsertAppointment, 'userId' | 'boulevardAppointmentId'>): Promise<schema.Appointment>;
+  cancelAppointment(userId: number, boulevardId: string): Promise<void>;
+  getAppointmentsByUserId(userId: number): Promise<schema.Appointment[]>;
+  getAppointmentsByPatientEmail(email: string, userId: number): Promise<schema.Appointment[]>;
+  getAppointmentsByPatientId(patientId: number): Promise<schema.Appointment[]>;
+  matchAppointmentToPatient(appointmentId: number, patientId: number): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -1006,6 +1014,77 @@ export class DbStorage implements IStorage {
       ))
       .orderBy(desc(schema.clinicalEncounters.visitDate));
     return result;
+  }
+
+  // ── Appointments (Boulevard sync via Zapier) ─────────────────────────────────
+  async upsertAppointment(userId: number, boulevardId: string, data: Omit<schema.InsertAppointment, 'userId' | 'boulevardAppointmentId'>): Promise<schema.Appointment> {
+    const existing = await db
+      .select()
+      .from(schema.appointments)
+      .where(and(
+        eq(schema.appointments.userId, userId),
+        eq(schema.appointments.boulevardAppointmentId, boulevardId)
+      ))
+      .limit(1);
+
+    if (existing.length > 0) {
+      const [updated] = await db
+        .update(schema.appointments)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(schema.appointments.id, existing[0].id))
+        .returning();
+      return updated;
+    }
+
+    const [created] = await db
+      .insert(schema.appointments)
+      .values({ userId, boulevardAppointmentId: boulevardId, ...data })
+      .returning();
+    return created;
+  }
+
+  async cancelAppointment(userId: number, boulevardId: string): Promise<void> {
+    await db
+      .update(schema.appointments)
+      .set({ status: "cancelled", updatedAt: new Date() })
+      .where(and(
+        eq(schema.appointments.userId, userId),
+        eq(schema.appointments.boulevardAppointmentId, boulevardId)
+      ));
+  }
+
+  async getAppointmentsByUserId(userId: number): Promise<schema.Appointment[]> {
+    return db
+      .select()
+      .from(schema.appointments)
+      .where(eq(schema.appointments.userId, userId))
+      .orderBy(schema.appointments.appointmentStart);
+  }
+
+  async getAppointmentsByPatientEmail(email: string, userId: number): Promise<schema.Appointment[]> {
+    return db
+      .select()
+      .from(schema.appointments)
+      .where(and(
+        eq(schema.appointments.userId, userId),
+        eq(schema.appointments.patientEmail, email)
+      ))
+      .orderBy(schema.appointments.appointmentStart);
+  }
+
+  async getAppointmentsByPatientId(patientId: number): Promise<schema.Appointment[]> {
+    return db
+      .select()
+      .from(schema.appointments)
+      .where(eq(schema.appointments.patientId, patientId))
+      .orderBy(schema.appointments.appointmentStart);
+  }
+
+  async matchAppointmentToPatient(appointmentId: number, patientId: number): Promise<void> {
+    await db
+      .update(schema.appointments)
+      .set({ patientId, updatedAt: new Date() })
+      .where(eq(schema.appointments.id, appointmentId));
   }
 }
 

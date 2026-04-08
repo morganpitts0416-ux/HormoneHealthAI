@@ -14,7 +14,7 @@ import {
   ChefHat, Clock, Users, Loader2, ArrowLeft, Bookmark, BookmarkCheck,
   Download, Trash2, Stethoscope, FileText
 } from "lucide-react";
-import type { SupplementRecommendation } from "@shared/schema";
+import type { SupplementRecommendation, Appointment } from "@shared/schema";
 import { generateTrendInsights } from "@/lib/clinical-trend-insights";
 
 // ── Dietary guidance parser ────────────────────────────────────────────────
@@ -974,6 +974,12 @@ export default function PortalDashboard() {
     },
   });
 
+  const { data: appointments = [] } = useQuery<Appointment[]>({
+    queryKey: ["/api/portal/appointments"],
+    enabled: !!patient,
+    retry: false,
+  });
+
   const deleteSavedRecipeMutation = useMutation({
     mutationFn: async (id: number) => {
       const res = await apiRequest("DELETE", `/api/portal/saved-recipes/${id}`, {});
@@ -1112,6 +1118,43 @@ export default function PortalDashboard() {
             )}
           </div>
         )}
+
+        {/* Upcoming appointment card */}
+        {(() => {
+          const now = new Date();
+          const next = appointments
+            .filter(a => new Date(a.appointmentStart) >= now && a.status !== "cancelled")
+            .sort((a, b) => new Date(a.appointmentStart).getTime() - new Date(b.appointmentStart).getTime())[0];
+          const future = appointments.filter(a => new Date(a.appointmentStart) >= now && a.status !== "cancelled");
+          if (!next) return null;
+          const start = new Date(next.appointmentStart);
+          const dateStr = start.toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" });
+          const timeStr = start.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+          return (
+            <div className="rounded-xl px-4 py-4" style={{ backgroundColor: "#edf2e6", border: "1px solid #c8dbb8" }} data-testid="card-next-appointment">
+              <div className="flex items-start gap-3">
+                <div className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
+                  <CalendarDays className="w-4 h-4" style={{ color: "#e8ddd0" }} />
+                </div>
+                <div className="flex-1 min-w-0">
+                  <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: "#5a7040" }}>
+                    {future.length > 1 ? `Next Appointment · ${future.length} upcoming` : "Next Appointment"}
+                  </p>
+                  <p className="text-base font-semibold leading-tight" style={{ color: "#1c2414" }}>{dateStr}</p>
+                  <p className="text-sm mt-0.5" style={{ color: "#3d4a30" }}>{timeStr}{next.durationMinutes ? ` · ${next.durationMinutes} min` : ""}</p>
+                  {(next.serviceType || next.staffName) && (
+                    <p className="text-xs mt-1" style={{ color: "#7a8a64" }}>
+                      {next.serviceType}{next.staffName ? ` · ${next.staffName}` : ""}
+                    </p>
+                  )}
+                  {next.locationName && (
+                    <p className="text-xs mt-0.5" style={{ color: "#9aaa84" }}>{next.locationName}</p>
+                  )}
+                </div>
+              </div>
+            </div>
+          );
+        })()}
 
         {/* Quick stats strip */}
         <div className="grid grid-cols-3 gap-2 sm:gap-3">

@@ -4636,6 +4636,125 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // ── Boulevard Appointments Webhook (Zapier → your server) ─────────────────
+  // Public endpoint — no session auth needed. Clinician ID is in the URL path.
+  // Set up 3 Zaps in Zapier, all posting to: /api/webhooks/boulevard/<your-clinician-id>
+  //   Zap 1: Boulevard "New Appointment"      → Webhook POST (event: "appointment.created")
+  //   Zap 2: Boulevard "Updated Appointment"  → Webhook POST (event: "appointment.updated")
+  //   Zap 3: Boulevard "Cancelled Appointment"→ Webhook POST (event: "appointment.cancelled")
+  app.post("/api/webhooks/boulevard/:clinicianId", async (req, res) => {
+    try {
+      const clinicianId = parseInt(req.params.clinicianId, 10);
+      if (isNaN(clinicianId)) return res.status(400).json({ error: "Invalid clinician ID" });
+
+      const payload = req.body as Record<string, any>;
+
+      // Accept multiple possible field name conventions from Zapier/Boulevard
+      const boulevardId =
+        payload.appointment_id ?? payload.id ?? payload.appointmentId ?? payload.blvd_id ?? String(Date.now());
+
+      const rawStart =
+        payload.start_time ?? payload.start_at ?? payload.startTime ?? payload.appointment_start ?? payload.date;
+      if (!rawStart) return res.status(400).json({ error: "Missing appointment start time" });
+
+      const appointmentStart = new Date(rawStart);
+      if (isNaN(appointmentStart.getTime())) return res.status(400).json({ error: "Invalid start time" });
+
+      const rawEnd = payload.end_time ?? payload.end_at ?? payload.endTime ?? payload.appointment_end;
+      const appointmentEnd = rawEnd ? new Date(rawEnd) : undefined;
+
+      const rawStatus = (payload.status ?? payload.event ?? "scheduled").toLowerCase();
+      const isCancelled =
+        rawStatus.includes("cancel") || rawStatus === "appointment.cancelled";
+
+      const patientName =
+        payload.patient_name ?? payload.client_name ?? payload.customer_name ?? payload.name ?? "Unknown Patient";
+
+      const patientEmail =
+        payload.patient_email ?? payload.client_email ?? payload.customer_email ?? payload.email ?? null;
+
+      const patientPhone =
+        payload.patient_phone ?? payload.client_phone ?? payload.customer_phone ?? payload.phone ?? null;
+
+      const serviceType =
+        payload.service ?? payload.service_name ?? payload.service_type ?? payload.visit_type ?? payload.appointment_type ?? null;
+
+      const staffName =
+        payload.staff_name ?? payload.provider ?? payload.provider_name ?? payload.staff ?? payload.employee ?? null;
+
+      const locationName =
+        payload.location ?? payload.location_name ?? payload.site ?? payload.clinic ?? null;
+
+      const durationMinutes =
+        payload.duration_minutes ?? payload.duration ?? payload.duration_mins ?? null;
+
+      if (isCancelled) {
+        await storage.cancelAppointment(clinicianId, boulevardId);
+        return res.json({ received: true, action: "cancelled" });
+      }
+
+      const status = rawStatus.includes("reschedul") ? "rescheduled" : "scheduled";
+
+      const appt = await storage.upsertAppointment(clinicianId, boulevardId, {
+        patientName,
+        patientEmail,
+        patientPhone,
+        serviceType,
+        staffName,
+        locationName,
+        appointmentStart,
+        appointmentEnd: appointmentEnd ?? null,
+        durationMinutes: durationMinutes ? parseInt(String(durationMinutes), 10) : null,
+        status,
+        notes: payload.notes ?? payload.note ?? null,
+        rawPayload: payload,
+      });
+
+      // Auto-link to patient record if we have their email
+      if (patientEmail) {
+        try {
+          const matches = await storage.getAppointmentsByPatientEmail(patientEmail, clinicianId);
+          const allPatients = await storage.getAllPatients(clinicianId);
+          const matched = allPatients.find(p => p.email?.toLowerCase() === patientEmail.toLowerCase());
+          if (matched) {
+            for (const m of matches) {
+              if (!m.patientId) await storage.matchAppointmentToPatient(m.id, matched.id);
+            }
+          }
+        } catch {
+          // non-fatal — appointment is saved, linking is best-effort
+        }
+      }
+
+      res.json({ received: true, action: "upserted", id: appt.id });
+    } catch (err: any) {
+      console.error("[Boulevard Webhook] Error:", err);
+      res.status(500).json({ error: "Webhook processing failed" });
+    }
+  });
+
+  // GET /api/appointments — clinician views all their appointments
+  app.get("/api/appointments", requireAuth, async (req: any, res) => {
+    try {
+      const userId = req.user.id;
+      const appts = await storage.getAppointmentsByUserId(userId);
+      res.json(appts);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to load appointments" });
+    }
+  });
+
+  // GET /api/portal/appointments — patient portal view of their own appointments
+  app.get("/api/portal/appointments", requirePortalAuth, async (req: any, res) => {
+    try {
+      const portalUser = req.portalUser;
+      const appts = await storage.getAppointmentsByPatientId(portalUser.patientId);
+      res.json(appts);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to load appointments" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
