@@ -1,0 +1,99 @@
+generic_name,brand_names,common_spoken_variants,common_misspellings,drug_class,subclass,route,notes
+estradiol,Estrace|Vivelle-Dot|Climara|Dotti|Minivelle|Alora|Elestrin|Divigel|EstroGel,estradiol|estrace|vivelle|vivelle dot|climara|dotti|minivelle|alora|elestrin|divigel|estrogel|estrogen patch|estradiol patch|estradiol cream|estradiol gel,estridol|estradial|estradoil|vivel dot,Estrogen,Menopausal hormone therapy,transdermal|oral|vaginal|topical,Normalize to estradiol; preserve formulation if known
+progesterone,Prometrium,progesterone|prometrium|micronized progesterone,progesteron|prometriume,Progestogen,Menopausal hormone therapy,oral,Distinguish from medroxyprogesterone
+medroxyprogesterone,Provera|Depo-Provera,medroxyprogesterone|provera|depo provera|depo,medroxyprogestrone|provra,Progestin,Synthetic progestin,oral|intramuscular,Do not normalize to micronized progesterone
+testosterone,AndroGel|Testim|Axiron|Fortesta|Androderm,testosterone|androgel|testim|axiron|fortesta|testosterone gel|testosterone cream,testosteron|androgel,Androgen,Testosterone therapy,topical|transdermal|intramuscular|subcutaneous,Preserve route if known
+testosterone cypionate,Depo-Testosterone,testosterone cypionate|test cyp|depo testosterone,testosterone cypiontate|test cypionate,Androgen,Injectable testosterone,intramuscular|subcutaneous,Normalize injectable shorthand to testosterone cypionate when clearly stated
+testosterone enanthate,Xyosted|Delatestryl,testosterone enanthate|xyosted|delatestryl|test e,testosterone enanthat|delatrysl,Androgen,Injectable testosterone,subcutaneous|intramuscular,
+prasterone,Intrarosa,prasterone|intrarosa|vaginal dhea,prasteron|introrosa,Hormone,Vaginal DHEA,vaginal,Keep separate from oral DHEA
+dehydroepiandrosterone,DHEA,dhea|dehydroepiandrosterone,dehydroepiandosterone|dhes,Hormone precursor,Adrenal androgen precursor,oral,Supplement/common shorthand likely used
+pregnenolone,,pregnenolone,pregnenelone|pregnalonone,Hormone precursor,Neurosteroid precursor,oral,Supplement/common shorthand likely used
+spironolactone,Aldactone|CaroSpir,spironolactone|aldactone|spirono,spironolacone|spironlactone,Diuretic,Potassium-sparing diuretic/antiandrogen,oral,Often used for acne/hirsutism
+finasteride,Propecia|Proscar,finasteride|propecia|proscar,finasteridee|propeci,5-alpha reductase inhibitor,Antiandrogen,oral,
+dutasteride,Avodart,dutasteride|avodart,dutasturide|avodrt,5-alpha reductase inhibitor,Antiandrogen,oral,
+clobetasol,Temovate|Clobex,clobetasol|temovate|clobex,clobetasole|clobetsol,Topical corticosteroid,High-potency steroid,topical,Useful for lichen sclerosus recognition
+estradiol-norethindrone,CombiPatch|Activella|Mimvey,combipatch|activella|mimvey|estradiol norethindrone,combipach|actvella,Hormone combination,Estrogen/progestin therapy,transdermal|oral,Combination product
+levothyroxine,Synthroid|Levoxyl|Unithroid|Tirosint|Euthyrox,levothyroxine|synthroid|levoxyl|unithroid|tirosint|euthyrox,levothryoxine|levothyroxin|synthriod,Thyroid hormone,T4 replacement,oral,
+liothyronine,Cytomel|Triostat,liothyronine|cytomel|t3,liothryonine|liothyroinine|cytomell,Thyroid hormone,T3 replacement,oral|intravenous,
+desiccated thyroid,Armour Thyroid|NP Thyroid|Nature-Throid|WP Thyroid,armour thyroid|armour|np thyroid|nature throid|wp thyroid|desiccated thyroid,armor thyroid|armour thryoid|np thryoid,Thyroid hormone,Natural desiccated thyroid,oral,
+methimazole,Tapazole,methimazole|tapazole,methimazol|tapazol,Antithyroid,Thionamide,oral,
+propylthiouracil,PTU,propylthiouracil|ptu,propylthyouracil|propythiouracil,Antithyroid,Thionamide,oral,
+semaglutide,Ozempic|Wegovy|Rybelsus,semaglutide|ozempic|wegovy|rybelsus,semaglutde|ozembic|wegovyy,GLP-1 receptor agonist,Incretin mimetic,subcutaneous|oral,Normalize brands to semaglutide
+tirzepatide,Mounjaro|Zepbound,tirzepatide|mounjaro|zepbound,tirzepatde|monjaro|zepboound,GIP/GLP-1 receptor agonist,Dual incretin agonist,subcutaneous,Normalize brands to tirzepatide
+metformin,Glucophage|Glucophage XR|Fortamet|Riomet,metformin|glucophage|glucophage xr|fortamet|riomet|metformin xr,metforman|metfornin|glucaphage,Antidiabetic,Biguanide,oral,Normalize XR/ER variants to metformin unless formulation tracking needed
+empagliflozin,Jardiance,empagliflozin|jardiance,empaglaflozin|jardiance,Antidiabetic,SGLT2 inhibitor,oral,
+dapagliflozin,Farxiga,dapagliflozin|farxiga,dapagliflozen|farziga,Antidiabetic,SGLT2 inhibitor,oral,
+canagliflozin,Invokana,canagliflozin|invokana,canagliflozen|invokanna,Antidiabetic,SGLT2 inhibitor,oral,
+glimepiride,Amaryl,glimepiride|amaryl,glimiperide|amaril,Antidiabetic,Sulfonylurea,oral,
+glipizide,Glucotrol|Glucotrol XL,glipizide|glucotrol|glucotrol xl,glipizid|glucatrol,Antidiabetic,Sulfonylurea,oral,
+insulin glargine,Lantus|Basaglar|Toujeo|Semglee,insulin glargine|lantus|basaglar|toujeo|semglee,insulin glargene|basagler,Antidiabetic,Long-acting insulin,subcutaneous,
+insulin lispro,Humalog|Admelog|Lyumjev,insulin lispro|humalog|admelog|lyumjev,lisproe|humolog,Antidiabetic,Rapid-acting insulin,subcutaneous,
+phentermine,Adipex-P|Lomaira,phentermine|adipex|adipex p|lomaira,phentarmine|phentremine,Anorexiant,Sympathomimetic,oral,Weight-management med frequently mentioned
+naltrexone-bupropion,Contrave,contrave|naltrexone bupropion,contrav|naltrexon bupropion,Weight management,Combination therapy,oral,Combination product
+rosuvastatin,Crestor|Ezallor,rosuvastatin|crestor|rosuva,rosuvastin|rosuvastatan|crestorr,Antilipemic,Statin,oral,
+atorvastatin,Lipitor,atorvastatin|lipitor,atorvostatin|liptor,Antilipemic,Statin,oral,
+pravastatin,Pravachol,pravastatin|pravachol,pravastin|pravacol,Antilipemic,Statin,oral,
+simvastatin,Zocor,simvastatin|zocor,simvastin|zocar,Antilipemic,Statin,oral,
+ezetimibe,Zetia,ezetimibe|zetia,ezitimibe|zetta,Antilipemic,Cholesterol absorption inhibitor,oral,
+bempedoic acid,Nexletol,bempedoic acid|nexletol,bempedoik acid|nexlatol,Antilipemic,ACL inhibitor,oral,
+icosapent ethyl,Vascepa,icosapent ethyl|vascepa,icosapent ethel|vascpa,Antilipemic,Omega-3 derivative,oral,
+lisinopril,Prinivil|Zestril|Qbrelis,lisinopril|prinivil|zestril,lisonopril|lisinpril,Antihypertensive,ACE inhibitor,oral,
+losartan,Cozaar,losartan|cozaar,losartanr|cozarr,Antihypertensive,ARB,oral,
+valsartan,Diovan,valsartan|diovan,valsartin|divan,Antihypertensive,ARB,oral,
+amlodipine,Norvasc|Katerzia,amlodipine|norvasc,amlodipin|norvask,Antihypertensive,Calcium channel blocker,oral,
+hydrochlorothiazide,Microzide,hydrochlorothiazide|hctz|microzide|hydrodiuril,hydrochlorathiazide|hydrochlorthiazide,Antihypertensive,Thiazide diuretic,oral,Common shorthand HCTZ
+chlorthalidone,Thalitone|Hygroton,chlorthalidone|thalitone|hygroton,chlorthalidone|chlorthalidon,Antihypertensive,Thiazide-like diuretic,oral,
+metoprolol succinate,Toprol-XL,metoprolol succinate|toprol xl|toprol,metoprolol sucinate|metroprolol|toporol,Antihypertensive,Beta blocker,oral,"If spoken as Toprol, likely succinate"
+metoprolol tartrate,Lopressor,metoprolol tartrate|lopressor,metoprolol tatrate|lopresor,Antihypertensive,Beta blocker,oral,Keep separate from succinate if identifiable
+propranolol,Inderal|InnoPran XL,propranolol|inderal,propanolol|inderol,Antihypertensive,Beta blocker,oral,
+nebivolol,Bystolic,nebivolol|bystolic,nebivol|bystollic,Antihypertensive,Beta blocker,oral,
+furosemide,Lasix,furosemide|lasix,furosimide|lasics,Diuretic,Loop diuretic,oral|intravenous,
+bupropion,Wellbutrin|Wellbutrin XL|Wellbutrin SR|Aplenzin,bupropion|wellbutrin|wellbutrin xl|wellbutrin sr,bupriopion|buproprion|welbutrin,Antidepressant,NDRI,oral,
+sertraline,Zoloft,sertraline|zoloft,sertralin|zolof,Antidepressant,SSRI,oral,
+escitalopram,Lexapro,escitalopram|lexapro,escitalpram|lexaproo,Antidepressant,SSRI,oral,
+fluoxetine,Prozac|Sarafem,fluoxetine|prozac|sarafem,fluoxitine|prozak,Antidepressant,SSRI,oral,
+venlafaxine,Effexor XR|Effexor,venlafaxine|effexor|effexor xr,venlafaxin|efexor,Antidepressant,SNRI,oral,
+duloxetine,Cymbalta|Drizalma,duloxetine|cymbalta,duloxitine|cymbolta,Antidepressant,SNRI,oral,
+trazodone,Desyrel,trazodone,trazadone|trazdone,Antidepressant,Serotonin modulator,oral,Often used for sleep
+hydroxyzine,Atarax|Vistaril,hydroxyzine|atarax|vistaril,hydroxyzin|vistaral,Antihistamine,Anxiolytic/antihistamine,oral,
+alprazolam,Xanax|Xanax XR,alprazolam|xanax,alprozolam|zanax,Anxiolytic,Benzodiazepine,oral,Controlled substance
+clonazepam,Klonopin,clonazepam|klonopin,clonazpam|clonapin,Anxiolytic,Benzodiazepine,oral,Controlled substance
+lorazepam,Ativan,lorazepam|ativan,lorazapam|ativin,Anxiolytic,Benzodiazepine,oral,Controlled substance
+amphetamine-dextroamphetamine,Adderall|Adderall XR,adderall|adderall xr|amphetamine dextroamphetamine,aderall|amfetamine dextroamphetamine,CNS stimulant,ADHD stimulant,oral,Controlled substance
+lisdexamfetamine,Vyvanse,lisdexamfetamine|vyvanse,lisdexamphetamine|vyvance,CNS stimulant,ADHD stimulant,oral,Controlled substance
+zolpidem,Ambien|Ambien CR,zolpidem|ambien,zolpidemm|ambein,Sedative-hypnotic,Z-drug,oral,Controlled substance
+albuterol,ProAir HFA|Ventolin HFA|Proventil HFA|AccuNeb,albuterol|proair|ventolin|proventil|albuterol inhaler,albuteral|albutarol|ventilin,Bronchodilator,Short-acting beta agonist,inhalation|nebulized,Preserve HFA/nebulizer if known
+budesonide-formoterol,Symbicort|Breyna,symbicort|breyna|budesonide formoterol,simbicort|budesonide formoterall,Respiratory,ICS/LABA,inhalation,Combination inhaler
+fluticasone-salmeterol,Advair Diskus|Advair HFA|Wixela Inhub,advair|wixela|fluticasone salmeterol,advair|fluticasone salmeteral,Respiratory,ICS/LABA,inhalation,Combination inhaler
+fluticasone-vilanterol,Breo Ellipta,breo|breo ellipta|fluticasone vilanterol,breoo|vilanteral,Respiratory,ICS/LABA,inhalation,
+montelukast,Singulair,montelukast|singulair,montelukest|singulaire,Respiratory,Leukotriene receptor antagonist,oral,
+cetirizine,Zyrtec,cetirizine|zyrtec,cetrizine|zirtec,Antihistamine,Second-generation antihistamine,oral,
+levocetirizine,Xyzal,levocetirizine|xyzal,levocetrizine|xysal,Antihistamine,Second-generation antihistamine,oral,
+fexofenadine,Allegra,fexofenadine|allegra,fexofenadine|alegra,Antihistamine,Second-generation antihistamine,oral,
+loratadine,Claritin,loratadine|claritin,loratidine|clariten,Antihistamine,Second-generation antihistamine,oral,
+fluticasone nasal,Flonase|Xhance,fluticasone|flonase|xhance|fluticasone nasal,fluticazone|flonaze,Intranasal steroid,Corticosteroid,nasal,
+omeprazole,Prilosec,omeprazole|prilosec,omeprazol|prilosek,Gastrointestinal,Proton pump inhibitor,oral,
+pantoprazole,Protonix,pantoprazole|protonix,pantaprazole|protonics,Gastrointestinal,Proton pump inhibitor,oral,
+famotidine,Pepcid,famotidine|pepcid,famotidinee|pepsid,Gastrointestinal,H2 blocker,oral|intravenous,
+ondansetron,Zofran,ondansetron|zofran,ondansetron|zofrann,Antiemetic,5-HT3 antagonist,oral|intravenous|ODT,
+amoxicillin,Amoxil,amoxicillin|amoxil,amoxacillin|amoxicillan,Antibiotic,Penicillin,oral,
+amoxicillin-clavulanate,Augmentin,augmentin|amoxicillin clavulanate|amox clav,amox clavulanate|augmenten,Antibiotic,Penicillin/beta-lactamase inhibitor,oral,Combination product
+azithromycin,Zithromax|Z-Pak,azithromycin|zithromax|z pak|zpack,azythromycin|zithromax,Antibiotic,Macrolide,oral,
+doxycycline,Vibramycin|Doryx|Oracea,doxycycline|vibramycin|doryx|oracea,doxycylcine|doxycicline,Antibiotic,Tetracycline,oral,Common in acne/respiratory use
+nitrofurantoin,Macrobid|Macrodantin,nitrofurantoin|macrobid|macrodantin,nitrofurantion|macrobidd,Antibiotic,Urinary anti-infective,oral,
+fluconazole,Diflucan,fluconazole|diflucan,flucanazole|diflucin,Antifungal,Azole antifungal,oral,
+valacyclovir,Valtrex,valacyclovir|valtrex,valcyclovir|valtrexx,Antiviral,Herpes antiviral,oral,
+tretinoin,Retin-A|Altreno|Atralin,tretinoin|retin a|retina|altreno|atralin,tretnoin|retinay,Topical retinoid,Vitamin A derivative,topical,Differentiate from isotretinoin
+isotretinoin,Absorica|Claravis|Amnesteem|Accutane,isotretinoin|accutane|absorica|claravis|amnesteem,isotretenoin|accutan,Retinoid,Oral retinoid,oral,
+clindamycin topical,Cleocin T|Clindagel,clindamycin topical|clindagel|cleocin t,clindamcyin topical|clindagell,Topical antibiotic,Lincosamide,topical,Keep separate from oral if possible
+minocycline,Minocin|Solodyn,minocycline|minocin|solodyn,minocyclin|solodin,Antibiotic,Tetracycline,oral,Common in acne
+hydroquinone,,hydroquinone,hydroquinon,Dermatologic,Depigmenting agent,topical,
+tretinoin-clindamycin,,tretinoin and clindamycin|retinoid and clinda,tretinoin clindamcyin,Dermatologic,Combined acne regimen,topical,Nonstandard shorthand entry for transcript interpretation
+vitamin d,Vitamin D3|Cholecalciferol,vitamin d|vitamin d3|cholecalciferol,vit d|cholecalciferal,Supplement,Vitamin,oral,Common supplement mention
+vitamin b12,Cyanocobalamin|Methylcobalamin,vitamin b12|b12|cyanocobalamin|methylcobalamin,vit b12|cyancobalamin,Supplement,Vitamin,oral|intramuscular|subcutaneous,
+folic acid,Folate,folic acid|folate,folatee,Supplement,Vitamin,oral,
+magnesium,,magnesium|mag oxide|mag glycinate|mag citrate,magnesum|magnisium,Supplement,Mineral,oral,May be spoken loosely without salt form
+iron,Ferrous sulfate|Ferrous gluconate|Ferretts,iron|ferrous sulfate|ferrous gluconate|iron pill,ferus sulfate|ferrous sulfat,Supplement,Mineral,oral,May be too broad; preserve original form if known
+omega-3 fatty acids,Fish Oil|Lovaza,omega 3|fish oil|omega three|lovaza,omega3|fishoil,Supplement,Fatty acid,oral,
+coenzyme q10,CoQ10,coq10|co q 10|coenzyme q10,coq 10|coenzyme q 10,Supplement,Coenzyme,oral,
+creatine,,creatine,creatin,Supplement,Amino acid derivative,oral,Differentiate from creatinine if possible
