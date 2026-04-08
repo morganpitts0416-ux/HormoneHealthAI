@@ -32,7 +32,7 @@ const CLINICIAN_FEATURES = [
   {
     icon: BarChart3,
     title: "Identify patterns most clinicians miss",
-    desc: "From perimenopause shifts to iron deficiency and hormone optimization — ReAlign connects patterns across labs so nothing important gets overlooked.",
+    desc: "From perimenopause shifts to iron deficiency and hormone optimization — ClinIQ connects patterns across labs so nothing important gets overlooked.",
   },
   {
     icon: BookOpen,
@@ -95,12 +95,12 @@ export default function Landing() {
 
       {/* ── Navigation ──────────────────────────────────────────────────── */}
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-8 w-auto" />
-            <div className="hidden sm:flex flex-col leading-none">
-              <span className="text-[10px] font-semibold uppercase tracking-widest" style={{ color: "#7a8a64" }}>ReAlign Health</span>
-              <span className="text-base font-bold" style={{ color: "#1c2414" }}>ClinIQ</span>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
+          <div className="flex items-center gap-4">
+            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-14 w-auto" />
+            <div className="hidden sm:flex flex-col leading-none gap-0.5">
+              <span className="text-xs font-semibold uppercase tracking-widest" style={{ color: "#7a8a64" }}>ReAlign Health</span>
+              <span className="text-xl font-bold" style={{ color: "#1c2414" }}>ClinIQ</span>
             </div>
           </div>
           <nav className="flex items-center gap-2">
@@ -155,7 +155,7 @@ export default function Landing() {
               Because busy visits miss things
             </h2>
             <p className="text-base leading-relaxed" style={{ color: "#5a6a4a" }}>
-              ReAlign doesn't replace your clinical judgment — it expands it.<br className="hidden sm:block" />
+              ClinIQ doesn't replace your clinical judgment — it expands it.<br className="hidden sm:block" />
               While you're focused on the visit, it's identifying patterns across cardiovascular risk, insulin resistance, iron deficiency, perimenopause, and more — surfacing what matters, even when time doesn't allow you to go there.
             </p>
           </div>
@@ -165,7 +165,7 @@ export default function Landing() {
               {
                 icon: FlaskConical,
                 heading: "For the Clinician",
-                body: 'Go beyond "normal" and "abnormal." ReAlign connects the dots across labs — helping you identify patterns, stratify risk, and make decisions with clarity and confidence.',
+                body: 'Go beyond "normal" and "abnormal." ClinIQ connects the dots across labs — helping you identify patterns, stratify risk, and make decisions with clarity and confidence.',
               },
               {
                 icon: Users,
