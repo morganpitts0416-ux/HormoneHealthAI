@@ -364,7 +364,12 @@ const CONTENT: Record<string, React.ReactNode> = {
 
   "supplements": (
     <div className="space-y-6">
-      <VideoPlaceholder title="Supplement Recommendations & Custom Library" />
+      <Guide title="What Patients See — Supplement Protocol">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/portal-protocol.png", caption: "Protocol tab in the patient portal — patients see their supplement list with recommended vs optional labels, pricing (with any applied discount), and can order directly through Metagenics." },
+          { src: "/help-shots/portal-supplements.png", caption: "Supplement cards show product name, dosing, patient-facing description, and provider notes. Patients can also save recipes tied to dietary recommendations." },
+        ]} />
+      </Guide>
       <Guide title="How Supplement Recommendations Work">
         <p className="text-sm" style={{ color: "#5a6a4a" }}>
           ClinIQ recommends supplements based on three sources: the built-in Metagenics catalog mapped to lab values, your custom supplement library, and detected clinical phenotypes (e.g. insulin resistance subtype, iron deficiency pattern). Recommendations appear automatically after lab interpretation.
@@ -375,7 +380,7 @@ const CONTENT: Record<string, React.ReactNode> = {
           "After running interpretation, scroll to the Supplement Recommendations section.",
           "Use the interactive selector to add, remove, or reorder supplements for this patient's report.",
           "Supplements can be filtered by category, gender, and relevance to the current findings.",
-          "The selected supplements are included in the Patient Wellness PDF Report and visible in the patient portal.",
+          "The selected supplements are included in the Patient Wellness PDF and visible in the patient portal Protocol tab.",
         ]} />
       </Guide>
       <Guide title="Building Your Custom Supplement Library">
@@ -383,13 +388,13 @@ const CONTENT: Record<string, React.ReactNode> = {
           "Navigate to Account, then Custom Supplements.",
           "Click Add Supplement and fill in the name, description, pricing, and gender filter.",
           "Set trigger rules: lab-value based (e.g. Ferritin under 30), symptom-based, or combined lab + symptom conditions.",
-          "Add a patient-facing description — ClinIQ can generate one using AI based on the supplement's purpose.",
+          "Add a patient-facing description — ClinIQ can generate one using AI based on the supplement purpose.",
           "Supplements with matching trigger rules will automatically appear in recommendations when the conditions are met.",
         ]} />
       </Guide>
       <Guide title="Discount Settings">
         <p className="text-sm" style={{ color: "#5a6a4a" }}>
-          In Account under Supplement Pricing, set a clinic-wide discount — either a percentage or flat dollar amount — applied to all supplement orders placed through the patient portal.
+          In Account under Supplement Pricing, set a clinic-wide discount — either a percentage or flat dollar amount — applied to all supplement orders placed through the patient portal. The discount badge is shown automatically to patients on the Protocol tab.
         </p>
       </Guide>
     </div>
@@ -397,23 +402,32 @@ const CONTENT: Record<string, React.ReactNode> = {
 
   "wellness-report": (
     <div className="space-y-6">
-      <VideoPlaceholder title="Patient Wellness PDF Report Generation" />
+      <Guide title="What Patients See — Lab Visit Summary">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/portal-lab-modal.png", caption: "Lab Visit Summary modal — patients tap any lab visit to open a summary with three expandable sections: Your Lab Values, Dietary and Lifestyle Guidance, and Your Health Assessment." },
+          { src: "/help-shots/portal-lab-values.png", caption: "Your Lab Values — each marker is listed with value, unit, phase-adjusted reference range, and a color-coded status dot. Patients can see exactly what was measured and whether it is within range." },
+        ]} />
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/portal-dietary.png", caption: "Dietary and Lifestyle Guidance — AI-generated personalized diet plan with specific foods to emphasize, portion guidance, and clinical rationale tied to the patient's actual lab findings." },
+          { src: "/help-shots/portal-recipes.png", caption: "Recipe Ideas — clickable recipe suggestions tied to recommended foods. Patients can save recipes directly from the portal for easy reference." },
+        ]} />
+      </Guide>
       <Guide title="Generating a Wellness Report">
         <Steps steps={[
           "After completing lab interpretation and selecting supplements, scroll to the bottom of the results page.",
           "Click Generate Patient Wellness Report.",
-          "ClinIQ compiles the full report including: lab summary with plain-language explanations, personalized diet recommendations, supplement plan, lifestyle guidance, and smoking cessation education if applicable.",
+          "ClinIQ compiles the full report: lab summary with plain-language explanations, personalized diet recommendations, supplement plan, lifestyle guidance, and smoking cessation education if applicable.",
           "The PDF opens in a new tab for download or printing.",
-          "You can also publish the report to the patient portal so they can access it directly from their account.",
+          "You can also publish the report to the patient portal — it appears automatically in the patient's Lab Evaluations list.",
         ]} />
       </Guide>
       <Guide title="What the Report Includes">
         <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="Lab summary" desc="Patient-friendly explanations of every value with color-coded status and plain-language descriptions." />
-          <Bullet label="AI diet recommendations" desc="Personalized dietary guidance generated based on detected patterns and phenotypes." />
-          <Bullet label="Supplement plan" desc="The selected supplements with patient-facing descriptions, dosing context, and pricing." />
-          <Bullet label="Lifestyle guidance" desc="Exercise, sleep, and stress recommendations tailored to the clinical findings." />
-          <Bullet label="Follow-up reminders" desc="Recommended timeframes for repeat testing based on the overall clinical picture." />
+          <Bullet label="Lab values" desc="Every marker with value, reference range, status dot, and phase-specific context where applicable." />
+          <Bullet label="AI diet plan" desc="Personalized dietary guidance with specific foods, portions, and clinical rationale tied to the patient's findings." />
+          <Bullet label="Recipe ideas" desc="Clickable recipe suggestions mapped to recommended foods — patients can save them directly." />
+          <Bullet label="Supplement plan" desc="The selected supplements with patient-facing descriptions, dosing, and pricing." />
+          <Bullet label="Health assessment" desc="Plain-language summary of the overall clinical picture and recommended next steps." />
         </ul>
       </Guide>
     </div>
@@ -421,9 +435,16 @@ const CONTENT: Record<string, React.ReactNode> = {
 
   "portal": (
     <div className="space-y-6">
-      <Guide title="Publishing a Patient Visit Summary">
+      <Guide title="The Patient Portal — Overview">
         <ScreenshotGallery shots={[
-          { src: "/help-shots/patient-summary.png", caption: "Patient Visit Summary tab — plain-language summary editable before publishing. Click Publish to Patient Portal to make it visible in the patient's portal account." },
+          { src: "/help-shots/portal-overview.png", caption: "Patient portal dashboard — personalized greeting, Message your care team button, quick stats (Last Labs, Protocol supplements, Lab Visits), and Health Progress section showing trend changes in key markers with plain-language explanations." },
+          { src: "/help-shots/portal-overview-2.png", caption: "Scrolling down — Visit Summaries, Lab Evaluations list, and the Wellness Protocol section showing active supplement recommendations with product descriptions." },
+        ]} />
+      </Guide>
+      <Guide title="Visit Summaries in the Portal">
+        <ScreenshotGallery shots={[
+          { src: "/help-shots/portal-visit-summary.png", caption: "Visit Summary expanded — patients tap Read Summary to view the full plain-language encounter note published by their clinician, including what was discussed and their care plan." },
+          { src: "/help-shots/patient-summary.png", caption: "Clinician side — in the Encounter Summary tab, edit the patient-facing note then click Publish to Patient Portal to send it to the patient's portal immediately." },
         ]} />
       </Guide>
       <Guide title="Inviting Patients to the Portal">
@@ -431,16 +452,21 @@ const CONTENT: Record<string, React.ReactNode> = {
           "Open the patient's profile from Patient Profiles.",
           "Click Invite to Portal and confirm the patient's email address.",
           "The patient receives an email with a link to set their password and access their portal.",
-          "From their portal, patients can view lab results, wellness reports, supplement recommendations, and messages.",
+          "From their portal, patients see their health progress trends, visit summaries, lab evaluations, supplement protocol, and messages.",
         ]} />
       </Guide>
+      <Guide title="Health Progress — Trend Indicators">
+        <p className="text-sm" style={{ color: "#5a6a4a" }}>
+          The Health Progress section compares the two most recent lab visits. Markers with significant changes are highlighted with a trend arrow and a plain-language explanation (e.g. "Your estrogen level shifted significantly — erratic estrogen is one of the hallmarks of perimenopause"). Stable markers are grouped together below. This gives patients meaningful context without requiring clinical literacy.
+        </p>
+      </Guide>
       <Guide title="Messaging Modes">
-        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>Configure messaging in Account > Portal Settings. Four modes are available:</p>
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>Configure messaging in Account under Portal Settings. Four modes are available:</p>
         <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
-          <Bullet label="None" desc="Messaging is disabled. The message tab is hidden from the patient portal." />
+          <Bullet label="None" desc="Messaging is disabled. The Messages tab is hidden from the patient portal." />
           <Bullet label="In-app" desc="Patients and clinicians exchange messages directly within ClinIQ." />
           <Bullet label="SMS link" desc="Patients are shown a phone number or SMS link to message the clinic outside the app." />
-          <Bullet label="External API" desc="Two-way bridge connects to your existing messaging platform (Spruce, Klara, etc.) via webhook. Requires webhook URL configuration." />
+          <Bullet label="External API" desc="Two-way bridge to your existing platform (Spruce, Klara, etc.) via webhook. Requires webhook URL configuration in Account settings." />
         </ul>
       </Guide>
     </div>
