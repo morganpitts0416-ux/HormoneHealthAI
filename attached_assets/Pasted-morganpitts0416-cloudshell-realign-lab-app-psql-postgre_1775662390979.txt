@@ -1,0 +1,105 @@
+morganpitts0416@cloudshell:~ (realign-lab-app)$ psql $postgresql://postgres:Knight1234Server@136.113.109.193:5432/realdata
+psql: error: connection to server on socket "/var/run/postgresql/.s.PGSQL.5432" failed: No such file or directory
+        Is the server running locally and accepting connections on that socket?
+morganpitts0416@cloudshell:~ (realign-lab-app)$ -- Patients
+CREATE TABLE IF NOT EXISTS patients (
+  id serial PRIMARY KEY,
+  user_id integer REFERENCES users(id) ON DELETE CASCADE,
+  first_name varchar(100) NOT NULL,
+  last_name varchar(100) NOT NULL,
+  date_of_birth timestamp,
+  gender varchar(10) NOT NULL DEFAULT 'male',
+  mrn varchar(50),
+  email varchar(255),
+  phone varchar(30),
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now()
+);
+
+-- Lab Results (depends on patients)
+CREATE TABLE IF NOT EXISTS lab_results (
+  id serial PRIMARY KEY,
+  patient_id integer NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  lab_date timestamp NOT NULL,
+  lab_values jsonb NOT NULL,
+  interpretation_result jsonb,
+  notes text,
+  created_at timestamp NOT NULL DEFAULT now(),
+  updated_at timestamp NOT NULL DEFAULT now()
+);
+
+-- BAA Signatures
+CREATE TABLE IF NOT EXISTS baa_signatures (
+  id serial PRIMARY KEY,
+  user_id integer NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  signed_at timestamp NOT NULL DEFAULT now(),
+  signature_name varchar(255) NOT NULL,
+);updated_at timestamp NOT NULL DEFAULT now(),alse,ts(id) ON DELETE SET NULL,
+-bash: --: command not found
+-bash: syntax error near unexpected token `('
+id: ‘serial’: no such user
+id: ‘PRIMARY’: no such user
+id: ‘KEY,’: no such user
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: date_of_birth: command not found
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `)'
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+id: ‘serial’: no such user
+id: ‘PRIMARY’: no such user
+id: ‘KEY,’: no such user
+-bash: syntax error near unexpected token `('
+-bash: lab_date: command not found
+-bash: lab_values: command not found
+-bash: interpretation_result: command not found
+-bash: notes: command not found
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `)'
+-bash: --: command not found
+-bash: syntax error near unexpected token `('
+id: ‘serial’: no such user
+id: ‘PRIMARY’: no such user
+id: ‘KEY,’: no such user
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: user_agent: command not found
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `)'
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+id: ‘serial’: no such user
+id: ‘PRIMARY’: no such user
+id: ‘KEY,’: no such user
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: visit_date: command not found
+-bash: syntax error near unexpected token `('
+-bash: chief_complaint: command not found
+-bash: transcription: command not found
+-bash: audio_processed: command not found
+-bash: syntax error near unexpected token `('
+-bash: soap_note: command not found
+-bash: soap_generated_at: command not found
+-bash: patient_summary: command not found
+-bash: summary_published: command not found
+-bash: summary_published_at: command not found
+-bash: clinician_notes: command not found
+-bash: diarized_transcript: command not found
+-bash: clinical_extraction: command not found
+-bash: evidence_suggestions: command not found
+-bash: pattern_match: command not found
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `('
+-bash: syntax error near unexpected token `)'
+morganpitts0416@cloudshell:~ (realign-lab-app)$ 
