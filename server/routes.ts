@@ -4035,6 +4035,45 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
         ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
         : (encounter.transcription ?? "");
 
+      // ── Auto medication normalization ────────────────────────────────────────
+      // Run against the clinician's dictionary and inject canonical names into
+      // the SOAP prompt so the AI uses the correct generic names.
+      let medicationContext = "";
+      let autoMedMatches: any[] = [];
+      try {
+        const medEntries = await storage.getAllMedicationEntries(clinicianId);
+        if (medEntries.length && transcriptText.trim()) {
+          const rawText = diarized?.length
+            ? diarized.map((u: any) => u.normalizedText ?? u.text).join(' ')
+            : (encounter.transcription ?? "");
+          autoMedMatches = normalizeTranscript(rawText, medEntries);
+          if (autoMedMatches.length) {
+            const confirmed = autoMedMatches.filter(m => !m.needsReview);
+            const uncertain = autoMedMatches.filter(m => m.needsReview);
+            const lines: string[] = [];
+            if (confirmed.length) {
+              lines.push("Confirmed medications (use these canonical generic names in the SOAP):");
+              for (const m of confirmed) {
+                const meta = [m.drugClass, m.route].filter(Boolean).join(", ");
+                const spoken = m.originalTerm !== m.canonicalName ? ` (spoken as: "${m.originalTerm}")` : "";
+                lines.push(`  • ${m.canonicalName}${spoken}${meta ? ` — ${meta}` : ""}`);
+              }
+            }
+            if (uncertain.length) {
+              lines.push("Uncertain matches — verify before charting (do NOT assume these are correct):");
+              for (const m of uncertain) {
+                lines.push(`  ⚠ "${m.originalTerm}" → possibly ${m.canonicalName} (${Math.round(m.confidence * 100)}% confidence, ${m.matchType} match)`);
+              }
+            }
+            if (lines.length) {
+              medicationContext = `\n\nNORMALIZED MEDICATION LIST (auto-detected from clinician's dictionary):\n${lines.join('\n')}\nIMPORTANT: Use only the canonical names above for confirmed medications. Do not alter the uncertain ones without clinical verification.`;
+            }
+          }
+        }
+      } catch (medErr) {
+        console.warn("[SOAP] Medication normalization skipped:", medErr);
+      }
+
       const systemPrompt = `You are an expert clinical documentation specialist for a hormone and primary care clinic. Generate a chart-ready, medically complete SOAP note.
 
 A good SOAP note is NOT a transcript summary — it is a clinical document that applies medical expertise to the encounter context to produce a complete, defensible chart entry.
@@ -4210,7 +4249,7 @@ CRITICAL LAYOUT RULES — READ CAREFULLY:
 
       const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}${extractionContext}${patternContext}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}${extractionContext}${patternContext}${medicationContext}
 
 TRANSCRIPT (normalized):
 ${transcriptText}
@@ -4233,7 +4272,7 @@ Generate the SOAP note. Flag anything uncertain in needs_clinician_review. Retur
         soapGeneratedAt: new Date(),
       });
 
-      res.json({ soapNote, encounter: updated });
+      res.json({ soapNote, encounter: updated, medicationMatches: autoMedMatches });
     } catch (err) {
       console.error('[SOAP] Generation error:', err);
       res.status(500).json({ message: "Failed to generate SOAP note. Please try again." });
