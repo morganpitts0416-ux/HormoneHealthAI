@@ -174,6 +174,14 @@ export interface IStorage {
   getAppointmentsByPatientEmail(email: string, userId: number): Promise<schema.Appointment[]>;
   getAppointmentsByPatientId(patientId: number): Promise<schema.Appointment[]>;
   matchAppointmentToPatient(appointmentId: number, patientId: number): Promise<void>;
+
+  // Medication Dictionary
+  getMedicationDictionaries(clinicianId: number): Promise<schema.MedicationDictionary[]>;
+  createMedicationDictionary(data: schema.InsertMedicationDictionary): Promise<schema.MedicationDictionary>;
+  deleteMedicationDictionary(id: number, clinicianId: number): Promise<boolean>;
+  createMedicationEntries(entries: schema.InsertMedicationEntry[]): Promise<void>;
+  getAllMedicationEntries(clinicianId: number): Promise<schema.MedicationEntry[]>;
+  updateMedicationDictionaryCount(id: number, count: number): Promise<void>;
 }
 
 export class DbStorage implements IStorage {
@@ -1085,6 +1093,51 @@ export class DbStorage implements IStorage {
       .update(schema.appointments)
       .set({ patientId, updatedAt: new Date() })
       .where(eq(schema.appointments.id, appointmentId));
+  }
+
+  // ── Medication Dictionary ────────────────────────────────────────────────────
+  async getMedicationDictionaries(clinicianId: number): Promise<schema.MedicationDictionary[]> {
+    return db
+      .select()
+      .from(schema.medicationDictionaries)
+      .where(eq(schema.medicationDictionaries.clinicianId, clinicianId))
+      .orderBy(desc(schema.medicationDictionaries.uploadedAt));
+  }
+
+  async createMedicationDictionary(data: schema.InsertMedicationDictionary): Promise<schema.MedicationDictionary> {
+    const [row] = await db.insert(schema.medicationDictionaries).values(data).returning();
+    return row;
+  }
+
+  async deleteMedicationDictionary(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db
+      .delete(schema.medicationDictionaries)
+      .where(and(
+        eq(schema.medicationDictionaries.id, id),
+        eq(schema.medicationDictionaries.clinicianId, clinicianId)
+      ));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async createMedicationEntries(entries: schema.InsertMedicationEntry[]): Promise<void> {
+    if (!entries.length) return;
+    for (let i = 0; i < entries.length; i += 100) {
+      await db.insert(schema.medicationEntries).values(entries.slice(i, i + 100));
+    }
+  }
+
+  async getAllMedicationEntries(clinicianId: number): Promise<schema.MedicationEntry[]> {
+    return db
+      .select()
+      .from(schema.medicationEntries)
+      .where(eq(schema.medicationEntries.clinicianId, clinicianId));
+  }
+
+  async updateMedicationDictionaryCount(id: number, count: number): Promise<void> {
+    await db
+      .update(schema.medicationDictionaries)
+      .set({ entryCount: count })
+      .where(eq(schema.medicationDictionaries.id, id));
   }
 }
 

@@ -17,6 +17,7 @@ import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
 import { screenInsulinResistance } from "./insulin-resistance";
+import { normalizeTranscript, parseCSV, parseArrayField } from "./medication-normalizer";
 import {
   forwardMessageToExternalProvider,
   parseInboundWebhook,
@@ -4761,6 +4762,92 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       res.json(appts);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to load appointments" });
+    }
+  });
+
+  // ── Medication Dictionary ──────────────────────────────────────────────────
+  const csvUpload = multer({ storage: multer.memoryStorage(), limits: { fileSize: 5 * 1024 * 1024 } });
+
+  // GET /api/medication-dictionary — list dictionaries for the clinician
+  app.get("/api/medication-dictionary", requireAuth, async (req: any, res) => {
+    try {
+      const dicts = await storage.getMedicationDictionaries(req.user.id);
+      res.json(dicts);
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to load dictionaries" });
+    }
+  });
+
+  // POST /api/medication-dictionary/upload — upload and parse a CSV
+  app.post("/api/medication-dictionary/upload", requireAuth, csvUpload.single("file"), async (req: any, res) => {
+    try {
+      if (!req.file) return res.status(400).json({ message: "No file uploaded" });
+      const csvText = req.file.buffer.toString("utf-8");
+      const rows = parseCSV(csvText);
+      if (!rows.length) return res.status(400).json({ message: "CSV is empty or could not be parsed" });
+
+      const REQUIRED = ["generic_name"];
+      const firstRow = rows[0];
+      for (const col of REQUIRED) {
+        if (!(col in firstRow)) return res.status(400).json({ message: `CSV missing required column: ${col}` });
+      }
+
+      const dict = await storage.createMedicationDictionary({
+        clinicianId: req.user.id,
+        filename: req.file.originalname,
+        entryCount: 0,
+      });
+
+      const entries = rows
+        .filter(r => r.generic_name?.trim())
+        .map(r => ({
+          dictionaryId: dict.id,
+          clinicianId: req.user.id,
+          genericName: r.generic_name.trim(),
+          brandNames: parseArrayField(r.brand_names ?? ""),
+          commonSpokenVariants: parseArrayField(r.common_spoken_variants ?? ""),
+          commonMisspellings: parseArrayField(r.common_misspellings ?? ""),
+          drugClass: r.drug_class?.trim() || null,
+          subclass: r.subclass?.trim() || null,
+          route: r.route?.trim() || null,
+          notes: r.notes?.trim() || null,
+        }));
+
+      await storage.createMedicationEntries(entries);
+      await storage.updateMedicationDictionaryCount(dict.id, entries.length);
+
+      res.json({ ...dict, entryCount: entries.length });
+    } catch (err: any) {
+      console.error("[Med Dict Upload]", err);
+      res.status(500).json({ message: "Failed to process CSV" });
+    }
+  });
+
+  // DELETE /api/medication-dictionary/:id — delete a dictionary and all its entries
+  app.delete("/api/medication-dictionary/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid id" });
+      const deleted = await storage.deleteMedicationDictionary(id, req.user.id);
+      if (!deleted) return res.status(404).json({ message: "Not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(500).json({ message: "Failed to delete dictionary" });
+    }
+  });
+
+  // POST /api/medication-dictionary/normalize — scan transcript text for medication matches
+  app.post("/api/medication-dictionary/normalize", requireAuth, async (req: any, res) => {
+    try {
+      const { text } = req.body;
+      if (!text || typeof text !== "string") return res.status(400).json({ message: "text is required" });
+      const entries = await storage.getAllMedicationEntries(req.user.id);
+      if (!entries.length) return res.json({ matches: [], dictionarySize: 0 });
+      const matches = normalizeTranscript(text, entries);
+      res.json({ matches, dictionarySize: entries.length });
+    } catch (err: any) {
+      console.error("[Med Normalize]", err);
+      res.status(500).json({ message: "Normalization failed" });
     }
   });
 

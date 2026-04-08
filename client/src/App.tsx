@@ -29,6 +29,7 @@ import PortalMessages from "@/pages/portal/messages";
 import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
 import AppointmentsPage from "@/pages/appointments";
+import MedicationDictionaryPage from "@/pages/medication-dictionary";
 import Landing from "@/pages/landing";
 import BillingPage from "@/pages/billing";
 import PrivacyPolicy from "@/pages/privacy";
@@ -167,6 +168,9 @@ function Router() {
       </Route>
       <Route path="/encounters">
         {() => <ProtectedRoute component={EncountersPage} />}
+      </Route>
+      <Route path="/medication-dictionary">
+        {() => <ProtectedRoute component={MedicationDictionaryPage} />}
       </Route>
       <Route path="/appointments">
         {() => <ProtectedRoute component={AppointmentsPage} />}

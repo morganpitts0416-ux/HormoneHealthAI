@@ -24,6 +24,7 @@ import {
   CreditCard,
   HelpCircle,
   CalendarDays,
+  Pill,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -168,6 +169,10 @@ export default function Dashboard() {
                 <span className="hidden sm:inline ml-2">Admin</span>
               </Button>
             )}
+            <Button data-testid="button-med-dictionary" variant="ghost" size="icon" onClick={() => setLocation("/medication-dictionary")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Medication Dictionary">
+              <Pill className="w-4 h-4" />
+              <span className="hidden sm:inline ml-2">Med Dictionary</span>
+            </Button>
             <Button data-testid="button-appointments" variant="ghost" size="icon" onClick={() => setLocation("/appointments")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Appointments">
               <CalendarDays className="w-4 h-4" />
               <span className="hidden sm:inline ml-2">Appointments</span>
