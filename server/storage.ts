@@ -61,7 +61,7 @@ export interface IStorage {
   // Admin operations
   getAllUsers(): Promise<User[]>;
   promoteToAdmin(id: number): Promise<User | undefined>;
-  updateUserAdmin(id: number, data: Partial<Pick<User, 'subscriptionStatus' | 'role' | 'notes'>>): Promise<User | undefined>;
+  updateUserAdmin(id: number, data: Partial<Pick<User, 'subscriptionStatus' | 'role' | 'notes' | 'freeAccount'>>): Promise<User | undefined>;
   deleteUserAdmin(id: number): Promise<boolean>;
   getPatientCountByUser(userId: number): Promise<number>;
 
@@ -282,7 +282,7 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async updateUserAdmin(id: number, data: Partial<Pick<User, 'subscriptionStatus' | 'role' | 'notes'>>): Promise<User | undefined> {
+  async updateUserAdmin(id: number, data: Partial<Pick<User, 'subscriptionStatus' | 'role' | 'notes' | 'freeAccount'>>): Promise<User | undefined> {
     const result = await db
       .update(schema.users)
       .set({ ...data, updatedAt: new Date() })
