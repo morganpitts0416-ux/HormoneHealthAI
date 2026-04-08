@@ -445,6 +445,9 @@ function formatDuration(seconds: number) {
 
 type RecorderState = "idle" | "recording" | "transcribing";
 
+// How long each recording segment runs before being sent to Whisper (10 minutes)
+const SEGMENT_MS = 10 * 60 * 1000;
+
 function AudioCapture({
   onTranscribed,
   onStateChange,
@@ -460,10 +463,23 @@ function AudioCapture({
   const [isTranscribing, setIsTranscribing] = useState(false);
   const [dragging, setDragging] = useState(false);
   const [uploadFile, setUploadFile] = useState<File | null>(null);
+  // Progress for chunked recording
+  const [segmentsDone, setSegmentsDone] = useState(0);
+  const [segmentsTotal, setSegmentsTotal] = useState(0);
+
   const mediaRecorderRef = useRef<MediaRecorder | null>(null);
   const chunksRef = useRef<Blob[]>([]);
   const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  const segmentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
   const streamRef = useRef<MediaStream | null>(null);
+  const mimeTypeRef = useRef<string>("");
+  const segmentIndexRef = useRef(0);
+  // Map of segment index → transcription text (ordered)
+  const transcribedSegmentsRef = useRef<Map<number, string>>(new Map());
+  const transcribedUtterancesRef = useRef<Map<number, DiarizedUtterance[] | null>>(new Map());
+  const pendingSegmentsRef = useRef(0);
+  const recordingStoppedRef = useRef(false);
+  const finalizedRef = useRef(false);
   const fileRef = useRef<HTMLInputElement>(null);
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const { toast } = useToast();
@@ -500,6 +516,7 @@ function AudioCapture({
   useEffect(() => {
     return () => {
       if (timerRef.current) clearInterval(timerRef.current);
+      if (segmentTimerRef.current) clearInterval(segmentTimerRef.current);
       if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
       releaseWakeLock();
     };
@@ -511,6 +528,123 @@ function AudioCapture({
     if (recState === "recording") { onStateChange("recording"); return; }
     onStateChange("idle");
   }, [recState, isTranscribing]);
+
+  // Called when ALL segments have been transcribed and recording has stopped
+  const finalizeTranscription = () => {
+    if (finalizedRef.current) return;
+    finalizedRef.current = true;
+    // Collect segment indices in ascending order from the map
+    const indices = Array.from(transcribedSegmentsRef.current.keys()).sort((a, b) => a - b);
+    const allText: string[] = [];
+    const allUtterances: DiarizedUtterance[] = [];
+    let utteranceIdOffset = 0;
+    for (const i of indices) {
+      const t = transcribedSegmentsRef.current.get(i) ?? "";
+      if (t) allText.push(t);
+      const u = transcribedUtterancesRef.current.get(i);
+      if (u) {
+        u.forEach(ut => allUtterances.push({ ...ut, id: ut.id + utteranceIdOffset }));
+        utteranceIdOffset += u.length;
+      }
+    }
+    const fullText = allText.join(" ").trim();
+    const utterances = allUtterances.length > 0 ? allUtterances : null;
+    onTranscribed(fullText, utterances);
+    setIsTranscribing(false);
+    setRecState("idle");
+    setElapsed(0);
+    setSegmentsDone(0);
+    setSegmentsTotal(0);
+    transcribedSegmentsRef.current.clear();
+    transcribedUtterancesRef.current.clear();
+    segmentIndexRef.current = 0;
+    pendingSegmentsRef.current = 0;
+  };
+
+  // Transcribe a single segment blob. segIdx is used to keep ordering correct.
+  const transcribeSegment = async (blob: Blob, segIdx: number) => {
+    const ext = (blob.type || "audio/webm").includes("ogg") ? "ogg" : "webm";
+    const file = new File([blob], `seg-${segIdx}.${ext}`, { type: blob.type || "audio/webm" });
+    try {
+      const formData = new FormData();
+      formData.append("audio", file);
+      formData.append("visitType", visitType);
+      const res = await fetch("/api/encounters/transcribe", {
+        method: "POST", body: formData, credentials: "include",
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Transcription failed");
+      }
+      const data = await res.json();
+      transcribedSegmentsRef.current.set(segIdx, data.transcription ?? "");
+      transcribedUtterancesRef.current.set(segIdx, data.utterances ?? null);
+      setSegmentsDone(d => d + 1);
+    } catch (err: any) {
+      // Store empty string so segment doesn't block finalization
+      transcribedSegmentsRef.current.set(segIdx, "");
+      transcribedUtterancesRef.current.set(segIdx, null);
+      setSegmentsDone(d => d + 1);
+      toast({
+        variant: "destructive",
+        title: `Segment ${segIdx + 1} failed`,
+        description: err.message || "One recording segment could not be transcribed.",
+      });
+    } finally {
+      pendingSegmentsRef.current -= 1;
+      // If recording has stopped and all segments are done, finalize
+      if (recordingStoppedRef.current && pendingSegmentsRef.current === 0) {
+        finalizeTranscription();
+      }
+    }
+  };
+
+  // Flush: stop the current recorder (which triggers onstop → queues transcription),
+  // then start a fresh recorder on the same stream.
+  const flushSegment = (stream: MediaStream) => {
+    const mr = mediaRecorderRef.current;
+    if (!mr || mr.state === "inactive") return;
+
+    // Advance the segment index so the new recorder gets the next index
+    segmentIndexRef.current += 1;
+
+    mr.stop(); // fires onstop which queues this segment for transcription
+
+    setTimeout(() => {
+      if (!recordingStoppedRef.current && streamRef.current) {
+        startSegmentRecorder(stream);
+      }
+    }, 150);
+  };
+
+  const startSegmentRecorder = (stream: MediaStream) => {
+    const segIdx = segmentIndexRef.current; // captured in closure for this segment
+    const localChunks: Blob[] = [];
+    const mimeType = mimeTypeRef.current;
+    const mr = new MediaRecorder(stream, {
+      ...(mimeType ? { mimeType } : {}),
+      audioBitsPerSecond: 16000,
+    });
+    mediaRecorderRef.current = mr;
+
+    mr.ondataavailable = (e) => { if (e.data.size > 0) localChunks.push(e.data); };
+    mr.onstop = () => {
+      if (localChunks.length === 0) {
+        // Nothing recorded — check if we should finalize
+        if (recordingStoppedRef.current && pendingSegmentsRef.current === 0) {
+          finalizeTranscription();
+        }
+        return;
+      }
+      const blob = new Blob(localChunks, { type: mimeType || "audio/webm" });
+      // Only now do we count this as a pending segment
+      pendingSegmentsRef.current += 1;
+      setSegmentsTotal(t => t + 1);
+      transcribeSegment(blob, segIdx);
+    };
+
+    mr.start(1000);
+  };
 
   const sendToWhisper = async (file: File) => {
     setIsTranscribing(true);
@@ -524,8 +658,6 @@ function AudioCapture({
       if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Transcription failed"); }
       const data = await res.json();
       onTranscribed(data.transcription, data.utterances ?? null);
-      setRecState("idle");
-      setElapsed(0);
       setUploadFile(null);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Transcription failed", description: err.message || "Please try again or paste notes manually." });
@@ -540,29 +672,30 @@ function AudioCapture({
       streamRef.current = stream;
       chunksRef.current = [];
       setElapsed(0);
+      setSegmentsDone(0);
+      setSegmentsTotal(0);
+      segmentIndexRef.current = 0;
+      pendingSegmentsRef.current = 0;
+      recordingStoppedRef.current = false;
+      finalizedRef.current = false;
+      transcribedSegmentsRef.current.clear();
+      transcribedUtterancesRef.current.clear();
 
-      const mimeType = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+      mimeTypeRef.current = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
         ? "audio/webm;codecs=opus"
         : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
-      const mr = new MediaRecorder(stream, {
-        ...(mimeType ? { mimeType } : {}),
-        audioBitsPerSecond: 16000,
-      });
-      mediaRecorderRef.current = mr;
 
-      mr.ondataavailable = (e) => { if (e.data.size > 0) chunksRef.current.push(e.data); };
-      mr.onstop = () => {
-        const blob = new Blob(chunksRef.current, { type: mr.mimeType || "audio/webm" });
-        const ext = (mr.mimeType || "audio/webm").includes("ogg") ? "ogg" : "webm";
-        const file = new File([blob], `session.${ext}`, { type: blob.type });
-        stream.getTracks().forEach(t => t.stop());
-        streamRef.current = null;
-        sendToWhisper(file);
-      };
-
-      mr.start(1000);
+      startSegmentRecorder(stream);
       setRecState("recording");
+
       timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
+      // Every SEGMENT_MS, flush the current segment and start a new one
+      segmentTimerRef.current = setInterval(() => {
+        if (!recordingStoppedRef.current && streamRef.current) {
+          flushSegment(streamRef.current);
+        }
+      }, SEGMENT_MS);
+
       acquireWakeLock();
     } catch {
       toast({ variant: "destructive", title: "Microphone access denied", description: "Please allow microphone access in your browser settings and try again." });
@@ -571,11 +704,25 @@ function AudioCapture({
 
   const stopRecording = () => {
     if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    if (mediaRecorderRef.current && mediaRecorderRef.current.state !== "inactive") {
-      mediaRecorderRef.current.stop();
-    }
+    if (segmentTimerRef.current) { clearInterval(segmentTimerRef.current); segmentTimerRef.current = null; }
     releaseWakeLock();
+    recordingStoppedRef.current = true;
     setRecState("stopped");
+    setIsTranscribing(true);
+
+    const mr = mediaRecorderRef.current;
+    if (mr && mr.state !== "inactive") {
+      // onstop handler will queue the final segment for transcription
+      mr.stop();
+    } else if (pendingSegmentsRef.current === 0) {
+      // Nothing pending — finalize immediately
+      finalizeTranscription();
+    }
+
+    if (streamRef.current) {
+      streamRef.current.getTracks().forEach(t => t.stop());
+      streamRef.current = null;
+    }
   };
 
   const handleUploadFile = (f: File) => {
@@ -621,19 +768,31 @@ function AudioCapture({
             </Button>
           )}
           {recState === "recording" && (
-            <div className="flex items-center gap-3 px-4 py-3 rounded-md border-2 border-red-400/60 bg-red-50/40 dark:bg-red-950/20">
-              <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-              <span className="text-sm font-semibold text-red-600 dark:text-red-400">Recording</span>
-              <span className="text-sm font-mono tabular-nums text-foreground flex-1" data-testid="recording-timer">{formatDuration(elapsed)}</span>
-              <Button data-testid="button-stop-recording" variant="destructive" size="sm" onClick={stopRecording} className="gap-1.5">
-                <Square className="w-3.5 h-3.5 fill-current" />Stop
-              </Button>
+            <div className="space-y-2">
+              <div className="flex items-center gap-3 px-4 py-3 rounded-md border-2 border-red-400/60 bg-red-50/40 dark:bg-red-950/20">
+                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                <span className="text-sm font-semibold text-red-600 dark:text-red-400">Recording</span>
+                <span className="text-sm font-mono tabular-nums text-foreground flex-1" data-testid="recording-timer">{formatDuration(elapsed)}</span>
+                <Button data-testid="button-stop-recording" variant="destructive" size="sm" onClick={stopRecording} className="gap-1.5">
+                  <Square className="w-3.5 h-3.5 fill-current" />Stop
+                </Button>
+              </div>
+              {segmentsDone > 0 && (
+                <p className="text-xs text-muted-foreground px-1">
+                  <CheckCircle2 className="w-3 h-3 inline mr-1 text-green-500" />
+                  {segmentsDone} segment{segmentsDone !== 1 ? "s" : ""} transcribed · continuing to record…
+                </p>
+              )}
             </div>
           )}
-          {(recState === "stopped" || isTranscribing) && (
+          {(recState === "stopped" || (isTranscribing && recState !== "recording")) && (
             <div className="flex items-center gap-2 px-4 py-3 rounded-md border bg-muted/30">
               <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />
-              <span className="text-sm text-muted-foreground">Transcribing session audio — notes will appear below...</span>
+              <span className="text-sm text-muted-foreground">
+                {segmentsTotal > 1
+                  ? `Transcribing ${segmentsDone} of ${segmentsTotal} segments…`
+                  : "Transcribing session audio — notes will appear below…"}
+              </span>
             </div>
           )}
         </div>
