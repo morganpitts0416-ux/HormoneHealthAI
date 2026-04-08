@@ -143,6 +143,42 @@ export default function Landing() {
         </div>
       </section>
 
+      {/* ── App Preview ─────────────────────────────────────────────────── */}
+      <section className="max-w-5xl mx-auto px-4 sm:px-6 pb-4 pt-2">
+        <p className="text-center text-xs font-semibold uppercase tracking-wider mb-5" style={{ color: "#9aaa84" }}>
+          A look inside the platform
+        </p>
+        <div
+          className="rounded-xl overflow-hidden"
+          style={{
+            border: "1px solid #d4c9b5",
+            boxShadow: "0 24px 64px rgba(46,58,32,0.13), 0 4px 20px rgba(0,0,0,0.07)",
+          }}
+        >
+          {/* Browser chrome */}
+          <div className="flex items-center gap-1.5 px-4 py-2.5" style={{ backgroundColor: "#2e3a20" }}>
+            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: "#ff5f57" }} />
+            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: "#febc2e" }} />
+            <span className="w-2.5 h-2.5 rounded-full inline-block" style={{ backgroundColor: "#28c840" }} />
+            <div
+              className="flex-1 mx-3 rounded px-3 py-0.5 text-[11px]"
+              style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.45)" }}
+            >
+              app.realignlabeval.com
+            </div>
+          </div>
+          <img
+            src="/help-shots/lab-results.png"
+            alt="ClinIQ clinical lab interpretation and results"
+            className="w-full block"
+            style={{ display: "block" }}
+          />
+        </div>
+        <p className="text-center text-xs mt-4" style={{ color: "#9aaa84" }}>
+          Color-coded status across 60+ markers — in seconds, not minutes.
+        </p>
+      </section>
+
       {/* ── "Built differently" ──────────────────────────────────────────── */}
       <section className="border-y" style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
@@ -210,25 +246,52 @@ export default function Landing() {
       {/* ── Patient Portal Features ──────────────────────────────────────── */}
       <section className="border-y" style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-          <div className="text-center mb-12">
-            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7a8a64" }}>For Patients</span>
-            <h2 className="text-2xl sm:text-3xl font-bold mt-2" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
-              Finally — a patient portal that actually makes sense
-            </h2>
-            <p className="text-sm mt-3 max-w-xl mx-auto" style={{ color: "#5a6a4a" }}>
-              ClinIQ by ReAlign Health was built to help patients truly understand their health — not just see numbers on a page. Clear explanations, personalized guidance, and real insight — all in one place.
-            </p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
-            {PATIENT_FEATURES.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="rounded-xl p-5" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
-                <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-3" style={{ backgroundColor: "#edf2e6" }}>
-                  <Icon className="w-4 h-4" style={{ color: "#5a7040" }} />
+          <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
+
+            {/* Portal screenshot — phone-style mockup */}
+            <div className="w-full lg:w-[340px] flex-shrink-0">
+              <div
+                className="rounded-2xl overflow-hidden mx-auto"
+                style={{
+                  maxWidth: 300,
+                  border: "1px solid #d4c9b5",
+                  boxShadow: "0 20px 56px rgba(46,58,32,0.14), 0 4px 16px rgba(0,0,0,0.06)",
+                }}
+              >
+                {/* Mobile status bar mockup */}
+                <div className="flex items-center justify-between px-4 py-2" style={{ backgroundColor: "#f9f6f0", borderBottom: "1px solid #e8ddd0" }}>
+                  <span className="text-[10px] font-semibold" style={{ color: "#5a7040" }}>ReAlign Health · Patient Portal</span>
                 </div>
-                <h3 className="text-sm font-semibold mb-1.5" style={{ color: "#1c2414" }}>{title}</h3>
-                <p className="text-xs leading-relaxed" style={{ color: "#6a7a58" }}>{desc}</p>
+                <img
+                  src="/help-shots/portal-overview.png"
+                  alt="ClinIQ patient portal — personalized health dashboard"
+                  className="w-full block"
+                />
               </div>
-            ))}
+            </div>
+
+            {/* Text + feature cards */}
+            <div className="flex-1 min-w-0">
+              <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7a8a64" }}>For Patients</span>
+              <h2 className="text-2xl sm:text-3xl font-bold mt-2 mb-3" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
+                Finally — a patient portal that actually makes sense
+              </h2>
+              <p className="text-sm leading-relaxed mb-8" style={{ color: "#5a6a4a" }}>
+                ClinIQ by ReAlign Health was built to help patients truly understand their health — not just see numbers on a page. Clear explanations, personalized guidance, and real insight — all in one place.
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                {PATIENT_FEATURES.map(({ icon: Icon, title, desc }) => (
+                  <div key={title} className="rounded-xl p-4" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
+                    <div className="w-7 h-7 rounded-lg flex items-center justify-center mb-2.5" style={{ backgroundColor: "#edf2e6" }}>
+                      <Icon className="w-3.5 h-3.5" style={{ color: "#5a7040" }} />
+                    </div>
+                    <h3 className="text-sm font-semibold mb-1" style={{ color: "#1c2414" }}>{title}</h3>
+                    <p className="text-xs leading-relaxed" style={{ color: "#6a7a58" }}>{desc}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+
           </div>
         </div>
       </section>
