@@ -28,6 +28,7 @@ import PortalSupplements from "@/pages/portal/supplements";
 import PortalMessages from "@/pages/portal/messages";
 import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
+import AppointmentsPage from "@/pages/appointments";
 import Landing from "@/pages/landing";
 import BillingPage from "@/pages/billing";
 import PrivacyPolicy from "@/pages/privacy";
@@ -166,6 +167,9 @@ function Router() {
       </Route>
       <Route path="/encounters">
         {() => <ProtectedRoute component={EncountersPage} />}
+      </Route>
+      <Route path="/appointments">
+        {() => <ProtectedRoute component={AppointmentsPage} />}
       </Route>
       <Route path="/billing">
         {() => <ProtectedRoute component={BillingPage} />}

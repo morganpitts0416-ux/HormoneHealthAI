@@ -976,3 +976,31 @@ export const insertClinicalEncounterSchema = createInsertSchema(clinicalEncounte
   id: true, createdAt: true, updatedAt: true, soapGeneratedAt: true, summaryPublishedAt: true,
 });
 export type InsertClinicalEncounter = z.infer<typeof insertClinicalEncounterSchema>;
+
+// ─── Appointments (Boulevard sync via Zapier) ──────────────────────────────
+export const appointments = pgTable("appointments", {
+  id: serial("id").primaryKey(),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  boulevardAppointmentId: varchar("boulevard_appointment_id", { length: 255 }).notNull(),
+  patientName: varchar("patient_name", { length: 200 }).notNull(),
+  patientEmail: varchar("patient_email", { length: 255 }),
+  patientPhone: varchar("patient_phone", { length: 50 }),
+  serviceType: varchar("service_type", { length: 255 }),
+  staffName: varchar("staff_name", { length: 200 }),
+  locationName: varchar("location_name", { length: 255 }),
+  appointmentStart: timestamp("appointment_start").notNull(),
+  appointmentEnd: timestamp("appointment_end"),
+  durationMinutes: integer("duration_minutes"),
+  status: varchar("status", { length: 50 }).notNull().default("scheduled"),
+  notes: text("notes"),
+  rawPayload: jsonb("raw_payload"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export const insertAppointmentSchema = createInsertSchema(appointments).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
+export type Appointment = typeof appointments.$inferSelect;
