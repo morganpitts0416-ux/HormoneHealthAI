@@ -4890,6 +4890,86 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // GET /api/medication-dictionary/entries — all entries for this clinician
+  app.get("/api/medication-dictionary/entries", requireAuth, async (req: any, res) => {
+    try {
+      const entries = await storage.getAllMedicationEntries(req.user.id);
+      const dicts = await storage.getMedicationDictionaries(req.user.id);
+      const dictMap = new Map(dicts.map(d => [d.id, d]));
+      const enriched = entries.map(e => ({
+        ...e,
+        dictFilename: dictMap.get(e.dictionaryId)?.filename ?? "unknown",
+        isManual: dictMap.get(e.dictionaryId)?.filename === "__manual__",
+      }));
+      res.json({ entries: enriched, total: entries.length });
+    } catch (err: any) {
+      console.error("[Med Entries]", err);
+      res.status(500).json({ message: "Failed to load entries" });
+    }
+  });
+
+  // POST /api/medication-dictionary/entry — add a single entry (auto-creates manual dict)
+  app.post("/api/medication-dictionary/entry", requireAuth, async (req: any, res) => {
+    try {
+      const {
+        genericName, brandNames = [], commonSpokenVariants = [], commonMisspellings = [],
+        drugClass, subclass, route, notes,
+      } = req.body;
+      if (!genericName?.trim()) return res.status(400).json({ message: "genericName is required" });
+      const manualDict = await storage.getOrCreateManualDictionary(req.user.id);
+      const entry = await storage.addSingleMedicationEntry({
+        dictionaryId: manualDict.id,
+        clinicianId: req.user.id,
+        genericName: genericName.trim(),
+        brandNames: brandNames.filter(Boolean),
+        commonSpokenVariants: commonSpokenVariants.filter(Boolean),
+        commonMisspellings: commonMisspellings.filter(Boolean),
+        drugClass: drugClass?.trim() || null,
+        subclass: subclass?.trim() || null,
+        route: route?.trim() || null,
+        notes: notes?.trim() || null,
+      });
+      res.json({ entry, isManual: true });
+    } catch (err: any) {
+      console.error("[Med Entry Create]", err);
+      res.status(500).json({ message: "Failed to create entry" });
+    }
+  });
+
+  // PATCH /api/medication-dictionary/entry/:id — update aliases on an existing entry
+  app.patch("/api/medication-dictionary/entry/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid entry id" });
+      const allowed = ["brandNames", "commonSpokenVariants", "commonMisspellings", "drugClass", "subclass", "route", "notes"] as const;
+      const fields: Record<string, any> = {};
+      for (const key of allowed) {
+        if (key in req.body) fields[key] = req.body[key];
+      }
+      if (!Object.keys(fields).length) return res.status(400).json({ message: "No fields to update" });
+      const updated = await storage.updateMedicationEntryAliases(id, req.user.id, fields);
+      if (!updated) return res.status(404).json({ message: "Entry not found" });
+      res.json({ entry: updated });
+    } catch (err: any) {
+      console.error("[Med Entry Update]", err);
+      res.status(500).json({ message: "Failed to update entry" });
+    }
+  });
+
+  // DELETE /api/medication-dictionary/entry/:id — delete a single entry
+  app.delete("/api/medication-dictionary/entry/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid entry id" });
+      const deleted = await storage.deleteMedicationEntry(id, req.user.id);
+      if (!deleted) return res.status(404).json({ message: "Entry not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Med Entry Delete]", err);
+      res.status(500).json({ message: "Failed to delete entry" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
