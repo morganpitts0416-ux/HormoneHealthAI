@@ -15,6 +15,7 @@ export type LexiconGroup =
   | "lipid_and_cardiometabolic"
   | "primary_care"
   | "medication_names"
+  | "cardiovascular_medications"
   | "lab_markers"
   | "symptom_terms"
   | "procedure_terms";
@@ -95,27 +96,193 @@ export const LEXICONS: Record<LexiconGroup, string[]> = {
     "insomnia", "sleep hygiene",
   ],
 
+  // Comprehensive medication dictionary — the primary layer for correct drug name recognition.
+  // Organized by drug class so it's easy to add new medications over time.
   medication_names: [
-    "semaglutide", "Ozempic", "Wegovy",
+    // GLP-1 / GIP agonists
+    "semaglutide", "Ozempic", "Wegovy", "Rybelsus",
     "tirzepatide", "Mounjaro", "Zepbound",
-    "metformin", "metformin XR",
-    "levothyroxine", "liothyronine", "Synthroid", "Armour thyroid",
-    "rosuvastatin", "atorvastatin", "pravastatin", "simvastatin",
-    "ezetimibe", "Zetia",
-    "anastrozole", "Arimidex",
-    "clomiphene", "Clomid",
+    "liraglutide", "Victoza", "Saxenda",
+    "dulaglutide", "Trulicity",
+    "exenatide", "Byetta", "Bydureon",
+
+    // Biguanides / oral antidiabetics
+    "metformin", "metformin XR", "metformin extended-release", "Glucophage",
+    "glipizide", "Glucotrol",
+    "glyburide", "Micronase",
+    "pioglitazone", "Actos",
+    "sitagliptin", "Januvia",
+    "empagliflozin", "Jardiance",
+    "dapagliflozin", "Farxiga",
+    "canagliflozin", "Invokana",
+
+    // Thyroid
+    "levothyroxine", "Synthroid", "Levoxyl", "Tirosint",
+    "liothyronine", "Cytomel",
+    "Armour thyroid", "Nature-Throid", "desiccated thyroid",
+
+    // Hormones — HRT and testosterone
     "testosterone cypionate", "testosterone enanthate",
+    "testosterone cream", "testosterone gel", "AndroGel",
+    "testosterone pellet", "Testopel",
     "micronized progesterone", "Prometrium",
-    "estradiol", "Vivelle-Dot", "Climara",
-    "bupropion", "Wellbutrin",
-    "gabapentin",
-    "berberine", "magnesium glycinate", "NAC", "coenzyme Q10",
-    "omega-3", "fish oil",
-    "vitamin D3", "vitamin K2",
+    "estradiol", "Estrace", "Vivelle-Dot", "Climara", "Minivelle",
+    "estradiol patch", "estradiol gel", "estradiol pellet",
+    "conjugated estrogens", "Premarin",
     "DHEA", "pregnenolone",
-    "spironolactone",
-    "naltrexone", "low-dose naltrexone", "LDN",
-    "compounded", "sustained-release",
+
+    // Aromatase inhibitors / SERMs
+    "anastrozole", "Arimidex",
+    "letrozole", "Femara",
+    "clomiphene", "Clomid",
+    "tamoxifen", "Nolvadex",
+    "raloxifene", "Evista",
+
+    // Statins
+    "rosuvastatin", "Crestor",
+    "atorvastatin", "Lipitor",
+    "pravastatin", "Pravachol",
+    "simvastatin", "Zocor",
+    "fluvastatin", "Lescol",
+    "pitavastatin", "Livalo",
+
+    // Cholesterol / lipid adjuncts
+    "ezetimibe", "Zetia",
+    "evolocumab", "Repatha",
+    "alirocumab", "Praluent",
+    "inclisiran", "Leqvio",
+    "bempedoic acid", "Nexletol",
+    "fenofibrate", "Tricor",
+    "niacin", "nicotinic acid",
+    "omega-3", "fish oil", "icosapentaenoic acid", "EPA", "Vascepa",
+
+    // ACE inhibitors
+    "lisinopril", "Zestril", "Prinivil",
+    "enalapril", "Vasotec",
+    "ramipril", "Altace",
+    "benazepril", "Lotensin",
+    "quinapril", "Accupril",
+    "perindopril", "Aceon",
+    "captopril", "Capoten",
+    "fosinopril", "Monopril",
+
+    // ARBs (Angiotensin Receptor Blockers)
+    "losartan", "Cozaar",
+    "valsartan", "Diovan",
+    "olmesartan", "Benicar",
+    "telmisartan", "Micardis",
+    "candesartan", "Atacand",
+    "irbesartan", "Avapro",
+    "azilsartan", "Edarbi",
+    "eprosartan", "Teveten",
+
+    // ARNIs
+    "sacubitril-valsartan", "Entresto",
+
+    // Beta blockers
+    "metoprolol", "metoprolol succinate", "metoprolol tartrate", "Toprol-XL", "Lopressor",
+    "atenolol", "Tenormin",
+    "carvedilol", "Coreg",
+    "bisoprolol", "Zebeta",
+    "propranolol", "Inderal",
+    "nebivolol", "Bystolic",
+    "labetalol", "Normodyne",
+
+    // Calcium channel blockers
+    "amlodipine", "Norvasc",
+    "diltiazem", "Cardizem",
+    "verapamil", "Calan",
+    "nifedipine", "Procardia",
+    "felodipine", "Plendil",
+    "nicardipine", "Cardene",
+    "clevidipine", "Cleviprex",
+
+    // Diuretics
+    "hydrochlorothiazide", "HCTZ",
+    "chlorthalidone",
+    "furosemide", "Lasix",
+    "spironolactone", "Aldactone",
+    "eplerenone", "Inspra",
+    "indapamide", "Lozol",
+    "triamterene",
+    "torsemide", "Demadex",
+
+    // Antiplatelets / anticoagulants
+    "aspirin", "clopidogrel", "Plavix",
+    "ticagrelor", "Brilinta",
+    "apixaban", "Eliquis",
+    "rivaroxaban", "Xarelto",
+    "warfarin", "Coumadin",
+    "dabigatran", "Pradaxa",
+
+    // Psychiatric / neurological (commonly prescribed in primary care)
+    "bupropion", "Wellbutrin", "Zyban",
+    "sertraline", "Zoloft",
+    "fluoxetine", "Prozac",
+    "escitalopram", "Lexapro",
+    "citalopram", "Celexa",
+    "venlafaxine", "Effexor",
+    "duloxetine", "Cymbalta",
+    "mirtazapine", "Remeron",
+    "buspirone", "Buspar",
+    "alprazolam", "Xanax",
+    "lorazepam", "Ativan",
+    "clonazepam", "Klonopin",
+    "zolpidem", "Ambien",
+    "gabapentin", "Neurontin",
+    "pregabalin", "Lyrica",
+
+    // Erectile dysfunction / BPH
+    "sildenafil", "Viagra",
+    "tadalafil", "Cialis",
+    "vardenafil", "Levitra",
+    "finasteride", "Propecia", "Proscar",
+    "dutasteride", "Avodart",
+    "tamsulosin", "Flomax",
+
+    // Bone / osteoporosis
+    "alendronate", "Fosamax",
+    "risedronate", "Actonel",
+    "zoledronic acid", "Reclast",
+    "denosumab", "Prolia",
+    "teriparatide", "Forteo",
+    "romosozumab", "Evenity",
+
+    // Naltrexone
+    "naltrexone", "low-dose naltrexone", "LDN", "Vivitrol",
+
+    // Supplements and nutraceuticals
+    "berberine", "myo-inositol", "inositol",
+    "magnesium glycinate", "magnesium malate", "magnesium",
+    "NAC", "N-acetylcysteine",
+    "coenzyme Q10", "CoQ10", "ubiquinol",
+    "alpha-lipoic acid", "ALA",
+    "glutathione", "liposomal glutathione",
+    "ashwagandha", "rhodiola", "adaptogen",
+    "vitamin D3", "vitamin K2",
+    "zinc carnosine", "zinc bisglycinate",
+    "B complex", "methylfolate", "methylcobalamin",
+    "phosphatidylserine", "phosphatidylcholine",
+    "GABA", "L-theanine", "melatonin",
+    "probiotics", "Lactobacillus", "Bifidobacterium",
+
+    // Misc common
+    "compounded", "sustained-release", "extended-release",
+    "sublingual", "subcutaneous", "intramuscular",
+    "topical", "transdermal",
+  ],
+
+  // Dedicated cardiovascular drug class — layered into lipid and primary care visits
+  cardiovascular_medications: [
+    "losartan", "valsartan", "olmesartan", "telmisartan", "candesartan", "irbesartan",
+    "lisinopril", "enalapril", "ramipril", "benazepril",
+    "metoprolol", "atenolol", "carvedilol", "bisoprolol", "propranolol",
+    "amlodipine", "diltiazem", "verapamil", "nifedipine",
+    "hydrochlorothiazide", "HCTZ", "chlorthalidone", "furosemide", "spironolactone",
+    "rosuvastatin", "atorvastatin", "pravastatin", "ezetimibe",
+    "apixaban", "rivaroxaban", "clopidogrel", "aspirin",
+    "sacubitril-valsartan", "Entresto",
+    "evolocumab", "alirocumab", "inclisiran",
   ],
 
   lab_markers: [
@@ -169,24 +336,25 @@ export const LEXICONS: Record<LexiconGroup, string[]> = {
 const VISIT_TYPE_LEXICON_MAP: Record<string, LexiconGroup[]> = {
   "new-patient": [
     "hormones_and_menopause", "metabolic_and_weight", "lipid_and_cardiometabolic",
-    "primary_care", "medication_names", "lab_markers", "symptom_terms", "procedure_terms",
+    "primary_care", "medication_names", "cardiovascular_medications",
+    "lab_markers", "symptom_terms", "procedure_terms",
   ],
   "follow-up": [
     "hormones_and_menopause", "metabolic_and_weight", "lipid_and_cardiometabolic",
-    "medication_names", "lab_markers", "symptom_terms",
+    "medication_names", "cardiovascular_medications", "lab_markers", "symptom_terms",
   ],
   "lab-review": [
     "lab_markers", "hormones_and_menopause", "metabolic_and_weight",
-    "lipid_and_cardiometabolic", "primary_care", "medication_names",
+    "lipid_and_cardiometabolic", "primary_care", "medication_names", "cardiovascular_medications",
   ],
   "wellness": [
     "primary_care", "metabolic_and_weight", "lab_markers", "symptom_terms",
-    "medication_names", "lipid_and_cardiometabolic",
+    "medication_names", "cardiovascular_medications", "lipid_and_cardiometabolic",
   ],
-  "acute": ["primary_care", "symptom_terms", "medication_names", "procedure_terms"],
+  "acute": ["primary_care", "symptom_terms", "medication_names", "cardiovascular_medications", "procedure_terms"],
   "telemedicine": [
     "hormones_and_menopause", "metabolic_and_weight", "medication_names",
-    "lab_markers", "symptom_terms",
+    "cardiovascular_medications", "lab_markers", "symptom_terms",
   ],
   "procedure": ["procedure_terms", "medication_names", "primary_care"],
 };
@@ -211,10 +379,12 @@ export function buildMedicalTermsList(visitType: string): string {
  * drug names and clinical acronyms significantly improves accuracy.
  *
  * Whisper caps the useful prompt at ~224 tokens — we stay well under that.
+ * Strategy: include the drugs most likely to be phonetically mangled first,
+ * then layer in visit-type-specific extras.
  */
 export function buildWhisperPrompt(visitType: string): string {
-  // Core vocabulary that Whisper almost always gets wrong — always included
-  const coreTerms =
+  // Tier 1: drugs and terms Whisper most frequently mangles — ALWAYS included
+  const tier1 =
     "semaglutide, tirzepatide, Ozempic, Wegovy, Mounjaro, Zepbound, " +
     "testosterone, estradiol, progesterone, DHEA, DHEA-S, SHBG, " +
     "HbA1c, HOMA-IR, ApoB, Lp(a), hs-CRP, eGFR, FIB-4, IGF-1, " +
@@ -222,21 +392,40 @@ export function buildWhisperPrompt(visitType: string): string {
     "micronized progesterone, testosterone cypionate, testosterone pellet, " +
     "PCOS, GLP-1, ASCVD, HRT, LH, FSH";
 
-  // Visit-type extras layered on top
+  // Tier 2: cardiovascular drugs Whisper frequently misreads — ALWAYS included
+  // "Liz Sartan" → losartan, "liz in o pril" → lisinopril, etc.
+  const tier2 =
+    "losartan, valsartan, olmesartan, telmisartan, candesartan, irbesartan, " +
+    "lisinopril, enalapril, ramipril, " +
+    "metoprolol, atenolol, carvedilol, bisoprolol, " +
+    "amlodipine, diltiazem, " +
+    "hydrochlorothiazide, HCTZ, chlorthalidone, spironolactone, " +
+    "rosuvastatin, atorvastatin, ezetimibe, " +
+    "apixaban, rivaroxaban, clopidogrel, " +
+    "empagliflozin, dapagliflozin, sitagliptin";
+
+  // Tier 3: visit-type-specific extras
   const groups = getRelevantLexiconGroups(visitType);
   const extras = new Set<string>();
   for (const g of groups) {
     if (g === "lipid_and_cardiometabolic") {
-      ["rosuvastatin", "atorvastatin", "ezetimibe", "PCSK9 inhibitor",
-       "triglycerides", "LDL-C", "HDL-C", "VLDL", "homocysteine"].forEach(t => extras.add(t));
+      ["triglycerides", "LDL-C", "HDL-C", "VLDL", "homocysteine",
+       "evolocumab", "alirocumab", "inclisiran"].forEach(t => extras.add(t));
     }
     if (g === "hormones_and_menopause") {
       ["perimenopause", "menopause", "vasomotor symptoms",
-       "compounded HRT", "bioidentical hormone therapy", "aromatase inhibitor"].forEach(t => extras.add(t));
+       "compounded HRT", "bioidentical hormone therapy", "aromatase inhibitor",
+       "letrozole", "clomiphene"].forEach(t => extras.add(t));
     }
     if (g === "metabolic_and_weight") {
       ["insulin resistance", "metabolic syndrome", "hepatic steatosis",
-       "NAFLD", "MASLD", "hyperinsulinemia", "adiponectin"].forEach(t => extras.add(t));
+       "NAFLD", "MASLD", "hyperinsulinemia", "adiponectin",
+       "pioglitazone", "empagliflozin"].forEach(t => extras.add(t));
+    }
+    if (g === "primary_care") {
+      ["levothyroxine", "liothyronine", "Armour thyroid",
+       "naltrexone", "low-dose naltrexone", "LDN",
+       "sildenafil", "tadalafil", "finasteride"].forEach(t => extras.add(t));
     }
   }
 
@@ -245,7 +434,7 @@ export function buildWhisperPrompt(visitType: string): string {
   // Written as a natural partial sentence so Whisper uses it as prior context
   return (
     `Hormone and primary care clinic visit. ` +
-    `Medications and lab markers discussed: ${coreTerms}${extrasStr}.`
+    `Medications and lab markers discussed: ${tier1}, ${tier2}${extrasStr}.`
   );
 }
 
@@ -277,4 +466,44 @@ Examples of speech-to-text errors to correct:
 - "P C O S" → "PCOS"
 - "A S C V D" → "ASCVD"
 - "G L P 1" → "GLP-1"
+- "Liz Sartan" or "liz artan" or "low sartan" → "losartan"
+- "val sartan" or "val zar tan" → "valsartan"
+- "olm e sartan" or "olm eh sartan" → "olmesartan"
+- "tel mee sartan" or "tel miss artan" → "telmisartan"
+- "can de sartan" → "candesartan"
+- "liz in o pril" or "liz in oh pril" or "liz inn o pril" → "lisinopril"
+- "en a la pril" or "en al a pril" → "enalapril"
+- "ram i pril" or "ram ee pril" → "ramipril"
+- "am lo di pine" or "am lo deh pine" → "amlodipine"
+- "met o pro lol" or "met o pro lal" → "metoprolol"
+- "car ve di lol" or "car ve da lol" → "carvedilol"
+- "bis o pro lol" → "bisoprolol"
+- "hydro chloro thigh a zide" or "H C T Z" → "hydrochlorothiazide"
+- "chlor thal i done" or "chlor thal eh done" → "chlorthalidone"
+- "roz u vas ta tin" or "roz oo vas ta tin" → "rosuvastatin"
+- "a tor vas ta tin" or "a torr va sta tin" → "atorvastatin"
+- "em pag li flo zin" or "em pa gli flo zin" → "empagliflozin"
+- "dap a gli flo zin" → "dapagliflozin"
+- "sit a glip tin" or "sit ag lip tin" → "sitagliptin"
+- "a pix a ban" or "a pix aban" → "apixaban"
+- "riva rox aban" or "riva rox a ban" → "rivaroxaban"
+- "clop i do grel" or "clop id o grel" → "clopidogrel"
+- "spiro no lac tone" or "spiro no lac ton" → "spironolactone"
+- "boo pro pi on" or "byoo pro pee on" → "bupropion"
+- "ser tra line" or "sert ra leen" → "sertraline"
+- "es cit a lo pram" → "escitalopram"
+- "ven la fax een" → "venlafaxine"
+- "dul ox e teen" → "duloxetine"
+- "gab a pen tin" or "gab a pen teen" → "gabapentin"
+- "prega balin" or "preg a ba lin" → "pregabalin"
+- "fin as ter ide" or "fin ass ter ide" → "finasteride"
+- "ana stroz ole" or "an as tra zole" → "anastrozole"
+- "le tro zole" or "let ra zole" → "letrozole"
+- "evan deh koo mab" or "ev o loo koo mab" → "evolocumab"
+- "al ih roo koo mab" → "alirocumab"
+- "N A C" → "NAC"
+- "co enzyme Q 10" or "co Q 10" → "CoQ10"
+- "alpha lipoic" → "alpha-lipoic acid"
+- "myo in a sit ol" or "myo inositol" → "myo-inositol"
+- "ash wa ganda" or "ash wa gandha" → "ashwagandha"
 `.trim();
