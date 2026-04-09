@@ -3314,6 +3314,26 @@ CRITICAL RULES — SAFETY GUARDRAILS:
 6. Map every extracted fact to source_utterance_ids (the [ID:N] numbers in the transcript)
 7. If something is only mentioned as a possibility, put it in assessment_candidates, NOT diagnoses_discussed
 
+MEDICATION TENSE & INTENT — CRITICAL RULE:
+You MUST distinguish between what the patient is CURRENTLY taking vs what the clinician is RECOMMENDING they begin:
+- medications_current = medications the patient is already taking RIGHT NOW at the time of the visit
+  → Triggered by: "she is on", "he takes", "currently taking", "has been on", "patient is on", "continues on", "she's been on for X weeks/months"
+- medication_changes_discussed = medications being RECOMMENDED, STARTED, STOPPED, ADJUSTED, or PLANNED at this visit
+  → Triggered by: "I recommend starting", "we'll begin", "I'd like to add", "we'll add once", "let's start", "I'm going to start her on", "she should start", "I recommended", "plan to initiate", "we'll hold off on X until Y"
+EXAMPLES:
+  - "I recommended starting progesterone" → medication_changes_discussed: ["Start progesterone (new — clinician recommendation)"]
+  - "Once stable on progesterone we'll add estrogen" → medication_changes_discussed: ["Add estrogen once stable on progesterone (future plan)"]
+  - "She's been on tirzepatide 15mg for 3 months" → medications_current: ["Tirzepatide 15mg SQ weekly"]
+  - "I said we'd consider adding testosterone later" → medication_changes_discussed only — NOT medications_current
+When in doubt, put the item in medication_changes_discussed and flag in uncertain_items — never assume a recommended drug is current.
+
+DRUG CLASS NAMES — CRITICAL RULE:
+When a DRUG CLASS is mentioned (e.g., "GLP-1", "statin", "SSRI", "progesterone") without naming a specific drug:
+- Record ONLY the class name — do NOT enumerate or infer specific drugs within that class
+- Example: clinician says "GLP-1" without naming a drug → record "GLP-1 receptor agonist (class)" — NOT "semaglutide" or "tirzepatide"
+- If a specific drug is ALSO mentioned in the transcript (e.g., "tirzepatide 15mg"), record that specific drug and note it resolves the class mention
+- NEVER add a drug to medications_current or medication_changes_discussed unless it was explicitly named or its class was the ONLY reference (keep as class name, not specific drug)
+
 Return this exact JSON structure (all arrays, even if empty):
 {
   "visit_type": "",
@@ -4138,6 +4158,26 @@ CRITICAL RULES — SAFETY GUARDRAILS:
 6. Map every extracted fact to source_utterance_ids (the [ID:N] numbers in the transcript)
 7. If something is only mentioned as a possibility, put it in assessment_candidates, NOT diagnoses_discussed
 
+MEDICATION TENSE & INTENT — CRITICAL RULE:
+You MUST distinguish between what the patient is CURRENTLY taking vs what the clinician is RECOMMENDING they begin:
+- medications_current = medications the patient is already taking RIGHT NOW at the time of the visit
+  → Triggered by: "she is on", "he takes", "currently taking", "has been on", "patient is on", "continues on", "she's been on for X weeks/months"
+- medication_changes_discussed = medications being RECOMMENDED, STARTED, STOPPED, ADJUSTED, or PLANNED at this visit
+  → Triggered by: "I recommend starting", "we'll begin", "I'd like to add", "we'll add once", "let's start", "I'm going to start her on", "she should start", "I recommended", "plan to initiate", "we'll hold off on X until Y"
+EXAMPLES:
+  - "I recommended starting progesterone" → medication_changes_discussed: ["Start progesterone (new — clinician recommendation)"]
+  - "Once stable on progesterone we'll add estrogen" → medication_changes_discussed: ["Add estrogen once stable on progesterone (future plan)"]
+  - "She's been on tirzepatide 15mg for 3 months" → medications_current: ["Tirzepatide 15mg SQ weekly"]
+  - "I said we'd consider adding testosterone later" → medication_changes_discussed only — NOT medications_current
+When in doubt, put the item in medication_changes_discussed and flag in uncertain_items — never assume a recommended drug is current.
+
+DRUG CLASS NAMES — CRITICAL RULE:
+When a DRUG CLASS is mentioned (e.g., "GLP-1", "statin", "SSRI", "progesterone") without naming a specific drug:
+- Record ONLY the class name — do NOT enumerate or infer specific drugs within that class
+- Example: clinician says "GLP-1" without naming a drug → record "GLP-1 receptor agonist (class)" — NOT "semaglutide" or "tirzepatide"
+- If a specific drug is ALSO mentioned in the transcript (e.g., "tirzepatide 15mg"), record that specific drug and note it resolves the class mention
+- NEVER add a drug to medications_current or medication_changes_discussed unless it was explicitly named or its class was the ONLY reference (keep as class name, not specific drug)
+
 Return this exact JSON structure (all arrays, even if empty):
 {
   "visit_type": "",
@@ -4545,6 +4585,14 @@ Your output must read as if written by an experienced physician or advanced prac
 
 MEDICATION NAMES — CRITICAL RULE:
 Use the medication list and diarized transcript provided — those have already been normalized by the clinical medication engine. Do NOT attempt to phonetically decode drug names yourself. If a word in the transcript looks like it might be a garbled medication name but does not appear in the provided medication list, add it to uncertain_items for clinician review. Never substitute a different medication name based on phonetic guessing — this is a patient safety issue.
+
+MEDICATION TENSE & PLACEMENT — CRITICAL RULE:
+The clinical extraction data distinguishes between "medications_current" (what the patient is already taking) and "medication_changes_discussed" (what is being recommended, started, stopped, or planned at this visit). You MUST honor this distinction:
+- medications_current → documented in HPI as ongoing treatment context ("Patient has been on tirzepatide 15mg SQ weekly for X months...")
+- medication_changes_discussed → documented in the PLAN section ONLY — NEVER presented in the HPI as if the patient is already on the medication
+- NEVER write a recommended medication as a current medication. If the clinician said "I recommended starting progesterone," the HPI must say "progesterone therapy was discussed and recommended at this visit" — NOT "patient is on progesterone"
+- If a drug CLASS name was recorded (e.g., "GLP-1 receptor agonist (class)") without a specific drug, use the class name in the SOAP — do NOT expand it to a specific drug unless one was explicitly named. Example: write "GLP-1 receptor agonist therapy" not "semaglutide/tirzepatide"
+- If both a class mention AND a specific drug are in the transcript, use the specific drug name and discard the class-only reference
 
 HPI — Write as a flowing clinical narrative (2–4 sentences of cohesive prose, NOT bullet points):
 - Begin with clinical context: "[Patient] presents for [visit reason]." If gender/age are known, include them.
