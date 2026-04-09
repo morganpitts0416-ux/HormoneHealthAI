@@ -1,0 +1,60 @@
+IMPORTANT: Read this fully before making changes.
+
+The ClinIQ Suite backend seat-billing integration is now wired and working. The next step is to build the actual ClinIQ Suite subscription/upgrade flow so users can subscribe to the Suite base plan using STRIPE_SUITE_PRICE_ID.
+
+Current state:
+- STRIPE_SUITE_PRICE_ID is wired
+- STRIPE_PROVIDER_SEAT_PRICE_ID is wired
+- provider seat add-on billing works
+- webhook sync updates clinic.subscription_plan, base_provider_limit, extra_provider_seats, and max_providers
+- missing piece: there is no user-facing or backend route for subscribing/upgrading to the Suite base plan
+
+GOAL:
+Build the smallest safe backend + frontend flow needed so a Solo user can upgrade to ClinIQ Suite.
+
+REQUIREMENTS
+
+1. Create a backend route for Suite upgrade / checkout
+- Create a route parallel to the existing Solo subscribe route
+- It must use STRIPE_SUITE_PRICE_ID
+- It should create a Stripe Checkout session or subscription flow using the clinic/user's existing Stripe customer if available
+- It must not break the current Solo subscription flow
+
+2. Upgrade behavior
+When a user successfully subscribes to ClinIQ Suite:
+- clinic.subscription_plan should become "suite"
+- clinic.base_provider_limit should become 2
+- clinic.extra_provider_seats should remain whatever Stripe says
+- clinic.max_providers should become base_provider_limit + extra_provider_seats
+- no patient data, encounter data, or staff data should be moved or remapped
+
+3. Solo users hitting provider limit
+When a Solo clinic tries to add a second provider and receives upgrade_required = true:
+- there should be a clear path to initiate Suite upgrade
+- if frontend support is added, keep it minimal and safe
+
+4. Preserve internal/free accounts
+- do not break current free internal accounts
+- do not force billing changes on free/internal users
+
+5. Safety
+- do not refactor unrelated routes
+- do not break login, patients, labs, transcription, SOAP, evidence, summary, or reports
+- make only the smallest safe changes needed
+
+6. Testing
+Verify:
+- a Solo user can start Suite checkout
+- successful Suite checkout results in clinic plan being recognized as suite
+- webhook updates clinic plan state correctly
+- after upgrade, clinic can have 2 providers before any $79 add-on is required
+- existing app functionality still works
+
+DELIVERABLES
+Provide:
+- files changed
+- new route(s)
+- how Suite checkout is created
+- how the user/clinic is mapped during checkout
+- how the webhook finalizes the upgrade
+- any remaining gaps
