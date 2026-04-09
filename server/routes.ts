@@ -2339,16 +2339,15 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         return res.status(400).json({ message: "No items in order" });
       }
 
-      // Get patient + portal account for clinician ID
-      const portalAccount = await storage.getPortalAccountByPatientId(patientId);
-      if (!portalAccount) return res.status(403).json({ message: "No portal account" });
-      const patient = await storage.getPatient(patientId, portalAccount.clinicianId);
+      // Get patient directly (portal session already proves ownership)
+      const patient = await storage.getPatientById(patientId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const clinicianId = patient.userId;
 
       // Create order record
       const order = await storage.createSupplementOrder({
         patientId,
-        clinicianId: portalAccount.clinicianId,
+        clinicianId,
         items,
         subtotal,
         status: 'pending',
