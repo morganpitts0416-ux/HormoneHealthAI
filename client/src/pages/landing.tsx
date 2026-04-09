@@ -7,6 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { appUrl } from "@/lib/app-url";
+import { LandingTour } from "@/components/landing-tour";
 
 const CLINICIAN_FEATURES = [
   {
@@ -126,13 +127,14 @@ export default function Landing() {
           <p className="text-lg sm:text-xl leading-relaxed max-w-2xl mx-auto mb-8" style={{ color: "#4a5a38" }}>
             Built for clinicians who know there's more to the story — ClinIQ by ReAlign Health helps you connect the dots, identify patterns, and confidently guide your patients with care that actually makes sense.
           </p>
-          <div className="flex flex-col sm:flex-row items-center justify-center gap-3">
+          <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
             <a href={appUrl("/register")}>
               <Button size="lg" data-testid="link-hero-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0", fontSize: "1rem", padding: "0 2rem" }}>
                 Start your free 14-day trial
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </a>
+            <LandingTour />
             <a href={appUrl("/login")}>
               <Button size="lg" variant="outline" data-testid="link-hero-signin" style={{ borderColor: "#c4b9a5", color: "#3d4a30" }}>
                 Sign in to your account
@@ -144,7 +146,7 @@ export default function Landing() {
       </section>
 
       {/* ── App Preview ─────────────────────────────────────────────────── */}
-      <section className="max-w-5xl mx-auto px-4 sm:px-6 pb-4 pt-2">
+      <section data-tour="app-preview" className="max-w-5xl mx-auto px-4 sm:px-6 pb-4 pt-2">
         <p className="text-center text-xs font-semibold uppercase tracking-wider mb-5" style={{ color: "#9aaa84" }}>
           A look inside the platform
         </p>
