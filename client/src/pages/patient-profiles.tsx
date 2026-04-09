@@ -1062,6 +1062,8 @@ export default function PatientProfiles() {
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
+  const [showEditPatient, setShowEditPatient] = useState(false);
+  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "" });
   const [searchTerm, setSearchTerm] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -1390,6 +1392,46 @@ export default function PatientProfiles() {
     },
   });
 
+  const updatePatientMutation = useMutation({
+    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string }) => {
+      const { id, ...fields } = data;
+      const body: Record<string, string | null> = {
+        firstName: fields.firstName,
+        lastName: fields.lastName,
+        email: fields.email || null,
+        phone: fields.phone || null,
+        dateOfBirth: fields.dateOfBirth || null,
+      };
+      const res = await apiRequest("PATCH", `/api/patients/${id}`, body);
+      if (!res.ok) throw new Error("Failed to update patient");
+      return res.json() as Promise<Patient>;
+    },
+    onSuccess: (updated) => {
+      setSelectedPatient(updated);
+      queryClient.invalidateQueries({ queryKey: ['/api/patients/search', ''] });
+      setShowEditPatient(false);
+      toast({ title: "Patient Updated", description: "Profile details have been saved." });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Error", description: "Failed to update patient. Please try again." });
+    },
+  });
+
+  const handleEditPatientOpen = () => {
+    if (!selectedPatient) return;
+    const dob = selectedPatient.dateOfBirth
+      ? new Date(selectedPatient.dateOfBirth as unknown as string).toISOString().split("T")[0]
+      : "";
+    setEditPatientForm({
+      firstName: selectedPatient.firstName,
+      lastName: selectedPatient.lastName,
+      email: (selectedPatient as any).email ?? "",
+      dateOfBirth: dob,
+      phone: (selectedPatient as any).phone ?? "",
+    });
+    setShowEditPatient(true);
+  };
+
   const handleDeleteLab = (lab: LabResult) => setConfirmDelete(lab);
   const insights = labs.length >= 2 ? generateTrendInsights(labs, selectedPatient?.gender as 'male' | 'female') : [];
   const maleCount = allPatients.filter(p => p.gender === 'male').length;
@@ -1676,6 +1718,17 @@ export default function PatientProfiles() {
                   >
                     <Mail className="h-3 w-3" />
                     {portalStatus?.hasPortalAccount ? "Resend Invite" : "Invite to Portal"}
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={handleEditPatientOpen}
+                    data-testid="button-edit-patient"
+                    className="text-xs gap-1.5"
+                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                  >
+                    <Pencil className="h-3 w-3" />
+                    Edit
                   </Button>
                   <Button
                     variant="outline"
@@ -2180,6 +2233,92 @@ export default function PatientProfiles() {
           </Card>
         </div>
       )}
+
+      {/* Edit Patient dialog */}
+      <Dialog open={showEditPatient} onOpenChange={setShowEditPatient}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Pencil className="h-4 w-4" />
+              Edit Patient Profile
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-first-name">First Name</Label>
+                <Input
+                  id="edit-first-name"
+                  value={editPatientForm.firstName}
+                  onChange={e => setEditPatientForm(f => ({ ...f, firstName: e.target.value }))}
+                  data-testid="input-edit-patient-first-name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-last-name">Last Name</Label>
+                <Input
+                  id="edit-last-name"
+                  value={editPatientForm.lastName}
+                  onChange={e => setEditPatientForm(f => ({ ...f, lastName: e.target.value }))}
+                  data-testid="input-edit-patient-last-name"
+                />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-email">Email</Label>
+              <Input
+                id="edit-email"
+                type="email"
+                placeholder="patient@example.com"
+                value={editPatientForm.email}
+                onChange={e => setEditPatientForm(f => ({ ...f, email: e.target.value }))}
+                data-testid="input-edit-patient-email"
+              />
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-dob">Date of Birth</Label>
+                <Input
+                  id="edit-dob"
+                  type="date"
+                  value={editPatientForm.dateOfBirth}
+                  onChange={e => setEditPatientForm(f => ({ ...f, dateOfBirth: e.target.value }))}
+                  data-testid="input-edit-patient-dob"
+                />
+                <p className="text-xs text-muted-foreground">Used to auto-calculate age on lab panels</p>
+              </div>
+              <div className="space-y-1.5">
+                <Label htmlFor="edit-phone">Phone</Label>
+                <Input
+                  id="edit-phone"
+                  type="tel"
+                  placeholder="(555) 000-0000"
+                  value={editPatientForm.phone}
+                  onChange={e => setEditPatientForm(f => ({ ...f, phone: e.target.value }))}
+                  data-testid="input-edit-patient-phone"
+                />
+              </div>
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowEditPatient(false)}>
+              Cancel
+            </Button>
+            <Button
+              size="sm"
+              disabled={!editPatientForm.firstName.trim() || !editPatientForm.lastName.trim() || updatePatientMutation.isPending}
+              onClick={() => {
+                if (!selectedPatient) return;
+                updatePatientMutation.mutate({ id: selectedPatient.id, ...editPatientForm });
+              }}
+              data-testid="button-save-edit-patient"
+              style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+            >
+              {updatePatientMutation.isPending ? "Saving..." : "Save Changes"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
 
       {/* Delete Patient confirmation dialog */}
       {confirmDeletePatient && selectedPatient && (
