@@ -21,6 +21,8 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
   const [showNewForm, setShowNewForm] = useState(false);
   const [newFirstName, setNewFirstName] = useState("");
   const [newLastName, setNewLastName] = useState("");
+  const [newEmail, setNewEmail] = useState("");
+  const [newDob, setNewDob] = useState("");
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: searchResults = [] } = useQuery<Patient[]>({
@@ -56,16 +58,21 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
   const handleCreatePatient = async () => {
     if (!newFirstName.trim() || !newLastName.trim()) return;
     try {
-      const res = await apiRequest("POST", "/api/patients", {
+      const body: Record<string, unknown> = {
         firstName: newFirstName.trim(),
         lastName: newLastName.trim(),
         gender,
-      });
+      };
+      if (newEmail.trim()) body.email = newEmail.trim().toLowerCase();
+      if (newDob) body.dateOfBirth = new Date(newDob).toISOString();
+      const res = await apiRequest("POST", "/api/patients", body);
       const patient = await res.json();
       onPatientSelect(patient);
       setShowNewForm(false);
       setNewFirstName("");
       setNewLastName("");
+      setNewEmail("");
+      setNewDob("");
       setSearchTerm("");
       setShowDropdown(false);
     } catch {
@@ -179,8 +186,8 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
 
       {showNewForm && (
         <Card className="mt-2">
-          <CardContent className="p-3">
-            <p className="text-sm font-medium mb-2">Create New Patient</p>
+          <CardContent className="p-3 space-y-2">
+            <p className="text-sm font-medium">Create New Patient</p>
             <div className="flex items-center gap-2">
               <Input
                 placeholder="First Name"
@@ -194,13 +201,38 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
                 onChange={(e) => setNewLastName(e.target.value)}
                 data-testid="input-new-patient-last-name"
               />
+            </div>
+            <div className="flex items-center gap-2">
+              <div className="flex-1">
+                <Input
+                  type="email"
+                  placeholder="Email (optional — used for appointment matching)"
+                  value={newEmail}
+                  onChange={(e) => setNewEmail(e.target.value)}
+                  data-testid="input-new-patient-email"
+                />
+              </div>
+              <div className="w-40 flex-shrink-0">
+                <Input
+                  type="date"
+                  placeholder="Date of Birth"
+                  value={newDob}
+                  onChange={(e) => setNewDob(e.target.value)}
+                  data-testid="input-new-patient-dob"
+                />
+              </div>
+            </div>
+            <p className="text-xs text-muted-foreground">
+              Email and date of birth help match this patient to appointments from your scheduling system.
+            </p>
+            <div className="flex justify-end">
               <Button
                 size="sm"
                 onClick={handleCreatePatient}
                 disabled={!newFirstName.trim() || !newLastName.trim()}
                 data-testid="button-create-patient"
               >
-                Create
+                Create Patient
               </Button>
             </div>
           </CardContent>
