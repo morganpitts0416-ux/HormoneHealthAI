@@ -5397,10 +5397,11 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         drugClass, subclass, route, notes,
       } = req.body;
       if (!genericName?.trim()) return res.status(400).json({ message: "genericName is required" });
-      const manualDict = await storage.getOrCreateManualDictionary(req.user.id);
+      const clinicianId = getClinicianId(req);
+      const manualDict = await storage.getOrCreateManualDictionary(clinicianId);
       const entry = await storage.addSingleMedicationEntry({
         dictionaryId: manualDict.id,
-        clinicianId: req.user.id,
+        clinicianId,
         genericName: genericName.trim(),
         brandNames: brandNames.filter(Boolean),
         commonSpokenVariants: commonSpokenVariants.filter(Boolean),

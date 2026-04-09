@@ -8,7 +8,7 @@ import {
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
   ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
   TriangleAlert, ExternalLink, Square, MicOff, ShieldCheck, Copy, Check,
-  Layers, Pill,
+  Layers, Pill, Lightbulb, ListPlus,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -168,7 +168,7 @@ const guidelineClassBadge: Record<string, string> = {
 };
 
 // ── Resolvable review item — lets clinician save a medication alias from a flagged term ──
-function ResolvableReviewItem({ text, icon }: { text: string; icon: ReactElement }) {
+function ResolvableReviewItem({ text, icon, onDismiss }: { text: string; icon: ReactElement; onDismiss?: () => void }) {
   const { toast } = useToast();
   const [open, setOpen] = useState(false);
   const [saved, setSaved] = useState(false);
@@ -193,6 +193,7 @@ function ResolvableReviewItem({ text, icon }: { text: string; icon: ReactElement
       setSaved(true);
       setOpen(false);
       toast({ title: "Alias saved", description: `"${spokenAs}" will now resolve to ${correctName} in future transcriptions.` });
+      setTimeout(() => onDismiss?.(), 1500);
     } catch (e: any) {
       toast({ variant: "destructive", title: "Failed to save alias", description: e.message });
     } finally {
@@ -215,13 +216,20 @@ function ResolvableReviewItem({ text, icon }: { text: string; icon: ReactElement
       <div className="flex items-start gap-1.5">
         <span className="flex-shrink-0 mt-0.5">{icon}</span>
         <span className="flex-1">{text}</span>
-        <button
-          className="text-[10px] font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900 flex-shrink-0 ml-2 whitespace-nowrap"
-          onClick={() => setOpen(v => !v)}
-          data-testid="button-toggle-alias-form"
-        >
-          {open ? "Cancel" : "Save alias"}
-        </button>
+        <div className="flex items-center gap-1.5 flex-shrink-0 ml-2">
+          <button
+            className="text-[10px] font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900 whitespace-nowrap"
+            onClick={() => setOpen(v => !v)}
+            data-testid="button-toggle-alias-form"
+          >
+            {open ? "Cancel" : "Save alias"}
+          </button>
+          {!open && onDismiss && (
+            <button className="text-muted-foreground hover:text-foreground" onClick={onDismiss} title="Dismiss">
+              <X className="w-3 h-3" />
+            </button>
+          )}
+        </div>
       </div>
       {open && (
         <div className="ml-4 rounded-md border border-amber-200 bg-card p-3 space-y-2.5">
@@ -1047,6 +1055,7 @@ function EncounterEditor({
   const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
   const [copiedSoap, setCopiedSoap] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
+  const [dismissedReviewIdxs, setDismissedReviewIdxs] = useState<Set<string>>(new Set());
 
   // Sync JSONB states when detail fetch arrives after initial mount
   // (list query strips these fields; detail fetch brings them in asynchronously)
@@ -2693,39 +2702,116 @@ function EncounterEditor({
               const soapData = soap as any;
               const uncertainItems: string[] = soapData.uncertain_items ?? [];
               const reviewFlags: string[] = soapData.needs_clinician_review ?? [];
-              if (!uncertainItems.length && !reviewFlags.length) return null;
+
+              const SUGGESTED_PREFIX = "SUGGESTED (awaiting clinician approval):";
+              // Items the AI is suggesting to add to the plan (from lab/clinical context)
+              const suggestedItems = reviewFlags
+                .map((f, i) => ({ text: f.slice(SUGGESTED_PREFIX.length).trim(), key: `s-${i}` }))
+                .filter((_, i) => reviewFlags[i].startsWith(SUGGESTED_PREFIX));
+              // Items that are actual clinical flags / uncertainties needing attention
+              const flagItems = reviewFlags
+                .map((f, i) => ({ text: f, key: `f-${i}` }))
+                .filter((_, i) => !reviewFlags[i].startsWith(SUGGESTED_PREFIX));
+              // Uncertain medication terms needing alias resolution
+              const aliasItems = uncertainItems.map((u, i) => ({ text: u, key: `u-${i}` }));
+
+              const visibleSuggested = suggestedItems.filter(s => !dismissedReviewIdxs.has(s.key));
+              const visibleFlags = flagItems.filter(f => !dismissedReviewIdxs.has(f.key));
+              const visibleAlias = aliasItems.filter(a => !dismissedReviewIdxs.has(a.key));
+
+              if (!visibleSuggested.length && !visibleFlags.length && !visibleAlias.length) return null;
+
+              const dismiss = (key: string) =>
+                setDismissedReviewIdxs(prev => new Set([...prev, key]));
+
+              const addToPlan = (text: string, key: string) => {
+                setSoap(prev => {
+                  const note = (prev as any).fullNote ?? "";
+                  const appended = note.trimEnd() + `\n\n[Clinician Added to Plan]\n${text}`;
+                  return { ...prev, fullNote: appended };
+                });
+                setSoapViewMode("edit");
+                dismiss(key);
+              };
+
               return (
-                <div className="rounded-md border border-amber-200 bg-amber-50/60 p-4 space-y-3">
-                  <div className="flex items-center gap-2">
-                    <TriangleAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
-                    <h4 className="text-sm font-semibold text-amber-800">Clinician Review Required</h4>
-                  </div>
-                  {reviewFlags.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1.5">Flagged for Review</p>
-                      <ul className="space-y-2">
-                        {reviewFlags.map((f, i) => (
-                          <ResolvableReviewItem
-                            key={i}
-                            text={f}
-                            icon={<AlertCircle className="w-3 h-3 text-amber-600" />}
-                          />
+                <div className="space-y-3">
+                  {/* SUGGESTED PLAN ADDITIONS — blue box */}
+                  {visibleSuggested.length > 0 && (
+                    <div className="rounded-md border border-blue-200 bg-blue-50/60 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <Lightbulb className="w-4 h-4 text-blue-600 flex-shrink-0" />
+                        <h4 className="text-sm font-semibold text-blue-800">Suggested Plan Additions</h4>
+                      </div>
+                      <p className="text-xs text-blue-700/80">
+                        These suggestions came from the linked lab evaluation or clinical interpretation and were <em>not</em> automatically added to the SOAP note. Review each one and add to the plan if appropriate.
+                      </p>
+                      <ul className="space-y-2.5">
+                        {visibleSuggested.map(({ text, key }) => (
+                          <li key={key} className="text-xs text-blue-900 flex items-start gap-2">
+                            <Circle className="w-2.5 h-2.5 flex-shrink-0 mt-1 text-blue-500" />
+                            <span className="flex-1">{text}</span>
+                            <div className="flex items-center gap-1.5 flex-shrink-0">
+                              <button
+                                className="text-[10px] font-medium text-blue-700 underline underline-offset-2 hover:text-blue-900 flex items-center gap-1 whitespace-nowrap"
+                                onClick={() => addToPlan(text, key)}
+                                title="Append this suggestion to the SOAP note and open editor"
+                              >
+                                <ListPlus className="w-3 h-3" />
+                                Add to Plan
+                              </button>
+                              <button
+                                className="text-[10px] text-muted-foreground hover:text-foreground whitespace-nowrap"
+                                onClick={() => dismiss(key)}
+                                title="Dismiss this suggestion"
+                              >
+                                <X className="w-3 h-3" />
+                              </button>
+                            </div>
+                          </li>
                         ))}
                       </ul>
                     </div>
                   )}
-                  {uncertainItems.length > 0 && (
-                    <div>
-                      <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1.5">Uncertain / Unresolved</p>
-                      <ul className="space-y-2">
-                        {uncertainItems.map((u, i) => (
-                          <ResolvableReviewItem
-                            key={i}
-                            text={u}
-                            icon={<Circle className="w-3 h-3 text-amber-500" />}
-                          />
-                        ))}
-                      </ul>
+
+                  {/* MEDICATION ALIAS CANDIDATES + GENERAL FLAGS — amber box */}
+                  {(visibleFlags.length > 0 || visibleAlias.length > 0) && (
+                    <div className="rounded-md border border-amber-200 bg-amber-50/60 p-4 space-y-3">
+                      <div className="flex items-center gap-2">
+                        <TriangleAlert className="w-4 h-4 text-amber-600 flex-shrink-0" />
+                        <h4 className="text-sm font-semibold text-amber-800">Clinician Review Required</h4>
+                      </div>
+                      {visibleFlags.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1.5">Flagged Items</p>
+                          <ul className="space-y-2">
+                            {visibleFlags.map(({ text, key }) => (
+                              <li key={key} className="text-xs text-amber-900 flex items-start gap-1.5">
+                                <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-600" />
+                                <span className="flex-1">{text}</span>
+                                <button className="text-[10px] text-muted-foreground hover:text-foreground flex-shrink-0 ml-2" onClick={() => dismiss(key)} title="Dismiss">
+                                  <X className="w-3 h-3" />
+                                </button>
+                              </li>
+                            ))}
+                          </ul>
+                        </div>
+                      )}
+                      {visibleAlias.length > 0 && (
+                        <div>
+                          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1.5">Unrecognized Medication Terms</p>
+                          <ul className="space-y-2">
+                            {visibleAlias.map(({ text, key }) => (
+                              <ResolvableReviewItem
+                                key={key}
+                                text={text}
+                                icon={<Circle className="w-3 h-3 text-amber-500" />}
+                                onDismiss={() => dismiss(key)}
+                              />
+                            ))}
+                          </ul>
+                        </div>
+                      )}
                     </div>
                   )}
                 </div>
