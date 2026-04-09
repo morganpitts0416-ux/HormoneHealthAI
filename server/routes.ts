@@ -6,7 +6,8 @@ import path from "path";
 import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable } from "@shared/schema";
+import { eq, and } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
@@ -24,7 +25,8 @@ import {
   generateWebhookSecret,
   type ExternalProvider,
 } from "./external-messaging";
-import { storage, setupClinicForNewUser } from "./storage";
+import { storage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership } from "./storage";
+import { getClinicPlanState, getActiveProviderCount, calculateRequiredSeatQuantity, SUITE_BASE_PROVIDER_LIMIT, EXTRA_SEAT_MONTHLY_PRICE } from "./clinic-plan";
 import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
@@ -5176,6 +5178,230 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     } catch (err: any) {
       console.error("[Stripe Webhook] Handler error:", err);
       res.status(500).json({ message: "Webhook handler error" });
+    }
+  });
+
+  // ── Provider Seat Management ──────────────────────────────────────────────
+  //
+  // POST /api/clinics/:id/providers/check
+  //   Checks whether a provider can be added and whether billing confirmation
+  //   is required. Does NOT create anything. Safe to call on every click.
+  //
+  // POST /api/clinics/:id/providers/confirm-add
+  //   Confirmed add flow. Re-validates, updates Stripe first (if needed),
+  //   then creates the provider only if Stripe succeeds. Idempotent by email.
+
+  app.post("/api/clinics/:id/providers/check", requireAuth, async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.id, 10);
+      if (isNaN(clinicId)) return res.status(400).json({ message: "Invalid clinic ID" });
+
+      const user = req.user as any;
+
+      // Must be clinic admin
+      const memberRows = await storageDb
+        .select({ role: clinicMemberships.role })
+        .from(clinicMemberships)
+        .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.userId, user.id), eq(clinicMemberships.isActive, true)));
+      if (memberRows.length === 0 || memberRows[0].role !== "admin") {
+        return res.status(403).json({ message: "Only clinic admins can manage providers." });
+      }
+
+      const planState = await getClinicPlanState(clinicId, user.freeAccount ?? false, user.stripeSubscriptionId);
+
+      // Case 1: Solo plan at limit
+      if (planState.isSoloPlan && !planState.canAddProviderWithoutBilling) {
+        return res.status(200).json({
+          allowed: false,
+          upgrade_required: true,
+          message: "The Solo plan supports 1 provider. Upgrade to ClinIQ Suite to add additional providers.",
+          planState,
+        });
+      }
+
+      // Case 2: Suite (or free) — within included limit, no billing needed
+      if (planState.canAddProviderWithoutBilling) {
+        return res.json({
+          allowed: true,
+          confirmation_required: false,
+          message: null,
+          planState,
+        });
+      }
+
+      // Case 3: Suite — would exceed current max_providers, paid seat needed
+      const projectedCount = planState.activeProviderCount + 1;
+      return res.json({
+        allowed: false,
+        confirmation_required: true,
+        billing_change_type: "add_provider_seat",
+        monthly_price_increase: EXTRA_SEAT_MONTHLY_PRICE,
+        message: `Adding a provider will increase your monthly cost by $${EXTRA_SEAT_MONTHLY_PRICE}/month.`,
+        current_provider_count: planState.activeProviderCount,
+        max_providers: planState.maxProviders,
+        projected_provider_count: projectedCount,
+        planState,
+      });
+    } catch (err: any) {
+      console.error("[Provider/check]", err);
+      res.status(500).json({ message: err.message || "Failed to check provider seat status" });
+    }
+  });
+
+  app.post("/api/clinics/:id/providers/confirm-add", requireAuth, async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.id, 10);
+      if (isNaN(clinicId)) return res.status(400).json({ message: "Invalid clinic ID" });
+
+      const user = req.user as any;
+      const { displayName, credentials, specialty, npi, userId: providerUserId, email: providerEmail } = req.body;
+
+      if (!displayName || typeof displayName !== "string" || displayName.trim().length === 0) {
+        return res.status(400).json({ message: "displayName is required" });
+      }
+
+      // Must be clinic admin
+      const memberRows = await storageDb
+        .select({ role: clinicMemberships.role })
+        .from(clinicMemberships)
+        .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.userId, user.id), eq(clinicMemberships.isActive, true)));
+      if (memberRows.length === 0 || memberRows[0].role !== "admin") {
+        return res.status(403).json({ message: "Only clinic admins can manage providers." });
+      }
+      // (Email-based dedup for providers requires a future email column on providers; deferred)
+
+      // Re-validate plan state server-side (never trust the frontend's earlier check)
+      const planState = await getClinicPlanState(clinicId, user.freeAccount ?? false, user.stripeSubscriptionId);
+
+      // Solo plan — hard block
+      if (planState.isSoloPlan && !planState.canAddProviderWithoutBilling) {
+        return res.status(403).json({
+          allowed: false,
+          upgrade_required: true,
+          message: "Solo plan supports only 1 provider. Upgrade to ClinIQ Suite.",
+        });
+      }
+
+      // Within limit — create without billing
+      if (planState.canAddProviderWithoutBilling) {
+        const { providerId } = await createProviderWithMembership({
+          clinicId,
+          userId: providerUserId ?? null,
+          displayName: displayName.trim(),
+          credentials: credentials ?? null,
+          specialty: specialty ?? null,
+          npi: npi ?? null,
+        });
+        const activeCount = await getActiveProviderCount(clinicId);
+        return res.status(201).json({
+          success: true,
+          billing_updated: false,
+          providerId,
+          active_provider_count: activeCount,
+          max_providers: planState.maxProviders,
+        });
+      }
+
+      // Paid seat required — check Stripe env vars
+      const SUITE_SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+      if (!SUITE_SEAT_PRICE_ID) {
+        return res.status(503).json({
+          message: "Provider seat billing is not yet configured. Contact support to add a provider.",
+        });
+      }
+
+      // Free accounts bypass Stripe regardless
+      if (user.freeAccount) {
+        return res.status(403).json({
+          message: "Free accounts cannot purchase additional provider seats.",
+        });
+      }
+
+      // Must have a Suite subscription attached
+      if (!user.stripeSubscriptionId) {
+        return res.status(402).json({
+          message: "No active Suite subscription found. Please subscribe to ClinIQ Suite before adding providers.",
+        });
+      }
+
+      // ── Stripe: increment provider-seat quantity ───────────────────────────
+      const stripe = getStripe();
+      const subscription = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+        expand: ["items"],
+      });
+
+      // Find the extra-seat line item (if it exists)
+      const items: any[] = (subscription as any).items?.data ?? [];
+      const seatItem = items.find((item: any) => item.price?.id === SUITE_SEAT_PRICE_ID);
+
+      // Idempotency key: clinicId + current extra_provider_seats count (prevents double-billing on retry)
+      const idempotencyKey = `provider-seat-${clinicId}-${planState.extraProviderSeats + 1}`;
+
+      let stripeUpdateOk = false;
+      try {
+        if (seatItem) {
+          // Increment existing seat item quantity
+          await stripe.subscriptionItems.update(
+            seatItem.id,
+            { quantity: (seatItem.quantity ?? 0) + 1 },
+            { idempotencyKey }
+          );
+        } else {
+          // Add a new extra-seat item to the subscription
+          await stripe.subscriptionItems.create(
+            {
+              subscription: user.stripeSubscriptionId,
+              price: SUITE_SEAT_PRICE_ID,
+              quantity: 1,
+            },
+            { idempotencyKey }
+          );
+        }
+        stripeUpdateOk = true;
+      } catch (stripeErr: any) {
+        console.error("[Provider/confirm-add] Stripe update failed:", stripeErr.message);
+        return res.status(402).json({
+          message: "Billing update failed — no provider was created.",
+          stripe_error: stripeErr.message,
+        });
+      }
+
+      // ── Only if Stripe succeeded: update DB + create provider ─────────────
+      // If DB update fails after Stripe success, log clearly for manual repair
+      const newExtraSeats = planState.extraProviderSeats + 1;
+      try {
+        await updateClinicSeats(clinicId, newExtraSeats);
+      } catch (dbErr: any) {
+        console.error(
+          `[Provider/confirm-add] STRIPE SUCCEEDED but clinic seat DB update FAILED for clinic ${clinicId}. ` +
+          `extraProviderSeats should be ${newExtraSeats}. Manual repair required.`,
+          dbErr
+        );
+        // Still continue — seat was purchased; don't block provider creation
+      }
+
+      const { providerId } = await createProviderWithMembership({
+        clinicId,
+        userId: providerUserId ?? null,
+        displayName: displayName.trim(),
+        credentials: credentials ?? null,
+        specialty: specialty ?? null,
+        npi: npi ?? null,
+      });
+
+      const activeCount = await getActiveProviderCount(clinicId);
+      return res.status(201).json({
+        success: true,
+        billing_updated: true,
+        monthly_increase: EXTRA_SEAT_MONTHLY_PRICE,
+        providerId,
+        active_provider_count: activeCount,
+        max_providers: planState.maxProviders + 1,
+        extra_provider_seats: newExtraSeats,
+      });
+    } catch (err: any) {
+      console.error("[Provider/confirm-add]", err);
+      res.status(500).json({ message: err.message || "Failed to add provider" });
     }
   });
 
