@@ -1,0 +1,141 @@
+IMPORTANT: Read this entire prompt before making any changes.
+
+We are now activating the ClinIQ Suite billing integration using Stripe.
+
+Stripe price IDs are finalized:
+
+- STRIPE_SUITE_PRICE_ID = price_1TKR6NKbgudErHaMQoNserm1
+- STRIPE_PROVIDER_SEAT_PRICE_ID = price_1TKR6NKbgudErHaMgd2q3k1p
+
+GOAL:
+Wire these Stripe price IDs into the existing provider seat logic so that:
+- Suite subscriptions are recognized
+- Provider seat purchases work
+- The add-provider flow becomes fully functional
+
+Do NOT refactor working logic. Only connect and finalize what already exists.
+
+--------------------------------------------------
+STEP 1: ENVIRONMENT VARIABLES
+--------------------------------------------------
+
+Add and use:
+
+STRIPE_SUITE_PRICE_ID=price_1TKR6NKbgudErHaMQoNserm1
+STRIPE_PROVIDER_SEAT_PRICE_ID=price_1TKR6NKbgudErHaMgd2q3k1p
+
+Ensure they are accessible in all Stripe-related logic.
+
+--------------------------------------------------
+STEP 2: ACTIVATE PROVIDER SEAT BILLING FLOW
+--------------------------------------------------
+
+Update the existing confirm-add route so that:
+
+When a clinic needs an additional provider seat:
+1. Retrieve the clinic’s Stripe subscription
+2. Find the subscription item matching STRIPE_PROVIDER_SEAT_PRICE_ID
+
+If it exists:
+- increment quantity by 1
+
+If it does NOT exist:
+- create a new subscription item with:
+  - price = STRIPE_PROVIDER_SEAT_PRICE_ID
+  - quantity = 1
+
+Use Stripe idempotency key:
+"provider-seat-{clinicId}-{newSeatCount}"
+
+If Stripe call fails:
+- return error
+- DO NOT create provider
+
+If Stripe call succeeds:
+- update clinic.extra_provider_seats = +1
+- update clinic.max_providers accordingly
+- create provider
+- return success
+
+--------------------------------------------------
+STEP 3: ENSURE SUITE PLAN IS RECOGNIZED
+--------------------------------------------------
+
+When a user has a subscription containing STRIPE_SUITE_PRICE_ID:
+
+Set clinic state:
+- subscription_plan = "suite"
+- base_provider_limit = 2
+- max_providers = 2 + extra_provider_seats
+
+Do NOT change any patient or encounter data.
+
+--------------------------------------------------
+STEP 4: HANDLE SOLO VS SUITE CORRECTLY
+--------------------------------------------------
+
+Solo:
+- max_providers = 1
+- block adding second provider
+- return upgrade_required = true
+
+Suite:
+- allow up to 2 providers without billing
+- require paid seat beyond 2
+
+--------------------------------------------------
+STEP 5: ADD SAFETY CHECKS
+--------------------------------------------------
+
+Ensure:
+- Only clinic admin can add providers
+- Cannot exceed allowed provider count without billing
+- Stripe must succeed before provider creation
+- No duplicate providers for same email (if email exists)
+
+--------------------------------------------------
+STEP 6: TESTING REQUIREMENTS
+--------------------------------------------------
+
+Verify:
+
+1. Suite clinic with 2 providers:
+   - can add provider without billing
+
+2. Suite clinic adding 3rd provider:
+   - returns confirmation_required = true
+
+3. Confirm add:
+   - Stripe quantity increases
+   - provider is created
+   - max_providers increases
+
+4. Stripe failure:
+   - provider NOT created
+
+5. Solo clinic:
+   - blocked at 1 provider
+   - returns upgrade_required
+
+6. Existing app functionality remains unchanged:
+   - login
+   - patients
+   - labs
+   - transcription
+   - SOAP
+   - reports
+
+--------------------------------------------------
+STEP 7: DELIVERABLES
+--------------------------------------------------
+
+Provide:
+- files changed
+- confirmation that Stripe IDs are wired correctly
+- how subscription items are located and updated
+- confirmation that provider seat billing works end-to-end
+- any remaining gaps
+
+Do NOT make broad refactors.
+Do NOT break existing functionality.
+Only complete the Stripe integration and activate the provider seat system.
