@@ -1180,6 +1180,31 @@ ${aiRecommendations}`;
     }
   });
 
+  app.patch("/api/patients/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid patient ID" });
+      const { firstName, lastName, email, dateOfBirth, phone } = req.body as {
+        firstName?: string; lastName?: string; email?: string;
+        dateOfBirth?: string; phone?: string;
+      };
+      const updates: Record<string, unknown> = {};
+      if (firstName !== undefined) updates.firstName = firstName.trim();
+      if (lastName !== undefined) updates.lastName = lastName.trim();
+      if (email !== undefined) updates.email = email.trim().toLowerCase() || null;
+      if (dateOfBirth !== undefined) updates.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+      if (phone !== undefined) updates.phone = phone.trim() || null;
+      if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No fields to update" });
+      const updated = await storage.updatePatient(id, updates as any, clinicianId);
+      if (!updated) return res.status(404).json({ error: "Patient not found" });
+      res.json(updated);
+    } catch (error) {
+      console.error("Error updating patient:", error);
+      res.status(500).json({ error: "Failed to update patient" });
+    }
+  });
+
   app.get("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
