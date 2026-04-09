@@ -1,0 +1,67 @@
+This is exactly the clarity I needed — thank you.
+
+I want to confirm the target architecture before implementation.
+
+## Core Decision
+
+"Generate SOAP" should become the **single source of truth pipeline**, not just a final step.
+
+The SOAP quality should NOT depend on whether the clinician manually ran Normalize, Extract Facts, or Match Patterns.
+
+## Required change
+
+Please refactor the system so that:
+
+When "Generate SOAP" is clicked, the server ALWAYS runs this pipeline in order:
+
+1. Normalize + diarize transcript (store result)
+2. Run medication detection ONCE (shared state)
+3. Run extraction (facts, symptoms, plan)
+4. Run pattern matching (if labs exist)
+5. Generate SOAP using all of the above
+
+## Critical corrections
+
+1. Remove dependency on prior manual steps
+
+   * Do not rely on previously stored clinicalExtraction or patternMatch
+   * Always generate fresh context during SOAP generation
+
+2. Unify medication detection
+
+   * The SOAP pipeline and Transcript tab must use the SAME medication detection result
+   * Do NOT run two independent detections
+   * If clinician confirms or saves an alias, it must affect SOAP generation
+
+3. Fix transcript labeling
+
+   * If normalized → label as "TRANSCRIPT (normalized)"
+   * If raw → label as "TRANSCRIPT (raw — not normalized)"
+
+4. Remove frontend blocking behavior
+
+   * Do not block Evidence or Pattern Matching if Normalize wasn’t manually run
+   * The server already supports fallback behavior
+
+## UI expectations
+
+* "Generate SOAP" becomes the primary action
+* Pipeline buttons (Normalize, Extract, Match) become optional review tools
+* The system should feel automatic, not step-driven
+
+## Goal
+
+The clinician should:
+
+* record or upload encounter
+* click "Generate SOAP"
+* receive a complete, high-quality note with:
+
+  * normalized transcript
+  * medications detected and cleaned
+  * facts extracted
+  * patterns matched (if applicable)
+
+No manual pipeline steps required.
+
+Please confirm this design before implementing changes.

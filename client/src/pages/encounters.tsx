@@ -1179,6 +1179,8 @@ function EncounterEditor({
     },
     onSuccess: (data) => {
       setSoap(data.soapNote);
+      if (data.diarizedTranscript?.length) setDiarizedTranscript(data.diarizedTranscript);
+      if (data.clinicalExtraction) setClinicalExtraction(data.clinicalExtraction);
       invalidate();
       setActiveTab("soap");
       if (data.medicationMatches?.length) {
@@ -1232,10 +1234,10 @@ function EncounterEditor({
 
       if (soapResult.status === "fulfilled") {
         setSoap(soapResult.value.soapNote);
+        if (soapResult.value.diarizedTranscript?.length) setDiarizedTranscript(soapResult.value.diarizedTranscript);
+        if (soapResult.value.clinicalExtraction) setClinicalExtraction(soapResult.value.clinicalExtraction);
+        if (soapResult.value.medicationMatches?.length) setMedMatches(soapResult.value.medicationMatches);
         setActiveTab("soap");
-        if (soapResult.value.medicationMatches?.length) {
-          setMedMatches(soapResult.value.medicationMatches);
-        }
       } else {
         toast({ variant: "destructive", title: "SOAP generation failed", description: (soapResult.reason as any)?.message });
       }
@@ -1406,7 +1408,7 @@ function EncounterEditor({
   const runMatchPatterns = async () => {
     if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running pattern matching." }); return; }
     if (!diarizedTranscript?.length && !transcription.trim()) {
-      toast({ variant: "destructive", title: "Normalize first", description: "Run at least Stage 2 (Normalize) before pattern matching." }); return;
+      toast({ variant: "destructive", title: "No transcript", description: "Add a transcript before running pattern matching." }); return;
     }
     setPipelineLoading("matching");
     try {
@@ -1429,7 +1431,7 @@ function EncounterEditor({
 
   const runEvidence = async () => {
     if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running evidence lookup." }); return; }
-    if (!clinicalExtraction) { toast({ variant: "destructive", title: "Extract first", description: "Run clinical extraction (Stage 3) before evidence lookup." }); return; }
+    if (!transcription.trim() && !diarizedTranscript?.length) { toast({ variant: "destructive", title: "No transcript", description: "Add a transcript before running evidence lookup." }); return; }
     setPipelineLoading("evidence");
     try {
       const res = await apiRequest("POST", `/api/encounters/${savedId}/evidence`, {});
