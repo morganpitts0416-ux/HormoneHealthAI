@@ -1272,6 +1272,73 @@ export class DbStorage implements IStorage {
 
 export const storage = new DbStorage();
 
+// ─── Clinic seat management ───────────────────────────────────────────────
+/** Update the seat counters on a clinic after a confirmed Stripe seat purchase. */
+export async function updateClinicSeats(
+  clinicId: number,
+  extraProviderSeats: number
+): Promise<void> {
+  const baseProviderLimit = 2; // Suite includes 2 providers; matches SUITE_BASE_PROVIDER_LIMIT in clinic-plan.ts
+  const maxProviders = baseProviderLimit + extraProviderSeats;
+  await db
+    .update(schema.clinics)
+    .set({
+      extraProviderSeats,
+      maxProviders,
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.clinics.id, clinicId));
+}
+
+/** Atomically create a provider row + clinic_membership in one transaction. */
+export async function createProviderWithMembership(opts: {
+  clinicId: number;
+  userId?: number | null;
+  displayName: string;
+  credentials?: string | null;
+  specialty?: string | null;
+  npi?: string | null;
+  email?: string | null; // for membership / future invite
+  role?: string;
+}): Promise<{ providerId: number }> {
+  const [provider] = await db
+    .insert(schema.providers)
+    .values({
+      clinicId: opts.clinicId,
+      userId: opts.userId ?? null,
+      displayName: opts.displayName,
+      credentials: opts.credentials ?? null,
+      specialty: opts.specialty ?? null,
+      npi: opts.npi ?? null,
+      isActive: true,
+    })
+    .returning();
+
+  // Membership row — only if there is an associated user
+  if (opts.userId) {
+    const existing = await db
+      .select({ id: schema.clinicMemberships.id })
+      .from(schema.clinicMemberships)
+      .where(
+        and(
+          eq(schema.clinicMemberships.clinicId, opts.clinicId),
+          eq(schema.clinicMemberships.userId, opts.userId)
+        )
+      );
+    if (existing.length === 0) {
+      await db.insert(schema.clinicMemberships).values({
+        clinicId: opts.clinicId,
+        userId: opts.userId,
+        role: opts.role ?? "provider",
+        isActive: true,
+        isPrimaryClinic: true,
+      });
+    }
+  }
+
+  return { providerId: provider.id };
+}
+
 // ─── Multi-clinic bootstrap ────────────────────────────────────────────────
 // Called once immediately after a new user is created during registration.
 // Creates the clinic, membership, and provider records so every account

@@ -1,0 +1,336 @@
+IMPORTANT: Read this entire prompt before making code changes.
+
+We are implementing the ClinIQ Suite provider-add flow using a confirmation-first paid seat model.
+
+BUSINESS RULES
+
+Plan structure:
+- Solo plan = 1 provider max
+- ClinIQ Suite = $249/month and includes 2 providers total
+- Each additional provider beyond 2 costs $79/month
+
+We want this exact behavior:
+1. A clinic admin clicks "Add Provider"
+2. The system checks the current active provider count for that clinic
+3. If the clinic is still under its allowed provider limit, proceed normally
+4. If adding a provider would require another paid seat, show a confirmation message:
+   "Adding a provider will increase your monthly cost by $79/month."
+5. Only after the user confirms should we update Stripe and then create the provider
+6. If Stripe update fails, DO NOT create the provider
+7. Do not break any current working functionality
+
+This must be implemented safely and in a backward-compatible way.
+
+--------------------------------------------------
+CORE ARCHITECTURE REQUIREMENTS
+--------------------------------------------------
+
+Current architecture assumptions:
+- Solo and Clinic/Suite share the same underlying clinic/provider model
+- clinics.max_providers already exists
+- new solo users get a clinic and provider automatically
+- upgrading from Solo to Suite must never remap patient or encounter data
+- existing internal free accounts must continue to work
+
+Do NOT create a separate data model.
+Do NOT move or duplicate any patient data.
+Do NOT broadly refactor unrelated routes.
+
+--------------------------------------------------
+STEP 1: AUDIT CURRENT STRIPE + PLAN STATE
+--------------------------------------------------
+
+Before making changes, inspect and report:
+- current Stripe checkout/subscription flow
+- current webhook handlers
+- where subscription_plan is stored
+- how max_providers is currently determined
+- whether there is already any provider invite/add route
+- whether providers are soft-deleted or only active/inactive
+
+Then provide a short implementation plan before coding.
+
+--------------------------------------------------
+STEP 2: DEFINE PROVIDER SEAT LOGIC
+--------------------------------------------------
+
+Implement these rules:
+
+Solo:
+- max_providers = 1
+- cannot purchase extra provider seats through the add-provider flow
+
+Suite:
+- includes 2 providers in base plan
+- every provider beyond 2 requires +1 paid seat at $79/month
+
+Seat formula:
+- included providers for suite = 2
+- extra_provider_seats = max(0, active_provider_count - 2)
+- required max providers for suite = 2 + purchased extra seats
+
+If the clinic already has fields for this, use them safely.
+If not, add the smallest safe additive fields needed, such as:
+- base_provider_limit
+- extra_provider_seats
+
+Do NOT remove existing max_providers unless there is a compelling reason.
+Backward compatibility is required.
+
+--------------------------------------------------
+STEP 3: CREATE BACKEND HELPERS
+--------------------------------------------------
+
+Create safe backend helpers with clear names such as:
+
+1. getClinicPlanState(clinicId)
+Returns:
+- subscription_plan
+- max_providers
+- base_provider_limit
+- extra_provider_seats
+- active_provider_count
+- can_add_provider_without_billing
+- next_provider_requires_paid_seat
+
+2. getActiveProviderCount(clinicId)
+Only count active providers
+
+3. canAddProviderWithoutBilling(clinicId)
+Returns true if current active provider count < max_providers
+
+4. calculateRequiredSeatQuantity(activeProviderCount)
+For Suite:
+- if provider count <= 2, quantity = 0
+- if provider count > 2, quantity = provider count - 2
+
+All helpers must be null-safe and must not break legacy/internal accounts.
+
+--------------------------------------------------
+STEP 4: PROVIDER ADD FLOW
+--------------------------------------------------
+
+Implement or update the provider-add flow safely.
+
+Desired logic:
+
+A. Clinic admin submits add-provider request
+
+B. Backend checks:
+- clinic exists
+- requesting user is authorized
+- clinic plan is Suite or Solo
+- current active provider count
+- current max allowed providers
+
+C. If clinic is Solo and already has 1 provider:
+- block action
+- return a response that upgrade is required
+- do NOT create provider
+
+D. If clinic is Suite and still has remaining allowed seats:
+- create provider normally
+- do NOT touch Stripe
+
+E. If clinic is Suite and adding a provider would exceed current max_providers:
+- do NOT create provider yet
+- return a structured response indicating:
+  - confirmation_required = true
+  - billing_change_type = "add_provider_seat"
+  - monthly_price_increase = 79
+  - message = "Adding a provider will increase your monthly cost by $79/month."
+
+Do NOT rely on frontend only. This logic must exist in backend.
+
+--------------------------------------------------
+STEP 5: CONFIRMATION + BILLING EXECUTION FLOW
+--------------------------------------------------
+
+Add a second explicit action for confirmed paid seat purchase.
+
+Example conceptual flow:
+- POST /api/clinics/:id/providers/check
+- POST /api/clinics/:id/providers/confirm-add
+
+Or another clean route structure if the app already has add-provider endpoints.
+
+The confirmed flow must do this IN ORDER:
+
+1. Re-check current clinic/provider counts server-side
+2. Verify user is authorized
+3. Verify confirmation is still required and seat count is still accurate
+4. Update Stripe subscription to increase provider seat quantity by 1
+5. Only if Stripe update succeeds:
+   - increase clinic.extra_provider_seats / max_providers accordingly
+   - create the new provider
+   - create related clinic_membership if applicable
+6. Return success response with updated provider count and seat limit
+
+Critical rule:
+- If Stripe update fails, the provider must NOT be created
+- No partial success states
+- No unpaid providers
+
+--------------------------------------------------
+STEP 6: STRIPE IMPLEMENTATION DETAILS
+--------------------------------------------------
+
+We are using a quantity-based provider seat model.
+
+Expected Stripe structure:
+- Suite base subscription price = $249/month
+- Additional provider seat price = $79/month, quantity adjustable
+
+Implement logic so the backend can:
+- identify the Suite subscription
+- identify the provider-seat subscription item
+- increment the quantity by 1 when a confirmed seat purchase happens
+
+If webhook-driven synchronization already exists, keep it.
+If webhook support is needed, implement the smallest safe addition.
+
+The system must persist the resulting provider limit back to the clinic record after billing succeeds.
+
+Also handle idempotency safely:
+- avoid double-billing if the same confirmation request is retried
+- use Stripe idempotency keys or equivalent safe protections where appropriate
+
+--------------------------------------------------
+STEP 7: DATABASE / STATE UPDATES
+--------------------------------------------------
+
+After successful Stripe update:
+
+Update clinic state so the app has a reliable internal record of:
+- subscription_plan
+- max_providers
+- extra_provider_seats
+- updated_at
+
+If the provider row is created only after billing succeeds, do both in a safe sequence.
+Prefer a transaction around internal DB updates where possible.
+
+If Stripe succeeds but DB update fails, log clearly and provide a repair strategy.
+Do not leave hidden inconsistent state without reporting it.
+
+--------------------------------------------------
+STEP 8: AUTHORIZATION / ROLES
+--------------------------------------------------
+
+Only clinic admins should be able to trigger paid provider-seat purchases.
+
+Staff users must not be allowed to:
+- purchase provider seats
+- add providers
+- change billing-related seat counts
+
+If provider role permissions are distinct from admin, enforce appropriately.
+
+--------------------------------------------------
+STEP 9: FRONTEND RESPONSE CONTRACT
+--------------------------------------------------
+
+Without overhauling the frontend, prepare backend responses so the frontend can support this UX:
+
+Case 1: provider can be added without billing
+Response should indicate normal success path
+
+Case 2: provider requires additional paid seat
+Response should include:
+- confirmation_required: true
+- monthly_price_increase: 79
+- message: "Adding a provider will increase your monthly cost by $79/month."
+- current_provider_count
+- max_providers
+- projected_provider_count
+- projected_new_monthly_total if available
+
+Case 3: Solo plan at provider limit
+Response should indicate:
+- upgrade_required: true
+- message explaining Solo supports only 1 provider and Suite is required
+
+Keep frontend changes minimal and safe.
+Hide unfinished UI rather than exposing broken behavior.
+
+--------------------------------------------------
+STEP 10: INTERNAL / FREE ACCOUNTS
+--------------------------------------------------
+
+Existing internal free accounts must continue to work.
+
+If an internal free account is not tied to paid Stripe billing:
+- do not break access
+- do not force billing updates
+- do not accidentally trigger paid seat logic
+
+Handle free/internal clinics safely using current free account logic or the safest existing mechanism.
+
+Document exactly how internal accounts are treated.
+
+--------------------------------------------------
+STEP 11: FAILURE SAFETY
+--------------------------------------------------
+
+We must avoid partial failures.
+
+Rules:
+- never create a paid extra provider before Stripe succeeds
+- never bill for an extra seat and silently fail provider creation without logging and remediation path
+- never allow duplicate provider creation due to retries/double-clicks
+- ensure the same email cannot be added twice as an active provider in the same clinic unless explicitly intended
+
+Add server-side validation for:
+- duplicate provider email in clinic
+- invalid role
+- inactive clinic
+- missing subscription linkage for Suite billing
+
+--------------------------------------------------
+STEP 12: TESTING
+--------------------------------------------------
+
+After implementation, verify:
+
+1. Solo clinic with 1 provider:
+- add provider attempt is blocked
+- upgrade-required response is returned
+
+2. Suite clinic with 1 or 2 providers:
+- provider can be added up to included limit without extra billing
+
+3. Suite clinic already at included limit:
+- add provider returns confirmation_required = true
+
+4. Confirming the paid seat:
+- Stripe quantity increases by 1
+- clinic seat count updates
+- provider gets created
+- no duplicate provider is created on retry
+
+5. If Stripe fails:
+- provider is not created
+- useful error is returned
+
+6. Existing login, patient, lab, transcription, SOAP, evidence, summary, and subscription flows still work
+
+7. Internal free accounts still work without forced billing logic
+
+--------------------------------------------------
+STEP 13: DELIVERABLES
+--------------------------------------------------
+
+When finished, provide:
+1. files changed
+2. any schema changes
+3. new/updated routes
+4. exact add-provider flow
+5. exact confirmation-required response contract
+6. how Stripe quantity is updated
+7. how idempotency is handled
+8. how internal/free accounts are protected
+9. anything intentionally deferred
+
+Do not make broad refactors.
+Do not disturb working solo functionality.
+Make the smallest safe changes needed to implement confirmation-first paid provider seat purchasing for ClinIQ Suite.

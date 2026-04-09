@@ -1121,8 +1121,14 @@ export const clinics = pgTable("clinics", {
   // Solo plan: maxProviders = 1. Clinic plan: maxProviders = null (unlimited) or a set number.
   // Upgrading Solo → Clinic is a maxProviders change only; no data migration required.
   subscriptionStatus: varchar("subscription_status", { length: 30 }),
-  subscriptionPlan: varchar("subscription_plan", { length: 30 }), // 'solo' | 'clinic' | 'enterprise'
-  maxProviders: integer("max_providers").notNull().default(1), // 1 = Solo, null-override per plan
+  subscriptionPlan: varchar("subscription_plan", { length: 30 }), // 'solo' | 'suite' | 'enterprise'
+  // Seat model:
+  //   maxProviders         = baseProviderLimit + extraProviderSeats  (the authoritative cap)
+  //   baseProviderLimit    = providers included in the plan price (solo=1, suite=2)
+  //   extraProviderSeats   = purchased add-on seats billed at $79/mo each
+  maxProviders: integer("max_providers").notNull().default(1),
+  baseProviderLimit: integer("base_provider_limit").notNull().default(1),
+  extraProviderSeats: integer("extra_provider_seats").notNull().default(0),
   stripeCustomerId: varchar("stripe_customer_id", { length: 100 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 100 }),
   trialEndsAt: timestamp("trial_ends_at"),
