@@ -1002,6 +1002,7 @@ function EncounterEditor({
   const [npLast, setNpLast] = useState("");
   const [npGender, setNpGender] = useState("male");
   const [npDob, setNpDob] = useState("");
+  const [npEmail, setNpEmail] = useState("");
   const [visitDate, setVisitDate] = useState<string>(
     encounter ? format(new Date(encounter.visitDate), "yyyy-MM-dd") : format(new Date(), "yyyy-MM-dd")
   );
@@ -1100,6 +1101,7 @@ function EncounterEditor({
         gender: npGender,
       };
       if (npDob) body.dateOfBirth = new Date(npDob).toISOString();
+      if (npEmail.trim()) body.email = npEmail.trim().toLowerCase();
       const res = await apiRequest("POST", "/api/patients", body);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -1111,7 +1113,7 @@ function EncounterEditor({
       queryClient.invalidateQueries({ queryKey: ["/api/patients/search"] });
       setPatientId(newPatient.id.toString());
       setShowNewPatient(false);
-      setNpFirst(""); setNpLast(""); setNpGender("male"); setNpDob("");
+      setNpFirst(""); setNpLast(""); setNpGender("male"); setNpDob(""); setNpEmail("");
       toast({ title: "Patient added", description: `${newPatient.firstName} ${newPatient.lastName} has been created and selected.` });
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Could not create patient", description: e.message }),
@@ -1645,6 +1647,16 @@ function EncounterEditor({
                         </Select>
                       </div>
                     </div>
+                    <div>
+                      <Label className="text-xs mb-1 block">Email <span className="text-muted-foreground font-normal">(used for portal invite & appointment sync)</span></Label>
+                      <Input
+                        type="email"
+                        value={npEmail}
+                        onChange={e => setNpEmail(e.target.value)}
+                        placeholder="patient@email.com"
+                        data-testid="input-new-patient-email"
+                      />
+                    </div>
                     <div className="flex gap-2 pt-1">
                       <Button
                         type="button"
@@ -1919,7 +1931,7 @@ function EncounterEditor({
                 >
                   {pipelineLoading === "matching"
                     ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Matching…</>
-                    : <><Sparkles className="w-3 h-3 mr-1.5" />4 · Match Patterns</>}
+                    : <><Sparkles className="w-3 h-3 mr-1.5" />Match Patterns</>}
                 </Button>
                 <Button
                   size="sm"
@@ -1930,7 +1942,7 @@ function EncounterEditor({
                 >
                   {soapMutation.isPending
                     ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Generating…</>
-                    : <><ClipboardList className="w-3 h-3 mr-1.5" />5 · Generate SOAP</>}
+                    : <><ClipboardList className="w-3 h-3 mr-1.5" />4 · Generate SOAP</>}
                 </Button>
                 <Button
                   size="sm"
@@ -1941,7 +1953,7 @@ function EncounterEditor({
                 >
                   {pipelineLoading === "evidence"
                     ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Loading…</>
-                    : <><BookOpen className="w-3 h-3 mr-1.5" />6 · Evidence</>}
+                    : <><BookOpen className="w-3 h-3 mr-1.5" />5 · Evidence</>}
                 </Button>
                 <Button
                   size="sm"

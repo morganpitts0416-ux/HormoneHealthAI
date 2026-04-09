@@ -5010,19 +5010,39 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         rawPayload: payload,
       });
 
-      // Auto-link to patient record if we have their email
+      // Auto-link — or auto-create — patient record when we have their email
       if (patientEmail) {
         try {
-          const matches = await storage.getAppointmentsByPatientEmail(patientEmail, clinicianId);
           const allPatients = await storage.getAllPatients(clinicianId);
           const matched = allPatients.find(p => p.email?.toLowerCase() === patientEmail.toLowerCase());
+
           if (matched) {
-            for (const m of matches) {
+            // Existing patient found — link all unlinked appointments for this email
+            const apptsByEmail = await storage.getAppointmentsByPatientEmail(patientEmail, clinicianId);
+            for (const m of apptsByEmail) {
               if (!m.patientId) await storage.matchAppointmentToPatient(m.id, matched.id);
             }
+          } else {
+            // No existing patient — auto-create a minimal profile so the appointment
+            // shows up in the patient portal immediately. The clinician can complete
+            // the profile (DOB, gender, etc.) from the Patient Profiles page.
+            const nameParts = (patientName ?? "Unknown Patient").trim().split(/\s+/);
+            const firstName = nameParts[0] || "Unknown";
+            const lastName = nameParts.slice(1).join(" ") || "Patient";
+            // Guess gender from service type (best effort; clinician can correct)
+            const svcStr = (serviceType ?? "").toLowerCase();
+            const gender = svcStr.includes("women") || svcStr.includes("female") || svcStr.includes("estrogen") ? "female" : "male";
+            const newPatient = await storage.createPatient({
+              clinicianId,
+              firstName,
+              lastName,
+              gender,
+              email: patientEmail.toLowerCase(),
+            });
+            await storage.matchAppointmentToPatient(appt.id, newPatient.id);
           }
         } catch {
-          // non-fatal — appointment is saved, linking is best-effort
+          // non-fatal — appointment is saved even if linking/creation fails
         }
       }
 

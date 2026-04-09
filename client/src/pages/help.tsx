@@ -7,7 +7,7 @@ import {
   ArrowLeft, Search, ChevronRight, FlaskConical, Users, Mic, FileText,
   Heart, Moon, BarChart3, MessageSquare, Settings, ShieldCheck,
   Pill, BookOpen, Star, AlertTriangle, ZoomIn, X,
-  HelpCircle, Video, SlidersHorizontal,
+  HelpCircle, Video, SlidersHorizontal, Link2, CheckCircle2, Info,
 } from "lucide-react";
 
 // ── Screenshot types & lightbox ────────────────────────────────────────────
@@ -127,6 +127,7 @@ const SECTIONS: Section[] = [
   { id: "portal", icon: MessageSquare, label: "Patient Portal & Messaging" },
   { id: "clinic-preferences", icon: SlidersHorizontal, label: "Clinic Preferences" },
   { id: "account", icon: Settings, label: "Account & Staff Management" },
+  { id: "integrations", icon: Link2, label: "Integrations", badge: "Zapier" },
 ];
 
 // ── Section content ────────────────────────────────────────────────────────
@@ -573,6 +574,186 @@ const CONTENT: Record<string, React.ReactNode> = {
       </Guide>
     </div>
   ),
+
+  "integrations": (
+    <div className="space-y-6">
+
+      <Guide title="Zapier Appointment Sync — Overview">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          ClinIQ connects to any scheduling platform that supports Zapier — including Boulevard, Jane App, Acuity Scheduling, Mindbody, and others. When a patient books, reschedules, or cancels an appointment, Zapier fires a webhook to your personal ClinIQ URL and the appointment appears instantly on your Appointments page and in the patient's portal.
+        </p>
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Auto-link to patient profiles" desc="When the appointment email matches a patient in your roster, ClinIQ links the appointment to their profile automatically — no manual matching required." />
+          <Bullet label="Auto-create new profiles" desc="If no match is found and the appointment includes a patient email, ClinIQ creates a minimal patient profile automatically. You can complete the profile (DOB, biological sex, etc.) from the Patient Profiles page." />
+          <Bullet label="Patient portal card" desc="Linked patients see a 'Next Appointment' card on their portal dashboard showing date, time, provider, and service type." />
+          <Bullet label="Three Zaps required" desc="You'll create one Zap each for New Appointment, Updated/Rescheduled, and Cancelled. Each Zap uses the same webhook URL." />
+        </ul>
+      </Guide>
+
+      <Guide title="Step 1 — Get Your Personal Webhook URL">
+        <Steps steps={[
+          "From your dashboard, click the Appointments icon in the top header (calendar icon).",
+          "At the top of the Appointments page, you'll see your personal webhook URL displayed in a code box.",
+          "Click the Copy button to copy it to your clipboard. This URL is unique to your account — do not share it.",
+          "Keep this page open — you'll paste this URL into each Zap you create.",
+        ]} />
+        <div className="rounded-md p-3 mt-3 flex items-start gap-2" style={{ backgroundColor: "#f0f5ea", border: "1px solid #c8dbb8" }}>
+          <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+          <p className="text-xs" style={{ color: "#3d5228" }}>
+            <strong>Important:</strong> Include the patient's email in every Zap. Email is how ClinIQ links appointments to patient profiles and makes the appointment visible in the patient portal.
+          </p>
+        </div>
+      </Guide>
+
+      <Guide title="Step 2 — Create Your 3 Zaps in Zapier">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          You'll set up three separate Zaps — one for each appointment event type. The trigger in each Zap comes from your scheduling platform; the action is always <strong>Webhooks by Zapier → POST</strong>.
+        </p>
+        <div className="space-y-3">
+          {[
+            { num: 1, event: "New Appointment", field: "event", value: "appointment.created", color: "#2e3a20" },
+            { num: 2, event: "Updated / Rescheduled", field: "event", value: "appointment.updated", color: "#5a7040" },
+            { num: 3, event: "Cancelled Appointment", field: "event", value: "appointment.cancelled", color: "#9aaa84" },
+          ].map(z => (
+            <div key={z.num} className="rounded-md border p-3" style={{ backgroundColor: "#fdfaf7", borderColor: "#d4c9b5" }}>
+              <div className="flex items-center gap-2 mb-1.5">
+                <span className="w-5 h-5 rounded-full text-xs font-bold flex items-center justify-center text-white flex-shrink-0" style={{ backgroundColor: z.color }}>{z.num}</span>
+                <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Zap: {z.event}</span>
+              </div>
+              <ul className="text-xs space-y-0.5 pl-7" style={{ color: "#5a6a4a" }}>
+                <li><strong>Trigger:</strong> Your scheduling platform → "{z.event}" event</li>
+                <li><strong>Action:</strong> Webhooks by Zapier → POST</li>
+                <li><strong>URL:</strong> Paste your ClinIQ webhook URL</li>
+                <li><strong>Required Data field:</strong> <code className="px-1 rounded text-[10px]" style={{ backgroundColor: "#eee" }}>{z.field}</code> = <code className="px-1 rounded text-[10px]" style={{ backgroundColor: "#eee" }}>{z.value}</code></li>
+              </ul>
+            </div>
+          ))}
+        </div>
+      </Guide>
+
+      <Guide title="Step 3 — Configure the Webhooks by Zapier Action">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          After selecting <strong>Webhooks by Zapier → POST</strong> as your action, Zapier will show several configuration fields. Here is exactly what to set for each one:
+        </p>
+        <div className="space-y-2">
+          {[
+            {
+              field: "URL",
+              value: "Paste your ClinIQ webhook URL (copied from the Appointments page).",
+              required: true,
+            },
+            {
+              field: "Payload Type",
+              value: "Select Form — this sends data as standard key-value pairs that ClinIQ maps automatically. Do not choose JSON unless you are sending hand-crafted raw data.",
+              required: true,
+            },
+            {
+              field: "Data",
+              value: "This is where the appointment fields from your scheduling platform flow in. You must add at minimum one manual field: event = appointment.created (or .updated or .cancelled depending on the Zap). All other fields — patient name, email, start time, service, etc. — are pulled in automatically from the previous Zapier step (your scheduling platform trigger). Leave everything else as-is and Zapier will include all available fields.",
+              required: true,
+            },
+            {
+              field: "Wrap Request in Array",
+              value: "No — leave this off.",
+              required: false,
+            },
+            {
+              field: "File",
+              value: "Leave blank — not used.",
+              required: false,
+            },
+            {
+              field: "Unflatten",
+              value: "Yes — leave this on (default). This helps Zapier correctly structure any nested data fields from your platform.",
+              required: false,
+            },
+            {
+              field: "Basic Auth",
+              value: "Leave blank — ClinIQ uses your personal webhook URL for authentication. No username or password is needed.",
+              required: false,
+            },
+            {
+              field: "Headers",
+              value: "Leave blank — no custom headers required.",
+              required: false,
+            },
+          ].map((row, i) => (
+            <div key={i} className="rounded-md border p-3 flex items-start gap-3" style={{ borderColor: "#d4c9b5", backgroundColor: "#fdfaf7" }}>
+              <div className="flex items-center gap-1.5 flex-shrink-0 w-36">
+                {row.required
+                  ? <CheckCircle2 className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                  : <span className="w-3.5 h-3.5 flex-shrink-0" />
+                }
+                <span className="text-xs font-semibold" style={{ color: "#1c2414" }}>{row.field}</span>
+              </div>
+              <p className="text-xs" style={{ color: "#5a6a4a" }}>{row.value}</p>
+            </div>
+          ))}
+        </div>
+        <p className="text-xs mt-3" style={{ color: "#9aaa84" }}>
+          Fields marked with a green checkmark are required. All others can be left at their defaults.
+        </p>
+      </Guide>
+
+      <Guide title="Fields ClinIQ Maps Automatically">
+        <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+          ClinIQ accepts multiple naming conventions so it works regardless of which platform you use. You do not need to rename or reformat any fields from your scheduling platform — just include them and ClinIQ handles the mapping.
+        </p>
+        <div className="rounded-md overflow-hidden border" style={{ borderColor: "#d4c9b5" }}>
+          <table className="w-full text-xs">
+            <thead>
+              <tr style={{ backgroundColor: "#e8ddd0" }}>
+                <th className="text-left px-3 py-2 font-semibold" style={{ color: "#1c2414" }}>ClinIQ Field</th>
+                <th className="text-left px-3 py-2 font-semibold" style={{ color: "#1c2414" }}>Accepted Field Names from Your Platform</th>
+                <th className="text-left px-3 py-2 font-semibold" style={{ color: "#1c2414" }}>Required?</th>
+              </tr>
+            </thead>
+            <tbody>
+              {[
+                { field: "Appointment start", accepts: "start_time, start_at, startTime, appointment_start, date", required: "Yes" },
+                { field: "Patient email", accepts: "patient_email, client_email, customer_email, email", required: "Strongly recommended" },
+                { field: "Patient name", accepts: "patient_name, client_name, customer_name, name", required: "Yes" },
+                { field: "Event type", accepts: "event, status", required: "Yes — must be appointment.created / .updated / .cancelled" },
+                { field: "Appointment end", accepts: "end_time, end_at, endTime, appointment_end", required: "No" },
+                { field: "Service / visit type", accepts: "service, service_name, service_type, visit_type, appointment_type", required: "No (used to guess gender for new profiles)" },
+                { field: "Staff / provider", accepts: "staff_name, provider, provider_name, staff, employee", required: "No" },
+                { field: "Location", accepts: "location, location_name, site, clinic", required: "No" },
+                { field: "Duration (minutes)", accepts: "duration_minutes, duration, duration_mins", required: "No" },
+                { field: "Patient phone", accepts: "patient_phone, client_phone, customer_phone, phone", required: "No" },
+              ].map((row, i) => (
+                <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#fdfaf7" : "#fff" }}>
+                  <td className="px-3 py-2 font-medium" style={{ color: "#2e3a20" }}>{row.field}</td>
+                  <td className="px-3 py-2 font-mono" style={{ color: "#5a6a4a", fontSize: 10 }}>{row.accepts}</td>
+                  <td className="px-3 py-2" style={{ color: row.required === "Yes" ? "#2e3a20" : "#9aaa84", fontWeight: row.required === "Yes" ? 600 : 400 }}>{row.required}</td>
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
+      </Guide>
+
+      <Guide title="New Patients — What Happens Automatically">
+        <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+          <Bullet label="Email match found" desc="If the appointment email matches an existing patient in your roster, ClinIQ links the appointment to their profile. The appointment appears on their portal dashboard immediately." />
+          <Bullet label="No email match — new patient" desc="If no existing patient has that email, ClinIQ automatically creates a minimal patient profile using the name and email from the appointment. The patient's biological sex defaults to Male unless the service type contains words like 'women' or 'female' — you can correct this from the Patient Profiles page." />
+          <Bullet label="No email sent" desc="Auto-created patient profiles are not sent a portal invite automatically. You must go to Patient Profiles, select the patient, and send a portal invite once their profile is ready." />
+          <Bullet label="Completing the profile" desc="Auto-created profiles contain name and email only. Visit Patient Profiles to add date of birth, biological sex, and any other details before running a lab interpretation." />
+        </ul>
+      </Guide>
+
+      <Guide title="Troubleshooting">
+        <Steps steps={[
+          "Appointments not appearing: Make sure the Zap is turned on in Zapier and the webhook URL is pasted exactly as copied (no extra spaces). Use Zapier's 'Test' feature to fire a sample and confirm ClinIQ receives it.",
+          "Appointment not linked to a patient: The patient email in your scheduling platform must exactly match the email on the patient's ClinIQ profile (case-insensitive). Check both and correct any typos.",
+          "Wrong gender on auto-created profile: ClinIQ defaults to Male when the service type doesn't contain a gender hint. Go to Patient Profiles, select the patient, and update the biological sex.",
+          "Duplicate patient profiles: If the same patient was added manually with a different email, you'll have two profiles. Merge by updating the email on one to match the other, then re-save.",
+          "Cancelled appointments still showing: Confirm your Cancelled Zap includes the field event: appointment.cancelled exactly. Missing or misspelled event values cause ClinIQ to treat the record as a new booking.",
+        ]} />
+      </Guide>
+
+    </div>
+  ),
+
 };
 
 // ── Main component ─────────────────────────────────────────────────────────

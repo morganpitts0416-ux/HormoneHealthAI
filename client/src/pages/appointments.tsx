@@ -99,9 +99,9 @@ export default function AppointmentsPage() {
           <div className="flex items-start gap-2.5">
             <Link2 className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#5a7040" }} />
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>Boulevard + Zapier Setup</p>
+              <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>Zapier Appointment Sync</p>
               <p className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>
-                Paste this URL as the Webhook action in each of your three Boulevard Zaps to sync appointments automatically.
+                Paste this personal webhook URL as the action in each of your Zaps. ClinIQ accepts appointments from any scheduling platform that supports Zapier (Boulevard, Jane App, Mindbody, Acuity, etc.).
               </p>
             </div>
           </div>
@@ -129,14 +129,14 @@ export default function AppointmentsPage() {
               <div key={i} className="flex items-center gap-2">
                 <span className="text-xs font-medium w-5 h-5 rounded-full flex items-center justify-center text-white flex-shrink-0" style={{ backgroundColor: "#5a7040" }}>{i + 1}</span>
                 <span className="text-xs" style={{ color: "#1c2414" }}>
-                  Boulevard <span className="font-medium">"{z.label}"</span> trigger → Webhook POST to the URL above. Include field <code className="bg-white px-1 rounded text-[10px]">{z.field}: "{z.value}"</code>
+                  Your platform <span className="font-medium">"{z.label}"</span> trigger → Webhooks by Zapier → POST to the URL above. Add field <code className="bg-white px-1 rounded text-[10px]">{z.field}: "{z.value}"</code>
                 </span>
               </div>
             ))}
             <div className="flex items-start gap-1.5 pt-1">
               <Info className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: "#9aaa84" }} />
               <p className="text-[10px]" style={{ color: "#9aaa84" }}>
-                Boulevard field names Zapier provides (patient name, email, service, start time, etc.) are mapped automatically — no custom configuration needed.
+                ClinIQ maps patient name, email, start time, and service type automatically. For full setup instructions including Zapier field-by-field configuration, visit the Help Center → Integrations.
               </p>
             </div>
           </div>
