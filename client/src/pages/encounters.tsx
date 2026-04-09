@@ -167,6 +167,105 @@ const guidelineClassBadge: Record<string, string> = {
   "III": "bg-red-50 border-red-200 text-red-800",
 };
 
+// ── Resolvable review item — lets clinician save a medication alias from a flagged term ──
+function ResolvableReviewItem({ text, icon }: { text: string; icon: ReactElement }) {
+  const { toast } = useToast();
+  const [open, setOpen] = useState(false);
+  const [saved, setSaved] = useState(false);
+  const [spokenAs, setSpokenAs] = useState(() => {
+    const m = text.match(/['"]([^'"]{2,50})['"]/);
+    return m ? m[1] : "";
+  });
+  const [correctName, setCorrectName] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  const handleSave = async () => {
+    if (!correctName.trim() || !spokenAs.trim()) return;
+    setSaving(true);
+    try {
+      await apiRequest("POST", "/api/medication-dictionary/entry", {
+        genericName: correctName.trim().toLowerCase(),
+        brandNames: [],
+        commonSpokenVariants: [spokenAs.trim().toLowerCase()],
+        commonMisspellings: [],
+        drugClass: "",
+      });
+      setSaved(true);
+      setOpen(false);
+      toast({ title: "Alias saved", description: `"${spokenAs}" will now resolve to ${correctName} in future transcriptions.` });
+    } catch (e: any) {
+      toast({ variant: "destructive", title: "Failed to save alias", description: e.message });
+    } finally {
+      setSaving(false);
+    }
+  };
+
+  if (saved) {
+    return (
+      <li className="text-xs flex items-start gap-1.5">
+        <CheckCircle2 className="w-3 h-3 flex-shrink-0 mt-0.5 text-emerald-500" />
+        <span className="line-through text-muted-foreground">{text}</span>
+        <span className="text-emerald-700 ml-1 no-underline">alias saved</span>
+      </li>
+    );
+  }
+
+  return (
+    <li className="text-xs text-amber-900 space-y-2">
+      <div className="flex items-start gap-1.5">
+        <span className="flex-shrink-0 mt-0.5">{icon}</span>
+        <span className="flex-1">{text}</span>
+        <button
+          className="text-[10px] font-medium text-amber-700 underline underline-offset-2 hover:text-amber-900 flex-shrink-0 ml-2 whitespace-nowrap"
+          onClick={() => setOpen(v => !v)}
+          data-testid="button-toggle-alias-form"
+        >
+          {open ? "Cancel" : "Save alias"}
+        </button>
+      </div>
+      {open && (
+        <div className="ml-4 rounded-md border border-amber-200 bg-card p-3 space-y-2.5">
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700">Teach the system — save as medication alias</p>
+          <div className="grid grid-cols-2 gap-2">
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">As spoken / heard</label>
+              <Input
+                value={spokenAs}
+                onChange={e => setSpokenAs(e.target.value)}
+                placeholder="e.g. liz sartan"
+                className="h-7 text-xs"
+                data-testid="input-spoken-as"
+              />
+            </div>
+            <div>
+              <label className="text-[10px] text-muted-foreground block mb-1">Correct medication name</label>
+              <Input
+                value={correctName}
+                onChange={e => setCorrectName(e.target.value)}
+                placeholder="e.g. losartan"
+                className="h-7 text-xs"
+                data-testid="input-correct-medication"
+              />
+            </div>
+          </div>
+          <div className="flex items-center gap-3">
+            <Button
+              size="sm"
+              className="h-7 text-xs"
+              onClick={handleSave}
+              disabled={!spokenAs.trim() || !correctName.trim() || saving}
+              data-testid="button-save-alias"
+            >
+              {saving ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Saving…</> : "Save alias"}
+            </Button>
+            <p className="text-[10px] text-muted-foreground">Auto-corrects in future transcriptions.</p>
+          </div>
+        </div>
+      )}
+    </li>
+  );
+}
+
 // ── Evidence card (used in both popover and the Evidence tab) ─────────────────
 function EvidenceCard({ sug }: { sug: EvidenceSuggestion }) {
   const strengthColors: Record<string, string> = {
@@ -2590,11 +2689,13 @@ function EncounterEditor({
                   {reviewFlags.length > 0 && (
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1.5">Flagged for Review</p>
-                      <ul className="space-y-1">
+                      <ul className="space-y-2">
                         {reviewFlags.map((f, i) => (
-                          <li key={i} className="text-xs text-amber-900 flex items-start gap-1.5">
-                            <AlertCircle className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-600" />{f}
-                          </li>
+                          <ResolvableReviewItem
+                            key={i}
+                            text={f}
+                            icon={<AlertCircle className="w-3 h-3 text-amber-600" />}
+                          />
                         ))}
                       </ul>
                     </div>
@@ -2602,11 +2703,13 @@ function EncounterEditor({
                   {uncertainItems.length > 0 && (
                     <div>
                       <p className="text-[10px] font-semibold uppercase tracking-wide text-amber-700 mb-1.5">Uncertain / Unresolved</p>
-                      <ul className="space-y-1">
+                      <ul className="space-y-2">
                         {uncertainItems.map((u, i) => (
-                          <li key={i} className="text-xs text-amber-900 flex items-start gap-1.5">
-                            <Circle className="w-3 h-3 flex-shrink-0 mt-0.5 text-amber-500" />{u}
-                          </li>
+                          <ResolvableReviewItem
+                            key={i}
+                            text={u}
+                            icon={<Circle className="w-3 h-3 text-amber-500" />}
+                          />
                         ))}
                       </ul>
                     </div>
