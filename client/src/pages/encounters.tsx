@@ -2727,8 +2727,49 @@ function EncounterEditor({
               const addToPlan = (text: string, key: string) => {
                 setSoap(prev => {
                   const note = (prev as any).fullNote ?? "";
-                  const appended = note.trimEnd() + `\n\n[Clinician Added to Plan]\n${text}`;
-                  return { ...prev, fullNote: appended };
+
+                  // ── 1. Format the raw suggestion text into clean SOAP Plan language ──
+                  let cleanText = text.trim();
+                  const hasProviderRec = /PROVIDER RECOMMENDATION:/i.test(cleanText);
+                  const hasPatientEdu = /PATIENT EDUCATION:/i.test(cleanText);
+
+                  if (hasProviderRec || hasPatientEdu) {
+                    const providerPart = cleanText.match(/PROVIDER RECOMMENDATION:\s*([\s\S]*?)(?=PATIENT EDUCATION:|$)/i)?.[1]?.trim() ?? "";
+                    const patientEduPart = cleanText.match(/PATIENT EDUCATION:\s*([\s\S]*?)$/i)?.[1]?.trim() ?? "";
+                    // Take only the first sentence of each section
+                    const providerSentence = providerPart.split(/\.\s+/)[0]?.trim() ?? "";
+                    if (providerSentence && patientEduPart) {
+                      cleanText = `${providerSentence}; educated patient on indication, expected benefits, and what to expect.`;
+                    } else if (providerSentence) {
+                      cleanText = providerSentence + ".";
+                    } else if (patientEduPart) {
+                      const eduSentence = patientEduPart.split(/\.\s+/)[0]?.trim() ?? patientEduPart;
+                      cleanText = `Educated patient on ${eduSentence.charAt(0).toLowerCase() + eduSentence.slice(1)}.`;
+                    }
+                  }
+
+                  // ── 2. Find insertion point — after last numbered item before Follow-up ──
+                  // Locate the Follow-up section header
+                  const followUpIdx = note.search(/\n(?:FOLLOW[\s\-]?UP|FOLLOW-UP INSTRUCTIONS)[:\s]*/i);
+                  const searchIn = followUpIdx > -1 ? note.slice(0, followUpIdx) : note;
+
+                  // Find every numbered plan item (e.g. "1. Something")
+                  const allNumbered = [...searchIn.matchAll(/^(\d+)\.\s+.+$/gm)];
+
+                  if (allNumbered.length > 0) {
+                    const last = allNumbered[allNumbered.length - 1];
+                    const nextNum = parseInt(last[1]) + 1;
+                    const insertAt = last.index! + last[0].length;
+                    const newNote = note.slice(0, insertAt) + `\n${nextNum}. ${cleanText}` + note.slice(insertAt);
+                    return { ...prev, fullNote: newNote };
+                  }
+
+                  // Fallback: insert just before Follow-up, or at end of note
+                  if (followUpIdx > -1) {
+                    const newNote = note.slice(0, followUpIdx) + `\n${cleanText}` + note.slice(followUpIdx);
+                    return { ...prev, fullNote: newNote };
+                  }
+                  return { ...prev, fullNote: note.trimEnd() + `\n${cleanText}` };
                 });
                 setSoapViewMode("edit");
                 dismiss(key);
