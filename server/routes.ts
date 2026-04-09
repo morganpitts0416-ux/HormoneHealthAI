@@ -24,7 +24,7 @@ import {
   generateWebhookSecret,
   type ExternalProvider,
 } from "./external-messaging";
-import { storage } from "./storage";
+import { storage, setupClinicForNewUser } from "./storage";
 import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
@@ -96,6 +96,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         phone: phone || null,
         address: address || null,
       });
+
+      // Bootstrap multi-clinic structure for every new signup.
+      // Solo plan: 1 clinic + 1 provider + admin membership.
+      // Upgrade to Clinic plan later requires only a maxProviders change.
+      try {
+        await setupClinicForNewUser(user);
+      } catch (clinicErr) {
+        // Non-fatal: user is created and can log in; clinic setup can be
+        // retried later. Log but do not fail the registration response.
+        console.error("setupClinicForNewUser failed for user", user.id, clinicErr);
+      }
+
       req.login(user, (err) => {
         if (err) return res.status(500).json({ message: "Login after registration failed" });
         const { passwordHash: _ph, ...safeUser } = user;

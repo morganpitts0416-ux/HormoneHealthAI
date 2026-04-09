@@ -1271,3 +1271,56 @@ export class DbStorage implements IStorage {
 }
 
 export const storage = new DbStorage();
+
+// ─── Multi-clinic bootstrap ────────────────────────────────────────────────
+// Called once immediately after a new user is created during registration.
+// Creates the clinic, membership, and provider records so every account
+// starts with a complete, consistent structure from day one.
+// Solo plan: maxProviders = 1. Upgrade to Clinic plan = change that field only.
+export async function setupClinicForNewUser(user: User): Promise<{ clinicId: number; providerId: number }> {
+  const clinicName = (user as any).clinicName || `${user.firstName} ${user.lastName} Practice`;
+
+  // 1. Create the clinic
+  const [clinic] = await db
+    .insert(schema.clinics)
+    .values({
+      name: clinicName,
+      ownerUserId: user.id,
+      isActive: true,
+      subscriptionPlan: "solo",
+      maxProviders: 1,
+    })
+    .returning();
+
+  // 2. Membership: owner is always the admin
+  await db.insert(schema.clinicMemberships).values({
+    clinicId: clinic.id,
+    userId: user.id,
+    role: "admin",
+    isActive: true,
+    isPrimaryClinic: true,
+  });
+
+  // 3. Provider profile (the solo clinician IS the sole provider)
+  const displayName = [user.title, user.firstName, user.lastName]
+    .filter(Boolean)
+    .join(" ");
+  const [provider] = await db
+    .insert(schema.providers)
+    .values({
+      clinicId: clinic.id,
+      userId: user.id,
+      displayName,
+      npi: (user as any).npi ?? null,
+      isActive: true,
+    })
+    .returning();
+
+  // 4. Stamp defaultClinicId + userType back onto the user row
+  await db
+    .update(schema.users)
+    .set({ defaultClinicId: clinic.id, userType: "solo_admin" })
+    .where(eq(schema.users.id, user.id));
+
+  return { clinicId: clinic.id, providerId: provider.id };
+}
