@@ -25,7 +25,7 @@ import {
   AlertDialogTitle,
   AlertDialogTrigger,
 } from "@/components/ui/alert-dialog";
-import { CheckCircle2, Clock, CreditCard, AlertTriangle, XCircle, ShieldCheck, Zap } from "lucide-react";
+import { CheckCircle2, Clock, CreditCard, AlertTriangle, XCircle, ShieldCheck, Zap, ArrowUpCircle, Users } from "lucide-react";
 
 // ── Types ────────────────────────────────────────────────────────────────────
 
@@ -36,6 +36,10 @@ interface BillingStatus {
   stripeSubscriptionId: string | null;
   stripeCurrentPeriodEnd: string | null;
   stripeCancelAtPeriodEnd: boolean;
+  clinicPlan: string;
+  clinicMaxProviders: number;
+  clinicBaseProviderLimit: number;
+  clinicExtraSeats: number;
 }
 
 interface BillingConfig {
@@ -76,8 +80,16 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 // ── Card form (inside Elements provider) ─────────────────────────────────────
+// plan='solo'  → calls /api/billing/subscribe (14-day trial, $149/mo, FOUNDER50 promo eligible)
+// plan='suite' → calls /api/billing/subscribe-suite (14-day trial, $249/mo, no promo)
 
-function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
+function CardSetupForm({
+  onSuccess,
+  plan = "solo",
+}: {
+  onSuccess: () => void;
+  plan?: "solo" | "suite";
+}) {
   const stripe = useStripe();
   const elements = useElements();
   const { toast } = useToast();
@@ -88,6 +100,7 @@ function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
   const [promoApplied, setPromoApplied] = useState(false);
 
   function handlePromoCheck() {
+    if (plan !== "solo") return;
     const code = promoCode.trim().toUpperCase();
     if (code === "FOUNDER50") {
       setPromoApplied(true);
@@ -98,15 +111,17 @@ function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
   }
 
   const subscribeMutation = useMutation({
-    mutationFn: async (paymentMethodId: string) =>
-      apiRequest("POST", "/api/billing/subscribe", {
-        paymentMethodId,
-        promoCode: promoApplied ? promoCode.trim().toUpperCase() : undefined,
-      }),
+    mutationFn: async (paymentMethodId: string) => {
+      const endpoint = plan === "suite" ? "/api/billing/subscribe-suite" : "/api/billing/subscribe";
+      const body: Record<string, unknown> = { paymentMethodId };
+      if (plan === "solo" && promoApplied) body.promoCode = promoCode.trim().toUpperCase();
+      return apiRequest("POST", endpoint, body);
+    },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/billing/status"] });
       qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
-      toast({ title: "Subscription started", description: "Your 14-day free trial is now active." });
+      const label = plan === "suite" ? "ClinIQ Suite" : "Solo ClinIQ";
+      toast({ title: "Subscription started", description: `Your 14-day free trial of ${label} is now active.` });
       onSuccess();
     },
     onError: (err: any) => {
@@ -145,32 +160,34 @@ function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
     }
   }
 
-  const monthlyRate = promoApplied ? "$97" : "$149";
+  const monthlyRate = plan === "suite" ? "$249" : (promoApplied ? "$97" : "$149");
 
   return (
     <form onSubmit={handleSubmit} className="space-y-4">
-      {/* Promo code */}
-      <div className="space-y-1.5">
-        <label className="text-xs font-medium text-muted-foreground">Promo code (optional)</label>
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={promoCode}
-            onChange={e => { setPromoCode(e.target.value); setPromoApplied(false); }}
-            placeholder="e.g. FOUNDER50"
-            className="flex-1 rounded-md border bg-background px-3 py-2 text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-ring"
-            data-testid="input-promo-code"
-          />
-          <Button type="button" variant="outline" onClick={handlePromoCheck} data-testid="button-apply-promo">
-            Apply
-          </Button>
+      {/* Promo code — Solo only */}
+      {plan === "solo" && (
+        <div className="space-y-1.5">
+          <label className="text-xs font-medium text-muted-foreground">Promo code (optional)</label>
+          <div className="flex gap-2">
+            <input
+              type="text"
+              value={promoCode}
+              onChange={e => { setPromoCode(e.target.value); setPromoApplied(false); }}
+              placeholder="e.g. FOUNDER50"
+              className="flex-1 rounded-md border bg-background px-3 py-2 text-sm font-mono uppercase placeholder:normal-case placeholder:font-sans focus:outline-none focus:ring-2 focus:ring-ring"
+              data-testid="input-promo-code"
+            />
+            <Button type="button" variant="outline" onClick={handlePromoCheck} data-testid="button-apply-promo">
+              Apply
+            </Button>
+          </div>
+          {promoApplied && (
+            <p className="text-xs font-semibold" style={{ color: "#5a7040" }}>
+              FOUNDER50 applied — locked at $97/month
+            </p>
+          )}
         </div>
-        {promoApplied && (
-          <p className="text-xs font-semibold" style={{ color: "#5a7040" }}>
-            FOUNDER50 applied — locked at $97/month
-          </p>
-        )}
-      </div>
+      )}
 
       {/* Card element */}
       <div className="rounded-md border p-3 bg-background">
@@ -197,7 +214,7 @@ function CardSetupForm({ onSuccess }: { onSuccess: () => void }) {
         type="submit"
         className="w-full"
         disabled={!stripe || !ready || submitting || subscribeMutation.isPending}
-        data-testid="button-start-trial"
+        data-testid={plan === "suite" ? "button-start-suite-trial" : "button-start-trial"}
       >
         {submitting || subscribeMutation.isPending
           ? "Processing…"
@@ -215,18 +232,16 @@ export default function BillingPage() {
   const qc = useQueryClient();
   const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
   const [showCardForm, setShowCardForm] = useState(false);
+  const [showSuiteCardForm, setShowSuiteCardForm] = useState(false);
 
-  // Fetch publishable key
   const { data: billingConfig } = useQuery<BillingConfig>({
     queryKey: ["/api/billing/config"],
   });
 
-  // Fetch billing status
   const { data: status, isLoading } = useQuery<BillingStatus>({
     queryKey: ["/api/billing/status"],
   });
 
-  // Load Stripe once we have the publishable key
   useEffect(() => {
     if (billingConfig?.publishableKey && !stripePromise) {
       setStripePromise(loadStripe(billingConfig.publishableKey));
@@ -255,6 +270,21 @@ export default function BillingPage() {
     },
   });
 
+  const upgradeMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/billing/upgrade-to-suite", {}),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/billing/status"] });
+      qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      toast({
+        title: "Upgraded to ClinIQ Suite",
+        description: "Your clinic now supports 2 included providers. Additional providers are $79/month each.",
+      });
+    },
+    onError: (err: any) => {
+      toast({ title: "Upgrade failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const isFreeAccount = status?.freeAccount === true;
   const hasSubscription = !!(status?.stripeSubscriptionId);
   const isTrial = status?.subscriptionStatus === "trial";
@@ -263,6 +293,12 @@ export default function BillingPage() {
   const isCanceled = status?.subscriptionStatus === "canceled";
   const cancelAtEnd = status?.stripeCancelAtPeriodEnd;
   const daysLeft = daysUntil(status?.stripeCurrentPeriodEnd ?? null);
+
+  const clinicPlan = status?.clinicPlan ?? "solo";
+  const isOnSuite = clinicPlan === "suite";
+  const isOnSolo = !isOnSuite;
+  // Upgrade button shows when user has an active/trial Solo sub and wants to move to Suite
+  const canOneClickUpgrade = isOnSolo && hasSubscription && !isCanceled;
 
   return (
     <div className="min-h-screen bg-background">
@@ -276,12 +312,21 @@ export default function BillingPage() {
           </p>
         </div>
 
-        {/* Current plan card */}
+        {/* ── Current plan card ── */}
         <Card>
           <CardHeader className="pb-3">
             <div className="flex items-center justify-between gap-2 flex-wrap">
-              <CardTitle className="text-base font-semibold">Solo ClinIQ Plan</CardTitle>
-              {status && <StatusBadge status={status.subscriptionStatus} />}
+              <CardTitle className="text-base font-semibold">
+                {isOnSuite ? "ClinIQ Suite" : "Solo ClinIQ Plan"}
+              </CardTitle>
+              <div className="flex items-center gap-2 flex-wrap">
+                {isOnSuite && (
+                  <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-emerald-100 text-emerald-800 dark:bg-emerald-900/40 dark:text-emerald-300">
+                    Current Plan
+                  </span>
+                )}
+                {status && <StatusBadge status={status.subscriptionStatus} />}
+              </div>
             </div>
             <CardDescription>ClinIQ Clinical Intelligence Platform</CardDescription>
           </CardHeader>
@@ -308,8 +353,13 @@ export default function BillingPage() {
                 {/* Plan details row */}
                 <div className="flex items-baseline justify-between">
                   <div>
-                    <span className="text-3xl font-bold">$149</span>
+                    <span className="text-3xl font-bold">{isOnSuite ? "$249" : "$149"}</span>
                     <span className="text-muted-foreground text-sm ml-1">/ month</span>
+                    {isOnSuite && status && (status.clinicExtraSeats ?? 0) > 0 && (
+                      <span className="text-muted-foreground text-xs ml-2">
+                        + ${(status.clinicExtraSeats ?? 0) * 79}/mo ({status.clinicExtraSeats} extra seat{status.clinicExtraSeats !== 1 ? "s" : ""})
+                      </span>
+                    )}
                   </div>
                   {isTrial && daysLeft !== null && (
                     <div className="flex items-center gap-1.5 text-sm text-blue-600 dark:text-blue-400">
@@ -324,6 +374,17 @@ export default function BillingPage() {
                     </div>
                   )}
                 </div>
+
+                {/* Suite provider capacity indicator */}
+                {isOnSuite && (
+                  <div className="flex items-center gap-2 text-sm rounded-md bg-muted/40 px-3 py-2">
+                    <Users className="h-4 w-4 text-muted-foreground shrink-0" />
+                    <span className="text-muted-foreground">
+                      Provider capacity: <strong className="text-foreground">{status?.clinicMaxProviders ?? 2}</strong>
+                      {" "}({status?.clinicBaseProviderLimit ?? 2} included + {status?.clinicExtraSeats ?? 0} add-on seat{status?.clinicExtraSeats !== 1 ? "s" : ""})
+                    </span>
+                  </div>
+                )}
 
                 <Separator />
 
@@ -383,7 +444,7 @@ export default function BillingPage() {
                         </Button>
                       ) : stripePromise ? (
                         <Elements stripe={stripePromise}>
-                          <CardSetupForm onSuccess={() => setShowCardForm(false)} />
+                          <CardSetupForm plan="solo" onSuccess={() => setShowCardForm(false)} />
                         </Elements>
                       ) : (
                         <div className="h-10 animate-pulse rounded-md bg-muted" />
@@ -443,7 +504,100 @@ export default function BillingPage() {
           </CardContent>
         </Card>
 
-        {/* What's included */}
+        {/* ── ClinIQ Suite upgrade / subscribe card ── */}
+        {!isFreeAccount && !isOnSuite && (
+          <Card>
+            <CardHeader className="pb-3">
+              <div className="flex items-center justify-between gap-2 flex-wrap">
+                <CardTitle className="text-base font-semibold flex items-center gap-2">
+                  <ArrowUpCircle className="h-4 w-4" style={{ color: "#5a7040" }} />
+                  ClinIQ Suite
+                </CardTitle>
+                <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-medium bg-muted text-muted-foreground">
+                  Upgrade
+                </span>
+              </div>
+              <CardDescription>Multi-provider clinic platform — everything in Solo plus team billing</CardDescription>
+            </CardHeader>
+            <CardContent className="space-y-4">
+              <div className="flex items-baseline gap-1">
+                <span className="text-3xl font-bold">$249</span>
+                <span className="text-muted-foreground text-sm">/ month</span>
+                <span className="text-xs text-muted-foreground ml-1">· additional providers $79/mo each</span>
+              </div>
+
+              {/* Suite feature highlights */}
+              <ul className="space-y-1.5">
+                {[
+                  "2 providers included (vs. 1 on Solo)",
+                  "Add unlimited additional providers at $79/mo each",
+                  "All Solo ClinIQ features included",
+                  "Shared patient records across providers",
+                ].map(f => (
+                  <li key={f} className="flex items-start gap-2 text-sm">
+                    <CheckCircle2 className="h-3.5 w-3.5 mt-0.5 shrink-0" style={{ color: "#5a7040" }} />
+                    <span>{f}</span>
+                  </li>
+                ))}
+              </ul>
+
+              <Separator />
+
+              {/* Upgrade path */}
+              {canOneClickUpgrade ? (
+                /* User has an active Solo sub — swap the price, no new card needed */
+                <div className="space-y-3">
+                  <div className="rounded-md bg-muted/40 px-3 py-2.5 text-xs text-muted-foreground">
+                    Your existing card on file will be used. A prorated adjustment will be applied to your next invoice.
+                  </div>
+                  <Button
+                    className="w-full"
+                    onClick={() => upgradeMutation.mutate()}
+                    disabled={upgradeMutation.isPending}
+                    data-testid="button-upgrade-to-suite"
+                  >
+                    {upgradeMutation.isPending ? (
+                      "Upgrading…"
+                    ) : (
+                      <>
+                        <ArrowUpCircle className="h-4 w-4 mr-2" />
+                        Upgrade to ClinIQ Suite — $249/month
+                      </>
+                    )}
+                  </Button>
+                </div>
+              ) : !hasSubscription ? (
+                /* No subscription yet — full card collect for Suite */
+                <>
+                  {!showSuiteCardForm ? (
+                    <Button
+                      variant="outline"
+                      className="w-full"
+                      onClick={() => setShowSuiteCardForm(true)}
+                      data-testid="button-start-suite-setup"
+                    >
+                      <CreditCard className="h-4 w-4 mr-2" />
+                      Subscribe to Suite &amp; Start Free Trial
+                    </Button>
+                  ) : stripePromise ? (
+                    <Elements stripe={stripePromise}>
+                      <CardSetupForm plan="suite" onSuccess={() => setShowSuiteCardForm(false)} />
+                    </Elements>
+                  ) : (
+                    <div className="h-10 animate-pulse rounded-md bg-muted" />
+                  )}
+                </>
+              ) : (
+                /* Subscription exists but is canceled — can't upgrade, must reactivate first */
+                <p className="text-sm text-muted-foreground text-center py-2">
+                  Reactivate your subscription above before upgrading to Suite.
+                </p>
+              )}
+            </CardContent>
+          </Card>
+        )}
+
+        {/* ── What's included ── */}
         <Card>
           <CardHeader className="pb-3">
             <CardTitle className="text-base font-semibold">What's Included</CardTitle>
