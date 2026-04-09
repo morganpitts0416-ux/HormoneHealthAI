@@ -182,7 +182,7 @@ export default function Landing() {
       </section>
 
       {/* ── "Built differently" ──────────────────────────────────────────── */}
-      <section className="border-y" style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}>
+      <section data-tour="how-it-works" className="border-y" style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16">
           <div className="max-w-3xl mx-auto text-center mb-12">
             <h2 className="text-2xl sm:text-3xl font-bold mb-4" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
@@ -225,7 +225,7 @@ export default function Landing() {
       </section>
 
       {/* ── Clinician Features ───────────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+      <section data-tour="clinician-features" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="text-center mb-12">
           <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7a8a64" }}>For Clinicians</span>
           <h2 className="text-2xl sm:text-3xl font-bold mt-2" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
@@ -246,7 +246,7 @@ export default function Landing() {
       </section>
 
       {/* ── Patient Portal Features ──────────────────────────────────────── */}
-      <section className="border-y" style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}>
+      <section data-tour="patient-portal" className="border-y" style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <div className="flex flex-col lg:flex-row items-center gap-12 lg:gap-16">
 
@@ -299,7 +299,7 @@ export default function Landing() {
       </section>
 
       {/* ── Pricing ──────────────────────────────────────────────────────── */}
-      <section className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+      <section data-tour="pricing" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
         <div className="text-center mb-12">
           <h2 className="text-2xl sm:text-3xl font-bold" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
             Simple, all-inclusive pricing
