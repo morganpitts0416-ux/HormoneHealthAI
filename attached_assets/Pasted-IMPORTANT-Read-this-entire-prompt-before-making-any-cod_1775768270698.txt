@@ -1,0 +1,539 @@
+IMPORTANT: Read this entire prompt before making any code changes.
+
+We are preparing this app for FUTURE multi-provider clinic suites, but we are soft-launching the SOLO provider plan tomorrow. That means the absolute top priority is:
+
+1. DO NOT break any existing working functionality
+2. DO NOT change the current solo-provider user experience
+3. DO NOT remove or refactor existing logic unless absolutely necessary
+4. DO NOT enable unfinished multi-provider UI flows yet
+5. Make all changes in a backward-compatible, additive way only
+
+This is a database + architecture preparation task, not a full visible feature rollout.
+
+--------------------------------------------------
+PRIMARY GOAL
+--------------------------------------------------
+
+Add the backend/database foundation for multi-provider clinic suites while preserving the current solo-provider workflow exactly as it works today.
+
+Right now the app functions as a solo-provider system. We want to prepare it so that later we can support:
+
+- one clinic account
+- multiple providers under that clinic
+- additional staff users under that clinic
+- patients assigned to a provider
+- internal staff messaging
+- future scheduling by provider
+
+BUT FOR NOW:
+- existing solo accounts must keep working without any interruption
+- current login, subscription, patient, SOAP, lab, transcription, and report features must remain functional
+- the current solo provider should effectively behave as a clinic with one provider
+- all new schema additions must be nullable or safely defaulted where needed
+- do not require existing records to immediately have new values unless a safe migration handles it
+
+--------------------------------------------------
+NON-NEGOTIABLE SAFETY RULES
+--------------------------------------------------
+
+Before changing anything:
+
+A. Audit the current schema and code dependencies first
+- inspect all user/account/patient/provider-related tables and relationships
+- inspect all places where userId is assumed to be the sole owner of records
+- inspect all auth/session logic
+- inspect all queries that fetch patients, encounters, SOAP notes, transcripts, reports, subscriptions, etc.
+
+B. Use additive migrations only
+- create new tables
+- add new nullable columns
+- add safe indexes
+- do NOT drop columns
+- do NOT rename existing columns unless you also provide full backward-compatible support
+- do NOT rewrite working logic if a compatibility layer can be used instead
+
+C. Preserve current behavior
+- if current functionality depends on user_id ownership, keep that behavior working
+- if needed, introduce clinic_id/provider_id gradually while preserving legacy user_id matching
+- any new code must gracefully support records that do not yet have clinic_id/provider_id populated
+
+D. Create a clear migration path
+- existing solo users should automatically map to a single clinic + single provider model
+- but do this safely and minimally, without breaking auth or data visibility
+
+E. Do not ship unfinished UI
+- do not expose multi-provider settings pages unless fully working
+- do not alter current dashboards in a way that risks launch tomorrow
+- focus on backend readiness and internal compatibility
+
+--------------------------------------------------
+IMPLEMENTATION STRATEGY
+--------------------------------------------------
+
+We need a “soft multi-tenant” architecture:
+
+Current solo model:
+- one user effectively owns everything
+
+New target foundation:
+- one clinic owns many users
+- users can have roles
+- provider users can be assigned patients
+- staff users can collaborate internally
+- future scheduling can attach to clinic/provider/patient
+
+However, for current solo users:
+- one user = one clinic admin = one provider
+- all existing workflows should still work as if nothing changed
+
+--------------------------------------------------
+STEP 1: AUDIT AND DOCUMENT CURRENT DEPENDENCIES
+--------------------------------------------------
+
+First, inspect and list:
+- all existing tables
+- all foreign keys
+- all places where user ownership is assumed
+- all current auth/session fields
+- all current subscription-related fields
+- all patient ownership relationships
+- all encounter / SOAP / transcription / report ownership relationships
+
+Then create a short internal implementation plan before editing code.
+
+--------------------------------------------------
+STEP 2: CREATE NEW TABLES (ADDITIVE ONLY)
+--------------------------------------------------
+
+Create these new tables if they do not already exist:
+
+1. clinics
+Purpose:
+- top-level clinic/account entity
+Fields:
+- id (primary key)
+- name
+- slug (nullable for now)
+- owner_user_id (nullable initially if needed for migration safety)
+- created_at
+- updated_at
+- subscription_status (nullable)
+- subscription_plan (nullable)
+- stripe_customer_id (nullable)
+- stripe_subscription_id (nullable)
+- trial_ends_at (nullable)
+- is_active (default true)
+
+Notes:
+- this table must support one clinic per solo account now, many clinics later
+- do not break existing Stripe logic; this is preparatory only
+
+2. clinic_memberships
+Purpose:
+- connects users to clinics
+Fields:
+- id (primary key)
+- clinic_id (FK)
+- user_id (FK)
+- role (enum or varchar: admin, provider, staff)
+- is_active (default true)
+- is_primary_clinic (default false)
+- created_at
+- updated_at
+
+Notes:
+- this is the core relationship table
+- a user may eventually belong to more than one clinic
+- for now, existing solo users should get one membership record: admin/provider access to their own clinic
+
+3. providers
+Purpose:
+- provider profile layer separate from generic users
+Fields:
+- id (primary key)
+- clinic_id (FK)
+- user_id (FK, nullable if needed for future external provider support, but ideally linked)
+- display_name
+- credentials (nullable)
+- specialty (nullable)
+- npi (nullable)
+- is_active (default true)
+- created_at
+- updated_at
+
+Notes:
+- current solo user should map to one provider record
+- do not require all users to be providers
+- future scheduling and patient assignment will point here
+
+4. patient_assignments
+Purpose:
+- assign patients to providers
+Fields:
+- id (primary key)
+- clinic_id (FK)
+- patient_id (FK)
+- provider_id (FK)
+- assignment_type (varchar, default 'primary')  -- supports future secondary/collaborating providers
+- is_active (default true)
+- assigned_at
+- assigned_by_user_id (nullable FK)
+- created_at
+- updated_at
+
+Notes:
+- enforce sensible uniqueness where appropriate for active primary assignment
+- do not break existing patient ownership logic
+- this is additive foundation only
+
+5. internal_messages
+Purpose:
+- clinic internal messaging
+Fields:
+- id (primary key)
+- clinic_id (FK)
+- sender_user_id (FK)
+- recipient_user_id (nullable FK for direct messages)
+- patient_id (nullable FK)
+- subject (nullable)
+- body (text)
+- thread_id (nullable; can self-reference or use a thread key)
+- message_type (varchar default 'direct')  -- direct, patient_thread, system
+- is_read (default false)
+- created_at
+- updated_at
+
+Notes:
+- keep minimal for now
+- no UI rollout unless already easy/safe
+- backend only is acceptable for now
+
+6. internal_message_participants (optional but preferred if threading is implemented)
+Fields:
+- id
+- message_thread_id
+- user_id
+- last_read_at
+- created_at
+
+7. audit_logs
+Purpose:
+- lightweight audit trail for important future clinic actions
+Fields:
+- id
+- clinic_id (nullable)
+- user_id (nullable)
+- entity_type
+- entity_id
+- action
+- metadata_json (json/jsonb nullable)
+- created_at
+
+Notes:
+- do not over-engineer; just create the foundation
+- useful for future patient assignment and scheduling changes
+
+--------------------------------------------------
+STEP 3: SAFELY EXTEND EXISTING TABLES
+--------------------------------------------------
+
+Inspect existing tables first, then add only safe columns where needed.
+
+Expected additive updates:
+
+A. users table
+Add if not present:
+- default_clinic_id (nullable FK to clinics)
+- user_type (nullable or defaulted; e.g. solo_admin, clinic_admin, provider, staff)
+- display_name (nullable if not already present)
+
+Do NOT break auth logic.
+
+B. patients table
+Add if not present:
+- clinic_id (nullable initially, indexed)
+- primary_provider_id (nullable initially, indexed)
+- created_by_user_id (nullable if not already present)
+- assigned_at (nullable)
+
+Important:
+- preserve any existing user_id / owner_id logic
+- existing code that fetches patients by user must still work
+- new code should prefer clinic_id/provider_id when available, but fall back safely
+
+C. clinical_encounters / visits / notes / reports / transcripts / lab evaluations
+For every major clinical data table, inspect and add if missing:
+- clinic_id (nullable initially, indexed)
+- provider_id (nullable initially, indexed where relevant)
+- patient_id should already exist if appropriate; confirm consistency
+
+Relevant areas likely include:
+- encounters
+- transcripts
+- SOAP notes
+- reports
+- lab reviews / interpretations
+- uploaded labs
+- patient portal records
+- messages or communications
+
+Important:
+- do not blindly add columns to tables that do not need them
+- inspect actual schema first
+- only add clinic/provider references where clinically and logically relevant
+
+D. subscriptions / billing-related table(s)
+If there is currently a user-based subscription model, do NOT break it.
+Instead:
+- preserve current Stripe/user subscription logic for launch
+- add optional clinic_id linkage where useful
+- make no destructive subscription changes before launch
+
+--------------------------------------------------
+STEP 4: DATA MIGRATION FOR EXISTING SOLO USERS
+--------------------------------------------------
+
+Create a safe migration script that does the following:
+
+For each existing user account that represents a solo clinician account:
+1. create one clinic record if none exists
+2. create one clinic_membership record linking that user to that clinic
+   - role should be admin
+   - and also support provider behavior
+3. create one provider record linked to that user and clinic if none exists
+4. backfill patient.clinic_id for that user’s patients where safely determinable
+5. backfill patient.primary_provider_id for that user’s patients where safely determinable
+6. backfill clinic_id/provider_id on major clinical records where safely determinable
+7. set users.default_clinic_id if appropriate
+
+Migration requirements:
+- idempotent: safe to run more than once
+- no duplicate clinics for the same user
+- no duplicate provider rows for the same user/clinic
+- log what was backfilled
+- skip ambiguous records safely rather than guessing incorrectly
+
+VERY IMPORTANT:
+If ownership can’t be safely inferred for a record, do not force it. Leave nullable and preserve existing legacy behavior.
+
+--------------------------------------------------
+STEP 5: COMPATIBILITY LAYER IN CODE
+--------------------------------------------------
+
+Update backend query logic carefully so that the current app still works.
+
+Goal:
+support BOTH
+- legacy solo ownership model
+AND
+- new clinic/provider model
+
+Patterns to implement:
+
+1. Current-user clinic resolution
+Create a safe helper:
+- resolveCurrentClinicForUser(userId)
+Behavior:
+- if user.default_clinic_id exists, use it
+- else derive from clinic_memberships
+- else fall back safely
+
+2. Current-provider resolution
+Create a safe helper:
+- resolveCurrentProviderForUser(userId, clinicId)
+Behavior:
+- return linked provider record if exists
+- else null without crashing
+
+3. Patient visibility
+When fetching patients for current solo users:
+- preserve existing results
+- if clinic/provider columns exist, use them
+- otherwise fall back to old ownership rules
+
+4. Record creation
+For new patient / note / encounter / transcript / report creation:
+- populate clinic_id when clinic is resolvable
+- populate provider_id when provider is resolvable
+- preserve any existing user_id ownership fields for backward compatibility
+
+5. Authorization safety
+Ensure clinic users cannot access another clinic’s data.
+Any new clinic-aware queries must filter by clinic_id.
+But do not accidentally hide legacy records that have null clinic_id if they still belong to the current solo user.
+
+--------------------------------------------------
+STEP 6: PREPARE FOR FUTURE SCHEDULING (FOUNDATION ONLY)
+--------------------------------------------------
+
+Since scheduling is the next major feature, create the schema foundation now if safe, but do NOT build full scheduling UI unless minimal and stable.
+
+Create these tables if not present:
+
+1. appointment_types
+Fields:
+- id
+- clinic_id
+- name
+- description (nullable)
+- duration_minutes
+- is_active
+- color (nullable)
+- created_at
+- updated_at
+
+2. provider_availability
+Fields:
+- id
+- clinic_id
+- provider_id
+- day_of_week
+- start_time
+- end_time
+- timezone (nullable)
+- is_active
+- created_at
+- updated_at
+
+3. appointments
+Fields:
+- id
+- clinic_id
+- patient_id
+- provider_id
+- appointment_type_id
+- created_by_user_id (nullable)
+- start_at
+- end_at
+- status (scheduled, confirmed, completed, cancelled, no_show)
+- source (staff, online)
+- notes (nullable)
+- location_type (nullable: in_person, telehealth, phone)
+- created_at
+- updated_at
+
+4. calendar_blocks
+Fields:
+- id
+- clinic_id
+- provider_id
+- title
+- start_at
+- end_at
+- block_type (break, time_off, admin, other)
+- notes (nullable)
+- created_at
+- updated_at
+
+Scheduling safety requirements:
+- tables only if backend rollout would otherwise be risky
+- no disruption to current launch
+- no mandatory UI exposure if unfinished
+
+--------------------------------------------------
+STEP 7: INDEXES, CONSTRAINTS, AND MATCHES
+--------------------------------------------------
+
+Think through every match and relationship carefully.
+
+Add indexes on:
+- clinic_id
+- provider_id
+- patient_id
+- user_id
+- sender_user_id
+- recipient_user_id
+- start_at for appointments
+- active assignment combinations
+
+Suggested relationship logic:
+- clinics.id matches clinic_memberships.clinic_id
+- users.id matches clinic_memberships.user_id
+- clinics.id matches providers.clinic_id
+- users.id matches providers.user_id
+- clinics.id matches patients.clinic_id
+- providers.id matches patients.primary_provider_id
+- patients.id matches patient_assignments.patient_id
+- providers.id matches patient_assignments.provider_id
+- clinics.id matches all clinic-owned records
+- users.id matches created_by_user_id / sender_user_id / assigned_by_user_id where applicable
+
+Be conservative with foreign keys if legacy data may fail strict enforcement.
+If needed:
+- add columns first
+- backfill data
+- then add FKs only where safe
+
+Do not create constraints that could break existing production records.
+
+--------------------------------------------------
+STEP 8: KEEP THE SOLO PLAN STABLE FOR TOMORROW
+--------------------------------------------------
+
+This is extremely important.
+
+For tomorrow’s soft launch:
+- current solo signup flow must still work
+- current login flow must still work
+- current subscription flow must still work
+- current patient creation must still work
+- current lab upload / interpretation must still work
+- current transcription / SOAP generation must still work
+- current reports / portal functionality must still work
+
+If any proposed change risks launch stability, defer that part and leave a TODO note.
+
+Prioritize invisible backend readiness over visible complexity.
+
+--------------------------------------------------
+STEP 9: TESTING REQUIREMENTS
+--------------------------------------------------
+
+After implementation, run and verify:
+
+A. Existing solo account can still:
+- log in
+- access dashboard
+- access patients
+- create patient
+- upload labs
+- generate lab evaluation
+- generate SOAP note
+- access transcript flow
+- access reports/portal
+- access subscription-protected features
+
+B. Database migration checks:
+- existing user got clinic record
+- existing user got provider record
+- patients were backfilled where safe
+- no duplicate records created
+- null-safe behavior preserved
+
+C. No regression in auth or Stripe flow
+
+D. No cross-clinic data exposure
+
+E. App compiles and starts successfully
+
+--------------------------------------------------
+STEP 10: DELIVERABLES
+--------------------------------------------------
+
+When finished, provide:
+
+1. a list of all schema changes made
+2. all migrations created
+3. all files changed
+4. any TODOs intentionally deferred for safety
+5. any places where legacy behavior is still being used as fallback
+6. a summary of exactly how solo accounts continue to function unchanged
+7. a rollback plan if needed
+
+IMPORTANT:
+Do not leave me with partial code and no explanation.
+Do not make broad refactors that jeopardize launch.
+Think like a careful production engineer protecting a live product.
+
+Final instruction:
+Make the smallest safe changes necessary to introduce a backward-compatible clinic/provider architecture and future scheduling foundation without disrupting the existing solo-provider launch.

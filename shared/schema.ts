@@ -1,6 +1,6 @@
 import { z } from "zod";
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, time } from "drizzle-orm/pg-core";
 
 // Patient Demographics & ASCVD Risk Factors Schema
 export const patientDemographicsSchema = z.object({
@@ -488,6 +488,10 @@ export const users = pgTable("users", {
   externalMessagingApiKey: text("external_messaging_api_key"),               // encrypted at rest in future
   externalMessagingChannelId: varchar("external_messaging_channel_id", { length: 100 }), // Spruce channel ID / inbox number
   externalMessagingWebhookSecret: varchar("external_messaging_webhook_secret", { length: 100 }), // auto-generated, shared with external system
+  // ── Multi-clinic foundation (nullable — populated by migration) ──────────
+  // No FK constraint here to avoid circular reference with clinics table
+  defaultClinicId: integer("default_clinic_id"),
+  userType: varchar("user_type", { length: 30 }), // 'solo_admin' | 'clinic_admin' | 'provider' | 'staff'
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -528,6 +532,9 @@ export const patients = pgTable("patients", {
   mrn: varchar("mrn", { length: 50 }),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 30 }),
+  // ── Multi-clinic foundation (nullable — populated by migration) ──────────
+  clinicId: integer("clinic_id"),            // No FK constraint during initial rollout
+  primaryProviderId: integer("primary_provider_id"), // No FK constraint during initial rollout
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -967,6 +974,9 @@ export const clinicalEncounters = pgTable("clinical_encounters", {
   clinicalExtraction: jsonb("clinical_extraction").$type<ClinicalExtraction>(),
   evidenceSuggestions: jsonb("evidence_suggestions").$type<EvidenceOverlay>(),
   patternMatch: jsonb("pattern_match").$type<PatternMatchResult>(),
+  // ── Multi-clinic foundation (nullable — populated by migration) ──────────
+  clinicId: integer("clinic_id"),   // No FK constraint during initial rollout
+  providerId: integer("provider_id"), // No FK constraint during initial rollout
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1090,3 +1100,171 @@ export type MedicationMatch = {
   startIndex: number;
   endIndex: number;
 };
+
+// ═══════════════════════════════════════════════════════════════════════════
+// MULTI-CLINIC SUITE FOUNDATION
+// All tables below are ADDITIVE. Existing solo-provider workflows continue
+// to function unchanged via the legacy userId ownership model. These tables
+// support future multi-provider clinic suites without disrupting launch.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ─── Clinics ──────────────────────────────────────────────────────────────
+// Top-level account entity. Each solo user maps to one clinic (1:1 today,
+// 1:many in future multi-provider mode).
+export const clinics = pgTable("clinics", {
+  id: serial("id").primaryKey(),
+  name: varchar("name", { length: 200 }).notNull(),
+  slug: varchar("slug", { length: 100 }),
+  ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "set null" }),
+  isActive: boolean("is_active").notNull().default(true),
+  subscriptionStatus: varchar("subscription_status", { length: 30 }),
+  subscriptionPlan: varchar("subscription_plan", { length: 30 }),
+  stripeCustomerId: varchar("stripe_customer_id", { length: 100 }),
+  stripeSubscriptionId: varchar("stripe_subscription_id", { length: 100 }),
+  trialEndsAt: timestamp("trial_ends_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type Clinic = typeof clinics.$inferSelect;
+export const insertClinicSchema = createInsertSchema(clinics).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClinic = z.infer<typeof insertClinicSchema>;
+
+// ─── Clinic Memberships ───────────────────────────────────────────────────
+// Connects users to clinics with a role. A user may eventually belong to
+// multiple clinics (multi-clinic network). For now: one membership per user.
+export const clinicMemberships = pgTable("clinic_memberships", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 30 }).notNull().default("provider"), // 'admin' | 'provider' | 'staff'
+  isActive: boolean("is_active").notNull().default(true),
+  isPrimaryClinic: boolean("is_primary_clinic").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ClinicMembership = typeof clinicMemberships.$inferSelect;
+export const insertClinicMembershipSchema = createInsertSchema(clinicMemberships).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClinicMembership = z.infer<typeof insertClinicMembershipSchema>;
+
+// ─── Providers ────────────────────────────────────────────────────────────
+// Provider profile layer. Current solo users each get one provider record.
+// Future: a clinic may have multiple providers; users with role='staff' may
+// not have a provider record at all.
+export const providers = pgTable("providers", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  displayName: varchar("display_name", { length: 200 }).notNull(),
+  credentials: varchar("credentials", { length: 100 }),
+  specialty: varchar("specialty", { length: 100 }),
+  npi: varchar("npi", { length: 20 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type Provider = typeof providers.$inferSelect;
+export const insertProviderSchema = createInsertSchema(providers).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertProvider = z.infer<typeof insertProviderSchema>;
+
+// ─── Patient Assignments ──────────────────────────────────────────────────
+// Assigns patients to providers. Supports primary and future collaborative
+// assignments. Additive — existing patient.userId ownership still works.
+export const patientAssignments = pgTable("patient_assignments", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  providerId: integer("provider_id").notNull().references(() => providers.id, { onDelete: "cascade" }),
+  assignmentType: varchar("assignment_type", { length: 30 }).notNull().default("primary"),
+  isActive: boolean("is_active").notNull().default(true),
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+  assignedByUserId: integer("assigned_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PatientAssignment = typeof patientAssignments.$inferSelect;
+export const insertPatientAssignmentSchema = createInsertSchema(patientAssignments).omit({ id: true, assignedAt: true, createdAt: true, updatedAt: true });
+export type InsertPatientAssignment = z.infer<typeof insertPatientAssignmentSchema>;
+
+// ─── Internal Messages ────────────────────────────────────────────────────
+// Clinic-internal messaging between staff/providers. Backend foundation only
+// — no UI rollout until messaging feature is fully designed.
+export const internalMessages = pgTable("internal_messages", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  senderUserId: integer("sender_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  recipientUserId: integer("recipient_user_id").references(() => users.id, { onDelete: "set null" }),
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  subject: varchar("subject", { length: 255 }),
+  body: text("body").notNull(),
+  threadId: integer("thread_id"), // self-reference; null = thread root
+  messageType: varchar("message_type", { length: 30 }).notNull().default("direct"), // 'direct' | 'patient_thread' | 'system'
+  isRead: boolean("is_read").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type InternalMessage = typeof internalMessages.$inferSelect;
+export const insertInternalMessageSchema = createInsertSchema(internalMessages).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertInternalMessage = z.infer<typeof insertInternalMessageSchema>;
+
+// ─── Internal Message Participants ────────────────────────────────────────
+export const internalMessageParticipants = pgTable("internal_message_participants", {
+  id: serial("id").primaryKey(),
+  messageThreadId: integer("message_thread_id").notNull().references(() => internalMessages.id, { onDelete: "cascade" }),
+  userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  lastReadAt: timestamp("last_read_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type InternalMessageParticipant = typeof internalMessageParticipants.$inferSelect;
+
+// ─── Appointment Types ────────────────────────────────────────────────────
+// Clinic-defined visit types for future scheduling (foundation only).
+export const appointmentTypes = pgTable("appointment_types", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 100 }).notNull(),
+  description: text("description"),
+  durationMinutes: integer("duration_minutes").notNull().default(30),
+  color: varchar("color", { length: 20 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type AppointmentType = typeof appointmentTypes.$inferSelect;
+export const insertAppointmentTypeSchema = createInsertSchema(appointmentTypes).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertAppointmentType = z.infer<typeof insertAppointmentTypeSchema>;
+
+// ─── Provider Availability ────────────────────────────────────────────────
+// Weekly availability windows per provider (scheduling foundation).
+export const providerAvailability = pgTable("provider_availability", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  providerId: integer("provider_id").notNull().references(() => providers.id, { onDelete: "cascade" }),
+  dayOfWeek: integer("day_of_week").notNull(), // 0=Sun … 6=Sat
+  startTime: time("start_time").notNull(),
+  endTime: time("end_time").notNull(),
+  timezone: varchar("timezone", { length: 50 }),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ProviderAvailability = typeof providerAvailability.$inferSelect;
+export const insertProviderAvailabilitySchema = createInsertSchema(providerAvailability).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertProviderAvailability = z.infer<typeof insertProviderAvailabilitySchema>;
+
+// ─── Calendar Blocks ──────────────────────────────────────────────────────
+// Blocked time on a provider's calendar (breaks, time-off, admin time).
+export const calendarBlocks = pgTable("calendar_blocks", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  providerId: integer("provider_id").notNull().references(() => providers.id, { onDelete: "cascade" }),
+  title: varchar("title", { length: 200 }).notNull(),
+  startAt: timestamp("start_at").notNull(),
+  endAt: timestamp("end_at").notNull(),
+  blockType: varchar("block_type", { length: 30 }).notNull().default("other"), // 'break' | 'time_off' | 'admin' | 'other'
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type CalendarBlock = typeof calendarBlocks.$inferSelect;
+export const insertCalendarBlockSchema = createInsertSchema(calendarBlocks).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertCalendarBlock = z.infer<typeof insertCalendarBlockSchema>;
