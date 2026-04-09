@@ -6,7 +6,7 @@ import path from "path";
 import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -4945,6 +4945,32 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.get("/api/billing/status", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
+
+      // Also fetch clinic-level plan fields so the frontend can show the correct plan tier
+      let clinicPlan: string = "solo";
+      let clinicMaxProviders: number = 1;
+      let clinicBaseProviderLimit: number = 1;
+      let clinicExtraSeats: number = 0;
+
+      if (user.defaultClinicId) {
+        const [clinic] = await storageDb
+          .select({
+            subscriptionPlan: clinics.subscriptionPlan,
+            maxProviders: clinics.maxProviders,
+            baseProviderLimit: clinics.baseProviderLimit,
+            extraProviderSeats: clinics.extraProviderSeats,
+          })
+          .from(clinics)
+          .where(eq(clinics.id, user.defaultClinicId));
+
+        if (clinic) {
+          clinicPlan = clinic.subscriptionPlan ?? "solo";
+          clinicMaxProviders = clinic.maxProviders ?? 1;
+          clinicBaseProviderLimit = clinic.baseProviderLimit ?? 1;
+          clinicExtraSeats = clinic.extraProviderSeats ?? 0;
+        }
+      }
+
       res.json({
         subscriptionStatus: user.subscriptionStatus,
         freeAccount: user.freeAccount ?? false,
@@ -4952,8 +4978,13 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         stripeSubscriptionId: user.stripeSubscriptionId,
         stripeCurrentPeriodEnd: user.stripeCurrentPeriodEnd,
         stripeCancelAtPeriodEnd: user.stripeCancelAtPeriodEnd ?? false,
+        clinicPlan,
+        clinicMaxProviders,
+        clinicBaseProviderLimit,
+        clinicExtraSeats,
       });
     } catch (err) {
+      console.error("[Billing] Status error:", err);
       res.status(500).json({ message: "Failed to load billing status" });
     }
   });
@@ -5064,6 +5095,178 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     } catch (err: any) {
       console.error("[Billing] Subscribe error:", err);
       res.status(500).json({ message: err.message || "Failed to create subscription" });
+    }
+  });
+
+  // POST /api/billing/subscribe-suite
+  // Subscribes a new (no existing subscription) user directly to ClinIQ Suite.
+  // Mirrors /api/billing/subscribe but uses STRIPE_SUITE_PRICE_ID and stamps the
+  // clinic as 'suite' immediately after the subscription is created.
+  app.post("/api/billing/subscribe-suite", requireAuth, async (req, res) => {
+    try {
+      const SUITE_PRICE_ID = process.env.STRIPE_SUITE_PRICE_ID;
+      if (!SUITE_PRICE_ID) {
+        return res.status(503).json({ message: "Suite plan is not yet available. Contact support." });
+      }
+
+      const stripe = getStripe();
+      const user = req.user as any;
+
+      if (user.freeAccount) {
+        return res.status(400).json({ message: "Free accounts do not require a subscription." });
+      }
+      if (user.stripeSubscriptionId) {
+        return res.status(400).json({ message: "An active subscription already exists. Use the upgrade route instead." });
+      }
+
+      const { paymentMethodId } = req.body;
+      if (!paymentMethodId) return res.status(400).json({ message: "paymentMethodId is required" });
+
+      // Get or create Stripe customer
+      let customerId = user.stripeCustomerId;
+      if (!customerId) {
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: `${user.firstName} ${user.lastName}`,
+          metadata: { userId: String(user.id) },
+        });
+        customerId = customer.id;
+      }
+
+      // Attach payment method and set as default
+      await stripe.paymentMethods.attach(paymentMethodId, { customer: customerId });
+      await stripe.customers.update(customerId, {
+        invoice_settings: { default_payment_method: paymentMethodId },
+      });
+
+      // Create Suite subscription with 14-day trial
+      const subscription = await stripe.subscriptions.create({
+        customer: customerId,
+        items: [{ price: SUITE_PRICE_ID }],
+        trial_period_days: 14,
+        payment_settings: {
+          payment_method_types: ["card"],
+          save_default_payment_method: "on_subscription",
+        },
+        expand: ["latest_invoice.payment_intent"],
+        metadata: { plan: "suite", userId: String(user.id) },
+      });
+
+      const periodEnd = new Date((subscription as any).current_period_end * 1000);
+      const subStatus = subscription.status === "trialing" ? "trial" : subscription.status;
+
+      const updated = await storage.updateUserStripe(user.id, {
+        stripeCustomerId: customerId,
+        stripeSubscriptionId: subscription.id,
+        stripeCurrentPeriodEnd: periodEnd,
+        stripeCancelAtPeriodEnd: false,
+        subscriptionStatus: subStatus,
+      });
+      if (updated) (req as any).user = updated;
+
+      // Stamp clinic plan immediately — webhook will confirm/resync async
+      if (user.defaultClinicId) {
+        await updateClinicPlanFromStripe({
+          clinicId: user.defaultClinicId,
+          subscriptionPlan: "suite",
+          baseProviderLimit: SUITE_BASE_PROVIDER_LIMIT,
+          extraProviderSeats: 0,
+          subscriptionStatus: subStatus,
+          stripeSubscriptionId: subscription.id,
+        });
+      }
+
+      console.log(`[Billing] Suite subscription created: user=${user.id} sub=${subscription.id}`);
+
+      res.json({
+        subscriptionId: subscription.id,
+        status: subscription.status,
+        plan: "suite",
+        trialEnd: (subscription as any).trial_end,
+        currentPeriodEnd: (subscription as any).current_period_end,
+      });
+    } catch (err: any) {
+      console.error("[Billing] Subscribe-suite error:", err);
+      res.status(500).json({ message: err.message || "Failed to create Suite subscription" });
+    }
+  });
+
+  // POST /api/billing/upgrade-to-suite
+  // Upgrades an existing Solo subscriber to ClinIQ Suite by swapping the
+  // subscription item. No new card required — uses the customer's stored
+  // payment method. Stamps the clinic plan immediately on success.
+  app.post("/api/billing/upgrade-to-suite", requireAuth, async (req, res) => {
+    try {
+      const SUITE_PRICE_ID = process.env.STRIPE_SUITE_PRICE_ID;
+      if (!SUITE_PRICE_ID) {
+        return res.status(503).json({ message: "Suite plan is not yet available. Contact support." });
+      }
+
+      const stripe = getStripe();
+      const user = req.user as any;
+
+      if (user.freeAccount) {
+        return res.status(400).json({ message: "Free accounts do not require billing changes." });
+      }
+      if (!user.stripeSubscriptionId) {
+        return res.status(400).json({ message: "No active subscription found. Subscribe first." });
+      }
+
+      // Retrieve existing subscription with items expanded
+      const existingSub = await stripe.subscriptions.retrieve(user.stripeSubscriptionId, {
+        expand: ["items"],
+      }) as any;
+
+      // Guard: already on Suite
+      const alreadySuite = existingSub.items?.data?.some((i: any) => i.price?.id === SUITE_PRICE_ID);
+      if (alreadySuite) {
+        return res.status(400).json({ message: "This subscription is already on the ClinIQ Suite plan." });
+      }
+
+      // Build the items update: delete all existing items, add Suite price
+      const deleteItems = existingSub.items.data.map((i: any) => ({ id: i.id, deleted: true }));
+      const suiteItem = { price: SUITE_PRICE_ID };
+
+      const updatedSub = await stripe.subscriptions.update(user.stripeSubscriptionId, {
+        items: [...deleteItems, suiteItem],
+        proration_behavior: "create_prorations",
+        metadata: { plan: "suite", upgraded_from: "solo", userId: String(user.id) },
+      } as any);
+
+      const periodEnd = new Date((updatedSub as any).current_period_end * 1000);
+      const subStatus = (updatedSub as any).status === "trialing" ? "trial" : (updatedSub as any).status;
+
+      const updated = await storage.updateUserStripe(user.id, {
+        stripeSubscriptionId: updatedSub.id,
+        stripeCurrentPeriodEnd: periodEnd,
+        stripeCancelAtPeriodEnd: false,
+        subscriptionStatus: subStatus,
+      });
+      if (updated) (req as any).user = updated;
+
+      // Stamp clinic plan immediately — webhook will confirm/resync async
+      if (user.defaultClinicId) {
+        await updateClinicPlanFromStripe({
+          clinicId: user.defaultClinicId,
+          subscriptionPlan: "suite",
+          baseProviderLimit: SUITE_BASE_PROVIDER_LIMIT,
+          extraProviderSeats: 0,
+          subscriptionStatus: subStatus,
+          stripeSubscriptionId: updatedSub.id,
+        });
+      }
+
+      console.log(`[Billing] Upgraded to Suite: user=${user.id} sub=${updatedSub.id}`);
+
+      res.json({
+        subscriptionId: updatedSub.id,
+        status: (updatedSub as any).status,
+        plan: "suite",
+        currentPeriodEnd: (updatedSub as any).current_period_end,
+      });
+    } catch (err: any) {
+      console.error("[Billing] Upgrade-to-suite error:", err);
+      res.status(500).json({ message: err.message || "Failed to upgrade to Suite" });
     }
   });
 
