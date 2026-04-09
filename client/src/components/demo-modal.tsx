@@ -309,74 +309,118 @@ export function DemoModal() {
                   style={{ maxHeight: "72vh", objectFit: "contain", display: "block" }}
                 />
 
-                {/* Annotation bubble */}
-                {ANNOTATIONS.map(a => {
-                  const isActive = a === active;
-                  const pos = POSITION_STYLES[a.position ?? "top-left"];
-                  return (
-                    <div
-                      key={`${a.start}-${a.label}`}
-                      style={{
-                        position: "absolute",
-                        ...pos,
-                        maxWidth: 340,
-                        pointerEvents: "none",
-                        opacity: isActive ? 1 : 0,
-                        transform: isActive ? "translateY(0)" : "translateY(-6px)",
-                        transition: "opacity 0.35s ease, transform 0.35s ease",
-                        zIndex: 10,
-                      }}
-                    >
-                      {/* Bubble card */}
+                {/* Annotation bubbles — desktop only (overlaid on video) */}
+                <div className="hidden sm:block">
+                  {ANNOTATIONS.map(a => {
+                    const isActive = a === active;
+                    const pos = POSITION_STYLES[a.position ?? "top-left"];
+                    return (
                       <div
+                        key={`${a.start}-${a.label}`}
                         style={{
-                          backgroundColor: "rgba(18, 26, 10, 0.92)",
-                          border: "1px solid rgba(143, 168, 112, 0.45)",
-                          borderRadius: 10,
-                          padding: "10px 14px 11px",
-                          backdropFilter: "blur(8px)",
-                          boxShadow: "0 4px 20px rgba(0,0,0,0.55)",
+                          position: "absolute",
+                          ...pos,
+                          maxWidth: 340,
+                          pointerEvents: "none",
+                          opacity: isActive ? 1 : 0,
+                          transform: isActive ? "translateY(0)" : "translateY(-6px)",
+                          transition: "opacity 0.35s ease, transform 0.35s ease",
+                          zIndex: 10,
                         }}
                       >
-                        {/* Label badge */}
+                        {/* Bubble card */}
                         <div
                           style={{
-                            display: "inline-flex",
-                            alignItems: "center",
-                            gap: 5,
-                            backgroundColor: "#5a7040",
-                            borderRadius: 6,
-                            padding: "2px 8px",
-                            marginBottom: 6,
+                            backgroundColor: "rgba(18, 26, 10, 0.92)",
+                            border: "1px solid rgba(143, 168, 112, 0.45)",
+                            borderRadius: 10,
+                            padding: "10px 14px 11px",
+                            backdropFilter: "blur(8px)",
+                            boxShadow: "0 4px 20px rgba(0,0,0,0.55)",
                           }}
                         >
-                          <Sparkles style={{ width: 10, height: 10, color: "#c4d4a8", flexShrink: 0 }} />
-                          <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", color: "#e8f0d8", textTransform: "uppercase", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
-                            {a.label}
-                          </span>
+                          {/* Label badge */}
+                          <div
+                            style={{
+                              display: "inline-flex",
+                              alignItems: "center",
+                              gap: 5,
+                              backgroundColor: "#5a7040",
+                              borderRadius: 6,
+                              padding: "2px 8px",
+                              marginBottom: 6,
+                            }}
+                          >
+                            <Sparkles style={{ width: 10, height: 10, color: "#c4d4a8", flexShrink: 0 }} />
+                            <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", color: "#e8f0d8", textTransform: "uppercase", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
+                              {a.label}
+                            </span>
+                          </div>
+                          {/* Description */}
+                          <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.45, color: "#c8d8b0", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
+                            {a.text}
+                          </p>
                         </div>
-                        {/* Description */}
-                        <p style={{ margin: 0, fontSize: 12.5, lineHeight: 1.45, color: "#c8d8b0", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
-                          {a.text}
-                        </p>
-                      </div>
 
-                      {/* Tail triangle pointing down-left */}
-                      {(a.position === "top-left" || !a.position) && (
-                        <div style={{
-                          position: "absolute",
-                          bottom: -7,
-                          left: 18,
-                          width: 0,
-                          height: 0,
-                          borderLeft: "7px solid transparent",
-                          borderRight: "7px solid transparent",
-                          borderTop: "7px solid rgba(18, 26, 10, 0.92)",
-                        }} />
-                      )}
+                        {/* Tail triangle pointing down-left */}
+                        {(a.position === "top-left" || !a.position) && (
+                          <div style={{
+                            position: "absolute",
+                            bottom: -7,
+                            left: 18,
+                            width: 0,
+                            height: 0,
+                            borderLeft: "7px solid transparent",
+                            borderRight: "7px solid transparent",
+                            borderTop: "7px solid rgba(18, 26, 10, 0.92)",
+                          }} />
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              </div>
+
+              {/* Annotation panel — mobile only (below video, never overlapping) */}
+              <div
+                className="block sm:hidden"
+                style={{
+                  minHeight: 76,
+                  backgroundColor: "#111a09",
+                  borderTop: "1px solid rgba(143,168,112,0.2)",
+                  padding: "10px 14px",
+                  transition: "min-height 0.2s ease",
+                }}
+              >
+                {active ? (
+                  <div style={{ display: "flex", alignItems: "flex-start", gap: 10 }}>
+                    <div
+                      style={{
+                        marginTop: 2,
+                        flexShrink: 0,
+                        backgroundColor: "#5a7040",
+                        borderRadius: 6,
+                        padding: "2px 8px",
+                        display: "inline-flex",
+                        alignItems: "center",
+                        gap: 5,
+                        whiteSpace: "nowrap",
+                      }}
+                    >
+                      <Sparkles style={{ width: 10, height: 10, color: "#c4d4a8" }} />
+                      <span style={{ fontSize: 10, fontWeight: 700, letterSpacing: "0.05em", color: "#e8f0d8", textTransform: "uppercase", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
+                        {active.label}
+                      </span>
                     </div>
-                  );
-                })}
+                    <p style={{ margin: 0, fontSize: 12, lineHeight: 1.5, color: "#c8d8b0", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
+                      {active.text}
+                    </p>
+                  </div>
+                ) : (
+                  <p style={{ margin: 0, fontSize: 11, color: "rgba(180,200,150,0.4)", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
+                    Play the video to see annotations
+                  </p>
+                )}
               </div>
             </div>
 
