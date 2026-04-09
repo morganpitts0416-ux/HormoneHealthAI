@@ -300,48 +300,101 @@ export default function Landing() {
 
       {/* ── Pricing ──────────────────────────────────────────────────────── */}
       <section data-tour="pricing" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="text-center mb-12">
+        <div className="text-center mb-10">
           <h2 className="text-2xl sm:text-3xl font-bold" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
             Simple, all-inclusive pricing
           </h2>
           <p className="text-sm mt-3" style={{ color: "#6a7a58" }}>Everything included. No per-patient fees. No feature tiers.</p>
         </div>
-        <div className="max-w-lg mx-auto rounded-2xl overflow-hidden" style={{ border: "2px solid #2e3a20" }}>
-          {/* Founder ribbon */}
-          <div className="px-6 py-2.5 text-center text-xs font-semibold" style={{ backgroundColor: "#5a7040", color: "#f9f6f0", letterSpacing: "0.03em" }}>
-            Founder Access — first 50 members get $97/mo forever · use code <span className="font-mono tracking-widest">FOUNDER50</span>
-          </div>
-          <div className="px-8 py-8 text-center" style={{ backgroundColor: "#2e3a20" }}>
-            <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#a0b880" }}>Solo ClinIQ Plan</p>
-            <div className="flex items-end justify-center gap-2 mb-1">
-              <span className="text-5xl font-bold" style={{ color: "#f9f6f0" }}>$149</span>
-              <span className="text-sm mb-2" style={{ color: "#a0b880" }}>/month</span>
+
+        {/* Founder ribbon */}
+        <div className="max-w-3xl mx-auto mb-5 rounded-lg px-6 py-2.5 text-center text-xs font-semibold" style={{ backgroundColor: "#5a7040", color: "#f9f6f0", letterSpacing: "0.03em" }}>
+          Founder Access — first 50 members get $97/mo forever on Solo · use code <span className="font-mono tracking-widest">FOUNDER50</span>
+        </div>
+
+        <div className="max-w-3xl mx-auto grid grid-cols-1 sm:grid-cols-2 gap-5">
+
+          {/* ── Solo plan ── */}
+          <div className="rounded-2xl overflow-hidden flex flex-col" style={{ border: "2px solid #2e3a20" }}>
+            <div className="px-7 py-7 text-center" style={{ backgroundColor: "#2e3a20" }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#a0b880" }}>Solo ClinIQ Plan</p>
+              <div className="flex items-end justify-center gap-2 mb-1">
+                <span className="text-5xl font-bold" style={{ color: "#f9f6f0" }}>$149</span>
+                <span className="text-sm mb-2" style={{ color: "#a0b880" }}>/month</span>
+              </div>
+              <p className="text-xs font-semibold" style={{ color: "#c4d4a8" }}>→ $97/mo with <span className="font-mono">FOUNDER50</span></p>
+              <p className="text-xs mt-1" style={{ color: "#a0b880" }}>After your 14-day free trial</p>
             </div>
-            <div className="flex items-center justify-center gap-2 mb-2">
-              <span className="text-sm line-through opacity-50" style={{ color: "#c4d4a8" }}>$149/mo</span>
-              <span className="text-sm font-semibold" style={{ color: "#c4d4a8" }}>→ $97/mo with <span className="font-mono">FOUNDER50</span></span>
+            <div className="px-6 py-6 flex flex-col flex-1" style={{ backgroundColor: "#ffffff" }}>
+              <ul className="space-y-2 mb-6 flex-1">
+                <li className="flex items-center gap-2">
+                  <Users className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+                  <span className="text-xs font-semibold" style={{ color: "#3d4a30" }}>1 provider</span>
+                </li>
+                {INCLUDED.map(item => (
+                  <li key={item} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+                    <span className="text-xs" style={{ color: "#3d4a30" }}>{item}</span>
+                  </li>
+                ))}
+              </ul>
+              <a href={appUrl("/register")} className="w-full">
+                <Button className="w-full" size="lg" data-testid="link-pricing-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
+                  Start free trial
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </a>
+              <p className="text-center text-xs mt-2.5" style={{ color: "#9aaa84" }}>
+                No charge for 14 days · Cancel anytime
+              </p>
             </div>
-            <p className="text-xs" style={{ color: "#a0b880" }}>After your 14-day free trial</p>
           </div>
-          <div className="px-8 py-7" style={{ backgroundColor: "#ffffff" }}>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-2.5 mb-7">
-              {INCLUDED.map(item => (
-                <div key={item} className="flex items-center gap-2">
-                  <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
-                  <span className="text-xs" style={{ color: "#3d4a30" }}>{item}</span>
-                </div>
-              ))}
+
+          {/* ── Suite plan ── */}
+          <div className="rounded-2xl overflow-hidden flex flex-col relative" style={{ border: "2px solid #5a7040" }}>
+            <div className="absolute top-3 right-3">
+              <span className="inline-flex items-center rounded-full px-2.5 py-0.5 text-xs font-semibold" style={{ backgroundColor: "#a0b880", color: "#1c2414" }}>
+                Multi-provider
+              </span>
             </div>
-            <a href={appUrl("/register")} className="w-full">
-              <Button className="w-full" size="lg" data-testid="link-pricing-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
-                Start your 14-day free trial
-                <ChevronRight className="w-4 h-4 ml-1" />
-              </Button>
-            </a>
-            <p className="text-center text-xs mt-3" style={{ color: "#9aaa84" }}>
-              Card required to start trial · No charge for 14 days · Cancel anytime
-            </p>
+            <div className="px-7 py-7 text-center" style={{ backgroundColor: "#3d5228" }}>
+              <p className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#a0b880" }}>ClinIQ Suite</p>
+              <div className="flex items-end justify-center gap-2 mb-1">
+                <span className="text-5xl font-bold" style={{ color: "#f9f6f0" }}>$249</span>
+                <span className="text-sm mb-2" style={{ color: "#a0b880" }}>/month</span>
+              </div>
+              <p className="text-xs" style={{ color: "#c4d4a8" }}>+ $79/mo per additional provider</p>
+              <p className="text-xs mt-1" style={{ color: "#a0b880" }}>After your 14-day free trial</p>
+            </div>
+            <div className="px-6 py-6 flex flex-col flex-1" style={{ backgroundColor: "#f4f8f0" }}>
+              <ul className="space-y-2 mb-6 flex-1">
+                <li className="flex items-center gap-2">
+                  <Users className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+                  <span className="text-xs font-semibold" style={{ color: "#3d4a30" }}>2 providers included · add more at $79/mo each</span>
+                </li>
+                {INCLUDED.map(item => (
+                  <li key={item} className="flex items-center gap-2">
+                    <CheckCircle2 className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+                    <span className="text-xs" style={{ color: "#3d4a30" }}>{item}</span>
+                  </li>
+                ))}
+                <li className="flex items-center gap-2">
+                  <Zap className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+                  <span className="text-xs font-medium" style={{ color: "#3d4a30" }}>Shared patient records across providers</span>
+                </li>
+              </ul>
+              <a href={appUrl("/register")} className="w-full">
+                <Button className="w-full" size="lg" data-testid="link-pricing-suite-trial" style={{ backgroundColor: "#5a7040", color: "#f9f6f0" }}>
+                  Start free trial
+                  <ChevronRight className="w-4 h-4 ml-1" />
+                </Button>
+              </a>
+              <p className="text-center text-xs mt-2.5" style={{ color: "#7a8a64" }}>
+                No charge for 14 days · Upgrade from Solo anytime
+              </p>
+            </div>
           </div>
+
         </div>
       </section>
 
