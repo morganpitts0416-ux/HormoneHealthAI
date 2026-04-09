@@ -176,6 +176,10 @@ export interface IStorage {
   getAppointmentsByPatientId(patientId: number): Promise<schema.Appointment[]>;
   matchAppointmentToPatient(appointmentId: number, patientId: number): Promise<void>;
 
+  // Patient Chart
+  getPatientChart(patientId: number, clinicianId: number): Promise<schema.PatientChart | null>;
+  upsertPatientChart(patientId: number, clinicianId: number, data: Partial<Omit<schema.PatientChart, 'id' | 'patientId' | 'clinicianId' | 'updatedAt'>>): Promise<schema.PatientChart>;
+
   // Medication Dictionary
   getMedicationDictionaries(clinicianId: number): Promise<schema.MedicationDictionary[]>;
   createMedicationDictionary(data: schema.InsertMedicationDictionary): Promise<schema.MedicationDictionary>;
@@ -1098,6 +1102,42 @@ export class DbStorage implements IStorage {
       .update(schema.appointments)
       .set({ patientId, updatedAt: new Date() })
       .where(eq(schema.appointments.id, appointmentId));
+  }
+
+  // ── Patient Chart ─────────────────────────────────────────────────────────────
+  async getPatientChart(patientId: number, clinicianId: number): Promise<schema.PatientChart | null> {
+    const [row] = await db
+      .select()
+      .from(schema.patientCharts)
+      .where(and(
+        eq(schema.patientCharts.patientId, patientId),
+        eq(schema.patientCharts.clinicianId, clinicianId),
+      ))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async upsertPatientChart(
+    patientId: number,
+    clinicianId: number,
+    data: Partial<Omit<schema.PatientChart, 'id' | 'patientId' | 'clinicianId' | 'updatedAt'>>,
+  ): Promise<schema.PatientChart> {
+    const existing = await this.getPatientChart(patientId, clinicianId);
+    const now = new Date();
+    if (existing) {
+      const [updated] = await db
+        .update(schema.patientCharts)
+        .set({ ...data, updatedAt: now })
+        .where(eq(schema.patientCharts.id, existing.id))
+        .returning();
+      return updated;
+    } else {
+      const [created] = await db
+        .insert(schema.patientCharts)
+        .values({ patientId, clinicianId, ...data, updatedAt: now })
+        .returning();
+      return created;
+    }
   }
 
   // ── Medication Dictionary ────────────────────────────────────────────────────
