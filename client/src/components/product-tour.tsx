@@ -1,7 +1,7 @@
 import { createContext, useContext, useState, useEffect, useCallback, useRef } from "react";
 import { useLocation } from "wouter";
 import { Button } from "@/components/ui/button";
-import { X, ChevronRight, ChevronLeft, Sparkles } from "lucide-react";
+import { X, ChevronRight, ChevronLeft, Sparkles, FlaskConical, Stethoscope, Package, MessageSquare, Settings } from "lucide-react";
 
 const TOUR_STORAGE_KEY = "cliniq_tour_completed";
 const TOUR_DISMISSED_KEY = "cliniq_tour_dismissed";
@@ -9,104 +9,193 @@ const TOUR_DISMISSED_KEY = "cliniq_tour_dismissed";
 interface TourStep {
   id: string;
   title: string;
-  description: string;
+  description: string | React.ReactNode;
   targetSelector?: string;
   route?: string;
   placement?: "top" | "bottom" | "left" | "right" | "center";
   spotlightPadding?: number;
   scrollTo?: boolean;
+  icon?: React.ComponentType<{ className?: string }>;
+  badge?: string;
 }
 
 const TOUR_STEPS: TourStep[] = [
+  // ── 1. Welcome ───────────────────────────────────────────────────────────────
   {
     id: "welcome",
     title: "Welcome to ClinIQ",
-    description: "This quick tour shows you how ClinIQ streamlines clinical decision-making — from lab interpretation to AI-generated SOAP notes. It takes about 2 minutes. You can exit anytime.",
+    description: "This 2-minute tour walks you through every major feature — from AI lab interpretation to SOAP note generation, patient portal publishing, and your clinical settings. You can exit anytime and restart from the Help menu.",
     placement: "center",
+    icon: Sparkles,
+    badge: "Get Started",
   },
+
+  // ── 2. Dashboard ─────────────────────────────────────────────────────────────
   {
-    id: "dashboard-overview",
+    id: "dashboard",
     title: "Your Clinical Dashboard",
-    description: "This is your home base. At a glance you can see unread patient messages, pending supplement orders, your patient roster, and quick-access links to every major workflow.",
+    description: "Your home base shows unread patient messages, pending supplement orders, your patient roster, and quick-access links to every workflow. Supplement order notifications update in real time.",
     targetSelector: "[data-testid='notifications-panel']",
     route: "/dashboard",
     placement: "bottom",
     scrollTo: true,
+    icon: Sparkles,
+    badge: "Dashboard",
   },
-  {
-    id: "encounters",
-    title: "AI Encounter Documentation",
-    description: "Record or upload audio from any visit. ClinIQ transcribes it, normalizes medical terminology, diarizes by speaker, detects medications from your custom dictionary, extracts clinical facts, and generates a complete, chart-ready SOAP note — all in one click.",
-    targetSelector: "[data-testid='card-encounters']",
-    route: "/dashboard",
-    placement: "bottom",
-    scrollTo: true,
-  },
-  {
-    id: "soap-pipeline",
-    title: "6-Stage Clinical AI Pipeline",
-    description: "When you click 'Generate SOAP', the server automatically: normalizes & diarizes the transcript, runs medication detection, extracts clinical facts, matches phenotype patterns, generates the SOAP note, and prepares an evidence overlay — no manual steps needed.",
-    targetSelector: "[data-testid='card-encounters']",
-    route: "/dashboard",
-    placement: "bottom",
-    spotlightPadding: 12,
-  },
-  {
-    id: "lab-evaluation",
-    title: "AI-Powered Lab Interpretation",
-    description: "Enter or upload lab values for male or female patients. ClinIQ applies gender-specific reference ranges, calculates PREVENT 2023 cardiovascular risk, runs insulin resistance screening, and identifies critical red flag values automatically.",
-    targetSelector: "[data-testid='quick-actions-grid']",
-    route: "/dashboard",
-    placement: "top",
-    scrollTo: true,
-  },
-  {
-    id: "red-flags",
-    title: "Red Flag & Clinical Alerts",
-    description: "When lab values cross clinical thresholds — erythrocytosis, critical testosterone levels, dangerous lipid markers, or other standing-order triggers — ClinIQ surfaces them prominently so nothing gets missed. PDF upload auto-extracts values from lab PDFs.",
-    targetSelector: "[data-testid='card-male-eval']",
-    route: "/dashboard",
-    placement: "top",
-    scrollTo: true,
-  },
+
+  // ── 3. Patient Profiles ───────────────────────────────────────────────────────
   {
     id: "patients",
     title: "Patient Profiles & Lab History",
-    description: "Every patient has a persistent profile with searchable lab history, trend charts across 21 markers, and trend insights generated for both the clinician and patient-facing views.",
+    description: "Every patient has a persistent profile with searchable lab history, trend charts across 21 markers, and AI-generated trend insights for both you and your patient. Click 'All Patients' to browse or add a new profile.",
     targetSelector: "[data-testid='button-all-patients']",
     route: "/dashboard",
     placement: "top",
     scrollTo: true,
+    icon: Sparkles,
+    badge: "Patients",
   },
+
+  // ── 4. Lab Interpretation ─────────────────────────────────────────────────────
   {
-    id: "supplements",
-    title: "Custom Supplement Catalog",
-    description: "Build your own supplement catalog with lab-value trigger rules. ClinIQ recommends supplements based on detected lab patterns and phenotypes. Clinicians curate the list, then patients view and order directly through their portal.",
-    targetSelector: "[data-testid='button-all-patients']",
-    route: "/dashboard",
-    placement: "top",
-  },
-  {
-    id: "patient-portal",
-    title: "Secure Patient Portal",
-    description: "Each patient gets a branded wellness portal with their lab report, supplement protocol, and a HIPAA-compliant messaging system. Messaging supports in-app, SMS link, or two-way API integration with platforms like Spruce or Klara.",
-    targetSelector: "[data-testid='button-all-patients']",
-    route: "/dashboard",
-    placement: "top",
-  },
-  {
-    id: "hipaa",
-    title: "HIPAA-Ready by Design",
-    description: "ClinIQ includes audit logging, login lockout after 5 failed attempts, client-side session timeouts, strong password enforcement, a signed BAA, and all required HIPAA technical safeguards out of the box.",
-    targetSelector: "[data-testid='button-account']",
-    route: "/dashboard",
+    id: "lab-interpretation",
+    title: "Lab Interpretation",
+    description: "Select Male or Female from the dashboard to open the interpretation form. Enter values manually or upload a PDF — ClinIQ auto-extracts every lab value using AI so there's no manual entry required.",
+    targetSelector: "[data-testid='tabs-navigation']",
+    route: "/male",
     placement: "bottom",
+    scrollTo: true,
+    icon: FlaskConical,
+    badge: "Labs",
   },
+
+  // ── 5. PDF Upload ─────────────────────────────────────────────────────────────
+  {
+    id: "lab-pdf-upload",
+    title: "PDF Lab Upload — Auto-Extract Values",
+    description: "Upload a Pathgroup or hospital lab PDF and ClinIQ extracts every value automatically. Values are pre-filled into the form instantly — saving you several minutes per patient visit.",
+    targetSelector: "[data-testid='button-upload-pdf']",
+    route: "/male",
+    placement: "bottom",
+    scrollTo: true,
+    icon: FlaskConical,
+    badge: "Labs",
+  },
+
+  // ── 6. Results, Red Flags & Risk ─────────────────────────────────────────────
+  {
+    id: "lab-results",
+    title: "Results, Red Flags & Risk Scores",
+    description: "The Results tab shows every marker color-coded (optimal / borderline / abnormal / critical), any triggered red flag alerts, PREVENT 2023 cardiovascular risk, and insulin resistance phenotyping. From here you can generate and export the full patient wellness report.",
+    targetSelector: "[data-testid='button-patient-report']",
+    route: "/male",
+    placement: "left",
+    scrollTo: true,
+    icon: FlaskConical,
+    badge: "Labs",
+  },
+
+  // ── 7. New Encounter ──────────────────────────────────────────────────────────
+  {
+    id: "encounters",
+    title: "Encounter Documentation",
+    description: "Click the 'New Encounter' button on the left to open a visit. Record live audio directly in the browser, or upload an existing recording. ClinIQ runs a 6-stage AI pipeline automatically: transcription → normalization & diarization → medication detection → clinical fact extraction → SOAP note → patient summary.",
+    route: "/encounters",
+    placement: "center",
+    icon: Stethoscope,
+    badge: "Encounters",
+  },
+
+  // ── 8. SOAP Note ─────────────────────────────────────────────────────────────
+  {
+    id: "soap-note",
+    title: "AI SOAP Note — One Click",
+    description: "Once your transcript is ready in the Transcript tab, click 'Auto-Generate All' to run the full pipeline at once, or use the individual pipeline buttons to step through each stage. The SOAP note is fully editable, chart-ready, and includes ICD-10 codes for every diagnosis.",
+    route: "/encounters",
+    placement: "center",
+    icon: Stethoscope,
+    badge: "Encounters",
+  },
+
+  // ── 9. Evidence Tab ───────────────────────────────────────────────────────────
+  {
+    id: "evidence-tab",
+    title: "Evidence Tab — Guideline Citations",
+    description: "The Evidence tab surfaces clinical guideline citations for every diagnosis in the SOAP note. Each entry includes a confidence level and the source guideline — so you can validate every clinical decision at a glance without leaving the chart.",
+    route: "/encounters",
+    placement: "center",
+    icon: Stethoscope,
+    badge: "Encounters",
+  },
+
+  // ── 10. Patient Summary + Publish ────────────────────────────────────────────
+  {
+    id: "patient-summary",
+    title: "Patient Summary → Publish to Portal",
+    description: "The Summary tab generates a plain-language, patient-facing version of the visit. Review and edit it, then click 'Publish to Patient Portal.' Your patient immediately sees the summary — along with their lab insights, supplement recommendations, and messaging — inside their secure portal.",
+    route: "/encounters",
+    placement: "center",
+    icon: Stethoscope,
+    badge: "Encounters",
+  },
+
+  // ── 11. Supplement Library ────────────────────────────────────────────────────
+  {
+    id: "supplement-library",
+    title: "Your Custom Supplement Library",
+    description: "Under Account → Supplement Library, build and manage your own catalog. Assign lab-value trigger rules (e.g., 'recommend when Vitamin D < 30') or symptom-based rules. ClinIQ recommends matching supplements automatically when you run a lab interpretation.",
+    targetSelector: "[data-testid='button-prefs-section-supplements']",
+    route: "/account",
+    placement: "right",
+    scrollTo: true,
+    icon: Package,
+    badge: "Settings",
+  },
+
+  // ── 12. Lab Range Preferences ─────────────────────────────────────────────────
+  {
+    id: "lab-ranges",
+    title: "Preferred Optimized Lab Ranges",
+    description: "Under Account → Lab Ranges, override the optimal or reference range for any of 60+ markers on a per-gender basis. Your targets appear on every interpretation page and fall back to system defaults for any marker you haven't customized.",
+    targetSelector: "[data-testid='button-prefs-section-labranges']",
+    route: "/account",
+    placement: "right",
+    scrollTo: true,
+    icon: FlaskConical,
+    badge: "Settings",
+  },
+
+  // ── 13. Communication Preferences ────────────────────────────────────────────
+  {
+    id: "messaging",
+    title: "Patient Communication Preferences",
+    description: (
+      <span>
+        Choose how patients can contact you under Account → Messaging Preferences:
+        <br /><br />
+        <strong style={{ color: "#c8d8b0" }}>In-App</strong> — built-in secure messaging inside ClinIQ.<br />
+        <strong style={{ color: "#c8d8b0" }}>SMS Link</strong> — sends patients a text link to open a conversation.<br />
+        <strong style={{ color: "#c8d8b0" }}>External Platform</strong> — two-way API bridge for platforms like Spruce or Klara.
+        <br /><br />
+        <span style={{ color: "#8fa870" }}>Note: Spruce, Klara, and other platform integrations are <em>coming soon</em>. In-App and SMS Link are available today.</span>
+      </span>
+    ),
+    targetSelector: "[data-testid='messaging-option-none']",
+    route: "/account",
+    placement: "top",
+    scrollTo: true,
+    icon: MessageSquare,
+    badge: "Settings",
+  },
+
+  // ── 14. Done ─────────────────────────────────────────────────────────────────
   {
     id: "done",
     title: "You're All Set",
-    description: "That's the full ClinIQ workflow. Start by adding your first patient, then run a lab evaluation or record an encounter. The Help Center is always one click away if you need it.",
+    description: "That's the full ClinIQ platform. Start by adding your first patient and running a lab evaluation — or open a new encounter and record your first visit note. You can restart this tour anytime from the Help Center.",
     placement: "center",
+    icon: Sparkles,
+    badge: "Done",
   },
 ];
 
@@ -182,6 +271,7 @@ function computeTooltipPosition(
     top = rect.top + rect.height / 2 - tooltipH / 2;
     left = rect.left + rect.width + pad;
   } else {
+    // left
     top = rect.top + rect.height / 2 - tooltipH / 2;
     left = rect.left - tooltipW - pad;
   }
@@ -220,8 +310,8 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
     };
     setSpotlight(sl);
 
-    const tw = tooltipRef.current?.offsetWidth ?? 360;
-    const th = tooltipRef.current?.offsetHeight ?? 220;
+    const tw = tooltipRef.current?.offsetWidth ?? 380;
+    const th = tooltipRef.current?.offsetHeight ?? 240;
     setTooltipPos(computeTooltipPosition(sl, step.placement, tw, th));
   }, [step]);
 
@@ -232,12 +322,12 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
       const el = document.querySelector(step.targetSelector);
       if (el) {
         el.scrollIntoView({ behavior: "smooth", block: "center" });
-        const t = setTimeout(updatePositions, 350);
+        const t = setTimeout(updatePositions, 380);
         return () => clearTimeout(t);
       }
     }
 
-    const t = setTimeout(updatePositions, 120);
+    const t = setTimeout(updatePositions, 150);
     return () => clearTimeout(t);
   }, [isActive, step, updatePositions]);
 
@@ -250,6 +340,8 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
 
   const isFirst = currentStep === 0;
   const isLast = currentStep === totalSteps - 1;
+  const StepIcon = step.icon ?? Sparkles;
+  const progressPct = Math.round(((currentStep + 1) / totalSteps) * 100);
 
   return (
     <div
@@ -263,7 +355,6 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
         height="100%"
         style={{ pointerEvents: "auto" }}
         onClick={(e) => {
-          // Only close if clicking backdrop, not spotlight area
           if (spotlight) {
             const { clientX: x, clientY: y } = e;
             const { top, left, width, height } = spotlight;
@@ -290,7 +381,7 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
         <rect
           width="100%"
           height="100%"
-          fill="rgba(0,0,0,0.55)"
+          fill="rgba(0,0,0,0.58)"
           mask="url(#tour-mask)"
         />
         {/* Spotlight border glow */}
@@ -316,7 +407,7 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
         style={{
           position: "absolute",
           pointerEvents: "auto",
-          width: 360,
+          width: 390,
           maxWidth: "calc(100vw - 32px)",
           ...tooltipPos,
         }}
@@ -325,18 +416,37 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
           className="rounded-xl shadow-2xl overflow-hidden"
           style={{ backgroundColor: "#1c2414", border: "1px solid #3d5228" }}
         >
+          {/* Progress bar */}
+          <div style={{ height: 3, backgroundColor: "#2e3a20" }}>
+            <div
+              style={{
+                height: "100%",
+                width: `${progressPct}%`,
+                backgroundColor: "#8fa870",
+                transition: "width 0.4s ease",
+              }}
+            />
+          </div>
+
           {/* Header */}
-          <div className="flex items-start justify-between px-5 pt-5 pb-3">
+          <div className="flex items-start justify-between px-5 pt-4 pb-2">
             <div className="flex items-center gap-2.5">
               <div
                 className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
                 style={{ backgroundColor: "#5a7040" }}
               >
-                <Sparkles className="w-4 h-4 text-white" />
+                <StepIcon className="w-4 h-4 text-white" />
               </div>
-              <h3 className="text-base font-semibold leading-snug" style={{ color: "#e8ddd0" }}>
-                {step.title}
-              </h3>
+              <div>
+                {step.badge && (
+                  <div className="text-[10px] font-semibold uppercase tracking-widest mb-0.5" style={{ color: "#8fa870" }}>
+                    {step.badge}
+                  </div>
+                )}
+                <h3 className="text-sm font-semibold leading-snug" style={{ color: "#e8ddd0" }}>
+                  {step.title}
+                </h3>
+              </div>
             </div>
             <button
               onClick={endTour}
@@ -352,10 +462,10 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
           </div>
 
           {/* Body */}
-          <div className="px-5 pb-4">
-            <p className="text-sm leading-relaxed" style={{ color: "#aab898" }}>
+          <div className="px-5 pb-3">
+            <div className="text-sm leading-relaxed" style={{ color: "#aab898" }}>
               {step.description}
-            </p>
+            </div>
           </div>
 
           {/* Footer */}
@@ -363,19 +473,9 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
             className="flex items-center justify-between px-5 py-3"
             style={{ borderTop: "1px solid #2e3a20" }}
           >
-            {/* Step dots */}
-            <div className="flex items-center gap-1.5">
-              {Array.from({ length: totalSteps }).map((_, i) => (
-                <div
-                  key={i}
-                  className="rounded-full transition-all"
-                  style={{
-                    width: i === currentStep ? 20 : 6,
-                    height: 6,
-                    backgroundColor: i === currentStep ? "#8fa870" : "#3d5228",
-                  }}
-                />
-              ))}
+            {/* Step counter */}
+            <div className="text-xs" style={{ color: "#5a7040" }}>
+              Step {currentStep + 1} of {totalSteps}
             </div>
 
             {/* Controls */}
@@ -395,7 +495,7 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
               )}
               <button
                 onClick={isLast ? endTour : nextStep}
-                className="flex items-center gap-1 text-xs px-4 py-1.5 rounded-lg font-semibold transition-colors"
+                className="flex items-center gap-1.5 text-xs px-4 py-1.5 rounded-lg font-semibold transition-colors"
                 style={{ backgroundColor: "#5a7040", color: "#ffffff" }}
                 onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#6b854f")}
                 onMouseLeave={e => (e.currentTarget.style.backgroundColor = "#5a7040")}
@@ -408,7 +508,7 @@ function TourOverlay({ ctx }: { ctx: TourContextValue }) {
           </div>
         </div>
 
-        {/* Arrow pointer for non-center placements */}
+        {/* Arrow pointer */}
         {spotlight && step.placement && step.placement !== "center" && (
           <ArrowPointer placement={step.placement} spotlight={spotlight} tooltipPos={tooltipPos} />
         )}
@@ -430,7 +530,7 @@ function ArrowPointer({
 
   const tooltipLeft = tooltipPos.left as number;
   const tooltipTop = tooltipPos.top as number;
-  const tooltipWidth = 360;
+  const tooltipWidth = 390;
 
   const arrowSize = 10;
 
@@ -474,6 +574,46 @@ function ArrowPointer({
     );
   }
 
+  if (placement === "right") {
+    const spotlightCenterY = spotlight.top + spotlight.height / 2;
+    const arrowTop = spotlightCenterY - tooltipTop - arrowSize;
+    const clampedTop = Math.max(16, Math.min(arrowTop, 200));
+    return (
+      <div
+        style={{
+          position: "absolute",
+          top: clampedTop,
+          left: -arrowSize,
+          width: 0,
+          height: 0,
+          borderTop: `${arrowSize}px solid transparent`,
+          borderBottom: `${arrowSize}px solid transparent`,
+          borderRight: `${arrowSize}px solid #1c2414`,
+        }}
+      />
+    );
+  }
+
+  if (placement === "left") {
+    const spotlightCenterY = spotlight.top + spotlight.height / 2;
+    const arrowTop = spotlightCenterY - tooltipTop - arrowSize;
+    const clampedTop = Math.max(16, Math.min(arrowTop, 200));
+    return (
+      <div
+        style={{
+          position: "absolute",
+          top: clampedTop,
+          right: -arrowSize,
+          width: 0,
+          height: 0,
+          borderTop: `${arrowSize}px solid transparent`,
+          borderBottom: `${arrowSize}px solid transparent`,
+          borderLeft: `${arrowSize}px solid #1c2414`,
+        }}
+      />
+    );
+  }
+
   return null;
 }
 
@@ -490,7 +630,7 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
 
   const endTour = useCallback(() => {
     setIsActive(false);
-    localStorage.setItem(TOUR_COMPLETED_KEY, "1");
+    localStorage.setItem(TOUR_STORAGE_KEY, "1");
   }, []);
 
   const goToStep = useCallback((idx: number) => {
@@ -531,8 +671,6 @@ export function TourProvider({ children }: { children: React.ReactNode }) {
     </TourContext.Provider>
   );
 }
-
-const TOUR_COMPLETED_KEY = TOUR_STORAGE_KEY;
 
 export function TourLauncher() {
   const { startTour } = useTour();
