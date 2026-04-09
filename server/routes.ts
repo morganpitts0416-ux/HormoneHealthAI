@@ -2855,6 +2855,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
             response_format: 'verbose_json',
             language: 'en',
             prompt: clinicalPrompt,
+            temperature: 0,
           } as any);
         }
 

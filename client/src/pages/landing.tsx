@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { appUrl } from "@/lib/app-url";
-import { LandingTour } from "@/components/landing-tour";
+import { DemoModal } from "@/components/demo-modal";
 
 const CLINICIAN_FEATURES = [
   {
@@ -134,7 +134,7 @@ export default function Landing() {
                 <ChevronRight className="w-4 h-4 ml-1" />
               </Button>
             </a>
-            <LandingTour />
+            <DemoModal />
             <a href={appUrl("/login")}>
               <Button size="lg" variant="outline" data-testid="link-hero-signin" style={{ borderColor: "#c4b9a5", color: "#3d4a30" }}>
                 Sign in to your account

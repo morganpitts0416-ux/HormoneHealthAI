@@ -49,6 +49,7 @@ export const LEXICONS: Record<LexiconGroup, string[]> = {
     "prediabetes", "type 2 diabetes", "impaired fasting glucose",
     "semaglutide", "Ozempic", "Wegovy",
     "tirzepatide", "Mounjaro", "Zepbound",
+    "retatrutide", "orforglipron", "cagrilintide",
     "GLP-1", "GIP", "incretin",
     "metformin", "metformin XR", "metformin extended-release",
     "berberine", "inositol", "myo-inositol",
@@ -99,9 +100,10 @@ export const LEXICONS: Record<LexiconGroup, string[]> = {
   // Comprehensive medication dictionary — the primary layer for correct drug name recognition.
   // Organized by drug class so it's easy to add new medications over time.
   medication_names: [
-    // GLP-1 / GIP agonists
+    // GLP-1 / GIP agonists (including pipeline agents clinicians discuss)
     "semaglutide", "Ozempic", "Wegovy", "Rybelsus",
     "tirzepatide", "Mounjaro", "Zepbound",
+    "retatrutide", "orforglipron", "cagrilintide",
     "liraglutide", "Victoza", "Saxenda",
     "dulaglutide", "Trulicity",
     "exenatide", "Byetta", "Bydureon",
@@ -373,69 +375,94 @@ export function buildMedicalTermsList(visitType: string): string {
 }
 
 /**
- * Build a Whisper transcription prompt that reads like natural clinical notes.
- * Whisper treats the prompt as "prior context", so it biases toward spellings
- * that appear in the prompt. Front-loading the most commonly mispronounced
- * drug names and clinical acronyms significantly improves accuracy.
+ * Build a Whisper / gpt-4o-transcribe prompt that reads like natural clinical chart notes.
  *
- * Whisper caps the useful prompt at ~224 tokens — we stay well under that.
- * Strategy: include the drugs most likely to be phonetically mangled first,
- * then layer in visit-type-specific extras.
+ * WHY PROSE WORKS BETTER THAN A TERM LIST:
+ * Whisper treats the prompt as "prior context" — the text that came just before the audio.
+ * When the prompt reads like the opening lines of a clinical note, the model continues
+ * in that register and biases toward the exact spellings seen in those sentences.
+ * A comma-separated term dump works, but prose sentences outperform it because:
+ *   1. Terms embedded in natural sentences match real spoken medical language patterns.
+ *   2. Phrase-level context (e.g. "patient's medications include") anchors word boundaries.
+ *   3. Whisper's language model layer predicts the next word — a coherent note opening
+ *      gives it a much stronger prior than an isolated vocabulary list.
+ *
+ * TOKEN BUDGET: Whisper caps useful prompt influence at ~224 tokens.
+ * Staying at ~180 leaves headroom for the visit-type suffix.
  */
 export function buildWhisperPrompt(visitType: string): string {
-  // Tier 1: drugs and terms Whisper most frequently mangles — ALWAYS included
-  const tier1 =
-    "semaglutide, tirzepatide, Ozempic, Wegovy, Mounjaro, Zepbound, " +
-    "testosterone, estradiol, progesterone, DHEA, DHEA-S, SHBG, " +
-    "HbA1c, HOMA-IR, ApoB, Lp(a), hs-CRP, eGFR, FIB-4, IGF-1, " +
-    "anastrozole, metformin, berberine, myo-inositol, " +
-    "micronized progesterone, testosterone cypionate, testosterone pellet, " +
-    "PCOS, GLP-1, ASCVD, HRT, LH, FSH";
+  const visitProse: Record<string, string> = {
+    "new-patient":
+      "New patient presenting for comprehensive hormone, metabolic, and cardiovascular evaluation.",
+    "follow-up":
+      "Follow-up visit for hormone optimization, metabolic management, and cardiovascular risk review.",
+    "lab-review":
+      "Lab review appointment. Panels include thyroid, hormone, metabolic, lipid, and inflammatory markers.",
+    "wellness":
+      "Annual wellness visit with preventive care, metabolic screening, and cardiovascular risk assessment.",
+    "acute":
+      "Acute care visit. Reviewing current symptoms, medications, and recent labs.",
+    "telemedicine":
+      "Telemedicine follow-up for hormone and metabolic management.",
+    "procedure":
+      "Procedure visit. Pellet insertion, therapeutic phlebotomy, or injection today.",
+  };
 
-  // Tier 2: cardiovascular drugs Whisper frequently misreads — ALWAYS included
-  // "Liz Sartan" → losartan, "liz in o pril" → lisinopril, etc.
-  const tier2 =
-    "losartan, valsartan, olmesartan, telmisartan, candesartan, irbesartan, " +
-    "lisinopril, enalapril, ramipril, " +
-    "metoprolol, atenolol, carvedilol, bisoprolol, " +
-    "amlodipine, diltiazem, " +
-    "hydrochlorothiazide, HCTZ, chlorthalidone, spironolactone, " +
-    "rosuvastatin, atorvastatin, ezetimibe, " +
-    "apixaban, rivaroxaban, clopidogrel, " +
-    "empagliflozin, dapagliflozin, sitagliptin";
+  const intro = visitProse[visitType] ?? visitProse["follow-up"];
 
-  // Tier 3: visit-type-specific extras
+  // Core medication sentence — phonetically hardest drugs always included.
+  // Written as prose so Whisper sees these spellings in context, not isolation.
+  const meds =
+    "Patient's medications include semaglutide, tirzepatide, Ozempic, Wegovy, " +
+    "Mounjaro, Zepbound, testosterone cypionate, testosterone pellet, " +
+    "micronized progesterone, estradiol patch, anastrozole, letrozole, DHEA, " +
+    "levothyroxine, liothyronine, Armour thyroid, metformin, empagliflozin, " +
+    "dapagliflozin, rosuvastatin, atorvastatin, ezetimibe, evolocumab, inclisiran, " +
+    "losartan, lisinopril, amlodipine, metoprolol succinate, carvedilol, " +
+    "hydrochlorothiazide, spironolactone, apixaban, rivaroxaban, " +
+    "naltrexone, low-dose naltrexone, berberine, myo-inositol, CoQ10.";
+
+  // Core lab marker sentence — acronyms Whisper frequently spells out or mangles.
+  const labs =
+    "Labs ordered: HbA1c, HOMA-IR, ApoB, Lp(a), hs-CRP, eGFR, FIB-4, IGF-1, " +
+    "SHBG, DHEA-S, LH, FSH, TSH, free T3, free T4, reverse T3, " +
+    "ferritin, TIBC, transferrin saturation, 25-hydroxyvitamin D, " +
+    "CBC, CMP, lipid panel, ASCVD, GLP-1, PCOS.";
+
+  // Visit-type extras woven in as a short prose clause
   const groups = getRelevantLexiconGroups(visitType);
-  const extras = new Set<string>();
-  for (const g of groups) {
-    if (g === "lipid_and_cardiometabolic") {
-      ["triglycerides", "LDL-C", "HDL-C", "VLDL", "homocysteine",
-       "evolocumab", "alirocumab", "inclisiran"].forEach(t => extras.add(t));
-    }
-    if (g === "hormones_and_menopause") {
-      ["perimenopause", "menopause", "vasomotor symptoms",
-       "compounded HRT", "bioidentical hormone therapy", "aromatase inhibitor",
-       "letrozole", "clomiphene"].forEach(t => extras.add(t));
-    }
-    if (g === "metabolic_and_weight") {
-      ["insulin resistance", "metabolic syndrome", "hepatic steatosis",
-       "NAFLD", "MASLD", "hyperinsulinemia", "adiponectin",
-       "pioglitazone", "empagliflozin"].forEach(t => extras.add(t));
-    }
-    if (g === "primary_care") {
-      ["levothyroxine", "liothyronine", "Armour thyroid",
-       "naltrexone", "low-dose naltrexone", "LDN",
-       "sildenafil", "tadalafil", "finasteride"].forEach(t => extras.add(t));
-    }
+  const extras: string[] = [];
+  if (groups.includes("hormones_and_menopause")) {
+    extras.push(
+      "perimenopause, vasomotor symptoms, bioidentical hormone therapy, " +
+      "compounded HRT, aromatase inhibitor, clomiphene, hypogonadism"
+    );
+  }
+  if (groups.includes("metabolic_and_weight")) {
+    extras.push(
+      "insulin resistance, metabolic syndrome, hepatic steatosis, " +
+      "NAFLD, MASLD, hyperinsulinemia, pioglitazone, tirzepatide"
+    );
+  }
+  if (groups.includes("lipid_and_cardiometabolic")) {
+    extras.push(
+      "PREVENT score, homocysteine, bempedoic acid, Nexletol, " +
+      "lipoprotein(a), sacubitril-valsartan, Entresto"
+    );
+  }
+  if (groups.includes("procedure_terms")) {
+    extras.push(
+      "subcutaneous injection, intramuscular injection, " +
+      "therapeutic phlebotomy, pellet insertion, DEXA scan"
+    );
   }
 
-  const extrasStr = extras.size ? `, ${[...extras].join(", ")}` : "";
+  const extrasClause =
+    extras.length
+      ? ` Also discussed: ${extras.join("; ")}.`
+      : "";
 
-  // Written as a natural partial sentence so Whisper uses it as prior context
-  return (
-    `Hormone and primary care clinic visit. ` +
-    `Medications and lab markers discussed: ${tier1}, ${tier2}${extrasStr}.`
-  );
+  return `${intro} ${meds} ${labs}${extrasClause}`;
 }
 
 export function buildNormalizationRules(visitType: string): string {
@@ -449,61 +476,149 @@ export function buildNormalizationRules(visitType: string): string {
 
 export const NORMALIZATION_EXAMPLES = `
 Examples of speech-to-text errors to correct:
+
+── Lab markers & acronyms ──
 - "A poe bee" → "ApoB"
-- "LP little a" or "LP a" → "Lp(a)"
-- "HS CRP" or "high sensitivity CRP" → "hs-CRP"
-- "S H B G" or "S-H-B-G" → "SHBG"
-- "semagloo tide" or "sema glue tide" → "semaglutide"
-- "tear zap a tide" or "tirzep a tide" → "tirzepatide"
-- "micro nized progesterone" → "micronized progesterone"
-- "test a stone" or "testo" → "testosterone"
-- "die hydro epi andro sterone" → "DHEA"
-- "dee H E A S" → "DHEA-S"
-- "H B A 1 C" or "H-B-A-1-C" → "HbA1c"
-- "F I B 4" or "fib-4" → "FIB-4"
-- "I G F 1" → "IGF-1"
-- "E G F R" → "eGFR"
-- "P C O S" → "PCOS"
-- "A S C V D" → "ASCVD"
-- "G L P 1" → "GLP-1"
-- "Liz Sartan" or "liz artan" or "low sartan" → "losartan"
+- "LP little a" or "LP a" or "lipo protein little a" → "Lp(a)"
+- "HS CRP" or "high sensitivity CRP" or "high-sensitivity C-reactive protein" → "hs-CRP"
+- "S H B G" or "S-H-B-G" or "sex hormone binding glob" → "SHBG"
+- "H B A 1 C" or "H-B-A-1-C" or "A1C" or "A 1 C" → "HbA1c"
+- "H O M A I R" or "HOMA I R" or "HOMA IR" → "HOMA-IR"
+- "F I B 4" or "fib-4" or "fib four" → "FIB-4"
+- "I G F 1" or "I G F one" or "IGF one" → "IGF-1"
+- "E G F R" or "E-G-F-R" → "eGFR"
+- "P C O S" or "P-C-O-S" → "PCOS"
+- "A S C V D" or "A-S-C-V-D" → "ASCVD"
+- "G L P 1" or "GLP one" → "GLP-1"
+- "G I P" → "GIP"
+- "T S H" → "TSH"
+- "free T 3" or "free tee three" → "free T3"
+- "free T 4" or "free tee four" → "free T4"
+- "reverse T 3" or "reverse T three" → "reverse T3"
+- "T I B C" or "T-I-B-C" → "TIBC"
+- "transferrin sat" → "transferrin saturation"
+- "25 hydroxy vitamin D" or "25 OH vitamin D" or "25 hydroxy D" → "25-hydroxyvitamin D"
+- "dee H E A S" or "D H E A S" → "DHEA-S"
+- "die hydro epi andro sterone" or "D H E A" → "DHEA"
+- "A C T H" → "ACTH"
+- "H P A axis" → "HPA axis"
+- "G S M" → "GSM"
+- "N A F L D" → "NAFLD"
+- "M A S L D" → "MASLD"
+- "C A D" → "CAD"
+- "L D N" → "LDN"
+- "C B C" → "CBC"
+- "C M P" → "CMP"
+- "B M P" → "BMP"
+- "L H" → "LH"
+- "F S H" → "FSH"
+- "P S A" → "PSA"
+- "B U N" → "BUN"
+- "A L T" → "ALT"
+- "A S T" → "AST"
+- "G G T" → "GGT"
+
+── GLP-1 / metabolic drugs ──
+- "semagloo tide" or "sema glue tide" or "sema glu tide" → "semaglutide"
+- "tear zap a tide" or "tirzep a tide" or "tire zep a tide" → "tirzepatide"
+- "ret a troo tide" or "reta troo tide" or "reta tru tide" → "retatrutide"
+- "or for gli pron" or "or forge li pron" → "orforglipron"
+- "cag ril in tide" or "cag ri lin tide" → "cagrilintide"
+- "lira gloo tide" or "lira glue tide" → "liraglutide"
+- "do la gloo tide" or "doo la glue tide" → "dulaglutide"
+- "pi og li ta zone" or "pee oh gli ta zone" → "pioglitazone"
+- "em pag li flo zin" or "em pa gli flo zin" → "empagliflozin"
+- "dap a gli flo zin" or "dap a glee flo zin" → "dapagliflozin"
+- "can a gli flo zin" or "can a glee flo zin" → "canagliflozin"
+- "sit a glip tin" or "sit ag lip tin" → "sitagliptin"
+- "met for min" or "met form in" → "metformin"
+
+── Hormones & HRT ──
+- "test a stone" or "testo" or "test os ter one" → "testosterone"
+- "micro nized progesterone" or "micro nised progesterone" → "micronized progesterone"
+- "es tra dye ol" or "es tra di ol" → "estradiol"
+- "pro me tree um" or "pro me tri um" → "Prometrium"
+- "DHEA S" or "dee H E A S" → "DHEA-S"
+- "bio available testosterone" or "bio-available testosterone" → "bioavailable testosterone"
+- "ana stroz ole" or "an as tra zole" or "an a stro zole" → "anastrozole"
+- "le tro zole" or "let ra zole" or "let ro zole" → "letrozole"
+- "clom i feen" or "clom i pheen" → "clomiphene"
+- "pre nen o lone" or "preg nen o lone" → "pregnenolone"
+
+── Thyroid ──
+- "levo thigh rox een" or "levo thy rox in" → "levothyroxine"
+- "lie oh thy ro neen" or "lio thy ro neen" → "liothyronine"
+- "ar mour thyroid" or "arm er thyroid" or "armor thyroid" → "Armour thyroid"
+
+── Cardiovascular ──
+- "Liz Sartan" or "liz artan" or "low sartan" or "losar tan" → "losartan"
 - "val sartan" or "val zar tan" → "valsartan"
 - "olm e sartan" or "olm eh sartan" → "olmesartan"
-- "tel mee sartan" or "tel miss artan" → "telmisartan"
-- "can de sartan" → "candesartan"
+- "tel mee sartan" or "tel miss artan" or "tel mi sartan" → "telmisartan"
+- "can de sartan" or "can di sartan" → "candesartan"
+- "ir be sartan" or "ir beh sartan" → "irbesartan"
 - "liz in o pril" or "liz in oh pril" or "liz inn o pril" → "lisinopril"
 - "en a la pril" or "en al a pril" → "enalapril"
 - "ram i pril" or "ram ee pril" → "ramipril"
-- "am lo di pine" or "am lo deh pine" → "amlodipine"
-- "met o pro lol" or "met o pro lal" → "metoprolol"
+- "am lo di pine" or "am lo deh pine" or "am low di peen" → "amlodipine"
+- "met o pro lol" or "met o pro lal" or "meto pro lol" → "metoprolol"
+- "met o pro lol suc cin ate" or "metoprolol succ" → "metoprolol succinate"
 - "car ve di lol" or "car ve da lol" → "carvedilol"
-- "bis o pro lol" → "bisoprolol"
-- "hydro chloro thigh a zide" or "H C T Z" → "hydrochlorothiazide"
+- "bis o pro lol" or "bis oh pro lol" → "bisoprolol"
+- "hydro chloro thigh a zide" or "H C T Z" or "hydro chloro thia zide" → "hydrochlorothiazide"
 - "chlor thal i done" or "chlor thal eh done" → "chlorthalidone"
-- "roz u vas ta tin" or "roz oo vas ta tin" → "rosuvastatin"
+- "spiro no lac tone" or "spiro no lac ton" → "spironolactone"
+- "roz u vas ta tin" or "roz oo vas ta tin" or "rozu vastat in" → "rosuvastatin"
 - "a tor vas ta tin" or "a torr va sta tin" → "atorvastatin"
-- "em pag li flo zin" or "em pa gli flo zin" → "empagliflozin"
-- "dap a gli flo zin" → "dapagliflozin"
-- "sit a glip tin" or "sit ag lip tin" → "sitagliptin"
 - "a pix a ban" or "a pix aban" → "apixaban"
 - "riva rox aban" or "riva rox a ban" → "rivaroxaban"
 - "clop i do grel" or "clop id o grel" → "clopidogrel"
-- "spiro no lac tone" or "spiro no lac ton" → "spironolactone"
-- "boo pro pi on" or "byoo pro pee on" → "bupropion"
-- "ser tra line" or "sert ra leen" → "sertraline"
-- "es cit a lo pram" → "escitalopram"
-- "ven la fax een" → "venlafaxine"
-- "dul ox e teen" → "duloxetine"
+- "evan deh koo mab" or "ev o loo koo mab" or "ev oh loo koo mab" → "evolocumab"
+- "al ih roo koo mab" or "al ee roo koo mab" → "alirocumab"
+- "in cli sir an" or "in cli siran" → "inclisiran"
+- "bem pe doe ic" or "bem pe do ik" → "bempedoic acid"
+- "sac u bit ril" or "sak u bit ril valsartan" → "sacubitril-valsartan"
+- "en trest oh" or "en tres toe" → "Entresto"
+
+── Psychiatric / pain / other ──
+- "boo pro pi on" or "byoo pro pee on" or "byu pro pee on" → "bupropion"
+- "ser tra line" or "sert ra leen" or "ser tra leen" → "sertraline"
+- "es cit a lo pram" or "es sit a lo pram" → "escitalopram"
+- "ven la fax een" or "ven la fax in" → "venlafaxine"
+- "dul ox e teen" or "dull ox e teen" → "duloxetine"
 - "gab a pen tin" or "gab a pen teen" → "gabapentin"
-- "prega balin" or "preg a ba lin" → "pregabalin"
+- "prega balin" or "preg a ba lin" or "preg a ba leen" → "pregabalin"
 - "fin as ter ide" or "fin ass ter ide" → "finasteride"
-- "ana stroz ole" or "an as tra zole" → "anastrozole"
-- "le tro zole" or "let ra zole" → "letrozole"
-- "evan deh koo mab" or "ev o loo koo mab" → "evolocumab"
-- "al ih roo koo mab" → "alirocumab"
-- "N A C" → "NAC"
-- "co enzyme Q 10" or "co Q 10" → "CoQ10"
-- "alpha lipoic" → "alpha-lipoic acid"
-- "myo in a sit ol" or "myo inositol" → "myo-inositol"
-- "ash wa ganda" or "ash wa gandha" → "ashwagandha"
+- "nal trex own" or "nal trex one" or "low dose nal trex one" → "naltrexone"
+- "de no su mab" or "den o sue mab" → "denosumab"
+
+── Supplements & nutraceuticals ──
+- "N A C" or "N-A-C" → "NAC"
+- "co enzyme Q 10" or "co Q 10" or "co-Q-10" → "CoQ10"
+- "alpha lipoic" or "alpha lie po ic" → "alpha-lipoic acid"
+- "A L A" → "ALA"
+- "myo in a sit ol" or "myo inositol" or "my oh in o sit ol" → "myo-inositol"
+- "ash wa ganda" or "ash wa gandha" or "ashwa ganda" → "ashwagandha"
+- "mag nee zee um glyc in ate" or "mag nee zhum glycinate" → "magnesium glycinate"
+- "mag nee zee um mal ate" → "magnesium malate"
+- "phos fati dyl serine" or "fos fa ti dyl serine" → "phosphatidylserine"
+- "meth yl fo late" or "methyl folate" → "methylfolate"
+- "meth yl co bal a min" or "methyl cobalamin" → "methylcobalamin"
+- "rho dee o la" or "ro dee o la" → "rhodiola"
+- "lipo so mal glutathione" or "lipo so mal gluta thione" → "liposomal glutathione"
+
+── Clinical shorthand & spoken context ──
+- "his A1C was five point eight" → preserve as written; flag for review
+- "her testosterone came back at two forty" → preserve number; do not alter unit
+- "BP was one twenty over eighty" → "BP was 120/80"
+- "heart rate of sixty two" → "heart rate of 62"
+- "BMI of thirty one" → "BMI of 31"
+- "Hx of" → "history of"
+- "Rx" → "prescription" or leave as "Rx" (context-dependent)
+- "CC" → "chief complaint" when clearly in that context
+- "HPI" → "HPI" (keep as-is — recognized abbreviation)
+- "f/u" or "follow up" → "follow-up"
+- "w/u" → "workup"
+- "wt" → "weight"
+- "yo" after a number (e.g. "45 yo female") → "45-year-old female"
 `.trim();
