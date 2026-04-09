@@ -1117,8 +1117,12 @@ export const clinics = pgTable("clinics", {
   slug: varchar("slug", { length: 100 }),
   ownerUserId: integer("owner_user_id").references(() => users.id, { onDelete: "set null" }),
   isActive: boolean("is_active").notNull().default(true),
+  // Plan gating — enforced at application level, not by separate ownership structure.
+  // Solo plan: maxProviders = 1. Clinic plan: maxProviders = null (unlimited) or a set number.
+  // Upgrading Solo → Clinic is a maxProviders change only; no data migration required.
   subscriptionStatus: varchar("subscription_status", { length: 30 }),
-  subscriptionPlan: varchar("subscription_plan", { length: 30 }),
+  subscriptionPlan: varchar("subscription_plan", { length: 30 }), // 'solo' | 'clinic' | 'enterprise'
+  maxProviders: integer("max_providers").notNull().default(1), // 1 = Solo, null-override per plan
   stripeCustomerId: varchar("stripe_customer_id", { length: 100 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 100 }),
   trialEndsAt: timestamp("trial_ends_at"),
