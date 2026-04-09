@@ -51,6 +51,8 @@ integrations = ["javascript_mem_db:1.0.0", "javascript_openai_ai_integrations:1.
 [userenv.shared]
 ADMIN_BOOTSTRAP_TOKEN = "37f2ff4c773c4eeccf877197240707f71f75343990c922d1"
 RESEND_FROM_EMAIL = "noreply@realignlabeval.com"
+STRIPE_SUITE_PRICE_ID = "price_1TKR6NKbgudErHaMQoNserm1"
+STRIPE_PROVIDER_SEAT_PRICE_ID = "price_1TKR6NKbgudErHaMgd2q3k1p"
 
 [userenv.production]
 APP_URL = "https://realignlabeval.com"

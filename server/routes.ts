@@ -25,7 +25,7 @@ import {
   generateWebhookSecret,
   type ExternalProvider,
 } from "./external-messaging";
-import { storage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership } from "./storage";
+import { storage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership, updateClinicPlanFromStripe } from "./storage";
 import { getClinicPlanState, getActiveProviderCount, calculateRequiredSeatQuantity, SUITE_BASE_PROVIDER_LIMIT, EXTRA_SEAT_MONTHLY_PRICE } from "./clinic-plan";
 import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
@@ -5130,6 +5130,9 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     try {
       const subscription = event.data?.object;
 
+      // Price IDs for plan detection (read at webhook time to pick up env changes)
+      const SUITE_PRICE_ID = process.env.STRIPE_SUITE_PRICE_ID;
+
       switch (event.type) {
         case "customer.subscription.updated":
         case "customer.subscription.deleted": {
@@ -5150,6 +5153,42 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
             stripeCancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
             subscriptionStatus: status,
           });
+
+          // Detect plan type from subscription items and stamp the clinic
+          if (user.defaultClinicId) {
+            const items: any[] = subscription.items?.data ?? [];
+            const isSuite = SUITE_PRICE_ID
+              ? items.some((item: any) => item.price?.id === SUITE_PRICE_ID)
+              : false;
+
+            // Count purchased extra seat items from provider-seat price
+            const SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+            const seatItem = SEAT_PRICE_ID
+              ? items.find((item: any) => item.price?.id === SEAT_PRICE_ID)
+              : undefined;
+            const extraSeatsFromStripe = seatItem?.quantity ?? 0;
+
+            if (isSuite) {
+              await updateClinicPlanFromStripe({
+                clinicId: user.defaultClinicId,
+                subscriptionPlan: "suite",
+                baseProviderLimit: SUITE_BASE_PROVIDER_LIMIT, // 2
+                extraProviderSeats: extraSeatsFromStripe,
+                subscriptionStatus: status,
+                stripeSubscriptionId: subscription.id,
+              });
+            } else {
+              // Solo or unrecognized plan — enforce solo limits
+              await updateClinicPlanFromStripe({
+                clinicId: user.defaultClinicId,
+                subscriptionPlan: "solo",
+                baseProviderLimit: 1,
+                extraProviderSeats: 0,
+                subscriptionStatus: status,
+                stripeSubscriptionId: subscription.id,
+              });
+            }
+          }
           break;
         }
 

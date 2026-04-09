@@ -1272,6 +1272,34 @@ export class DbStorage implements IStorage {
 
 export const storage = new DbStorage();
 
+// ─── Clinic plan stamping ─────────────────────────────────────────────────
+/**
+ * Called by the Stripe webhook when a subscription event is received.
+ * Stamps the clinic with the correct plan, base limit, and max_providers.
+ * Safe to call multiple times — all fields are idempotent.
+ */
+export async function updateClinicPlanFromStripe(opts: {
+  clinicId: number;
+  subscriptionPlan: string;      // 'solo' | 'suite'
+  baseProviderLimit: number;     // 1 for solo, 2 for suite
+  extraProviderSeats: number;    // current purchased extra seats (pass existing value)
+  subscriptionStatus?: string;
+  stripeSubscriptionId?: string;
+}): Promise<void> {
+  const maxProviders = opts.baseProviderLimit + opts.extraProviderSeats;
+  await db
+    .update(schema.clinics)
+    .set({
+      subscriptionPlan: opts.subscriptionPlan,
+      baseProviderLimit: opts.baseProviderLimit,
+      maxProviders,
+      ...(opts.subscriptionStatus !== undefined && { subscriptionStatus: opts.subscriptionStatus }),
+      ...(opts.stripeSubscriptionId !== undefined && { stripeSubscriptionId: opts.stripeSubscriptionId }),
+      updatedAt: new Date(),
+    })
+    .where(eq(schema.clinics.id, opts.clinicId));
+}
+
 // ─── Clinic seat management ───────────────────────────────────────────────
 /** Update the seat counters on a clinic after a confirmed Stripe seat purchase. */
 export async function updateClinicSeats(
