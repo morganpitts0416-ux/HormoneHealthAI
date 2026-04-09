@@ -5,17 +5,14 @@ import { appUrl } from "@/lib/app-url";
 /**
  * Timed annotation bubbles that overlay the demo video.
  *
- * Each entry defines:
- *   start / end  — seconds in the video timeline
- *   label        — short badge text (section name)
- *   text         — one-line callout description
- *   position     — which corner of the video to render in
+ * Timestamps are in seconds (convert MM:SS → M*60+SS).
+ * start/end bracket the visible annotation; end = next annotation's start.
  *
- * ── HOW TO ADJUST TIMESTAMPS ──────────────────────────────────────────
- * Watch the video, note the seconds shown in the native video scrubber,
- * and update start/end below to match what's actually visible.
- * The label and text can say anything — keep them short (≤ 60 chars).
- * ──────────────────────────────────────────────────────────────────────
+ * User-supplied timestamps (MM.SS notation → seconds):
+ *  0.00 → 0s   0.01 → 1s   0.03 → 3s   0.04 → 4s   0.10 → 10s
+ *  0.15 → 15s  0.19 → 19s  0.41 → 41s  0.50 → 50s  1.14 → 74s
+ *  1.17 → 77s  1.32 → 92s  1.54 → 114s 2.00 → 120s 2.24 → 144s
+ *  2.27 → 147s 2.32 → 152s 2.36 → 156s 2.38 → 158s 2.46 → 166s
  */
 interface Annotation {
   start: number;
@@ -26,60 +23,156 @@ interface Annotation {
 }
 
 const ANNOTATIONS: Annotation[] = [
+  // 0:00 – 0:01
   {
-    start: 2,
-    end: 20,
+    start: 0,
+    end: 1,
     label: "Provider Dashboard",
-    text: "Your clinical command center — patients, alerts, and quick actions all in one view.",
+    text: "Your clinical command center — patient alerts, supplement orders, and full visit history at a glance.",
     position: "top-left",
   },
+  // 0:01 – 0:04
   {
-    start: 23,
-    end: 43,
-    label: "Patient Profiles",
-    text: "Browse your full patient roster, view lab history, and track trends over time.",
+    start: 1,
+    end: 4,
+    label: "New Encounter",
+    text: "Start a new patient encounter in seconds. ClinIQ links it to the patient profile and pre-fills visit context automatically.",
     position: "top-left",
   },
+  // 0:04 – 0:10
   {
-    start: 46,
-    end: 70,
+    start: 4,
+    end: 10,
+    label: "Live Recording",
+    text: "Record directly in the browser or upload an existing audio file — no external tools, no integrations required.",
+    position: "top-left",
+  },
+  // 0:10 – 0:15
+  {
+    start: 10,
+    end: 15,
+    label: "Transcription",
+    text: "Audio is transcribed, diarized by speaker, and normalized for medical terminology — all in seconds.",
+    position: "top-left",
+  },
+  // 0:15 – 0:19
+  {
+    start: 15,
+    end: 19,
+    label: "SOAP Note",
+    text: "One click generates a complete, chart-ready SOAP note with ICD-10 codes directly from your transcript.",
+    position: "top-left",
+  },
+  // 0:19 – 0:41
+  {
+    start: 19,
+    end: 41,
+    label: "Evidence",
+    text: "The Evidence tab surfaces confidence-rated guideline citations for every diagnosis — so you can validate clinical decisions without leaving the chart.",
+    position: "top-left",
+  },
+  // 0:41 – 0:50
+  {
+    start: 41,
+    end: 50,
+    label: "Patient Summary",
+    text: "Generate a plain-language patient summary and publish it to their secure portal with one click — they see it instantly.",
+    position: "top-left",
+  },
+  // 0:50 – 1:14
+  {
+    start: 50,
+    end: 74,
     label: "Lab Interpretation",
-    text: "60+ markers color-coded instantly — optimal, borderline, abnormal, and critical red flags.",
+    text: "Upload a lab PDF and ClinIQ auto-extracts every value. Add demographics and symptom context for deeper, more personalized analysis.",
     position: "top-left",
   },
+  // 1:14 – 1:17
   {
-    start: 73,
-    end: 98,
-    label: "Clinical Intelligence",
-    text: "PREVENT cardiovascular risk, insulin resistance phenotyping, and hormone patterns — automatic.",
+    start: 74,
+    end: 77,
+    label: "Patient Profile",
+    text: "Persistent patient profiles store full lab history, trend charts across 21 markers, and visit summaries side by side.",
     position: "top-left",
   },
+  // 1:17 – 1:32
   {
-    start: 101,
-    end: 125,
-    label: "Encounter Documentation",
-    text: "Upload or record visit audio. ClinIQ transcribes, normalizes, and diarizes in seconds.",
+    start: 77,
+    end: 92,
+    label: "Lab Results",
+    text: "Every marker is color-coded against gender-specific optimal ranges — with clinical guidance, standing-order alerts, and red flag detection built in.",
     position: "top-left",
   },
+  // 1:32 – 1:54
   {
-    start: 128,
+    start: 92,
+    end: 114,
+    label: "PREVENT & Lipids",
+    text: "PREVENT 2023 cardiovascular risk is calculated automatically. ApoB, Lp(a), and advanced lipid markers are layered in for comprehensive risk stratification.",
+    position: "top-left",
+  },
+  // 1:54 – 2:00
+  {
+    start: 114,
+    end: 120,
+    label: "Supplements",
+    text: "Supplement recommendations are generated automatically based on detected lab patterns, phenotypes, and patient-reported symptoms.",
+    position: "top-left",
+  },
+  // 2:00 – 2:24
+  {
+    start: 120,
+    end: 144,
+    label: "Lab Review Note",
+    text: "Copy the AI-generated lab review note directly into your EHR — already formatted for clinical documentation, nothing to reformat.",
+    position: "top-left",
+  },
+  // 2:24 – 2:27
+  {
+    start: 144,
+    end: 147,
+    label: "Account Settings",
+    text: "Account Settings let you configure every aspect of your clinical workflow and patient-facing experience in one place.",
+    position: "top-left",
+  },
+  // 2:27 – 2:32
+  {
+    start: 147,
     end: 152,
-    label: "AI SOAP Note",
-    text: "Full chart-ready SOAP note generated from the transcript — one click, no manual typing.",
+    label: "Messaging Routes",
+    text: "Choose how patients reach you: no portal messaging, in-app two-way chat, pass-through SMS — or an external platform bridge (coming soon).",
     position: "top-left",
   },
+  // 2:32 – 2:36
   {
-    start: 155,
-    end: 170,
-    label: "Evidence Tab",
-    text: "Guideline citations and clinical evidence surfaced for every diagnosis — confidence rated.",
+    start: 152,
+    end: 156,
+    label: "Staff Access",
+    text: "Invite staff members to your workspace with role-based permissions — they operate fully within your clinical environment.",
     position: "top-left",
   },
+  // 2:36 – 2:38
   {
-    start: 172,
+    start: 156,
+    end: 158,
+    label: "Supplement Library",
+    text: "Upload your own supplement catalog with patient-facing descriptions, dosing details, and lab-value trigger rules.",
+    position: "top-left",
+  },
+  // 2:38 – 2:46
+  {
+    start: 158,
+    end: 166,
+    label: "Lab Range Prefs",
+    text: "Override optimal or reference ranges for any of 60+ markers, per gender — your targets apply to every interpretation automatically.",
+    position: "top-left",
+  },
+  // 2:46 – 2:55
+  {
+    start: 166,
     end: 175,
-    label: "Patient Portal",
-    text: "What your patient sees — personalized lab insights, supplements, and wellness guidance.",
+    label: "Patient Discounts",
+    text: "Set percentage or flat-rate discounts on supplement orders — offered directly to patients or members through the portal.",
     position: "top-left",
   },
 ];
