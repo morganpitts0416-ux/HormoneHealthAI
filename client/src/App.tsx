@@ -39,6 +39,7 @@ import { BaaGate } from "@/components/baa-gate";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
 import { GlobalLoadingProvider } from "@/hooks/use-global-loading";
 import { GlobalLoadingOverlay } from "@/components/global-loading-overlay";
+import { TourProvider } from "@/components/product-tour";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -210,10 +211,12 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <GlobalLoadingProvider>
         <TooltipProvider>
-          <FaviconSpinner />
-          <GlobalLoadingOverlay />
-          <Toaster />
-          <Router />
+          <TourProvider>
+            <FaviconSpinner />
+            <GlobalLoadingOverlay />
+            <Toaster />
+            <Router />
+          </TourProvider>
         </TooltipProvider>
       </GlobalLoadingProvider>
     </QueryClientProvider>
