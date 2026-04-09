@@ -5169,26 +5169,46 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         rawPayload: payload,
       });
 
-      // Auto-link — or auto-create — patient record when we have their email
-      if (patientEmail) {
-        try {
-          const allPatients = await storage.getAllPatients(clinicianId);
-          const matched = allPatients.find(p => p.email?.toLowerCase() === patientEmail.toLowerCase());
+      // Auto-link — or auto-create — patient record
+      // Matching priority: 1) email  2) full name  3) create new (last resort)
+      try {
+        const allPatients = await storage.getAllPatients(clinicianId);
 
-          if (matched) {
-            // Existing patient found — link all unlinked appointments for this email
+        // ── 1. Email match ──────────────────────────────────────────────────
+        const emailMatched = patientEmail
+          ? allPatients.find(p => p.email?.toLowerCase() === patientEmail.toLowerCase())
+          : undefined;
+
+        if (emailMatched) {
+          // Perfect match — link all unlinked appointments for this email
+          if (patientEmail) {
             const apptsByEmail = await storage.getAppointmentsByPatientEmail(patientEmail, clinicianId);
             for (const m of apptsByEmail) {
-              if (!m.patientId) await storage.matchAppointmentToPatient(m.id, matched.id);
+              if (!m.patientId) await storage.matchAppointmentToPatient(m.id, emailMatched.id);
             }
           } else {
-            // No existing patient — auto-create a minimal profile so the appointment
-            // shows up in the patient portal immediately. The clinician can complete
-            // the profile (DOB, gender, etc.) from the Patient Profiles page.
+            await storage.matchAppointmentToPatient(appt.id, emailMatched.id);
+          }
+        } else {
+          // ── 2. Name match (fallback — catches lab-created profiles with no email) ──
+          const normalize = (s: string) => s.toLowerCase().replace(/\s+/g, " ").trim();
+          const webhookFullName = normalize(patientName ?? "");
+          const nameMatched = webhookFullName
+            ? allPatients.find(p => normalize(`${p.firstName} ${p.lastName}`) === webhookFullName)
+            : undefined;
+
+          if (nameMatched) {
+            // Found by name — update profile with email if it was missing
+            if (patientEmail && !nameMatched.email) {
+              await storage.updatePatient(nameMatched.id, { email: patientEmail.toLowerCase() }, clinicianId);
+            }
+            await storage.matchAppointmentToPatient(appt.id, nameMatched.id);
+          } else if (patientEmail) {
+            // ── 3. Create new minimal profile (true new patient) ─────────────
+            // Only when we have an email, so the next appointment will match correctly.
             const nameParts = (patientName ?? "Unknown Patient").trim().split(/\s+/);
             const firstName = nameParts[0] || "Unknown";
             const lastName = nameParts.slice(1).join(" ") || "Patient";
-            // Guess gender from service type (best effort; clinician can correct)
             const svcStr = (serviceType ?? "").toLowerCase();
             const gender = svcStr.includes("women") || svcStr.includes("female") || svcStr.includes("estrogen") ? "female" : "male";
             const newPatient = await storage.createPatient({
@@ -5200,9 +5220,10 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
             });
             await storage.matchAppointmentToPatient(appt.id, newPatient.id);
           }
-        } catch {
-          // non-fatal — appointment is saved even if linking/creation fails
+          // If no email AND no name match, appointment is saved unlinked — clinician links manually
         }
+      } catch {
+        // non-fatal — appointment is saved even if linking/creation fails
       }
 
       res.json({ received: true, action: "upserted", id: appt.id });
