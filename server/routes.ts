@@ -1194,6 +1194,165 @@ ${aiRecommendations}`;
     }
   });
 
+  // ── Patient Chart endpoints ──────────────────────────────────────────────────
+
+  // GET /api/patients/:id/chart — fetch this patient's EHR chart
+  app.get("/api/patients/:id/chart", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const patientId = parseInt(req.params.id);
+      const chart = await storage.getPatientChart(patientId, clinicianId);
+      res.json(chart ?? null);
+    } catch (err) {
+      console.error("[Chart] GET error:", err);
+      res.status(500).json({ message: "Failed to load patient chart" });
+    }
+  });
+
+  // PUT /api/patients/:id/chart — save approved chart data
+  app.put("/api/patients/:id/chart", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const patientId = parseInt(req.params.id);
+      const {
+        currentMedications, medicalHistory, familyHistory,
+        socialHistory, allergies, surgicalHistory,
+        draftExtraction, draftFromEncounterId, lastReviewedAt,
+      } = req.body;
+      const chart = await storage.upsertPatientChart(patientId, clinicianId, {
+        ...(currentMedications !== undefined && { currentMedications }),
+        ...(medicalHistory !== undefined && { medicalHistory }),
+        ...(familyHistory !== undefined && { familyHistory }),
+        ...(socialHistory !== undefined && { socialHistory }),
+        ...(allergies !== undefined && { allergies }),
+        ...(surgicalHistory !== undefined && { surgicalHistory }),
+        ...(draftExtraction !== undefined && { draftExtraction }),
+        ...(draftFromEncounterId !== undefined && { draftFromEncounterId }),
+        ...(lastReviewedAt !== undefined && { lastReviewedAt: new Date(lastReviewedAt) }),
+      });
+      res.json(chart);
+    } catch (err) {
+      console.error("[Chart] PUT error:", err);
+      res.status(500).json({ message: "Failed to save patient chart" });
+    }
+  });
+
+  // POST /api/patients/:id/chart/extract — AI extract chart data from a specific encounter
+  app.post("/api/patients/:id/chart/extract", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const patientId = parseInt(req.params.id);
+      const { encounterId } = req.body;
+
+      if (!encounterId) return res.status(400).json({ message: "encounterId is required" });
+
+      const encounter = await storage.getEncounter(parseInt(encounterId), clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      // Build the richest context available: diarized transcript preferred, raw fallback
+      const diarized = encounter.diarizedTranscript as any[] | null;
+      const transcriptText = diarized?.length
+        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : (encounter.transcription ?? "");
+
+      const soap = encounter.soapNote as any;
+      const soapText = soap?.fullNote ?? [
+        soap?.subjective ? `Subjective: ${soap.subjective}` : null,
+        soap?.objective ? `Objective: ${soap.objective}` : null,
+        soap?.assessment ? `Assessment: ${soap.assessment}` : null,
+        soap?.plan ? `Plan: ${soap.plan}` : null,
+      ].filter(Boolean).join('\n') ?? "";
+
+      const extraction = encounter.clinicalExtraction as any;
+      const extractionSummary = extraction ? [
+        extraction.medications_current?.length ? `Medications mentioned: ${extraction.medications_current.join(', ')}` : null,
+        extraction.diagnoses_discussed?.length ? `Diagnoses: ${extraction.diagnoses_discussed.join(', ')}` : null,
+        extraction.symptoms_reported?.length ? `Symptoms: ${extraction.symptoms_reported.join(', ')}` : null,
+        extraction.red_flags?.length ? `Red flags: ${extraction.red_flags.join(', ')}` : null,
+      ].filter(Boolean).join('\n') : null;
+
+      if (!transcriptText && !soapText) {
+        return res.status(400).json({ message: "This encounter has no transcript or SOAP note to extract from." });
+      }
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      const systemPrompt = `You are an EHR clinical data extraction specialist. Your job is to extract persistent patient history data from a clinical encounter transcript and SOAP note.
+
+WHAT TO EXTRACT:
+1. currentMedications — All medications the patient is currently taking (prescription, OTC, supplements, injections). Include dose and frequency if mentioned. Examples: "Testosterone Cypionate 200mg IM weekly", "Metformin 500mg twice daily", "Fish oil 1g daily"
+2. medicalHistory — Diagnosed medical conditions, chronic diseases, and significant past medical events. Examples: "Type 2 diabetes", "Hypertension", "Hypothyroidism", "GERD", "Anxiety"
+3. familyHistory — Any family members' health conditions mentioned. Format: "Father — heart disease", "Mother — breast cancer", "Brother — type 2 diabetes"
+4. socialHistory — Lifestyle facts: smoking status, alcohol use, exercise habits, occupation, relationship status, diet. Examples: "Former smoker — quit 2015", "Drinks 1-2 glasses wine/week", "Sedentary job, walks 3x/week"
+5. allergies — Drug, food, or environmental allergies. Include reaction type if mentioned. Examples: "Penicillin — anaphylaxis", "Sulfa drugs — rash", "Shellfish — hives"
+6. surgicalHistory — Past surgeries, procedures, or hospitalizations. Examples: "Appendectomy 2010", "C-section 2018", "Knee arthroscopy 2022"
+
+CRITICAL SAFETY RULES:
+- ONLY extract information EXPLICITLY stated — do not infer or guess
+- NEVER create entries based on what "usually" happens or general knowledge
+- NEVER duplicate across sections (a medication goes in medications, not medical history)
+- Keep each entry concise — one condition/medication/fact per array item
+- If a section has nothing explicitly stated, return an empty array
+- Do NOT include lab values or test results — those belong in lab interpretation
+
+Return ONLY this JSON structure:
+{
+  "currentMedications": [],
+  "medicalHistory": [],
+  "familyHistory": [],
+  "socialHistory": [],
+  "allergies": [],
+  "surgicalHistory": []
+}`;
+
+      const userContent = [
+        `Visit Type: ${encounter.visitType}`,
+        `Chief Complaint: ${encounter.chiefComplaint ?? "Not specified"}`,
+        transcriptText ? `\nTRANSCRIPT:\n${transcriptText}` : null,
+        soapText ? `\nSOAP NOTE:\n${soapText}` : null,
+        extractionSummary ? `\nSTRUCTURED EXTRACTION SUMMARY:\n${extractionSummary}` : null,
+      ].filter(Boolean).join('\n');
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          { role: "system", content: systemPrompt },
+          { role: "user", content: userContent },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const extracted = JSON.parse(completion.choices[0].message.content || "{}");
+
+      const draft: import("@shared/schema").PatientChartDraft = {
+        currentMedications: extracted.currentMedications ?? [],
+        medicalHistory: extracted.medicalHistory ?? [],
+        familyHistory: extracted.familyHistory ?? [],
+        socialHistory: extracted.socialHistory ?? [],
+        allergies: extracted.allergies ?? [],
+        surgicalHistory: extracted.surgicalHistory ?? [],
+        extractedAt: new Date().toISOString(),
+        encounterId: encounter.id,
+        encounterDate: new Date(encounter.visitDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" }),
+        visitType: encounter.visitType,
+      };
+
+      // Save draft to chart (does not overwrite approved data)
+      await storage.upsertPatientChart(patientId, clinicianId, {
+        draftExtraction: draft,
+        draftFromEncounterId: encounter.id,
+      });
+
+      res.json({ draft });
+    } catch (err) {
+      console.error("[Chart Extract] Error:", err);
+      res.status(500).json({ message: "Failed to extract chart data from encounter." });
+    }
+  });
+
   app.post("/api/patients/:id/trend-narrative", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);

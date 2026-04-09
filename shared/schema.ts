@@ -1002,6 +1002,47 @@ export const appointments = pgTable("appointments", {
 export const insertAppointmentSchema = createInsertSchema(appointments).omit({
   id: true, createdAt: true, updatedAt: true,
 });
+
+// ─── Patient Chart (EHR-style persistent clinical history) ────────────────
+// Stores medication list, medical/family/social/surgical history and allergies.
+// AI extracts a draft from encounter transcripts/SOAP; clinician approves before save.
+
+export type PatientChartDraft = {
+  currentMedications: string[];
+  medicalHistory: string[];
+  familyHistory: string[];
+  socialHistory: string[];
+  allergies: string[];
+  surgicalHistory: string[];
+  extractedAt: string;    // ISO timestamp
+  encounterId: number;
+  encounterDate: string;  // display string
+  visitType: string;
+};
+
+export const patientCharts = pgTable("patient_charts", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Approved / saved sections (stored as JSON arrays for flexibility)
+  currentMedications: jsonb("current_medications").$type<string[]>().notNull().default([]),
+  medicalHistory: jsonb("medical_history").$type<string[]>().notNull().default([]),
+  familyHistory: jsonb("family_history").$type<string[]>().notNull().default([]),
+  socialHistory: jsonb("social_history").$type<string[]>().notNull().default([]),
+  allergies: jsonb("allergies").$type<string[]>().notNull().default([]),
+  surgicalHistory: jsonb("surgical_history").$type<string[]>().notNull().default([]),
+  // AI-extracted draft pending clinician approval
+  draftExtraction: jsonb("draft_extraction").$type<PatientChartDraft>(),
+  draftFromEncounterId: integer("draft_from_encounter_id"),
+  lastReviewedAt: timestamp("last_reviewed_at"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+
+export type PatientChart = typeof patientCharts.$inferSelect;
+export const insertPatientChartSchema = createInsertSchema(patientCharts).omit({
+  id: true, updatedAt: true,
+});
+export type InsertPatientChart = z.infer<typeof insertPatientChartSchema>;
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 export type Appointment = typeof appointments.$inferSelect;
 

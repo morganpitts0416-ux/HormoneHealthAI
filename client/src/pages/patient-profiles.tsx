@@ -13,7 +13,8 @@ import {
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
-  Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus
+  Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
+  ChevronLeft, Pill, Shield, Scissors, X, Pencil,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -26,7 +27,7 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter } from "@shared/schema";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
@@ -616,6 +617,443 @@ function PatientAvatar({ patient, size = "md" }: { patient: Patient; size?: "sm"
   );
 }
 
+// ── Patient Chart ─────────────────────────────────────────────────────────────
+
+const CHART_SECTIONS_META = [
+  { key: "currentMedications" as const, label: "Current Medications", icon: Pill },
+  { key: "medicalHistory" as const, label: "Medical History", icon: FileText },
+  { key: "familyHistory" as const, label: "Family History", icon: Users },
+  { key: "socialHistory" as const, label: "Social History", icon: Activity },
+  { key: "allergies" as const, label: "Allergies & Sensitivities", icon: Shield },
+  { key: "surgicalHistory" as const, label: "Surgical History", icon: Scissors },
+];
+
+type ChartSectionKey = "currentMedications" | "medicalHistory" | "familyHistory" | "socialHistory" | "allergies" | "surgicalHistory";
+
+function PatientChartPanel({
+  patientId,
+  chart,
+  encounters,
+  onSaved,
+}: {
+  patientId: number;
+  chart: PatientChart | null;
+  encounters: ClinicalEncounter[];
+  onSaved: () => void;
+}) {
+  const { toast } = useToast();
+  const [editMode, setEditMode] = useState(false);
+  const [extractOpen, setExtractOpen] = useState(false);
+  const [reviewOpen, setReviewOpen] = useState(false);
+  const [selectedEncounterId, setSelectedEncounterId] = useState<string>("");
+  const [extracting, setExtracting] = useState(false);
+
+  const toList = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
+
+  const [local, setLocal] = useState<Record<ChartSectionKey, string[]>>({
+    currentMedications: toList(chart?.currentMedications),
+    medicalHistory: toList(chart?.medicalHistory),
+    familyHistory: toList(chart?.familyHistory),
+    socialHistory: toList(chart?.socialHistory),
+    allergies: toList(chart?.allergies),
+    surgicalHistory: toList(chart?.surgicalHistory),
+  });
+
+  const [addInputs, setAddInputs] = useState<Record<ChartSectionKey, string>>({
+    currentMedications: "", medicalHistory: "", familyHistory: "",
+    socialHistory: "", allergies: "", surgicalHistory: "",
+  });
+
+  const draft = (chart?.draftExtraction as PatientChartDraft | null | undefined) ?? null;
+
+  const [draftChecked, setDraftChecked] = useState<Record<ChartSectionKey, Record<number, boolean>>>({
+    currentMedications: {}, medicalHistory: {}, familyHistory: {},
+    socialHistory: {}, allergies: {}, surgicalHistory: {},
+  });
+
+  useEffect(() => {
+    setLocal({
+      currentMedications: toList(chart?.currentMedications),
+      medicalHistory: toList(chart?.medicalHistory),
+      familyHistory: toList(chart?.familyHistory),
+      socialHistory: toList(chart?.socialHistory),
+      allergies: toList(chart?.allergies),
+      surgicalHistory: toList(chart?.surgicalHistory),
+    });
+  }, [chart]);
+
+  useEffect(() => {
+    if (!draft) return;
+    const checked: Record<ChartSectionKey, Record<number, boolean>> = {
+      currentMedications: {}, medicalHistory: {}, familyHistory: {},
+      socialHistory: {}, allergies: {}, surgicalHistory: {},
+    };
+    for (const sec of CHART_SECTIONS_META) {
+      const items = (draft[sec.key] ?? []) as string[];
+      items.forEach((_: string, i: number) => { checked[sec.key][i] = true; });
+    }
+    setDraftChecked(checked);
+  }, [draft]);
+
+  const saveMutation = useMutation({
+    mutationFn: async (data: Partial<Record<ChartSectionKey, string[] | null>> & { draftExtraction?: null; lastReviewedAt?: string }) => {
+      const res = await apiRequest("PUT", `/api/patients/${patientId}/chart`, data);
+      if (!res.ok) throw new Error("Save failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      setEditMode(false);
+      onSaved();
+      toast({ title: "Chart saved" });
+    },
+    onError: () => toast({ variant: "destructive", title: "Failed to save chart" }),
+  });
+
+  const handleSaveEdit = () => saveMutation.mutate({ ...local });
+
+  const handleExtract = async () => {
+    if (!selectedEncounterId) return;
+    setExtracting(true);
+    try {
+      const res = await apiRequest("POST", `/api/patients/${patientId}/chart/extract`, {
+        encounterId: parseInt(selectedEncounterId),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Extraction failed");
+      }
+      const data = await res.json();
+      onSaved();
+      setExtractOpen(false);
+      setReviewOpen(true);
+      toast({
+        title: "AI extraction complete",
+        description: `Extracted from ${data.draft?.visitType ?? "encounter"} — review and approve below.`,
+      });
+    } catch (e: unknown) {
+      const msg = e instanceof Error ? e.message : "Unknown error";
+      toast({ variant: "destructive", title: "Extraction failed", description: msg });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const handleApproveDraft = () => {
+    if (!draft) return;
+    const merged: Record<ChartSectionKey, string[]> = { ...local };
+    for (const sec of CHART_SECTIONS_META) {
+      const draftItems = (draft[sec.key] ?? []) as string[];
+      const approvedItems = draftItems.filter((_: string, i: number) => draftChecked[sec.key][i] !== false);
+      const combined = [...local[sec.key]];
+      for (const item of approvedItems) {
+        if (!combined.map((x: string) => x.toLowerCase()).includes(item.toLowerCase())) {
+          combined.push(item);
+        }
+      }
+      merged[sec.key] = combined;
+    }
+    saveMutation.mutate({ ...merged, draftExtraction: null, lastReviewedAt: new Date().toISOString() });
+    setReviewOpen(false);
+  };
+
+  const addItem = (key: ChartSectionKey) => {
+    const val = addInputs[key].trim();
+    if (!val) return;
+    setLocal(prev => ({ ...prev, [key]: [...prev[key], val] }));
+    setAddInputs(prev => ({ ...prev, [key]: "" }));
+  };
+
+  const removeItem = (key: ChartSectionKey, idx: number) => {
+    setLocal(prev => ({ ...prev, [key]: prev[key].filter((_, i) => i !== idx) }));
+  };
+
+  const hasAnyData = CHART_SECTIONS_META.some(s => (local[s.key]?.length ?? 0) > 0);
+
+  return (
+    <>
+      <div className="rounded-xl border" style={{ borderColor: "#d4c9b5", backgroundColor: "#fdfaf7" }}>
+        {/* Header */}
+        <div className="flex items-center justify-between px-4 py-3 border-b flex-wrap gap-2" style={{ borderColor: "#e8ddd0" }}>
+          <div className="flex items-center gap-2 flex-wrap">
+            <ClipboardList className="w-4 h-4 flex-shrink-0" style={{ color: "#5a7040" }} />
+            <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Patient Chart</span>
+            {chart?.lastReviewedAt && (
+              <span className="text-xs text-muted-foreground">
+                · Reviewed {new Date(chart.lastReviewedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+              </span>
+            )}
+          </div>
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              variant="outline"
+              className="text-xs gap-1.5"
+              style={{ color: "#5a7040", borderColor: "#c4d4a8" }}
+              onClick={() => {
+                if (encounters.length === 0) {
+                  toast({ title: "No encounters", description: "This patient has no clinical encounters yet." });
+                  return;
+                }
+                setSelectedEncounterId(String(encounters[0].id));
+                setExtractOpen(true);
+              }}
+              data-testid="button-chart-extract"
+            >
+              <Sparkles className="w-3 h-3" />
+              Extract from Encounter
+            </Button>
+            {!editMode ? (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs gap-1.5"
+                onClick={() => setEditMode(true)}
+                data-testid="button-chart-edit"
+              >
+                <Pencil className="w-3 h-3" />
+                Edit
+              </Button>
+            ) : (
+              <div className="flex gap-1.5">
+                <Button size="sm" variant="ghost" className="text-xs" onClick={() => setEditMode(false)}>
+                  Cancel
+                </Button>
+                <Button
+                  size="sm"
+                  className="text-xs gap-1"
+                  style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                  onClick={handleSaveEdit}
+                  disabled={saveMutation.isPending}
+                  data-testid="button-chart-save"
+                >
+                  {saveMutation.isPending ? <><RefreshCw className="w-3 h-3 animate-spin" />Saving…</> : "Save Chart"}
+                </Button>
+              </div>
+            )}
+          </div>
+        </div>
+
+        {/* Draft pending banner */}
+        {draft && !reviewOpen && (
+          <div className="px-4 py-2.5 flex items-center justify-between gap-3 flex-wrap"
+            style={{ backgroundColor: "#f0f5ea", borderBottom: "1px solid #c8dbb8" }}>
+            <div className="flex items-center gap-2 min-w-0">
+              <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+              <span className="text-xs truncate" style={{ color: "#3d5228" }}>
+                AI draft from <strong>{draft.visitType}</strong> on {draft.encounterDate} — awaiting your review
+              </span>
+            </div>
+            <Button
+              size="sm"
+              className="text-xs shrink-0"
+              style={{ backgroundColor: "#5a7040", color: "#fff", border: "none" }}
+              onClick={() => setReviewOpen(true)}
+              data-testid="button-chart-review-draft"
+            >
+              Review Draft
+            </Button>
+          </div>
+        )}
+
+        {/* Sections grid */}
+        <div className="p-4 grid grid-cols-1 sm:grid-cols-2 gap-x-6 gap-y-5">
+          {CHART_SECTIONS_META.map(({ key, label, icon: Icon }) => {
+            const items = local[key];
+            const isAllergies = key === "allergies";
+            return (
+              <div key={key}>
+                <p className="text-xs font-semibold uppercase tracking-wide mb-2 flex items-center gap-1.5" style={{ color: "#5a7040" }}>
+                  <Icon className="w-3 h-3" />
+                  {label}
+                  <span className="font-normal normal-case tracking-normal text-muted-foreground ml-0.5">({items.length})</span>
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {items.map((item: string, idx: number) => (
+                    <span
+                      key={idx}
+                      className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                      style={{
+                        backgroundColor: isAllergies ? "#fde8e8" : "#edf2e6",
+                        color: isAllergies ? "#c0392b" : "#2e3a20",
+                        border: `1px solid ${isAllergies ? "#f5c6c6" : "#c4d4a8"}`,
+                      }}
+                    >
+                      {item}
+                      {editMode && (
+                        <button
+                          onClick={() => removeItem(key, idx)}
+                          className="ml-0.5 opacity-50 hover:opacity-100"
+                          aria-label="Remove"
+                        >
+                          <X className="w-2.5 h-2.5" />
+                        </button>
+                      )}
+                    </span>
+                  ))}
+                  {items.length === 0 && !editMode && (
+                    <span className="text-xs text-muted-foreground italic">None recorded</span>
+                  )}
+                  {editMode && (
+                    <div className="flex items-center gap-1 w-full mt-1">
+                      <Input
+                        className="h-6 text-xs flex-1"
+                        placeholder={`Add ${label.toLowerCase()}…`}
+                        value={addInputs[key]}
+                        onChange={e => setAddInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                        onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addItem(key); } }}
+                        data-testid={`input-chart-add-${key}`}
+                      />
+                      <Button size="sm" variant="ghost" className="h-6 px-2 text-xs" onClick={() => addItem(key)}>
+                        <Plus className="w-3 h-3" />
+                      </Button>
+                    </div>
+                  )}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+
+        {!hasAnyData && !editMode && (
+          <div className="px-4 pb-4 text-center">
+            <p className="text-xs text-muted-foreground">
+              No chart data yet. Use "Extract from Encounter" to populate automatically, or click Edit to enter manually.
+            </p>
+          </div>
+        )}
+      </div>
+
+      {/* Extract Dialog */}
+      <Dialog open={extractOpen} onOpenChange={setExtractOpen}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Extract Chart Data from Encounter</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground">
+            Select a clinical encounter. ClinIQ will analyze the transcript and SOAP note to extract medications, diagnoses, family history, social history, allergies, and surgical history. You'll review and approve each item before it's saved.
+          </p>
+          <div className="space-y-2 mt-2">
+            <Label className="text-sm">Encounter</Label>
+            <select
+              className="w-full rounded-md border px-3 py-2 text-sm bg-background"
+              value={selectedEncounterId}
+              onChange={e => setSelectedEncounterId(e.target.value)}
+              data-testid="select-extract-encounter"
+            >
+              {encounters.map(enc => (
+                <option key={enc.id} value={String(enc.id)}>
+                  {new Date(enc.visitDate).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}
+                  {" — "}{enc.visitType}
+                  {(enc as any).chiefComplaint ? ` (${(enc as any).chiefComplaint})` : ""}
+                  {!enc.transcription && !(enc as any).soapNote ? " [no transcript]" : ""}
+                </option>
+              ))}
+            </select>
+          </div>
+          <DialogFooter className="mt-4 gap-2">
+            <Button variant="outline" onClick={() => setExtractOpen(false)}>Cancel</Button>
+            <Button
+              style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+              onClick={handleExtract}
+              disabled={extracting || !selectedEncounterId}
+              data-testid="button-extract-confirm"
+            >
+              {extracting
+                ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Extracting…</>
+                : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Extract & Draft</>}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      {/* Draft Review Dialog */}
+      <Dialog open={reviewOpen} onOpenChange={setReviewOpen}>
+        <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Review AI-Extracted Chart Data</DialogTitle>
+          </DialogHeader>
+          <p className="text-sm text-muted-foreground mb-4">
+            Check the items you'd like to add to the patient chart. Items already in the chart are shown as already recorded.
+          </p>
+          {draft && (
+            <div className="space-y-5">
+              {CHART_SECTIONS_META.map(({ key, label, icon: Icon }) => {
+                const items = (draft[key] ?? []) as string[];
+                return (
+                  <div key={key}>
+                    <p className="text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 mb-2" style={{ color: "#5a7040" }}>
+                      <Icon className="w-3 h-3" />{label}
+                      <span className="font-normal normal-case tracking-normal text-muted-foreground">({items.length} extracted)</span>
+                    </p>
+                    {items.length === 0 ? (
+                      <p className="text-xs text-muted-foreground italic">None extracted</p>
+                    ) : (
+                      <div className="space-y-1.5">
+                        {items.map((item: string, idx: number) => {
+                          const alreadyInChart = local[key].map((x: string) => x.toLowerCase()).includes(item.toLowerCase());
+                          const isChecked = draftChecked[key][idx] !== false;
+                          return (
+                            <label
+                              key={idx}
+                              className={cn(
+                                "flex items-start gap-2.5 rounded-md px-3 py-2 cursor-pointer",
+                                alreadyInChart ? "opacity-50 cursor-default" : "hover:bg-muted/40"
+                              )}
+                            >
+                              <input
+                                type="checkbox"
+                                checked={isChecked && !alreadyInChart}
+                                disabled={alreadyInChart}
+                                onChange={e => setDraftChecked(prev => ({
+                                  ...prev,
+                                  [key]: { ...prev[key], [idx]: e.target.checked },
+                                }))}
+                                className="mt-0.5 flex-shrink-0"
+                              />
+                              <span className="text-sm">{item}</span>
+                              {alreadyInChart && (
+                                <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">already in chart</span>
+                              )}
+                            </label>
+                          );
+                        })}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
+            </div>
+          )}
+          <DialogFooter className="mt-6 gap-2 flex-wrap">
+            <Button variant="outline" onClick={() => setReviewOpen(false)}>Cancel</Button>
+            <Button
+              variant="outline"
+              onClick={async () => {
+                await apiRequest("PUT", `/api/patients/${patientId}/chart`, { draftExtraction: null });
+                onSaved();
+                setReviewOpen(false);
+                toast({ title: "Draft discarded" });
+              }}
+            >
+              Discard Draft
+            </Button>
+            <Button
+              style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+              onClick={handleApproveDraft}
+              disabled={saveMutation.isPending}
+              data-testid="button-approve-draft"
+            >
+              {saveMutation.isPending
+                ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Saving…</>
+                : "Approve & Save to Chart"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </>
+  );
+}
+
 export default function PatientProfiles() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -639,6 +1077,7 @@ export default function PatientProfiles() {
   const [showMessages, setShowMessages] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
   const [showEncounters, setShowEncounters] = useState(false);
+  const [listCollapsed, setListCollapsed] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
 
@@ -799,6 +1238,17 @@ export default function PatientProfiles() {
       if (!selectedPatient) return [];
       const res = await fetch(`/api/encounters?patientId=${selectedPatient.id}`, { credentials: 'include' });
       if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const { data: patientChart, refetch: refetchChart } = useQuery<PatientChart | null>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'chart'],
+    queryFn: async () => {
+      if (!selectedPatient) return null;
+      const res = await fetch(`/api/patients/${selectedPatient.id}/chart`, { credentials: 'include' });
+      if (!res.ok) return null;
       return res.json();
     },
     enabled: !!selectedPatient,
@@ -978,12 +1428,31 @@ export default function PatientProfiles() {
       {/* Split panel body */}
       <div className="flex flex-1 overflow-hidden">
 
-        {/* Left panel: patient list — hidden on mobile when a patient is selected */}
-        <div className={selectedPatient
-          ? "hidden md:flex md:flex-col md:flex-shrink-0 md:w-72 border-r bg-background"
-          : "flex flex-col flex-shrink-0 w-full md:w-72 border-r bg-background"
-        }>
-          {/* Search + filter controls */}
+        {/* Left panel: patient list */}
+        <div className={cn(
+          "flex-shrink-0 border-r bg-background transition-all duration-200",
+          selectedPatient
+            ? listCollapsed
+              ? "hidden md:flex md:flex-col md:w-10"
+              : "hidden md:flex md:flex-col md:w-72"
+            : "flex flex-col w-full md:w-72"
+        )}>
+          {/* Collapsed state — just a toggle strip */}
+          {listCollapsed && selectedPatient && (
+            <div className="flex flex-col items-center pt-3 flex-1">
+              <button
+                onClick={() => setListCollapsed(false)}
+                className="p-1.5 rounded-md hover:bg-muted/60 text-muted-foreground"
+                title="Expand patient list"
+                data-testid="button-expand-patient-list"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </button>
+            </div>
+          )}
+
+          {/* Full panel — search + filter controls + list */}
+          {(!listCollapsed || !selectedPatient) && (<>
           <div className="p-3 border-b space-y-2 flex-shrink-0">
             <div className="relative">
               <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
@@ -1083,6 +1552,7 @@ export default function PatientProfiles() {
               </div>
             ))}
           </div>
+          </>)}
         </div>
 
         {/* Right panel: patient detail — hidden on mobile when no patient selected */}
@@ -1157,6 +1627,16 @@ export default function PatientProfiles() {
                   </div>
                 </div>
                 <div className="flex-shrink-0 flex items-center gap-2 flex-wrap">
+                  <Button
+                    size="icon"
+                    variant="ghost"
+                    className="hidden md:flex"
+                    title={listCollapsed ? "Expand patient list" : "Collapse patient list"}
+                    onClick={() => setListCollapsed(v => !v)}
+                    data-testid="button-toggle-patient-list"
+                  >
+                    {listCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
+                  </Button>
                   <Button
                     size="sm"
                     onClick={() => {
@@ -1269,6 +1749,17 @@ export default function PatientProfiles() {
                   </div>
                 </div>
               )}
+
+              {/* ── Patient Chart ─────────────────────────────────────── */}
+              <PatientChartPanel
+                patientId={selectedPatient.id}
+                chart={patientChart ?? null}
+                encounters={patientEncounters as unknown as ClinicalEncounter[]}
+                onSaved={() => {
+                  queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient.id, 'chart'] });
+                  refetchChart();
+                }}
+              />
 
               {/* ── Clinical Encounters ─────────────────────────────────── */}
               <Card data-testid="card-encounters">
