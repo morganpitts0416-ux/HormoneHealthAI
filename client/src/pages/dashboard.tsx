@@ -4,6 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
+import { TourLauncher, useFirstVisitTour } from "@/components/product-tour";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
   LogOut,
@@ -93,6 +94,7 @@ function PatientInitials({ first, last, gender }: { first: string; last: string;
 export default function Dashboard() {
   const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
+  useFirstVisitTour();
 
   const { data: patients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients/search"],
@@ -177,6 +179,7 @@ export default function Dashboard() {
               <HelpCircle className="w-4 h-4" />
               <span className="hidden sm:inline ml-2">Help</span>
             </Button>
+            <TourLauncher />
             <Button data-testid="button-billing" variant="ghost" size="icon" onClick={() => setLocation("/billing")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Billing">
               <CreditCard className="w-4 h-4" />
               <span className="hidden sm:inline ml-2">Billing</span>
@@ -419,7 +422,7 @@ export default function Dashboard() {
         {/* ── Quick actions ────────────────────────────────────────── */}
         <div>
           <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#a0a880" }}>Lab Evaluations</p>
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <div data-testid="quick-actions-grid" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             {/* Men's */}
             <button
               data-testid="card-male-eval"
