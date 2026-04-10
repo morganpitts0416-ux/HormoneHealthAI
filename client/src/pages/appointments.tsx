@@ -5,7 +5,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
   CalendarDays, ArrowLeft, Copy, Check, Clock, User, MapPin,
-  Stethoscope, Link2, RefreshCw, CalendarOff, Info
+  Stethoscope, Link2, RefreshCw, CalendarOff
 } from "lucide-react";
 import { useState } from "react";
 import type { Appointment } from "@shared/schema";
@@ -119,27 +119,6 @@ export default function AppointmentsPage() {
             </Button>
           </div>
 
-          <div className="rounded-md p-3 space-y-1.5" style={{ backgroundColor: "#f5f2ed" }}>
-            <p className="text-[11px] font-semibold uppercase tracking-wide" style={{ color: "#5a7040" }}>3 Zaps to create in Zapier</p>
-            {[
-              { label: "New Appointment", field: "event", value: "appointment.created" },
-              { label: "Updated / Rescheduled", field: "event", value: "appointment.updated" },
-              { label: "Cancelled Appointment", field: "event", value: "appointment.cancelled" },
-            ].map((z, i) => (
-              <div key={i} className="flex items-center gap-2">
-                <span className="text-xs font-medium w-5 h-5 rounded-full flex items-center justify-center text-white flex-shrink-0" style={{ backgroundColor: "#5a7040" }}>{i + 1}</span>
-                <span className="text-xs" style={{ color: "#1c2414" }}>
-                  Your platform <span className="font-medium">"{z.label}"</span> trigger → Webhooks by Zapier → POST to the URL above. Add field <code className="bg-white px-1 rounded text-[10px]">{z.field}: "{z.value}"</code>
-                </span>
-              </div>
-            ))}
-            <div className="flex items-start gap-1.5 pt-1">
-              <Info className="w-3 h-3 mt-0.5 flex-shrink-0" style={{ color: "#9aaa84" }} />
-              <p className="text-[10px]" style={{ color: "#9aaa84" }}>
-                ClinIQ maps patient name, email, start time, and service type automatically. For full setup instructions including Zapier field-by-field configuration, visit the Help Center → Integrations.
-              </p>
-            </div>
-          </div>
         </div>
 
         {/* Stats row */}
@@ -207,6 +186,18 @@ export default function AppointmentsPage() {
             </div>
           </section>
         )}
+        {/* Discreet integration link */}
+        <div className="pt-2 text-center">
+          <button
+            onClick={() => setLocation("/help#integrations")}
+            className="text-xs inline-flex items-center gap-1"
+            style={{ color: "#9aaa84" }}
+            data-testid="link-zapier-setup-instructions"
+          >
+            <Link2 className="w-3 h-3" />
+            Zapier integration setup instructions
+          </button>
+        </div>
       </main>
     </div>
   );

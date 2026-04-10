@@ -1324,7 +1324,7 @@ ${aiRecommendations}`;
 WHAT TO EXTRACT:
 1. currentMedications — All medications the patient is currently taking (prescription, OTC, supplements, injections). Include dose and frequency if mentioned. Examples: "Testosterone Cypionate 200mg IM weekly", "Metformin 500mg twice daily", "Fish oil 1g daily"
 2. medicalHistory — Diagnosed medical conditions, chronic diseases, and significant past medical events. Examples: "Type 2 diabetes", "Hypertension", "Hypothyroidism", "GERD", "Anxiety"
-3. familyHistory — Any family members' health conditions mentioned. Format: "Father — heart disease", "Mother — breast cancer", "Brother — type 2 diabetes"
+3. familyHistory — Any family members' health conditions mentioned. Group ALL conditions for the same family member into a SINGLE entry. Format: "Mother — hypertension; hypothyroid; breast cancer" (not separate lines per condition). Format: "Father — heart disease; type 2 diabetes", "Maternal grandmother — ovarian cancer"
 4. socialHistory — Lifestyle facts: smoking status, alcohol use, exercise habits, occupation, relationship status, diet. Examples: "Former smoker — quit 2015", "Drinks 1-2 glasses wine/week", "Sedentary job, walks 3x/week"
 5. allergies — Drug, food, or environmental allergies. Include reaction type if mentioned. Examples: "Penicillin — anaphylaxis", "Sulfa drugs — rash", "Shellfish — hives"
 6. surgicalHistory — Past surgeries, procedures, or hospitalizations. Examples: "Appendectomy 2010", "C-section 2018", "Knee arthroscopy 2022"
@@ -1366,10 +1366,33 @@ Return ONLY this JSON structure:
 
       const extracted = JSON.parse(completion.choices[0].message.content || "{}");
 
+      // Merge any duplicate family-member entries into one grouped line
+      const rawFamilyHistory: string[] = extracted.familyHistory ?? [];
+      const fhMap: Record<string, string[]> = {};
+      for (const entry of rawFamilyHistory) {
+        const sep = entry.indexOf("—");
+        if (sep > -1) {
+          const member = entry.slice(0, sep).trim().toLowerCase();
+          const conditions = entry.slice(sep + 1).trim();
+          if (!fhMap[member]) fhMap[member] = [];
+          fhMap[member].push(...conditions.split(";").map((c: string) => c.trim()).filter(Boolean));
+        } else {
+          const key = "__misc__";
+          if (!fhMap[key]) fhMap[key] = [];
+          fhMap[key].push(entry);
+        }
+      }
+      const groupedFamilyHistory: string[] = Object.entries(fhMap).flatMap(([member, conds]) => {
+        if (member === "__misc__") return conds;
+        const label = member.charAt(0).toUpperCase() + member.slice(1);
+        const unique = [...new Set(conds)];
+        return [`${label} — ${unique.join("; ")}`];
+      });
+
       const draft: import("@shared/schema").PatientChartDraft = {
         currentMedications: extracted.currentMedications ?? [],
         medicalHistory: extracted.medicalHistory ?? [],
-        familyHistory: extracted.familyHistory ?? [],
+        familyHistory: groupedFamilyHistory,
         socialHistory: extracted.socialHistory ?? [],
         allergies: extracted.allergies ?? [],
         surgicalHistory: extracted.surgicalHistory ?? [],
