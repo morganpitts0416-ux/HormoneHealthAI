@@ -43,6 +43,7 @@ function safeDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { m
 }
 
 function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patient }) {
+  const [collapsed, setCollapsed] = useState(false);
   const insights = generateTrendInsights(labs, patient.gender as 'male' | 'female');
   const snapshot = generateClinicalSnapshot(labs, `${patient.firstName} ${patient.lastName}`, patient.gender as 'male' | 'female');
 
@@ -50,18 +51,25 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
     return (
       <Card data-testid="clinical-snapshot-empty">
         <CardHeader className="pb-3">
-          <CardTitle className="text-lg flex items-center gap-2">
-            <Activity className="h-5 w-5 text-primary dark:text-primary" />
-            Clinical Snapshot
-          </CardTitle>
+          <div className="flex items-center justify-between gap-2">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Activity className="h-4 w-4 text-primary dark:text-primary" />
+              Clinical Snapshot
+            </CardTitle>
+            <button onClick={() => setCollapsed(v => !v)} className="text-muted-foreground hover:text-foreground transition-colors" data-testid="button-toggle-snapshot">
+              <ChevronDown className={`w-4 h-4 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+            </button>
+          </div>
         </CardHeader>
-        <CardContent>
-          <p className="text-sm text-muted-foreground">
-            {labs.length < 2
-              ? "Need at least 2 lab results to generate a clinical snapshot comparing trends."
-              : "No comparable markers found between the last two lab results."}
-          </p>
-        </CardContent>
+        {!collapsed && (
+          <CardContent>
+            <p className="text-sm text-muted-foreground">
+              {labs.length < 2
+                ? "Need at least 2 lab results to generate a clinical snapshot comparing trends."
+                : "No comparable markers found between the last two lab results."}
+            </p>
+          </CardContent>
+        )}
       </Card>
     );
   }
@@ -74,15 +82,25 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
   return (
     <Card data-testid="clinical-snapshot-card">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
-          <Activity className="h-5 w-5 text-primary dark:text-primary" />
-          Clinical Snapshot
-          <Badge variant="secondary" className="text-xs ml-auto">
-            {insights.length} markers compared
-          </Badge>
-        </CardTitle>
+        <div className="flex items-center justify-between gap-2">
+          <CardTitle className="text-sm flex items-center gap-2">
+            <Activity className="h-4 w-4 text-primary dark:text-primary" />
+            Clinical Snapshot
+            <Badge variant="secondary" className="text-xs">
+              {insights.length} markers
+            </Badge>
+            {urgents.length > 0 && (
+              <Badge className="text-xs bg-red-100 text-red-700 border-red-200 border">
+                {urgents.length} urgent
+              </Badge>
+            )}
+          </CardTitle>
+          <button onClick={() => setCollapsed(v => !v)} className="text-muted-foreground hover:text-foreground transition-colors" data-testid="button-toggle-snapshot">
+            <ChevronDown className={`w-4 h-4 transition-transform ${collapsed ? "-rotate-90" : ""}`} />
+          </button>
+        </div>
       </CardHeader>
-      <CardContent className="space-y-4">
+      {!collapsed && <CardContent className="space-y-4">
         {urgents.length > 0 && (
           <div className="rounded-md border border-red-200 dark:border-red-800 bg-red-50 dark:bg-red-950/30 p-3 space-y-2" data-testid="snapshot-urgent" >
             <div className="flex items-center gap-2">
@@ -144,7 +162,7 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
             </div>
           </div>
         )}
-      </CardContent>
+      </CardContent>}
     </Card>
   );
 }
@@ -1775,18 +1793,45 @@ export default function PatientProfiles() {
                 </div>
               </div>
 
-              {/* ── Portal Engagement Panel ────────────────────────── */}
+              {/* ── Portal Engagement Panel (with inline messages) ────── */}
               {portalStatus && (
                 <div
-                  className="rounded-xl border px-4 py-3"
+                  className="rounded-xl border"
                   style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
                   data-testid="portal-engagement-panel"
                 >
-                  <p className="text-xs font-semibold uppercase tracking-wide mb-2.5" style={{ color: "#a0a880" }}>
-                    Patient Portal Engagement
-                  </p>
-                  <div className="flex flex-wrap gap-x-6 gap-y-2">
-                    {/* Invite / account status */}
+                  {/* Header row */}
+                  <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2.5">
+                    <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#a0a880" }}>
+                      Patient Portal Engagement
+                    </p>
+                    {portalStatus.hasPortalAccount && (
+                      <button
+                        onClick={() => setShowMessages(v => !v)}
+                        data-testid="button-toggle-messages"
+                        className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
+                        style={{
+                          color: showMessages ? "#2e3a20" : "#5a7040",
+                          backgroundColor: showMessages ? "#e0d8c8" : "transparent",
+                          border: "1px solid #c4b9a5",
+                        }}
+                      >
+                        <MessageSquare className="w-3 h-3" />
+                        Messages
+                        {(unreadData?.count ?? 0) > 0 && (
+                          <span
+                            className="inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 min-w-[16px] h-4"
+                            style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}
+                          >
+                            {unreadData!.count}
+                          </span>
+                        )}
+                      </button>
+                    )}
+                  </div>
+
+                  {/* Engagement stats row */}
+                  <div className="flex flex-wrap gap-x-6 gap-y-2 px-4 pb-3">
                     <div className="flex items-center gap-2">
                       {portalStatus.portalStatus === 'active' ? (
                         <CheckCircle className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#2e7d32" }} />
@@ -1804,7 +1849,6 @@ export default function PatientProfiles() {
                       </span>
                     </div>
 
-                    {/* Last login */}
                     {portalStatus.portalStatus === 'active' && (
                       <div className="flex items-center gap-2">
                         <Globe className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#7a8a64" }} />
@@ -1816,7 +1860,6 @@ export default function PatientProfiles() {
                       </div>
                     )}
 
-                    {/* Latest report viewed */}
                     {portalStatus.latestReportPublishedAt && (
                       <div className="flex items-center gap-2">
                         {portalStatus.latestReportViewedAt ? (
@@ -1832,6 +1875,54 @@ export default function PatientProfiles() {
                       </div>
                     )}
                   </div>
+
+                  {/* Inline message thread — appears when Messages button toggled */}
+                  {showMessages && portalStatus.hasPortalAccount && (
+                    <div className="border-t px-4 pt-3 pb-3 space-y-3" style={{ borderColor: "#d4c9b5" }}>
+                      <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
+                        {messages.length === 0 ? (
+                          <p className="text-xs text-muted-foreground text-center py-4">
+                            No messages yet. Send the first message below.
+                          </p>
+                        ) : (
+                          messages.map((msg) => {
+                            const isClinician = msg.senderType === 'clinician';
+                            return (
+                              <div key={msg.id} className={`flex ${isClinician ? "justify-end" : "justify-start"}`}>
+                                <div className={cn("max-w-[75%] rounded-xl px-3 py-2 text-xs", isClinician ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
+                                  {!isClinician && (
+                                    <p className="text-[10px] font-medium text-muted-foreground mb-1">{selectedPatient!.firstName}</p>
+                                  )}
+                                  <p className="whitespace-pre-wrap">{msg.content}</p>
+                                  <p className={cn("text-[10px] mt-1", isClinician ? "text-primary-foreground/60" : "text-muted-foreground")}>
+                                    {new Date(msg.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
+                                    {!isClinician && !msg.readAt && <span className="ml-2 text-amber-600 font-medium">Unread</span>}
+                                  </p>
+                                </div>
+                              </div>
+                            );
+                          })
+                        )}
+                        <div ref={messageBottomRef} />
+                      </div>
+                      <div className="flex items-end gap-2 border-t pt-2.5" style={{ borderColor: "#d4c9b5" }}>
+                        <textarea
+                          className="flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-xs min-h-[32px] max-h-20 outline-none focus:ring-1 focus:ring-ring"
+                          placeholder="Message this patient…"
+                          rows={1}
+                          value={messageDraft}
+                          onChange={(e) => setMessageDraft(e.target.value)}
+                          onKeyDown={(e) => {
+                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }
+                          }}
+                          data-testid="input-clinician-message"
+                        />
+                        <Button size="icon" onClick={() => { if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }} disabled={!messageDraft.trim() || sendMessageMutation.isPending} data-testid="button-clinician-send-message">
+                          <Send className="w-3.5 h-3.5" />
+                        </Button>
+                      </div>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1845,6 +1936,9 @@ export default function PatientProfiles() {
                   refetchChart();
                 }}
               />
+
+              {/* ── Clinical Snapshot (collapsible) ─────────────────────── */}
+              <ClinicalSnapshot labs={labs} patient={selectedPatient} />
 
               {/* ── Clinical Encounters ─────────────────────────────────── */}
               <Card data-testid="card-encounters">
@@ -1983,82 +2077,28 @@ export default function PatientProfiles() {
                 )}
               </Card>
 
-              {/* ── Portal Messages — shown first so nothing gets missed ── */}
-              {portalStatus?.hasPortalAccount && (
-                <Card data-testid="card-portal-messages">
-                  <CardHeader className="pb-3">
-                    <div className="flex items-center justify-between gap-2 flex-wrap">
-                      <CardTitle className="text-sm flex items-center gap-2">
-                        <MessageSquare className="w-4 h-4 text-muted-foreground" />
-                        Portal Messages
-                        {(unreadData?.count ?? 0) > 0 && (
-                          <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
-                            {unreadData!.count} unread
-                          </Badge>
-                        )}
-                      </CardTitle>
-                      <Button
-                        variant="ghost"
-                        size="sm"
-                        onClick={() => setShowMessages(!showMessages)}
-                        className="text-xs"
-                        data-testid="button-toggle-messages"
-                      >
-                        {showMessages ? "Hide" : "View messages"}
-                      </Button>
-                    </div>
-                  </CardHeader>
-                  {showMessages && (
-                    <CardContent className="space-y-4">
-                      <div className="space-y-3 max-h-72 overflow-y-auto px-1">
-                        {messages.length === 0 ? (
-                          <p className="text-sm text-muted-foreground text-center py-6">
-                            No messages yet. Send the first message to this patient.
-                          </p>
-                        ) : (
-                          messages.map((msg) => {
-                            const isClinician = msg.senderType === 'clinician';
-                            return (
-                              <div key={msg.id} className={`flex ${isClinician ? "justify-end" : "justify-start"}`}>
-                                <div className={cn("max-w-xs rounded-xl px-3 py-2 text-sm", isClinician ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
-                                  {!isClinician && (
-                                    <p className="text-xs font-medium text-muted-foreground mb-1">{selectedPatient!.firstName}</p>
-                                  )}
-                                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                                  <p className={cn("text-xs mt-1", isClinician ? "text-primary-foreground/60" : "text-muted-foreground")}>
-                                    {new Date(msg.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                                    {!isClinician && !msg.readAt && <span className="ml-2 text-amber-600 font-medium">Unread</span>}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                        <div ref={messageBottomRef} />
-                      </div>
-                      <div className="flex items-end gap-2 border-t pt-3">
-                        <textarea
-                          className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm min-h-[36px] max-h-24 outline-none focus:ring-1 focus:ring-ring"
-                          placeholder="Write a message to this patient…"
-                          rows={1}
-                          value={messageDraft}
-                          onChange={(e) => setMessageDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }
-                          }}
-                          data-testid="input-clinician-message"
-                        />
-                        <Button size="icon" onClick={() => { if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }} disabled={!messageDraft.trim() || sendMessageMutation.isPending} data-testid="button-clinician-send-message">
-                          <Send className="w-4 h-4" />
-                        </Button>
-                      </div>
-                      <p className="text-xs text-muted-foreground">Press Enter to send · Shift+Enter for new line</p>
-                    </CardContent>
-                  )}
-                </Card>
+              {/* ── Lab History ──────────────────────────────────────────── */}
+              <LabHistoryList
+                labs={labs}
+                onViewLab={setViewingLab}
+                onDeleteLab={handleDeleteLab}
+                deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null}
+                onPublishLab={handlePublishLab}
+                hasPortalAccount={portalStatus?.hasPortalAccount}
+                publishingId={publishingLabId}
+                publishedLabResultIds={portalStatus?.publishedLabResultIds}
+              />
+              {labs.length >= 2 && (
+                <PatientTrendCharts
+                  labs={labs}
+                  patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                  patientId={selectedPatient.id}
+                  gender={selectedPatient.gender === 'female' ? 'female' : 'male'}
+                />
               )}
+              {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
 
-              {/* ── Supplement Orders — shown early so orders aren't missed ── */}
+              {/* ── Supplement Orders ─────────────────────────────────────── */}
               {patientOrders.length > 0 && (
                 <Card data-testid="card-supplement-orders">
                   <CardHeader className="pb-3">
@@ -2121,27 +2161,6 @@ export default function PatientProfiles() {
                   )}
                 </Card>
               )}
-
-              <ClinicalSnapshot labs={labs} patient={selectedPatient} />
-              <LabHistoryList
-                labs={labs}
-                onViewLab={setViewingLab}
-                onDeleteLab={handleDeleteLab}
-                deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null}
-                onPublishLab={handlePublishLab}
-                hasPortalAccount={portalStatus?.hasPortalAccount}
-                publishingId={publishingLabId}
-                publishedLabResultIds={portalStatus?.publishedLabResultIds}
-              />
-              {labs.length >= 2 && (
-                <PatientTrendCharts
-                  labs={labs}
-                  patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
-                  patientId={selectedPatient.id}
-                  gender={selectedPatient.gender === 'female' ? 'female' : 'male'}
-                />
-              )}
-              {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
             </div>
           )}
         </div>

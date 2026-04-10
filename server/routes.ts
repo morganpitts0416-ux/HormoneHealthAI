@@ -4880,6 +4880,95 @@ Generate the SOAP note. Flag anything uncertain in needs_clinician_review. Retur
       });
 
       res.json({ soapNote, encounter: updated, medicationMatches: autoMedMatches, diarizedTranscript: diarized, clinicalExtraction: freshExtraction });
+
+      // ── Stage 5: Evidence — fire-and-forget after SOAP response is sent ────
+      // Runs in background so the clinician gets SOAP immediately.
+      setImmediate(async () => {
+        try {
+          const freshEncounter = await storage.getEncounter(id, clinicianId);
+          if (!freshEncounter) return;
+
+          const diarizedForEvidence = freshEncounter.diarizedTranscript as any[] | null;
+          const transcriptForEvidence = diarizedForEvidence?.length
+            ? diarizedForEvidence.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+            : (freshEncounter.transcription ?? "");
+          if (!transcriptForEvidence.trim()) return;
+
+          const extraction = freshEncounter.clinicalExtraction as any;
+          const diagnoses = extraction?.diagnoses_discussed?.join(", ") ?? "";
+          const planItems = extraction?.plan_candidates?.join(", ") ?? "";
+          const soapForEvidence = (freshEncounter.soapNote as any)?.fullNote ?? "";
+
+          // Step 1: Generate focused clinical questions
+          const qCompletion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert clinical evidence librarian for a hormone and primary care clinic.
+Given structured visit data, generate 1 to 5 focused, searchable clinical evidence questions.
+Rules:
+- Each question must map to a specific clinical decision, diagnosis, or treatment mentioned in the visit
+- Questions should be framed as "What is the evidence for..." or "What are evidence-based options for..."
+- Focus on actionable clinical questions, not background physiology
+Return JSON: { "clinical_questions": ["...", "..."] }`,
+              },
+              {
+                role: "user",
+                content: `Visit Type: ${freshEncounter.visitType}\nDiagnoses: ${diagnoses}\nPlan Items: ${planItems}\n\nTranscript:\n${transcriptForEvidence.slice(0, 3000)}`,
+              },
+            ],
+            response_format: { type: "json_object" },
+          });
+          const qParsed = JSON.parse(qCompletion.choices[0].message.content || "{}");
+          const clinicalQuestions: string[] = qParsed.clinical_questions ?? [];
+          if (!clinicalQuestions.length) return;
+
+          // Step 2: Synthesize evidence per question
+          const eCompletion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: `You are an expert clinical evidence synthesizer for a hormone and primary care clinic.
+For each clinical question, provide evidence-based guidance with guideline citations.
+Return JSON matching EvidenceOverlay structure:
+{
+  "clinical_questions": [],
+  "not_for_auto_insertion": true,
+  "suggestions": [
+    {
+      "title": "...",
+      "summary": "...",
+      "relevance_to_visit": "...",
+      "strength_of_support": "strong|moderate|limited|mixed|insufficient",
+      "guideline_class": "I|IIa|IIb|III",
+      "level_of_evidence": "A|B|C|E",
+      "plan_alignment": "aligned|gap_identified|potential_conflict|not_applicable",
+      "plan_alignment_note": "...",
+      "cautions": [],
+      "citations": [{ "title": "...", "source": "...", "year": "...", "url": "..." }]
+    }
+  ]
+}`,
+              },
+              {
+                role: "user",
+                content: `Clinical questions:\n${clinicalQuestions.map((q, i) => `${i + 1}. ${q}`).join('\n')}\n\nCurrent plan:\n${soapForEvidence.slice(0, 2000)}`,
+              },
+            ],
+            response_format: { type: "json_object" },
+          });
+
+          const evidenceOverlay = JSON.parse(eCompletion.choices[0].message.content || "{}");
+          evidenceOverlay.clinical_questions = clinicalQuestions;
+          evidenceOverlay.not_for_auto_insertion = true;
+          await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: evidenceOverlay });
+          console.log(`[SOAP Pipeline] Evidence auto-generated for encounter ${id} (${(evidenceOverlay.suggestions ?? []).length} suggestions)`);
+        } catch (evErr) {
+          console.warn(`[SOAP Pipeline] Background evidence generation failed for encounter ${id}:`, evErr);
+        }
+      });
     } catch (err) {
       console.error('[SOAP] Generation error:', err);
       res.status(500).json({ message: "Failed to generate SOAP note. Please try again." });
