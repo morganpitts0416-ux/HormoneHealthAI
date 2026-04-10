@@ -10,7 +10,7 @@ const PgSession = connectPgSimple(session);
 
 const app = express();
 
-// Trust Replit's reverse proxy so secure session cookies work over HTTPS in production
+// Trust the reverse proxy so secure session cookies work over HTTPS in production
 app.set("trust proxy", 1);
 
 declare module 'http' {
@@ -37,9 +37,9 @@ app.use(
     secret: process.env.SESSION_SECRET || "fallback-dev-secret-change-in-prod",
     resave: false,
     saveUninitialized: false,
-    rolling: true, // extend session on any request so background polls don't prematurely expire it
+    rolling: true,
     cookie: {
-      maxAge: 30 * 60 * 1000, // HIPAA: 30-minute window; client-side idle detection logs out on inactivity
+      maxAge: 30 * 60 * 1000,
       httpOnly: true,
       secure: process.env.NODE_ENV === "production",
       sameSite: process.env.NODE_ENV === "production" ? "lax" : false,
@@ -81,33 +81,43 @@ app.use((req, res, next) => {
 });
 
 (async () => {
-  const server = await registerRoutes(app);
+  try {
+    console.log("[startup] registering routes…");
+    const server = await registerRoutes(app);
 
-  app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
-    const status = err.status || err.statusCode || 500;
-    const message = err.message || "Internal Server Error";
+    app.use((err: any, _req: Request, res: Response, _next: NextFunction) => {
+      const status = err.status || err.statusCode || 500;
+      const message = err.message || "Internal Server Error";
+      res.status(status).json({ message });
+      throw err;
+    });
 
-    res.status(status).json({ message });
-    throw err;
-  });
+    if (process.env.NODE_ENV === "development") {
+      // new Function prevents esbuild from statically analyzing this import,
+      // so server/vite.ts and its "import from 'vite'" are never bundled into
+      // dist/index.js — vite stays a dev-only dependency.
+      const importDynamic = new Function("m", "return import(m)");
+      const { setupVite } = await importDynamic("./vite.js");
+      await setupVite(app, server);
+    } else {
+      console.log("[startup] serving static files…");
+      serveStatic(app);
+    }
 
-  if (process.env.NODE_ENV === "development") {
-    // new Function prevents esbuild from statically analyzing this import,
-    // so server/vite.ts and its "import from 'vite'" are never bundled into
-    // dist/index.js — vite stays a dev-only dependency.
-    const importDynamic = new Function("m", "return import(m)");
-    const { setupVite } = await importDynamic("./vite.js");
-    await setupVite(app, server);
-  } else {
-    serveStatic(app);
+    const port = parseInt(process.env.PORT || '5000', 10);
+    console.log(`[startup] binding to 0.0.0.0:${port}…`);
+
+    // Attach an error handler BEFORE calling listen so any bind error is caught
+    server.on("error", (err: NodeJS.ErrnoException) => {
+      console.error(`[startup] server listen error: ${err.code} — ${err.message}`);
+      process.exit(1);
+    });
+
+    server.listen(port, "0.0.0.0", () => {
+      log(`serving on port ${port}`);
+    });
+  } catch (err) {
+    console.error("[startup] fatal error during startup:", err);
+    process.exit(1);
   }
-
-  const port = parseInt(process.env.PORT || '5000', 10);
-  server.listen({
-    port,
-    host: "0.0.0.0",
-    reusePort: true,
-  }, () => {
-    log(`serving on port ${port}`);
-  });
 })();
