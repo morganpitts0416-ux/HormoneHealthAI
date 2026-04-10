@@ -119,7 +119,7 @@ export default function Landing() {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 py-20 sm:py-28 text-center">
           <Badge variant="outline" className="mb-5 text-xs font-medium" style={{ borderColor: "#a0b880", color: "#3d4a30", backgroundColor: "#edf2e6" }}>
             <Zap className="w-3 h-3 mr-1" />
-            Built by a practicing clinician for real-world care
+            A Clinical Intelligence + Patient Experience Platform
           </Badge>
           <h1 className="text-4xl sm:text-5xl lg:text-6xl font-bold tracking-tight mb-6 leading-tight" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
             Stop guessing. Start seeing<br />the full clinical picture.
@@ -141,7 +141,7 @@ export default function Landing() {
               </Button>
             </a>
           </div>
-          <p className="text-xs mt-4" style={{ color: "#9aaa84" }}>Built by a Nurse Practitioner. Designed for real clinical workflows.</p>
+          <p className="text-xs mt-4" style={{ color: "#9aaa84" }}>Built by a Nurse Practitioner · Designed for real clinical workflows.</p>
         </div>
       </section>
 
