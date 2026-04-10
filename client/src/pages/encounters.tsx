@@ -1520,6 +1520,31 @@ function EncounterEditor({
           {savedId && <div className="text-xs text-muted-foreground">{displayDate(visitDate, { month: 'long', day: 'numeric', year: 'numeric' })} · {VISIT_TYPES.find(v => v.value === visitType)?.label}</div>}
         </div>
         <div className="flex items-center gap-2">
+          {patientId && (
+            <Button
+              size="sm"
+              variant="ghost"
+              className="text-xs gap-1.5 text-muted-foreground hidden sm:flex"
+              onClick={() => setLocation(`/patients?patient=${patientId}`)}
+              data-testid="button-view-patient-profile"
+              title="Go to patient profile"
+            >
+              <User className="w-3.5 h-3.5" />
+              Patient Profile
+            </Button>
+          )}
+          {patientId && (
+            <Button
+              size="icon"
+              variant="ghost"
+              className="sm:hidden"
+              onClick={() => setLocation(`/patients?patient=${patientId}`)}
+              data-testid="button-view-patient-profile-mobile"
+              title="Go to patient profile"
+            >
+              <User className="w-4 h-4" />
+            </Button>
+          )}
           {savedId && (
             <Button
               size="icon"

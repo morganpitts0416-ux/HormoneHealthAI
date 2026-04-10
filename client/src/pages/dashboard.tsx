@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { TourLauncher, useFirstVisitTour } from "@/components/product-tour";
+import { useFirstVisitTour } from "@/components/product-tour";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
   LogOut,
@@ -179,7 +179,6 @@ export default function Dashboard() {
               <HelpCircle className="w-4 h-4" />
               <span className="hidden sm:inline ml-2">Help</span>
             </Button>
-            <TourLauncher />
             <Button data-testid="button-billing" variant="ghost" size="icon" onClick={() => setLocation("/billing")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Billing">
               <CreditCard className="w-4 h-4" />
               <span className="hidden sm:inline ml-2">Billing</span>

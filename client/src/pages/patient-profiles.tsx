@@ -1632,6 +1632,18 @@ export default function PatientProfiles() {
             </div>
           ) : (
             <div className="p-6 space-y-6">
+              {/* Mobile-only back to patient list */}
+              <div className="md:hidden -mt-2 -mx-2 mb-0">
+                <button
+                  onClick={() => setSelectedPatient(null)}
+                  className="flex items-center gap-1.5 text-xs text-muted-foreground hover:text-foreground px-2 py-1.5 rounded"
+                  data-testid="button-back-patient-list-mobile"
+                >
+                  <ChevronLeft className="w-3.5 h-3.5" />
+                  All Patients
+                </button>
+              </div>
+
               {/* Patient header */}
               <div className="flex items-start gap-4 pb-2">
                 <PatientAvatar patient={selectedPatient} size="md" />
@@ -1649,6 +1661,16 @@ export default function PatientProfiles() {
                     {selectedPatient.dateOfBirth && (
                       <span className="text-xs text-muted-foreground">
                         DOB: {safeDate(selectedPatient.dateOfBirth as unknown as string)}
+                      </span>
+                    )}
+                    {(selectedPatient as any).phone && (
+                      <span className="text-xs text-muted-foreground">
+                        Ph: {(selectedPatient as any).phone}
+                      </span>
+                    )}
+                    {(selectedPatient as any).email && (
+                      <span className="text-xs text-muted-foreground">
+                        {(selectedPatient as any).email}
                       </span>
                     )}
                     <Badge variant="outline" className="text-xs">

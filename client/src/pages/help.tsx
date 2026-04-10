@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useLocation } from "wouter";
+import { TourLauncher } from "@/components/product-tour";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
@@ -136,6 +137,13 @@ const CONTENT: Record<string, React.ReactNode> = {
 
   "getting-started": (
     <div className="space-y-6">
+      <div className="flex items-center gap-3 p-4 rounded-md" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
+        <div className="flex-1">
+          <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>Platform Walkthrough Tour</p>
+          <p className="text-xs mt-0.5" style={{ color: "#5a6a4a" }}>Take a guided tour of all ClinIQ features — takes about 3 minutes.</p>
+        </div>
+        <TourLauncher />
+      </div>
       <Guide title="The Clinician Dashboard">
         <ScreenshotGallery shots={[
           { src: "/help-shots/dashboard.png", caption: "Dashboard — your command center with notifications, patient messages, supplement orders, recent patients, and quick-launch tiles for all workflows." },
