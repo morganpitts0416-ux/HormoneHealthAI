@@ -8,7 +8,7 @@ import {
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
   ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
   TriangleAlert, ExternalLink, Square, MicOff, ShieldCheck, Copy, Check,
-  Layers, Pill, Lightbulb, ListPlus, Lock, Unlock, PenLine,
+  Layers, Pill, Lightbulb, ListPlus, Lock, Unlock, PenLine, FileDown,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -24,6 +24,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult, PatternMatchResult, PatternMatch } from "@shared/schema";
 import { useGlobalLoading } from "@/hooks/use-global-loading";
+import { exportSoapPdf } from "@/lib/soap-pdf-export";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -1004,8 +1005,10 @@ function EncounterEditor({
   initialPatientId?: string;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
+  const [isPdfExporting, setIsPdfExporting] = useState(false);
 
   // Form state
   const [patientId, setPatientId] = useState<string>(encounter?.patientId?.toString() ?? initialPatientId ?? "");
@@ -3128,6 +3131,43 @@ function EncounterEditor({
                       {copiedSoap
                         ? <><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />Copied!</>
                         : <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Note</>}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid="button-print-soap-pdf"
+                      disabled={isPdfExporting || !(soap.fullNote ?? legacySoapToText(soap)).trim()}
+                      onClick={async () => {
+                        setIsPdfExporting(true);
+                        try {
+                          const patientName = encounter?.patientName
+                            ?? (() => { const p = patients.find(pt => pt.id.toString() === patientId); return p ? `${p.firstName} ${p.lastName}` : "Unknown Patient"; })();
+                          await exportSoapPdf({
+                            soapText: soap.fullNote ?? legacySoapToText(soap),
+                            patientName,
+                            visitDate,
+                            providerName: `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim(),
+                            providerTitle: user?.title ?? "",
+                            providerNpi: (user as any)?.npi ?? null,
+                            clinicName: user?.clinicName ?? "Clinic",
+                            clinicAddress: (user as any)?.address ?? null,
+                            clinicPhone: (user as any)?.phone ?? null,
+                            clinicLogo: (user as any)?.clinicLogo ?? null,
+                            signedAt: isSigned ? (signedAtLocal as string) : null,
+                            signedBy: signedByLocal,
+                            signatureImage: isSigned ? ((user as any)?.signatureImage ?? null) : null,
+                            isAmended: isAmendedLocal,
+                          });
+                        } catch (e: any) {
+                          toast({ variant: "destructive", title: "PDF export failed", description: e?.message });
+                        } finally {
+                          setIsPdfExporting(false);
+                        }
+                      }}
+                    >
+                      {isPdfExporting
+                        ? <><FileDown className="w-3.5 h-3.5 mr-1.5 animate-pulse" />Generating…</>
+                        : <><FileDown className="w-3.5 h-3.5 mr-1.5" />Print PDF</>}
                     </Button>
                     {!isSigned && (
                       <Button

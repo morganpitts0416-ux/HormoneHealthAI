@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -18,6 +18,7 @@ import {
   Zap, Copy, Eye, EyeOff, Key, Globe, Info,
   Users, UserPlus, Trash2, ShieldAlert, Mail,
   CreditCard, Clock, AlertTriangle, XCircle,
+  ImagePlus, PenLine, X,
 } from "lucide-react";
 import { PreferencesPanel } from "@/components/preferences-panel";
 import { useToast } from "@/hooks/use-toast";
@@ -287,6 +288,13 @@ export default function Account() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [showWebhookSecret, setShowWebhookSecret] = useState(false);
 
+  // Clinic branding & signature
+  const [clinicLogoPreview, setClinicLogoPreview] = useState<string | null>((user as any)?.clinicLogo ?? null);
+  const [signaturePreview, setSignaturePreview] = useState<string | null>((user as any)?.signatureImage ?? null);
+  const [brandingSaved, setBrandingSaved] = useState(false);
+  const logoInputRef = useRef<HTMLInputElement>(null);
+  const sigInputRef = useRef<HTMLInputElement>(null);
+
   const isStaff = !!(user as any)?.isStaff;
 
   // Staff management (clinicians only)
@@ -422,6 +430,30 @@ export default function Account() {
   });
 
   const onSubmit = (data: ProfileForm) => updateMutation.mutate(data);
+
+  const brandingMutation = useMutation({
+    mutationFn: async (payload: { clinicLogo?: string | null; signatureImage?: string | null }) => {
+      const res = await apiRequest("PATCH", "/api/auth/profile", payload);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
+      return res.json();
+    },
+    onSuccess: (updated) => {
+      queryClient.setQueryData(["/api/auth/me"], updated);
+      setBrandingSaved(true);
+      toast({ title: "Branding saved", description: "Your clinic logo and signature have been updated." });
+      setTimeout(() => setBrandingSaved(false), 3000);
+    },
+    onError: (e: Error) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
+  });
+
+  function readFileAsDataUrl(file: File): Promise<string> {
+    return new Promise((resolve, reject) => {
+      const reader = new FileReader();
+      reader.onload = () => resolve(reader.result as string);
+      reader.onerror = reject;
+      reader.readAsDataURL(file);
+    });
+  }
 
   const copyToClipboard = (text: string, label: string) => {
     navigator.clipboard.writeText(text).then(() => {
@@ -626,6 +658,141 @@ export default function Account() {
                 </div>
               </form>
             </Form>
+          </CardContent>
+        </Card>}
+
+        {/* Clinic Branding & Provider Signature — clinicians only */}
+        {!isStaff && <Card>
+          <CardHeader>
+            <CardTitle className="text-base flex items-center gap-2">
+              <ImagePlus className="w-4 h-4 text-muted-foreground" />
+              Clinic Branding &amp; Provider Signature
+            </CardTitle>
+            <CardDescription>
+              Your clinic logo appears as letterhead on printed SOAP notes. Your signature image is embedded when a note is electronically signed.
+            </CardDescription>
+          </CardHeader>
+          <CardContent className="space-y-6">
+            {/* Clinic Logo */}
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Clinic Logo</p>
+              <div className="flex items-start gap-4 flex-wrap">
+                <div
+                  className="w-48 h-24 rounded-md border flex items-center justify-center bg-muted/30 overflow-hidden cursor-pointer"
+                  onClick={() => logoInputRef.current?.click()}
+                  data-testid="button-upload-logo"
+                  title="Click to upload clinic logo"
+                >
+                  {clinicLogoPreview
+                    ? <img src={clinicLogoPreview} alt="Clinic logo" className="max-h-full max-w-full object-contain p-2" />
+                    : <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                        <ImagePlus className="w-7 h-7" />
+                        <span className="text-xs">Click to upload</span>
+                      </div>
+                  }
+                </div>
+                <div className="flex flex-col gap-2 justify-center">
+                  <Button size="sm" variant="outline" onClick={() => logoInputRef.current?.click()} data-testid="button-choose-logo">
+                    <ImagePlus className="w-3.5 h-3.5 mr-1.5" />
+                    {clinicLogoPreview ? "Replace Logo" : "Upload Logo"}
+                  </Button>
+                  {clinicLogoPreview && (
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setClinicLogoPreview(null)} data-testid="button-remove-logo">
+                      <X className="w-3.5 h-3.5 mr-1.5" />Remove
+                    </Button>
+                  )}
+                  <p className="text-xs text-muted-foreground">PNG or JPEG, max 2MB.<br />Recommended: wide format, transparent background.</p>
+                </div>
+              </div>
+              <input
+                ref={logoInputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                data-testid="input-clinic-logo"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 2_097_152) { toast({ title: "File too large", description: "Please choose an image under 2MB.", variant: "destructive" }); return; }
+                  const dataUrl = await readFileAsDataUrl(file);
+                  setClinicLogoPreview(dataUrl);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            <Separator />
+
+            {/* Provider Signature */}
+            <div>
+              <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
+                <PenLine className="w-3 h-3 inline mr-1" />Provider Signature
+              </p>
+              <p className="text-xs text-muted-foreground mb-3">
+                Upload an image of your handwritten signature. It will appear at the bottom of electronically-signed SOAP note PDFs.
+              </p>
+              <div className="flex items-start gap-4 flex-wrap">
+                <div
+                  className="w-64 h-20 rounded-md border flex items-center justify-center bg-white overflow-hidden cursor-pointer"
+                  onClick={() => sigInputRef.current?.click()}
+                  data-testid="button-upload-signature"
+                  title="Click to upload signature"
+                >
+                  {signaturePreview
+                    ? <img src={signaturePreview} alt="Provider signature" className="max-h-full max-w-full object-contain p-2" />
+                    : <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                        <PenLine className="w-6 h-6" />
+                        <span className="text-xs">Click to upload signature</span>
+                      </div>
+                  }
+                </div>
+                <div className="flex flex-col gap-2 justify-center">
+                  <Button size="sm" variant="outline" onClick={() => sigInputRef.current?.click()} data-testid="button-choose-signature">
+                    <PenLine className="w-3.5 h-3.5 mr-1.5" />
+                    {signaturePreview ? "Replace Signature" : "Upload Signature"}
+                  </Button>
+                  {signaturePreview && (
+                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setSignaturePreview(null)} data-testid="button-remove-signature">
+                      <X className="w-3.5 h-3.5 mr-1.5" />Remove
+                    </Button>
+                  )}
+                  <p className="text-xs text-muted-foreground">PNG preferred (transparent background).<br />Sign on white paper, photograph, crop tightly.</p>
+                </div>
+              </div>
+              <input
+                ref={sigInputRef}
+                type="file"
+                accept="image/png,image/jpeg"
+                className="hidden"
+                data-testid="input-signature-image"
+                onChange={async (e) => {
+                  const file = e.target.files?.[0];
+                  if (!file) return;
+                  if (file.size > 2_097_152) { toast({ title: "File too large", description: "Please choose an image under 2MB.", variant: "destructive" }); return; }
+                  const dataUrl = await readFileAsDataUrl(file);
+                  setSignaturePreview(dataUrl);
+                  e.target.value = "";
+                }}
+              />
+            </div>
+
+            <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
+              <div className="h-5">
+                {brandingSaved && (
+                  <span className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
+                    <CheckCircle className="w-4 h-4" />Branding saved
+                  </span>
+                )}
+              </div>
+              <Button
+                data-testid="button-save-branding"
+                disabled={brandingMutation.isPending}
+                onClick={() => brandingMutation.mutate({ clinicLogo: clinicLogoPreview, signatureImage: signaturePreview })}
+              >
+                <Save className="w-4 h-4 mr-2" />
+                {brandingMutation.isPending ? "Saving..." : "Save Branding"}
+              </Button>
+            </div>
           </CardContent>
         </Card>}
 
