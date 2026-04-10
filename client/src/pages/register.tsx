@@ -51,6 +51,7 @@ type RegisterForm = z.infer<typeof registerSchema>;
 const TITLES = ["MD", "DO", "NP", "NP-C", "FNP-C", "APRN", "PA", "PA-C", "RN", "PharmD", "Other"];
 
 const STEPS = [
+  { label: "Choose Your Plan", description: "Select the plan that best fits your clinic" },
   { label: "Personal Info", description: "Your name and credentials will appear on patient reports" },
   { label: "Clinic Info", description: "Your clinic name will appear on all patient-facing reports" },
   { label: "Account Setup", description: "Choose a unique username and a strong password" },
@@ -59,6 +60,7 @@ const STEPS = [
 ];
 
 const STEP_FIELDS: (keyof RegisterForm)[][] = [
+  [],
   ["firstName", "lastName", "title", "npi"],
   ["clinicName", "email", "phone", "address"],
   ["username", "password", "confirmPassword"],
@@ -233,9 +235,9 @@ export default function Register() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  // Parse ?plan= from URL; default to "solo"
+  // Parse ?plan= from URL; default to "solo" — user can change on step 0
   const rawPlan = new URLSearchParams(search).get("plan");
-  const plan: "solo" | "suite" = rawPlan === "suite" ? "suite" : "solo";
+  const [plan, setPlan] = useState<"solo" | "suite">(rawPlan === "suite" ? "suite" : "solo");
 
   const [step, setStep] = useState(0);
   const [registrationDone, setRegistrationDone] = useState(false);
@@ -292,7 +294,7 @@ export default function Register() {
     onSuccess: (data) => {
       qc.setQueryData(["/api/auth/me"], data);
       setRegistrationDone(true);
-      setStep(4);
+      setStep(5);
     },
     onError: (error: any) => {
       toast({ title: "Registration failed", description: error?.message || "Please try again.", variant: "destructive" });
@@ -412,12 +414,75 @@ export default function Register() {
             </CardHeader>
             <CardContent>
               {/* Steps 0–3: registration form */}
-              {step < 4 && (
+              {step < 5 && (
                 <Form {...form}>
                   <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-4">
 
-                    {/* Step 0 — Personal Info */}
+                    {/* Step 0 — Choose Your Plan */}
                     {step === 0 && (
+                      <div className="space-y-3">
+                        {[
+                          {
+                            id: "solo" as const,
+                            name: "Solo ClinIQ",
+                            price: "$149",
+                            description: "Ideal for a single clinician or small practice",
+                            features: ["Full AI lab interpretation", "Patient profiles & history", "SOAP note generation", "Encounter pipeline"],
+                          },
+                          {
+                            id: "suite" as const,
+                            name: "ClinIQ Suite",
+                            price: "$249",
+                            description: "Multi-provider clinics with advanced workflows",
+                            features: ["Everything in Solo", "Multi-seat access", "Advanced reporting", "Priority support"],
+                          },
+                        ].map((p) => {
+                          const selected = plan === p.id;
+                          return (
+                            <button
+                              key={p.id}
+                              type="button"
+                              data-testid={`card-plan-${p.id}`}
+                              onClick={() => setPlan(p.id)}
+                              className="w-full text-left rounded-lg border-2 p-4 transition-colors"
+                              style={{
+                                borderColor: selected ? planColor : "#d4c9b5",
+                                backgroundColor: selected ? (plan === "suite" ? "#f0f4eb" : "#f0f4eb") : "#fdfcfb",
+                              }}
+                            >
+                              <div className="flex items-start justify-between gap-2">
+                                <div className="flex-1">
+                                  <div className="flex items-center gap-2 mb-0.5">
+                                    <span className="font-semibold text-sm" style={{ color: "#1c2414" }}>{p.name}</span>
+                                    {selected && (
+                                      <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: planColor, color: "#f9f6f0" }}>Selected</span>
+                                    )}
+                                  </div>
+                                  <p className="text-xs mb-2" style={{ color: "#6b7a5a" }}>{p.description}</p>
+                                  <ul className="space-y-1">
+                                    {p.features.map((f) => (
+                                      <li key={f} className="flex items-center gap-1.5 text-xs" style={{ color: "#4a5e34" }}>
+                                        <CheckCircle2 className="w-3 h-3 flex-shrink-0" style={{ color: "#2e3a20" }} />
+                                        {f}
+                                      </li>
+                                    ))}
+                                  </ul>
+                                </div>
+                                <div className="text-right flex-shrink-0">
+                                  <span className="text-lg font-bold" style={{ color: "#1c2414" }}>{p.price}</span>
+                                  <span className="text-xs" style={{ color: "#6b7a5a" }}>/mo</span>
+                                  <p className="text-xs mt-0.5" style={{ color: "#a0b880" }}>after trial</p>
+                                </div>
+                              </div>
+                            </button>
+                          );
+                        })}
+                        <p className="text-xs text-center" style={{ color: "#6b7a5a" }}>14-day free trial — no credit card required until the end of your trial</p>
+                      </div>
+                    )}
+
+                    {/* Step 1 — Personal Info */}
+                    {step === 1 && (
                       <>
                         <div className="grid grid-cols-2 gap-3">
                           <FormField control={form.control} name="firstName" render={({ field }) => (
@@ -459,8 +524,8 @@ export default function Register() {
                       </>
                     )}
 
-                    {/* Step 1 — Clinic Info */}
-                    {step === 1 && (
+                    {/* Step 2 — Clinic Info */}
+                    {step === 2 && (
                       <>
                         <FormField control={form.control} name="clinicName" render={({ field }) => (
                           <FormItem>
@@ -493,8 +558,8 @@ export default function Register() {
                       </>
                     )}
 
-                    {/* Step 2 — Account Setup */}
-                    {step === 2 && (
+                    {/* Step 3 — Account Setup */}
+                    {step === 3 && (
                       <>
                         <FormField control={form.control} name="username" render={({ field }) => (
                           <FormItem>
@@ -521,8 +586,8 @@ export default function Register() {
                       </>
                     )}
 
-                    {/* Step 3 — Agreement */}
-                    {step === 3 && (
+                    {/* Step 4 — Agreement */}
+                    {step === 4 && (
                       <div className="space-y-4">
                         <div className="flex items-center gap-2 mb-1">
                           <Shield className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
@@ -598,7 +663,7 @@ export default function Register() {
                           <ChevronLeft className="w-4 h-4 mr-1" />Back
                         </Button>
                       )}
-                      {step < 3 ? (
+                      {step < 4 ? (
                         <Button type="button" onClick={handleNext} className="flex-1" data-testid="button-next">
                           Continue<ChevronRight className="w-4 h-4 ml-1" />
                         </Button>
@@ -619,8 +684,8 @@ export default function Register() {
                 </Form>
               )}
 
-              {/* Step 4 — Payment */}
-              {step === 4 && (
+              {/* Step 5 — Payment */}
+              {step === 5 && (
                 <>
                   {stripePromise ? (
                     <Elements stripe={stripePromise}>
@@ -650,7 +715,7 @@ export default function Register() {
                 </>
               )}
 
-              {step < 4 && (
+              {step < 5 && (
                 <div className="mt-4 text-center">
                   <p className="text-sm text-muted-foreground">
                     Already have an account?{" "}

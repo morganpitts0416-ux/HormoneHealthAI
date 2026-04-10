@@ -1,0 +1,13 @@
+morganpitts0416@cloudshell:~ (realign-lab-app)$ gcloud run deploy hormonehealthai --source . --region us-central1 --allow-unauthenticated --clear-base-image
+Building using Buildpacks and deploying container to Cloud Run service [hormonehealthai] in project [realign-lab-app] region [us-central1]
+Building and deploying...                                                                                                                                                                     
+  Validating configuration...done                                                                                                                                                             
+  Uploading sources...done                                                                                                                                                                    
+  Building Container... Logs are available at [https://console.cloud.google.com/cloud-build/builds;region=us-central1/a57cb98a-014a-4262-8f2d-7e9a45f9c789?project=384086867382]....done      
+  Setting IAM Policy...done                                                                                                                                                                   
+  Creating Revision...failed                                                                                                                                                                  
+Deployment failed                                                                                                                                                                             
+ERROR: (gcloud.run.deploy) The user-provided container failed to start and listen on the port defined provided by the PORT=8080 environment variable within the allocated timeout. This can happen when the container port is misconfigured or if the timeout is too short. The health check timeout can be extended. Logs for this revision might contain more information.
+
+Logs URL: https://console.cloud.google.com/logs/viewer?project=realign-lab-app&resource=cloud_run_revision/service_name/hormonehealthai/revision_name/hormonehealthai-00075-pkv&advancedFilter=resource.type%3D%22cloud_run_revision%22%0Aresource.labels.service_name%3D%22hormonehealthai%22%0Aresource.labels.revision_name%3D%22hormonehealthai-00075-pkv%22 
+For more troubleshooting guidance, see https://cloud.google.com/run/docs/troubleshooting#container-failed-to-start
