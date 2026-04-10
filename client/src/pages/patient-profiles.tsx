@@ -14,7 +14,7 @@ import {
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
-  ChevronLeft, Pill, Shield, Scissors, X, Pencil,
+  ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -1079,6 +1079,7 @@ export default function PatientProfiles() {
   const [showMessages, setShowMessages] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
   const [showEncounters, setShowEncounters] = useState(false);
+  const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
   const [listCollapsed, setListCollapsed] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
@@ -1232,7 +1233,12 @@ export default function PatientProfiles() {
     },
   });
 
-  type EncounterSummary = Pick<ClinicalEncounter, 'id' | 'patientId' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'transcription' | 'soapNote' | 'patientSummary' | 'summaryPublished'> & { patientName: string };
+  type EncounterSummary = Pick<ClinicalEncounter, 'id' | 'patientId' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'transcription' | 'soapNote' | 'patientSummary' | 'summaryPublished'> & {
+    patientName: string;
+    signedAt?: string | Date | null;
+    signedBy?: string | null;
+    isAmended?: boolean;
+  };
 
   const { data: patientEncounters = [] } = useQuery<EncounterSummary[]>({
     queryKey: ['/api/encounters', selectedPatient?.id],
@@ -1888,37 +1894,89 @@ export default function PatientProfiles() {
                         "new-patient": "New Patient", "follow-up": "Follow-up", "acute": "Acute Visit",
                         "wellness": "Wellness / Annual", "procedure": "Procedure", "telemedicine": "Telemedicine", "lab-review": "Lab Review",
                       };
+                      const isSigned = !!enc.signedAt;
+                      const isExpanded = expandedEncounterId === enc.id;
+
+                      const handleClick = () => {
+                        if (isSigned) {
+                          setExpandedEncounterId(isExpanded ? null : enc.id);
+                        } else {
+                          setLocation(`/encounters?encounterId=${enc.id}`);
+                        }
+                      };
+
                       return (
-                        <button
-                          key={enc.id}
-                          data-testid={`encounter-row-${enc.id}`}
-                          onClick={() => setLocation(`/encounters?encounterId=${enc.id}`)}
-                          className="w-full text-left rounded-md border p-3 hover-elevate transition-colors"
-                        >
-                          <div className="flex items-center justify-between gap-2 flex-wrap">
-                            <div className="flex items-center gap-2">
-                              <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                              <span className="text-sm font-medium">{safeDate(enc.visitDate as unknown as string)}</span>
-                              <Badge variant="outline" className="text-[10px] py-0 h-4">
-                                {VISIT_LABELS[enc.visitType] ?? enc.visitType}
-                              </Badge>
+                        <div key={enc.id} className="rounded-md border overflow-hidden">
+                          <button
+                            data-testid={`encounter-row-${enc.id}`}
+                            onClick={handleClick}
+                            className="w-full text-left p-3 hover-elevate transition-colors"
+                          >
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                                <span className="text-sm font-medium">{safeDate(enc.visitDate as unknown as string)}</span>
+                                <Badge variant="outline" className="text-[10px] py-0 h-4">
+                                  {VISIT_LABELS[enc.visitType] ?? enc.visitType}
+                                </Badge>
+                              </div>
+                              <div className="flex items-center gap-1.5">
+                                {isSigned ? (
+                                  <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-700 border-emerald-300 flex items-center gap-0.5">
+                                    <Lock className="w-2.5 h-2.5" />
+                                    {enc.isAmended ? "Amended" : "Signed"}
+                                  </Badge>
+                                ) : enc.soapNote ? (
+                                  <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-600 border-emerald-200">SOAP</Badge>
+                                ) : null}
+                                {enc.summaryPublished ? (
+                                  <Badge variant="outline" className="text-[10px] py-0 h-4 text-violet-600 border-violet-200">Published</Badge>
+                                ) : enc.patientSummary ? (
+                                  <Badge variant="outline" className="text-[10px] py-0 h-4 text-amber-600 border-amber-200">Draft</Badge>
+                                ) : null}
+                                {isSigned
+                                  ? <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                                  : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                              </div>
                             </div>
-                            <div className="flex items-center gap-1.5">
-                              {enc.soapNote && (
-                                <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-600 border-emerald-200">SOAP</Badge>
-                              )}
-                              {enc.summaryPublished ? (
-                                <Badge variant="outline" className="text-[10px] py-0 h-4 text-violet-600 border-violet-200">Published</Badge>
-                              ) : enc.patientSummary ? (
-                                <Badge variant="outline" className="text-[10px] py-0 h-4 text-amber-600 border-amber-200">Draft</Badge>
-                              ) : null}
-                              <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+                            {enc.chiefComplaint && (
+                              <p className="text-xs text-muted-foreground mt-1.5 truncate">{enc.chiefComplaint}</p>
+                            )}
+                          </button>
+
+                          {/* Inline signed SOAP viewer */}
+                          {isSigned && isExpanded && enc.soapNote && (
+                            <div className="border-t bg-muted/10">
+                              {/* Signed footer banner */}
+                              <div className="flex items-center gap-2 px-4 py-2 border-b bg-emerald-50/60 text-xs text-emerald-700">
+                                <Lock className="w-3 h-3 flex-shrink-0" />
+                                <span>
+                                  {enc.isAmended ? "Amended and signed" : "Electronically signed"}
+                                  {enc.signedBy ? ` by ${enc.signedBy}` : ""}
+                                  {enc.signedAt ? ` · ${new Date(enc.signedAt as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
+                                </span>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="ml-auto h-6 px-2 text-xs text-muted-foreground gap-1"
+                                  onClick={(e) => { e.stopPropagation(); setLocation(`/encounters?encounterId=${enc.id}`); }}
+                                  data-testid={`button-open-encounter-${enc.id}`}
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Open
+                                </Button>
+                              </div>
+                              {/* SOAP note text — simple pre-formatted view */}
+                              <div className="px-5 py-4 max-h-96 overflow-y-auto">
+                                <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed text-foreground/90">
+                                  {typeof enc.soapNote === 'string'
+                                    ? enc.soapNote
+                                    : (enc.soapNote as any)?.fullNote ?? JSON.stringify(enc.soapNote, null, 2)}
+                                </pre>
+                              </div>
                             </div>
-                          </div>
-                          {enc.chiefComplaint && (
-                            <p className="text-xs text-muted-foreground mt-1.5 truncate">{enc.chiefComplaint}</p>
                           )}
-                        </button>
+                        </div>
                       );
                     })}
                   </CardContent>

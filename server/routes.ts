@@ -3208,6 +3208,72 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     }
   });
 
+  // POST /api/encounters/:id/sign — Sign and lock a SOAP note (EMR-style)
+  // Stores a version snapshot for audit trail. Sets signedAt + signedBy.
+  app.post("/api/encounters/:id/sign", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+      if (!encounter.soapNote) return res.status(400).json({ message: "No SOAP note to sign." });
+
+      const clinician = await storage.getUserById(clinicianId);
+      if (!clinician) return res.status(404).json({ message: "Clinician not found" });
+
+      const nameParts = [clinician.title, clinician.firstName, clinician.lastName].filter(Boolean).join(" ");
+      const signedBy = clinician.npi ? `${nameParts} (NPI: ${clinician.npi})` : nameParts;
+
+      const now = new Date();
+
+      // Build version snapshot for audit trail
+      const existingVersions = (encounter.encounterVersions as any[] | null) ?? [];
+      const isAlreadySigned = !!encounter.signedAt;
+      const newVersion = {
+        version: existingVersions.length + 1,
+        soapNote: encounter.soapNote,
+        signedAt: now.toISOString(),
+        signedBy,
+        action: isAlreadySigned ? "amendment" : "initial_sign",
+      };
+
+      const updated = await storage.updateEncounter(id, clinicianId, {
+        signedAt: now,
+        signedBy,
+        isAmended: isAlreadySigned,
+        amendedAt: isAlreadySigned ? now : undefined,
+        encounterVersions: [...existingVersions, newVersion],
+      } as any);
+
+      res.json(updated);
+    } catch (err) {
+      console.error('[Sign] Error:', err);
+      res.status(500).json({ message: "Failed to sign note." });
+    }
+  });
+
+  // POST /api/encounters/:id/amend — Unlock a signed note for amendment
+  // Clears signedAt so the note becomes editable again. The previous signed version
+  // is preserved in encounterVersions for audit purposes.
+  app.post("/api/encounters/:id/amend", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const encounter = await storage.getEncounter(id, clinicianId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      const updated = await storage.updateEncounter(id, clinicianId, {
+        signedAt: null,
+        signedBy: null,
+      } as any);
+
+      res.json(updated);
+    } catch (err) {
+      console.error('[Amend] Error:', err);
+      res.status(500).json({ message: "Failed to open note for amendment." });
+    }
+  });
+
   // POST /api/encounters/:id/normalize — Stage 2: Diarize + normalize medical terms
   // Input: raw utterances (from transcription) or raw transcription text
   // Output: diarized utterances with speaker labels and corrected medical terms
@@ -4599,6 +4665,28 @@ ASSESSMENT — Required clinical reasoning:
    - HRT / hormone optimization visit → Include menopause, hypogonadism, or specific hormone deficiency diagnoses as appropriate
    - GLP-1 + metabolic syndrome indicators → Consider also: E11.x (T2DM/prediabetes), E78.x (dyslipidemia), I10 (HTN) if discussed
    - Always include the specific condition being managed, not just "follow-up visit"
+
+BMI VALUE MENTIONED — MANDATORY WEIGHT DIAGNOSIS RULE:
+   If ANY BMI value is explicitly mentioned in the transcript or linked clinical data, you MUST generate the appropriate weight classification as a numbered assessment/plan diagnosis, regardless of whether the clinician verbally stated the diagnosis or the patient is currently on weight loss medication:
+   - BMI 18.5–24.9: Normal weight — include only if specifically relevant to the clinical discussion
+   - BMI 25.0–29.9: ALWAYS include "Overweight (E66.3)" as a numbered diagnosis
+   - BMI 30.0–34.9: ALWAYS include "Obesity, Class I (E66.01)" as a numbered diagnosis
+   - BMI 35.0–39.9: ALWAYS include "Obesity, Class II (E66.01)" as a numbered diagnosis
+   - BMI ≥40.0: ALWAYS include "Obesity, Class III — Morbid Obesity (E66.01)" as a numbered diagnosis
+   Under that diagnosis, document: the specific BMI value stated, any relevant comorbidities (elevated hs-CRP, metabolic markers, etc.), clinical rationale for weight management discussion, and the full content of any weight management counseling provided.
+
+PATIENT EDUCATION — MANDATORY FULL DOCUMENTATION RULE:
+   When the clinician provided patient education during the visit (explaining medication mechanisms, risks, benefits, alternatives, options, routes of administration, or counseling on any topic), you MUST document it in THREE places:
+   (a) HPI narrative: Include a sentence such as "Patient was counseled on [specific topic]. Patient verbalized understanding. [Patient's stated response or decision, e.g., 'Patient expressed a desire to discuss initiation with her mother prior to starting.']"
+   (b) Under the relevant numbered Assessment item: Include the FULL depth of what was discussed — specific medications compared by name, their mechanisms of action, routes of administration (oral vs. injectable), brand options discussed, risks, and benefits. Do NOT compress this to "GLP-1 options were discussed." If semaglutide vs. tirzepatide was discussed, name both, describe what was explained. If oral vs. injectable was discussed, document both options were presented.
+   (c) Under Plan for that Assessment item: "Patient counseled on [medication name(s)] — [route options discussed], [risks/benefits reviewed], [brand/generic options presented]. Patient verbalized understanding. [Patient's stated next step]."
+   CRITICAL: Do NOT summarize, condense, or omit educational discussions. If it was discussed, it must be documented in full. A note that omits clinical education is legally incomplete.
+
+PATIENT-STATED DECISIONS — MANDATORY DOCUMENTATION RULE:
+   If the patient stated any decision, intent, preference, or follow-up plan during the encounter (e.g., "I'll discuss with my mother," "I want to think about it," "I'd like to start," "I'll call when I'm ready"), document this in TWO places:
+   (a) HPI: Include the patient's stated response verbatim or in close clinical paraphrase: "Patient expressed that she would like to discuss initiating therapy with her mother prior to making a decision."
+   (b) Plan for the relevant Assessment item: "Patient will [patient's stated plan]. [Clinician-defined next step, e.g., 'Patient to contact clinic when ready to initiate. Prescription can be called in at that time.']"
+   Never omit a documented patient decision — it is a critical part of informed consent documentation.
 
 2. PLAN — Apply clinical standards of care:
    - Document the specific medication, dose, and frequency if mentioned (e.g., "Continue semaglutide 1.0 mg weekly SQ")

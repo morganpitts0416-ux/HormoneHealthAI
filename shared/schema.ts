@@ -829,6 +829,14 @@ export type SoapNote = {
   needs_clinician_review?: string[];
 };
 
+export type EncounterVersion = {
+  version: number;
+  soapNote: SoapNote;
+  signedAt: string;
+  signedBy: string;
+  action: 'initial_sign' | 'amendment';
+};
+
 export type DiarizedUtterance = {
   id: number;
   speaker: "clinician" | "patient" | "unknown";
@@ -974,6 +982,12 @@ export const clinicalEncounters = pgTable("clinical_encounters", {
   clinicalExtraction: jsonb("clinical_extraction").$type<ClinicalExtraction>(),
   evidenceSuggestions: jsonb("evidence_suggestions").$type<EvidenceOverlay>(),
   patternMatch: jsonb("pattern_match").$type<PatternMatchResult>(),
+  // ── Signing & Amendment (EMR-style chart locking) ────────────────────────
+  signedAt: timestamp("signed_at"),
+  signedBy: varchar("signed_by", { length: 300 }),        // "Title First Last, Credentials"
+  isAmended: boolean("is_amended").notNull().default(false),
+  amendedAt: timestamp("amended_at"),
+  encounterVersions: jsonb("encounter_versions").$type<EncounterVersion[]>(), // audit trail
   // ── Multi-clinic foundation (nullable — populated by migration) ──────────
   clinicId: integer("clinic_id"),   // No FK constraint during initial rollout
   providerId: integer("provider_id"), // No FK constraint during initial rollout
