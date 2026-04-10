@@ -1112,6 +1112,9 @@ function EncounterEditor({
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
     if (savedId) queryClient.invalidateQueries({ queryKey: ["/api/encounters", savedId] });
+    // Also bust the patient-specific encounters cache used in patient profiles
+    const pid = encounter?.patientId || (patientId ? parseInt(patientId) : null);
+    if (pid) queryClient.invalidateQueries({ queryKey: ["/api/encounters", pid] });
   };
 
   // Patient's lab results (for linking)

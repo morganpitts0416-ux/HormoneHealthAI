@@ -1989,10 +1989,11 @@ export default function PatientProfiles() {
                         "wellness": "Wellness / Annual", "procedure": "Procedure", "telemedicine": "Telemedicine", "lab-review": "Lab Review",
                       };
                       const isSigned = !!enc.signedAt;
+                      const hasSoap = !!enc.soapNote;
                       const isExpanded = expandedEncounterId === enc.id;
 
                       const handleClick = () => {
-                        if (isSigned) {
+                        if (hasSoap) {
                           setExpandedEncounterId(isExpanded ? null : enc.id);
                         } else {
                           setLocation(`/encounters?encounterId=${enc.id}`);
@@ -2020,7 +2021,7 @@ export default function PatientProfiles() {
                                     <Lock className="w-2.5 h-2.5" />
                                     {enc.isAmended ? "Amended" : "Signed"}
                                   </Badge>
-                                ) : enc.soapNote ? (
+                                ) : hasSoap ? (
                                   <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-600 border-emerald-200">SOAP</Badge>
                                 ) : null}
                                 {enc.summaryPublished ? (
@@ -2028,7 +2029,7 @@ export default function PatientProfiles() {
                                 ) : enc.patientSummary ? (
                                   <Badge variant="outline" className="text-[10px] py-0 h-4 text-amber-600 border-amber-200">Draft</Badge>
                                 ) : null}
-                                {isSigned
+                                {hasSoap
                                   ? <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                                   : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
                               </div>
@@ -2038,29 +2039,46 @@ export default function PatientProfiles() {
                             )}
                           </button>
 
-                          {/* Inline signed SOAP viewer */}
-                          {isSigned && isExpanded && enc.soapNote && (
+                          {/* Inline SOAP viewer — signed and unsigned */}
+                          {isExpanded && hasSoap && (
                             <div className="border-t bg-muted/10">
-                              {/* Signed footer banner */}
-                              <div className="flex items-center gap-2 px-4 py-2 border-b bg-emerald-50/60 text-xs text-emerald-700">
-                                <Lock className="w-3 h-3 flex-shrink-0" />
-                                <span>
-                                  {enc.isAmended ? "Amended and signed" : "Electronically signed"}
-                                  {enc.signedBy ? ` by ${enc.signedBy}` : ""}
-                                  {enc.signedAt ? ` · ${new Date(enc.signedAt as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
-                                </span>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="ml-auto h-6 px-2 text-xs text-muted-foreground gap-1"
-                                  onClick={(e) => { e.stopPropagation(); setLocation(`/encounters?encounterId=${enc.id}`); }}
-                                  data-testid={`button-open-encounter-${enc.id}`}
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  Open
-                                </Button>
-                              </div>
-                              {/* SOAP note text — simple pre-formatted view */}
+                              {/* Banner — signed vs draft */}
+                              {isSigned ? (
+                                <div className="flex items-center gap-2 px-4 py-2 border-b bg-emerald-50/60 text-xs text-emerald-700">
+                                  <Lock className="w-3 h-3 flex-shrink-0" />
+                                  <span>
+                                    {enc.isAmended ? "Amended and signed" : "Electronically signed"}
+                                    {enc.signedBy ? ` by ${enc.signedBy}` : ""}
+                                    {enc.signedAt ? ` · ${new Date(enc.signedAt as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
+                                  </span>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="ml-auto h-6 px-2 text-xs text-muted-foreground gap-1"
+                                    onClick={(e) => { e.stopPropagation(); setLocation(`/encounters?encounterId=${enc.id}`); }}
+                                    data-testid={`button-open-encounter-${enc.id}`}
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    Open
+                                  </Button>
+                                </div>
+                              ) : (
+                                <div className="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60 text-xs text-amber-700">
+                                  <FileText className="w-3 h-3 flex-shrink-0" />
+                                  <span>Draft SOAP note — not yet signed</span>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="ml-auto h-6 px-2 text-xs text-muted-foreground gap-1"
+                                    onClick={(e) => { e.stopPropagation(); setLocation(`/encounters?encounterId=${enc.id}`); }}
+                                    data-testid={`button-edit-encounter-${enc.id}`}
+                                  >
+                                    <ExternalLink className="w-3 h-3" />
+                                    Edit
+                                  </Button>
+                                </div>
+                              )}
+                              {/* SOAP note text */}
                               <div className="px-5 py-4 max-h-96 overflow-y-auto">
                                 <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed text-foreground/90">
                                   {typeof enc.soapNote === 'string'
