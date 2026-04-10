@@ -38,7 +38,7 @@ import { RedFlagAlert } from "@/components/red-flag-alert";
 // the off-by-one-day rendering bug in US timezones. Also guards against epoch dates.
 function safeDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' }) {
   const d = new Date(dateStr as string);
-  if (isNaN(d.getTime()) || d.getFullYear() < 2000) return "Unknown date";
+  if (isNaN(d.getTime()) || d.getFullYear() < 1910) return "Unknown date";
   return d.toLocaleDateString('en-US', { timeZone: 'UTC', ...opts });
 }
 
@@ -1645,62 +1645,68 @@ export default function PatientProfiles() {
               </div>
 
               {/* Patient header */}
-              <div className="flex items-start gap-4 pb-2">
-                <PatientAvatar patient={selectedPatient} size="md" />
-                <div className="flex-1 min-w-0">
-                  <h2 className="text-lg font-semibold">
-                    {selectedPatient.firstName} {selectedPatient.lastName}
-                  </h2>
-                  <div className="flex items-center gap-2 flex-wrap mt-0.5">
-                    <Badge variant="secondary" className="text-xs">
-                      {selectedPatient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
-                    </Badge>
-                    {selectedPatient.mrn && (
-                      <span className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</span>
-                    )}
-                    {selectedPatient.dateOfBirth && (
-                      <span className="text-xs text-muted-foreground">
-                        DOB: {safeDate(selectedPatient.dateOfBirth as unknown as string)}
-                      </span>
-                    )}
-                    {(selectedPatient as any).phone && (
-                      <span className="text-xs text-muted-foreground">
-                        Ph: {(selectedPatient as any).phone}
-                      </span>
-                    )}
-                    {(selectedPatient as any).email && (
-                      <span className="text-xs text-muted-foreground">
-                        {(selectedPatient as any).email}
-                      </span>
-                    )}
-                    <Badge variant="outline" className="text-xs">
-                      {labs.length} lab result{labs.length !== 1 ? 's' : ''}
-                    </Badge>
-                    {portalStatus?.portalStatus === 'active' && (
-                      <Badge className="text-xs gap-1" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d4a8" }}>
-                        <Leaf className="w-2.5 h-2.5" />
-                        Portal Active
+              <div className="pb-2 space-y-3">
+                {/* Name + avatar row */}
+                <div className="flex items-start gap-3">
+                  <PatientAvatar patient={selectedPatient} size="md" />
+                  <div className="flex-1 min-w-0">
+                    <h2 className="text-lg font-semibold leading-tight">
+                      {selectedPatient.firstName} {selectedPatient.lastName}
+                    </h2>
+                    <div className="flex items-center gap-2 flex-wrap mt-1">
+                      <Badge variant="secondary" className="text-xs">
+                        {selectedPatient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
                       </Badge>
-                    )}
-                    {portalStatus?.portalStatus === 'invite_pending' && (
-                      <Badge className="text-xs gap-1" style={{ backgroundColor: "#fef9e7", color: "#7a5c20", border: "1px solid #f0d060" }}>
-                        <Mail className="w-2.5 h-2.5" />
-                        Invite Pending
+                      {selectedPatient.mrn && (
+                        <span className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</span>
+                      )}
+                      {selectedPatient.dateOfBirth && (
+                        <span className="text-xs text-muted-foreground">
+                          DOB: {safeDate(selectedPatient.dateOfBirth as unknown as string)}
+                        </span>
+                      )}
+                      {(selectedPatient as any).phone && (
+                        <span className="text-xs text-muted-foreground">
+                          Ph: {(selectedPatient as any).phone}
+                        </span>
+                      )}
+                      {(selectedPatient as any).email && (
+                        <span className="text-xs text-muted-foreground">
+                          {(selectedPatient as any).email}
+                        </span>
+                      )}
+                      <Badge variant="outline" className="text-xs">
+                        {labs.length} lab result{labs.length !== 1 ? 's' : ''}
                       </Badge>
-                    )}
+                      {portalStatus?.portalStatus === 'active' && (
+                        <Badge className="text-xs gap-1" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d4a8" }}>
+                          <Leaf className="w-2.5 h-2.5" />
+                          Portal Active
+                        </Badge>
+                      )}
+                      {portalStatus?.portalStatus === 'invite_pending' && (
+                        <Badge className="text-xs gap-1" style={{ backgroundColor: "#fef9e7", color: "#7a5c20", border: "1px solid #f0d060" }}>
+                          <Mail className="w-2.5 h-2.5" />
+                          Invite Pending
+                        </Badge>
+                      )}
+                    </div>
                   </div>
-                </div>
-                <div className="flex-shrink-0 flex items-center gap-2 flex-wrap">
+                  {/* Desktop-only collapse toggle */}
                   <Button
                     size="icon"
                     variant="ghost"
-                    className="hidden md:flex"
+                    className="hidden md:flex flex-shrink-0"
                     title={listCollapsed ? "Expand patient list" : "Collapse patient list"}
                     onClick={() => setListCollapsed(v => !v)}
                     data-testid="button-toggle-patient-list"
                   >
                     {listCollapsed ? <ChevronRight className="w-4 h-4" /> : <ChevronLeft className="w-4 h-4" />}
                   </Button>
+                </div>
+
+                {/* Action buttons — always below name, wraps on mobile */}
+                <div className="flex flex-wrap gap-2">
                   <Button
                     size="sm"
                     onClick={() => {
@@ -1717,9 +1723,7 @@ export default function PatientProfiles() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => {
-                      setLocation(`/encounters?patientId=${selectedPatient.id}`);
-                    }}
+                    onClick={() => setLocation(`/encounters?patientId=${selectedPatient.id}`)}
                     data-testid="button-start-encounter"
                     className="text-xs gap-1.5"
                     style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
