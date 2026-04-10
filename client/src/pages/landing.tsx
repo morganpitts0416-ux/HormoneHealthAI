@@ -104,7 +104,7 @@ export default function Landing() {
             <a href={appUrl("/login")}>
               <Button variant="ghost" size="sm" data-testid="link-signin">Sign In</Button>
             </a>
-            <a href={appUrl("/register")}>
+            <a href={appUrl("/register?plan=solo")}>
               <Button size="sm" data-testid="link-start-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
                 Start Free Trial
               </Button>
@@ -128,7 +128,7 @@ export default function Landing() {
             Built for clinicians who know there's more to the story — ClinIQ by ReAlign Health helps you connect the dots, identify patterns, and confidently guide your patients with care that actually makes sense.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
-            <a href={appUrl("/register")}>
+            <a href={appUrl("/register?plan=solo")}>
               <Button size="lg" data-testid="link-hero-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0", fontSize: "1rem", padding: "0 2rem" }}>
                 Start your free 14-day trial
                 <ChevronRight className="w-4 h-4 ml-1" />
@@ -338,7 +338,7 @@ export default function Landing() {
                   </li>
                 ))}
               </ul>
-              <a href={appUrl("/register")} className="w-full">
+              <a href={appUrl("/register?plan=solo")} className="w-full">
                 <Button className="w-full" size="lg" data-testid="link-pricing-trial" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
                   Start free trial
                   <ChevronRight className="w-4 h-4 ml-1" />
@@ -383,7 +383,7 @@ export default function Landing() {
                   <span className="text-xs font-medium" style={{ color: "#3d4a30" }}>Shared patient records across providers</span>
                 </li>
               </ul>
-              <a href={appUrl("/register")} className="w-full">
+              <a href={appUrl("/register?plan=suite")} className="w-full">
                 <Button className="w-full" size="lg" data-testid="link-pricing-suite-trial" style={{ backgroundColor: "#5a7040", color: "#f9f6f0" }}>
                   Start free trial
                   <ChevronRight className="w-4 h-4 ml-1" />
