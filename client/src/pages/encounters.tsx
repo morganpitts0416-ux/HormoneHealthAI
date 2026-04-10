@@ -8,7 +8,7 @@ import {
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
   ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
   TriangleAlert, ExternalLink, Square, MicOff, ShieldCheck, Copy, Check,
-  Layers, Pill, Lightbulb, ListPlus,
+  Layers, Pill, Lightbulb, ListPlus, Lock, Unlock, PenLine,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -105,6 +105,12 @@ function EncounterStatusBadges({ enc }: { enc: EncounterWithPatient }) {
       {enc.soapNote && (
         <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-600 border-emerald-200">
           SOAP
+        </Badge>
+      )}
+      {(enc as any).signedAt && (
+        <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-700 border-emerald-300 flex items-center gap-0.5">
+          <Lock className="w-2.5 h-2.5" />
+          {(enc as any).isAmended ? "Amended" : "Signed"}
         </Badge>
       )}
       {enc.summaryPublished ? (
@@ -1057,6 +1063,19 @@ function EncounterEditor({
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
   const [dismissedReviewIdxs, setDismissedReviewIdxs] = useState<Set<string>>(new Set());
 
+  // Signing state — reflects encounter.signedAt / signedBy from the DB, with local optimistic updates
+  const [signedAtLocal, setSignedAtLocal] = useState<Date | string | null>(encounter?.signedAt ?? null);
+  const [signedByLocal, setSignedByLocal] = useState<string | null>(encounter?.signedBy ?? null);
+  const [isAmendedLocal, setIsAmendedLocal] = useState<boolean>(encounter?.isAmended ?? false);
+  const isSigned = !!(signedAtLocal);
+
+  // If the note gets signed while on the Transcript tab, redirect to SOAP tab
+  useEffect(() => {
+    if (isSigned && activeTab === "transcript") {
+      setActiveTab("soap");
+    }
+  }, [isSigned, activeTab]);
+
   // Sync JSONB states when detail fetch arrives after initial mount
   // (list query strips these fields; detail fetch brings them in asynchronously)
   useEffect(() => {
@@ -1079,8 +1098,13 @@ function EncounterEditor({
     if (encounter.patternMatch && !patternMatch) {
       setPatternMatch(encounter.patternMatch as PatternMatchResult);
     }
+    // Sync signing state from freshly-fetched encounter
+    setSignedAtLocal((encounter as any).signedAt ?? null);
+    setSignedByLocal((encounter as any).signedBy ?? null);
+    setIsAmendedLocal((encounter as any).isAmended ?? false);
   }, [encounter?.id, encounter?.evidenceSuggestions, encounter?.soapNote, encounter?.transcription,
-      encounter?.diarizedTranscript, encounter?.clinicalExtraction, encounter?.patternMatch]);
+      encounter?.diarizedTranscript, encounter?.clinicalExtraction, encounter?.patternMatch,
+      (encounter as any)?.signedAt, (encounter as any)?.signedBy, (encounter as any)?.isAmended]);
 
   const invalidate = () => {
     queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
@@ -1491,6 +1515,40 @@ function EncounterEditor({
     onError: (e: any) => toast({ variant: "destructive", title: "Delete failed", description: e.message }),
   });
 
+  const signMutation = useMutation({
+    mutationFn: async () => {
+      if (!savedId) throw new Error("Save the encounter before signing.");
+      if (!hasSoap) throw new Error("Generate a SOAP note before signing.");
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/sign`, {});
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setSignedAtLocal(data.signedAt ?? new Date().toISOString());
+      setSignedByLocal(data.signedBy ?? null);
+      setIsAmendedLocal(data.isAmended ?? false);
+      setSoapViewMode("view");
+      invalidate();
+      toast({ title: "Note signed and locked", description: "The chart note has been co-signed and locked for the record." });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Sign failed", description: e.message }),
+  });
+
+  const amendMutation = useMutation({
+    mutationFn: async () => {
+      if (!savedId) throw new Error("No encounter to amend.");
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/amend`, {});
+      return res.json();
+    },
+    onSuccess: () => {
+      setSignedAtLocal(null);
+      setSignedByLocal(null);
+      setIsAmendedLocal(true);
+      invalidate();
+      toast({ title: "Amendment opened", description: "The note is unlocked. Make your changes and re-sign when done." });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Amend failed", description: e.message }),
+  });
+
   const hasTranscription = transcription.trim().length > 0 || (diarizedTranscript?.length ?? 0) > 0;
   const hasSoap = !!(soap.fullNote?.trim() || soap.assessment || soap.subjective);
   const hasSummary = patientSummary.trim().length > 0;
@@ -1498,13 +1556,17 @@ function EncounterEditor({
   const hasPatternMatch = (patternMatch?.matched_patterns?.length ?? 0) > 0;
   const hasEvidence = (evidenceOverlay?.suggestions?.length ?? 0) > 0;
 
-  const steps = [
+  const allSteps = [
     { id: "details",    label: "Details",    done: hasTranscription, icon: Stethoscope },
     { id: "transcript", label: "Transcript", done: hasExtraction,    icon: FileText },
     { id: "soap",       label: "SOAP Note",  done: hasSoap,          icon: ClipboardList },
     { id: "evidence",   label: "Evidence",   done: hasEvidence,      icon: BookOpen },
     { id: "summary",    label: "Summary",    done: hasSummary,       icon: User },
   ] as const;
+  // Hide Transcript tab once the note is signed — raw audio/text is not part of the locked record
+  const steps = isSigned
+    ? allSteps.filter(s => s.id !== "transcript")
+    : allSteps;
 
   return (
     <div className="flex flex-col flex-1 min-h-0">
@@ -2683,42 +2745,94 @@ function EncounterEditor({
         {/* ── Tab: SOAP Note ──────────────────────────────────────────── */}
         {activeTab === "soap" && (
           <>
+            {/* Signed note banner */}
+            {isSigned && (
+              <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50/70 px-4 py-3">
+                <Lock className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
+                <div className="flex-1 min-w-0">
+                  <p className="text-sm font-semibold text-emerald-800">
+                    {isAmendedLocal ? "Amended and Signed" : "Signed Chart Note"}
+                  </p>
+                  <p className="text-xs text-emerald-700 mt-0.5">
+                    {signedByLocal ? `Signed by ${signedByLocal}` : "Signed"}
+                    {signedAtLocal ? ` · ${new Date(signedAtLocal as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
+                  </p>
+                  {isAmendedLocal && (
+                    <p className="text-xs text-emerald-600/80 mt-0.5 italic">This note has been amended. Prior version(s) preserved in audit trail.</p>
+                  )}
+                </div>
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => { if (confirm("Open this note for amendment? A copy of the current signed version will be preserved in the audit trail.")) amendMutation.mutate(); }}
+                  disabled={amendMutation.isPending}
+                  data-testid="button-amend-note"
+                  className="flex-shrink-0 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
+                >
+                  <PenLine className="w-3.5 h-3.5 mr-1.5" />
+                  {amendMutation.isPending ? "Opening…" : "Amend"}
+                </Button>
+              </div>
+            )}
+
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold">SOAP Note</h3>
-                <p className="text-xs text-muted-foreground mt-0.5">AI-generated from encounter transcription{linkedLabResultId ? " + linked lab results" : ""}. Edit any section as needed.</p>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  {isSigned
+                    ? "This note is locked. Use Amend to reopen for editing."
+                    : `AI-generated from encounter transcription${linkedLabResultId ? " + linked lab results" : ""}. Edit any section as needed.`}
+                </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={runValidate}
-                  disabled={!hasSoap || pipelineLoading === "validating"}
-                  data-testid="button-validate-soap-header"
-                >
-                  {pipelineLoading === "validating"
-                    ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Validating…</>
-                    : <><CheckCircle2 className={`w-3.5 h-3.5 mr-1.5 ${validationResult?.overall_status === "pass" ? "text-emerald-500" : validationResult?.overall_status === "fail" ? "text-destructive" : ""}`} />Validate</>}
-                </Button>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => soapMutation.mutate()}
-                  disabled={soapMutation.isPending || !hasTranscription}
-                  data-testid="button-regenerate-soap"
-                >
-                  <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${soapMutation.isPending ? "animate-spin" : ""}`} />
-                  {soapMutation.isPending ? "Generating..." : "Regenerate"}
-                </Button>
-                <Button
-                  size="sm"
-                  onClick={() => saveSoapMutation.mutate()}
-                  disabled={saveSoapMutation.isPending || !savedId}
-                  data-testid="button-save-soap"
-                >
-                  <Save className="w-3.5 h-3.5 mr-1.5" />
-                  {saveSoapMutation.isPending ? "Saving..." : "Save SOAP"}
-                </Button>
+                {!isSigned && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={runValidate}
+                    disabled={!hasSoap || pipelineLoading === "validating"}
+                    data-testid="button-validate-soap-header"
+                  >
+                    {pipelineLoading === "validating"
+                      ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Validating…</>
+                      : <><CheckCircle2 className={`w-3.5 h-3.5 mr-1.5 ${validationResult?.overall_status === "pass" ? "text-emerald-500" : validationResult?.overall_status === "fail" ? "text-destructive" : ""}`} />Validate</>}
+                  </Button>
+                )}
+                {!isSigned && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => soapMutation.mutate()}
+                    disabled={soapMutation.isPending || !hasTranscription}
+                    data-testid="button-regenerate-soap"
+                  >
+                    <RefreshCw className={`w-3.5 h-3.5 mr-1.5 ${soapMutation.isPending ? "animate-spin" : ""}`} />
+                    {soapMutation.isPending ? "Generating..." : "Regenerate"}
+                  </Button>
+                )}
+                {!isSigned && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => saveSoapMutation.mutate()}
+                    disabled={saveSoapMutation.isPending || !savedId}
+                    data-testid="button-save-soap"
+                  >
+                    <Save className="w-3.5 h-3.5 mr-1.5" />
+                    {saveSoapMutation.isPending ? "Saving..." : "Save SOAP"}
+                  </Button>
+                )}
+                {hasSoap && savedId && !isSigned && (
+                  <Button
+                    size="sm"
+                    onClick={() => { if (confirm("Sign and lock this chart note? You can amend it later if needed.")) signMutation.mutate(); }}
+                    disabled={signMutation.isPending}
+                    data-testid="button-sign-note"
+                  >
+                    <Lock className="w-3.5 h-3.5 mr-1.5" />
+                    {signMutation.isPending ? "Signing…" : "Sign Note"}
+                  </Button>
+                )}
               </div>
             </div>
 
@@ -2988,13 +3102,15 @@ function EncounterEditor({
                     >
                       <Eye className="w-3 h-3" /> View
                     </button>
-                    <button
-                      data-testid="soap-edit-toggle"
-                      onClick={() => setSoapViewMode("edit")}
-                      className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "edit" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
-                    >
-                      <ClipboardList className="w-3 h-3" /> Edit
-                    </button>
+                    {!isSigned && (
+                      <button
+                        data-testid="soap-edit-toggle"
+                        onClick={() => setSoapViewMode("edit")}
+                        className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "edit" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
+                      >
+                        <ClipboardList className="w-3 h-3" /> Edit
+                      </button>
+                    )}
                   </div>
                   <div className="flex gap-2 flex-wrap">
                     <Button
@@ -3013,16 +3129,18 @@ function EncounterEditor({
                         ? <><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />Copied!</>
                         : <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Note</>}
                     </Button>
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      onClick={() => saveSoapMutation.mutate()}
-                      disabled={saveSoapMutation.isPending || !savedId}
-                      data-testid="button-save-soap"
-                    >
-                      <Save className="w-3.5 h-3.5 mr-1.5" />
-                      {saveSoapMutation.isPending ? "Saving..." : "Save Note"}
-                    </Button>
+                    {!isSigned && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => saveSoapMutation.mutate()}
+                        disabled={saveSoapMutation.isPending || !savedId}
+                        data-testid="button-save-soap"
+                      >
+                        <Save className="w-3.5 h-3.5 mr-1.5" />
+                        {saveSoapMutation.isPending ? "Saving..." : "Save Note"}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       onClick={() => summaryMutation.mutate()}
@@ -3044,13 +3162,22 @@ function EncounterEditor({
                   </div>
                 )}
 
-                {soapViewMode === "view" ? (
-                  <div className="rounded-md border bg-card px-5 py-4 min-h-[24rem]">
+                {(soapViewMode === "view" || isSigned) ? (
+                  <div className={`rounded-md border bg-card px-5 py-4 min-h-[24rem] ${isSigned ? "opacity-95" : ""}`}>
                     <SoapNoteViewer
                       text={soap.fullNote ?? legacySoapToText(soap)}
                       evidence={evidenceOverlay?.suggestions}
                       mode="flags"
                     />
+                    {isSigned && (
+                      <div className="mt-6 pt-4 border-t border-emerald-200 flex items-center gap-2 text-xs text-emerald-700">
+                        <Lock className="w-3 h-3 flex-shrink-0" />
+                        <span>
+                          {isAmendedLocal ? "Amended and signed" : "Electronically signed"} by <strong>{signedByLocal ?? "provider"}</strong>
+                          {signedAtLocal ? ` on ${new Date(signedAtLocal as string).toLocaleString('en-US', { month: 'long', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
+                        </span>
+                      </div>
+                    )}
                   </div>
                 ) : (
                   <Textarea
@@ -3064,9 +3191,11 @@ function EncounterEditor({
                 )}
 
                 <p className="text-xs text-muted-foreground">
-                  {soapViewMode === "edit"
-                    ? "Editing raw note — save when ready. This is what will be copied and pasted into your EHR."
-                    : "Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline."}
+                  {isSigned
+                    ? "This note is electronically signed and locked. Use Amend above to open it for editing."
+                    : soapViewMode === "edit"
+                      ? "Editing raw note — save when ready. This is what will be copied and pasted into your EHR."
+                      : "Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline."}
                 </p>
               </div>
             )}
