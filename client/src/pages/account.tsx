@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
@@ -278,6 +278,115 @@ function BillingCard({ onNavigate }: { onNavigate: () => void }) {
   );
 }
 
+// ── Signature Pad Component ──────────────────────────────────────────────────
+function SignaturePad({ onSave, onCancel }: { onSave: (dataUrl: string) => void; onCancel: () => void }) {
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const drawing = useRef(false);
+  const hasStrokes = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    ctx.strokeStyle = "#1c2414";
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.lineJoin = "round";
+  }, []);
+
+  const getPos = (e: MouseEvent | Touch, canvas: HTMLCanvasElement) => {
+    const rect = canvas.getBoundingClientRect();
+    const scaleX = canvas.width / rect.width;
+    const scaleY = canvas.height / rect.height;
+    return {
+      x: ((e.clientX - rect.left) * scaleX),
+      y: ((e.clientY - rect.top) * scaleY),
+    };
+  };
+
+  const startDraw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    drawing.current = true;
+    hasStrokes.current = true;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const pos = "touches" in e
+      ? getPos(e.touches[0], canvas)
+      : getPos(e.nativeEvent as MouseEvent, canvas);
+    ctx.beginPath();
+    ctx.moveTo(pos.x, pos.y);
+  }, []);
+
+  const draw = useCallback((e: React.MouseEvent | React.TouchEvent) => {
+    e.preventDefault();
+    if (!drawing.current) return;
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    const pos = "touches" in e
+      ? getPos(e.touches[0], canvas)
+      : getPos(e.nativeEvent as MouseEvent, canvas);
+    ctx.lineTo(pos.x, pos.y);
+    ctx.stroke();
+  }, []);
+
+  const stopDraw = useCallback(() => { drawing.current = false; }, []);
+
+  const clear = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, canvas.width, canvas.height);
+    hasStrokes.current = false;
+  };
+
+  const save = () => {
+    const canvas = canvasRef.current;
+    if (!canvas) return;
+    onSave(canvas.toDataURL("image/png"));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="rounded-md border overflow-hidden" style={{ borderColor: "#d4c9b5" }}>
+        <canvas
+          ref={canvasRef}
+          width={560}
+          height={160}
+          className="w-full touch-none cursor-crosshair block bg-white"
+          style={{ maxHeight: "160px" }}
+          onMouseDown={startDraw}
+          onMouseMove={draw}
+          onMouseUp={stopDraw}
+          onMouseLeave={stopDraw}
+          onTouchStart={startDraw}
+          onTouchMove={draw}
+          onTouchEnd={stopDraw}
+          data-testid="canvas-signature-pad"
+        />
+        <div className="px-3 py-1.5 border-t flex items-center justify-between" style={{ borderColor: "#d4c9b5", backgroundColor: "#fdfcfb" }}>
+          <span className="text-xs" style={{ color: "#6b7a5a" }}>Sign above using your finger, stylus, or mouse</span>
+          <button onClick={clear} className="text-xs font-medium hover:underline" style={{ color: "#2e3a20" }} data-testid="button-clear-signature">Clear</button>
+        </div>
+      </div>
+      <div className="flex gap-2">
+        <Button size="sm" onClick={save} data-testid="button-save-signature" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
+          <PenLine className="w-3.5 h-3.5 mr-1.5" />Use This Signature
+        </Button>
+        <Button size="sm" variant="outline" onClick={onCancel} data-testid="button-cancel-signature">Cancel</Button>
+      </div>
+    </div>
+  );
+}
+
 export default function Account() {
   const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
@@ -291,9 +400,9 @@ export default function Account() {
   // Clinic branding & signature
   const [clinicLogoPreview, setClinicLogoPreview] = useState<string | null>((user as any)?.clinicLogo ?? null);
   const [signaturePreview, setSignaturePreview] = useState<string | null>((user as any)?.signatureImage ?? null);
+  const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [brandingSaved, setBrandingSaved] = useState(false);
   const logoInputRef = useRef<HTMLInputElement>(null);
-  const sigInputRef = useRef<HTMLInputElement>(null);
 
   const isStaff = !!(user as any)?.isStaff;
 
@@ -729,51 +838,41 @@ export default function Account() {
                 <PenLine className="w-3 h-3 inline mr-1" />Provider Signature
               </p>
               <p className="text-xs text-muted-foreground mb-3">
-                Upload an image of your handwritten signature. It will appear at the bottom of electronically-signed SOAP note PDFs.
+                Draw your signature below using your finger, stylus, or mouse. It will appear at the bottom of electronically-signed SOAP note PDFs.
               </p>
-              <div className="flex items-start gap-4 flex-wrap">
-                <div
-                  className="w-64 h-20 rounded-md border flex items-center justify-center bg-white overflow-hidden cursor-pointer"
-                  onClick={() => sigInputRef.current?.click()}
-                  data-testid="button-upload-signature"
-                  title="Click to upload signature"
-                >
-                  {signaturePreview
-                    ? <img src={signaturePreview} alt="Provider signature" className="max-h-full max-w-full object-contain p-2" />
-                    : <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                        <PenLine className="w-6 h-6" />
-                        <span className="text-xs">Click to upload signature</span>
-                      </div>
-                  }
-                </div>
-                <div className="flex flex-col gap-2 justify-center">
-                  <Button size="sm" variant="outline" onClick={() => sigInputRef.current?.click()} data-testid="button-choose-signature">
-                    <PenLine className="w-3.5 h-3.5 mr-1.5" />
-                    {signaturePreview ? "Replace Signature" : "Upload Signature"}
-                  </Button>
-                  {signaturePreview && (
-                    <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setSignaturePreview(null)} data-testid="button-remove-signature">
-                      <X className="w-3.5 h-3.5 mr-1.5" />Remove
+
+              {showSignaturePad ? (
+                <SignaturePad
+                  onSave={(dataUrl) => { setSignaturePreview(dataUrl); setShowSignaturePad(false); }}
+                  onCancel={() => setShowSignaturePad(false)}
+                />
+              ) : (
+                <div className="flex items-start gap-4 flex-wrap">
+                  <div
+                    className="rounded-md border flex items-center justify-center bg-white overflow-hidden"
+                    style={{ width: "280px", height: "88px", borderColor: "#d4c9b5" }}
+                  >
+                    {signaturePreview
+                      ? <img src={signaturePreview} alt="Provider signature" className="max-h-full max-w-full object-contain p-2" />
+                      : <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                          <PenLine className="w-5 h-5" />
+                          <span className="text-xs">No signature saved yet</span>
+                        </div>
+                    }
+                  </div>
+                  <div className="flex flex-col gap-2 justify-center">
+                    <Button size="sm" onClick={() => setShowSignaturePad(true)} data-testid="button-draw-signature" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
+                      <PenLine className="w-3.5 h-3.5 mr-1.5" />
+                      {signaturePreview ? "Redraw Signature" : "Draw Signature"}
                     </Button>
-                  )}
-                  <p className="text-xs text-muted-foreground">PNG preferred (transparent background).<br />Sign on white paper, photograph, crop tightly.</p>
+                    {signaturePreview && (
+                      <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setSignaturePreview(null)} data-testid="button-remove-signature">
+                        <X className="w-3.5 h-3.5 mr-1.5" />Remove
+                      </Button>
+                    )}
+                  </div>
                 </div>
-              </div>
-              <input
-                ref={sigInputRef}
-                type="file"
-                accept="image/png,image/jpeg"
-                className="hidden"
-                data-testid="input-signature-image"
-                onChange={async (e) => {
-                  const file = e.target.files?.[0];
-                  if (!file) return;
-                  if (file.size > 2_097_152) { toast({ title: "File too large", description: "Please choose an image under 2MB.", variant: "destructive" }); return; }
-                  const dataUrl = await readFileAsDataUrl(file);
-                  setSignaturePreview(dataUrl);
-                  e.target.value = "";
-                }}
-              />
+              )}
             </div>
 
             <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
