@@ -492,6 +492,9 @@ export const users = pgTable("users", {
   // No FK constraint here to avoid circular reference with clinics table
   defaultClinicId: integer("default_clinic_id"),
   userType: varchar("user_type", { length: 30 }), // 'solo_admin' | 'clinic_admin' | 'provider' | 'staff'
+  // Clinic branding & provider signature — stored as base64 data URLs
+  clinicLogo: text("clinic_logo"),
+  signatureImage: text("signature_image"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

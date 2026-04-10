@@ -238,7 +238,16 @@ export async function registerRoutes(app: Express): Promise<Server> {
         firstName, lastName, title, npi, clinicName, phone, address, email,
         messagingPreference, messagingPhone,
         externalMessagingProvider, externalMessagingApiKey, externalMessagingChannelId,
+        clinicLogo, signatureImage,
       } = req.body;
+
+      // Validate base64 image sizes (max 2MB each)
+      if (clinicLogo !== undefined && typeof clinicLogo === 'string' && clinicLogo.length > 2_800_000) {
+        return res.status(400).json({ message: "Clinic logo file is too large (max 2MB)" });
+      }
+      if (signatureImage !== undefined && typeof signatureImage === 'string' && signatureImage.length > 2_800_000) {
+        return res.status(400).json({ message: "Signature image file is too large (max 2MB)" });
+      }
 
       // Auto-generate a webhook secret the first time external_api is enabled
       let webhookSecretUpdate: { externalMessagingWebhookSecret?: string } = {};
@@ -263,6 +272,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...(externalMessagingProvider !== undefined ? { externalMessagingProvider } : {}),
         ...(externalMessagingApiKey !== undefined ? { externalMessagingApiKey } : {}),
         ...(externalMessagingChannelId !== undefined ? { externalMessagingChannelId } : {}),
+        ...(clinicLogo !== undefined ? { clinicLogo: clinicLogo || null } : {}),
+        ...(signatureImage !== undefined ? { signatureImage: signatureImage || null } : {}),
         ...webhookSecretUpdate,
       });
       if (!updated) return res.status(404).json({ message: "User not found" });

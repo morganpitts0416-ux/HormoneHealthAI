@@ -19,11 +19,11 @@ const registerSchema = z.object({
   firstName: z.string().min(1, "First name is required"),
   lastName: z.string().min(1, "Last name is required"),
   title: z.string().min(1, "Clinical title is required"),
-  npi: z.string().optional(),
+  npi: z.string().min(10, "NPI must be 10 digits").max(10, "NPI must be 10 digits").regex(/^\d{10}$/, "NPI must be exactly 10 digits"),
   email: z.string().email("Valid email is required"),
   clinicName: z.string().min(1, "Clinic name is required"),
-  phone: z.string().optional(),
-  address: z.string().optional(),
+  phone: z.string().min(7, "Clinic phone number is required"),
+  address: z.string().min(5, "Clinic address is required"),
   username: z.string().min(3, "Username must be at least 3 characters").regex(/^[a-zA-Z0-9._-]+$/, "Username can only contain letters, numbers, dots, hyphens, and underscores"),
   password: z.string()
     .min(8, "At least 8 characters")
@@ -100,12 +100,7 @@ export default function Register() {
     if (!allAgreed) return;
     try {
       const { confirmPassword, ...payload } = data;
-      await registerMutation.mutateAsync({
-        ...payload,
-        npi: payload.npi || undefined,
-        phone: payload.phone || undefined,
-        address: payload.address || undefined,
-      });
+      await registerMutation.mutateAsync(payload);
     } catch (error: any) {
       toast({ title: "Registration failed", description: error?.message || "Please try again.", variant: "destructive" });
     }
@@ -232,8 +227,8 @@ export default function Register() {
                       )} />
                       <FormField control={form.control} name="npi" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>NPI Number <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
-                          <FormControl><Input data-testid="input-npi" placeholder="1234567890" {...field} /></FormControl>
+                          <FormLabel>NPI Number <span className="text-destructive">*</span></FormLabel>
+                          <FormControl><Input data-testid="input-npi" placeholder="1234567890" maxLength={10} {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
@@ -259,14 +254,14 @@ export default function Register() {
                       )} />
                       <FormField control={form.control} name="phone" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Phone <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
+                          <FormLabel>Clinic Phone <span className="text-destructive">*</span></FormLabel>
                           <FormControl><Input data-testid="input-phone" placeholder="(555) 555-0100" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
                       )} />
                       <FormField control={form.control} name="address" render={({ field }) => (
                         <FormItem>
-                          <FormLabel>Clinic Address <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
+                          <FormLabel>Clinic Address <span className="text-destructive">*</span></FormLabel>
                           <FormControl><Input data-testid="input-address" placeholder="123 Medical Dr, Nashville, TN 37201" {...field} /></FormControl>
                           <FormMessage />
                         </FormItem>
