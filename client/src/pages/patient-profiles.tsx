@@ -1082,7 +1082,8 @@ export default function PatientProfiles() {
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
-  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "" });
+  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", primaryProvider: "" });
+  const [showFullDemographics, setShowFullDemographics] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
@@ -1443,7 +1444,7 @@ export default function PatientProfiles() {
   });
 
   const updatePatientMutation = useMutation({
-    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string }) => {
+    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; primaryProvider: string }) => {
       const { id, ...fields } = data;
       const body: Record<string, string | null> = {
         firstName: fields.firstName,
@@ -1451,6 +1452,7 @@ export default function PatientProfiles() {
         email: fields.email || null,
         phone: fields.phone || null,
         dateOfBirth: fields.dateOfBirth || null,
+        primaryProvider: fields.primaryProvider || null,
       };
       const res = await apiRequest("PATCH", `/api/patients/${id}`, body);
       if (!res.ok) throw new Error("Failed to update patient");
@@ -1478,6 +1480,7 @@ export default function PatientProfiles() {
       email: (selectedPatient as any).email ?? "",
       dateOfBirth: dob,
       phone: (selectedPatient as any).phone ?? "",
+      primaryProvider: (selectedPatient as any).primaryProvider ?? "",
     });
     setShowEditPatient(true);
   };
@@ -1703,44 +1706,65 @@ export default function PatientProfiles() {
                     <h2 className="text-lg font-semibold leading-tight">
                       {selectedPatient.firstName} {selectedPatient.lastName}
                     </h2>
+
+                    {/* Always-visible: clinic type badge + DOB + phone */}
                     <div className="flex items-center gap-2 flex-wrap mt-1">
                       <Badge variant="secondary" className="text-xs">
                         {selectedPatient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
                       </Badge>
-                      {selectedPatient.mrn && (
-                        <span className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</span>
-                      )}
                       {selectedPatient.dateOfBirth && (
                         <span className="text-xs text-muted-foreground">
-                          DOB: {safeDate(selectedPatient.dateOfBirth as unknown as string)}
+                          DOB: <span className="font-medium text-foreground">{safeDate(selectedPatient.dateOfBirth as unknown as string)}</span>
                         </span>
                       )}
                       {(selectedPatient as any).phone && (
                         <span className="text-xs text-muted-foreground">
-                          Ph: {(selectedPatient as any).phone}
+                          Ph: <span className="font-medium text-foreground">{(selectedPatient as any).phone}</span>
                         </span>
                       )}
-                      {(selectedPatient as any).email && (
-                        <span className="text-xs text-muted-foreground">
-                          {(selectedPatient as any).email}
-                        </span>
-                      )}
-                      <Badge variant="outline" className="text-xs">
-                        {labs.length} lab result{labs.length !== 1 ? 's' : ''}
-                      </Badge>
-                      {portalStatus?.portalStatus === 'active' && (
-                        <Badge className="text-xs gap-1" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d4a8" }}>
-                          <Leaf className="w-2.5 h-2.5" />
-                          Portal Active
-                        </Badge>
-                      )}
-                      {portalStatus?.portalStatus === 'invite_pending' && (
-                        <Badge className="text-xs gap-1" style={{ backgroundColor: "#fef9e7", color: "#7a5c20", border: "1px solid #f0d060" }}>
-                          <Mail className="w-2.5 h-2.5" />
-                          Invite Pending
-                        </Badge>
-                      )}
+                      <button
+                        onClick={() => setShowFullDemographics(v => !v)}
+                        className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
+                        data-testid="button-toggle-demographics"
+                      >
+                        {showFullDemographics ? <ChevronDown className="w-3 h-3" /> : <ChevronRight className="w-3 h-3" />}
+                        {showFullDemographics ? "Less" : "More"}
+                      </button>
                     </div>
+
+                    {/* Collapsible: email, MRN, provider, portal status, lab count */}
+                    {showFullDemographics && (
+                      <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 pl-0">
+                        {(selectedPatient as any).email && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <Mail className="w-3 h-3" /> {(selectedPatient as any).email}
+                          </span>
+                        )}
+                        {selectedPatient.mrn && (
+                          <span className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</span>
+                        )}
+                        {(selectedPatient as any).primaryProvider && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1">
+                            <User className="w-3 h-3" /> Provider: <span className="font-medium text-foreground">{(selectedPatient as any).primaryProvider}</span>
+                          </span>
+                        )}
+                        <Badge variant="outline" className="text-xs">
+                          {labs.length} lab result{labs.length !== 1 ? 's' : ''}
+                        </Badge>
+                        {portalStatus?.portalStatus === 'active' && (
+                          <Badge className="text-xs gap-1" style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d4a8" }}>
+                            <Leaf className="w-2.5 h-2.5" />
+                            Portal Active
+                          </Badge>
+                        )}
+                        {portalStatus?.portalStatus === 'invite_pending' && (
+                          <Badge className="text-xs gap-1" style={{ backgroundColor: "#fef9e7", color: "#7a5c20", border: "1px solid #f0d060" }}>
+                            <Mail className="w-2.5 h-2.5" />
+                            Invite Pending
+                          </Badge>
+                        )}
+                      </div>
+                    )}
                   </div>
                   {/* Desktop-only collapse toggle */}
                   <Button
@@ -2692,6 +2716,17 @@ export default function PatientProfiles() {
                   data-testid="input-edit-patient-phone"
                 />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-provider">Primary Provider</Label>
+              <Input
+                id="edit-provider"
+                placeholder="e.g. Dr. Smith, NP Jones"
+                value={editPatientForm.primaryProvider}
+                onChange={e => setEditPatientForm(f => ({ ...f, primaryProvider: e.target.value }))}
+                data-testid="input-edit-patient-provider"
+              />
+              <p className="text-xs text-muted-foreground">Assign a provider name for multi-provider clinics</p>
             </div>
           </div>
           <DialogFooter className="gap-2">

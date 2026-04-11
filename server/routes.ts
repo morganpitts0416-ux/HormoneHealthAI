@@ -6469,11 +6469,76 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       if (!responses || typeof responses !== "object") {
         return res.status(400).json({ message: "Responses are required" });
       }
+
+      // ── Auto-match or auto-create patient from form demographics ─────────────
+      let resolvedPatientId: number | null = patientId ? parseInt(patientId) : null;
+      let autoCreated = false;
+
+      if (!resolvedPatientId && form.clinicianId) {
+        // Helper: extract a response value by matching field key patterns
+        const pick = (...patterns: RegExp[]) => {
+          const key = Object.keys(responses).find(k =>
+            patterns.some(p => p.test(k.toLowerCase().replace(/[\s-]/g, "_")))
+          );
+          return key ? String(responses[key] ?? "").trim() : "";
+        };
+
+        // Extract first / last name
+        let firstName = pick(/^first_?name$/, /^fname$/, /^given_name$/);
+        let lastName = pick(/^last_?name$/, /^lname$/, /^family_name$/, /^surname$/);
+
+        // Fall back to submitterName if no explicit name fields
+        if ((!firstName || !lastName) && submitterName) {
+          const parts = String(submitterName).trim().split(/\s+/);
+          if (!firstName) firstName = parts[0] ?? "";
+          if (!lastName) lastName = parts.slice(1).join(" ") || (parts[0] ?? "");
+        }
+
+        // Extract other demographics
+        const dobRaw = pick(/^date_of_birth$/, /^dob$/, /^birth_?date$/, /^birthday$/);
+        const email = pick(/^email$/, /^email_address$/) || (submitterEmail ? String(submitterEmail).trim() : "");
+        const phone = pick(/^phone$/, /^phone_?number$/, /^mobile$/, /^cell$/, /^telephone$/);
+        const genderRaw = pick(/^gender$/, /^sex$/);
+        const gender = genderRaw
+          ? (genderRaw.toLowerCase().startsWith("f") ? "female" : "male")
+          : "male";
+
+        if (firstName && lastName) {
+          // Try to find an existing patient by name
+          const existing = await storage.getPatientByName(firstName, lastName, form.clinicianId);
+
+          if (existing) {
+            resolvedPatientId = existing.id;
+            // Optionally fill in any missing demographics
+            const updates: Record<string, any> = {};
+            if (!existing.dateOfBirth && dobRaw) updates.dateOfBirth = new Date(dobRaw);
+            if (!existing.email && email) updates.email = email;
+            if (!existing.phone && phone) updates.phone = phone;
+            if (Object.keys(updates).length > 0) {
+              await storage.updatePatient(existing.id, updates, form.clinicianId);
+            }
+          } else {
+            // Create a new patient record
+            const created = await storage.createPatient({
+              userId: form.clinicianId,
+              firstName,
+              lastName,
+              dateOfBirth: dobRaw ? new Date(dobRaw) : null,
+              gender,
+              email: email || null,
+              phone: phone || null,
+            });
+            resolvedPatientId = created.id;
+            autoCreated = true;
+          }
+        }
+      }
+
       const submission = await storage.createFormSubmission({
         formId: pub.formId,
         formVersion: form.version,
         clinicianId: form.clinicianId,
-        patientId: patientId ? parseInt(patientId) : null,
+        patientId: resolvedPatientId,
         submittedByPatient: true,
         submittedByStaff: false,
         submissionSource: pub.mode,
@@ -6486,15 +6551,17 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         submitterName: submitterName ?? null,
         submitterEmail: submitterEmail ?? null,
       });
+
       // Update assignment status if applicable
-      if (patientId && pub.mode !== "embed") {
-        const assignments = await storage.getPatientFormAssignments(parseInt(patientId));
+      if (resolvedPatientId && pub.mode !== "embed") {
+        const assignments = await storage.getPatientFormAssignments(resolvedPatientId);
         const pending = assignments.find(a => a.formId === pub.formId && a.status === "pending");
         if (pending) {
           await storage.updatePatientFormAssignment(pending.id, { status: "completed" });
         }
       }
-      res.json({ success: true, submissionId: submission.id });
+
+      res.json({ success: true, submissionId: submission.id, patientId: resolvedPatientId, autoCreated });
     } catch (err) {
       console.error("[FormSubmit]", err);
       res.status(500).json({ message: "Failed to submit form" });
