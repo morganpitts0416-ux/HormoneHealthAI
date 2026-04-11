@@ -1,0 +1,739 @@
+Build a production-ready **Smart Intake + Digital Forms** module inside the live platform. This is a core platform feature, not a prototype. Implement it carefully, with stable schema design, safe migrations, and exact alignment between app code, database schema, and production deployment.
+
+## Critical production rules
+
+1. The live platform uses the **REAL production database**. Do not build this against a fake/local-only schema and do not assume dev-only tables are acceptable.
+2. Before changing code that depends on new fields or tables, create the necessary database schema changes first and ensure the production schema matches the code expectations.
+3. Do **not** use destructive schema operations in production. No dropping tables, no truncating tables, no recreating tables that contain data, and no changing primary keys in a way that risks data loss.
+4. Use safe additive migrations only:
+
+   * `CREATE TABLE IF NOT EXISTS`
+   * `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+   * `CREATE INDEX IF NOT EXISTS`
+   * add foreign keys and constraints carefully
+5. All new tables, columns, relations, and code paths must be consistent with the existing production database naming and app architecture.
+6. Before shipping, verify the build uses the **actual app folder/package.json** and that the deployment is pointed at the real project, not a dummy root folder.
+7. I want this built to be the **least likely to fail in production**. Prioritize reliability, auditability, and safe sync behavior over shortcuts.
+
+---
+
+# Feature to build
+
+Create an in-platform **Smart Intake + Digital Forms** system that lets clinicians build and use:
+
+* intake forms
+* medical history forms
+* medication history forms
+* social history forms
+* family history forms
+* allergies forms
+* surgical history forms
+* consent forms
+* membership agreements
+* custom forms
+
+Each form must support all of these use cases:
+
+1. Generate a shareable link for patients
+2. Allow clean website embed
+3. Allow in-office tablet completion
+4. Save completed forms inside the patient profile
+5. Optionally sync structured form data into patient chart/profile fields
+6. Support form expiration / renewal reminders
+7. Support conditional logic
+8. Support rating fields
+9. Support table/grid fields inside forms
+
+---
+
+# Product goals
+
+This is not just a basic form builder. This is a **clinical intake and patient-profile sync system**.
+
+The system must:
+
+* collect structured patient data
+* store the full form submission
+* support e-signature/attestation where appropriate
+* map selected fields into chart/profile sections
+* prevent duplicate history entries where possible
+* keep an audit trail of what came from which form and when
+* support annual or scheduled re-collection of forms
+
+---
+
+# Required architecture
+
+Implement this as a full feature set with:
+
+## 1. Form templates
+
+Create support for reusable form templates with:
+
+* template name
+* internal description
+* category/type
+* active/inactive status
+* version number
+* clinic ownership
+* branding options
+* default expiration rule
+* whether patient signature is required
+* whether clinician/staff signature is required
+* whether form is embeddable
+* whether form can be sent by link
+* whether form can be used in tablet mode
+
+Support template categories such as:
+
+* intake
+* medical_history
+* medication_history
+* social_history
+* family_history
+* allergies
+* surgical_history
+* consent
+* membership_agreement
+* custom
+
+## 2. Form builder
+
+Build a flexible form builder UI inside the platform with support for:
+
+* section headers
+* plain text / instructions
+* short text
+* long text
+* number
+* date
+* datetime
+* yes/no
+* single select
+* multi select
+* dropdown
+* checkbox
+* radio group
+* phone
+* email
+* address
+* signature field
+* file upload placeholder if needed later
+* rating field
+* table/grid field
+* medication-entry style repeatable list
+* allergy-entry style repeatable list
+* history-entry repeatable list
+* repeatable group/section
+
+Each field definition must support:
+
+* label
+* internal key / slug
+* help text
+* placeholder
+* required boolean
+* hidden boolean
+* default value
+* field order
+* section association
+* width/layout setting
+* validation rules
+* conditional visibility rules
+* sync behavior settings
+* duplicate handling settings where relevant
+
+## 3. Conditional logic
+
+I definitely want conditional fields.
+
+Support rule types like:
+
+* show field if another field equals X
+* show field if another field is not empty
+* show section if another field contains one of selected values
+* require field if prior answer is yes
+* show follow-up questions based on diagnosis, procedure, symptoms, or treatment selection
+
+Examples:
+
+* If patient says “Yes” to prior surgery, show surgical details section
+* If patient says “Yes” to allergies, show allergy list section
+* If patient says “Weight loss visit,” show GLP-1 screening questions
+* If patient rates symptom severity above threshold, show follow-up details
+
+Store conditional logic in a normalized way so it can be edited later and rendered consistently across link, embed, and tablet modes.
+
+## 4. Rating field
+
+Add a rating field type that supports:
+
+* 1–5 or custom scale
+* optional labels for low/high anchors
+* optional icon mode later
+* required or optional
+* stored as structured numeric data
+
+Examples:
+
+* fatigue severity
+* pain score
+* satisfaction score
+* symptom frequency rating
+
+## 5. Table/grid field
+
+Add a table/grid field type that allows clinicians to build structured row/column inputs.
+
+Use cases:
+
+* medication table
+* supplement list
+* symptom tracker
+* prior surgeries table
+* menstrual history table
+* family history table
+
+Requirements:
+
+* configurable columns
+* column data types
+* repeatable rows
+* optional minimum/maximum rows
+* row add/remove
+* support for sync mapping when table columns represent structured clinical data
+* preserve entered rows exactly in submission history
+
+## 6. Delivery modes
+
+Every published form should support:
+
+* direct share link
+* embeddable mode for clinic website
+* tablet/in-office mode
+* assignment to a specific patient
+* optional public mode for general intake
+
+Tablet mode should:
+
+* be clean and full-screen friendly
+* use large touch-friendly controls
+* allow staff to open a patient’s assigned form and hand over the device
+
+Embed mode should:
+
+* be visually clean
+* work without ugly wrapper styling
+* support clinic branding
+* avoid breaking if inserted into a clinic website section
+
+## 7. Patient profile storage
+
+Every form submission must be stored in the patient’s profile in a dedicated forms/documents area.
+
+For each submission, store:
+
+* form template name
+* template version
+* patient
+* clinic
+* submitted date/time
+* submission status
+* expiration date if applicable
+* signer information
+* submission source (link / embed / tablet / staff-entered)
+* raw submitted JSON
+* normalized extracted JSON
+* sync review status
+* sync result summary
+* immutable audit trail metadata
+
+Inside the patient profile, build a Forms/Documents section that shows:
+
+* form name
+* status
+* completed date
+* expiration/update due date
+* signed/unsigned
+* sync status
+* quick view
+* full response view
+* historical versions/submissions
+
+## 8. Structured sync into patient profile
+
+This is a major requirement.
+
+Selected form fields must be able to sync into patient chart/profile sections, including:
+
+* medications
+* allergies
+* medical history
+* family history
+* social history
+* surgical history
+* demographics/contact fields where appropriate
+
+The clinician must be able to configure mapping for each field:
+
+* store as document only
+* sync directly
+* sync with review required
+* append to list
+* update a single profile field
+* create a pending review suggestion
+
+Examples:
+
+* “Current medications” table -> patient medications
+* “Drug allergies” -> allergies list
+* “Past medical history” -> medical history
+* “Surgeries” -> surgical history
+* “Family history” -> family history
+* “Tobacco use” -> social history
+* “DOB / address / phone” -> demographic updates
+
+## 9. Anti-duplication and sync safety
+
+Do not blindly create duplicates.
+
+Implement safe sync behavior:
+
+* exact-match detection
+* normalized-text comparison
+* case-insensitive comparison
+* simple medication/allergy/history normalization
+* flag likely duplicates for review instead of auto-inserting
+
+Rules:
+
+* if exact existing match exists, do not duplicate
+* if likely match exists, mark as “possible duplicate”
+* if new item, insert with source metadata
+* do not overwrite critical clinical data silently
+* maintain audit history of what was added from each form
+
+Prefer a **review queue** for high-risk sync categories like:
+
+* meds
+* allergies
+* PMH
+* PSH
+* family history
+
+Simple demographics can be auto-updated if configured.
+
+## 10. Expiration and renewal
+
+Allow forms to have expiration/update logic such as:
+
+* no expiration
+* expires in X days/months
+* annual renewal
+* custom renewal interval
+
+When forms are due to expire or renew:
+
+* notify clinic/staff inside the platform
+* flag on patient profile
+* optionally make patient eligible to receive updated form request later
+
+Use examples like:
+
+* annual medical history update
+* yearly telehealth consent
+* yearly membership agreement review
+* annual HIPAA/privacy acknowledgment
+
+---
+
+# Database design requirements
+
+Build all required tables and ensure they truly match the feature properties. Do not leave “TODO” gaps in schema that will break sync later.
+
+Create and wire up production-safe tables for at least the following concepts:
+
+## forms
+
+Stores the high-level form template.
+
+Suggested columns:
+
+* id
+* clinic_id
+* name
+* slug
+* description
+* category
+* version
+* status
+* branding_json
+* settings_json
+* requires_patient_signature
+* requires_staff_signature
+* allow_link
+* allow_embed
+* allow_tablet
+* is_public
+* expiration_type
+* expiration_interval_days
+* created_by
+* updated_by
+* created_at
+* updated_at
+
+## form_sections
+
+Suggested columns:
+
+* id
+* form_id
+* title
+* description
+* order_index
+* is_repeatable
+* created_at
+* updated_at
+
+## form_fields
+
+Suggested columns:
+
+* id
+* form_id
+* section_id
+* field_key
+* label
+* field_type
+* help_text
+* placeholder
+* is_required
+* is_hidden
+* default_value_json
+* options_json
+* validation_json
+* conditional_logic_json
+* layout_json
+* sync_config_json
+* duplicate_handling_json
+* order_index
+* created_at
+* updated_at
+
+## form_publications
+
+For link/embed publishing state.
+
+Suggested columns:
+
+* id
+* form_id
+* clinic_id
+* public_token
+* mode
+* status
+* embed_settings_json
+* link_settings_json
+* expires_at
+* created_at
+* updated_at
+
+## patient_form_assignments
+
+Suggested columns:
+
+* id
+* patient_id
+* form_id
+* assigned_by
+* assigned_at
+* due_at
+* status
+* completion_required
+* source_context
+* notes
+* created_at
+* updated_at
+
+## form_submissions
+
+Suggested columns:
+
+* id
+* form_id
+* form_version
+* clinic_id
+* patient_id
+* assignment_id nullable
+* submitted_by_patient boolean
+* submitted_by_staff boolean
+* submission_source
+* status
+* submitted_at
+* expires_at
+* raw_submission_json
+* normalized_submission_json
+* signature_json
+* review_status
+* sync_status
+* sync_summary_json
+* created_at
+* updated_at
+
+## form_submission_field_values
+
+Optional if helpful for querying individual values cleanly in addition to raw JSON.
+
+Suggested columns:
+
+* id
+* submission_id
+* field_id
+* field_key
+* value_json
+* normalized_value_json
+* created_at
+
+## form_sync_events
+
+Audit trail of sync attempts/results.
+
+Suggested columns:
+
+* id
+* submission_id
+* patient_id
+* target_domain
+* target_record_id nullable
+* action_type
+* result_status
+* review_required boolean
+* duplicate_detected boolean
+* details_json
+* created_at
+* created_by
+
+## form_expiration_tracking
+
+Suggested columns:
+
+* id
+* patient_id
+* form_id
+* latest_submission_id
+* expires_at
+* renewal_status
+* notified_at
+* created_at
+* updated_at
+
+Use proper foreign keys and indexes. Add indexes for:
+
+* clinic_id
+* patient_id
+* form_id
+* status
+* expires_at
+* public_token
+* assignment lookup
+* submission lookup
+
+Do not break existing production tables. Integrate with existing `patients`, `users`, and related chart tables safely.
+
+---
+
+# Patient data sync mapping
+
+Build a mapping engine that can target existing patient profile domains such as:
+
+* patient demographics
+* medications
+* allergies
+* medical history
+* surgical history
+* family history
+* social history
+
+Each mapped field should support:
+
+* destination domain
+* destination field or collection
+* sync mode
+* append/update behavior
+* review required
+* dedupe strategy
+* source attribution
+
+Store source attribution so the chart can know an item came from:
+
+* form name
+* form version
+* submission id
+* submission date
+
+---
+
+# UI requirements
+
+Build a polished internal UI for clinicians/staff with pages/components for:
+
+## Form Templates list
+
+* search
+* filter by category/status
+* create new
+* duplicate template
+* archive/deactivate template
+* version display
+
+## Form Builder editor
+
+* left sidebar: sections and fields
+* center canvas: live form layout
+* right panel: selected field settings
+* conditional logic editor
+* sync mapping editor
+* preview toggle for desktop/mobile/tablet
+
+## Form Publish panel
+
+* copy link
+* embed code
+* tablet mode launch
+* public/private toggle
+* expiration/publish settings
+
+## Patient Profile integration
+
+* Forms/Documents tab
+* pending forms
+* completed forms
+* expired/update due
+* quick sync review items
+
+## Sync Review Queue
+
+* pending extracted items
+* possible duplicates
+* accept / reject / merge
+* audit notes
+
+## Staff reminders/dashboard widgets
+
+* forms due for renewal
+* incomplete assigned forms
+* expiring consents
+* patients needing annual med history update
+
+---
+
+# Implementation details
+
+1. Use the existing tech stack and coding patterns already in the app.
+2. Keep this feature modular and avoid fragile one-off hacks.
+3. Ensure all API routes, DB models, and frontend types match exactly.
+4. Add strong type safety.
+5. Add server-side validation for submissions and sync payloads.
+6. Keep raw submissions immutable once finalized.
+7. Avoid storing only PDFs; store structured JSON too.
+8. Do not require external form tools.
+9. Make sure website embed, share links, and tablet mode all use the same underlying schema and rendering engine.
+10. Make sure forms can be branded per clinic.
+
+---
+
+# Deployment and migration requirements
+
+This part is extremely important.
+
+1. Generate explicit, production-safe SQL migrations for the REAL production database.
+2. Do not rely on risky production `db:push` behavior that attempts destructive changes.
+3. If schema changes are required, produce:
+
+   * reviewed migration SQL
+   * additive table creation SQL
+   * safe additive column/index SQL
+4. Make sure the app code does not reference new columns or tables before those schema changes exist in production.
+5. Verify that the deployment builds from the correct live project directory and package.json.
+6. Verify that all new tables and fields exist before enabling the routes/UI.
+7. Do not leave the live platform half-updated.
+
+---
+
+# Build order I want
+
+Implement this in phases, but fully wire each phase before moving on.
+
+## Phase 1
+
+* backend schema
+* migrations
+* form templates
+* form builder basic fields
+* conditional logic support
+* rating field
+* table/grid field
+* form rendering engine
+* patient profile form storage
+
+## Phase 2
+
+* publishing by link/embed/tablet
+* patient assignment
+* expiration settings
+* reminders and renewal tracking
+
+## Phase 3
+
+* structured sync engine
+* dedupe logic
+* sync review queue
+* audit events
+
+## Phase 4
+
+* polish UI
+* form versioning workflow
+* branded embed refinement
+* error handling and QA
+
+---
+
+# Acceptance criteria
+
+Do not mark this feature complete unless all of these are true:
+
+1. A clinician can create a form template from inside the platform.
+2. The clinician can add conditional fields.
+3. The clinician can add a rating field.
+4. The clinician can add a table/grid field.
+5. The form can be previewed and published.
+6. The form can be completed by link, embed, and tablet mode.
+7. A completed form appears inside the correct patient profile.
+8. The structured response can be reviewed and synced into the patient profile.
+9. Duplicate entries are not blindly created.
+10. Expiration/renewal logic works.
+11. All tables and fields exist in the REAL production schema.
+12. Deployment does not fail because code expects missing database fields.
+13. No destructive migration is used on production data.
+
+---
+
+# What I want from you
+
+Please do all of the following:
+
+1. Inspect the current platform architecture and existing patient/profile schema first.
+2. Determine what existing tables can be reused safely.
+3. Create the new schema and migration plan carefully.
+4. Implement the full feature in phases.
+5. Show me exactly which migrations are required before deployment.
+6. Make sure the production deployment is safe and aligned with the REAL database.
+7. Be extremely careful not to cause another deployment failure due to schema mismatch.
+
+When you respond, start by:
+
+1. summarizing the implementation plan,
+2. listing the new tables/columns/routes/components you will add,
+3. identifying any existing tables you plan to reuse,
+4. then begin implementation with production-safe migrations first.

@@ -31,6 +31,8 @@ import EncountersPage from "@/pages/encounters";
 import AppointmentsPage from "@/pages/appointments";
 import Landing from "@/pages/landing";
 import BillingPage from "@/pages/billing";
+import IntakeFormsPage from "@/pages/intake-forms";
+import FormPublicPage from "@/pages/form-public";
 import PrivacyPolicy from "@/pages/privacy";
 import TermsOfService from "@/pages/terms";
 import BusinessAssociateAgreement from "@/pages/baa";
@@ -175,6 +177,10 @@ function Router() {
       <Route path="/billing">
         {() => <ProtectedRoute component={BillingPage} />}
       </Route>
+      <Route path="/intake-forms">
+        {() => <ProtectedRoute component={IntakeFormsPage} />}
+      </Route>
+      <Route path="/f/:token" component={FormPublicPage} />
       <Route path="/help">
         {() => <ProtectedRoute component={HelpCenter} />}
       </Route>
