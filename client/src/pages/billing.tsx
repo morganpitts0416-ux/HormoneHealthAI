@@ -234,8 +234,9 @@ export default function BillingPage() {
   const [showCardForm, setShowCardForm] = useState(false);
   const [showSuiteCardForm, setShowSuiteCardForm] = useState(false);
 
-  const { data: billingConfig } = useQuery<BillingConfig>({
+  const { data: billingConfig } = useQuery<BillingConfig & { configured?: boolean }>({
     queryKey: ["/api/billing/config"],
+    staleTime: 60_000,
   });
 
   const { data: status, isLoading } = useQuery<BillingStatus>({
@@ -243,8 +244,9 @@ export default function BillingPage() {
   });
 
   useEffect(() => {
-    if (billingConfig?.publishableKey && !stripePromise) {
-      setStripePromise(loadStripe(billingConfig.publishableKey));
+    const key = billingConfig?.publishableKey;
+    if (key && key.startsWith("pk_") && !stripePromise) {
+      setStripePromise(loadStripe(key));
     }
   }, [billingConfig?.publishableKey]);
 
@@ -446,6 +448,10 @@ export default function BillingPage() {
                         <Elements stripe={stripePromise}>
                           <CardSetupForm plan="solo" onSuccess={() => setShowCardForm(false)} />
                         </Elements>
+                      ) : billingConfig && !billingConfig.configured ? (
+                        <div className="rounded-md bg-destructive/10 border border-destructive/20 p-3 text-sm text-destructive">
+                          Payment system is not configured. Please contact support.
+                        </div>
                       ) : (
                         <div className="h-10 animate-pulse rounded-md bg-muted" />
                       )}

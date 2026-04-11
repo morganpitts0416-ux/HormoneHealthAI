@@ -5142,9 +5142,10 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
 
   const STRIPE_PRICE_ID = "price_1TJb7eKbgudErHaMxs1B2BzZ";
 
-  // GET /api/billing/config — expose publishable key to frontend
-  app.get("/api/billing/config", requireAuth, (_req, res) => {
-    res.json({ publishableKey: process.env.STRIPE_PUBLISHABLE_KEY || "" });
+  // GET /api/billing/config — expose publishable key to frontend (public — pk_ keys are intentionally client-side safe)
+  app.get("/api/billing/config", (_req, res) => {
+    const key = process.env.STRIPE_PUBLISHABLE_KEY || "";
+    res.json({ publishableKey: key, configured: key.startsWith("pk_") });
   });
 
   function getStripe() {
