@@ -1,0 +1,96 @@
+egion=us-central1loudshell:~ (realign-lab-app)$ gcloud builds describe 41532a85-7b75-46d0-b099-b9ad40a6fa5e --region=us-central1
+artifacts:
+  images:
+  - us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+createTime: '2026-04-10T21:26:16.709252490Z'
+finishTime: '2026-04-10T21:28:40.400884Z'
+id: 41532a85-7b75-46d0-b099-b9ad40a6fa5e
+images:
+- us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+logUrl: https://console.cloud.google.com/cloud-build/builds;region=us-central1/41532a85-7b75-46d0-b099-b9ad40a6fa5e?project=384086867382
+name: projects/384086867382/locations/us-central1/builds/41532a85-7b75-46d0-b099-b9ad40a6fa5e
+options:
+  logStreamingOption: STREAM_OFF
+  logging: CLOUD_LOGGING_ONLY
+  pool: {}
+projectId: realign-lab-app
+queueTtl: 360s
+results:
+  buildStepImages:
+  - sha256:26b8fc76be1fbbf478fff90fd3ea11557ee5016339bc8931180d8576cc365c5d
+  buildStepOutputs:
+  - ''
+  images:
+  - artifactRegistryPackage: projects/realign-lab-app/locations/us-central1/repositories/cloud-run-source-deploy/packages/hormonehealthai/versions/sha256:36327ee09393d860eeffb4a845da7c0533b20c205df993bfb3154580f9dbcc4c
+    digest: sha256:36327ee09393d860eeffb4a845da7c0533b20c205df993bfb3154580f9dbcc4c
+    name: us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai
+    pushTiming:
+      endTime: '2026-04-10T21:28:40.161502996Z'
+      startTime: '2026-04-10T21:27:52.724484716Z'
+  - artifactRegistryPackage: projects/realign-lab-app/locations/us-central1/repositories/cloud-run-source-deploy/packages/hormonehealthai/versions/sha256:36327ee09393d860eeffb4a845da7c0533b20c205df993bfb3154580f9dbcc4c
+    digest: sha256:36327ee09393d860eeffb4a845da7c0533b20c205df993bfb3154580f9dbcc4c
+    name: us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+    pushTiming:
+      endTime: '2026-04-10T21:28:40.161502996Z'
+      startTime: '2026-04-10T21:27:52.724484716Z'
+serviceAccount: projects/realign-lab-app/serviceAccounts/384086867382-compute@developer.gserviceaccount.com
+source:
+  storageSource:
+    bucket: run-sources-realign-lab-app-us-central1
+    generation: '1775856376247110'
+    object: services/hormonehealthai/1775856351.111046-6355307d5be24a1691592688a45ca9c6.zip
+sourceProvenance:
+  fileHashes:
+    ? gs://run-sources-realign-lab-app-us-central1/services/hormonehealthai/1775856351.111046-6355307d5be24a1691592688a45ca9c6.zip#1775856376247110
+    : fileHash:
+      - type: MD5
+        value: 5angd7vAkWiDBDZ382xBug==
+      - type: SHA256
+        value: d2vJWppZoMyb5XQ5wX7DJehNjdq6o-OJZ11zrGrAziM=
+  resolvedStorageSource:
+    bucket: run-sources-realign-lab-app-us-central1
+    generation: '1775856376247110'
+    object: services/hormonehealthai/1775856351.111046-6355307d5be24a1691592688a45ca9c6.zip
+startTime: '2026-04-10T21:26:17.429397289Z'
+status: SUCCESS
+steps:
+- args:
+  - build
+  - --network
+  - cloudbuild
+  - --no-cache
+  - -t
+  - us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+  - .
+  - --label
+  - google.build_id=41532a85-7b75-46d0-b099-b9ad40a6fa5e
+  - --label
+  - google.source=gs://run-sources-realign-lab-app-us-central1/services/hormonehealthai/1775856351.111046-6355307d5be24a1691592688a45ca9c6.zip#1775856376247110
+  id: run-docker-build
+  name: gcr.io/cloud-builders/docker
+  pullTiming:
+    endTime: '2026-04-10T21:26:26.231335655Z'
+    startTime: '2026-04-10T21:26:26.223774232Z'
+  status: SUCCESS
+  timing:
+    endTime: '2026-04-10T21:27:52.695696456Z'
+    startTime: '2026-04-10T21:26:26.223774232Z'
+tags:
+- p-run
+- r-docker
+- bt-DOCKER
+- service_hormonehealthai
+timeout: 1800s
+timing:
+  BUILD:
+    endTime: '2026-04-10T21:27:52.724389174Z'
+    startTime: '2026-04-10T21:26:25.613962417Z'
+  FETCHSOURCE:
+    endTime: '2026-04-10T21:26:25.612846241Z'
+    startTime: '2026-04-10T21:26:21.632638601Z'
+  PUSH:
+    endTime: '2026-04-10T21:28:40.164705654Z'
+    startTime: '2026-04-10T21:27:52.724468038Z'
+  STORAGE_SOURCE:
+    endTime: '2026-04-10T21:26:25.612846241Z'
+    startTime: '2026-04-10T21:26:21.632638601Z'
