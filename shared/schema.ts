@@ -538,6 +538,7 @@ export const patients = pgTable("patients", {
   // ── Multi-clinic foundation (nullable — populated by migration) ──────────
   clinicId: integer("clinic_id"),            // No FK constraint during initial rollout
   primaryProviderId: integer("primary_provider_id"), // No FK constraint during initial rollout
+  primaryProvider: varchar("primary_provider", { length: 100 }), // Display name of the assigned provider
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
