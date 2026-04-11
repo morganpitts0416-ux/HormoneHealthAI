@@ -2051,16 +2051,6 @@ export default function PatientProfiles() {
                                     {enc.signedBy ? ` by ${enc.signedBy}` : ""}
                                     {enc.signedAt ? ` · ${new Date(enc.signedAt as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
                                   </span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="ml-auto h-6 px-2 text-xs text-muted-foreground gap-1"
-                                    onClick={(e) => { e.stopPropagation(); setLocation(`/encounters?encounterId=${enc.id}`); }}
-                                    data-testid={`button-open-encounter-${enc.id}`}
-                                  >
-                                    <ExternalLink className="w-3 h-3" />
-                                    Open
-                                  </Button>
                                 </div>
                               ) : (
                                 <div className="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60 text-xs text-amber-700">

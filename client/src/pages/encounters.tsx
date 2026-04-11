@@ -135,6 +135,7 @@ function EncounterListItem({
   isSelected: boolean;
   onClick: () => void;
 }) {
+  const [, navTo] = useLocation();
   const nameParts = (enc.patientName || "Unknown Patient").split(" ");
   const initials = nameParts.map(n => n[0]).join("").slice(0, 2).toUpperCase();
   return (
@@ -149,7 +150,12 @@ function EncounterListItem({
           {initials}
         </div>
         <div className="flex-1 min-w-0">
-          <div className="text-sm font-medium text-foreground truncate leading-snug">{enc.patientName}</div>
+          <div
+            className="text-sm font-medium text-foreground truncate leading-snug hover:text-primary hover:underline"
+            onClick={(e) => { if (enc.patientId) { e.stopPropagation(); navTo(`/patients?patient=${enc.patientId}`); } }}
+            data-testid={`link-patient-name-${enc.id}`}
+            title="Go to patient profile"
+          >{enc.patientName}</div>
           <div className="text-[11px] text-muted-foreground leading-tight">{displayDate(enc.visitDate as unknown as string)}</div>
           {enc.chiefComplaint && (
             <div className="text-[11px] text-muted-foreground/70 truncate mt-0.5 italic">"{enc.chiefComplaint}"</div>
@@ -1065,6 +1071,11 @@ function EncounterEditor({
   const [copiedSoap, setCopiedSoap] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
   const [dismissedReviewIdxs, setDismissedReviewIdxs] = useState<Set<string>>(new Set());
+  // Persist "recommendations dismissed" per encounter so they don't re-appear on reload
+  const encRecsKey = encounter?.id ? `soap-recs-done-${encounter.id}` : null;
+  const [soapSaved, setSoapSaved] = useState(() =>
+    encRecsKey ? localStorage.getItem(encRecsKey) === "1" : false
+  );
 
   // Signing state — reflects encounter.signedAt / signedBy from the DB, with local optimistic updates
   const [signedAtLocal, setSignedAtLocal] = useState<Date | string | null>(encounter?.signedAt ?? null);
@@ -1072,9 +1083,9 @@ function EncounterEditor({
   const [isAmendedLocal, setIsAmendedLocal] = useState<boolean>(encounter?.isAmended ?? false);
   const isSigned = !!(signedAtLocal);
 
-  // If the note gets signed while on the Transcript tab, redirect to SOAP tab
+  // For signed encounters: hide raw transcript/details, always land on SOAP
   useEffect(() => {
-    if (isSigned && activeTab === "transcript") {
+    if (isSigned && (activeTab === "transcript" || activeTab === "details")) {
       setActiveTab("soap");
     }
   }, [isSigned, activeTab]);
@@ -1315,7 +1326,12 @@ function EncounterEditor({
       const res = await apiRequest("PUT", `/api/encounters/${savedId}/soap`, { soapNote: soap });
       return res.json();
     },
-    onSuccess: () => { invalidate(); toast({ title: "SOAP note saved" }); },
+    onSuccess: () => {
+      invalidate();
+      setSoapSaved(true);
+      if (encRecsKey) localStorage.setItem(encRecsKey, "1");
+      toast({ title: "SOAP note saved" });
+    },
     onError: (e: any) => toast({ variant: "destructive", title: "Save failed", description: e.message }),
   });
 
@@ -1533,6 +1549,8 @@ function EncounterEditor({
       setSignedByLocal(data.signedBy ?? null);
       setIsAmendedLocal(data.isAmended ?? false);
       setSoapViewMode("view");
+      setSoapSaved(true); // hide recommendations permanently
+      if (encRecsKey) localStorage.setItem(encRecsKey, "1");
       invalidate();
       toast({ title: "Note signed and locked", description: "The chart note has been co-signed and locked for the record." });
     },
@@ -1549,6 +1567,8 @@ function EncounterEditor({
       setSignedAtLocal(null);
       setSignedByLocal(null);
       setIsAmendedLocal(true);
+      setSoapSaved(false); // allow review flags to show during amendment
+      if (encRecsKey) localStorage.removeItem(encRecsKey);
       invalidate();
       toast({ title: "Amendment opened", description: "The note is unlocked. Make your changes and re-sign when done." });
     },
@@ -2842,8 +2862,8 @@ function EncounterEditor({
               </div>
             </div>
 
-            {/* Clinician review flags from AI pipeline */}
-            {hasSoap && (() => {
+            {/* Clinician review flags — hidden once a decision is made, or note is saved/signed */}
+            {hasSoap && !isSigned && !soapSaved && (() => {
               const soapData = soap as any;
               const uncertainItems: string[] = soapData.uncertain_items ?? [];
               const reviewFlags: string[] = soapData.needs_clinician_review ?? [];
@@ -3172,18 +3192,6 @@ function EncounterEditor({
                         ? <><FileDown className="w-3.5 h-3.5 mr-1.5 animate-pulse" />Generating…</>
                         : <><FileDown className="w-3.5 h-3.5 mr-1.5" />Print PDF</>}
                     </Button>
-                    {!isSigned && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        onClick={() => saveSoapMutation.mutate()}
-                        disabled={saveSoapMutation.isPending || !savedId}
-                        data-testid="button-save-soap"
-                      >
-                        <Save className="w-3.5 h-3.5 mr-1.5" />
-                        {saveSoapMutation.isPending ? "Saving..." : "Save Note"}
-                      </Button>
-                    )}
                     <Button
                       size="sm"
                       onClick={() => summaryMutation.mutate()}
