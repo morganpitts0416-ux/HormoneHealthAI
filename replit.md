@@ -42,6 +42,7 @@ The ClinIQ platform features comprehensive lab input, results display with color
 -   **Registration — Required Clinic Fields**: NPI, clinic phone, and clinic address are required at registration.
 -   **Signed & Locked Chart Notes (EMR)**: Clinicians can electronically sign and lock SOAP notes, creating an immutable version snapshot and audit trail. Supports amendments.
 -   **Enhanced SOAP Generation Prompt**: AI prompt includes mandatory clinical documentation rules for BMI, patient education, and patient-stated decisions.
+-   **Smart Intake + Digital Forms Module**: Clinicians build and publish patient intake forms with a drag-and-drop field builder (16 field types). Forms are published via unique shareable links (`/f/:token`) requiring no patient login. Submissions are reviewed in the app and synced to the patient chart via a deduplication-aware sync engine. Forms tab added to patient profiles for per-patient submission history.
 
 **Technology Stack:**
 -   **Frontend**: React, TypeScript, Wouter, Shadcn UI, TanStack Query, Tailwind CSS, React Hook Form, Zod.

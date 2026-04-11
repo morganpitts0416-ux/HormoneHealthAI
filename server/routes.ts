@@ -6191,6 +6191,517 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // ─── Intake Forms API ────────────────────────────────────────────────────────
+
+  // GET /api/intake-forms — list templates
+  app.get("/api/intake-forms", requireAuth, async (req: any, res) => {
+    try {
+      const forms = await storage.getIntakeForms(req.user.id);
+      res.json(forms);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch forms" });
+    }
+  });
+
+  // POST /api/intake-forms — create template
+  app.post("/api/intake-forms", requireAuth, async (req: any, res) => {
+    try {
+      const { name, description, category } = req.body;
+      if (!name?.trim()) return res.status(400).json({ message: "Form name required" });
+      const form = await storage.createIntakeForm({
+        clinicianId: req.user.id,
+        name: name.trim(),
+        description: description?.trim() ?? null,
+        category: category ?? "custom",
+        status: "draft",
+        version: 1,
+        allowLink: true,
+        allowEmbed: true,
+        allowTablet: true,
+        isPublic: false,
+        requiresPatientSignature: false,
+        requiresStaffSignature: false,
+        expirationType: "none",
+      });
+      res.json(form);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create form" });
+    }
+  });
+
+  // GET /api/intake-forms/:id — get form with sections + fields
+  app.get("/api/intake-forms/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const form = await storage.getIntakeForm(id, req.user.id);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+      const [sections, fields, publications] = await Promise.all([
+        storage.getFormSections(id),
+        storage.getFormFields(id),
+        storage.getFormPublications(id),
+      ]);
+      res.json({ ...form, sections, fields, publications });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch form" });
+    }
+  });
+
+  // PUT /api/intake-forms/:id — update form settings
+  app.put("/api/intake-forms/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateIntakeForm(id, req.user.id, req.body);
+      if (!updated) return res.status(404).json({ message: "Form not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update form" });
+    }
+  });
+
+  // DELETE /api/intake-forms/:id — archive form (set status to archived)
+  app.delete("/api/intake-forms/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const updated = await storage.updateIntakeForm(id, req.user.id, { status: "archived" });
+      if (!updated) return res.status(404).json({ message: "Form not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to archive form" });
+    }
+  });
+
+  // POST /api/intake-forms/:id/duplicate — duplicate template
+  app.post("/api/intake-forms/:id/duplicate", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const original = await storage.getIntakeForm(id, req.user.id);
+      if (!original) return res.status(404).json({ message: "Form not found" });
+      const { id: _id, createdAt, updatedAt, ...rest } = original;
+      const newForm = await storage.createIntakeForm({
+        ...(rest as any),
+        name: `${rest.name} (Copy)`,
+        status: "draft",
+        version: 1,
+      });
+      const [sections, fields] = await Promise.all([
+        storage.getFormSections(id),
+        storage.getFormFields(id),
+      ]);
+      const sectionMap: Record<number, number> = {};
+      for (const sec of sections) {
+        const { id: secId, createdAt: _c, updatedAt: _u, ...secRest } = sec;
+        const newSec = await storage.createFormSection({ ...(secRest as any), formId: newForm.id });
+        sectionMap[secId] = newSec.id;
+      }
+      for (const field of fields) {
+        const { id: _fid, createdAt: _c, updatedAt: _u, ...fieldRest } = field;
+        await storage.createFormField({
+          ...(fieldRest as any),
+          formId: newForm.id,
+          sectionId: field.sectionId ? (sectionMap[field.sectionId] ?? null) : null,
+        });
+      }
+      res.json(newForm);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to duplicate form" });
+    }
+  });
+
+  // POST /api/intake-forms/:id/sections
+  app.post("/api/intake-forms/:id/sections", requireAuth, async (req: any, res) => {
+    try {
+      const formId = parseInt(req.params.id);
+      const form = await storage.getIntakeForm(formId, req.user.id);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+      const sections = await storage.getFormSections(formId);
+      const section = await storage.createFormSection({
+        formId,
+        title: req.body.title ?? "New Section",
+        description: req.body.description ?? null,
+        orderIndex: sections.length,
+        isRepeatable: false,
+      });
+      res.json(section);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create section" });
+    }
+  });
+
+  // PUT /api/intake-forms/:id/sections/:sectionId
+  app.put("/api/intake-forms/:id/sections/:sectionId", requireAuth, async (req: any, res) => {
+    try {
+      const sectionId = parseInt(req.params.sectionId);
+      const updated = await storage.updateFormSection(sectionId, req.body);
+      if (!updated) return res.status(404).json({ message: "Section not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update section" });
+    }
+  });
+
+  // DELETE /api/intake-forms/:id/sections/:sectionId
+  app.delete("/api/intake-forms/:id/sections/:sectionId", requireAuth, async (req: any, res) => {
+    try {
+      const sectionId = parseInt(req.params.sectionId);
+      await storage.deleteFormSection(sectionId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete section" });
+    }
+  });
+
+  // POST /api/intake-forms/:id/fields
+  app.post("/api/intake-forms/:id/fields", requireAuth, async (req: any, res) => {
+    try {
+      const formId = parseInt(req.params.id);
+      const form = await storage.getIntakeForm(formId, req.user.id);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+      const existing = await storage.getFormFields(formId);
+      const { fieldType = "short_text", label = "New Field", sectionId, ...rest } = req.body;
+      const fieldKey = `field_${Date.now()}`;
+      const field = await storage.createFormField({
+        formId,
+        sectionId: sectionId ?? null,
+        fieldKey,
+        label,
+        fieldType,
+        isRequired: false,
+        isHidden: false,
+        orderIndex: existing.length,
+        ...rest,
+      });
+      res.json(field);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create field" });
+    }
+  });
+
+  // PUT /api/intake-forms/:id/fields/:fieldId
+  app.put("/api/intake-forms/:id/fields/:fieldId", requireAuth, async (req: any, res) => {
+    try {
+      const fieldId = parseInt(req.params.fieldId);
+      const updated = await storage.updateFormField(fieldId, req.body);
+      if (!updated) return res.status(404).json({ message: "Field not found" });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update field" });
+    }
+  });
+
+  // DELETE /api/intake-forms/:id/fields/:fieldId
+  app.delete("/api/intake-forms/:id/fields/:fieldId", requireAuth, async (req: any, res) => {
+    try {
+      const fieldId = parseInt(req.params.fieldId);
+      await storage.deleteFormField(fieldId);
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete field" });
+    }
+  });
+
+  // POST /api/intake-forms/:id/publish — generate a public token / update publication
+  app.post("/api/intake-forms/:id/publish", requireAuth, async (req: any, res) => {
+    try {
+      const formId = parseInt(req.params.id);
+      const form = await storage.getIntakeForm(formId, req.user.id);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+      const { randomUUID } = await import("crypto");
+      const token = randomUUID().replace(/-/g, "");
+      const pub = await storage.createFormPublication({
+        formId,
+        publicToken: token,
+        mode: req.body.mode ?? "link",
+        status: "active",
+        expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
+      });
+      // Mark form as active
+      await storage.updateIntakeForm(formId, req.user.id, { status: "active" });
+      res.json(pub);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to publish form" });
+    }
+  });
+
+  // PUT /api/intake-forms/:id/publications/:pubId
+  app.put("/api/intake-forms/:id/publications/:pubId", requireAuth, async (req: any, res) => {
+    try {
+      const pubId = parseInt(req.params.pubId);
+      const updated = await storage.updateFormPublication(pubId, req.body);
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update publication" });
+    }
+  });
+
+  // ─── Public Form Routes (no auth) ───────────────────────────────────────────
+
+  // GET /api/forms/public/:token — fetch form definition for rendering
+  app.get("/api/forms/public/:token", async (req, res) => {
+    try {
+      const pub = await storage.getFormPublicationByToken(req.params.token);
+      if (!pub) return res.status(404).json({ message: "Form not found or link is inactive" });
+      if (pub.expiresAt && new Date(pub.expiresAt) < new Date()) {
+        return res.status(410).json({ message: "This form link has expired" });
+      }
+      const form = await storage.getIntakeFormById(pub.formId);
+      if (!form || form.status === "archived") return res.status(404).json({ message: "Form not found" });
+      const [sections, fields] = await Promise.all([
+        storage.getFormSections(pub.formId),
+        storage.getFormFields(pub.formId),
+      ]);
+      res.json({ form, sections, fields, publication: pub });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load form" });
+    }
+  });
+
+  // POST /api/forms/public/:token/submit — submit form (no auth)
+  app.post("/api/forms/public/:token/submit", async (req, res) => {
+    try {
+      const pub = await storage.getFormPublicationByToken(req.params.token);
+      if (!pub) return res.status(404).json({ message: "Form not found or link is inactive" });
+      if (pub.expiresAt && new Date(pub.expiresAt) < new Date()) {
+        return res.status(410).json({ message: "This form link has expired" });
+      }
+      const form = await storage.getIntakeFormById(pub.formId);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+      const { responses, patientId, submitterName, submitterEmail, signature } = req.body;
+      if (!responses || typeof responses !== "object") {
+        return res.status(400).json({ message: "Responses are required" });
+      }
+      const submission = await storage.createFormSubmission({
+        formId: pub.formId,
+        formVersion: form.version,
+        clinicianId: form.clinicianId,
+        patientId: patientId ? parseInt(patientId) : null,
+        submittedByPatient: true,
+        submittedByStaff: false,
+        submissionSource: pub.mode,
+        status: "submitted",
+        rawSubmissionJson: responses,
+        normalizedSubmissionJson: responses,
+        signatureJson: signature ?? null,
+        reviewStatus: "pending",
+        syncStatus: "not_synced",
+        submitterName: submitterName ?? null,
+        submitterEmail: submitterEmail ?? null,
+      });
+      // Update assignment status if applicable
+      if (patientId && pub.mode !== "embed") {
+        const assignments = await storage.getPatientFormAssignments(parseInt(patientId));
+        const pending = assignments.find(a => a.formId === pub.formId && a.status === "pending");
+        if (pending) {
+          await storage.updatePatientFormAssignment(pending.id, { status: "completed" });
+        }
+      }
+      res.json({ success: true, submissionId: submission.id });
+    } catch (err) {
+      console.error("[FormSubmit]", err);
+      res.status(500).json({ message: "Failed to submit form" });
+    }
+  });
+
+  // ─── Patient Form Routes ─────────────────────────────────────────────────────
+
+  // GET /api/patients/:id/form-assignments
+  app.get("/api/patients/:id/form-assignments", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const assignments = await storage.getPatientFormAssignments(patientId);
+      res.json(assignments);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch assignments" });
+    }
+  });
+
+  // POST /api/patients/:id/form-assignments
+  app.post("/api/patients/:id/form-assignments", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const { formId, dueAt, notes } = req.body;
+      if (!formId) return res.status(400).json({ message: "formId required" });
+      const assignment = await storage.createPatientFormAssignment({
+        patientId,
+        formId: parseInt(formId),
+        assignedBy: req.user.id,
+        dueAt: dueAt ? new Date(dueAt) : null,
+        status: "pending",
+        completionRequired: false,
+        notes: notes ?? null,
+      });
+      res.json(assignment);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to assign form" });
+    }
+  });
+
+  // GET /api/patients/:id/form-submissions
+  app.get("/api/patients/:id/form-submissions", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const submissions = await storage.getFormSubmissionsByPatient(patientId);
+      // Enrich with form name
+      const enriched = await Promise.all(submissions.map(async (sub) => {
+        const form = await storage.getIntakeFormById(sub.formId);
+        return { ...sub, formName: form?.name ?? "Unknown Form", formCategory: form?.category ?? "custom" };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch submissions" });
+    }
+  });
+
+  // GET /api/form-submissions/:id
+  app.get("/api/form-submissions/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const submission = await storage.getFormSubmission(id);
+      if (!submission) return res.status(404).json({ message: "Submission not found" });
+      const form = await storage.getIntakeFormById(submission.formId);
+      const fields = await storage.getFormFields(submission.formId);
+      const sections = await storage.getFormSections(submission.formId);
+      const syncEvents = await storage.getFormSyncEvents(id);
+      res.json({ ...submission, form, fields, sections, syncEvents });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch submission" });
+    }
+  });
+
+  // PUT /api/form-submissions/:id/review
+  app.put("/api/form-submissions/:id/review", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { reviewStatus } = req.body;
+      const updated = await storage.updateFormSubmission(id, { reviewStatus });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update review status" });
+    }
+  });
+
+  // POST /api/form-submissions/:id/sync — sync submission data into patient chart
+  app.post("/api/form-submissions/:id/sync", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const submission = await storage.getFormSubmission(id);
+      if (!submission) return res.status(404).json({ message: "Submission not found" });
+      if (!submission.patientId) return res.status(400).json({ message: "No patient linked to this submission" });
+
+      const fields = await storage.getFormFields(submission.formId);
+      const responses = submission.rawSubmissionJson as Record<string, any>;
+      const patientId = submission.patientId;
+
+      // Get existing patient chart
+      const chart = await storage.getPatientChart(patientId, submission.clinicianId ?? req.user.id);
+      const syncResults: Array<{ domain: string; item: string; action: string; duplicate: boolean }> = [];
+
+      // Collect items to sync by domain
+      const toSync: Record<string, string[]> = {
+        medications: [],
+        allergies: [],
+        medical_history: [],
+        surgical_history: [],
+        family_history: [],
+        social_history: [],
+      };
+
+      for (const field of fields) {
+        if (!field.syncConfigJson) continue;
+        const sync = field.syncConfigJson as any;
+        if (!sync.domain || !sync.mode || sync.mode === "none") continue;
+        const value = responses[field.fieldKey];
+        if (value === undefined || value === null || value === "") continue;
+
+        const domain = sync.domain as string;
+        if (!toSync[domain]) continue;
+
+        if (Array.isArray(value)) {
+          toSync[domain].push(...value.filter(Boolean).map(String));
+        } else if (typeof value === "object") {
+          // Table/grid: try to extract rows
+          const rows = value.rows ?? value;
+          if (Array.isArray(rows)) {
+            toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+          }
+        } else {
+          toSync[domain].push(String(value));
+        }
+      }
+
+      // Now merge into chart, deduplicating
+      const existing = {
+        medications: (chart?.currentMedications as string[] ?? []),
+        allergies: (chart?.allergies as string[] ?? []),
+        medical_history: (chart?.medicalHistory as string[] ?? []),
+        surgical_history: (chart?.surgicalHistory as string[] ?? []),
+        family_history: (chart?.familyHistory as string[] ?? []),
+        social_history: (chart?.socialHistory as string[] ?? []),
+      };
+
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+
+      const merged: typeof existing = { ...existing };
+      for (const [domain, items] of Object.entries(toSync)) {
+        for (const item of items) {
+          const itemNorm = normalize(item);
+          const isDuplicate = (existing[domain as keyof typeof existing] as string[]).some(e => normalize(e) === itemNorm);
+          syncResults.push({ domain, item, action: isDuplicate ? "skipped_duplicate" : "added", duplicate: isDuplicate });
+          if (!isDuplicate) {
+            (merged[domain as keyof typeof merged] as string[]).push(item);
+          }
+        }
+      }
+
+      // Update the patient chart (upsert)
+      await storage.upsertPatientChart(patientId, submission.clinicianId ?? req.user.id, {
+        currentMedications: merged.medications,
+        allergies: merged.allergies,
+        medicalHistory: merged.medical_history,
+        surgicalHistory: merged.surgical_history,
+        familyHistory: merged.family_history,
+        socialHistory: merged.social_history,
+      });
+
+      // Record sync events
+      for (const r of syncResults) {
+        await storage.createFormSyncEvent({
+          submissionId: id,
+          patientId,
+          targetDomain: r.domain,
+          actionType: r.action,
+          resultStatus: r.duplicate ? "skipped" : "success",
+          reviewRequired: false,
+          duplicateDetected: r.duplicate,
+          detailsJson: { item: r.item },
+          createdBy: req.user.id,
+        });
+      }
+
+      // Mark submission as synced
+      await storage.updateFormSubmission(id, { syncStatus: "synced", syncSummaryJson: syncResults });
+
+      res.json({ success: true, results: syncResults });
+    } catch (err: any) {
+      console.error("[FormSync]", err);
+      res.status(500).json({ message: "Sync failed", error: err.message });
+    }
+  });
+
+  // GET /api/form-submissions/pending — sync queue for clinician
+  app.get("/api/form-submissions/pending", requireAuth, async (req: any, res) => {
+    try {
+      const submissions = await storage.getFormSubmissionsByClinician(req.user.id);
+      const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
+      const enriched = await Promise.all(pending.map(async (sub) => {
+        const form = await storage.getIntakeFormById(sub.formId);
+        return { ...sub, formName: form?.name ?? "Unknown Form" };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch pending submissions" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

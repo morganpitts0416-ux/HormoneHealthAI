@@ -28,6 +28,7 @@ import {
   CalendarDays,
   Pill,
   Menu,
+  ClipboardList,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 
@@ -179,6 +180,10 @@ export default function Dashboard() {
                 <CalendarDays className="w-4 h-4" />
                 <span className="hidden sm:inline ml-2">Appointments</span>
               </Button>
+              <Button data-testid="button-forms" variant="ghost" size="icon" onClick={() => setLocation("/intake-forms")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Digital Forms">
+                <ClipboardList className="w-4 h-4" />
+                <span className="hidden sm:inline ml-2">Forms</span>
+              </Button>
               <Button data-testid="button-help" variant="ghost" size="icon" onClick={() => setLocation("/help")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Help">
                 <HelpCircle className="w-4 h-4" />
                 <span className="hidden sm:inline ml-2">Help</span>
@@ -218,6 +223,9 @@ export default function Dashboard() {
                     )}
                     <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/appointments")}>
                       <CalendarDays className="w-4 h-4" /> Appointments
+                    </Button>
+                    <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/intake-forms")}>
+                      <ClipboardList className="w-4 h-4" /> Digital Forms
                     </Button>
                     <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/help")}>
                       <HelpCircle className="w-4 h-4" /> Help

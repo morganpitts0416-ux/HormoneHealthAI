@@ -1098,6 +1098,7 @@ export default function PatientProfiles() {
   const [showMessages, setShowMessages] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
   const [showEncounters, setShowEncounters] = useState(false);
+  const [showForms, setShowForms] = useState(false);
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
   const [pdfExportingEncounterId, setPdfExportingEncounterId] = useState<number | null>(null);
   const [copiedEncounterId, setCopiedEncounterId] = useState<number | null>(null);
@@ -1150,6 +1151,7 @@ export default function PatientProfiles() {
     if (tab === "messages") setShowMessages(true);
     if (tab === "orders") setShowOrders(true);
     if (tab === "encounters") setShowEncounters(true);
+    if (tab === "forms") setShowForms(true);
   }, [allPatients, searchStr]);
 
   const { data: labs = [], isLoading: labsLoading } = useQuery<LabResult[]>({
@@ -1240,6 +1242,22 @@ export default function PatientProfiles() {
       if (!res.ok) return [];
       return res.json();
     },
+    enabled: !!selectedPatient,
+  });
+
+  const { data: patientFormSubmissions = [] } = useQuery<any[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'form-submissions'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/form-submissions`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const { data: availableForms = [] } = useQuery<any[]>({
+    queryKey: ['/api/intake-forms'],
     enabled: !!selectedPatient,
   });
 
@@ -2272,6 +2290,71 @@ export default function PatientProfiles() {
                   )}
                 </Card>
               )}
+
+              {/* ── Digital Forms ──────────────────────────────────────────── */}
+              <Card data-testid="card-patient-forms">
+                <CardHeader className="pb-3">
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <CardTitle className="text-sm flex items-center gap-2">
+                      <FileText className="w-4 h-4 text-muted-foreground" />
+                      Digital Forms
+                      {patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length > 0 && (
+                        <Badge className="text-xs" style={{ backgroundColor: "#5a7040", color: "#fff" }}>
+                          {patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length} pending
+                        </Badge>
+                      )}
+                    </CardTitle>
+                    <div className="flex items-center gap-2">
+                      {patientFormSubmissions.length > 0 && (
+                        <Button variant="ghost" size="sm" onClick={() => setShowForms(!showForms)} className="text-xs" data-testid="button-toggle-forms">
+                          {showForms ? "Hide" : "View submissions"}
+                        </Button>
+                      )}
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs gap-1"
+                        onClick={() => window.open("/intake-forms", "_blank")}
+                        data-testid="button-manage-forms"
+                      >
+                        <Plus className="h-3 w-3" /> Assign Form
+                      </Button>
+                    </div>
+                  </div>
+                </CardHeader>
+                {patientFormSubmissions.length === 0 && (
+                  <CardContent>
+                    <p className="text-sm text-muted-foreground">No form submissions yet. Assign and send a digital form from the Forms library.</p>
+                  </CardContent>
+                )}
+                {showForms && patientFormSubmissions.length > 0 && (
+                  <CardContent className="space-y-2">
+                    {patientFormSubmissions.map((sub: any) => (
+                      <div key={sub.id} className="rounded-md border p-3 space-y-1.5" data-testid={`form-submission-row-${sub.id}`}>
+                        <div className="flex items-start justify-between gap-2 flex-wrap">
+                          <div>
+                            <p className="text-sm font-medium">{sub.formName}</p>
+                            <p className="text-xs text-muted-foreground">{new Date(sub.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                          </div>
+                          <div className="flex items-center gap-2 flex-wrap">
+                            {sub.reviewStatus === "reviewed" ? (
+                              <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400">Reviewed</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400">Pending Review</Badge>
+                            )}
+                            {sub.syncStatus === "synced" ? (
+                              <Badge variant="outline" className="text-xs text-blue-600 dark:text-blue-400">Synced</Badge>
+                            ) : (
+                              <Badge variant="outline" className="text-xs text-muted-foreground">Not Synced</Badge>
+                            )}
+                          </div>
+                        </div>
+                      </div>
+                    ))}
+                  </CardContent>
+                )}
+              </Card>
+
             </div>
           )}
         </div>

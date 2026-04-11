@@ -1272,6 +1272,213 @@ export class DbStorage implements IStorage {
       .where(eq(schema.medicationDictionaries.id, dictId));
     return true;
   }
+
+  // ─── Intake Forms ───────────────────────────────────────────────────────────
+
+  async getIntakeForms(clinicianId: number): Promise<schema.IntakeForm[]> {
+    return db.select().from(schema.intakeForms)
+      .where(eq(schema.intakeForms.clinicianId, clinicianId))
+      .orderBy(desc(schema.intakeForms.updatedAt));
+  }
+
+  async getIntakeForm(id: number, clinicianId: number): Promise<schema.IntakeForm | undefined> {
+    const rows = await db.select().from(schema.intakeForms)
+      .where(and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId)))
+      .limit(1);
+    return rows[0];
+  }
+
+  async getIntakeFormById(id: number): Promise<schema.IntakeForm | undefined> {
+    const rows = await db.select().from(schema.intakeForms).where(eq(schema.intakeForms.id, id)).limit(1);
+    return rows[0];
+  }
+
+  async createIntakeForm(data: schema.InsertIntakeForm): Promise<schema.IntakeForm> {
+    const [row] = await db.insert(schema.intakeForms).values(data).returning();
+    return row;
+  }
+
+  async updateIntakeForm(id: number, clinicianId: number, data: Partial<schema.InsertIntakeForm>): Promise<schema.IntakeForm | undefined> {
+    const [row] = await db.update(schema.intakeForms)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId)))
+      .returning();
+    return row;
+  }
+
+  async deleteIntakeForm(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db.delete(schema.intakeForms)
+      .where(and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // ─── Form Sections ──────────────────────────────────────────────────────────
+
+  async getFormSections(formId: number): Promise<schema.FormSection[]> {
+    return db.select().from(schema.formSections)
+      .where(eq(schema.formSections.formId, formId))
+      .orderBy(schema.formSections.orderIndex);
+  }
+
+  async createFormSection(data: schema.InsertFormSection): Promise<schema.FormSection> {
+    const [row] = await db.insert(schema.formSections).values(data).returning();
+    return row;
+  }
+
+  async updateFormSection(id: number, data: Partial<schema.InsertFormSection>): Promise<schema.FormSection | undefined> {
+    const [row] = await db.update(schema.formSections)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.formSections.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteFormSection(id: number): Promise<boolean> {
+    const result = await db.delete(schema.formSections).where(eq(schema.formSections.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // ─── Form Fields ────────────────────────────────────────────────────────────
+
+  async getFormFields(formId: number): Promise<schema.FormField[]> {
+    return db.select().from(schema.formFields)
+      .where(eq(schema.formFields.formId, formId))
+      .orderBy(schema.formFields.orderIndex);
+  }
+
+  async createFormField(data: schema.InsertFormField): Promise<schema.FormField> {
+    const [row] = await db.insert(schema.formFields).values(data).returning();
+    return row;
+  }
+
+  async updateFormField(id: number, data: Partial<schema.InsertFormField>): Promise<schema.FormField | undefined> {
+    const [row] = await db.update(schema.formFields)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.formFields.id, id))
+      .returning();
+    return row;
+  }
+
+  async deleteFormField(id: number): Promise<boolean> {
+    const result = await db.delete(schema.formFields).where(eq(schema.formFields.id, id));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  // ─── Form Publications ──────────────────────────────────────────────────────
+
+  async getFormPublications(formId: number): Promise<schema.FormPublication[]> {
+    return db.select().from(schema.formPublications).where(eq(schema.formPublications.formId, formId));
+  }
+
+  async getFormPublicationByToken(token: string): Promise<schema.FormPublication | undefined> {
+    const rows = await db.select().from(schema.formPublications)
+      .where(and(eq(schema.formPublications.publicToken, token), eq(schema.formPublications.status, "active")))
+      .limit(1);
+    return rows[0];
+  }
+
+  async createFormPublication(data: schema.InsertFormPublication): Promise<schema.FormPublication> {
+    const [row] = await db.insert(schema.formPublications).values(data).returning();
+    return row;
+  }
+
+  async updateFormPublication(id: number, data: Partial<schema.InsertFormPublication>): Promise<schema.FormPublication | undefined> {
+    const [row] = await db.update(schema.formPublications)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.formPublications.id, id))
+      .returning();
+    return row;
+  }
+
+  // ─── Patient Form Assignments ───────────────────────────────────────────────
+
+  async getPatientFormAssignments(patientId: number): Promise<schema.PatientFormAssignment[]> {
+    return db.select().from(schema.patientFormAssignments)
+      .where(eq(schema.patientFormAssignments.patientId, patientId))
+      .orderBy(desc(schema.patientFormAssignments.assignedAt));
+  }
+
+  async createPatientFormAssignment(data: schema.InsertPatientFormAssignment): Promise<schema.PatientFormAssignment> {
+    const [row] = await db.insert(schema.patientFormAssignments).values(data).returning();
+    return row;
+  }
+
+  async updatePatientFormAssignment(id: number, data: Partial<schema.InsertPatientFormAssignment>): Promise<schema.PatientFormAssignment | undefined> {
+    const [row] = await db.update(schema.patientFormAssignments)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.patientFormAssignments.id, id))
+      .returning();
+    return row;
+  }
+
+  // ─── Form Submissions ───────────────────────────────────────────────────────
+
+  async getFormSubmissionsByPatient(patientId: number): Promise<schema.FormSubmission[]> {
+    return db.select().from(schema.formSubmissions)
+      .where(eq(schema.formSubmissions.patientId, patientId))
+      .orderBy(desc(schema.formSubmissions.submittedAt));
+  }
+
+  async getFormSubmissionsByClinician(clinicianId: number): Promise<schema.FormSubmission[]> {
+    return db.select().from(schema.formSubmissions)
+      .where(eq(schema.formSubmissions.clinicianId, clinicianId))
+      .orderBy(desc(schema.formSubmissions.submittedAt));
+  }
+
+  async getFormSubmission(id: number): Promise<schema.FormSubmission | undefined> {
+    const rows = await db.select().from(schema.formSubmissions).where(eq(schema.formSubmissions.id, id)).limit(1);
+    return rows[0];
+  }
+
+  async createFormSubmission(data: schema.InsertFormSubmission): Promise<schema.FormSubmission> {
+    const [row] = await db.insert(schema.formSubmissions).values(data).returning();
+    return row;
+  }
+
+  async updateFormSubmission(id: number, data: Partial<schema.InsertFormSubmission>): Promise<schema.FormSubmission | undefined> {
+    const [row] = await db.update(schema.formSubmissions)
+      .set({ ...data, updatedAt: new Date() })
+      .where(eq(schema.formSubmissions.id, id))
+      .returning();
+    return row;
+  }
+
+  // ─── Form Sync Events ───────────────────────────────────────────────────────
+
+  async getFormSyncEvents(submissionId: number): Promise<schema.FormSyncEvent[]> {
+    return db.select().from(schema.formSyncEvents)
+      .where(eq(schema.formSyncEvents.submissionId, submissionId))
+      .orderBy(desc(schema.formSyncEvents.createdAt));
+  }
+
+  async createFormSyncEvent(data: schema.InsertFormSyncEvent): Promise<schema.FormSyncEvent> {
+    const [row] = await db.insert(schema.formSyncEvents).values(data).returning();
+    return row;
+  }
+
+  // ─── Form Expiration Tracking ───────────────────────────────────────────────
+
+  async getFormExpirationTracking(patientId: number): Promise<schema.FormExpirationTracking[]> {
+    return db.select().from(schema.formExpirationTracking)
+      .where(eq(schema.formExpirationTracking.patientId, patientId));
+  }
+
+  async upsertFormExpirationTracking(patientId: number, formId: number, data: Partial<schema.InsertFormExpirationTracking>): Promise<schema.FormExpirationTracking> {
+    const existing = await db.select().from(schema.formExpirationTracking)
+      .where(and(eq(schema.formExpirationTracking.patientId, patientId), eq(schema.formExpirationTracking.formId, formId)))
+      .limit(1);
+    if (existing[0]) {
+      const [row] = await db.update(schema.formExpirationTracking)
+        .set({ ...data, updatedAt: new Date() })
+        .where(eq(schema.formExpirationTracking.id, existing[0].id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(schema.formExpirationTracking)
+      .values({ patientId, formId, ...data } as schema.InsertFormExpirationTracking)
+      .returning();
+    return row;
+  }
 }
 
 export const storage = new DbStorage();

@@ -1295,3 +1295,166 @@ export const calendarBlocks = pgTable("calendar_blocks", {
 export type CalendarBlock = typeof calendarBlocks.$inferSelect;
 export const insertCalendarBlockSchema = createInsertSchema(calendarBlocks).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertCalendarBlock = z.infer<typeof insertCalendarBlockSchema>;
+
+// ─── Smart Intake + Digital Forms ───────────────────────────────────────────
+
+export const intakeForms = pgTable("intake_forms", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: text("name").notNull(),
+  slug: varchar("slug", { length: 120 }),
+  description: text("description"),
+  category: varchar("category", { length: 60 }).notNull().default("custom"),
+  version: integer("version").notNull().default(1),
+  status: varchar("status", { length: 20 }).notNull().default("draft"),
+  brandingJson: jsonb("branding_json"),
+  settingsJson: jsonb("settings_json"),
+  requiresPatientSignature: boolean("requires_patient_signature").notNull().default(false),
+  requiresStaffSignature: boolean("requires_staff_signature").notNull().default(false),
+  allowLink: boolean("allow_link").notNull().default(true),
+  allowEmbed: boolean("allow_embed").notNull().default(true),
+  allowTablet: boolean("allow_tablet").notNull().default(true),
+  isPublic: boolean("is_public").notNull().default(false),
+  expirationType: varchar("expiration_type", { length: 20 }).notNull().default("none"),
+  expirationIntervalDays: integer("expiration_interval_days"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type IntakeForm = typeof intakeForms.$inferSelect;
+export const insertIntakeFormSchema = createInsertSchema(intakeForms).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertIntakeForm = z.infer<typeof insertIntakeFormSchema>;
+
+export const formSections = pgTable("form_sections", {
+  id: serial("id").primaryKey(),
+  formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
+  title: text("title").notNull(),
+  description: text("description"),
+  orderIndex: integer("order_index").notNull().default(0),
+  isRepeatable: boolean("is_repeatable").notNull().default(false),
+  conditionalLogicJson: jsonb("conditional_logic_json"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FormSection = typeof formSections.$inferSelect;
+export const insertFormSectionSchema = createInsertSchema(formSections).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFormSection = z.infer<typeof insertFormSectionSchema>;
+
+export const formFields = pgTable("form_fields", {
+  id: serial("id").primaryKey(),
+  formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
+  sectionId: integer("section_id").references(() => formSections.id, { onDelete: "set null" }),
+  fieldKey: varchar("field_key", { length: 120 }).notNull(),
+  label: text("label").notNull(),
+  fieldType: varchar("field_type", { length: 40 }).notNull(),
+  helpText: text("help_text"),
+  placeholder: text("placeholder"),
+  isRequired: boolean("is_required").notNull().default(false),
+  isHidden: boolean("is_hidden").notNull().default(false),
+  defaultValueJson: jsonb("default_value_json"),
+  optionsJson: jsonb("options_json"),
+  validationJson: jsonb("validation_json"),
+  conditionalLogicJson: jsonb("conditional_logic_json"),
+  layoutJson: jsonb("layout_json"),
+  syncConfigJson: jsonb("sync_config_json"),
+  duplicateHandlingJson: jsonb("duplicate_handling_json"),
+  orderIndex: integer("order_index").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FormField = typeof formFields.$inferSelect;
+export const insertFormFieldSchema = createInsertSchema(formFields).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFormField = z.infer<typeof insertFormFieldSchema>;
+
+export const formPublications = pgTable("form_publications", {
+  id: serial("id").primaryKey(),
+  formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
+  publicToken: varchar("public_token", { length: 80 }).notNull().unique(),
+  mode: varchar("mode", { length: 20 }).notNull().default("link"),
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  embedSettingsJson: jsonb("embed_settings_json"),
+  linkSettingsJson: jsonb("link_settings_json"),
+  expiresAt: timestamp("expires_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FormPublication = typeof formPublications.$inferSelect;
+export const insertFormPublicationSchema = createInsertSchema(formPublications).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFormPublication = z.infer<typeof insertFormPublicationSchema>;
+
+export const patientFormAssignments = pgTable("patient_form_assignments", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
+  assignedBy: integer("assigned_by").notNull().references(() => users.id),
+  assignedAt: timestamp("assigned_at").defaultNow().notNull(),
+  dueAt: timestamp("due_at"),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  completionRequired: boolean("completion_required").notNull().default(false),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PatientFormAssignment = typeof patientFormAssignments.$inferSelect;
+export const insertPatientFormAssignmentSchema = createInsertSchema(patientFormAssignments).omit({ id: true, assignedAt: true, createdAt: true, updatedAt: true });
+export type InsertPatientFormAssignment = z.infer<typeof insertPatientFormAssignmentSchema>;
+
+export const formSubmissions = pgTable("form_submissions", {
+  id: serial("id").primaryKey(),
+  formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
+  formVersion: integer("form_version").notNull().default(1),
+  clinicianId: integer("clinician_id").references(() => users.id),
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  assignmentId: integer("assignment_id").references(() => patientFormAssignments.id, { onDelete: "set null" }),
+  submittedByPatient: boolean("submitted_by_patient").notNull().default(false),
+  submittedByStaff: boolean("submitted_by_staff").notNull().default(false),
+  submissionSource: varchar("submission_source", { length: 20 }).notNull().default("link"),
+  status: varchar("status", { length: 20 }).notNull().default("submitted"),
+  submittedAt: timestamp("submitted_at").defaultNow().notNull(),
+  expiresAt: timestamp("expires_at"),
+  rawSubmissionJson: jsonb("raw_submission_json").notNull(),
+  normalizedSubmissionJson: jsonb("normalized_submission_json"),
+  signatureJson: jsonb("signature_json"),
+  reviewStatus: varchar("review_status", { length: 20 }).notNull().default("pending"),
+  syncStatus: varchar("sync_status", { length: 20 }).notNull().default("not_synced"),
+  syncSummaryJson: jsonb("sync_summary_json"),
+  submitterName: text("submitter_name"),
+  submitterEmail: text("submitter_email"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FormSubmission = typeof formSubmissions.$inferSelect;
+export const insertFormSubmissionSchema = createInsertSchema(formSubmissions).omit({ id: true, submittedAt: true, createdAt: true, updatedAt: true });
+export type InsertFormSubmission = z.infer<typeof insertFormSubmissionSchema>;
+
+export const formSyncEvents = pgTable("form_sync_events", {
+  id: serial("id").primaryKey(),
+  submissionId: integer("submission_id").notNull().references(() => formSubmissions.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  targetDomain: varchar("target_domain", { length: 40 }).notNull(),
+  targetRecordId: integer("target_record_id"),
+  actionType: varchar("action_type", { length: 30 }).notNull(),
+  resultStatus: varchar("result_status", { length: 20 }).notNull().default("success"),
+  reviewRequired: boolean("review_required").notNull().default(false),
+  duplicateDetected: boolean("duplicate_detected").notNull().default(false),
+  detailsJson: jsonb("details_json"),
+  createdBy: integer("created_by").references(() => users.id),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type FormSyncEvent = typeof formSyncEvents.$inferSelect;
+export const insertFormSyncEventSchema = createInsertSchema(formSyncEvents).omit({ id: true, createdAt: true });
+export type InsertFormSyncEvent = z.infer<typeof insertFormSyncEventSchema>;
+
+export const formExpirationTracking = pgTable("form_expiration_tracking", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
+  latestSubmissionId: integer("latest_submission_id").references(() => formSubmissions.id, { onDelete: "set null" }),
+  expiresAt: timestamp("expires_at"),
+  renewalStatus: varchar("renewal_status", { length: 20 }).notNull().default("current"),
+  notifiedAt: timestamp("notified_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FormExpirationTracking = typeof formExpirationTracking.$inferSelect;
+export const insertFormExpirationTrackingSchema = createInsertSchema(formExpirationTracking).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFormExpirationTracking = z.infer<typeof insertFormExpirationTrackingSchema>;
