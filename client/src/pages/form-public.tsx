@@ -21,6 +21,7 @@ interface FormField {
   orderIndex: number;
   optionsJson: any;
   sectionId: number | null;
+  layoutJson: any;
 }
 
 interface FormSection {
@@ -200,17 +201,7 @@ export default function FormPublicPage() {
 
       {/* Fields without section */}
       {fieldsBySectionId["null"]?.length > 0 && (
-        <div className="space-y-6 mb-8">
-          {fieldsBySectionId["null"].map(field => (
-            <FieldRenderer
-              key={field.id}
-              field={field}
-              value={responses[field.fieldKey]}
-              onChange={v => setResponse(field.fieldKey, v)}
-              error={validationErrors[field.fieldKey]}
-            />
-          ))}
-        </div>
+        <FieldGrid fields={fieldsBySectionId["null"]} responses={responses} setResponse={setResponse} validationErrors={validationErrors} className="mb-8" />
       )}
 
       {/* Sections */}
@@ -220,17 +211,7 @@ export default function FormPublicPage() {
             <h2 className="text-base font-semibold">{section.title}</h2>
             {section.description && <p className="text-sm text-muted-foreground mt-0.5">{section.description}</p>}
           </div>
-          <div className="space-y-6">
-            {(fieldsBySectionId[section.id] ?? []).map(field => (
-              <FieldRenderer
-                key={field.id}
-                field={field}
-                value={responses[field.fieldKey]}
-                onChange={v => setResponse(field.fieldKey, v)}
-                error={validationErrors[field.fieldKey]}
-              />
-            ))}
-          </div>
+          <FieldGrid fields={fieldsBySectionId[section.id] ?? []} responses={responses} setResponse={setResponse} validationErrors={validationErrors} />
         </div>
       ))}
 
@@ -277,6 +258,35 @@ function PageShell({ children }: { children: React.ReactNode }) {
 }
 
 // ─── Field Renderer ───────────────────────────────────────────────────────────
+
+function FieldGrid({ fields, responses, setResponse, validationErrors, className = "" }: {
+  fields: FormField[];
+  responses: Record<string, any>;
+  setResponse: (key: string, value: any) => void;
+  validationErrors: Record<string, string>;
+  className?: string;
+}) {
+  const colSpan = (f: FormField) => {
+    const w = (f.layoutJson as any)?.columnWidth;
+    if (w === "third") return "col-span-6 sm:col-span-3 md:col-span-2";
+    if (w === "half") return "col-span-6 sm:col-span-3";
+    return "col-span-6";
+  };
+  return (
+    <div className={`grid grid-cols-6 gap-x-4 gap-y-6 ${className}`}>
+      {fields.map(field => (
+        <div key={field.id} className={colSpan(field)}>
+          <FieldRenderer
+            field={field}
+            value={responses[field.fieldKey]}
+            onChange={v => setResponse(field.fieldKey, v)}
+            error={validationErrors[field.fieldKey]}
+          />
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function FieldRenderer({ field, value, onChange, error }: {
   field: FormField;

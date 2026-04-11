@@ -68,6 +68,7 @@ interface FormField {
   optionsJson: any;
   validationJson: any;
   syncConfigJson: any;
+  layoutJson: any;
 }
 
 interface FormPublication {
@@ -489,7 +490,12 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
                   data-testid={`button-select-field-${field.id}`}>
                   <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   <span className="truncate flex-1">{field.label}</span>
-                  {field.isRequired && <span className="text-red-500 text-xs">*</span>}
+                  {(field.layoutJson as any)?.columnWidth && (field.layoutJson as any).columnWidth !== "full" && (
+                    <span className="text-[10px] text-muted-foreground bg-muted rounded px-1 flex-shrink-0">
+                      {(field.layoutJson as any).columnWidth === "half" ? "1/2" : "1/3"}
+                    </span>
+                  )}
+                  {field.isRequired && <span className="text-red-500 text-xs flex-shrink-0">*</span>}
                 </button>
               ))}
             </div>
@@ -582,11 +588,15 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
   const [syncDomain, setSyncDomain] = useState(
     (field.syncConfigJson as any)?.domain ?? "none"
   );
+  const [columnWidth, setColumnWidth] = useState<string>(
+    (field.layoutJson as any)?.columnWidth ?? "full"
+  );
 
   useEffect(() => {
     setLocal({ ...field });
     setOptionsText(Array.isArray(field.optionsJson) ? field.optionsJson.join("\n") : "");
     setSyncDomain((field.syncConfigJson as any)?.domain ?? "none");
+    setColumnWidth((field.layoutJson as any)?.columnWidth ?? "full");
   }, [field.id]);
 
   const hasOptions = ["single_choice", "multi_choice", "dropdown"].includes(local.fieldType);
@@ -598,6 +608,7 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
       placeholder: local.placeholder,
       isRequired: local.isRequired,
       fieldType: local.fieldType,
+      layoutJson: { columnWidth },
     };
     if (hasOptions) {
       data.optionsJson = optionsText.split("\n").map(s => s.trim()).filter(Boolean);
@@ -686,6 +697,32 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
             onCheckedChange={v => setLocal(prev => ({ ...prev, isRequired: v }))}
             data-testid="switch-field-required"
           />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Column Width</Label>
+          <p className="text-xs text-muted-foreground">Place multiple fields side-by-side on the same row</p>
+          <div className="flex gap-1.5">
+            {([
+              { value: "full", label: "Full" },
+              { value: "half", label: "1/2" },
+              { value: "third", label: "1/3" },
+            ] as const).map(opt => (
+              <button
+                key={opt.value}
+                type="button"
+                onClick={() => setColumnWidth(opt.value)}
+                className={`flex-1 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                  columnWidth === opt.value
+                    ? "bg-primary text-primary-foreground border-primary"
+                    : "bg-background text-muted-foreground border-border hover:text-foreground"
+                }`}
+                data-testid={`button-col-width-${opt.value}`}
+              >
+                {opt.label}
+              </button>
+            ))}
+          </div>
         </div>
 
         <Separator />
