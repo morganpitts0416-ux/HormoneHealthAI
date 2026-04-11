@@ -194,12 +194,20 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
 
       doc.text(labelText, MARGIN, y);
       doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
       doc.setTextColor('#111111');
 
-      if (labelWidth + doc.getTextWidth(restText) < CONTENT_W) {
-        doc.text(restText, MARGIN + labelWidth, y);
+      // Use splitTextToSize to let jsPDF decide if restText fits inline —
+      // more reliable than comparing getTextWidth against a fixed threshold.
+      const availableForRest = CONTENT_W - labelWidth;
+      const inlineLines = doc.splitTextToSize(restText, availableForRest);
+
+      if (inlineLines.length === 1) {
+        // Fits on same line as label
+        doc.text(inlineLines[0], MARGIN + labelWidth, y);
         y += LINE_H_BODY;
       } else {
+        // Wraps — render on next line(s) with a small indent
         y += LINE_H_BODY;
         const wrappedLines = doc.splitTextToSize(restText, CONTENT_W - 4);
         for (const wl of wrappedLines) {
