@@ -14,7 +14,7 @@ import {
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
-  ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check,
+  ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -1102,6 +1102,10 @@ export default function PatientProfiles() {
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
   const [pdfExportingEncounterId, setPdfExportingEncounterId] = useState<number | null>(null);
   const [copiedEncounterId, setCopiedEncounterId] = useState<number | null>(null);
+  const [amendingEncounterId, setAmendingEncounterId] = useState<number | null>(null);
+  const [amendText, setAmendText] = useState("");
+  const [savingAmend, setSavingAmend] = useState(false);
+  const [evidenceOpenId, setEvidenceOpenId] = useState<number | null>(null);
   const [listCollapsed, setListCollapsed] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
@@ -1277,6 +1281,7 @@ export default function PatientProfiles() {
     signedAt?: string | Date | null;
     signedBy?: string | null;
     isAmended?: boolean;
+    evidenceSuggestions?: { suggestions?: Array<{ title: string; rationale?: string; strength_of_support?: string; level_of_evidence?: string; citations?: Array<{ doi?: string; pmid?: string; journal?: string; year?: number; authors?: string }> }> } | null;
   };
 
   const { data: patientEncounters = [] } = useQuery<EncounterSummary[]>({
@@ -2064,7 +2069,11 @@ export default function PatientProfiles() {
                               <span>No SOAP note documented for this visit. Use the Encounters section to add clinical documentation.</span>
                             </div>
                           )}
-                          {isExpanded && hasSoap && (
+                          {isExpanded && hasSoap && (() => {
+                            const isAmending = amendingEncounterId === enc.id;
+                            const isEvidenceOpen = evidenceOpenId === enc.id;
+                            const evidenceSuggestions = (enc as any).evidenceSuggestions?.suggestions ?? [];
+                            return (
                             <div className="border-t bg-muted/10">
                               {/* Banner — signed vs draft + action buttons */}
                               {isSigned ? (
@@ -2076,6 +2085,18 @@ export default function PatientProfiles() {
                                     {enc.signedAt ? ` · ${new Date(enc.signedAt as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
                                   </span>
                                   <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    {evidenceSuggestions.length > 0 && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className={`h-6 px-2 text-xs gap-1 ${isEvidenceOpen ? "text-primary" : "text-muted-foreground"}`}
+                                        onClick={(e) => { e.stopPropagation(); setEvidenceOpenId(isEvidenceOpen ? null : enc.id); }}
+                                        data-testid={`button-evidence-encounter-${enc.id}`}
+                                      >
+                                        <BookOpen className="w-3 h-3" />
+                                        Evidence
+                                      </Button>
+                                    )}
                                     <Button
                                       size="sm"
                                       variant="ghost"
@@ -2111,23 +2132,23 @@ export default function PatientProfiles() {
                                       <FileDown className="w-3 h-3" />
                                       {pdfExportingEncounterId === enc.id ? "Generating…" : "Print PDF"}
                                     </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 px-2 text-xs text-amber-700 gap-1"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        if (confirm("Open this note for amendment? The current signed version will be preserved in the audit trail.")) {
-                                          apiRequest("POST", `/api/encounters/${enc.id}/amend`).then(() => {
-                                            setLocation(`/encounters?encounterId=${enc.id}`);
-                                          });
-                                        }
-                                      }}
-                                      data-testid={`button-amend-encounter-${enc.id}`}
-                                    >
-                                      <Pencil className="w-3 h-3" />
-                                      Amend
-                                    </Button>
+                                    {!isAmending && (
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 px-2 text-xs text-amber-700 gap-1"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
+                                          setAmendText(soapText);
+                                          setAmendingEncounterId(enc.id);
+                                        }}
+                                        data-testid={`button-amend-encounter-${enc.id}`}
+                                      >
+                                        <PenLine className="w-3 h-3" />
+                                        Amend
+                                      </Button>
+                                    )}
                                   </div>
                                 </div>
                               ) : (
@@ -2189,16 +2210,92 @@ export default function PatientProfiles() {
                                   </div>
                                 </div>
                               )}
-                              {/* SOAP note text */}
-                              <div className="px-5 py-4 max-h-96 overflow-y-auto">
-                                <p className="text-xs whitespace-pre-wrap leading-relaxed text-foreground/90 font-sans">
-                                  {typeof enc.soapNote === 'string'
-                                    ? enc.soapNote
-                                    : (enc.soapNote as any)?.fullNote ?? JSON.stringify(enc.soapNote, null, 2)}
-                                </p>
-                              </div>
+
+                              {/* Inline Evidence Panel */}
+                              {isEvidenceOpen && evidenceSuggestions.length > 0 && (
+                                <div className="border-b bg-primary/5 px-4 py-3 space-y-2">
+                                  <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">Evidence-Based Suggestions</p>
+                                  {evidenceSuggestions.map((s: any, idx: number) => (
+                                    <div key={idx} className="rounded-md border bg-background px-3 py-2 space-y-1">
+                                      <div className="flex items-start gap-2">
+                                        <span className="text-xs font-medium text-foreground leading-snug flex-1">{s.title}</span>
+                                        {s.strength_of_support && (
+                                          <span className="text-[10px] text-primary/70 bg-primary/10 rounded px-1.5 py-0.5 flex-shrink-0">{s.strength_of_support}</span>
+                                        )}
+                                      </div>
+                                      {s.rationale && <p className="text-[11px] text-muted-foreground leading-snug">{s.rationale}</p>}
+                                      {s.citations && s.citations.length > 0 && (
+                                        <div className="flex flex-wrap gap-1 pt-0.5">
+                                          {s.citations.map((c: any, ci: number) => (
+                                            <span key={ci} className="text-[10px] text-muted-foreground">
+                                              {c.authors ? `${c.authors.split(',')[0]} et al.` : ""}{c.journal ? ` · ${c.journal}` : ""}{c.year ? ` (${c.year})` : ""}
+                                              {c.doi && <a href={`https://doi.org/${c.doi}`} target="_blank" rel="noreferrer" className="ml-1 text-primary hover:underline">DOI</a>}
+                                            </span>
+                                          ))}
+                                        </div>
+                                      )}
+                                    </div>
+                                  ))}
+                                </div>
+                              )}
+
+                              {/* SOAP note body — editable when amending, read-only otherwise */}
+                              {isAmending ? (
+                                <div className="px-4 py-3 space-y-3">
+                                  <p className="text-[11px] text-amber-700 font-medium">Amendment in progress — edit the note below, then re-sign to lock.</p>
+                                  <Textarea
+                                    value={amendText}
+                                    onChange={(e) => setAmendText(e.target.value)}
+                                    className="text-xs font-sans min-h-[16rem] resize-y"
+                                    data-testid={`textarea-amend-${enc.id}`}
+                                  />
+                                  <div className="flex gap-2 justify-end">
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      onClick={(e) => { e.stopPropagation(); setAmendingEncounterId(null); setAmendText(""); }}
+                                      data-testid={`button-cancel-amend-${enc.id}`}
+                                    >
+                                      Cancel
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      disabled={savingAmend || !amendText.trim()}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        setSavingAmend(true);
+                                        try {
+                                          await apiRequest("POST", `/api/encounters/${enc.id}/amend`);
+                                          await apiRequest("PATCH", `/api/encounters/${enc.id}`, { soapNote: { fullNote: amendText } });
+                                          await apiRequest("POST", `/api/encounters/${enc.id}/sign`);
+                                          await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
+                                          setAmendingEncounterId(null);
+                                          setAmendText("");
+                                          toast({ title: "Amendment saved", description: "The note has been re-signed and locked." });
+                                        } catch (err: any) {
+                                          toast({ variant: "destructive", title: "Save failed", description: err?.message });
+                                        } finally {
+                                          setSavingAmend(false);
+                                        }
+                                      }}
+                                      data-testid={`button-resignlock-amend-${enc.id}`}
+                                    >
+                                      {savingAmend ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving…</> : <><Lock className="w-3 h-3 mr-1.5" />Re-sign &amp; Lock</>}
+                                    </Button>
+                                  </div>
+                                </div>
+                              ) : (
+                                <div className="px-5 py-4 max-h-96 overflow-y-auto">
+                                  <p className="text-xs whitespace-pre-wrap leading-relaxed text-foreground/90 font-sans">
+                                    {typeof enc.soapNote === 'string'
+                                      ? enc.soapNote
+                                      : (enc.soapNote as any)?.fullNote ?? JSON.stringify(enc.soapNote, null, 2)}
+                                  </p>
+                                </div>
+                              )}
                             </div>
-                          )}
+                            );
+                          })()}
                         </div>
                       );
                     })}
