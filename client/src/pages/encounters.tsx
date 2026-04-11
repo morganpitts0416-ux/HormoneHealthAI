@@ -1069,6 +1069,7 @@ function EncounterEditor({
   const [confirmingTermIdx, setConfirmingTermIdx] = useState<number | null>(null);
   const [soapViewMode, setSoapViewMode] = useState<"view" | "edit">("view");
   const [copiedSoap, setCopiedSoap] = useState(false);
+  const [showInlineEvidence, setShowInlineEvidence] = useState(false);
   const [autoGenerating, setAutoGenerating] = useState<"soap" | "evidence" | "both" | null>(null);
   const [dismissedReviewIdxs, setDismissedReviewIdxs] = useState<Set<string>>(new Set());
   // Persist "recommendations dismissed" per encounter so they don't re-appear on reload
@@ -2773,41 +2774,100 @@ function EncounterEditor({
           <>
             {/* Signed note banner */}
             {isSigned && (
-              <div className="flex items-start gap-3 rounded-md border border-emerald-200 bg-emerald-50/70 px-4 py-3">
-                <Lock className="w-4 h-4 text-emerald-600 flex-shrink-0 mt-0.5" />
-                <div className="flex-1 min-w-0">
-                  <p className="text-sm font-semibold text-emerald-800">
-                    {isAmendedLocal ? "Amended and Signed" : "Signed Chart Note"}
-                  </p>
-                  <p className="text-xs text-emerald-700 mt-0.5">
-                    {signedByLocal ? `Signed by ${signedByLocal}` : "Signed"}
-                    {signedAtLocal ? ` · ${new Date(signedAtLocal as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
-                  </p>
-                  {isAmendedLocal && (
-                    <p className="text-xs text-emerald-600/80 mt-0.5 italic">This note has been amended. Prior version(s) preserved in audit trail.</p>
-                  )}
+              <div className="rounded-md border border-emerald-200 bg-emerald-50/70">
+                <div className="flex items-center gap-3 px-4 py-3 flex-wrap">
+                  <Lock className="w-4 h-4 text-emerald-600 flex-shrink-0" />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold text-emerald-800">
+                      {isAmendedLocal ? "Amended and Signed" : "Signed Chart Note"}
+                    </p>
+                    <p className="text-xs text-emerald-700 mt-0.5">
+                      {signedByLocal ? `Signed by ${signedByLocal}` : "Signed"}
+                      {signedAtLocal ? ` · ${new Date(signedAtLocal as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-2 flex-shrink-0">
+                    {(evidenceOverlay?.suggestions?.length ?? 0) > 0 && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        className="border-emerald-300 text-emerald-700"
+                        onClick={() => setShowInlineEvidence(v => !v)}
+                        data-testid="button-inline-evidence"
+                      >
+                        <BookOpen className="w-3.5 h-3.5 mr-1.5" />
+                        {showInlineEvidence ? "Hide Evidence" : "Evidence"}
+                      </Button>
+                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="border-emerald-300 text-emerald-700"
+                      disabled={isPdfExporting || !(soap.fullNote ?? legacySoapToText(soap)).trim()}
+                      onClick={async () => {
+                        setIsPdfExporting(true);
+                        try {
+                          const patientName = encounter?.patientName
+                            ?? (() => { const p = patients.find(pt => pt.id.toString() === patientId); return p ? `${p.firstName} ${p.lastName}` : "Unknown Patient"; })();
+                          await exportSoapPdf({
+                            soapText: soap.fullNote ?? legacySoapToText(soap),
+                            patientName,
+                            visitDate,
+                            providerName: `${user?.firstName ?? ""} ${user?.lastName ?? ""}`.trim(),
+                            providerTitle: user?.title ?? "",
+                            providerNpi: (user as any)?.npi ?? null,
+                            clinicName: user?.clinicName ?? "Clinic",
+                            clinicAddress: (user as any)?.address ?? null,
+                            clinicPhone: (user as any)?.phone ?? null,
+                            clinicLogo: (user as any)?.clinicLogo ?? null,
+                            signedAt: signedAtLocal as string,
+                            signedBy: signedByLocal,
+                            signatureImage: (user as any)?.signatureImage ?? null,
+                            isAmended: isAmendedLocal,
+                          });
+                        } catch (e: any) {
+                          toast({ variant: "destructive", title: "PDF export failed", description: e?.message });
+                        } finally {
+                          setIsPdfExporting(false);
+                        }
+                      }}
+                      data-testid="button-print-soap-pdf-banner"
+                    >
+                      {isPdfExporting
+                        ? <><FileDown className="w-3.5 h-3.5 mr-1.5 animate-pulse" />Generating…</>
+                        : <><FileDown className="w-3.5 h-3.5 mr-1.5" />Print PDF</>}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => { if (confirm("Open this note for amendment? A copy of the current signed version will be preserved in the audit trail.")) amendMutation.mutate(); }}
+                      disabled={amendMutation.isPending}
+                      data-testid="button-amend-note"
+                      className="border-emerald-300 text-emerald-700"
+                    >
+                      <PenLine className="w-3.5 h-3.5 mr-1.5" />
+                      {amendMutation.isPending ? "Opening…" : "Amend"}
+                    </Button>
+                  </div>
                 </div>
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => { if (confirm("Open this note for amendment? A copy of the current signed version will be preserved in the audit trail.")) amendMutation.mutate(); }}
-                  disabled={amendMutation.isPending}
-                  data-testid="button-amend-note"
-                  className="flex-shrink-0 border-emerald-300 text-emerald-700 hover:bg-emerald-100"
-                >
-                  <PenLine className="w-3.5 h-3.5 mr-1.5" />
-                  {amendMutation.isPending ? "Opening…" : "Amend"}
-                </Button>
+                {/* Inline evidence panel */}
+                {showInlineEvidence && (evidenceOverlay?.suggestions?.length ?? 0) > 0 && (
+                  <div className="border-t border-emerald-200 px-4 py-3 space-y-3">
+                    <p className="text-xs font-semibold text-emerald-800">Clinical Evidence — {evidenceOverlay!.suggestions!.length} suggestion{evidenceOverlay!.suggestions!.length !== 1 ? "s" : ""}</p>
+                    {evidenceOverlay!.suggestions!.map((sug, i) => (
+                      <EvidenceCard key={i} sug={sug} />
+                    ))}
+                  </div>
+                )}
               </div>
             )}
 
+            {!isSigned && (
             <div className="flex items-center justify-between">
               <div>
                 <h3 className="text-sm font-semibold">SOAP Note</h3>
                 <p className="text-xs text-muted-foreground mt-0.5">
-                  {isSigned
-                    ? "This note is locked. Use Amend to reopen for editing."
-                    : `AI-generated from encounter transcription${linkedLabResultId ? " + linked lab results" : ""}. Edit any section as needed.`}
+                  {`AI-generated from encounter transcription${linkedLabResultId ? " + linked lab results" : ""}. Edit any section as needed.`}
                 </p>
               </div>
               <div className="flex items-center gap-2 flex-wrap">
@@ -2861,6 +2921,7 @@ function EncounterEditor({
                 )}
               </div>
             </div>
+            )}
 
             {/* Clinician review flags — hidden once a decision is made, or note is saved/signed */}
             {hasSoap && !isSigned && !soapSaved && (() => {
@@ -3118,7 +3179,8 @@ function EncounterEditor({
 
             {hasSoap && !soapMutation.isPending && (
               <div className="space-y-3">
-                {/* View / Edit toggle row */}
+                {/* View / Edit toggle row — hidden for signed notes (always view mode) */}
+                {!isSigned && (
                 <div className="flex items-center justify-between gap-2 flex-wrap">
                   <div className="flex items-center gap-0.5 rounded-md border p-0.5 bg-muted/40">
                     <button
@@ -3128,35 +3190,31 @@ function EncounterEditor({
                     >
                       <Eye className="w-3 h-3" /> View
                     </button>
-                    {!isSigned && (
-                      <button
+                    <button
                         data-testid="soap-edit-toggle"
                         onClick={() => setSoapViewMode("edit")}
                         className={`flex items-center gap-1.5 px-2.5 py-1 rounded text-xs font-medium transition-colors ${soapViewMode === "edit" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}
                       >
                         <ClipboardList className="w-3 h-3" /> Edit
                       </button>
-                    )}
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    {!isSigned && (
-                      <Button
-                        size="sm"
-                        variant="outline"
-                        data-testid="button-copy-soap"
-                        onClick={() => {
-                          const text = soap.fullNote ?? legacySoapToText(soap);
-                          navigator.clipboard.writeText(text).then(() => {
-                            setCopiedSoap(true);
-                            setTimeout(() => setCopiedSoap(false), 2000);
-                          });
-                        }}
-                      >
-                        {copiedSoap
-                          ? <><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />Copied!</>
-                          : <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Note</>}
-                      </Button>
-                    )}
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      data-testid="button-copy-soap"
+                      onClick={() => {
+                        const text = soap.fullNote ?? legacySoapToText(soap);
+                        navigator.clipboard.writeText(text).then(() => {
+                          setCopiedSoap(true);
+                          setTimeout(() => setCopiedSoap(false), 2000);
+                        });
+                      }}
+                    >
+                      {copiedSoap
+                        ? <><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />Copied!</>
+                        : <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Note</>}
+                    </Button>
                     <Button
                       size="sm"
                       variant="outline"
@@ -3178,10 +3236,10 @@ function EncounterEditor({
                             clinicAddress: (user as any)?.address ?? null,
                             clinicPhone: (user as any)?.phone ?? null,
                             clinicLogo: (user as any)?.clinicLogo ?? null,
-                            signedAt: isSigned ? (signedAtLocal as string) : null,
-                            signedBy: signedByLocal,
-                            signatureImage: isSigned ? ((user as any)?.signatureImage ?? null) : null,
-                            isAmended: isAmendedLocal,
+                            signedAt: null,
+                            signedBy: null,
+                            signatureImage: null,
+                            isAmended: false,
                           });
                         } catch (e: any) {
                           toast({ variant: "destructive", title: "PDF export failed", description: e?.message });
@@ -3194,21 +3252,20 @@ function EncounterEditor({
                         ? <><FileDown className="w-3.5 h-3.5 mr-1.5 animate-pulse" />Generating…</>
                         : <><FileDown className="w-3.5 h-3.5 mr-1.5" />Print PDF</>}
                     </Button>
-                    {!isSigned && (
-                      <Button
-                        size="sm"
-                        onClick={() => summaryMutation.mutate()}
-                        disabled={summaryMutation.isPending || !savedId}
-                        data-testid="button-generate-summary"
-                      >
-                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                        {summaryMutation.isPending ? "Generating..." : "Patient Summary"}
-                      </Button>
-                    )}
+                    <Button
+                      size="sm"
+                      onClick={() => summaryMutation.mutate()}
+                      disabled={summaryMutation.isPending || !savedId}
+                      data-testid="button-generate-summary"
+                    >
+                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                      {summaryMutation.isPending ? "Generating..." : "Patient Summary"}
+                    </Button>
                   </div>
                 </div>
+                )}
 
-                {soapViewMode === "view" && (evidenceOverlay?.suggestions?.length ?? 0) > 0 && (
+                {!isSigned && soapViewMode === "view" && (evidenceOverlay?.suggestions?.length ?? 0) > 0 && (
                   <div className="flex items-center gap-1.5 px-1 py-0.5">
                     <Sparkles className="w-3 h-3 text-primary/60 flex-shrink-0" />
                     <p className="text-[10px] text-muted-foreground">
