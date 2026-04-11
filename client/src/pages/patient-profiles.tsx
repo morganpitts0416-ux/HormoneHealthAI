@@ -14,7 +14,7 @@ import {
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
-  ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown,
+  ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -23,6 +23,7 @@ import { generateTrendInsights, generateClinicalSnapshot, type TrendInsight } fr
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generateMalePatientWellnessPDF, type MaleWellnessPlan } from "@/lib/patient-pdf-export-male";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
+import { exportSoapPdf } from "@/lib/soap-pdf-export";
 import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -1098,6 +1099,8 @@ export default function PatientProfiles() {
   const [showOrders, setShowOrders] = useState(false);
   const [showEncounters, setShowEncounters] = useState(false);
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
+  const [pdfExportingEncounterId, setPdfExportingEncounterId] = useState<number | null>(null);
+  const [copiedEncounterId, setCopiedEncounterId] = useState<number | null>(null);
   const [listCollapsed, setListCollapsed] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
@@ -1993,11 +1996,8 @@ export default function PatientProfiles() {
                       const isExpanded = expandedEncounterId === enc.id;
 
                       const handleClick = () => {
-                        if (hasSoap) {
-                          setExpandedEncounterId(isExpanded ? null : enc.id);
-                        } else {
-                          setLocation(`/encounters?encounterId=${enc.id}`);
-                        }
+                        setExpandedEncounterId(isExpanded ? null : enc.id);
+                        if (!hasSoap) setShowEncounters(true);
                       };
 
                       return (
@@ -2040,41 +2040,144 @@ export default function PatientProfiles() {
                           </button>
 
                           {/* Inline SOAP viewer — signed and unsigned */}
+                          {isExpanded && !hasSoap && (
+                            <div className="border-t bg-muted/10 px-4 py-3 flex items-center gap-2 text-xs text-muted-foreground">
+                              <FileText className="w-3.5 h-3.5 flex-shrink-0" />
+                              <span>No SOAP note documented for this visit. Use the Encounters section to add clinical documentation.</span>
+                            </div>
+                          )}
                           {isExpanded && hasSoap && (
                             <div className="border-t bg-muted/10">
-                              {/* Banner — signed vs draft */}
+                              {/* Banner — signed vs draft + action buttons */}
                               {isSigned ? (
-                                <div className="flex items-center gap-2 px-4 py-2 border-b bg-emerald-50/60 text-xs text-emerald-700">
+                                <div className="flex items-center gap-2 px-4 py-2 border-b bg-emerald-50/60 text-xs text-emerald-700 flex-wrap">
                                   <Lock className="w-3 h-3 flex-shrink-0" />
-                                  <span>
+                                  <span className="flex-1 min-w-0">
                                     {enc.isAmended ? "Amended and signed" : "Electronically signed"}
                                     {enc.signedBy ? ` by ${enc.signedBy}` : ""}
                                     {enc.signedAt ? ` · ${new Date(enc.signedAt as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
                                   </span>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-2 text-xs text-muted-foreground gap-1"
+                                      disabled={pdfExportingEncounterId === enc.id}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        setPdfExportingEncounterId(enc.id);
+                                        try {
+                                          const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
+                                          await exportSoapPdf({
+                                            soapText,
+                                            patientName: `${selectedPatient?.firstName ?? ''} ${selectedPatient?.lastName ?? ''}`.trim(),
+                                            visitDate: enc.visitDate as unknown as string,
+                                            providerName: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
+                                            providerTitle: (user as any)?.title ?? '',
+                                            providerNpi: (user as any)?.npi ?? null,
+                                            clinicName: (user as any)?.clinicName ?? 'Clinic',
+                                            clinicAddress: (user as any)?.address ?? null,
+                                            clinicPhone: (user as any)?.phone ?? null,
+                                            clinicLogo: (user as any)?.clinicLogo ?? null,
+                                            signedAt: enc.signedAt as unknown as string,
+                                            signedBy: enc.signedBy ?? null,
+                                            signatureImage: (user as any)?.signatureImage ?? null,
+                                            isAmended: !!enc.isAmended,
+                                          });
+                                        } catch { } finally {
+                                          setPdfExportingEncounterId(null);
+                                        }
+                                      }}
+                                      data-testid={`button-print-pdf-encounter-${enc.id}`}
+                                    >
+                                      <FileDown className="w-3 h-3" />
+                                      {pdfExportingEncounterId === enc.id ? "Generating…" : "Print PDF"}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-2 text-xs text-amber-700 gap-1"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (confirm("Open this note for amendment? The current signed version will be preserved in the audit trail.")) {
+                                          apiRequest("POST", `/api/encounters/${enc.id}/amend`).then(() => {
+                                            setLocation(`/encounters?encounterId=${enc.id}`);
+                                          });
+                                        }
+                                      }}
+                                      data-testid={`button-amend-encounter-${enc.id}`}
+                                    >
+                                      <Pencil className="w-3 h-3" />
+                                      Amend
+                                    </Button>
+                                  </div>
                                 </div>
                               ) : (
-                                <div className="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60 text-xs text-amber-700">
+                                <div className="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60 text-xs text-amber-700 flex-wrap">
                                   <FileText className="w-3 h-3 flex-shrink-0" />
-                                  <span>Draft SOAP note — not yet signed</span>
-                                  <Button
-                                    size="sm"
-                                    variant="ghost"
-                                    className="ml-auto h-6 px-2 text-xs text-muted-foreground gap-1"
-                                    onClick={(e) => { e.stopPropagation(); setLocation(`/encounters?encounterId=${enc.id}`); }}
-                                    data-testid={`button-edit-encounter-${enc.id}`}
-                                  >
-                                    <ExternalLink className="w-3 h-3" />
-                                    Edit
-                                  </Button>
+                                  <span className="flex-1 min-w-0">Draft SOAP note — not yet signed</span>
+                                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-2 text-xs text-muted-foreground gap-1"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
+                                        navigator.clipboard.writeText(soapText).then(() => {
+                                          setCopiedEncounterId(enc.id);
+                                          setTimeout(() => setCopiedEncounterId(null), 2000);
+                                        });
+                                      }}
+                                      data-testid={`button-copy-encounter-${enc.id}`}
+                                    >
+                                      {copiedEncounterId === enc.id ? <><Check className="w-3 h-3" />Copied!</> : <><Copy className="w-3 h-3" />Copy Note</>}
+                                    </Button>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-6 px-2 text-xs text-muted-foreground gap-1"
+                                      disabled={pdfExportingEncounterId === enc.id}
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        setPdfExportingEncounterId(enc.id);
+                                        try {
+                                          const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
+                                          await exportSoapPdf({
+                                            soapText,
+                                            patientName: `${selectedPatient?.firstName ?? ''} ${selectedPatient?.lastName ?? ''}`.trim(),
+                                            visitDate: enc.visitDate as unknown as string,
+                                            providerName: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
+                                            providerTitle: (user as any)?.title ?? '',
+                                            providerNpi: (user as any)?.npi ?? null,
+                                            clinicName: (user as any)?.clinicName ?? 'Clinic',
+                                            clinicAddress: (user as any)?.address ?? null,
+                                            clinicPhone: (user as any)?.phone ?? null,
+                                            clinicLogo: (user as any)?.clinicLogo ?? null,
+                                            signedAt: null,
+                                            signedBy: null,
+                                            signatureImage: null,
+                                            isAmended: false,
+                                          });
+                                        } catch { } finally {
+                                          setPdfExportingEncounterId(null);
+                                        }
+                                      }}
+                                      data-testid={`button-print-pdf-draft-${enc.id}`}
+                                    >
+                                      <FileDown className="w-3 h-3" />
+                                      {pdfExportingEncounterId === enc.id ? "Generating…" : "Print PDF"}
+                                    </Button>
+                                  </div>
                                 </div>
                               )}
                               {/* SOAP note text */}
                               <div className="px-5 py-4 max-h-96 overflow-y-auto">
-                                <pre className="text-xs font-mono whitespace-pre-wrap leading-relaxed text-foreground/90">
+                                <p className="text-xs whitespace-pre-wrap leading-relaxed text-foreground/90 font-sans">
                                   {typeof enc.soapNote === 'string'
                                     ? enc.soapNote
                                     : (enc.soapNote as any)?.fullNote ?? JSON.stringify(enc.soapNote, null, 2)}
-                                </pre>
+                                </p>
                               </div>
                             </div>
                           )}

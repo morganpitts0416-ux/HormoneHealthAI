@@ -3139,22 +3139,24 @@ function EncounterEditor({
                     )}
                   </div>
                   <div className="flex gap-2 flex-wrap">
-                    <Button
-                      size="sm"
-                      variant="outline"
-                      data-testid="button-copy-soap"
-                      onClick={() => {
-                        const text = soap.fullNote ?? legacySoapToText(soap);
-                        navigator.clipboard.writeText(text).then(() => {
-                          setCopiedSoap(true);
-                          setTimeout(() => setCopiedSoap(false), 2000);
-                        });
-                      }}
-                    >
-                      {copiedSoap
-                        ? <><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />Copied!</>
-                        : <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Note</>}
-                    </Button>
+                    {!isSigned && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        data-testid="button-copy-soap"
+                        onClick={() => {
+                          const text = soap.fullNote ?? legacySoapToText(soap);
+                          navigator.clipboard.writeText(text).then(() => {
+                            setCopiedSoap(true);
+                            setTimeout(() => setCopiedSoap(false), 2000);
+                          });
+                        }}
+                      >
+                        {copiedSoap
+                          ? <><Check className="w-3.5 h-3.5 mr-1.5 text-emerald-600" />Copied!</>
+                          : <><Copy className="w-3.5 h-3.5 mr-1.5" />Copy Note</>}
+                      </Button>
+                    )}
                     <Button
                       size="sm"
                       variant="outline"
@@ -3192,15 +3194,17 @@ function EncounterEditor({
                         ? <><FileDown className="w-3.5 h-3.5 mr-1.5 animate-pulse" />Generating…</>
                         : <><FileDown className="w-3.5 h-3.5 mr-1.5" />Print PDF</>}
                     </Button>
-                    <Button
-                      size="sm"
-                      onClick={() => summaryMutation.mutate()}
-                      disabled={summaryMutation.isPending || !savedId}
-                      data-testid="button-generate-summary"
-                    >
-                      <Sparkles className="w-3.5 h-3.5 mr-1.5" />
-                      {summaryMutation.isPending ? "Generating..." : "Patient Summary"}
-                    </Button>
+                    {!isSigned && (
+                      <Button
+                        size="sm"
+                        onClick={() => summaryMutation.mutate()}
+                        disabled={summaryMutation.isPending || !savedId}
+                        data-testid="button-generate-summary"
+                      >
+                        <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                        {summaryMutation.isPending ? "Generating..." : "Patient Summary"}
+                      </Button>
+                    )}
                   </div>
                 </div>
 

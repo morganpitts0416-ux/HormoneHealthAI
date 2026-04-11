@@ -22,6 +22,32 @@ const MARGIN = 20;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const HEADER_GREEN = '#2e3a20';
 
+function sanitizeForPdf(text: string): string {
+  return text
+    .replace(/\u2013/g, '-')
+    .replace(/\u2014/g, '--')
+    .replace(/\u2018/g, "'")
+    .replace(/\u2019/g, "'")
+    .replace(/\u201C/g, '"')
+    .replace(/\u201D/g, '"')
+    .replace(/\u2026/g, '...')
+    .replace(/\u00A0/g, ' ')
+    .replace(/\u2022/g, '*')
+    .replace(/\u2265/g, '>=')
+    .replace(/\u2264/g, '<=')
+    .replace(/\u00B0/g, ' deg')
+    .replace(/\u00B5/g, 'u')
+    .replace(/\u03BC/g, 'u')
+    .replace(/\u00D7/g, 'x')
+    .replace(/\u00B1/g, '+/-')
+    .replace(/\u2012/g, '-')
+    .replace(/\u2015/g, '-')
+    .replace(/\u00BD/g, '1/2')
+    .replace(/\u00BC/g, '1/4')
+    .replace(/\u00BE/g, '3/4')
+    .replace(/[^\x00-\xFF]/g, ' ');
+}
+
 function wrapText(doc: jsPDF, text: string, x: number, y: number, maxWidth: number, lineHeight: number): number {
   const lines = doc.splitTextToSize(text, maxWidth);
   doc.text(lines, x, y);
@@ -121,7 +147,7 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   const LINE_H_BODY = 5;
   const LINE_H_MAJOR = 6;
 
-  const lines = (opts.soapText || '').split('\n');
+  const lines = sanitizeForPdf(opts.soapText || '').split('\n');
   const PAGE_H = 279.4;
   const FOOTER_RESERVE = opts.signedAt ? 40 : 20;
 
