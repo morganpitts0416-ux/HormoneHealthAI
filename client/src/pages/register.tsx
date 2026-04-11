@@ -244,18 +244,20 @@ export default function Register() {
   const [agreements, setAgreements] = useState({ terms: false, hipaa: false, clinical: false });
   const allAgreed = agreements.terms && agreements.hipaa && agreements.clinical;
 
-  // Stripe setup — only needed on payment step
+  // Stripe setup — load eagerly so it's ready when user reaches payment step
   const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
-  const { data: billingConfig } = useQuery<{ publishableKey: string }>({
+  const { data: billingConfig, isError: billingConfigError } = useQuery<{ publishableKey: string; configured: boolean }>({
     queryKey: ["/api/billing/config"],
-    enabled: registrationDone,
+    // No enabled guard — fetch on mount so Stripe is loaded before the user reaches step 5
+    retry: 3,
+    staleTime: 60_000,
   });
 
   useEffect(() => {
-    if (billingConfig?.publishableKey && !stripePromise) {
+    if (billingConfig?.publishableKey && billingConfig.configured && !stripePromise) {
       setStripePromise(loadStripe(billingConfig.publishableKey));
     }
-  }, [billingConfig, stripePromise]);
+  }, [billingConfig?.publishableKey, billingConfig?.configured]);
 
   // If someone manually navigates to /register on the marketing domain, send them to the app
   useEffect(() => {
@@ -691,6 +693,11 @@ export default function Register() {
                     <Elements stripe={stripePromise}>
                       <PaymentForm plan={plan} onSuccess={() => setLocation("/dashboard")} />
                     </Elements>
+                  ) : billingConfigError || (billingConfig && !billingConfig.configured) ? (
+                    <div className="py-8 text-center space-y-3">
+                      <p className="text-sm font-medium text-destructive">Payment system not configured.</p>
+                      <p className="text-xs text-muted-foreground">Please contact support or skip and configure billing later.</p>
+                    </div>
                   ) : (
                     <div className="py-8 text-center space-y-3">
                       <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
