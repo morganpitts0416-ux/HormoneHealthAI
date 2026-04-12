@@ -169,7 +169,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const [clinic] = await storageDb
               .select()
               .from(clinics)
-              .where(eq(clinics.ownerId, user.id))
+              .where(eq(clinics.ownerUserId, user.id))
               .limit(1);
             if (clinic) {
               await storageDb
