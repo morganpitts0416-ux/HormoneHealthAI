@@ -958,7 +958,56 @@ DO $$ BEGIN
 END $$;
 
 -- ════════════════════════════════════════════════════════════════════════════
--- SECTION R — SESSION TABLE (express-session / connect-pg-simple)
+-- SECTION R — CORE DATA TABLES (lab_results, saved_interpretations, appointments)
+-- ════════════════════════════════════════════════════════════════════════════
+-- These three tables are core to the original app and should already exist
+-- in production. Included here for completeness / safety net.
+
+CREATE TABLE IF NOT EXISTS lab_results (
+  id                     serial    PRIMARY KEY,
+  patient_id             integer   NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  lab_date               timestamp NOT NULL,
+  lab_values             jsonb     NOT NULL,
+  interpretation_result  jsonb,
+  notes                  text,
+  created_at             timestamp NOT NULL DEFAULT now(),
+  updated_at             timestamp NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS saved_interpretations (
+  id             serial       PRIMARY KEY,
+  user_id        integer      REFERENCES users(id) ON DELETE CASCADE,
+  patient_name   varchar(200) NOT NULL,
+  gender         varchar(10)  NOT NULL,
+  lab_date       timestamp    NOT NULL DEFAULT now(),
+  lab_values     jsonb        NOT NULL,
+  interpretation jsonb        NOT NULL,
+  created_at     timestamp    NOT NULL DEFAULT now()
+);
+
+CREATE TABLE IF NOT EXISTS appointments (
+  id                        serial       PRIMARY KEY,
+  user_id                   integer      NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  patient_id                integer      REFERENCES patients(id) ON DELETE SET NULL,
+  boulevard_appointment_id  varchar(255) NOT NULL,
+  patient_name              varchar(200) NOT NULL,
+  patient_email             varchar(255),
+  patient_phone             varchar(50),
+  service_type              varchar(255),
+  staff_name                varchar(200),
+  location_name             varchar(255),
+  appointment_start         timestamp    NOT NULL,
+  appointment_end           timestamp,
+  duration_minutes          integer,
+  status                    varchar(50)  NOT NULL DEFAULT 'scheduled',
+  notes                     text,
+  raw_payload               jsonb,
+  created_at                timestamp    NOT NULL DEFAULT now(),
+  updated_at                timestamp    NOT NULL DEFAULT now()
+);
+
+-- ════════════════════════════════════════════════════════════════════════════
+-- SECTION S — SESSION TABLE (express-session / connect-pg-simple)
 -- ════════════════════════════════════════════════════════════════════════════
 -- connect-pg-simple auto-creates this, but ensure it exists for safety
 
