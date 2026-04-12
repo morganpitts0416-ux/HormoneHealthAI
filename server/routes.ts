@@ -69,9 +69,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
   // Register
   app.post("/api/auth/register", async (req, res) => {
     try {
-      const { email, username, password, firstName, lastName, title, npi, clinicName, phone, address } = req.body;
+      const { email, username, password, firstName, lastName, title, npi, clinicName, phone, address, paymentMethodId, plan, promoCode } = req.body;
       if (!email || !username || !password || !firstName || !lastName || !title || !clinicName) {
         return res.status(400).json({ message: "All required fields must be provided" });
+      }
+      if (!paymentMethodId) {
+        return res.status(400).json({ message: "Payment method is required to create an account" });
       }
       const pwCheck = validatePasswordStrength(password);
       if (!pwCheck.valid) {
@@ -100,19 +103,99 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Bootstrap multi-clinic structure for every new signup.
-      // Solo plan: 1 clinic + 1 provider + admin membership.
-      // Upgrade to Clinic plan later requires only a maxProviders change.
       try {
         await setupClinicForNewUser(user);
       } catch (clinicErr) {
-        // Non-fatal: user is created and can log in; clinic setup can be
-        // retried later. Log but do not fail the registration response.
         console.error("setupClinicForNewUser failed for user", user.id, clinicErr);
       }
 
-      req.login(user, (err) => {
+      // ── Stripe: create customer, attach PM, create subscription ──
+      let updatedUser = user;
+      try {
+        const stripe = getStripe();
+
+        const customer = await stripe.customers.create({
+          email: user.email,
+          name: `${user.firstName} ${user.lastName}`,
+          metadata: { userId: String(user.id), clinicName: user.clinicName },
+        });
+
+        await stripe.paymentMethods.attach(paymentMethodId, { customer: customer.id });
+        await stripe.customers.update(customer.id, {
+          invoice_settings: { default_payment_method: paymentMethodId },
+        });
+
+        const selectedPlan = plan || "solo";
+        const SOLO_PRICE_ID = "price_1TJb7eKbgudErHaMxs1B2BzZ";
+        const SUITE_PRICE_ID = process.env.STRIPE_SUITE_PRICE_ID;
+        const priceId = selectedPlan === "suite" && SUITE_PRICE_ID ? SUITE_PRICE_ID : SOLO_PRICE_ID;
+
+        let promotionCodeId: string | undefined;
+        if (promoCode && selectedPlan === "solo") {
+          const promoCodes = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
+          if (promoCodes.data.length > 0) {
+            promotionCodeId = promoCodes.data[0].id;
+          }
+        }
+
+        const subParams: any = {
+          customer: customer.id,
+          items: [{ price: priceId }],
+          trial_period_days: 14,
+          payment_settings: {
+            payment_method_types: ["card"],
+            save_default_payment_method: "on_subscription",
+          },
+          expand: ["latest_invoice.payment_intent"],
+        };
+        if (promotionCodeId) {
+          subParams.discounts = [{ promotion_code: promotionCodeId }];
+        }
+        const subscription = await stripe.subscriptions.create(subParams);
+
+        const periodEnd = new Date((subscription as any).current_period_end * 1000);
+        const stripeData: any = {
+          stripeCustomerId: customer.id,
+          stripeSubscriptionId: subscription.id,
+          stripeCurrentPeriodEnd: periodEnd,
+          stripeCancelAtPeriodEnd: false,
+          subscriptionStatus: subscription.status === "trialing" ? "trial" : subscription.status,
+        };
+        const updated = await storage.updateUserStripe(user.id, stripeData);
+        if (updated) updatedUser = updated;
+
+        if (selectedPlan === "suite" && SUITE_PRICE_ID) {
+          try {
+            const [clinic] = await storageDb
+              .select()
+              .from(clinics)
+              .where(eq(clinics.ownerId, user.id))
+              .limit(1);
+            if (clinic) {
+              await storageDb
+                .update(clinics)
+                .set({
+                  subscriptionPlan: "suite",
+                  maxProviders: 10,
+                  baseProviderLimit: 3,
+                })
+                .where(eq(clinics.id, clinic.id));
+            }
+          } catch (clinicPlanErr) {
+            console.error("Suite clinic plan update failed:", clinicPlanErr);
+          }
+        }
+      } catch (stripeErr: any) {
+        console.error("[Register] Stripe setup failed for user", user.id, stripeErr);
+        return res.status(500).json({
+          message: "Payment setup failed. Your card was not charged. Please try again.",
+          billingError: stripeErr.message,
+        });
+      }
+
+      req.login(updatedUser, (err) => {
         if (err) return res.status(500).json({ message: "Login after registration failed" });
-        const { passwordHash: _ph, ...safeUser } = user;
+        const { passwordHash: _ph, ...safeUser } = updatedUser;
         res.status(201).json(safeUser);
       });
     } catch (error) {
@@ -5198,6 +5281,21 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     } catch (err) {
       console.error("[Billing] Status error:", err);
       res.status(500).json({ message: "Failed to load billing status" });
+    }
+  });
+
+  // POST /api/billing/guest-setup-intent — create a SetupIntent for pre-registration card collection (no auth)
+  app.post("/api/billing/guest-setup-intent", async (_req, res) => {
+    try {
+      const stripe = getStripe();
+      const setupIntent = await stripe.setupIntents.create({
+        payment_method_types: ["card"],
+        usage: "off_session",
+      });
+      res.json({ clientSecret: setupIntent.client_secret });
+    } catch (err: any) {
+      console.error("[Billing] Guest SetupIntent error:", err);
+      res.status(500).json({ message: err.message || "Failed to initialize payment setup" });
     }
   });
 
