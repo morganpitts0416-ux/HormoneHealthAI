@@ -1,0 +1,164 @@
+Fix the ClinIQ enrollment and billing flow. The current flow is incorrect because users can proceed into the app without first entering a payment method. I need the onboarding flow restructured so that payment collection happens before account creation is finalized, before the BAA is signed, and before the user can access the app.
+
+## Required enrollment order
+
+Implement this order exactly:
+
+### Step 1: Plan selection
+
+* User selects the plan they want
+* Show both available plans clearly
+* Each plan must use its correct Stripe product/price ID that is already configured
+* Show monthly price clearly
+* Show whether a 14-day free trial applies
+
+### Step 2: Payment method collection
+
+* Before the user can create a username/password or enter the app, collect a valid payment method through Stripe
+* This should be required even if the trial is free for 14 days
+* The goal is to place a card on file up front
+* Use Stripe in the proper trial flow so the user is not charged immediately if the trial is active, but the payment method is securely attached before proceeding
+* Do not allow the user to bypass this step
+
+### Step 3: Billing disclosure and consent
+
+Before payment submission is finalized, show clear billing language that the user must see and accept.
+
+Required disclosure content:
+
+* The user is starting a 14-day free trial
+* No charge is made today if the trial is active
+* The user’s payment method will be stored securely
+* The subscription will automatically convert to a paid monthly subscription at the end of the 14-day trial unless cancelled before the trial ends
+* The exact monthly amount for the selected plan must be shown
+* Show when the first charge will occur
+* State clearly that by continuing, the user agrees to automatic recurring monthly billing after the trial
+* State how they can cancel before the trial ends to avoid being charged
+
+Add a required checkbox such as:
+“I understand that my 14-day free trial will automatically convert to a paid monthly subscription unless I cancel before the trial ends.”
+
+The user must not be able to continue without checking this box.
+
+### Step 4: Account creation
+
+Only after payment method setup is successful:
+
+* allow the user to create username/password
+* create the user record
+* create the clinic record if applicable
+* attach the selected subscription metadata to the user/account
+
+### Step 5: Legal agreements
+
+Only after payment setup and account creation:
+
+* present the BAA
+* present any terms of service / privacy / subscription agreement if needed
+* store acceptance timestamps and version metadata
+
+### Step 6: App access
+
+Only after all required prior steps are complete:
+
+* payment method collected
+* trial/subscription created in Stripe correctly
+* account created
+* BAA accepted
+* then allow app entry
+
+## Functional requirements
+
+1. Users must not be able to access the app without a valid Stripe customer + subscription/trial setup.
+2. Users must not be able to skip payment method collection.
+3. Users must not be able to sign the BAA before payment setup is completed.
+4. Users must not be able to reach the dashboard if billing setup is incomplete.
+5. If Stripe setup fails, the flow must stop and show a clear error.
+6. If payment method setup succeeds but account creation fails, handle this safely and avoid orphaned or inconsistent records.
+7. The user’s selected plan must map to the correct Stripe price ID already configured in the app.
+8. Preserve support for the 14-day free trial.
+
+## Stripe implementation requirements
+
+Implement this using the correct Stripe subscription trial flow.
+
+Goal:
+
+* collect card up front
+* create customer if needed
+* attach payment method
+* create subscription with 14-day trial
+* do not charge immediately during trial if configured that way
+* store Stripe customer ID and Stripe subscription ID in the app database
+* store trial end / current period info
+* make billing state authoritative and consistent
+
+Important:
+
+* make sure this flow works for both plan options already configured
+* do not use a fake placeholder flow
+* do not allow an account to become fully active without Stripe success
+
+## UI requirements
+
+Update the enrollment UI so the user clearly understands what is happening.
+
+On the billing step:
+
+* show selected plan name
+* show monthly price
+* show “14-day free trial”
+* show “card required today, no charge until trial ends” if applicable
+* show automatic renewal language clearly
+* show trial end date estimate if possible
+* include required checkbox acknowledgment for recurring billing
+
+Add a short but clear billing disclaimer block such as:
+“You will not be charged today during your 14-day free trial. Your payment method is required to start the trial. Unless cancelled before the trial ends, your subscription will automatically renew at the listed monthly rate.”
+
+## Data and access control requirements
+
+* Add or verify a field/state that marks whether billing setup is complete
+* Add or verify a field/state that marks whether BAA is signed
+* Gate dashboard/app access based on:
+
+  * valid user
+  * billing setup complete
+  * subscription/trial present
+  * BAA signed if required
+
+If billing is incomplete, redirect the user back into the enrollment flow instead of allowing app access.
+
+## Error handling
+
+Add strong error handling for:
+
+* missing Stripe price ID
+* failed SetupIntent / payment method submission
+* failed subscription creation
+* failed customer creation
+* failed account creation after successful billing setup
+* partially completed onboarding state
+
+If any partial state is created, make it recoverable and explicit rather than silently letting the user in.
+
+## Copy updates
+
+Please add stronger language around the trial and recurring billing. I want the user to clearly understand:
+
+* this is a 14-day free trial
+* card is required to start
+* no charge today during the trial
+* automatic recurring monthly billing begins after the trial unless cancelled
+* cancellation must occur before the trial ends to avoid the first charge
+
+## What I want from you
+
+1. Inspect the current billing/onboarding flow.
+2. Identify exactly where users are being allowed to bypass payment collection.
+3. Fix the sequence so billing happens first.
+4. Ensure both configured plans use the correct Stripe price IDs.
+5. Update the UI copy and required billing consent language.
+6. Gate app access until billing + account creation + BAA are complete.
+7. Summarize exactly what files, routes, components, and guards you changed.
+8. Tell me how to test both plans end-to-end before deployment.

@@ -38,6 +38,7 @@ import TermsOfService from "@/pages/terms";
 import BusinessAssociateAgreement from "@/pages/baa";
 import HelpCenter from "@/pages/help";
 import { BaaGate } from "@/components/baa-gate";
+import { BillingGate } from "@/components/billing-gate";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
 import { GlobalLoadingProvider } from "@/hooks/use-global-loading";
 import { GlobalLoadingOverlay } from "@/components/global-loading-overlay";
@@ -49,6 +50,39 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
 
   useEffect(() => {
     // On the marketing domain, all app routes redirect to the app subdomain
+    if (isMarketingDomain()) {
+      window.location.href = appUrl(window.location.pathname);
+      return;
+    }
+    if (!isLoading && !user) {
+      setLocation("/login");
+    }
+  }, [user, isLoading, setLocation]);
+
+  if (isLoading) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background">
+        <div className="text-muted-foreground text-sm">Loading...</div>
+      </div>
+    );
+  }
+
+  if (!user) return null;
+  return (
+    <BillingGate>
+      <BaaGate>
+        <SessionTimeoutModal />
+        <Component />
+      </BaaGate>
+    </BillingGate>
+  );
+}
+
+function BillingExemptRoute({ component: Component }: { component: React.ComponentType }) {
+  const { user, isLoading } = useAuth();
+  const [, setLocation] = useLocation();
+
+  useEffect(() => {
     if (isMarketingDomain()) {
       window.location.href = appUrl(window.location.pathname);
       return;
@@ -157,7 +191,7 @@ function Router() {
         {() => <ProtectedRoute component={Dashboard} />}
       </Route>
       <Route path="/account">
-        {() => <ProtectedRoute component={Account} />}
+        {() => <BillingExemptRoute component={Account} />}
       </Route>
       <Route path="/male">
         {() => <ProtectedRoute component={LabInterpretation} />}
@@ -175,7 +209,7 @@ function Router() {
         {() => <ProtectedRoute component={AppointmentsPage} />}
       </Route>
       <Route path="/billing">
-        {() => <ProtectedRoute component={BillingPage} />}
+        {() => <BillingExemptRoute component={BillingPage} />}
       </Route>
       <Route path="/intake-forms">
         {() => <ProtectedRoute component={IntakeFormsPage} />}

@@ -19,7 +19,7 @@ import { Input } from "@/components/ui/input";
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { ChevronLeft, ChevronRight, CheckCircle2, Shield, CreditCard, Lock, Zap } from "lucide-react";
+import { ChevronLeft, ChevronRight, CheckCircle2, Shield, CreditCard, Lock, Zap, AlertCircle } from "lucide-react";
 import { PasswordStrengthIndicator } from "@/components/password-strength-indicator";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -36,9 +36,9 @@ const registerSchema = z.object({
   username: z.string().min(3, "Username must be at least 3 characters").regex(/^[a-zA-Z0-9._-]+$/, "Username can only contain letters, numbers, dots, hyphens, and underscores"),
   password: z.string()
     .min(8, "At least 8 characters")
-    .regex(/[A-Z]/, "At least one uppercase letter (A–Z)")
-    .regex(/[a-z]/, "At least one lowercase letter (a–z)")
-    .regex(/[0-9]/, "At least one number (0–9)")
+    .regex(/[A-Z]/, "At least one uppercase letter (A-Z)")
+    .regex(/[a-z]/, "At least one lowercase letter (a-z)")
+    .regex(/[0-9]/, "At least one number (0-9)")
     .regex(/[^A-Za-z0-9]/, "At least one special character (!@#$%^&*)"),
   confirmPassword: z.string().min(1, "Please confirm your password"),
 }).refine((data) => data.password === data.confirmPassword, {
@@ -51,39 +51,38 @@ type RegisterForm = z.infer<typeof registerSchema>;
 const TITLES = ["MD", "DO", "NP", "NP-C", "FNP-C", "APRN", "PA", "PA-C", "RN", "PharmD", "Other"];
 
 const STEPS = [
-  { label: "Choose Your Plan", description: "Select the plan that best fits your clinic" },
+  { label: "Plan", description: "Select the plan that best fits your clinic" },
   { label: "Personal Info", description: "Your name and credentials will appear on patient reports" },
   { label: "Clinic Info", description: "Your clinic name will appear on all patient-facing reports" },
+  { label: "Payment", description: "Set up your payment method to start your 14-day free trial" },
   { label: "Account Setup", description: "Choose a unique username and a strong password" },
-  { label: "Payment", description: "Start your 14-day free trial — no charge today" },
-  { label: "Agreement", description: "Review and accept our terms to complete your registration" },
+  { label: "Agreements", description: "Review terms and sign the Business Associate Agreement" },
 ];
 
 const STEP_FIELDS: (keyof RegisterForm)[][] = [
   [],
   ["firstName", "lastName", "title", "npi"],
   ["clinicName", "email", "phone", "address"],
-  ["username", "password", "confirmPassword"],
   [],
+  ["username", "password", "confirmPassword"],
   [],
 ];
 
-// ── Inline Stripe payment form (step 4) ─────────────────────────────────────
 function PaymentForm({
   plan,
   onSuccess,
 }: {
   plan: "solo" | "suite";
-  onSuccess: () => void;
+  onSuccess: (paymentMethodId: string, promoCode: string | null) => void;
 }) {
   const stripe = useStripe();
   const elements = useElements();
   const { toast } = useToast();
-  const qc = useQueryClient();
   const [ready, setReady] = useState(false);
   const [submitting, setSubmitting] = useState(false);
   const [promoCode, setPromoCode] = useState("");
   const [promoApplied, setPromoApplied] = useState(false);
+  const [billingConsent, setBillingConsent] = useState(false);
 
   function handlePromoCheck() {
     const code = promoCode.trim().toUpperCase();
@@ -96,14 +95,16 @@ function PaymentForm({
   }
 
   const monthlyRate = plan === "suite" ? "$249" : (promoApplied ? "$97" : "$149");
+  const trialEndDate = new Date(Date.now() + 14 * 864e5).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
-    if (!stripe || !elements) return;
+    if (!stripe || !elements || !billingConsent) return;
     setSubmitting(true);
     try {
-      const configRes = await apiRequest("POST", "/api/billing/create-setup-intent", {});
-      const { clientSecret } = await configRes.json();
+      const res = await fetch("/api/billing/guest-setup-intent", { method: "POST", headers: { "Content-Type": "application/json" } });
+      if (!res.ok) throw new Error("Failed to initialize payment setup");
+      const { clientSecret } = await res.json();
 
       const cardElement = elements.getElement(CardElement);
       if (!cardElement) return;
@@ -118,18 +119,11 @@ function PaymentForm({
       }
 
       if (setupIntent?.payment_method) {
-        const endpoint = plan === "suite" ? "/api/billing/subscribe-suite" : "/api/billing/subscribe";
-        const body: Record<string, unknown> = { paymentMethodId: setupIntent.payment_method };
-        if (plan === "solo" && promoApplied) body.promoCode = promoCode.trim().toUpperCase();
-        await apiRequest("POST", endpoint, body);
-        qc.invalidateQueries({ queryKey: ["/api/billing/status"] });
-        qc.invalidateQueries({ queryKey: ["/api/auth/me"] });
-        const label = plan === "suite" ? "ClinIQ Suite" : "Solo ClinIQ";
-        toast({ title: "Trial started!", description: `Your 14-day free trial of ${label} is active. You won't be charged until ${new Date(Date.now() + 14 * 864e5).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}.` });
-        onSuccess();
+        const appliedPromo = plan === "solo" && promoApplied ? promoCode.trim().toUpperCase() : null;
+        onSuccess(setupIntent.payment_method as string, appliedPromo);
       }
     } catch (err: any) {
-      toast({ title: "Error", description: err.message || "Something went wrong", variant: "destructive" });
+      toast({ title: "Payment setup failed", description: err.message || "Something went wrong", variant: "destructive" });
     } finally {
       setSubmitting(false);
     }
@@ -137,19 +131,17 @@ function PaymentForm({
 
   return (
     <form onSubmit={handleSubmit} className="space-y-5">
-      {/* Plan summary */}
       <div className="rounded-md p-4 space-y-2" style={{ backgroundColor: "#f4f8f0", border: "1px solid #c4d4a8" }}>
-        <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-1">
           <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>
             {plan === "suite" ? "ClinIQ Suite" : "Solo ClinIQ"}
           </span>
           <span className="text-sm font-bold" style={{ color: "#2e3a20" }}>{monthlyRate}/mo</span>
         </div>
         <div className="flex items-center gap-1.5">
-          <Zap className="w-3.5 h-3.5" style={{ color: "#5a7040" }} />
+          <Zap className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
           <span className="text-xs" style={{ color: "#4a5a38" }}>
-            14-day free trial — first charge on{" "}
-            <strong>{new Date(Date.now() + 14 * 864e5).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</strong>
+            14-day free trial — first charge on <strong>{trialEndDate}</strong>
           </span>
         </div>
         {plan === "solo" && (
@@ -157,7 +149,6 @@ function PaymentForm({
         )}
       </div>
 
-      {/* Promo code — Solo only */}
       {plan === "solo" && (
         <div className="space-y-1.5">
           <label className="text-xs font-medium text-muted-foreground">Promo code (optional)</label>
@@ -182,7 +173,6 @@ function PaymentForm({
         </div>
       )}
 
-      {/* Card element */}
       <div>
         <label className="text-xs font-medium text-muted-foreground block mb-1.5">Card details</label>
         <div className="rounded-md border p-3 bg-background focus-within:ring-2 focus-within:ring-ring">
@@ -202,32 +192,60 @@ function PaymentForm({
         </div>
       </div>
 
-      {/* Security note */}
       <p className="text-xs text-muted-foreground flex items-center gap-1.5">
         <Lock className="w-3 h-3 flex-shrink-0" />
-        Secured by Stripe. Your card will <strong>not</strong> be charged until after your 14-day trial ends.
+        Secured by Stripe. Card details are encrypted end-to-end.
       </p>
+
+      <div className="rounded-md p-3 space-y-2" style={{ backgroundColor: "#fdfcfb", border: "1px solid #d4c9b5" }}>
+        <p className="text-xs font-semibold" style={{ color: "#1c2414" }}>Billing Disclosure</p>
+        <ul className="text-xs space-y-1.5" style={{ color: "#3d4a30" }}>
+          <li>You are starting a <strong>14-day free trial</strong>. No charge is made today.</li>
+          <li>Your payment method will be stored securely by Stripe.</li>
+          <li>Your subscription will <strong>automatically convert</strong> to a paid monthly subscription of <strong>{monthlyRate}/month</strong> at the end of the 14-day trial unless cancelled.</li>
+          <li>Your first charge of <strong>{monthlyRate}</strong> will occur on <strong>{trialEndDate}</strong>.</li>
+          <li>After the trial, you will be billed <strong>{monthlyRate}</strong> each month on a recurring basis.</li>
+          <li>To avoid being charged, cancel before <strong>{trialEndDate}</strong> in your Account Settings.</li>
+        </ul>
+      </div>
+
+      <label className="flex items-start gap-3 cursor-pointer" data-testid="checkbox-billing-consent">
+        <div className="relative mt-0.5 flex-shrink-0">
+          <input
+            type="checkbox"
+            checked={billingConsent}
+            onChange={(e) => setBillingConsent(e.target.checked)}
+            className="sr-only"
+          />
+          <div
+            className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
+            style={{ borderColor: billingConsent ? "#2e3a20" : "#d4c9b5", backgroundColor: billingConsent ? "#2e3a20" : "white" }}
+          >
+            {billingConsent && (
+              <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
+                <path strokeLinecap="round" strokeLinejoin="round" d="M2 6l3 3 5-5" />
+              </svg>
+            )}
+          </div>
+        </div>
+        <span className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>
+          I understand that my 14-day free trial will automatically convert to a paid monthly subscription of {monthlyRate}/month unless I cancel before the trial ends.
+        </span>
+      </label>
 
       <Button
         type="submit"
         className="w-full"
-        disabled={!stripe || !ready || submitting}
-        data-testid="button-start-trial-payment"
+        disabled={!stripe || !ready || submitting || !billingConsent}
+        data-testid="button-confirm-payment"
         style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}
       >
-        {submitting
-          ? "Starting trial…"
-          : `Start 14-Day Free Trial`}
+        {submitting ? "Verifying card..." : "Confirm Payment Method"}
       </Button>
-
-      <p className="text-xs text-center text-muted-foreground">
-        Cancel anytime before {new Date(Date.now() + 14 * 864e5).toLocaleDateString("en-US", { month: "long", day: "numeric" })} and you won't be charged.
-      </p>
     </form>
   );
 }
 
-// ── Main Register page ───────────────────────────────────────────────────────
 export default function Register() {
   const { user, isLoading } = useAuth();
   const [, setLocation] = useLocation();
@@ -235,20 +253,21 @@ export default function Register() {
   const { toast } = useToast();
   const qc = useQueryClient();
 
-  // Parse ?plan= from URL; default to "solo" — user can change on step 0
   const rawPlan = new URLSearchParams(search).get("plan");
   const [plan, setPlan] = useState<"solo" | "suite">(rawPlan === "suite" ? "suite" : "solo");
 
   const [step, setStep] = useState(0);
   const [registrationDone, setRegistrationDone] = useState(false);
-  const [agreements, setAgreements] = useState({ terms: false, hipaa: false, clinical: false });
-  const allAgreed = agreements.terms && agreements.hipaa && agreements.clinical;
+  const [paymentMethodId, setPaymentMethodId] = useState<string | null>(null);
+  const [promoCode, setPromoCode] = useState<string | null>(null);
+  const [agreements, setAgreements] = useState({ terms: false, hipaa: false, clinical: false, billing: false });
+  const [baaScrolled, setBaaScrolled] = useState(false);
+  const [baaSignatureName, setBaaSignatureName] = useState("");
+  const allAgreed = agreements.terms && agreements.hipaa && agreements.clinical && agreements.billing;
 
-  // Stripe setup — load eagerly so it's ready when user reaches payment step
   const [stripePromise, setStripePromise] = useState<ReturnType<typeof loadStripe> | null>(null);
   const { data: billingConfig, isError: billingConfigError } = useQuery<{ publishableKey: string; configured: boolean }>({
     queryKey: ["/api/billing/config"],
-    // No enabled guard — fetch on mount so Stripe is loaded before the user reaches step 5
     retry: 3,
     staleTime: 60_000,
   });
@@ -259,14 +278,12 @@ export default function Register() {
     }
   }, [billingConfig?.publishableKey, billingConfig?.configured]);
 
-  // If someone manually navigates to /register on the marketing domain, send them to the app
   useEffect(() => {
     if (isMarketingDomain()) {
       window.location.href = appUrl(`/register?plan=${plan}`);
     }
   }, [plan]);
 
-  // Redirect already-logged-in users to dashboard (but not while on payment step)
   useEffect(() => {
     if (!isLoading && user && !registrationDone) {
       setLocation("/dashboard");
@@ -283,9 +300,8 @@ export default function Register() {
     mode: "onChange",
   });
 
-  // Local mutation — creates account and sets user in query cache WITHOUT redirecting
   const registerMutation = useMutation({
-    mutationFn: async (data: Omit<RegisterForm, "confirmPassword">) => {
+    mutationFn: async (data: Omit<RegisterForm, "confirmPassword"> & { paymentMethodId: string; plan: string; promoCode?: string }) => {
       const res = await apiRequest("POST", "/api/auth/register", data);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -294,36 +310,82 @@ export default function Register() {
       return res.json();
     },
     onSuccess: (data) => {
-      setRegistrationDone(true); // set FIRST to block the auth redirect effect
-      setStep(4);                // move to payment step
+      setRegistrationDone(true);
       qc.setQueryData(["/api/auth/me"], data);
+      const label = plan === "suite" ? "ClinIQ Suite" : "Solo ClinIQ";
+      toast({ title: "Account created!", description: `Your ${label} trial is active.` });
+      setStep(5);
     },
     onError: (error: any) => {
       toast({ title: "Registration failed", description: error?.message || "Please try again.", variant: "destructive" });
     },
   });
 
+  const baaMutation = useMutation({
+    mutationFn: async (signatureName: string) => {
+      const res = await apiRequest("POST", "/api/baa/sign", { signatureName });
+      if (!res.ok) throw new Error("Failed to sign BAA");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/baa/status"] });
+      toast({ title: "BAA signed", description: "Your Business Associate Agreement has been recorded." });
+      setLocation("/dashboard");
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Failed to record BAA signature. Please try again.", variant: "destructive" });
+    },
+  });
+
   const handleNext = async () => {
+    if (step === 3) return;
     const valid = await form.trigger(STEP_FIELDS[step]);
     if (!valid) return;
-    if (step === 3) {
-      // Step 3 → 4: create the account so the payment step can use auth
+    if (step === 4) {
+      if (!paymentMethodId) {
+        toast({ title: "Payment required", description: "Please complete payment setup first.", variant: "destructive" });
+        setStep(3);
+        return;
+      }
       const data = form.getValues();
       const { confirmPassword, ...payload } = data;
-      registerMutation.mutate(payload); // onSuccess moves to step 4
+      registerMutation.mutate({
+        ...payload,
+        paymentMethodId,
+        plan,
+        ...(promoCode ? { promoCode } : {}),
+      });
       return;
     }
     setStep((s) => Math.min(s + 1, STEPS.length - 1));
   };
 
-  const handleBack = () => setStep((s) => Math.max(s - 1, 0));
+  const handleBack = () => {
+    if (step === 4 && !paymentMethodId) {
+      setStep(3);
+      return;
+    }
+    setStep((s) => Math.max(s - 1, 0));
+  };
+
+  const handlePaymentSuccess = (pmId: string, appliedPromo: string | null) => {
+    setPaymentMethodId(pmId);
+    setPromoCode(appliedPromo);
+    toast({ title: "Card verified", description: "Your payment method has been confirmed. Continue to create your account." });
+    setStep(4);
+  };
+
+  const handleFinalSubmit = () => {
+    if (!allAgreed || !baaSignatureName.trim()) return;
+    baaMutation.mutate(baaSignatureName.trim());
+  };
 
   const planLabel = plan === "suite" ? "ClinIQ Suite — $249/mo" : "Solo ClinIQ — $149/mo";
   const planColor = plan === "suite" ? "#3d5228" : "#2e3a20";
+  const trialEndDate = new Date(Date.now() + 14 * 864e5).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 
   return (
     <div className="min-h-screen flex">
-      {/* Left brand panel */}
       <div
         className="hidden md:flex md:w-[38%] flex-col items-center justify-center p-12"
         style={{ backgroundColor: "#e8ddd0" }}
@@ -349,27 +411,30 @@ export default function Register() {
             ))}
           </div>
 
-          {/* Plan badge on left panel */}
           <div className="w-full rounded-lg p-4 text-left" style={{ backgroundColor: planColor }}>
             <p className="text-xs font-semibold uppercase tracking-wider mb-1" style={{ color: "#a0b880" }}>You're signing up for</p>
             <p className="text-base font-bold" style={{ color: "#f9f6f0" }}>{planLabel}</p>
-            <p className="text-xs mt-1" style={{ color: "#c4d4a8" }}>14-day free trial · No charge today</p>
+            <p className="text-xs mt-1" style={{ color: "#c4d4a8" }}>14-day free trial · Card required today</p>
             {plan === "solo" && (
               <p className="text-xs mt-0.5" style={{ color: "#a0b880" }}>Use <span className="font-mono font-semibold">FOUNDER50</span> for $97/mo</p>
             )}
           </div>
+
+          {paymentMethodId && (
+            <div className="w-full rounded-md p-3 flex items-center gap-2" style={{ backgroundColor: "#e0ebd0", border: "1px solid #b8cca0" }}>
+              <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
+              <span className="text-xs font-medium" style={{ color: "#2e3a20" }}>Payment method verified</span>
+            </div>
+          )}
         </div>
       </div>
 
-      {/* Right form panel */}
       <div className="flex-1 flex items-center justify-center p-8 bg-white overflow-y-auto">
         <div className="w-full max-w-md py-8">
-          {/* Mobile logo */}
           <div className="md:hidden flex justify-center mb-6" style={{ backgroundColor: "#e8ddd0", borderRadius: "12px", padding: "10px 20px" }}>
             <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-12 w-auto" style={{ mixBlendMode: "multiply" }} />
           </div>
 
-          {/* Mobile plan badge */}
           <div className="md:hidden rounded-md px-3 py-2 mb-4 flex items-center gap-2" style={{ backgroundColor: planColor }}>
             <CreditCard className="w-3.5 h-3.5" style={{ color: "#a0b880" }} />
             <span className="text-xs font-semibold" style={{ color: "#f9f6f0" }}>{planLabel} · 14-day free trial</span>
@@ -380,7 +445,6 @@ export default function Register() {
             <p className="text-sm mt-1 text-muted-foreground">Set up your ReAlign Health provider workspace</p>
           </div>
 
-          {/* Step indicator */}
           <div className="flex items-center mb-6">
             {STEPS.map((s, i) => (
               <div key={i} className="flex items-center flex-1">
@@ -417,12 +481,9 @@ export default function Register() {
               <CardDescription>{STEPS[step].description}</CardDescription>
             </CardHeader>
             <CardContent>
-              {/* Steps 0–3: registration form fields */}
-              {step < 4 && (
+              {step <= 2 && (
                 <Form {...form}>
                   <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
-
-                    {/* Step 0 — Choose Your Plan */}
                     {step === 0 && (
                       <div className="space-y-3">
                         {[
@@ -451,12 +512,12 @@ export default function Register() {
                               className="w-full text-left rounded-lg border-2 p-4 transition-colors"
                               style={{
                                 borderColor: selected ? planColor : "#d4c9b5",
-                                backgroundColor: selected ? (plan === "suite" ? "#f0f4eb" : "#f0f4eb") : "#fdfcfb",
+                                backgroundColor: selected ? "#f0f4eb" : "#fdfcfb",
                               }}
                             >
                               <div className="flex items-start justify-between gap-2">
                                 <div className="flex-1">
-                                  <div className="flex items-center gap-2 mb-0.5">
+                                  <div className="flex items-center gap-2 mb-0.5 flex-wrap">
                                     <span className="font-semibold text-sm" style={{ color: "#1c2414" }}>{p.name}</span>
                                     {selected && (
                                       <span className="text-xs font-medium px-2 py-0.5 rounded-full" style={{ backgroundColor: planColor, color: "#f9f6f0" }}>Selected</span>
@@ -481,11 +542,10 @@ export default function Register() {
                             </button>
                           );
                         })}
-                        <p className="text-xs text-center" style={{ color: "#6b7a5a" }}>14-day free trial — no credit card required until the end of your trial</p>
+                        <p className="text-xs text-center" style={{ color: "#6b7a5a" }}>14-day free trial · Card required to start</p>
                       </div>
                     )}
 
-                    {/* Step 1 — Personal Info */}
                     {step === 1 && (
                       <>
                         <div className="grid grid-cols-2 gap-3">
@@ -528,7 +588,6 @@ export default function Register() {
                       </>
                     )}
 
-                    {/* Step 2 — Clinic Info */}
                     {step === 2 && (
                       <>
                         <FormField control={form.control} name="clinicName" render={({ field }) => (
@@ -562,35 +621,6 @@ export default function Register() {
                       </>
                     )}
 
-                    {/* Step 3 — Account Setup */}
-                    {step === 3 && (
-                      <>
-                        <FormField control={form.control} name="username" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Username <span className="text-destructive">*</span></FormLabel>
-                            <FormControl><Input data-testid="input-username" placeholder="jane.smith" autoComplete="username" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name="password" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Password <span className="text-destructive">*</span></FormLabel>
-                            <FormControl><Input data-testid="input-password" type="password" placeholder="At least 8 characters" autoComplete="new-password" {...field} /></FormControl>
-                            <PasswordStrengthIndicator password={field.value || ""} />
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                        <FormField control={form.control} name="confirmPassword" render={({ field }) => (
-                          <FormItem>
-                            <FormLabel>Confirm Password <span className="text-destructive">*</span></FormLabel>
-                            <FormControl><Input data-testid="input-confirmPassword" type="password" placeholder="Re-enter your password" autoComplete="new-password" {...field} /></FormControl>
-                            <FormMessage />
-                          </FormItem>
-                        )} />
-                      </>
-                    )}
-
-                    {/* Navigation */}
                     <div className="flex gap-3 pt-2">
                       {step > 0 && (
                         <Button type="button" variant="outline" onClick={handleBack} className="flex-1" data-testid="button-back">
@@ -601,70 +631,114 @@ export default function Register() {
                         type="button"
                         onClick={handleNext}
                         className="flex-1"
-                        disabled={step === 3 && registerMutation.isPending}
                         data-testid="button-next"
-                        style={step === 3 ? { backgroundColor: planColor, color: "#f9f6f0" } : {}}
                       >
-                        {step === 3 && registerMutation.isPending
-                          ? "Creating account…"
-                          : step === 3
-                          ? <>Continue to Payment<ChevronRight className="w-4 h-4 ml-1" /></>
-                          : <>Continue<ChevronRight className="w-4 h-4 ml-1" /></>}
+                        Continue<ChevronRight className="w-4 h-4 ml-1" />
                       </Button>
                     </div>
                   </form>
                 </Form>
               )}
 
-              {/* Step 4 — Payment */}
-              {step === 4 && (
+              {step === 3 && (
                 <>
                   {stripePromise ? (
                     <Elements stripe={stripePromise}>
-                      <PaymentForm plan={plan} onSuccess={() => setStep(5)} />
+                      <PaymentForm plan={plan} onSuccess={handlePaymentSuccess} />
                     </Elements>
                   ) : billingConfigError || (billingConfig && !billingConfig.configured) ? (
                     <div className="py-8 text-center space-y-3">
+                      <AlertCircle className="w-8 h-8 mx-auto text-destructive" />
                       <p className="text-sm font-medium text-destructive">Payment system not configured.</p>
-                      <p className="text-xs text-muted-foreground">Please contact support or skip and configure billing later in Account Settings.</p>
+                      <p className="text-xs text-muted-foreground">Please contact support. Payment setup is required to create an account.</p>
                     </div>
                   ) : (
                     <div className="py-8 text-center space-y-3">
                       <div className="w-8 h-8 border-2 border-primary border-t-transparent rounded-full animate-spin mx-auto" />
-                      <p className="text-sm text-muted-foreground">Loading payment form…</p>
+                      <p className="text-sm text-muted-foreground">Loading payment form...</p>
                     </div>
                   )}
 
-                  <div className="mt-4 pt-4 border-t text-center">
-                    <p className="text-xs text-muted-foreground">
-                      Want to skip for now?{" "}
-                      <button
-                        className="font-medium hover:underline"
-                        style={{ color: "#2e3a20" }}
-                        onClick={() => setStep(5)}
-                        data-testid="link-skip-payment"
-                      >
-                        Continue to agreement
-                      </button>
-                      {" "}and set up billing later in Account Settings.
-                    </p>
-                  </div>
+                  {step === 3 && (
+                    <div className="mt-4 pt-4 border-t">
+                      <Button type="button" variant="outline" onClick={handleBack} className="w-full" data-testid="button-back-payment">
+                        <ChevronLeft className="w-4 h-4 mr-1" />Back
+                      </Button>
+                    </div>
+                  )}
                 </>
               )}
 
-              {/* Step 5 — Agreement (BAA) */}
+              {step === 4 && (
+                <Form {...form}>
+                  <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
+                    {paymentMethodId && (
+                      <div className="rounded-md p-3 flex items-center gap-2" style={{ backgroundColor: "#e0ebd0", border: "1px solid #b8cca0" }}>
+                        <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
+                        <span className="text-xs font-medium" style={{ color: "#2e3a20" }}>Payment method verified — card on file</span>
+                      </div>
+                    )}
+
+                    <FormField control={form.control} name="username" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Username <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input data-testid="input-username" placeholder="jane.smith" autoComplete="username" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="password" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Password <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input data-testid="input-password" type="password" placeholder="At least 8 characters" autoComplete="new-password" {...field} /></FormControl>
+                        <PasswordStrengthIndicator password={field.value || ""} />
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                    <FormField control={form.control} name="confirmPassword" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Confirm Password <span className="text-destructive">*</span></FormLabel>
+                        <FormControl><Input data-testid="input-confirmPassword" type="password" placeholder="Re-enter your password" autoComplete="new-password" {...field} /></FormControl>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+
+                    <div className="flex gap-3 pt-2">
+                      <Button type="button" variant="outline" onClick={handleBack} className="flex-1" data-testid="button-back">
+                        <ChevronLeft className="w-4 h-4 mr-1" />Back
+                      </Button>
+                      <Button
+                        type="button"
+                        onClick={handleNext}
+                        className="flex-1"
+                        disabled={registerMutation.isPending}
+                        data-testid="button-create-account"
+                        style={{ backgroundColor: planColor, color: "#f9f6f0" }}
+                      >
+                        {registerMutation.isPending ? "Creating account..." : "Create Account"}
+                      </Button>
+                    </div>
+                  </form>
+                </Form>
+              )}
+
               {step === 5 && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 mb-1">
                     <Shield className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
                     <span className="text-xs font-medium uppercase tracking-wider" style={{ color: "#2e3a20" }}>
-                      Terms &amp; Compliance
+                      Terms, Compliance &amp; BAA
                     </span>
                   </div>
 
                   <div
                     className="rounded-md border text-xs leading-relaxed overflow-y-auto space-y-4 p-4"
-                    style={{ maxHeight: "200px", borderColor: "#d4c9b5", backgroundColor: "#fdfcfb", color: "#3d4a30" }}
+                    style={{ maxHeight: "180px", borderColor: "#d4c9b5", backgroundColor: "#fdfcfb", color: "#3d4a30" }}
+                    onScroll={(e) => {
+                      const el = e.currentTarget;
+                      if (el.scrollHeight - el.scrollTop - el.clientHeight < 30) {
+                        setBaaScrolled(true);
+                      }
+                    }}
                   >
                     <div>
                       <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>Terms of Service</p>
@@ -684,13 +758,33 @@ export default function Register() {
                         ReAlign Health provides clinical decision support only. All interpretations, recommendations, risk scores, supplement suggestions, and AI-generated content are intended to assist — not replace — the independent clinical judgment of a licensed healthcare provider. You, as the treating clinician, remain solely and entirely responsible for all diagnostic, treatment, and care decisions made for your patients. ReAlign Health does not practice medicine, does not establish a provider-patient relationship, and is not liable for any clinical outcomes resulting from the use of or reliance on information generated by the platform. No output from ReAlign Health should be acted upon without independent clinical verification.
                       </p>
                     </div>
+                    <div>
+                      <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>Business Associate Agreement (BAA)</p>
+                      <p>
+                        This Business Associate Agreement ("Agreement") is entered into between you ("Covered Entity") and ReAlign Health, LLC ("Business Associate"). Business Associate agrees to: (a) not use or disclose Protected Health Information other than as permitted or required by this Agreement or as required by law; (b) use appropriate safeguards to prevent use or disclosure of PHI other than as provided for by this Agreement; (c) report to Covered Entity any use or disclosure of PHI not provided for by this Agreement; (d) ensure that any subcontractors that create, receive, maintain, or transmit PHI on behalf of Business Associate agree to the same restrictions and conditions; (e) make available PHI in accordance with the individual's rights as required under HIPAA; (f) make its internal practices available to the Secretary of HHS for purposes of determining compliance; (g) return or destroy all PHI at termination of the Agreement. This Agreement shall be in effect for the duration of the service relationship and shall survive termination to the extent necessary to protect PHI. Business Associate shall maintain audit controls and access logs as required by the HIPAA Security Rule.
+                      </p>
+                    </div>
+                    <div>
+                      <p className="font-semibold mb-1" style={{ color: "#1c2414" }}>Subscription Agreement</p>
+                      <p>
+                        By completing this enrollment, you agree to the subscription terms for your selected plan. Your 14-day free trial begins today. Your payment method on file will be automatically charged at the end of the trial period unless you cancel before the trial ends. After the trial, your subscription will renew automatically each month at the listed rate. You may cancel at any time from your Account Settings. Cancellation takes effect at the end of the current billing period. No refunds are provided for partial months.
+                      </p>
+                    </div>
                   </div>
+
+                  {!baaScrolled && (
+                    <p className="text-xs text-muted-foreground flex items-center gap-1.5">
+                      <AlertCircle className="w-3 h-3 flex-shrink-0" />
+                      Please scroll to the bottom to read the full agreement before signing.
+                    </p>
+                  )}
 
                   <div className="space-y-3 pt-1">
                     {[
                       { key: "terms" as const, label: "I have read and agree to the Terms of Service." },
                       { key: "hipaa" as const, label: "I acknowledge my HIPAA compliance responsibilities and will handle all patient data accordingly." },
                       { key: "clinical" as const, label: "I understand that ReAlign Health provides decision support only and that I remain solely responsible for all clinical decisions." },
+                      { key: "billing" as const, label: `I understand that my 14-day free trial will automatically convert to a paid monthly subscription unless I cancel before ${trialEndDate}.` },
                     ].map(({ key, label }) => (
                       <label key={key} className="flex items-start gap-3 cursor-pointer group" data-testid={`checkbox-agree-${key}`}>
                         <div className="relative mt-0.5 flex-shrink-0">
@@ -699,10 +793,15 @@ export default function Register() {
                             checked={agreements[key]}
                             onChange={(e) => setAgreements((prev) => ({ ...prev, [key]: e.target.checked }))}
                             className="sr-only"
+                            disabled={!baaScrolled}
                           />
                           <div
                             className="w-4 h-4 rounded border-2 flex items-center justify-center transition-colors"
-                            style={{ borderColor: agreements[key] ? "#2e3a20" : "#d4c9b5", backgroundColor: agreements[key] ? "#2e3a20" : "white" }}
+                            style={{
+                              borderColor: agreements[key] ? "#2e3a20" : "#d4c9b5",
+                              backgroundColor: agreements[key] ? "#2e3a20" : "white",
+                              opacity: baaScrolled ? 1 : 0.5,
+                            }}
                           >
                             {agreements[key] && (
                               <svg className="w-2.5 h-2.5 text-white" fill="none" viewBox="0 0 12 12" stroke="currentColor" strokeWidth={2.5}>
@@ -716,24 +815,36 @@ export default function Register() {
                     ))}
                   </div>
 
-                  {!allAgreed && (
-                    <p className="text-xs text-muted-foreground">Please check all three boxes above to enter your dashboard.</p>
+                  {allAgreed && (
+                    <div className="space-y-2 pt-2">
+                      <label className="text-xs font-medium" style={{ color: "#1c2414" }}>
+                        Electronic Signature — type your full legal name to sign the BAA
+                      </label>
+                      <Input
+                        value={baaSignatureName}
+                        onChange={(e) => setBaaSignatureName(e.target.value)}
+                        placeholder="Jane A. Smith, MD"
+                        data-testid="input-baa-signature"
+                        className="font-serif italic"
+                      />
+                    </div>
                   )}
 
                   <Button
                     className="w-full"
-                    disabled={!allAgreed}
-                    onClick={() => setLocation("/dashboard")}
-                    data-testid="button-enter-dashboard"
+                    disabled={!allAgreed || !baaSignatureName.trim() || baaMutation.isPending}
+                    onClick={handleFinalSubmit}
+                    data-testid="button-sign-enter"
                     style={{ backgroundColor: planColor, color: "#f9f6f0" }}
                   >
-                    <Zap className="w-4 h-4 mr-2" />
-                    Enter Dashboard
+                    {baaMutation.isPending ? "Signing..." : (
+                      <><Zap className="w-4 h-4 mr-2" />Sign BAA &amp; Enter Dashboard</>
+                    )}
                   </Button>
                 </div>
               )}
 
-              {step < 4 && (
+              {step < 3 && (
                 <div className="mt-4 text-center">
                   <p className="text-sm text-muted-foreground">
                     Already have an account?{" "}
