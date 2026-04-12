@@ -1,0 +1,145 @@
+Before I deploy any more updates, I need you to do a full production migration audit for ALL recent changes and make deployment safe against the REAL production database.
+
+## Goal
+
+I need a complete, production-safe migration plan that covers every schema-affecting update from the recent work, including but not limited to:
+
+* form builder
+* billing / trial / Stripe onboarding changes
+* BAA / onboarding gating changes
+* patient/profile field additions
+* any new tables, columns, indexes, constraints, relations, enums, or required defaults
+* any routes or UI code that now depend on database fields that may not exist yet in production
+
+## Critical requirement
+
+The live platform uses the REAL production database. Do not assume dev schema = production schema. I need you to explicitly compare the current codebase expectations to the production-safe schema requirements and identify every migration needed before deployment.
+
+## What I need from you
+
+Please do all of the following in order:
+
+### 1. Full schema inventory
+
+Inspect the current codebase and produce a complete inventory of all database requirements introduced by the recent updates.
+
+List:
+
+* every new table required
+* every new column on existing tables
+* every new index
+* every new foreign key
+* every new unique constraint
+* every enum or type addition
+* every nullable vs non-nullable expectation
+* every default value expectation
+* every route or code path that depends on those schema changes
+
+### 2. Migration risk review
+
+Separate the schema changes into:
+
+* safe additive changes
+* risky changes
+* destructive changes
+
+For each change, tell me whether it is:
+
+* safe to run in production immediately
+* requires data backfill
+* requires staged rollout
+* should not be run automatically
+
+### 3. Production-safe migration SQL
+
+Generate the exact SQL needed for the REAL production database.
+
+Rules:
+
+* use additive migrations whenever possible
+* use `CREATE TABLE IF NOT EXISTS`
+* use `ALTER TABLE ... ADD COLUMN IF NOT EXISTS`
+* use `CREATE INDEX IF NOT EXISTS`
+* avoid destructive operations
+* do not truncate tables
+* do not drop tables
+* do not drop primary keys
+* do not remove constraints unless absolutely necessary and explicitly explained
+* do not rely on blind `db:push` against production
+
+If any risky migration is truly required, isolate it and explain why, what it affects, and how to stage it safely.
+
+### 4. Deployment dependency map
+
+Tell me exactly which migrations must be applied before the new code can safely go live.
+
+I want a dependency map like:
+
+* migration A must run before deploy
+* migration B can run before or after deploy
+* route X depends on column Y
+* page Z depends on table Q
+
+### 5. App-level guards against missing schema
+
+Add defensive protections so the app does not crash hard in production if a migration has not been applied yet.
+
+Examples:
+
+* fail gracefully with a useful admin-facing error
+* do not expose a broken page if the backing table/column is missing
+* gate unfinished feature areas until schema is confirmed present
+
+### 6. Migration bundle output
+
+Give me the migration output in this format:
+
+#### A. Migration summary
+
+* concise summary of all required changes
+
+#### B. Safe SQL batch for production
+
+* a reviewed SQL script I can run in production
+
+#### C. Risky or staged changes
+
+* anything that should not be run blindly
+
+#### D. Deployment checklist
+
+* exact order:
+
+  1. run SQL
+  2. verify schema
+  3. run npm ci
+  4. run npm run build
+  5. run docker build
+  6. deploy to Cloud Run
+  7. verify app health
+
+#### E. Post-deploy verification checklist
+
+* list the exact pages and workflows I should test after deployment:
+
+  * plan selection
+  * trial/payment method flow
+  * BAA signing
+  * account creation gating
+  * login
+  * form builder
+  * form publish
+  * patient profile forms tab
+  * any new admin/billing screens
+
+## Important
+
+I need you to be thorough and not just give me partial delta migrations. I want a complete migration inventory for ALL recent changes that are not yet guaranteed to exist in production.
+
+Do not assume a migration is unnecessary just because it exists in local dev.
+
+Please start by summarizing:
+
+1. all schema changes detected,
+2. which ones are required before deployment,
+3. and then generate the full production-safe migration SQL.
