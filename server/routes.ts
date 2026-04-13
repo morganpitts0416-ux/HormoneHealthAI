@@ -1788,23 +1788,27 @@ Return ONLY this JSON structure:
       const users = await storage.getAllUsers();
       console.log(`[DEBUG] /api/admin/clinicians — found ${users.length} users`);
       const withCounts = await Promise.all(
-        users.map(async (u) => ({
-          id: u.id,
-          email: u.email,
-          username: u.username,
-          firstName: u.firstName,
-          lastName: u.lastName,
-          title: u.title,
-          clinicName: u.clinicName,
-          phone: u.phone,
-          npi: u.npi,
-          role: u.role,
-          subscriptionStatus: u.subscriptionStatus,
-          freeAccount: u.freeAccount,
-          notes: u.notes,
-          createdAt: u.createdAt,
-          patientCount: await storage.getPatientCountByUser(u.id),
-        }))
+        users.map(async (u) => {
+          let patientCount = 0;
+          try { patientCount = await storage.getPatientCountByUser(u.id); } catch {}
+          return {
+            id: u.id,
+            email: u.email,
+            username: u.username,
+            firstName: u.firstName,
+            lastName: u.lastName,
+            title: u.title,
+            clinicName: u.clinicName,
+            phone: u.phone,
+            npi: u.npi,
+            role: u.role,
+            subscriptionStatus: u.subscriptionStatus,
+            freeAccount: u.freeAccount,
+            notes: u.notes,
+            createdAt: u.createdAt,
+            patientCount,
+          };
+        })
       );
       res.json(withCounts);
     } catch (error) {
