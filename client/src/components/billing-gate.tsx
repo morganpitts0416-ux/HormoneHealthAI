@@ -69,10 +69,11 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
     );
   }
 
-  const hasValidBilling = billing.freeAccount || !!billing.stripeSubscriptionId;
+  const allowedStatuses = ["trial", "active", "trialing"];
+  const hasValidBilling = billing.freeAccount || (!!billing.stripeSubscriptionId && allowedStatuses.includes(billing.subscriptionStatus));
   const isCanceled = billing.subscriptionStatus === "canceled";
 
-  if (hasValidBilling && !isCanceled) {
+  if (hasValidBilling) {
     return <>{children}</>;
   }
 
