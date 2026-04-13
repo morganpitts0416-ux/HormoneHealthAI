@@ -347,6 +347,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
         clinicLogo, signatureImage,
       } = req.body;
 
+      // Prevent email change to an email already used by another account
+      if (email !== undefined && email) {
+        const existingUser = await storage.getUserByEmail(email.trim().toLowerCase());
+        if (existingUser && existingUser.id !== userId) {
+          return res.status(400).json({ message: "That email address is already associated with another account. Please use a different email." });
+        }
+      }
+
       // Validate base64 image sizes (max 2MB each)
       if (clinicLogo !== undefined && typeof clinicLogo === 'string' && clinicLogo.length > 2_800_000) {
         return res.status(400).json({ message: "Clinic logo file is too large (max 2MB)" });
