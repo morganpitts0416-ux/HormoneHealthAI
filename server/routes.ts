@@ -129,9 +129,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
         let promotionCodeId: string | undefined;
         if (promoCode) {
-          const promoCodes = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
-          if (promoCodes.data.length > 0) {
-            promotionCodeId = promoCodes.data[0].id;
+          if (promoCode.startsWith("promo_")) {
+            // Caller provided a Stripe promotion code ID directly
+            promotionCodeId = promoCode;
+          } else {
+            const promoCodes = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
+            if (promoCodes.data.length > 0) {
+              promotionCodeId = promoCodes.data[0].id;
+            }
           }
         }
 
@@ -5861,11 +5866,16 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       // Resolve promo code → promotion_code ID if provided
       let promotionCodeId: string | undefined;
       if (promoCode) {
-        const promoCodes = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
-        if (promoCodes.data.length > 0) {
-          promotionCodeId = promoCodes.data[0].id;
+        if (promoCode.startsWith("promo_")) {
+          // Caller provided a Stripe promotion code ID directly
+          promotionCodeId = promoCode;
         } else {
-          return res.status(400).json({ message: `Promo code "${promoCode}" is not valid or has expired.` });
+          const promoCodes = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
+          if (promoCodes.data.length > 0) {
+            promotionCodeId = promoCodes.data[0].id;
+          } else {
+            return res.status(400).json({ message: `Promo code "${promoCode}" is not valid or has expired.` });
+          }
         }
       }
 
