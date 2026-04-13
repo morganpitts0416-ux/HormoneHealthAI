@@ -6,7 +6,7 @@ import path from "path";
 import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -43,6 +43,18 @@ function getClinicianId(req: Request): number {
   const sess = req.session as any;
   if (sess.staffClinicianId) return sess.staffClinicianId as number;
   return (req.user as any).id;
+}
+
+// Returns the effective clinic ID for patient visibility queries.
+// For clinicians: sourced from the user's defaultClinicId (set by setupClinicForNewUser).
+// For staff: sourced from staffClinicianClinicId stamped at staff login time.
+// Returns null when no clinic is configured (legacy solo accounts without setup).
+function getEffectiveClinicId(req: Request): number | null {
+  const sess = req.session as any;
+  if (sess.staffId) {
+    return (sess.staffClinicianClinicId as number | undefined) ?? null;
+  }
+  return (req.user as any)?.defaultClinicId ?? null;
 }
 
 // Allows both clinicians (passport) and staff (session.staffId) through.
@@ -260,6 +272,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
             const sess = req.session as any;
             sess.staffId = staff.id;
             sess.staffClinicianId = staff.clinicianId;
+            // Stamp the owning clinician's clinic so getEffectiveClinicId works for staff
+            try {
+              const clinician = await storage.getUserById(staff.clinicianId);
+              sess.staffClinicianClinicId = clinician?.defaultClinicId ?? null;
+            } catch { sess.staffClinicianClinicId = null; }
             return req.session.save((saveErr) => {
               if (saveErr) return next(saveErr);
               logAudit(req, { action: "LOGIN", clinicianId: staff.clinicianId, staffId: staff.id });
@@ -1275,7 +1292,8 @@ ${aiRecommendations}`;
   app.post("/api/patients", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const body = { ...req.body, userId: clinicianId };
+      const clinicId = getEffectiveClinicId(req);
+      const body = { ...req.body, userId: clinicianId, ...(clinicId ? { clinicId } : {}) };
       if (body.dateOfBirth && typeof body.dateOfBirth === "string") {
         body.dateOfBirth = new Date(body.dateOfBirth);
       }
@@ -1294,15 +1312,16 @@ ${aiRecommendations}`;
   app.get("/api/patients/search", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const q = (req.query.q as string) || '';
       const gender = req.query.gender as string | undefined;
-      console.log(`[DEBUG] /api/patients/search — clinicianId=${clinicianId}, userId=${(req.user as any)?.id}, role=${(req.user as any)?.role}, q="${q}"`);
+      console.log(`[DEBUG] /api/patients/search — clinicianId=${clinicianId}, clinicId=${clinicId}, q="${q}"`);
       if (!q || q.length < 1) {
-        const allPatients = await storage.getAllPatients(clinicianId);
-        console.log(`[DEBUG] /api/patients/search — returned ${allPatients.length} patients for clinicianId=${clinicianId}`);
+        const allPatients = await storage.getAllPatients(clinicianId, clinicId);
+        console.log(`[DEBUG] /api/patients/search — returned ${allPatients.length} patients for clinicId=${clinicId ?? 'legacy:'+clinicianId}`);
         return res.json(allPatients);
       }
-      const patients = await storage.searchPatients(q, clinicianId, gender);
+      const patients = await storage.searchPatients(q, clinicianId, gender, clinicId);
       res.json(patients);
     } catch (error) {
       console.error("Error searching patients:", error);
@@ -1313,8 +1332,9 @@ ${aiRecommendations}`;
   app.get("/api/patients/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const patient = await storage.getPatient(id, clinicianId);
+      const patient = await storage.getPatient(id, clinicianId, clinicId);
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
@@ -1330,9 +1350,10 @@ ${aiRecommendations}`;
   app.delete("/api/patients/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid patient ID" });
-      const deleted = await storage.deletePatient(id, clinicianId);
+      const deleted = await storage.deletePatient(id, clinicianId, clinicId);
       if (!deleted) return res.status(404).json({ error: "Patient not found" });
       res.json({ success: true });
     } catch (error) {
@@ -1344,6 +1365,7 @@ ${aiRecommendations}`;
   app.patch("/api/patients/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid patient ID" });
       const { firstName, lastName, email, dateOfBirth, phone } = req.body as {
@@ -1357,7 +1379,7 @@ ${aiRecommendations}`;
       if (dateOfBirth !== undefined) updates.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
       if (phone !== undefined) updates.phone = phone.trim() || null;
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No fields to update" });
-      const updated = await storage.updatePatient(id, updates as any, clinicianId);
+      const updated = await storage.updatePatient(id, updates as any, clinicianId, clinicId);
       if (!updated) return res.status(404).json({ error: "Patient not found" });
       res.json(updated);
     } catch (error) {
@@ -1369,8 +1391,9 @@ ${aiRecommendations}`;
   app.get("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const patient = await storage.getPatient(id, clinicianId);
+      const patient = await storage.getPatient(id, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ error: "Patient not found" });
       const labs = await storage.getLabResultsByPatient(id);
       res.json(labs);
@@ -1565,8 +1588,9 @@ Return ONLY this JSON structure:
   app.post("/api/patients/:id/trend-narrative", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const patient = await storage.getPatient(id, clinicianId);
+      const patient = await storage.getPatient(id, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ error: "Patient not found" });
 
       const { trendData, gender } = req.body;
@@ -1589,8 +1613,9 @@ Return ONLY this JSON structure:
   app.post("/api/patients/:id/labs", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
-      const patient = await storage.getPatient(patientId, clinicianId);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
@@ -1602,7 +1627,7 @@ Return ONLY this JSON structure:
         interpretationResult: bodyInterpretation as InterpretationResult,
         notes,
       } as InsertLabResult);
-      await storage.updatePatient(patientId, {}, clinicianId);
+      await storage.updatePatient(patientId, {}, clinicianId, clinicId);
       res.json(labResult);
     } catch (error) {
       console.error("Error saving patient labs:", error);
@@ -1854,9 +1879,9 @@ Return ONLY this JSON structure:
           .set({ subscriptionPlan: "suite", maxProviders: 10, baseProviderLimit: 2 })
           .where(eq(clinics.id, clinicId));
         await storageDb
-          .update(schema.users)
+          .update(usersTable)
           .set({ userType: "clinic_admin" })
-          .where(eq(schema.users.id, user.id));
+          .where(eq(usersTable.id, user.id));
       }
 
       // If a partner email was provided, link them to this clinic too
@@ -1886,9 +1911,9 @@ Return ONLY this JSON structure:
             });
             // Stamp clinic onto partner's user row
             await storageDb
-              .update(schema.users)
+              .update(usersTable)
               .set({ defaultClinicId: clinicId, userType: "provider", freeAccount: true, subscriptionStatus: "active" })
-              .where(eq(schema.users.id, partner.id));
+              .where(eq(usersTable.id, partner.id));
           }
         }
       }
@@ -1955,6 +1980,157 @@ Return ONLY this JSON structure:
     }
   });
 
+  // ══════════════════════════════════════════════════════════════════════════
+  // ADMIN — Clinic Management
+  // Tools for the ReAlign admin to create clinics, assign members, and run
+  // patient backfills without direct database access.
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // GET /api/admin/clinics — list all clinics with member/patient counts
+  app.get("/api/admin/clinics", requireAdmin, async (req, res) => {
+    try {
+      const clinics = await storage.getAllClinicsAdmin();
+      res.json(clinics);
+    } catch (error) {
+      console.error("[ADMIN] Error fetching clinics:", error);
+      res.status(500).json({ message: "Failed to fetch clinics" });
+    }
+  });
+
+  // POST /api/admin/clinics/setup — create a clinic for an existing user + optional backfill
+  // Body: { userId, clinicName?, plan?, partnerEmail?, backfillPatients? }
+  app.post("/api/admin/clinics/setup", requireAdmin, async (req, res) => {
+    try {
+      const { userId, clinicName, plan, partnerEmail, backfillPatients } = req.body;
+      if (!userId) return res.status(400).json({ message: "userId is required" });
+
+      const user = await storage.getUserById(parseInt(userId));
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      // Check if already has a clinic
+      if (user.defaultClinicId) {
+        return res.status(409).json({
+          message: "User already has a clinic configured",
+          existingClinicId: user.defaultClinicId,
+        });
+      }
+
+      // Create clinic + membership + provider profile
+      const overrideName = clinicName?.trim() || user.clinicName || `${user.firstName} ${user.lastName} Practice`;
+      (user as any).clinicName = overrideName;
+      const { clinicId, providerId } = await setupClinicForNewUser(user);
+
+      // Upgrade plan if requested
+      if (plan === "suite") {
+        await storageDb
+          .update(clinics)
+          .set({ subscriptionPlan: "suite", maxProviders: 10, baseProviderLimit: 2 })
+          .where(eq(clinics.id, clinicId));
+        await storageDb
+          .update(usersTable)
+          .set({ userType: "clinic_admin" })
+          .where(eq(usersTable.id, user.id));
+      }
+
+      // Link partner if email provided
+      let partnerLinked = false;
+      if (partnerEmail) {
+        const partner = await storage.getUserByEmail(partnerEmail.trim().toLowerCase());
+        if (partner) {
+          await storage.addUserToClinic(clinicId, partner.id, "provider");
+          await storageDb.insert(providersTable).values({
+            clinicId, userId: partner.id,
+            displayName: [partner.title, partner.firstName, partner.lastName].filter(Boolean).join(" "),
+            npi: (partner as any).npi ?? null,
+            isActive: true,
+          }).onConflictDoNothing();
+          await storageDb
+            .update(usersTable)
+            .set({ defaultClinicId: clinicId, userType: "provider", freeAccount: true, subscriptionStatus: "active" })
+            .where(eq(usersTable.id, partner.id));
+          partnerLinked = true;
+        }
+      }
+
+      // Backfill legacy patients to this clinic
+      let patientsMigrated = 0;
+      if (backfillPatients !== false) {
+        patientsMigrated = await storage.backfillPatientsToClinic(user.id, clinicId);
+        if (partnerEmail) {
+          const partner = await storage.getUserByEmail(partnerEmail.trim().toLowerCase());
+          if (partner) {
+            const extra = await storage.backfillPatientsToClinic(partner.id, clinicId);
+            patientsMigrated += extra;
+          }
+        }
+      }
+
+      res.status(201).json({
+        message: "Clinic created successfully",
+        clinicId,
+        providerId,
+        plan: plan || "solo",
+        partnerLinked,
+        patientsMigrated,
+      });
+    } catch (error) {
+      console.error("[ADMIN] Error setting up clinic:", error);
+      res.status(500).json({ message: "Failed to set up clinic" });
+    }
+  });
+
+  // POST /api/admin/clinics/:id/backfill — backfill patients for a specific user into a clinic
+  // Body: { userId }
+  app.post("/api/admin/clinics/:id/backfill", requireAdmin, async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.id);
+      const { userId } = req.body;
+      if (!userId || isNaN(clinicId)) return res.status(400).json({ message: "clinicId and userId are required" });
+      const count = await storage.backfillPatientsToClinic(parseInt(userId), clinicId);
+      res.json({ message: `Migrated ${count} patients to clinic ${clinicId}`, count });
+    } catch (error) {
+      console.error("[ADMIN] Error backfilling patients:", error);
+      res.status(500).json({ message: "Failed to backfill patients" });
+    }
+  });
+
+  // POST /api/admin/clinics/:id/members — add an existing user to a clinic
+  // Body: { userId, role? }
+  app.post("/api/admin/clinics/:id/members", requireAdmin, async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.id);
+      const { userId, role } = req.body;
+      if (!userId || isNaN(clinicId)) return res.status(400).json({ message: "clinicId and userId are required" });
+      const user = await storage.getUserById(parseInt(userId));
+      if (!user) return res.status(404).json({ message: "User not found" });
+      const membership = await storage.addUserToClinic(clinicId, parseInt(userId), role || "provider");
+      // Stamp the clinic onto the user's row
+      await storageDb
+        .update(usersTable)
+        .set({ defaultClinicId: clinicId, freeAccount: true, subscriptionStatus: "active" })
+        .where(eq(usersTable.id, parseInt(userId)));
+      // Backfill their patients too
+      const patientsMigrated = await storage.backfillPatientsToClinic(parseInt(userId), clinicId);
+      res.json({ message: "Member added", membership, patientsMigrated });
+    } catch (error) {
+      console.error("[ADMIN] Error adding clinic member:", error);
+      res.status(500).json({ message: "Failed to add clinic member" });
+    }
+  });
+
+  // GET /api/admin/clinics/:id/members — list members of a clinic
+  app.get("/api/admin/clinics/:id/members", requireAdmin, async (req, res) => {
+    try {
+      const clinicId = parseInt(req.params.id);
+      if (isNaN(clinicId)) return res.status(400).json({ message: "Invalid clinic ID" });
+      const members = await storage.getClinicMembers(clinicId);
+      res.json(members);
+    } catch (error) {
+      console.error("[ADMIN] Error fetching clinic members:", error);
+      res.status(500).json({ message: "Failed to fetch clinic members" });
+    }
+  });
+
   // ── Portal auth middleware ──────────────────────────────────────────────────
   function requirePortalAuth(req: Request, res: Response, next: NextFunction) {
     if ((req.session as any).portalPatientId) return next();
@@ -1970,11 +2146,12 @@ Return ONLY this JSON structure:
       const { email } = req.body;
       if (!email) return res.status(400).json({ message: "Patient email is required" });
 
-      const patient = await storage.getPatient(patientId, clinicianId);
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
 
       // Update patient email on record
-      await storage.updatePatient(patientId, { email }, clinicianId);
+      await storage.updatePatient(patientId, { email }, clinicianId, clinicId);
 
       // Check if portal account already exists
       let portalAccount = await storage.getPortalAccountByPatientId(patientId);
@@ -2245,8 +2422,9 @@ Return ONLY this JSON structure:
       const { patientId, labResultId, supplements, clinicianNotes, dietaryGuidance, labDate } = req.body;
       if (!patientId || !supplements) return res.status(400).json({ message: "patientId and supplements are required" });
 
-      // Verify clinician owns this patient
-      const patient = await storage.getPatient(parseInt(patientId), clinicianId);
+      // Verify clinician can access this patient (clinic-scoped)
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(parseInt(patientId), clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
 
       // Verify patient has a portal account
@@ -2409,8 +2587,9 @@ Return ONLY this JSON structure:
   app.get("/api/patients/:id/messages", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
-      const patient = await storage.getPatient(patientId, clinicianId);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       const messages = await storage.getPortalMessages(patientId);
       // Mark patient messages as read
@@ -2425,8 +2604,9 @@ Return ONLY this JSON structure:
   app.post("/api/patients/:id/messages", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
-      const patient = await storage.getPatient(patientId, clinicianId);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       const { content } = req.body;
       if (!content?.trim()) return res.status(400).json({ message: "Message content is required" });
@@ -2836,8 +3016,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.get("/api/patients/:id/supplement-orders", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
-      const patient = await storage.getPatient(patientId, clinicianId);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       const orders = await storage.getSupplementOrdersByClinicianPatient(clinicianId, patientId);
       res.json(orders);
@@ -2861,8 +3042,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.get("/api/patients/:id/messages/unread", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
-      const patient = await storage.getPatient(patientId, clinicianId);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ count: 0 });
       const cnt = await storage.getUnreadPortalMessageCount(patientId, 'clinician');
       res.json({ count: cnt });
@@ -6340,7 +6522,10 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       // Auto-link — or auto-create — patient record
       // Matching priority: 1) email  2) full name  3) create new (last resort)
       try {
-        const allPatients = await storage.getAllPatients(clinicianId);
+        // Resolve clinicId for this clinician (webhook uses URL-param clinicianId, not session)
+        const webhookUser = await storage.getUserById(clinicianId);
+        const webhookClinicId = webhookUser?.defaultClinicId ?? null;
+        const allPatients = await storage.getAllPatients(clinicianId, webhookClinicId);
 
         // ── 1. Email match ──────────────────────────────────────────────────
         const emailMatched = patientEmail
@@ -6368,7 +6553,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
           if (nameMatched) {
             // Found by name — update profile with email if it was missing
             if (patientEmail && !nameMatched.email) {
-              await storage.updatePatient(nameMatched.id, { email: patientEmail.toLowerCase() }, clinicianId);
+              await storage.updatePatient(nameMatched.id, { email: patientEmail.toLowerCase() }, clinicianId, webhookClinicId);
             }
             await storage.matchAppointmentToPatient(appt.id, nameMatched.id);
           } else if (patientEmail) {
@@ -6946,11 +7131,15 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
           // Match priority: email > (firstName + lastName + DOB) > create new
           let existing: any = null;
 
+          // Resolve clinic ID for this form's clinician (no req context here)
+          const formClinicianUser = await storage.getUserById(form.clinicianId);
+          const formClinicId = formClinicianUser?.defaultClinicId ?? null;
+
           if (email) {
-            existing = await storage.getPatientByEmail?.(email, form.clinicianId) ?? null;
+            existing = await storage.getPatientByEmail?.(email, form.clinicianId, formClinicId) ?? null;
           }
           if (!existing && dobRaw) {
-            const candidate = await storage.getPatientByName(firstName, lastName, form.clinicianId);
+            const candidate = await storage.getPatientByName(firstName, lastName, form.clinicianId, formClinicId);
             if (candidate && candidate.dateOfBirth) {
               const candidateDob = new Date(candidate.dateOfBirth as any).toISOString().split("T")[0];
               const submittedDob = new Date(dobRaw).toISOString().split("T")[0];
@@ -6968,11 +7157,12 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
             if (!existing.phone && phone) updates.phone = phone;
             if (!existing.preferredPharmacy && preferredPharmacy) updates.preferredPharmacy = preferredPharmacy;
             if (Object.keys(updates).length > 0) {
-              await storage.updatePatient(existing.id, updates, form.clinicianId);
+              await storage.updatePatient(existing.id, updates, form.clinicianId, formClinicId);
             }
           } else {
             const created = await storage.createPatient({
               userId: form.clinicianId,
+              ...(formClinicId ? { clinicId: formClinicId } : {}),
               firstName,
               lastName,
               dateOfBirth: dobRaw ? new Date(dobRaw) : null,
@@ -7278,7 +7468,8 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       const form = await storage.getIntakeFormById(submission.formId);
       if (!form || form.clinicianId !== clinicianId) return res.status(403).json({ message: "Not authorized" });
 
-      const patient = await storage.getPatient(parseInt(patientId), clinicianId);
+      const clinicId2 = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(parseInt(patientId), clinicianId, clinicId2);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
 
       const updated = await storage.updateFormSubmission(submissionId, {
@@ -7296,6 +7487,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.post("/api/patients/merge", requireClinicianOnly, async (req: any, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const { keepId, discardId } = req.body;
       if (!keepId || !discardId) return res.status(400).json({ message: "keepId and discardId are required" });
       const parsedKeepId = parseInt(keepId);
@@ -7303,8 +7495,8 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       if (isNaN(parsedKeepId) || isNaN(parsedDiscardId)) return res.status(400).json({ message: "Invalid patient IDs" });
       if (parsedKeepId === parsedDiscardId) return res.status(400).json({ message: "Cannot merge a patient with itself" });
 
-      const keepPatient = await storage.getPatient(parsedKeepId, clinicianId);
-      const discardPatient = await storage.getPatient(parsedDiscardId, clinicianId);
+      const keepPatient = await storage.getPatient(parsedKeepId, clinicianId, clinicId);
+      const discardPatient = await storage.getPatient(parsedDiscardId, clinicianId, clinicId);
       if (!keepPatient) return res.status(404).json({ message: "Keep patient not found" });
       if (!discardPatient) return res.status(404).json({ message: "Discard patient not found" });
 
@@ -7314,7 +7506,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       if (!keepPatient.phone && discardPatient.phone) updates.phone = discardPatient.phone;
       if (!keepPatient.dateOfBirth && discardPatient.dateOfBirth) updates.dateOfBirth = discardPatient.dateOfBirth;
       if (Object.keys(updates).length > 0) {
-        await storage.updatePatient(keepPatient.id, updates, clinicianId);
+        await storage.updatePatient(keepPatient.id, updates, clinicianId, clinicId);
       }
 
       // Transfer lab results
@@ -7361,7 +7553,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       }
 
       // Delete the discard patient
-      await storage.deletePatient(discardPatient.id, clinicianId);
+      await storage.deletePatient(discardPatient.id, clinicianId, clinicId);
 
       res.json({ success: true, keptPatientId: keepPatient.id, mergedFrom: discardPatient.id });
     } catch (err: any) {
