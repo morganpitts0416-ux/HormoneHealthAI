@@ -18,7 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   FileText, Plus, Settings, Trash2, Copy, Eye, Link2, ChevronDown, ChevronUp,
   ClipboardList, CheckCircle2, Clock, AlertCircle, GripVertical, Tag,
-  LayoutList, Edit3, Globe, Send, RefreshCw, Inbox
+  LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -58,6 +58,7 @@ interface FormField {
   formId: number;
   sectionId: number | null;
   fieldKey: string;
+  smartFieldKey: string | null;
   label: string;
   fieldType: string;
   helpText: string | null;
@@ -122,6 +123,39 @@ const CATEGORIES = [
   { value: "symptom_survey", label: "Symptom Survey" },
 ];
 
+interface SmartFieldDef {
+  key: string;
+  label: string;
+  fieldType: string;
+  placeholder: string;
+  category: "demographics" | "clinical";
+  syncTarget: string;
+  helpText?: string;
+  optionsJson?: string[];
+  isRequired?: boolean;
+}
+
+const SMART_FIELDS: SmartFieldDef[] = [
+  { key: "patient_first_name", label: "First Name", fieldType: "short_text", placeholder: "First name", category: "demographics", syncTarget: "patient.firstName", isRequired: true },
+  { key: "patient_last_name", label: "Last Name", fieldType: "short_text", placeholder: "Last name", category: "demographics", syncTarget: "patient.lastName", isRequired: true },
+  { key: "patient_dob", label: "Date of Birth", fieldType: "date", placeholder: "MM/DD/YYYY", category: "demographics", syncTarget: "patient.dateOfBirth" },
+  { key: "patient_gender", label: "Gender", fieldType: "dropdown", placeholder: "Select gender", category: "demographics", syncTarget: "patient.gender", optionsJson: ["Male", "Female", "Non-binary", "Other", "Prefer not to say"] },
+  { key: "patient_email", label: "Email Address", fieldType: "email", placeholder: "patient@example.com", category: "demographics", syncTarget: "patient.email" },
+  { key: "patient_phone", label: "Phone Number", fieldType: "phone", placeholder: "(555) 000-0000", category: "demographics", syncTarget: "patient.phone" },
+  { key: "patient_address", label: "Address", fieldType: "short_text", placeholder: "Street, City, State ZIP", category: "demographics", syncTarget: "patient.address" },
+  { key: "current_medications", label: "Current Medications", fieldType: "medication_list", placeholder: "List each medication, dosage, and frequency", category: "clinical", syncTarget: "chart.currentMedications", helpText: "Enter each medication on a new line" },
+  { key: "allergies", label: "Allergies", fieldType: "long_text", placeholder: "List any known allergies (medications, foods, environmental)", category: "clinical", syncTarget: "chart.allergies", helpText: "Include the type of reaction if known" },
+  { key: "medical_history", label: "Medical History", fieldType: "long_text", placeholder: "List any past or current medical conditions", category: "clinical", syncTarget: "chart.medicalHistory", helpText: "Include diagnoses, chronic conditions, and hospitalizations" },
+  { key: "surgical_history", label: "Surgical History", fieldType: "long_text", placeholder: "List any past surgeries with approximate dates", category: "clinical", syncTarget: "chart.surgicalHistory" },
+  { key: "family_history", label: "Family History", fieldType: "long_text", placeholder: "List significant family medical history", category: "clinical", syncTarget: "chart.familyHistory", helpText: "Include relationship and condition (e.g., Mother - Diabetes)" },
+  { key: "social_history", label: "Social History", fieldType: "long_text", placeholder: "Tobacco, alcohol, exercise, occupation, etc.", category: "clinical", syncTarget: "chart.socialHistory" },
+];
+
+const SMART_FIELD_CATEGORIES = [
+  { key: "demographics", label: "Demographics", description: "Auto-link to patient profile" },
+  { key: "clinical", label: "Clinical History", description: "Auto-link to patient chart" },
+];
+
 const STATUS_COLORS: Record<string, string> = {
   draft: "bg-amber-100 text-amber-800 dark:bg-amber-900/30 dark:text-amber-300",
   active: "bg-green-100 text-green-800 dark:bg-green-900/30 dark:text-green-300",
@@ -129,6 +163,69 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 // ─── Form List Page ───────────────────────────────────────────────────────────
+
+function SmartFieldPalette({ existingSmartKeys, onAdd }: {
+  existingSmartKeys: string[];
+  onAdd: (sf: SmartFieldDef) => void;
+}) {
+  const [open, setOpen] = useState(false);
+
+  if (!open) {
+    return (
+      <Button
+        size="sm"
+        variant="outline"
+        className="w-full text-xs"
+        onClick={() => setOpen(true)}
+        data-testid="button-open-smart-fields"
+      >
+        <Zap className="h-3.5 w-3.5 mr-1.5 text-blue-500" />
+        Add Smart Field
+      </Button>
+    );
+  }
+
+  return (
+    <div className="rounded-md border bg-blue-50/50 dark:bg-blue-950/20 p-2 space-y-2">
+      <div className="flex items-center justify-between">
+        <span className="text-xs font-semibold text-blue-700 dark:text-blue-300 flex items-center gap-1">
+          <Zap className="h-3 w-3" /> Smart Fields
+        </span>
+        <button onClick={() => setOpen(false)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
+      </div>
+      {SMART_FIELD_CATEGORIES.map(cat => {
+        const fields = SMART_FIELDS.filter(f => f.category === cat.key);
+        return (
+          <div key={cat.key}>
+            <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground mb-1">{cat.label}</p>
+            <div className="space-y-0.5">
+              {fields.map(sf => {
+                const alreadyAdded = existingSmartKeys.includes(sf.key);
+                return (
+                  <button
+                    key={sf.key}
+                    disabled={alreadyAdded}
+                    onClick={() => { onAdd(sf); }}
+                    className={`w-full text-left px-2 py-1.5 rounded text-xs flex items-center gap-2 transition-colors ${
+                      alreadyAdded
+                        ? "opacity-40 cursor-not-allowed"
+                        : "hover:bg-blue-100 dark:hover:bg-blue-900/30"
+                    }`}
+                    data-testid={`button-add-smart-${sf.key}`}
+                  >
+                    <Link2 className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                    <span className="flex-1">{sf.label}</span>
+                    {alreadyAdded && <CheckCircle2 className="h-3 w-3 text-green-500 flex-shrink-0" />}
+                  </button>
+                );
+              })}
+            </div>
+          </div>
+        );
+      })}
+    </div>
+  );
+}
 
 export default function IntakeFormsPage() {
   const [, setLocation] = useLocation();
@@ -490,6 +587,11 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
                   data-testid={`button-select-field-${field.id}`}>
                   <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
                   <span className="truncate flex-1">{field.label}</span>
+                  {field.smartFieldKey && (
+                    <span className="text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded px-1 flex-shrink-0" title="Smart field — auto-links to patient profile/chart">
+                      {SMART_FIELDS.find(s => s.key === field.smartFieldKey)?.category === "demographics" ? "ID" : "Rx"}
+                    </span>
+                  )}
                   {(field.layoutJson as any)?.columnWidth && (field.layoutJson as any).columnWidth !== "full" && (
                     <span className="text-[10px] text-muted-foreground bg-muted rounded px-1 flex-shrink-0">
                       {(field.layoutJson as any).columnWidth === "half" ? "1/2" : "1/3"}
@@ -500,7 +602,7 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
               ))}
             </div>
           </ScrollArea>
-          <div className="p-2 border-t">
+          <div className="p-2 border-t space-y-2">
             <Select
               value=""
               onValueChange={(type) => addFieldMutation.mutate({ fieldType: type, label: FIELD_TYPES.find(t => t.value === type)?.label ?? "New Field" })}>
@@ -514,6 +616,32 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
                 ))}
               </SelectContent>
             </Select>
+            <SmartFieldPalette
+              existingSmartKeys={(form?.fields ?? []).map(f => f.smartFieldKey).filter(Boolean) as string[]}
+              onAdd={(sf) => {
+                const syncDomain = sf.syncTarget.startsWith("chart.") ? sf.syncTarget.replace("chart.", "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "") : undefined;
+                const chartDomainMap: Record<string, string> = {
+                  "chart.currentMedications": "medications",
+                  "chart.allergies": "allergies",
+                  "chart.medicalHistory": "medical_history",
+                  "chart.surgicalHistory": "surgical_history",
+                  "chart.familyHistory": "family_history",
+                  "chart.socialHistory": "social_history",
+                };
+                addFieldMutation.mutate({
+                  fieldType: sf.fieldType,
+                  label: sf.label,
+                  smartFieldKey: sf.key,
+                  placeholder: sf.placeholder,
+                  helpText: sf.helpText || null,
+                  isRequired: sf.isRequired || false,
+                  optionsJson: sf.optionsJson || null,
+                  syncConfigJson: chartDomainMap[sf.syncTarget]
+                    ? { domain: chartDomainMap[sf.syncTarget], mode: "append", smartTarget: sf.syncTarget }
+                    : { domain: "none", smartTarget: sf.syncTarget },
+                });
+              }}
+            />
           </div>
         </div>
 
@@ -599,6 +727,8 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
     setColumnWidth((field.layoutJson as any)?.columnWidth ?? "full");
   }, [field.id]);
 
+  const smartDef = field.smartFieldKey ? SMART_FIELDS.find(s => s.key === field.smartFieldKey) : null;
+  const isSmart = !!smartDef;
   const hasOptions = ["single_choice", "multi_choice", "dropdown"].includes(local.fieldType);
 
   const handleSave = () => {
@@ -607,16 +737,20 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
       helpText: local.helpText,
       placeholder: local.placeholder,
       isRequired: local.isRequired,
-      fieldType: local.fieldType,
       layoutJson: { columnWidth },
     };
-    if (hasOptions) {
+    if (!isSmart) {
+      data.fieldType = local.fieldType;
+    }
+    if (hasOptions && !isSmart) {
       data.optionsJson = optionsText.split("\n").map(s => s.trim()).filter(Boolean);
     }
-    if (syncDomain && syncDomain !== "none") {
-      data.syncConfigJson = { domain: syncDomain, mode: "append" };
-    } else {
-      data.syncConfigJson = null;
+    if (!isSmart) {
+      if (syncDomain && syncDomain !== "none") {
+        data.syncConfigJson = { domain: syncDomain, mode: "append" };
+      } else {
+        data.syncConfigJson = null;
+      }
     }
     onUpdate(data);
   };
@@ -624,7 +758,15 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
   return (
     <div className="space-y-4 max-w-xl">
       <div className="flex items-center justify-between flex-wrap gap-2">
-        <h3 className="font-semibold">Edit Field</h3>
+        <div className="flex items-center gap-2">
+          <h3 className="font-semibold">Edit Field</h3>
+          {isSmart && (
+            <Badge variant="outline" className="text-[10px] py-0 h-5 border-blue-300 text-blue-700 dark:text-blue-300">
+              <Zap className="h-2.5 w-2.5 mr-1" />
+              Smart Field
+            </Badge>
+          )}
+        </div>
         <Button size="sm" variant="ghost" className="text-destructive"
           onClick={() => { if (confirm("Delete this field?")) onDelete(); }}
           data-testid="button-delete-field">
@@ -632,20 +774,43 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
         </Button>
       </div>
 
-      <div className="space-y-3">
-        <div className="space-y-1.5">
-          <Label>Field Type</Label>
-          <Select
-            value={local.fieldType}
-            onValueChange={(v) => setLocal(prev => ({ ...prev, fieldType: v }))}>
-            <SelectTrigger data-testid="select-field-type">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {FIELD_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
+      {isSmart && (
+        <div className="rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3 space-y-1">
+          <p className="text-xs font-medium text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
+            <Link2 className="h-3.5 w-3.5" />
+            Auto-links to: {smartDef.syncTarget.startsWith("patient.") ? "Patient Profile" : "Patient Chart"} — {smartDef.syncTarget.split(".")[1]}
+          </p>
+          <p className="text-[11px] text-blue-600 dark:text-blue-400">
+            {smartDef.category === "demographics"
+              ? "This value will be used to identify or create the patient profile when the form is submitted."
+              : "This value will be automatically added to the patient's chart when the form submission is synced."}
+          </p>
         </div>
+      )}
+
+      <div className="space-y-3">
+        {!isSmart && (
+          <div className="space-y-1.5">
+            <Label>Field Type</Label>
+            <Select
+              value={local.fieldType}
+              onValueChange={(v) => setLocal(prev => ({ ...prev, fieldType: v }))}>
+              <SelectTrigger data-testid="select-field-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                {FIELD_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+              </SelectContent>
+            </Select>
+          </div>
+        )}
+
+        {isSmart && (
+          <div className="space-y-1.5">
+            <Label className="text-muted-foreground">Field Type</Label>
+            <Input value={FIELD_TYPES.find(t => t.value === local.fieldType)?.label ?? local.fieldType} disabled className="text-xs" />
+          </div>
+        )}
 
         <div className="space-y-1.5">
           <Label>Label / Question</Label>
@@ -677,7 +842,7 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
           </div>
         )}
 
-        {hasOptions && (
+        {hasOptions && !isSmart && (
           <div className="space-y-1.5">
             <Label>Options <span className="text-muted-foreground">(one per line)</span></Label>
             <Textarea
@@ -725,20 +890,23 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
           </div>
         </div>
 
-        <Separator />
-
-        <div className="space-y-1.5">
-          <Label>Sync to Patient Chart</Label>
-          <p className="text-xs text-muted-foreground">Automatically populate chart fields when a submission is synced</p>
-          <Select value={syncDomain} onValueChange={setSyncDomain}>
-            <SelectTrigger data-testid="select-sync-domain">
-              <SelectValue />
-            </SelectTrigger>
-            <SelectContent>
-              {SYNC_DOMAINS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
-            </SelectContent>
-          </Select>
-        </div>
+        {!isSmart && (
+          <>
+            <Separator />
+            <div className="space-y-1.5">
+              <Label>Sync to Patient Chart</Label>
+              <p className="text-xs text-muted-foreground">Automatically populate chart fields when a submission is synced</p>
+              <Select value={syncDomain} onValueChange={setSyncDomain}>
+                <SelectTrigger data-testid="select-sync-domain">
+                  <SelectValue />
+                </SelectTrigger>
+                <SelectContent>
+                  {SYNC_DOMAINS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
+                </SelectContent>
+              </Select>
+            </div>
+          </>
+        )}
       </div>
 
       <div className="pt-2">
@@ -830,6 +998,8 @@ interface Submission {
 function FormSubmissionsPanel({ formId }: { formId: number }) {
   const { toast } = useToast();
   const [selectedSub, setSelectedSub] = useState<number | null>(null);
+  const [reassignSubId, setReassignSubId] = useState<number | null>(null);
+  const [reassignSearch, setReassignSearch] = useState("");
 
   const { data: pending = [], isLoading } = useQuery<Submission[]>({
     queryKey: ["/api/form-submissions/pending"],
@@ -842,6 +1012,10 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
     queryKey: ["/api/form-submissions", selectedSub],
     queryFn: () => fetch(`/api/form-submissions/${selectedSub}`).then(r => r.json()),
     enabled: !!selectedSub,
+  });
+
+  const { data: patients = [] } = useQuery<any[]>({
+    queryKey: ["/api/patients"],
   });
 
   const syncMutation = useMutation({
@@ -862,6 +1036,26 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/form-submissions/pending"] });
     },
+  });
+
+  const reassignMutation = useMutation({
+    mutationFn: ({ subId, patientId }: { subId: number; patientId: number }) =>
+      apiRequest("PATCH", `/api/form-submissions/${subId}/reassign`, { patientId }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/form-submissions/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/form-submissions", reassignSubId] });
+      setReassignSubId(null);
+      setReassignSearch("");
+      toast({ title: "Submission reassigned" });
+    },
+    onError: () => toast({ title: "Reassignment failed", variant: "destructive" }),
+  });
+
+  const filteredPatients = patients.filter((p: any) => {
+    if (!reassignSearch) return true;
+    const search = reassignSearch.toLowerCase();
+    return `${p.firstName} ${p.lastName}`.toLowerCase().includes(search)
+      || (p.email ?? "").toLowerCase().includes(search);
   });
 
   if (isLoading) return <div className="flex items-center gap-2 text-muted-foreground text-sm py-6"><RefreshCw className="h-4 w-4 animate-spin" /> Loading...</div>;
@@ -913,6 +1107,11 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
                     <CheckCircle2 className="h-3.5 w-3.5 mr-1" /> Mark Reviewed
                   </Button>
                 )}
+                <Button size="sm" variant="outline"
+                  onClick={() => { setReassignSubId(sub.id); setReassignSearch(""); }}
+                  data-testid={`button-reassign-${sub.id}`}>
+                  <ArrowRightLeft className="h-3.5 w-3.5 mr-1" /> Reassign
+                </Button>
               </div>
             </div>
 
@@ -953,6 +1152,46 @@ function FormSubmissionsPanel({ formId }: { formId: number }) {
           </CardContent>
         </Card>
       ))}
+
+      <Dialog open={reassignSubId !== null} onOpenChange={(v) => { if (!v) { setReassignSubId(null); setReassignSearch(""); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Reassign Submission</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-2">
+            <p className="text-sm text-muted-foreground">Select a patient to reassign this submission to:</p>
+            <Input
+              placeholder="Search patients..."
+              value={reassignSearch}
+              onChange={e => setReassignSearch(e.target.value)}
+              data-testid="input-reassign-search"
+            />
+            <ScrollArea className="h-60">
+              <div className="space-y-1">
+                {filteredPatients.slice(0, 50).map((p: any) => (
+                  <button
+                    key={p.id}
+                    className="w-full text-left px-3 py-2 rounded-md text-sm flex items-center justify-between gap-2 hover:bg-muted transition-colors"
+                    onClick={() => {
+                      if (reassignSubId) reassignMutation.mutate({ subId: reassignSubId, patientId: p.id });
+                    }}
+                    data-testid={`button-reassign-patient-${p.id}`}
+                  >
+                    <div>
+                      <span className="font-medium">{p.firstName} {p.lastName}</span>
+                      {p.email && <span className="text-xs text-muted-foreground ml-2">{p.email}</span>}
+                    </div>
+                    <ArrowRightLeft className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                  </button>
+                ))}
+                {filteredPatients.length === 0 && (
+                  <p className="text-sm text-muted-foreground text-center py-4">No patients found</p>
+                )}
+              </div>
+            </ScrollArea>
+          </div>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -71,6 +71,7 @@ export interface IStorage {
   getAllPatients(userId: number): Promise<Patient[]>;
   searchPatients(searchTerm: string, userId: number, gender?: string): Promise<Patient[]>;
   getPatientByName(firstName: string, lastName: string, userId: number): Promise<Patient | undefined>;
+  getPatientByEmail(email: string, userId: number): Promise<Patient | undefined>;
   createPatient(patient: InsertPatient): Promise<Patient>;
   updatePatient(id: number, patient: Partial<InsertPatient>, userId: number): Promise<Patient | undefined>;
   deletePatient(id: number, userId: number): Promise<boolean>;
@@ -408,6 +409,19 @@ export class DbStorage implements IStorage {
         and(
           ilike(schema.patients.firstName, firstName),
           ilike(schema.patients.lastName, lastName),
+          eq(schema.patients.userId, userId)
+        )
+      );
+    return result[0];
+  }
+
+  async getPatientByEmail(email: string, userId: number): Promise<Patient | undefined> {
+    const result = await db
+      .select()
+      .from(schema.patients)
+      .where(
+        and(
+          ilike(schema.patients.email, email),
           eq(schema.patients.userId, userId)
         )
       );

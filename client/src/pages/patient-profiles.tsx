@@ -14,7 +14,7 @@ import {
   BarChart3, ClipboardList, Heart, Download, Trash2, Users,
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
-  ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine,
+  ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -1114,6 +1114,10 @@ export default function PatientProfiles() {
   const [savingSummaryId, setSavingSummaryId] = useState<number | null>(null);
   const [publishingSummaryId, setPublishingSummaryId] = useState<number | null>(null);
   const [listCollapsed, setListCollapsed] = useState(false);
+  const [showMergeDialog, setShowMergeDialog] = useState(false);
+  const [mergeKeepId, setMergeKeepId] = useState<number | null>(null);
+  const [mergeDiscardId, setMergeDiscardId] = useState<number | null>(null);
+  const [mergeSearch, setMergeSearch] = useState("");
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
 
@@ -1475,6 +1479,28 @@ export default function PatientProfiles() {
     },
   });
 
+  const mergePatientsMutation = useMutation({
+    mutationFn: async ({ keepId, discardId }: { keepId: number; discardId: number }) => {
+      const res = await apiRequest("POST", "/api/patients/merge", { keepId, discardId });
+      if (!res.ok) throw new Error("Merge failed");
+      return res.json();
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients/search', ''] });
+      queryClient.invalidateQueries({ queryKey: ['/api/patients'] });
+      setShowMergeDialog(false);
+      setMergeKeepId(null);
+      setMergeDiscardId(null);
+      setMergeSearch("");
+      const kept = allPatients.find(p => p.id === result.keptPatientId);
+      if (kept) setSelectedPatient(kept);
+      toast({ title: "Patients Merged", description: `All records consolidated into ${kept?.firstName ?? ""} ${kept?.lastName ?? ""}` });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Merge Failed", description: "Could not merge patients. Please try again." });
+    },
+  });
+
   const handleEditPatientOpen = () => {
     if (!selectedPatient) return;
     const dob = selectedPatient.dateOfBirth
@@ -1594,6 +1620,17 @@ export default function PatientProfiles() {
                 Women ({femaleCount})
               </Button>
             </div>
+            {allPatients.length >= 2 && (
+              <Button
+                size="sm"
+                variant="outline"
+                className="w-full text-xs"
+                onClick={() => { setShowMergeDialog(true); setMergeKeepId(null); setMergeDiscardId(null); setMergeSearch(""); }}
+                data-testid="button-open-merge"
+              >
+                <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" /> Merge Duplicate Patients
+              </Button>
+            )}
           </div>
 
           {/* Patient list */}
@@ -3031,6 +3068,81 @@ export default function PatientProfiles() {
           </DialogContent>
         </Dialog>
       )}
+
+      {/* Merge Patients Dialog */}
+      <Dialog open={showMergeDialog} onOpenChange={(v) => { if (!v) { setShowMergeDialog(false); setMergeKeepId(null); setMergeDiscardId(null); setMergeSearch(""); } }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>Merge Duplicate Patients</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-2">
+            <p className="text-sm text-muted-foreground">
+              Select two patient profiles to merge. All labs, encounters, submissions, and chart data from the discarded profile will be transferred to the kept profile.
+            </p>
+
+            <div className="space-y-1.5">
+              <Label>Keep (primary profile)</Label>
+              <select
+                value={mergeKeepId ?? ""}
+                onChange={e => setMergeKeepId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                data-testid="select-merge-keep"
+              >
+                <option value="">Select patient to keep...</option>
+                {allPatients.filter(p => p.id !== mergeDiscardId).map(p => (
+                  <option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.email ? ` (${p.email})` : ""}</option>
+                ))}
+              </select>
+            </div>
+
+            <div className="space-y-1.5">
+              <Label>Discard (merge into primary)</Label>
+              <select
+                value={mergeDiscardId ?? ""}
+                onChange={e => setMergeDiscardId(e.target.value ? Number(e.target.value) : null)}
+                className="w-full rounded-md border bg-background px-3 py-2 text-sm"
+                data-testid="select-merge-discard"
+              >
+                <option value="">Select patient to discard...</option>
+                {allPatients.filter(p => p.id !== mergeKeepId).map(p => (
+                  <option key={p.id} value={p.id}>{p.firstName} {p.lastName}{p.email ? ` (${p.email})` : ""}</option>
+                ))}
+              </select>
+            </div>
+
+            {mergeKeepId && mergeDiscardId && (
+              <div className="rounded-md border p-3 space-y-2 bg-amber-50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800">
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="h-4 w-4 text-amber-600 dark:text-amber-400 mt-0.5 flex-shrink-0" />
+                  <div className="text-xs space-y-1">
+                    <p className="font-medium text-amber-800 dark:text-amber-300">This action cannot be undone</p>
+                    <p className="text-amber-700 dark:text-amber-400">
+                      All records from <strong>{allPatients.find(p => p.id === mergeDiscardId)?.firstName} {allPatients.find(p => p.id === mergeDiscardId)?.lastName}</strong> will
+                      be transferred to <strong>{allPatients.find(p => p.id === mergeKeepId)?.firstName} {allPatients.find(p => p.id === mergeKeepId)?.lastName}</strong>,
+                      and the discarded profile will be permanently deleted.
+                    </p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setShowMergeDialog(false)} data-testid="button-cancel-merge">Cancel</Button>
+            <Button
+              variant="destructive"
+              disabled={!mergeKeepId || !mergeDiscardId || mergePatientsMutation.isPending}
+              onClick={() => {
+                if (mergeKeepId && mergeDiscardId) {
+                  mergePatientsMutation.mutate({ keepId: mergeKeepId, discardId: mergeDiscardId });
+                }
+              }}
+              data-testid="button-confirm-merge"
+            >
+              {mergePatientsMutation.isPending ? "Merging..." : "Merge Patients"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

@@ -1345,6 +1345,7 @@ export const formFields = pgTable("form_fields", {
   formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
   sectionId: integer("section_id").references(() => formSections.id, { onDelete: "set null" }),
   fieldKey: varchar("field_key", { length: 120 }).notNull(),
+  smartFieldKey: varchar("smart_field_key", { length: 60 }),
   label: text("label").notNull(),
   fieldType: varchar("field_type", { length: 40 }).notNull(),
   helpText: text("help_text"),
