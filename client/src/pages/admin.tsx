@@ -816,6 +816,60 @@ export default function AdminDashboard() {
                   <FormMessage />
                 </FormItem>
               )} />
+
+              {/* ── Plan & billing ── */}
+              <div className="border-t pt-4">
+                <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Plan & Billing</p>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField control={form.control} name="clinicPlan" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Clinic Plan</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger data-testid="select-create-clinicPlan"><SelectValue /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="solo">Solo</SelectItem>
+                          <SelectItem value="suite">Suite (Multi-Provider)</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="subscriptionStatus" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Subscription Status</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger><SelectValue /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          <SelectItem value="active">Active</SelectItem>
+                          <SelectItem value="trial">Trial</SelectItem>
+                          <SelectItem value="grandfathered">Grandfathered</SelectItem>
+                          <SelectItem value="suspended">Suspended</SelectItem>
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+                {form.watch("clinicPlan") === "suite" && (
+                  <div className="mt-3">
+                    <FormField control={form.control} name="partnerEmail" render={({ field }) => (
+                      <FormItem>
+                        <FormLabel>Partner Clinician Email <span className="text-muted-foreground font-normal text-xs">(optional — must already have an account)</span></FormLabel>
+                        <FormControl>
+                          <Input type="email" placeholder="partner@clinic.com" data-testid="input-create-partnerEmail" {...field} />
+                        </FormControl>
+                        <p className="text-xs text-muted-foreground mt-1">If the partner already has an account, they will be linked to this Suite clinic automatically.</p>
+                        <FormMessage />
+                      </FormItem>
+                    )} />
+                  </div>
+                )}
+              </div>
+
               <div className="grid grid-cols-2 gap-3">
                 <FormField control={form.control} name="email" render={({ field }) => (
                   <FormItem>
@@ -845,52 +899,6 @@ export default function AdminDashboard() {
                   Password will be set by the clinician via the invite link sent to their email.
                 </p>
               </div>
-              <div className="grid grid-cols-2 gap-3">
-                <FormField control={form.control} name="subscriptionStatus" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Subscription Status</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="active">Active</SelectItem>
-                        <SelectItem value="trial">Trial</SelectItem>
-                        <SelectItem value="grandfathered">Grandfathered</SelectItem>
-                        <SelectItem value="suspended">Suspended</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-                <FormField control={form.control} name="clinicPlan" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Clinic Plan</FormLabel>
-                    <Select onValueChange={field.onChange} value={field.value}>
-                      <FormControl>
-                        <SelectTrigger><SelectValue /></SelectTrigger>
-                      </FormControl>
-                      <SelectContent>
-                        <SelectItem value="solo">Solo</SelectItem>
-                        <SelectItem value="suite">Suite (Multi-Provider)</SelectItem>
-                      </SelectContent>
-                    </Select>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              </div>
-              {form.watch("clinicPlan") === "suite" && (
-                <FormField control={form.control} name="partnerEmail" render={({ field }) => (
-                  <FormItem>
-                    <FormLabel>Partner Clinician Email <span className="text-muted-foreground font-normal text-xs">(optional — must already have an account)</span></FormLabel>
-                    <FormControl>
-                      <Input type="email" placeholder="partner@clinic.com" data-testid="input-create-partnerEmail" {...field} />
-                    </FormControl>
-                    <p className="text-xs text-muted-foreground">If the partner already has an account, they will be linked to this Suite clinic automatically.</p>
-                    <FormMessage />
-                  </FormItem>
-                )} />
-              )}
               <FormField control={form.control} name="freeAccount" render={({ field }) => (
                 <FormItem>
                   <div className="flex items-start gap-3 rounded-md border p-3">
