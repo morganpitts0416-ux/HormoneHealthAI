@@ -128,7 +128,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         });
 
         let promotionCodeId: string | undefined;
-        if (promoCode && selectedPlan === "solo") {
+        if (promoCode) {
           const promoCodes = await stripe.promotionCodes.list({ code: promoCode, active: true, limit: 1 });
           if (promoCodes.data.length > 0) {
             promotionCodeId = promoCodes.data[0].id;

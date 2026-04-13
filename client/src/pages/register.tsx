@@ -88,11 +88,12 @@ function PersonalPaymentStep({
 
   function handlePromoCheck() {
     const code = promoCode.trim().toUpperCase();
+    if (!code) return;
+    setPromoApplied(true);
     if (code === "FOUNDER50") {
-      setPromoApplied(true);
-      toast({ title: "Promo code applied", description: "FOUNDER50 — your rate will be locked at $97/month." });
-    } else if (code) {
-      toast({ title: "Invalid code", description: "That promo code wasn't recognised.", variant: "destructive" });
+      toast({ title: "Promo code entered", description: "FOUNDER50 — your rate will be locked at $97/month." });
+    } else {
+      toast({ title: "Promo code entered", description: "Your code will be validated and applied at checkout." });
     }
   }
 
@@ -140,7 +141,7 @@ function PersonalPaymentStep({
       }
 
       if (setupIntent?.payment_method) {
-        const appliedPromo = plan === "solo" && promoApplied ? promoCode.trim().toUpperCase() : null;
+        const appliedPromo = promoApplied && promoCode.trim() ? promoCode.trim().toUpperCase() : null;
         onSuccess(setupIntent.payment_method as string, appliedPromo, billingPhone.trim(), billingAddress.trim());
       }
     } catch (err: any) {
@@ -232,7 +233,9 @@ function PersonalPaymentStep({
           </div>
           {promoApplied && (
             <p className="text-xs font-semibold" style={{ color: "#5a7040" }}>
-              FOUNDER50 applied — locked at $97/month
+              {promoCode.trim().toUpperCase() === "FOUNDER50"
+                ? "FOUNDER50 applied — locked at $97/month"
+                : `${promoCode.trim().toUpperCase()} entered — discount will be applied at checkout`}
             </p>
           )}
         </div>
