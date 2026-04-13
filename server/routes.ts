@@ -6791,7 +6791,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // GET /api/intake-forms — list templates
   app.get("/api/intake-forms", requireAuth, async (req: any, res) => {
     try {
-      const forms = await storage.getIntakeForms(req.user.id);
+      const forms = await storage.getIntakeForms(getClinicianId(req));
       res.json(forms);
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch forms" });
@@ -6804,7 +6804,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       const { name, description, category } = req.body;
       if (!name?.trim()) return res.status(400).json({ message: "Form name required" });
       const form = await storage.createIntakeForm({
-        clinicianId: req.user.id,
+        clinicianId: getClinicianId(req),
         name: name.trim(),
         description: description?.trim() ?? null,
         category: category ?? "custom",
@@ -6828,7 +6828,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.get("/api/intake-forms/:id", requireAuth, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
-      const form = await storage.getIntakeForm(id, req.user.id);
+      const form = await storage.getIntakeForm(id, getClinicianId(req));
       if (!form) return res.status(404).json({ message: "Form not found" });
       const [sections, fields, publications] = await Promise.all([
         storage.getFormSections(id),
@@ -6845,7 +6845,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.put("/api/intake-forms/:id", requireAuth, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
-      const updated = await storage.updateIntakeForm(id, req.user.id, req.body);
+      const updated = await storage.updateIntakeForm(id, getClinicianId(req), req.body);
       if (!updated) return res.status(404).json({ message: "Form not found" });
       res.json(updated);
     } catch (err) {
@@ -6857,7 +6857,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.delete("/api/intake-forms/:id", requireAuth, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
-      const updated = await storage.updateIntakeForm(id, req.user.id, { status: "archived" });
+      const updated = await storage.updateIntakeForm(id, getClinicianId(req), { status: "archived" });
       if (!updated) return res.status(404).json({ message: "Form not found" });
       res.json({ success: true });
     } catch (err) {
@@ -6869,7 +6869,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.post("/api/intake-forms/:id/duplicate", requireAuth, async (req: any, res) => {
     try {
       const id = parseInt(req.params.id);
-      const original = await storage.getIntakeForm(id, req.user.id);
+      const original = await storage.getIntakeForm(id, getClinicianId(req));
       if (!original) return res.status(404).json({ message: "Form not found" });
       const { id: _id, createdAt, updatedAt, ...rest } = original;
       const newForm = await storage.createIntakeForm({
@@ -6906,7 +6906,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.post("/api/intake-forms/:id/sections", requireAuth, async (req: any, res) => {
     try {
       const formId = parseInt(req.params.id);
-      const form = await storage.getIntakeForm(formId, req.user.id);
+      const form = await storage.getIntakeForm(formId, getClinicianId(req));
       if (!form) return res.status(404).json({ message: "Form not found" });
       const sections = await storage.getFormSections(formId);
       const section = await storage.createFormSection({
@@ -6949,7 +6949,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.post("/api/intake-forms/:id/fields", requireAuth, async (req: any, res) => {
     try {
       const formId = parseInt(req.params.id);
-      const form = await storage.getIntakeForm(formId, req.user.id);
+      const form = await storage.getIntakeForm(formId, getClinicianId(req));
       if (!form) return res.status(404).json({ message: "Form not found" });
       const existing = await storage.getFormFields(formId);
       const { fieldType = "short_text", label = "New Field", sectionId, ...rest } = req.body;
@@ -7022,7 +7022,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.post("/api/intake-forms/:id/publish", requireAuth, async (req: any, res) => {
     try {
       const formId = parseInt(req.params.id);
-      const form = await storage.getIntakeForm(formId, req.user.id);
+      const form = await storage.getIntakeForm(formId, getClinicianId(req));
       if (!form) return res.status(404).json({ message: "Form not found" });
       const { randomUUID } = await import("crypto");
       const token = randomUUID().replace(/-/g, "");
@@ -7034,7 +7034,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         expiresAt: req.body.expiresAt ? new Date(req.body.expiresAt) : null,
       });
       // Mark form as active
-      await storage.updateIntakeForm(formId, req.user.id, { status: "active" });
+      await storage.updateIntakeForm(formId, getClinicianId(req), { status: "active" });
       res.json(pub);
     } catch (err) {
       res.status(500).json({ message: "Failed to publish form" });

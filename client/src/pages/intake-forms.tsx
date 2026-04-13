@@ -626,12 +626,14 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] });
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms"] });
     },
+    onError: (err: any) => toast({ title: "Failed to add field", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   const updateFieldMutation = useMutation({
     mutationFn: ({ fieldId, data }: { fieldId: number; data: any }) =>
       apiRequest("PUT", `/api/intake-forms/${formId}/fields/${fieldId}`, data),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }),
+    onError: (err: any) => toast({ title: "Failed to update field", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   const deleteFieldMutation = useMutation({
@@ -640,11 +642,13 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] });
       setSelectedFieldId(null);
     },
+    onError: (err: any) => toast({ title: "Failed to delete field", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   const reorderMutation = useMutation({
     mutationFn: (fieldIds: number[]) => apiRequest("PUT", `/api/intake-forms/${formId}/fields/reorder`, { fieldIds }),
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }),
+    onError: (err: any) => toast({ title: "Failed to reorder fields", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   const addSectionMutation = useMutation({
