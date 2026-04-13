@@ -33,6 +33,7 @@ import { ResultsDisplay } from "@/components/results-display";
 import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
 import { RedFlagAlert } from "@/components/red-flag-alert";
+import { SoapNoteViewer } from "@/components/soap-note-viewer";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -2310,11 +2311,13 @@ export default function PatientProfiles() {
                                 </div>
                               ) : (
                                 <div className="px-5 py-4 max-h-96 overflow-y-auto">
-                                  <p className="text-xs whitespace-pre-wrap leading-relaxed text-foreground/90 font-sans">
-                                    {typeof enc.soapNote === 'string'
+                                  <SoapNoteViewer
+                                    text={typeof enc.soapNote === 'string'
                                       ? enc.soapNote
                                       : (enc.soapNote as any)?.fullNote ?? JSON.stringify(enc.soapNote, null, 2)}
-                                  </p>
+                                    evidence={evidenceSuggestions}
+                                    mode="flags"
+                                  />
                                 </div>
                               )}
                             </div>
