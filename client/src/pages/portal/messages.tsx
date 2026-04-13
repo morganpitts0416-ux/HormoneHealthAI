@@ -3,7 +3,7 @@ import { useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
-import { Leaf, LogOut, ChevronLeft, Send, MessageSquare, CalendarDays, Package } from "lucide-react";
+import { Leaf, LogOut, ChevronLeft, Send, MessageSquare, CalendarDays, Package, FileText } from "lucide-react";
 import { usePortalUnreadCount } from "@/hooks/use-portal-unread";
 
 interface PortalPatient {
@@ -305,6 +305,12 @@ export default function PortalMessages() {
             <button className="w-full py-3.5 flex flex-col items-center gap-1" data-testid="nav-portal-home">
               <CalendarDays className="w-4 h-4" style={{ color: "#a0a880" }} />
               <span className="text-xs" style={{ color: "#a0a880" }}>Overview</span>
+            </button>
+          </Link>
+          <Link href="/portal/forms" className="flex-1">
+            <button className="w-full py-3.5 flex flex-col items-center gap-1" data-testid="nav-portal-forms">
+              <FileText className="w-4 h-4" style={{ color: "#a0a880" }} />
+              <span className="text-xs" style={{ color: "#a0a880" }}>Forms</span>
             </button>
           </Link>
           <Link href="/portal/supplements" className="flex-1">

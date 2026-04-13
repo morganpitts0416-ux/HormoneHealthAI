@@ -535,6 +535,7 @@ export const patients = pgTable("patients", {
   mrn: varchar("mrn", { length: 50 }),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 30 }),
+  preferredPharmacy: text("preferred_pharmacy"),
   // ── Multi-clinic foundation (nullable — populated by migration) ──────────
   clinicId: integer("clinic_id"),            // No FK constraint during initial rollout
   primaryProviderId: integer("primary_provider_id"), // No FK constraint during initial rollout

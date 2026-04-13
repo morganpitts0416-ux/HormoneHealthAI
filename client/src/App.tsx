@@ -26,6 +26,7 @@ import PortalResetPassword from "@/pages/portal/reset-password";
 import PortalDashboard from "@/pages/portal/dashboard";
 import PortalSupplements from "@/pages/portal/supplements";
 import PortalMessages from "@/pages/portal/messages";
+import PortalForms from "@/pages/portal/forms";
 import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
 import AppointmentsPage from "@/pages/appointments";
@@ -232,6 +233,7 @@ function Router() {
       <Route path="/portal/dashboard" component={PortalDashboard} />
       <Route path="/portal/supplements" component={PortalSupplements} />
       <Route path="/portal/messages" component={PortalMessages} />
+      <Route path="/portal/forms" component={PortalForms} />
       <Route path="/staff-set-password" component={StaffSetPassword} />
       <Route>
         {() => <RootRedirect />}

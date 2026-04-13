@@ -8,6 +8,7 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
   AlertTriangle, CheckCircle2, Activity, FileText, ArrowLeft,
@@ -15,6 +16,7 @@ import {
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
+  Link2, Clock,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -1100,7 +1102,9 @@ export default function PatientProfiles() {
   const [showMessages, setShowMessages] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
   const [showEncounters, setShowEncounters] = useState(false);
-  const [showForms, setShowForms] = useState(false);
+  const [showForms, setShowForms] = useState(true);
+  const [showAssignFormDialog, setShowAssignFormDialog] = useState(false);
+  const [sendLinkFormId, setSendLinkFormId] = useState<number | null>(null);
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
   const [pdfExportingEncounterId, setPdfExportingEncounterId] = useState<number | null>(null);
   const [copiedEncounterId, setCopiedEncounterId] = useState<number | null>(null);
@@ -1274,6 +1278,46 @@ export default function PatientProfiles() {
   const { data: availableForms = [] } = useQuery<any[]>({
     queryKey: ['/api/intake-forms'],
     enabled: !!selectedPatient,
+  });
+
+  const { data: patientFormAssignments = [] } = useQuery<any[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'form-assignments'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/form-assignments`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const assignFormMutation = useMutation({
+    mutationFn: async ({ patientId, formId, notes }: { patientId: number; formId: number; notes?: string }) => {
+      const res = await apiRequest("POST", `/api/patients/${patientId}/form-assignments`, { formId, notes });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'form-assignments'] });
+      toast({ title: "Form assigned to patient" });
+    },
+    onError: () => toast({ title: "Failed to assign form", variant: "destructive" }),
+  });
+
+  const sendFormLinkMutation = useMutation({
+    mutationFn: async ({ patientId, formId, method }: { patientId: number; formId: number; method: string }) => {
+      const res = await apiRequest("POST", `/api/patients/${patientId}/forms/send-link`, { formId, method });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'form-assignments'] });
+      if (data.formUrl) {
+        navigator.clipboard.writeText(data.formUrl);
+        toast({ title: data.method === "email" ? "Form sent via email and link copied" : "Form link copied to clipboard" });
+      } else {
+        toast({ title: "Form link sent" });
+      }
+    },
+    onError: () => toast({ title: "Failed to send form link", variant: "destructive" }),
   });
 
   const fulfillOrderMutation = useMutation({
@@ -2548,69 +2592,184 @@ export default function PatientProfiles() {
                 </Card>
               )}
 
-              {/* ── Digital Forms ──────────────────────────────────────────── */}
+              {/* ── Forms & Consents ──────────────────────────────────────── */}
               <Card data-testid="card-patient-forms">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <FileText className="w-4 h-4 text-muted-foreground" />
-                      Digital Forms
+                      Forms & Consents
+                      {patientFormAssignments.filter((a: any) => a.status === "pending").length > 0 && (
+                        <Badge className="text-xs" style={{ backgroundColor: "#c0392b", color: "#fff" }}>
+                          {patientFormAssignments.filter((a: any) => a.status === "pending").length} pending
+                        </Badge>
+                      )}
                       {patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length > 0 && (
                         <Badge className="text-xs" style={{ backgroundColor: "#5a7040", color: "#fff" }}>
-                          {patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length} pending
+                          {patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length} to review
                         </Badge>
                       )}
                     </CardTitle>
                     <div className="flex items-center gap-2">
-                      {patientFormSubmissions.length > 0 && (
-                        <Button variant="ghost" size="sm" onClick={() => setShowForms(!showForms)} className="text-xs" data-testid="button-toggle-forms">
-                          {showForms ? "Hide" : "View submissions"}
-                        </Button>
-                      )}
+                      <Button variant="ghost" size="sm" onClick={() => setShowForms(!showForms)} className="text-xs" data-testid="button-toggle-forms">
+                        {showForms ? "Hide" : "Show"}
+                      </Button>
                       <Button
                         variant="outline"
                         size="sm"
                         className="text-xs gap-1"
-                        onClick={() => window.open("/intake-forms", "_blank")}
-                        data-testid="button-manage-forms"
+                        onClick={() => setShowAssignFormDialog(true)}
+                        data-testid="button-assign-form"
                       >
                         <Plus className="h-3 w-3" /> Assign Form
                       </Button>
                     </div>
                   </div>
                 </CardHeader>
-                {patientFormSubmissions.length === 0 && (
-                  <CardContent>
-                    <p className="text-sm text-muted-foreground">No form submissions yet. Assign and send a digital form from the Forms library.</p>
-                  </CardContent>
-                )}
-                {showForms && patientFormSubmissions.length > 0 && (
-                  <CardContent className="space-y-2">
-                    {patientFormSubmissions.map((sub: any) => (
-                      <div key={sub.id} className="rounded-md border p-3 space-y-1.5" data-testid={`form-submission-row-${sub.id}`}>
-                        <div className="flex items-start justify-between gap-2 flex-wrap">
-                          <div>
-                            <p className="text-sm font-medium">{sub.formName}</p>
-                            <p className="text-xs text-muted-foreground">{new Date(sub.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
-                          </div>
-                          <div className="flex items-center gap-2 flex-wrap">
-                            {sub.reviewStatus === "reviewed" ? (
-                              <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400">Reviewed</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400">Pending Review</Badge>
-                            )}
-                            {sub.syncStatus === "synced" ? (
-                              <Badge variant="outline" className="text-xs text-blue-600 dark:text-blue-400">Synced</Badge>
-                            ) : (
-                              <Badge variant="outline" className="text-xs text-muted-foreground">Not Synced</Badge>
-                            )}
-                          </div>
-                        </div>
+                {showForms && (
+                  <CardContent className="space-y-4">
+                    {/* Pending Assignments */}
+                    {patientFormAssignments.filter((a: any) => a.status === "pending").length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide">Pending Forms</p>
+                        {patientFormAssignments.filter((a: any) => a.status === "pending").map((assignment: any) => {
+                          const formDef = availableForms.find((f: any) => f.id === assignment.formId);
+                          const formName = formDef?.name ?? "Unknown Form";
+                          return (
+                            <div key={assignment.id} className="rounded-md border border-amber-200 dark:border-amber-800 bg-amber-50/50 dark:bg-amber-950/20 p-3" data-testid={`form-assignment-pending-${assignment.id}`}>
+                              <div className="flex items-start justify-between gap-2 flex-wrap">
+                                <div>
+                                  <p className="text-sm font-medium">{formName}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    Assigned {new Date(assignment.assignedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                    {assignment.dueAt && ` — Due ${new Date(assignment.dueAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400">
+                                    <Clock className="h-2.5 w-2.5 mr-1" />Awaiting Patient
+                                  </Badge>
+                                  {selectedPatient?.email && (
+                                    <Button size="sm" variant="outline" className="text-xs h-7"
+                                      onClick={() => sendFormLinkMutation.mutate({ patientId: selectedPatient!.id, formId: assignment.formId, method: "email" })}
+                                      disabled={sendFormLinkMutation.isPending}
+                                      data-testid={`button-send-form-email-${assignment.id}`}>
+                                      <Mail className="h-3 w-3 mr-1" /> Email
+                                    </Button>
+                                  )}
+                                  <Button size="sm" variant="outline" className="text-xs h-7"
+                                    onClick={() => sendFormLinkMutation.mutate({ patientId: selectedPatient!.id, formId: assignment.formId, method: "link" })}
+                                    disabled={sendFormLinkMutation.isPending}
+                                    data-testid={`button-copy-form-link-${assignment.id}`}>
+                                    <Link2 className="h-3 w-3 mr-1" /> Copy Link
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
                       </div>
-                    ))}
+                    )}
+
+                    {/* Completed Submissions */}
+                    {patientFormSubmissions.length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Completed Submissions</p>
+                        {patientFormSubmissions.map((sub: any) => (
+                          <div key={sub.id} className="rounded-md border p-3 space-y-1.5" data-testid={`form-submission-row-${sub.id}`}>
+                            <div className="flex items-start justify-between gap-2 flex-wrap">
+                              <div>
+                                <p className="text-sm font-medium">{sub.formName}</p>
+                                <p className="text-xs text-muted-foreground">{new Date(sub.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
+                              </div>
+                              <div className="flex items-center gap-2 flex-wrap">
+                                {sub.reviewStatus === "reviewed" ? (
+                                  <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400">Reviewed</Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs text-amber-600 dark:text-amber-400">Pending Review</Badge>
+                                )}
+                                {sub.syncStatus === "synced" ? (
+                                  <Badge variant="outline" className="text-xs text-blue-600 dark:text-blue-400">Synced</Badge>
+                                ) : (
+                                  <Badge variant="outline" className="text-xs text-muted-foreground">Not Synced</Badge>
+                                )}
+                              </div>
+                            </div>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+
+                    {patientFormAssignments.length === 0 && patientFormSubmissions.length === 0 && (
+                      <p className="text-sm text-muted-foreground">No forms assigned or submitted yet. Use "Assign Form" to send a digital form to this patient.</p>
+                    )}
                   </CardContent>
                 )}
               </Card>
+
+              {/* Assign Form Dialog */}
+              <Dialog open={showAssignFormDialog} onOpenChange={setShowAssignFormDialog}>
+                <DialogContent>
+                  <DialogHeader>
+                    <DialogTitle>Assign Form to Patient</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 py-2">
+                    <p className="text-sm text-muted-foreground">
+                      Select a form to assign to {selectedPatient?.firstName} {selectedPatient?.lastName}. They will see it in their portal and can also receive it via email.
+                    </p>
+                    <ScrollArea className="h-64">
+                      <div className="space-y-1.5">
+                        {availableForms.length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-6">No forms created yet. Create one from the Forms page.</p>
+                        )}
+                        {availableForms.map((form: any) => {
+                          const alreadyPending = patientFormAssignments.some((a: any) => a.formId === form.id && a.status === "pending");
+                          return (
+                            <div key={form.id} className="flex items-center justify-between gap-2 p-2.5 rounded-md border" data-testid={`assign-form-option-${form.id}`}>
+                              <div className="min-w-0">
+                                <p className="text-sm font-medium truncate">{form.name}</p>
+                                <p className="text-xs text-muted-foreground">{form.category} · {form.status}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5 flex-shrink-0">
+                                {alreadyPending ? (
+                                  <Badge variant="outline" className="text-xs text-amber-600">Already assigned</Badge>
+                                ) : (
+                                  <>
+                                    <Button size="sm" className="text-xs h-7"
+                                      onClick={() => {
+                                        if (selectedPatient) {
+                                          assignFormMutation.mutate({ patientId: selectedPatient.id, formId: form.id });
+                                          setShowAssignFormDialog(false);
+                                        }
+                                      }}
+                                      disabled={assignFormMutation.isPending}
+                                      data-testid={`button-assign-form-${form.id}`}>
+                                      <Plus className="h-3 w-3 mr-1" /> Assign
+                                    </Button>
+                                    {selectedPatient?.email && (
+                                      <Button size="sm" variant="outline" className="text-xs h-7"
+                                        onClick={() => {
+                                          if (selectedPatient) {
+                                            sendFormLinkMutation.mutate({ patientId: selectedPatient.id, formId: form.id, method: "email" });
+                                            setShowAssignFormDialog(false);
+                                          }
+                                        }}
+                                        disabled={sendFormLinkMutation.isPending}
+                                        data-testid={`button-assign-send-email-${form.id}`}>
+                                        <Mail className="h-3 w-3 mr-1" /> Email
+                                      </Button>
+                                    )}
+                                  </>
+                                )}
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    </ScrollArea>
+                  </div>
+                </DialogContent>
+              </Dialog>
 
             </div>
           )}
