@@ -1,0 +1,60 @@
+I want to clarify the permission model because I think this is part of what is causing the account/identity confusion.
+
+There need to be **two separate permission layers** assigned to each user within a clinic:
+
+**1. Clinical role**
+This identifies the user’s clinical function and determines what they can do clinically, including documentation/signing authority.
+
+Examples:
+
+* Provider / Clinician
+* RN
+* Staff
+
+This role should control things like:
+
+* whether the user can sign certain notes
+* whether the user can create or finalize clinical documentation
+* whether the user can be assigned patients in a clinical capacity
+* whether the user appears as a selectable rendering clinician/provider
+
+Every clinic user should be assigned one clinical role.
+
+**2. Administrative role**
+This identifies the user’s operational/account-level permissions within the clinic.
+
+Examples:
+
+* Owner
+* Admin
+* Limited Admin
+* Standard User / No Admin Access
+
+This role should control access to things like:
+
+* the Account tab
+* billing
+* subscription management
+* adding/removing users
+* assigning user permissions
+* creating and editing forms
+* creating and editing note templates in the future
+* managing products, pricing, clinic settings, and other administrative tools
+
+These two permission layers should be independent.
+
+For example:
+
+* A provider could also be the clinic owner
+* A provider could have no admin access
+* An RN could be an admin
+* A staff member could have limited admin permissions for forms or scheduling without having clinical signing authority
+
+The system should not treat “clinician/provider” as the same thing as “admin access.” They are different dimensions of permissions and need to be modeled separately.
+
+Also, clinic identity must stay separate from user identity:
+
+* the clinic is the stable account anchor
+* each clinic has a permanent clinic ID/code
+* user profiles belong to the clinic
+* changing a user’s email, name, or role should never affect clinic identity or patient ownership

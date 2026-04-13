@@ -1903,6 +1903,8 @@ Return ONLY this JSON structure:
               clinicId,
               userId: partner.id,
               role: "provider",
+              clinicalRole: "provider",
+              adminRole: "admin",
               isActive: true,
               isPrimaryClinic: true,
             });
@@ -1954,12 +1956,18 @@ Return ONLY this JSON structure:
     try {
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ message: "Invalid user ID" });
-      const { subscriptionStatus, role, notes, freeAccount } = req.body;
+      const { subscriptionStatus, role, notes, freeAccount, firstName, lastName, title, npi, clinicName, phone } = req.body;
       const updated = await storage.updateUserAdmin(id, {
         subscriptionStatus,
         role,
         notes,
         ...(freeAccount !== undefined && { freeAccount: freeAccount === true }),
+        ...(firstName !== undefined && { firstName }),
+        ...(lastName !== undefined && { lastName }),
+        ...(title !== undefined && { title }),
+        ...(npi !== undefined && { npi }),
+        ...(clinicName !== undefined && { clinicName }),
+        ...(phone !== undefined && { phone }),
       });
       if (!updated) return res.status(404).json({ message: "User not found" });
       res.json({ message: "Updated successfully", user: updated });

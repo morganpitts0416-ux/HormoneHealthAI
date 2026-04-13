@@ -1736,6 +1736,8 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
     clinicId: clinic.id,
     userId: user.id,
     role: "admin",
+    clinicalRole: "provider",
+    adminRole: "owner",
     isActive: true,
     isPrimaryClinic: true,
   });

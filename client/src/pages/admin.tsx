@@ -23,7 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Plus, Trash2, Users, Activity, ShieldCheck,
   MoreVertical, Building2, Mail, Phone, User, Lock, ChevronDown,
-  Layers, UserPlus, RefreshCw,
+  Layers, UserPlus, RefreshCw, Pencil,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -102,6 +102,16 @@ const addMemberSchema = z.object({
 });
 type AddMemberForm = z.infer<typeof addMemberSchema>;
 
+const editClinicianSchema = z.object({
+  firstName: z.string().min(1, "Required"),
+  lastName: z.string().min(1, "Required"),
+  title: z.string().min(1, "Required"),
+  clinicName: z.string().min(1, "Required"),
+  npi: z.string().optional(),
+  phone: z.string().optional(),
+});
+type EditClinicianForm = z.infer<typeof editClinicianSchema>;
+
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? { label: status, color: "#555", bg: "#eee" };
   return (
@@ -122,6 +132,7 @@ export default function AdminDashboard() {
   const [deleteTarget, setDeleteTarget] = useState<Clinician | null>(null);
   const [editStatusTarget, setEditStatusTarget] = useState<Clinician | null>(null);
   const [editNotes, setEditNotes] = useState("");
+  const [editInfoTarget, setEditInfoTarget] = useState<Clinician | null>(null);
 
   // Clinic management state
   const [showSetupClinic, setShowSetupClinic] = useState(false);
@@ -201,6 +212,30 @@ export default function AdminDashboard() {
       toast({ title: "Account deleted" });
     },
     onError: () => toast({ title: "Error", description: "Delete failed", variant: "destructive" }),
+  });
+
+  const editInfoMutation = useMutation({
+    mutationFn: async ({ id, data }: { id: number; data: EditClinicianForm }) => {
+      const res = await fetch(`/api/admin/clinicians/${id}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify(data),
+      });
+      if (!res.ok) throw new Error("Update failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/clinicians"] });
+      setEditInfoTarget(null);
+      toast({ title: "Clinician info updated" });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const editInfoForm = useForm<EditClinicianForm>({
+    resolver: zodResolver(editClinicianSchema),
+    defaultValues: { firstName: "", lastName: "", title: "", clinicName: "", npi: "", phone: "" },
   });
 
   const form = useForm<CreateClinicianForm>({
@@ -498,6 +533,22 @@ export default function AdminDashboard() {
                             <DropdownMenuContent align="end">
                               <DropdownMenuItem
                                 onClick={() => {
+                                  setEditInfoTarget(c);
+                                  editInfoForm.reset({
+                                    firstName: c.firstName,
+                                    lastName: c.lastName,
+                                    title: c.title,
+                                    clinicName: c.clinicName,
+                                    npi: c.npi ?? "",
+                                    phone: c.phone ?? "",
+                                  });
+                                }}
+                              >
+                                <Pencil className="w-3.5 h-3.5 mr-2" />
+                                Edit name &amp; clinic
+                              </DropdownMenuItem>
+                              <DropdownMenuItem
+                                onClick={() => {
                                   setEditStatusTarget(c);
                                   setEditNotes(c.notes ?? "");
                                 }}
@@ -774,14 +825,14 @@ export default function AdminDashboard() {
                 <FormField control={form.control} name="firstName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>First Name *</FormLabel>
-                    <FormControl><Input placeholder="Jane" data-testid="input-create-firstName" {...field} /></FormControl>
+                    <FormControl><Input placeholder="Jane" autoComplete="off" data-testid="input-create-firstName" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
                 <FormField control={form.control} name="lastName" render={({ field }) => (
                   <FormItem>
                     <FormLabel>Last Name *</FormLabel>
-                    <FormControl><Input placeholder="Smith" data-testid="input-create-lastName" {...field} /></FormControl>
+                    <FormControl><Input placeholder="Smith" autoComplete="off" data-testid="input-create-lastName" {...field} /></FormControl>
                     <FormMessage />
                   </FormItem>
                 )} />
@@ -812,7 +863,7 @@ export default function AdminDashboard() {
               <FormField control={form.control} name="clinicName" render={({ field }) => (
                 <FormItem>
                   <FormLabel>Clinic Name *</FormLabel>
-                  <FormControl><Input placeholder="Optimal Health Clinic" data-testid="input-create-clinicName" {...field} /></FormControl>
+                  <FormControl><Input placeholder="Optimal Health Clinic" autoComplete="off" data-testid="input-create-clinicName" {...field} /></FormControl>
                   <FormMessage />
                 </FormItem>
               )} />
@@ -939,6 +990,83 @@ export default function AdminDashboard() {
           </Form>
         </DialogContent>
       </Dialog>
+
+      {/* Edit clinician name & clinic dialog */}
+      {editInfoTarget && (
+        <Dialog open={!!editInfoTarget} onOpenChange={() => setEditInfoTarget(null)}>
+          <DialogContent className="max-w-md">
+            <DialogHeader>
+              <DialogTitle>Edit Clinician Info</DialogTitle>
+              <DialogDescription>
+                Correct the clinician's name, title, or clinic name. This updates the account record directly.
+              </DialogDescription>
+            </DialogHeader>
+            <Form {...editInfoForm}>
+              <form onSubmit={editInfoForm.handleSubmit((d) => editInfoMutation.mutate({ id: editInfoTarget.id, data: d }))} className="space-y-4 pt-1">
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField control={editInfoForm.control} name="firstName" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>First Name</FormLabel>
+                      <FormControl><Input autoComplete="given-name" data-testid="input-edit-firstName" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={editInfoForm.control} name="lastName" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Last Name</FormLabel>
+                      <FormControl><Input autoComplete="family-name" data-testid="input-edit-lastName" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+                <div className="grid grid-cols-2 gap-3">
+                  <FormField control={editInfoForm.control} name="title" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>Title</FormLabel>
+                      <Select onValueChange={field.onChange} value={field.value}>
+                        <FormControl>
+                          <SelectTrigger><SelectValue placeholder="Select" /></SelectTrigger>
+                        </FormControl>
+                        <SelectContent>
+                          {TITLES.map(t => <SelectItem key={t} value={t}>{t}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                  <FormField control={editInfoForm.control} name="npi" render={({ field }) => (
+                    <FormItem>
+                      <FormLabel>NPI <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
+                      <FormControl><Input placeholder="1234567890" {...field} /></FormControl>
+                      <FormMessage />
+                    </FormItem>
+                  )} />
+                </div>
+                <FormField control={editInfoForm.control} name="clinicName" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Clinic Name</FormLabel>
+                    <FormControl><Input autoComplete="organization" data-testid="input-edit-clinicName" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={editInfoForm.control} name="phone" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Phone <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
+                    <FormControl><Input type="tel" autoComplete="tel" placeholder="(555) 555-0100" {...field} /></FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <DialogFooter>
+                  <Button type="button" variant="outline" onClick={() => setEditInfoTarget(null)}>Cancel</Button>
+                  <Button type="submit" disabled={editInfoMutation.isPending} data-testid="button-edit-info-submit">
+                    {editInfoMutation.isPending ? "Saving..." : "Save Changes"}
+                  </Button>
+                </DialogFooter>
+              </form>
+            </Form>
+          </DialogContent>
+        </Dialog>
+      )}
 
       {/* Edit status dialog */}
       {editStatusTarget && (
