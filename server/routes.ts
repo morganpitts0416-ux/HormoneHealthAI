@@ -2536,6 +2536,197 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // ─── Portal Forms / Consents ─────────────────────────────────────────────────
+
+  // GET /api/portal/forms — patient sees their assigned + completed forms
+  app.get("/api/portal/forms", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const assignments = await storage.getPatientFormAssignments(patientId);
+      const submissions = await storage.getFormSubmissionsByPatient(patientId);
+
+      const enrichedAssignments = await Promise.all(assignments.map(async (a) => {
+        const form = await storage.getIntakeFormById(a.formId);
+        const sub = submissions.find(s => s.assignmentId === a.id);
+        return {
+          ...a,
+          formName: form?.name ?? "Unknown Form",
+          formDescription: form?.description ?? null,
+          formCategory: form?.category ?? "custom",
+          submission: sub ? { id: sub.id, submittedAt: sub.submittedAt, reviewStatus: sub.reviewStatus, syncStatus: sub.syncStatus } : null,
+        };
+      }));
+
+      const completedWithoutAssignment = submissions
+        .filter(s => !s.assignmentId)
+        .map(s => ({
+          id: null,
+          formId: s.formId,
+          status: "completed" as const,
+          submittedAt: s.submittedAt,
+          formName: "",
+          submission: { id: s.id, submittedAt: s.submittedAt, reviewStatus: s.reviewStatus, syncStatus: s.syncStatus },
+        }));
+
+      const enrichedStandalone = await Promise.all(completedWithoutAssignment.map(async (item) => {
+        const form = await storage.getIntakeFormById(item.formId);
+        return { ...item, formName: form?.name ?? "Unknown Form" };
+      }));
+
+      res.json({ assignments: enrichedAssignments, standalone: enrichedStandalone });
+    } catch (err) {
+      console.error("[Portal Forms]", err);
+      res.status(500).json({ message: "Failed to fetch forms" });
+    }
+  });
+
+  // GET /api/portal/forms/:assignmentId — get form fields for a specific assignment
+  app.get("/api/portal/forms/:assignmentId", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const assignmentId = parseInt(req.params.assignmentId);
+      const assignments = await storage.getPatientFormAssignments(patientId);
+      const assignment = assignments.find(a => a.id === assignmentId);
+      if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+
+      const form = await storage.getIntakeFormById(assignment.formId);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+
+      const fields = await storage.getFormFields(assignment.formId);
+      const sections = await storage.getFormSections(assignment.formId);
+      const sortedFields = fields.sort((a, b) => a.orderIndex - b.orderIndex);
+
+      res.json({ assignment, form: { id: form.id, name: form.name, description: form.description, category: form.category, requiresPatientSignature: form.requiresPatientSignature }, fields: sortedFields, sections });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch form" });
+    }
+  });
+
+  // POST /api/portal/forms/:assignmentId/submit — patient submits an assigned form
+  app.post("/api/portal/forms/:assignmentId/submit", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const assignmentId = parseInt(req.params.assignmentId);
+      const assignments = await storage.getPatientFormAssignments(patientId);
+      const assignment = assignments.find(a => a.id === assignmentId);
+      if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+      if (assignment.status === "completed") return res.status(400).json({ message: "Form already completed" });
+
+      const form = await storage.getIntakeFormById(assignment.formId);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+
+      const patient = await storage.getPatientById(patientId);
+      const { responses, signature } = req.body;
+
+      const submission = await storage.createFormSubmission({
+        formId: assignment.formId,
+        formVersion: form.version,
+        clinicianId: form.clinicianId,
+        patientId,
+        assignmentId,
+        submittedByPatient: true,
+        submittedByStaff: false,
+        submissionSource: "portal",
+        status: "submitted",
+        rawSubmissionJson: responses,
+        normalizedSubmissionJson: responses,
+        signatureJson: signature ?? null,
+        reviewStatus: "pending",
+        syncStatus: "not_synced",
+        submitterName: patient ? `${patient.firstName} ${patient.lastName}` : null,
+        submitterEmail: patient?.email ?? null,
+      });
+
+      await storage.updatePatientFormAssignment(assignmentId, { status: "completed" });
+
+      res.json({ success: true, submissionId: submission.id });
+    } catch (err) {
+      console.error("[Portal Form Submit]", err);
+      res.status(500).json({ message: "Failed to submit form" });
+    }
+  });
+
+  // POST /api/patients/:id/forms/send-link — send form link via email
+  app.post("/api/patients/:id/forms/send-link", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const clinicianId = getClinicianId(req);
+      const { formId, method } = req.body;
+      if (!formId) return res.status(400).json({ message: "formId required" });
+
+      const patient = await storage.getPatientById(patientId);
+      if (!patient || patient.userId !== clinicianId) return res.status(404).json({ message: "Patient not found" });
+
+      const form = await storage.getIntakeFormById(parseInt(formId));
+      if (!form || form.clinicianId !== clinicianId) return res.status(404).json({ message: "Form not found" });
+
+      // Find or create active publication
+      const publications = await storage.getFormPublications(parseInt(formId));
+      let pub = publications.find((p: any) => p.status === "active");
+      if (!pub) {
+        pub = await storage.createFormPublication({
+          formId: parseInt(formId),
+          mode: "link",
+          status: "active",
+          publicToken: require("crypto").randomBytes(16).toString("hex"),
+        });
+      }
+
+      const formUrl = `${req.protocol}://${req.get("host")}/f/${pub.publicToken}`;
+
+      // Assign form to patient
+      const existingAssignments = await storage.getPatientFormAssignments(patientId);
+      const alreadyPending = existingAssignments.find(a => a.formId === parseInt(formId) && a.status === "pending");
+      if (!alreadyPending) {
+        await storage.createPatientFormAssignment({
+          patientId,
+          formId: parseInt(formId),
+          assignedBy: req.user.id,
+          status: "pending",
+          completionRequired: false,
+          notes: `Sent via ${method || "link"}`,
+        });
+      }
+
+      if (method === "email" && patient.email) {
+        try {
+          const { Resend } = require("resend");
+          const resend = new Resend(process.env.RESEND_API_KEY);
+          const clinician = await storage.getUser(clinicianId);
+          const clinicName = clinician?.clinicName || "Your Healthcare Provider";
+
+          await resend.emails.send({
+            from: `${clinicName} <noreply@realignlabeval.com>`,
+            to: patient.email,
+            subject: `${clinicName}: Please complete your ${form.name}`,
+            html: `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2e3a20;">New Form from ${clinicName}</h2>
+                <p>Hi ${patient.firstName},</p>
+                <p>Your provider has asked you to complete the following form:</p>
+                <div style="background: #f9f6f0; border: 1px solid #d4c9b5; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                  <strong>${form.name}</strong>
+                  ${form.description ? `<p style="color: #666; margin-top: 8px;">${form.description}</p>` : ""}
+                </div>
+                <a href="${formUrl}" style="display: inline-block; background: #2e3a20; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Complete Form</a>
+                <p style="margin-top: 24px; color: #888; font-size: 12px;">If the button doesn't work, copy this link: ${formUrl}</p>
+              </div>
+            `,
+          });
+          res.json({ success: true, method: "email", formUrl });
+        } catch (emailErr) {
+          console.error("[Send Form Link] Email error:", emailErr);
+          res.json({ success: true, method: "link_only", formUrl, note: "Email sending failed but link generated" });
+        }
+      } else {
+        res.json({ success: true, method: "link", formUrl });
+      }
+    } catch (err) {
+      console.error("[Send Form Link]", err);
+      res.status(500).json({ message: "Failed to send form link" });
+    }
+  });
+
   // PATCH /api/supplement-orders/:id/status — clinician marks order fulfilled/cancelled
   app.patch("/api/supplement-orders/:id/status", requireAuth, async (req, res) => {
     try {
@@ -6657,6 +6848,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         const email = pick("patient_email", /^email$/, /^email_address$/) || (submitterEmail ? String(submitterEmail).trim() : "");
         const phone = pick("patient_phone", /^phone$/, /^phone_?number$/, /^mobile$/, /^cell$/, /^telephone$/);
         const address = smartValues["patient_address"] || "";
+        const preferredPharmacy = smartValues["patient_preferred_pharmacy"] || "";
         const genderRaw = pick("patient_gender", /^gender$/, /^sex$/);
         const gender = genderRaw
           ? (genderRaw.toLowerCase().startsWith("f") ? "female" : "male")
@@ -6686,6 +6878,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
             if (!existing.dateOfBirth && dobRaw) updates.dateOfBirth = new Date(dobRaw);
             if (!existing.email && email) updates.email = email;
             if (!existing.phone && phone) updates.phone = phone;
+            if (!existing.preferredPharmacy && preferredPharmacy) updates.preferredPharmacy = preferredPharmacy;
             if (Object.keys(updates).length > 0) {
               await storage.updatePatient(existing.id, updates, form.clinicianId);
             }
@@ -6698,6 +6891,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
               gender,
               email: email || null,
               phone: phone || null,
+              preferredPharmacy: preferredPharmacy || null,
             });
             resolvedPatientId = created.id;
             autoCreated = true;
@@ -6745,6 +6939,9 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.get("/api/patients/:id/form-assignments", requireAuth, async (req: any, res) => {
     try {
       const patientId = parseInt(req.params.id);
+      const clinicianId = getClinicianId(req);
+      const patient = await storage.getPatientById(patientId);
+      if (!patient || patient.userId !== clinicianId) return res.status(404).json({ message: "Patient not found" });
       const assignments = await storage.getPatientFormAssignments(patientId);
       res.json(assignments);
     } catch (err) {
@@ -6756,8 +6953,13 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.post("/api/patients/:id/form-assignments", requireAuth, async (req: any, res) => {
     try {
       const patientId = parseInt(req.params.id);
+      const clinicianId = getClinicianId(req);
+      const patient = await storage.getPatientById(patientId);
+      if (!patient || patient.userId !== clinicianId) return res.status(404).json({ message: "Patient not found" });
       const { formId, dueAt, notes } = req.body;
       if (!formId) return res.status(400).json({ message: "formId required" });
+      const form = await storage.getIntakeFormById(parseInt(formId));
+      if (!form || form.clinicianId !== clinicianId) return res.status(404).json({ message: "Form not found" });
       const assignment = await storage.createPatientFormAssignment({
         patientId,
         formId: parseInt(formId),

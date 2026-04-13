@@ -1372,6 +1372,12 @@ export default function PortalDashboard() {
               <span className="text-xs font-semibold" style={{ color: "#2e3a20" }}>Overview</span>
             </button>
           </Link>
+          <Link href="/portal/forms" className="flex-1">
+            <button className="w-full py-3.5 flex flex-col items-center gap-1" data-testid="nav-portal-forms">
+              <FileText className="w-4 h-4" style={{ color: "#a0a880" }} />
+              <span className="text-xs" style={{ color: "#a0a880" }}>Forms</span>
+            </button>
+          </Link>
           <Link href="/portal/supplements" className="flex-1">
             <button className="w-full py-3.5 flex flex-col items-center gap-1" data-testid="nav-portal-supplements">
               <Package className="w-4 h-4" style={{ color: "#a0a880" }} />

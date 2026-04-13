@@ -18,7 +18,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   FileText, Plus, Settings, Trash2, Copy, Eye, Link2, ChevronDown, ChevronUp,
   ClipboardList, CheckCircle2, Clock, AlertCircle, GripVertical, Tag,
-  LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft
+  LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -143,6 +143,7 @@ const SMART_FIELDS: SmartFieldDef[] = [
   { key: "patient_email", label: "Email Address", fieldType: "email", placeholder: "patient@example.com", category: "demographics", syncTarget: "patient.email" },
   { key: "patient_phone", label: "Phone Number", fieldType: "phone", placeholder: "(555) 000-0000", category: "demographics", syncTarget: "patient.phone" },
   { key: "patient_address", label: "Address", fieldType: "short_text", placeholder: "Street, City, State ZIP", category: "demographics", syncTarget: "patient.address" },
+  { key: "patient_preferred_pharmacy", label: "Preferred Pharmacy", fieldType: "short_text", placeholder: "Pharmacy name, address, and phone", category: "demographics", syncTarget: "patient.preferredPharmacy", helpText: "Where should we send your prescriptions?" },
   { key: "current_medications", label: "Current Medications", fieldType: "medication_list", placeholder: "List each medication, dosage, and frequency", category: "clinical", syncTarget: "chart.currentMedications", helpText: "Enter each medication on a new line" },
   { key: "allergies", label: "Allergies", fieldType: "long_text", placeholder: "List any known allergies (medications, foods, environmental)", category: "clinical", syncTarget: "chart.allergies", helpText: "Include the type of reaction if known" },
   { key: "medical_history", label: "Medical History", fieldType: "long_text", placeholder: "List any past or current medical conditions", category: "clinical", syncTarget: "chart.medicalHistory", helpText: "Include diagnoses, chronic conditions, and hospitalizations" },
@@ -1490,6 +1491,7 @@ function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, 
   isPending: boolean;
 }) {
   const { toast } = useToast();
+  const [showEmbed, setShowEmbed] = useState(false);
 
   const handleCopy = () => {
     if (publicUrl) {
@@ -1498,9 +1500,18 @@ function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, 
     }
   };
 
+  const embedCode = publicUrl
+    ? `<iframe src="${publicUrl}" style="width:100%;min-height:600px;border:none;" title="Patient Form"></iframe>`
+    : "";
+
+  const handleCopyEmbed = () => {
+    navigator.clipboard.writeText(embedCode);
+    toast({ title: "Embed code copied to clipboard" });
+  };
+
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent>
+      <DialogContent className="max-w-lg">
         <DialogHeader>
           <DialogTitle>Publish Form</DialogTitle>
         </DialogHeader>
@@ -1511,6 +1522,7 @@ function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, 
                 <CheckCircle2 className="h-4 w-4 text-green-600 dark:text-green-400 flex-shrink-0" />
                 <span className="text-sm text-green-700 dark:text-green-300 font-medium">Form is live</span>
               </div>
+
               <div className="space-y-1.5">
                 <Label>Public Link</Label>
                 <div className="flex gap-2">
@@ -1523,6 +1535,33 @@ function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, 
                   </Button>
                 </div>
               </div>
+
+              <div className="space-y-1.5">
+                <button
+                  onClick={() => setShowEmbed(!showEmbed)}
+                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground"
+                  data-testid="button-toggle-embed"
+                >
+                  <Code className="h-3.5 w-3.5" />
+                  {showEmbed ? "Hide embed code" : "Show embed code"}
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showEmbed ? "rotate-180" : ""}`} />
+                </button>
+                {showEmbed && (
+                  <div className="space-y-1.5">
+                    <div className="relative">
+                      <pre className="p-3 rounded-md bg-muted/50 border text-xs font-mono overflow-x-auto whitespace-pre-wrap break-all">{embedCode}</pre>
+                      <Button size="sm" variant="ghost" className="absolute top-1 right-1 h-7 text-xs gap-1"
+                        onClick={handleCopyEmbed} data-testid="button-copy-embed">
+                        <Copy className="h-3 w-3" /> Copy
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      Paste this code into your website HTML to embed the form. Works with any website builder, EHR portal, or custom site.
+                    </p>
+                  </div>
+                )}
+              </div>
+
               <div className="flex gap-2 pt-1">
                 <Button variant="outline" className="flex-1" onClick={() => onOpenChange(false)}>Close</Button>
                 <Button variant="outline" className="flex-1 text-destructive"
@@ -1536,9 +1575,15 @@ function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, 
               <p className="text-sm text-muted-foreground">
                 Publishing will generate a shareable public link. Patients can open it without logging in and submit the form.
               </p>
-              <div className="flex items-center gap-2 p-3 rounded-md border bg-muted/30">
-                <Link2 className="h-4 w-4 text-muted-foreground" />
-                <span className="text-xs text-muted-foreground">A unique token URL will be generated at <code>/f/[token]</code></span>
+              <div className="space-y-2">
+                <div className="flex items-center gap-2 p-3 rounded-md border bg-muted/30">
+                  <Link2 className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">A unique token URL will be generated at <code>/f/[token]</code></span>
+                </div>
+                <div className="flex items-center gap-2 p-3 rounded-md border bg-muted/30">
+                  <Code className="h-4 w-4 text-muted-foreground" />
+                  <span className="text-xs text-muted-foreground">Embed code will be available to paste into any website or EHR portal</span>
+                </div>
               </div>
               <DialogFooter>
                 <Button variant="outline" onClick={() => onOpenChange(false)}>Cancel</Button>
