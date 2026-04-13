@@ -6501,6 +6501,30 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // PUT /api/intake-forms/:id/fields/reorder — bulk reorder fields (must be before :fieldId)
+  app.put("/api/intake-forms/:id/fields/reorder", requireAuth, async (req: any, res) => {
+    try {
+      const formId = parseInt(req.params.id);
+      const clinicianId = getClinicianId(req);
+      const form = await storage.getIntakeForm(formId, clinicianId);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+      const { fieldIds } = req.body;
+      if (!Array.isArray(fieldIds)) return res.status(400).json({ message: "fieldIds array required" });
+      const formFieldIds = new Set((form.fields ?? []).map((f: any) => f.id));
+      for (const id of fieldIds) {
+        if (!formFieldIds.has(parseInt(id))) {
+          return res.status(403).json({ message: "Field does not belong to this form" });
+        }
+      }
+      for (let i = 0; i < fieldIds.length; i++) {
+        await storage.updateFormField(parseInt(fieldIds[i]), { orderIndex: i });
+      }
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to reorder fields" });
+    }
+  });
+
   // PUT /api/intake-forms/:id/fields/:fieldId
   app.put("/api/intake-forms/:id/fields/:fieldId", requireAuth, async (req: any, res) => {
     try {

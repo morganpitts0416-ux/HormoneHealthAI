@@ -52,6 +52,17 @@ interface PendingOrderRow {
   createdAt: string;
 }
 
+interface PendingSubmissionRow {
+  id: number;
+  formId: number;
+  submitterName: string | null;
+  submitterEmail: string | null;
+  reviewStatus: string;
+  syncStatus: string;
+  submittedAt: string;
+  formName?: string;
+}
+
 interface NotificationsData {
   unreadMessages: UnreadMessageRow[];
   pendingOrders: PendingOrderRow[];
@@ -124,9 +135,14 @@ export default function Dashboard() {
     },
   });
 
+  const { data: pendingSubmissions = [] } = useQuery<PendingSubmissionRow[]>({
+    queryKey: ["/api/intake-forms/submissions/pending"],
+    refetchInterval: 30 * 1000,
+  });
+
   const unreadMessages = notifications?.unreadMessages ?? [];
   const pendingOrders = notifications?.pendingOrders ?? [];
-  const totalNotifications = unreadMessages.length + pendingOrders.length;
+  const totalNotifications = unreadMessages.length + pendingOrders.length + pendingSubmissions.length;
 
   const goToPatient = (patientId: number, tab?: "messages" | "orders") => {
     setLocation(tab ? `/patients?patient=${patientId}&tab=${tab}` : `/patients?patient=${patientId}`);
@@ -180,10 +196,6 @@ export default function Dashboard() {
                 <CalendarDays className="w-4 h-4" />
                 <span className="hidden sm:inline ml-2">Appointments</span>
               </Button>
-              <Button data-testid="button-forms" variant="ghost" size="icon" onClick={() => setLocation("/intake-forms")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Digital Forms">
-                <ClipboardList className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Forms</span>
-              </Button>
               <Button data-testid="button-help" variant="ghost" size="icon" onClick={() => setLocation("/help")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Help">
                 <HelpCircle className="w-4 h-4" />
                 <span className="hidden sm:inline ml-2">Help</span>
@@ -223,9 +235,6 @@ export default function Dashboard() {
                     )}
                     <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/appointments")}>
                       <CalendarDays className="w-4 h-4" /> Appointments
-                    </Button>
-                    <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/intake-forms")}>
-                      <ClipboardList className="w-4 h-4" /> Digital Forms
                     </Button>
                     <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/help")}>
                       <HelpCircle className="w-4 h-4" /> Help
@@ -286,8 +295,8 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Two-column grid: Messages | Orders */}
-          <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          {/* Three-column grid: Messages | Orders | Submissions */}
+          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
             {/* ── Messages column ────────────────────────────────── */}
             <div className="rounded-xl overflow-hidden border" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
@@ -323,7 +332,7 @@ export default function Dashboard() {
                   <p className="text-xs mt-0.5" style={{ color: "#a0a880" }}>Patient replies will appear here</p>
                 </div>
               ) : (
-                <div className="divide-y" style={{ divideColor: "#f0ece5" }}>
+                <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
                   {unreadMessages.map((row) => (
                     <button
                       key={`msg-${row.patientId}`}
@@ -388,7 +397,7 @@ export default function Dashboard() {
                   <p className="text-xs mt-0.5" style={{ color: "#a0a880" }}>Patient supplement orders will appear here</p>
                 </div>
               ) : (
-                <div className="divide-y" style={{ divideColor: "#f0ece5" }}>
+                <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
                   {pendingOrders.map((order) => (
                     <div
                       key={`order-${order.id}`}
@@ -443,6 +452,74 @@ export default function Dashboard() {
                         </div>
                       </div>
                     </div>
+                  ))}
+                </div>
+              )}
+            </div>
+
+            {/* ── Submissions column ──────────────────────────────── */}
+            <div className="rounded-xl overflow-hidden border" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
+              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ede8df", backgroundColor: pendingSubmissions.length > 0 ? "#eef0ff" : "#faf8f5" }}>
+                <div className="flex items-center gap-2">
+                  <ClipboardList className="w-4 h-4" style={{ color: pendingSubmissions.length > 0 ? "#4a5568" : "#a0a880" }} />
+                  <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Form Submissions</span>
+                  {pendingSubmissions.length > 0 && (
+                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#4a5568", color: "#eef0ff" }}>
+                      {pendingSubmissions.length} pending
+                    </span>
+                  )}
+                </div>
+                <button
+                  className="text-xs font-medium flex items-center gap-1"
+                  style={{ color: "#4a5568" }}
+                  onClick={() => setLocation("/intake-forms")}
+                >
+                  View all <ArrowRight className="w-3 h-3" />
+                </button>
+              </div>
+
+              {notifLoading ? (
+                <div className="space-y-2 p-3">
+                  {[1, 2].map(i => <div key={i} className="h-14 rounded-lg animate-pulse" style={{ backgroundColor: "#f0ece5" }} />)}
+                </div>
+              ) : pendingSubmissions.length === 0 ? (
+                <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                  <ClipboardList className="w-7 h-7 mb-2" style={{ color: "#c4b9a5" }} />
+                  <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>No pending submissions</p>
+                  <p className="text-xs mt-0.5" style={{ color: "#a0a880" }}>Patient form submissions will appear here</p>
+                </div>
+              ) : (
+                <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
+                  {pendingSubmissions.slice(0, 5).map((sub) => (
+                    <button
+                      key={`sub-${sub.id}`}
+                      data-testid={`notification-submission-${sub.id}`}
+                      className="w-full text-left px-4 py-3 flex items-center gap-3 transition-colors"
+                      style={{ backgroundColor: "transparent" }}
+                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f4f6ff")}
+                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                      onClick={() => setLocation("/intake-forms")}
+                    >
+                      <div
+                        className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                        style={{ backgroundColor: "#e8e4f0", color: "#4a5568" }}
+                      >
+                        {(sub.submitterName ?? "A")[0].toUpperCase()}
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                          {sub.submitterName ?? "Anonymous"}
+                        </p>
+                        <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
+                          {(sub as any).formName ?? "Form submission"}
+                        </p>
+                      </div>
+                      <div className="flex items-center gap-2 flex-shrink-0">
+                        <span className="text-xs" style={{ color: "#a0a880" }}>{timeAgo(sub.submittedAt)}</span>
+                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: "#4a5568" }} />
+                        <ChevronRight className="w-4 h-4" style={{ color: "#c4b9a5" }} />
+                      </div>
+                    </button>
                   ))}
                 </div>
               )}
