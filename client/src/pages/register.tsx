@@ -215,29 +215,27 @@ function PersonalPaymentStep({
           )}
         </div>
 
-        {plan === "solo" && (
-          <div className="space-y-1.5 mb-3">
-            <label className="text-xs font-medium text-muted-foreground">Promo code (optional)</label>
-            <div className="flex gap-2">
-              <Input
-                type="text"
-                value={promoCode}
-                onChange={e => { setPromoCode(e.target.value); setPromoApplied(false); }}
-                placeholder="e.g. FOUNDER50"
-                className="flex-1 font-mono uppercase placeholder:normal-case placeholder:font-sans"
-                data-testid="input-promo-code"
-              />
-              <Button type="button" variant="outline" onClick={handlePromoCheck} data-testid="button-apply-promo">
-                Apply
-              </Button>
-            </div>
-            {promoApplied && (
-              <p className="text-xs font-semibold" style={{ color: "#5a7040" }}>
-                FOUNDER50 applied — locked at $97/month
-              </p>
-            )}
+        <div className="space-y-1.5 mb-3">
+          <label className="text-xs font-medium text-muted-foreground">Promo code (optional)</label>
+          <div className="flex gap-2">
+            <Input
+              type="text"
+              value={promoCode}
+              onChange={e => { setPromoCode(e.target.value); setPromoApplied(false); }}
+              placeholder="Enter promo code"
+              className="flex-1 font-mono uppercase placeholder:normal-case placeholder:font-sans"
+              data-testid="input-promo-code"
+            />
+            <Button type="button" variant="outline" onClick={handlePromoCheck} data-testid="button-apply-promo">
+              Apply
+            </Button>
           </div>
-        )}
+          {promoApplied && (
+            <p className="text-xs font-semibold" style={{ color: "#5a7040" }}>
+              FOUNDER50 applied — locked at $97/month
+            </p>
+          )}
+        </div>
 
         <div className="mb-3">
           <label className="text-sm font-medium block mb-1.5">Card Details <span className="text-destructive">*</span></label>
