@@ -53,6 +53,8 @@ const createClinicianSchema = z.object({
   subscriptionStatus: z.string().default("active"),
   freeAccount: z.boolean().default(false),
   notes: z.string().optional(),
+  clinicPlan: z.enum(["solo", "suite"]).default("solo"),
+  partnerEmail: z.string().email("Valid email required").optional().or(z.literal("")),
 });
 type CreateClinicianForm = z.infer<typeof createClinicianSchema>;
 
@@ -171,6 +173,7 @@ export default function AdminDashboard() {
     defaultValues: {
       firstName: "", lastName: "", title: "", email: "", clinicName: "",
       username: "", npi: "", phone: "", subscriptionStatus: "active", freeAccount: false, notes: "",
+      clinicPlan: "solo", partnerEmail: "",
     },
   });
 
@@ -496,7 +499,34 @@ export default function AdminDashboard() {
                     <FormMessage />
                   </FormItem>
                 )} />
+                <FormField control={form.control} name="clinicPlan" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Clinic Plan</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="solo">Solo</SelectItem>
+                        <SelectItem value="suite">Suite (Multi-Provider)</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
               </div>
+              {form.watch("clinicPlan") === "suite" && (
+                <FormField control={form.control} name="partnerEmail" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Partner Clinician Email <span className="text-muted-foreground font-normal text-xs">(optional — must already have an account)</span></FormLabel>
+                    <FormControl>
+                      <Input type="email" placeholder="partner@clinic.com" data-testid="input-create-partnerEmail" {...field} />
+                    </FormControl>
+                    <p className="text-xs text-muted-foreground">If the partner already has an account, they will be linked to this Suite clinic automatically.</p>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              )}
               <FormField control={form.control} name="freeAccount" render={({ field }) => (
                 <FormItem>
                   <div className="flex items-start gap-3 rounded-md border p-3">
