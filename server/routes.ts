@@ -6894,6 +6894,39 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  app.get("/api/intake-forms/submissions/pending", requireAuth, async (req: any, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const submissions = await storage.getFormSubmissionsByClinician(clinicianId);
+      const pending = submissions.filter(s => s.reviewStatus === "pending" || s.syncStatus === "not_synced");
+      const enriched = await Promise.all(pending.map(async (sub) => {
+        const form = await storage.getIntakeFormById(sub.formId);
+        return { ...sub, formName: form?.name ?? "Unknown Form" };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch pending submissions" });
+    }
+  });
+
+  app.patch("/api/intake-forms/submissions/:id/review", requireClinicianOnly, async (req: any, res) => {
+    try {
+      const submissionId = parseInt(req.params.id);
+      if (isNaN(submissionId)) return res.status(400).json({ message: "Invalid ID" });
+      const submission = await storage.getFormSubmission(submissionId);
+      if (!submission) return res.status(404).json({ message: "Submission not found" });
+      const clinicianId = getClinicianId(req);
+      const form = await storage.getIntakeFormById(submission.formId);
+      if (!form || form.clinicianId !== clinicianId) return res.status(403).json({ message: "Not authorized" });
+      const updated = await storage.updateFormSubmission(submissionId, {
+        reviewStatus: "reviewed",
+      });
+      res.json(updated);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update submission" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }
