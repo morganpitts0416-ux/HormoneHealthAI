@@ -2926,6 +2926,62 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       await storage.updatePatientFormAssignment(assignmentId, { status: "completed" });
 
+      // Fire-and-forget: sync smart-field chart domains into patient chart
+      setImmediate(async () => {
+        try {
+          const fields = await storage.getFormFields(assignment.formId);
+          const chart = await storage.getPatientChart(patientId, form.clinicianId ?? 0);
+          const toSync: Record<string, string[]> = {
+            medications: [], allergies: [], medical_history: [],
+            surgical_history: [], family_history: [], social_history: [],
+          };
+          for (const field of fields) {
+            if (!field.syncConfigJson) continue;
+            const sync = field.syncConfigJson as any;
+            if (!sync.domain || !sync.mode || sync.mode === "none") continue;
+            const value = (responses as Record<string, any>)[field.fieldKey];
+            if (value === undefined || value === null || value === "") continue;
+            const domain = sync.domain as string;
+            if (!toSync[domain]) continue;
+            if (Array.isArray(value)) {
+              toSync[domain].push(...value.filter(Boolean).map(String));
+            } else {
+              toSync[domain].push(String(value));
+            }
+          }
+          const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+          const existing = {
+            medications: (chart?.currentMedications as string[] ?? []),
+            allergies: (chart?.allergies as string[] ?? []),
+            medical_history: (chart?.medicalHistory as string[] ?? []),
+            surgical_history: (chart?.surgicalHistory as string[] ?? []),
+            family_history: (chart?.familyHistory as string[] ?? []),
+            social_history: (chart?.socialHistory as string[] ?? []),
+          };
+          const merged = { ...existing };
+          let hasChanges = false;
+          for (const [domain, items] of Object.entries(toSync)) {
+            for (const item of items) {
+              const isDup = (existing[domain as keyof typeof existing] as string[]).some(e => normalize(e) === normalize(item));
+              if (!isDup) { (merged[domain as keyof typeof merged] as string[]).push(item); hasChanges = true; }
+            }
+          }
+          if (hasChanges) {
+            await storage.upsertPatientChart(patientId, form.clinicianId ?? 0, {
+              currentMedications: merged.medications,
+              allergies: merged.allergies,
+              medicalHistory: merged.medical_history,
+              surgicalHistory: merged.surgical_history,
+              familyHistory: merged.family_history,
+              socialHistory: merged.social_history,
+            });
+          }
+          await storage.updateFormSubmission(submission.id, { syncStatus: "synced" });
+        } catch (syncErr) {
+          console.error("[Portal Form Submit Sync]", syncErr);
+        }
+      });
+
       res.json({ success: true, submissionId: submission.id });
     } catch (err) {
       console.error("[Portal Form Submit]", err);
@@ -2941,8 +2997,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const { formId, method } = req.body;
       if (!formId) return res.status(400).json({ message: "formId required" });
 
-      const patient = await storage.getPatientById(patientId);
-      if (!patient || patient.userId !== clinicianId) return res.status(404).json({ message: "Patient not found" });
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
 
       const form = await storage.getIntakeFormById(parseInt(formId));
       if (!form || form.clinicianId !== clinicianId) return res.status(404).json({ message: "Form not found" });
@@ -2955,7 +3012,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           formId: parseInt(formId),
           mode: "link",
           status: "active",
-          publicToken: require("crypto").randomBytes(16).toString("hex"),
+          publicToken: crypto.randomBytes(16).toString("hex"),
         });
       }
 
@@ -2977,29 +3034,40 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       if (method === "email" && patient.email) {
         try {
-          const { Resend } = require("resend");
-          const resend = new Resend(process.env.RESEND_API_KEY);
           const clinician = await storage.getUser(clinicianId);
           const clinicName = clinician?.clinicName || "Your Healthcare Provider";
+          const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com";
+          const apiKey = process.env.RESEND_API_KEY;
 
-          await resend.emails.send({
-            from: `${clinicName} <noreply@realignlabeval.com>`,
-            to: patient.email,
-            subject: `${clinicName}: Please complete your ${form.name}`,
-            html: `
-              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
-                <h2 style="color: #2e3a20;">New Form from ${clinicName}</h2>
-                <p>Hi ${patient.firstName},</p>
-                <p>Your provider has asked you to complete the following form:</p>
-                <div style="background: #f9f6f0; border: 1px solid #d4c9b5; border-radius: 8px; padding: 16px; margin: 16px 0;">
-                  <strong>${form.name}</strong>
-                  ${form.description ? `<p style="color: #666; margin-top: 8px;">${form.description}</p>` : ""}
-                </div>
-                <a href="${formUrl}" style="display: inline-block; background: #2e3a20; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Complete Form</a>
-                <p style="margin-top: 24px; color: #888; font-size: 12px;">If the button doesn't work, copy this link: ${formUrl}</p>
+          const emailHtml = `
+            <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+              <h2 style="color: #2e3a20;">New Form from ${clinicName}</h2>
+              <p>Hi ${patient.firstName},</p>
+              <p>Your provider has asked you to complete the following form:</p>
+              <div style="background: #f9f6f0; border: 1px solid #d4c9b5; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                <strong>${form.name}</strong>
+                ${form.description ? `<p style="color: #666; margin-top: 8px;">${form.description}</p>` : ""}
               </div>
-            `,
-          });
+              <a href="${formUrl}" style="display: inline-block; background: #2e3a20; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Complete Form</a>
+              <p style="margin-top: 24px; color: #888; font-size: 12px;">If the button doesn't work, copy this link: ${formUrl}</p>
+            </div>
+          `;
+
+          if (apiKey) {
+            const emailRes = await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: `"${clinicName}" <${sendingDomain}>`,
+                to: [patient.email],
+                subject: `${clinicName}: Please complete your ${form.name}`,
+                html: emailHtml,
+              }),
+            });
+            if (!emailRes.ok) throw new Error(`Resend ${emailRes.status}`);
+          } else {
+            console.log("[Send Form Link] No RESEND_API_KEY — skipping email send. Link:", formUrl);
+          }
           res.json({ success: true, method: "email", formUrl });
         } catch (emailErr) {
           console.error("[Send Form Link] Email error:", emailErr);
@@ -7242,8 +7310,9 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     try {
       const patientId = parseInt(req.params.id);
       const clinicianId = getClinicianId(req);
-      const patient = await storage.getPatientById(patientId);
-      if (!patient || patient.userId !== clinicianId) return res.status(404).json({ message: "Patient not found" });
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
       const assignments = await storage.getPatientFormAssignments(patientId);
       res.json(assignments);
     } catch (err) {
@@ -7256,8 +7325,9 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     try {
       const patientId = parseInt(req.params.id);
       const clinicianId = getClinicianId(req);
-      const patient = await storage.getPatientById(patientId);
-      if (!patient || patient.userId !== clinicianId) return res.status(404).json({ message: "Patient not found" });
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
       const { formId, dueAt, notes } = req.body;
       if (!formId) return res.status(400).json({ message: "formId required" });
       const form = await storage.getIntakeFormById(parseInt(formId));
