@@ -31,7 +31,7 @@ The ClinIQ platform features comprehensive lab input, results display with color
 -   **Portal Messaging System**: Supports None, In-app, SMS link, and External API (two-way bridge via webhooks).
 -   **HIPAA Technical Controls**: Includes audit logging, login lockout, client-side session timeout, and robust password strength.
 -   **Email Integration**: Supports clinician invite flows and password resets.
--   **Clinical Encounter Documentation & 6-Stage AI Pipeline**: Full visit documentation workflow including audio upload/recording (OpenAI Whisper), transcription, medical term normalization, fact extraction, AI-generated SOAP, evidence suggestions, and patient summary. HIPAA-conscious: no audio stored.
+-   **Clinical Encounter Documentation & 6-Stage AI Pipeline**: Full visit documentation workflow including audio upload/recording (OpenAI Whisper), transcription, medical term normalization, fact extraction, AI-generated SOAP, evidence suggestions, and patient summary. HIPAA-conscious: no audio stored. Transcription-only drafts (before patient selection) are stored server-side in `encounter_drafts` table via `GET/POST/DELETE /api/encounter-drafts` — cross-device, no longer localStorage-only.
 -   **Clinician Customizable Supplement Library**: Clinicians can add, edit, and delete custom supplements with lab-value, symptom-based, or combined trigger rules.
 -   **Supplement Pricing & Discount Settings**: Per-clinician discount settings applied to supplement orders.
 -   **Clinician Lab Range Preferences**: Clinicians can override optimal and reference ranges for 60+ lab markers on a per-gender basis.

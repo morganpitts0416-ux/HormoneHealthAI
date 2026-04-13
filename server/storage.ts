@@ -199,6 +199,10 @@ export interface IStorage {
   addSingleMedicationEntry(entry: schema.InsertMedicationEntry): Promise<schema.MedicationEntry>;
   updateMedicationEntryAliases(id: number, clinicianId: number, fields: Partial<Pick<schema.MedicationEntry, "brandNames" | "commonSpokenVariants" | "commonMisspellings" | "drugClass" | "subclass" | "route" | "notes">>): Promise<schema.MedicationEntry | null>;
   deleteMedicationEntry(id: number, clinicianId: number): Promise<boolean>;
+  // ── Encounter Drafts (server-side, cross-device) ──────────────────────────
+  getEncounterDrafts(clinicianId: number): Promise<schema.EncounterDraft[]>;
+  createEncounterDraft(draft: schema.InsertEncounterDraft): Promise<schema.EncounterDraft>;
+  deleteEncounterDraft(id: number, clinicianId: number): Promise<boolean>;
 }
 
 // ─── Patient scope helper ────────────────────────────────────────────────────
@@ -1611,6 +1615,25 @@ export class DbStorage implements IStorage {
       .values({ patientId, formId, ...data } as schema.InsertFormExpirationTracking)
       .returning();
     return row;
+  }
+
+  // ─── Encounter Drafts ────────────────────────────────────────────────────────
+  async getEncounterDrafts(clinicianId: number): Promise<schema.EncounterDraft[]> {
+    return db.select().from(schema.encounterDrafts)
+      .where(eq(schema.encounterDrafts.clinicianId, clinicianId))
+      .orderBy(desc(schema.encounterDrafts.createdAt));
+  }
+
+  async createEncounterDraft(draft: schema.InsertEncounterDraft): Promise<schema.EncounterDraft> {
+    const [row] = await db.insert(schema.encounterDrafts).values(draft).returning();
+    return row;
+  }
+
+  async deleteEncounterDraft(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db.delete(schema.encounterDrafts)
+      .where(and(eq(schema.encounterDrafts.id, id), eq(schema.encounterDrafts.clinicianId, clinicianId)))
+      .returning();
+    return result.length > 0;
   }
 }
 

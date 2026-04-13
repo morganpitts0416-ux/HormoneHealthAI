@@ -6,6 +6,7 @@ import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
 import { Search, UserPlus, User, X } from "lucide-react";
 import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Patient } from "@shared/schema";
 
 interface PatientSelectorProps {
@@ -16,6 +17,7 @@ interface PatientSelectorProps {
 }
 
 export function PatientSelector({ gender, onPatientSelect, selectedPatient, initialPatientId }: PatientSelectorProps) {
+  const { toast } = useToast();
   const [searchTerm, setSearchTerm] = useState("");
   const [showDropdown, setShowDropdown] = useState(false);
   const [showNewForm, setShowNewForm] = useState(false);
@@ -23,6 +25,7 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
   const [newLastName, setNewLastName] = useState("");
   const [newEmail, setNewEmail] = useState("");
   const [newDob, setNewDob] = useState("");
+  const [isCreating, setIsCreating] = useState(false);
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: searchResults = [] } = useQuery<Patient[]>({
@@ -57,6 +60,7 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
 
   const handleCreatePatient = async () => {
     if (!newFirstName.trim() || !newLastName.trim()) return;
+    setIsCreating(true);
     try {
       const body: Record<string, unknown> = {
         firstName: newFirstName.trim(),
@@ -66,8 +70,16 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
       if (newEmail.trim()) body.email = newEmail.trim().toLowerCase();
       if (newDob) body.dateOfBirth = new Date(newDob).toISOString();
       const res = await apiRequest("POST", "/api/patients", body);
-      const patient = await res.json();
-      onPatientSelect(patient);
+      const data = await res.json();
+      if (!res.ok) {
+        toast({
+          variant: "destructive",
+          title: "Failed to create patient",
+          description: data?.error ?? data?.message ?? "Please check the form and try again.",
+        });
+        return;
+      }
+      onPatientSelect(data);
       setShowNewForm(false);
       setNewFirstName("");
       setNewLastName("");
@@ -75,8 +87,14 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
       setNewDob("");
       setSearchTerm("");
       setShowDropdown(false);
-    } catch {
-      console.error("Failed to create patient");
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Failed to create patient",
+        description: "A network error occurred. Please try again.",
+      });
+    } finally {
+      setIsCreating(false);
     }
   };
 
@@ -229,10 +247,10 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
               <Button
                 size="sm"
                 onClick={handleCreatePatient}
-                disabled={!newFirstName.trim() || !newLastName.trim()}
+                disabled={!newFirstName.trim() || !newLastName.trim() || isCreating}
                 data-testid="button-create-patient"
               >
-                Create Patient
+                {isCreating ? "Creating..." : "Create Patient"}
               </Button>
             </div>
           </CardContent>
