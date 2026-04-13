@@ -297,6 +297,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Current user — returns clinician info for both clinician and staff sessions.
+  // Temporary debug endpoint — remove after troubleshooting
+  app.get("/api/debug/session-info", requireAuth, async (req, res) => {
+    const user = req.user as any;
+    const clinicianId = getClinicianId(req);
+    const patientCount = await storage.getPatientCountByUser(clinicianId);
+    const allUsersCount = (await storage.getAllUsers()).length;
+    res.json({
+      sessionUserId: user?.id,
+      email: user?.email,
+      username: user?.username,
+      role: user?.role,
+      freeAccount: user?.freeAccount,
+      subscriptionStatus: user?.subscriptionStatus,
+      defaultClinicId: user?.defaultClinicId,
+      clinicianIdUsedForQueries: clinicianId,
+      patientCountForThisUser: patientCount,
+      totalUsersInSystem: allUsersCount,
+    });
+  });
+
   // When staff is logged in, augments with isStaff/staffId/staffFirstName/staffLastName/staffRole.
   app.get("/api/auth/me", async (req, res) => {
     const sess = req.session as any;
@@ -1276,8 +1296,10 @@ ${aiRecommendations}`;
       const clinicianId = getClinicianId(req);
       const q = (req.query.q as string) || '';
       const gender = req.query.gender as string | undefined;
+      console.log(`[DEBUG] /api/patients/search — clinicianId=${clinicianId}, userId=${(req.user as any)?.id}, role=${(req.user as any)?.role}, q="${q}"`);
       if (!q || q.length < 1) {
         const allPatients = await storage.getAllPatients(clinicianId);
+        console.log(`[DEBUG] /api/patients/search — returned ${allPatients.length} patients for clinicianId=${clinicianId}`);
         return res.json(allPatients);
       }
       const patients = await storage.searchPatients(q, clinicianId, gender);
@@ -1762,7 +1784,9 @@ Return ONLY this JSON structure:
   // Get all users + patient counts (admin only)
   app.get("/api/admin/clinicians", requireAdmin, async (req, res) => {
     try {
+      console.log(`[DEBUG] /api/admin/clinicians — requestingUser id=${(req.user as any)?.id}, role=${(req.user as any)?.role}`);
       const users = await storage.getAllUsers();
+      console.log(`[DEBUG] /api/admin/clinicians — found ${users.length} users`);
       const withCounts = await Promise.all(
         users.map(async (u) => ({
           id: u.id,
