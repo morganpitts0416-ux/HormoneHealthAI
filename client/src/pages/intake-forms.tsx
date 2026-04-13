@@ -437,6 +437,169 @@ export default function IntakeFormsPage() {
   );
 }
 
+// ─── Field Type Icons ─────────────────────────────────────────────────────────
+
+function getFieldTypeIcon(type: string) {
+  const iconMap: Record<string, any> = {
+    short_text: "Aa",
+    long_text: "Pg",
+    number: "#",
+    email: "@",
+    phone: "Ph",
+    date: "Cal",
+    single_choice: "Rad",
+    multi_choice: "Chk",
+    dropdown: "Sel",
+    yes_no: "Y/N",
+    scale: "Scl",
+    signature: "Sig",
+    heading: "H",
+    paragraph: "P",
+    medication_list: "Rx",
+    symptom_checklist: "Sx",
+  };
+  return iconMap[type] ?? "?";
+}
+
+// ─── Live Form Preview ───────────────────────────────────────────────────────
+
+function FieldPreview({ field, isSelected, onClick }: { field: FormField; isSelected: boolean; onClick: () => void }) {
+  const options = Array.isArray(field.optionsJson) ? field.optionsJson : [];
+  const scaleOpts = (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
+    ? field.optionsJson as { min?: number; max?: number; step?: number; labels?: { low?: string; high?: string } }
+    : { min: 1, max: 5, step: 1 };
+
+  const renderInput = () => {
+    switch (field.fieldType) {
+      case "heading":
+        return <h3 className="text-base font-semibold text-foreground">{field.label}</h3>;
+      case "paragraph":
+        return <p className="text-sm text-muted-foreground">{field.helpText || field.placeholder || "Instructions will appear here..."}</p>;
+      case "short_text":
+      case "email":
+      case "phone":
+        return <Input disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" />;
+      case "long_text":
+        return <Textarea disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" rows={3} />;
+      case "number":
+        return <Input disabled type="number" placeholder={field.placeholder ?? "0"} className="bg-muted/30 max-w-[200px]" />;
+      case "date":
+        return <Input disabled type="date" className="bg-muted/30 max-w-[220px]" />;
+      case "single_choice":
+        return (
+          <div className="space-y-2">
+            {options.length > 0 ? options.map((opt: string, i: number) => (
+              <label key={i} className="flex items-center gap-2 text-sm">
+                <span className="h-4 w-4 rounded-full border border-border flex-shrink-0" />
+                {opt}
+              </label>
+            )) : <span className="text-xs text-muted-foreground italic">No options defined</span>}
+          </div>
+        );
+      case "multi_choice":
+        return (
+          <div className="space-y-2">
+            {options.length > 0 ? options.map((opt: string, i: number) => (
+              <label key={i} className="flex items-center gap-2 text-sm">
+                <span className="h-4 w-4 rounded-md border border-border flex-shrink-0" />
+                {opt}
+              </label>
+            )) : <span className="text-xs text-muted-foreground italic">No options defined</span>}
+          </div>
+        );
+      case "dropdown":
+        return (
+          <div className="max-w-[280px]">
+            <div className="flex items-center justify-between border rounded-md px-3 py-2 bg-muted/30 text-sm text-muted-foreground">
+              <span>{field.placeholder || "Select..."}</span>
+              <ChevronDown className="h-3.5 w-3.5" />
+            </div>
+          </div>
+        );
+      case "yes_no":
+        return (
+          <div className="flex items-center gap-4">
+            <label className="flex items-center gap-2 text-sm"><span className="h-4 w-4 rounded-full border border-border" /> Yes</label>
+            <label className="flex items-center gap-2 text-sm"><span className="h-4 w-4 rounded-full border border-border" /> No</label>
+          </div>
+        );
+      case "scale": {
+        const min = scaleOpts.min ?? 1;
+        const max = scaleOpts.max ?? 5;
+        const labels = scaleOpts.labels;
+        const steps = [];
+        for (let i = min; i <= max; i++) steps.push(i);
+        return (
+          <div className="space-y-1.5">
+            <div className="flex items-center gap-1.5 flex-wrap">
+              {steps.map(n => (
+                <span key={n} className="w-9 h-9 rounded-md border border-border flex items-center justify-center text-sm text-muted-foreground bg-muted/30">{n}</span>
+              ))}
+            </div>
+            {labels && (
+              <div className="flex justify-between text-[11px] text-muted-foreground px-1">
+                <span>{labels.low ?? ""}</span>
+                <span>{labels.high ?? ""}</span>
+              </div>
+            )}
+          </div>
+        );
+      }
+      case "signature":
+        return (
+          <div className="border-2 border-dashed border-border rounded-md h-20 flex items-center justify-center text-sm text-muted-foreground bg-muted/10">
+            Sign here
+          </div>
+        );
+      case "medication_list":
+        return (
+          <div className="space-y-1.5">
+            <div className="border rounded-md p-2 bg-muted/30 text-sm text-muted-foreground">{field.placeholder || "Medication name, dosage, frequency"}</div>
+            <button type="button" className="text-xs text-primary font-medium">+ Add medication</button>
+          </div>
+        );
+      case "symptom_checklist":
+        return (
+          <div className="space-y-2">
+            {options.length > 0 ? options.map((opt: string, i: number) => (
+              <label key={i} className="flex items-center gap-2 text-sm">
+                <span className="h-4 w-4 rounded-md border border-border flex-shrink-0" />
+                {opt}
+              </label>
+            )) : <span className="text-xs text-muted-foreground italic">No symptom items defined</span>}
+          </div>
+        );
+      default:
+        return <Input disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" />;
+    }
+  };
+
+  const isDecorative = ["heading", "paragraph"].includes(field.fieldType);
+
+  return (
+    <div
+      onClick={onClick}
+      className={`cursor-pointer rounded-lg p-4 transition-all border-2 ${
+        isSelected
+          ? "border-primary bg-primary/5 shadow-sm"
+          : "border-transparent hover:border-border hover:bg-muted/20"
+      }`}
+      data-testid={`preview-field-${field.id}`}
+    >
+      {!isDecorative && (
+        <label className="block text-sm font-medium mb-1.5">
+          {field.label}
+          {field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+        </label>
+      )}
+      {!isDecorative && field.helpText && (
+        <p className="text-xs text-muted-foreground mb-2">{field.helpText}</p>
+      )}
+      {renderInput()}
+    </div>
+  );
+}
+
 // ─── Form Builder View ────────────────────────────────────────────────────────
 
 function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => void }) {
@@ -444,6 +607,7 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
   const [activeTab, setActiveTab] = useState("fields");
   const [selectedFieldId, setSelectedFieldId] = useState<number | null>(null);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
+  const [dragIdx, setDragIdx] = useState<number | null>(null);
 
   const { data: form, isLoading } = useQuery<IntakeForm>({
     queryKey: ["/api/intake-forms", formId],
@@ -475,6 +639,11 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] });
       setSelectedFieldId(null);
     },
+  });
+
+  const reorderMutation = useMutation({
+    mutationFn: (fieldIds: number[]) => apiRequest("PUT", `/api/intake-forms/${formId}/fields/reorder`, { fieldIds }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }),
   });
 
   const addSectionMutation = useMutation({
@@ -522,6 +691,44 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
 
   const sortedFields = [...(form.fields ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
 
+  const handleDragStart = (idx: number) => setDragIdx(idx);
+  const handleDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+  };
+  const handleDrop = (e: React.DragEvent, targetIdx: number) => {
+    e.preventDefault();
+    if (dragIdx === null || dragIdx === targetIdx) { setDragIdx(null); return; }
+    const newOrder = [...sortedFields];
+    const [moved] = newOrder.splice(dragIdx, 1);
+    newOrder.splice(targetIdx, 0, moved);
+    reorderMutation.mutate(newOrder.map(f => f.id));
+    setDragIdx(null);
+  };
+
+  const addSmartField = (sf: SmartFieldDef) => {
+    const chartDomainMap: Record<string, string> = {
+      "chart.currentMedications": "medications",
+      "chart.allergies": "allergies",
+      "chart.medicalHistory": "medical_history",
+      "chart.surgicalHistory": "surgical_history",
+      "chart.familyHistory": "family_history",
+      "chart.socialHistory": "social_history",
+    };
+    addFieldMutation.mutate({
+      fieldType: sf.fieldType,
+      label: sf.label,
+      smartFieldKey: sf.key,
+      placeholder: sf.placeholder,
+      helpText: sf.helpText || null,
+      isRequired: sf.isRequired || false,
+      optionsJson: sf.optionsJson || null,
+      syncConfigJson: chartDomainMap[sf.syncTarget]
+        ? { domain: chartDomainMap[sf.syncTarget], mode: "append", smartTarget: sf.syncTarget }
+        : { domain: "none", smartTarget: sf.syncTarget },
+    });
+  };
+
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
@@ -541,6 +748,13 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
           </div>
         </div>
         <div className="flex items-center gap-2">
+          <Tabs value={activeTab} onValueChange={setActiveTab}>
+            <TabsList className="h-auto p-1">
+              <TabsTrigger value="fields" data-testid="tab-builder" className="text-xs">Builder</TabsTrigger>
+              <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs">Settings</TabsTrigger>
+              <TabsTrigger value="submissions" data-testid="tab-submissions" className="text-xs">Submissions</TabsTrigger>
+            </TabsList>
+          </Tabs>
           {publicUrl && (
             <Button size="sm" variant="outline"
               onClick={() => window.open(publicUrl, "_blank")}
@@ -557,135 +771,134 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
         </div>
       </div>
 
-      {/* Body */}
-      <div className="flex flex-1 overflow-hidden">
-        {/* Left: Field list */}
-        <div className="w-64 border-r flex flex-col bg-muted/20">
-          <div className="px-3 py-2 border-b flex items-center justify-between">
-            <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fields</span>
-            <div className="flex items-center gap-1">
-              <Button size="icon" variant="ghost" title="Add section"
-                onClick={() => addSectionMutation.mutate({ title: "New Section" })}
-                data-testid="button-add-section">
-                <Tag className="h-3.5 w-3.5" />
-              </Button>
-            </div>
-          </div>
-          <ScrollArea className="flex-1">
-            <div className="p-2 space-y-1">
-              {sortedFields.length === 0 && (
-                <p className="text-xs text-muted-foreground px-2 py-4 text-center">No fields yet. Add one below.</p>
-              )}
-              {sortedFields.map(field => (
-                <button
-                  key={field.id}
-                  onClick={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
-                  className={`w-full text-left px-2.5 py-2 rounded-md text-sm flex items-center gap-2 transition-colors
-                    ${selectedFieldId === field.id
-                      ? "bg-primary/10 text-primary font-medium"
-                      : "hover:bg-muted"}`}
-                  data-testid={`button-select-field-${field.id}`}>
-                  <GripVertical className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
-                  <span className="truncate flex-1">{field.label}</span>
-                  {field.smartFieldKey && (
-                    <span className="text-[10px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded px-1 flex-shrink-0" title="Smart field — auto-links to patient profile/chart">
-                      {SMART_FIELDS.find(s => s.key === field.smartFieldKey)?.category === "demographics" ? "ID" : "Rx"}
-                    </span>
-                  )}
-                  {(field.layoutJson as any)?.columnWidth && (field.layoutJson as any).columnWidth !== "full" && (
-                    <span className="text-[10px] text-muted-foreground bg-muted rounded px-1 flex-shrink-0">
-                      {(field.layoutJson as any).columnWidth === "half" ? "1/2" : "1/3"}
-                    </span>
-                  )}
-                  {field.isRequired && <span className="text-red-500 text-xs flex-shrink-0">*</span>}
-                </button>
-              ))}
-            </div>
-          </ScrollArea>
-          <div className="p-2 border-t space-y-2">
-            <Select
-              value=""
-              onValueChange={(type) => addFieldMutation.mutate({ fieldType: type, label: FIELD_TYPES.find(t => t.value === type)?.label ?? "New Field" })}>
-              <SelectTrigger className="text-xs" data-testid="select-add-field-type">
-                <Plus className="h-3.5 w-3.5 mr-1.5" />
-                <SelectValue placeholder="Add field..." />
-              </SelectTrigger>
-              <SelectContent>
-                {FIELD_TYPES.map(t => (
-                  <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                ))}
-              </SelectContent>
-            </Select>
-            <SmartFieldPalette
-              existingSmartKeys={(form?.fields ?? []).map(f => f.smartFieldKey).filter(Boolean) as string[]}
-              onAdd={(sf) => {
-                const syncDomain = sf.syncTarget.startsWith("chart.") ? sf.syncTarget.replace("chart.", "").replace(/([A-Z])/g, "_$1").toLowerCase().replace(/^_/, "") : undefined;
-                const chartDomainMap: Record<string, string> = {
-                  "chart.currentMedications": "medications",
-                  "chart.allergies": "allergies",
-                  "chart.medicalHistory": "medical_history",
-                  "chart.surgicalHistory": "surgical_history",
-                  "chart.familyHistory": "family_history",
-                  "chart.socialHistory": "social_history",
-                };
-                addFieldMutation.mutate({
-                  fieldType: sf.fieldType,
-                  label: sf.label,
-                  smartFieldKey: sf.key,
-                  placeholder: sf.placeholder,
-                  helpText: sf.helpText || null,
-                  isRequired: sf.isRequired || false,
-                  optionsJson: sf.optionsJson || null,
-                  syncConfigJson: chartDomainMap[sf.syncTarget]
-                    ? { domain: chartDomainMap[sf.syncTarget], mode: "append", smartTarget: sf.syncTarget }
-                    : { domain: "none", smartTarget: sf.syncTarget },
-                });
-              }}
-            />
-          </div>
+      {/* Non-builder tabs */}
+      {activeTab === "settings" && (
+        <div className="flex-1 overflow-auto p-6">
+          <FormSettingsPanel form={form} onUpdate={(data) => updateFormMutation.mutate(data)} />
         </div>
+      )}
+      {activeTab === "submissions" && (
+        <div className="flex-1 overflow-auto p-6">
+          <FormSubmissionsPanel formId={formId} />
+        </div>
+      )}
 
-        {/* Center + Right: Tabs */}
-        <div className="flex-1 overflow-hidden flex flex-col">
-          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex flex-col h-full">
-            <TabsList className="mx-4 mt-3 w-auto justify-start h-auto p-1">
-              <TabsTrigger value="fields" data-testid="tab-builder">Builder</TabsTrigger>
-              <TabsTrigger value="settings" data-testid="tab-settings">Settings</TabsTrigger>
-              <TabsTrigger value="submissions" data-testid="tab-submissions">Submissions</TabsTrigger>
-            </TabsList>
-
-            {/* Builder tab */}
-            <TabsContent value="fields" className="flex-1 overflow-hidden flex m-0 mt-3">
-              <div className="flex-1 overflow-auto p-4">
-                {selectedField ? (
-                  <FieldEditor
-                    field={selectedField}
-                    onUpdate={(data) => updateFieldMutation.mutate({ fieldId: selectedField.id, data })}
-                    onDelete={() => deleteFieldMutation.mutate(selectedField.id)}
-                    isPending={updateFieldMutation.isPending}
-                  />
-                ) : (
-                  <div className="flex flex-col items-center justify-center h-full gap-3 text-center text-muted-foreground">
-                    <Edit3 className="h-10 w-10 opacity-30" />
-                    <p className="font-medium">Select a field to edit</p>
-                    <p className="text-sm">or add a new field from the left panel</p>
-                  </div>
+      {/* Builder: Three-panel layout */}
+      {activeTab === "fields" && (
+        <div className="flex flex-1 overflow-hidden">
+          {/* Left: Field list sidebar */}
+          <div className="w-60 border-r flex flex-col bg-muted/20">
+            <div className="px-3 py-2 border-b flex items-center justify-between">
+              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fields ({sortedFields.length})</span>
+            </div>
+            <ScrollArea className="flex-1">
+              <div className="p-1.5 space-y-0.5">
+                {sortedFields.length === 0 && (
+                  <p className="text-xs text-muted-foreground px-2 py-4 text-center">No fields yet. Add one below.</p>
                 )}
+                {sortedFields.map((field, idx) => (
+                  <div
+                    key={field.id}
+                    draggable
+                    onDragStart={() => handleDragStart(idx)}
+                    onDragOver={(e) => handleDragOver(e, idx)}
+                    onDrop={(e) => handleDrop(e, idx)}
+                    onClick={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
+                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-colors select-none
+                      ${selectedFieldId === field.id
+                        ? "bg-primary/10 text-primary font-medium ring-1 ring-primary/30"
+                        : "hover:bg-muted"}`}
+                    data-testid={`button-select-field-${field.id}`}
+                  >
+                    <GripVertical className="h-3 w-3 text-muted-foreground flex-shrink-0 cursor-grab" />
+                    <span className="w-6 h-5 rounded text-[10px] font-mono flex items-center justify-center bg-muted text-muted-foreground flex-shrink-0">
+                      {getFieldTypeIcon(field.fieldType)}
+                    </span>
+                    <span className="truncate flex-1">{field.label}</span>
+                    {field.smartFieldKey && (
+                      <span className="text-[9px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded px-1 flex-shrink-0">
+                        {SMART_FIELDS.find(s => s.key === field.smartFieldKey)?.category === "demographics" ? "ID" : "Rx"}
+                      </span>
+                    )}
+                    {field.isRequired && <span className="text-red-500 text-[10px] flex-shrink-0">*</span>}
+                  </div>
+                ))}
               </div>
-            </TabsContent>
+            </ScrollArea>
+            <div className="p-2 border-t space-y-1.5">
+              <Select
+                value="placeholder_add"
+                onValueChange={(type) => {
+                  if (type !== "placeholder_add") addFieldMutation.mutate({ fieldType: type, label: FIELD_TYPES.find(t => t.value === type)?.label ?? "New Field" });
+                }}>
+                <SelectTrigger className="text-xs" data-testid="select-add-field-type">
+                  <Plus className="h-3.5 w-3.5 mr-1" />
+                  <SelectValue placeholder="Add field..." />
+                </SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="placeholder_add" disabled>Choose type...</SelectItem>
+                  {FIELD_TYPES.map(t => (
+                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <SmartFieldPalette
+                existingSmartKeys={(form?.fields ?? []).map(f => f.smartFieldKey).filter(Boolean) as string[]}
+                onAdd={addSmartField}
+              />
+            </div>
+          </div>
 
-            {/* Settings tab */}
-            <TabsContent value="settings" className="flex-1 overflow-auto m-0 mt-0 p-4">
-              <FormSettingsPanel form={form} onUpdate={(data) => updateFormMutation.mutate(data)} />
-            </TabsContent>
+          {/* Center: Live form preview */}
+          <div className="flex-1 overflow-auto bg-muted/10">
+            <div className="max-w-2xl mx-auto py-6 px-4">
+              <div className="rounded-xl border bg-background shadow-sm">
+                <div className="px-6 py-5 border-b">
+                  <h2 className="text-lg font-semibold">{form.name}</h2>
+                  {form.description && <p className="text-sm text-muted-foreground mt-1">{form.description}</p>}
+                </div>
+                <div className="p-6">
+                  {sortedFields.length === 0 ? (
+                    <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+                      <LayoutList className="h-10 w-10 text-muted-foreground/30" />
+                      <p className="font-medium text-muted-foreground">No fields yet</p>
+                      <p className="text-sm text-muted-foreground">Add fields from the left panel to build your form</p>
+                    </div>
+                  ) : (
+                    <div className="flex flex-wrap -mx-2">
+                      {sortedFields.map(field => {
+                        const colWidth = (field.layoutJson as any)?.columnWidth ?? "full";
+                        const widthClass = colWidth === "half" ? "w-1/2" : colWidth === "third" ? "w-1/3" : "w-full";
+                        return (
+                          <div key={field.id} className={`${widthClass} px-2 mb-2`}>
+                            <FieldPreview
+                              field={field}
+                              isSelected={selectedFieldId === field.id}
+                              onClick={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
+                            />
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              </div>
+            </div>
+          </div>
 
-            {/* Submissions tab */}
-            <TabsContent value="submissions" className="flex-1 overflow-auto m-0 mt-0 p-4">
-              <FormSubmissionsPanel formId={formId} />
-            </TabsContent>
-          </Tabs>
+          {/* Right: Field editor (conditional) */}
+          {selectedField && (
+            <div className="w-80 border-l overflow-auto bg-background">
+              <FieldEditor
+                field={selectedField}
+                onUpdate={(data) => updateFieldMutation.mutate({ fieldId: selectedField.id, data })}
+                onDelete={() => deleteFieldMutation.mutate(selectedField.id)}
+                isPending={updateFieldMutation.isPending}
+              />
+            </div>
+          )}
         </div>
-      </div>
+      )}
 
       {/* Publish Dialog */}
       <PublishDialog
@@ -719,17 +932,40 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
   const [columnWidth, setColumnWidth] = useState<string>(
     (field.layoutJson as any)?.columnWidth ?? "full"
   );
+  const [scaleMin, setScaleMin] = useState<number>(
+    (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) ? (field.optionsJson as any).min ?? 1 : 1
+  );
+  const [scaleMax, setScaleMax] = useState<number>(
+    (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) ? (field.optionsJson as any).max ?? 5 : 5
+  );
+  const [scaleLowLabel, setScaleLowLabel] = useState<string>(
+    (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) ? (field.optionsJson as any).labels?.low ?? "" : ""
+  );
+  const [scaleHighLabel, setScaleHighLabel] = useState<string>(
+    (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) ? (field.optionsJson as any).labels?.high ?? "" : ""
+  );
 
   useEffect(() => {
     setLocal({ ...field });
     setOptionsText(Array.isArray(field.optionsJson) ? field.optionsJson.join("\n") : "");
     setSyncDomain((field.syncConfigJson as any)?.domain ?? "none");
     setColumnWidth((field.layoutJson as any)?.columnWidth ?? "full");
+    const opts = field.optionsJson;
+    if (opts && typeof opts === "object" && !Array.isArray(opts)) {
+      setScaleMin((opts as any).min ?? 1);
+      setScaleMax((opts as any).max ?? 5);
+      setScaleLowLabel((opts as any).labels?.low ?? "");
+      setScaleHighLabel((opts as any).labels?.high ?? "");
+    } else {
+      setScaleMin(1); setScaleMax(5); setScaleLowLabel(""); setScaleHighLabel("");
+    }
   }, [field.id]);
 
   const smartDef = field.smartFieldKey ? SMART_FIELDS.find(s => s.key === field.smartFieldKey) : null;
   const isSmart = !!smartDef;
-  const hasOptions = ["single_choice", "multi_choice", "dropdown"].includes(local.fieldType);
+  const hasOptions = ["single_choice", "multi_choice", "dropdown", "symptom_checklist"].includes(local.fieldType);
+  const isScale = local.fieldType === "scale";
+  const isDecorative = ["heading", "paragraph"].includes(local.fieldType);
 
   const handleSave = () => {
     const data: any = {
@@ -745,6 +981,14 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
     if (hasOptions && !isSmart) {
       data.optionsJson = optionsText.split("\n").map(s => s.trim()).filter(Boolean);
     }
+    if (isScale) {
+      data.optionsJson = {
+        min: scaleMin,
+        max: scaleMax,
+        step: 1,
+        labels: { low: scaleLowLabel || undefined, high: scaleHighLabel || undefined },
+      };
+    }
     if (!isSmart) {
       if (syncDomain && syncDomain !== "none") {
         data.syncConfigJson = { domain: syncDomain, mode: "append" };
@@ -756,46 +1000,44 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
   };
 
   return (
-    <div className="space-y-4 max-w-xl">
+    <div className="p-4 space-y-4">
       <div className="flex items-center justify-between flex-wrap gap-2">
         <div className="flex items-center gap-2">
-          <h3 className="font-semibold">Edit Field</h3>
+          <h3 className="font-semibold text-sm">Edit Field</h3>
           {isSmart && (
             <Badge variant="outline" className="text-[10px] py-0 h-5 border-blue-300 text-blue-700 dark:text-blue-300">
               <Zap className="h-2.5 w-2.5 mr-1" />
-              Smart Field
+              Smart
             </Badge>
           )}
         </div>
         <Button size="sm" variant="ghost" className="text-destructive"
           onClick={() => { if (confirm("Delete this field?")) onDelete(); }}
           data-testid="button-delete-field">
-          <Trash2 className="h-3.5 w-3.5 mr-1" /> Delete
+          <Trash2 className="h-3.5 w-3.5" />
         </Button>
       </div>
 
       {isSmart && (
-        <div className="rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-3 space-y-1">
-          <p className="text-xs font-medium text-blue-800 dark:text-blue-300 flex items-center gap-1.5">
-            <Link2 className="h-3.5 w-3.5" />
-            Auto-links to: {smartDef.syncTarget.startsWith("patient.") ? "Patient Profile" : "Patient Chart"} — {smartDef.syncTarget.split(".")[1]}
+        <div className="rounded-md bg-blue-50 dark:bg-blue-950/20 border border-blue-200 dark:border-blue-800 p-2.5 space-y-0.5">
+          <p className="text-[11px] font-medium text-blue-800 dark:text-blue-300 flex items-center gap-1">
+            <Link2 className="h-3 w-3" />
+            Auto-links to: {smartDef.syncTarget.split(".")[1]}
           </p>
-          <p className="text-[11px] text-blue-600 dark:text-blue-400">
-            {smartDef.category === "demographics"
-              ? "This value will be used to identify or create the patient profile when the form is submitted."
-              : "This value will be automatically added to the patient's chart when the form submission is synced."}
+          <p className="text-[10px] text-blue-600 dark:text-blue-400">
+            {smartDef.category === "demographics" ? "Used to identify/create patient." : "Synced to patient chart."}
           </p>
         </div>
       )}
 
       <div className="space-y-3">
         {!isSmart && (
-          <div className="space-y-1.5">
-            <Label>Field Type</Label>
+          <div className="space-y-1">
+            <Label className="text-xs">Field Type</Label>
             <Select
               value={local.fieldType}
               onValueChange={(v) => setLocal(prev => ({ ...prev, fieldType: v }))}>
-              <SelectTrigger data-testid="select-field-type">
+              <SelectTrigger className="text-xs" data-testid="select-field-type">
                 <SelectValue />
               </SelectTrigger>
               <SelectContent>
@@ -806,14 +1048,14 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
         )}
 
         {isSmart && (
-          <div className="space-y-1.5">
-            <Label className="text-muted-foreground">Field Type</Label>
+          <div className="space-y-1">
+            <Label className="text-xs text-muted-foreground">Field Type</Label>
             <Input value={FIELD_TYPES.find(t => t.value === local.fieldType)?.label ?? local.fieldType} disabled className="text-xs" />
           </div>
         )}
 
-        <div className="space-y-1.5">
-          <Label>Label / Question</Label>
+        <div className="space-y-1">
+          <Label className="text-xs">{isDecorative ? "Text Content" : "Label / Question"}</Label>
           <Input
             value={local.label}
             onChange={e => setLocal(prev => ({ ...prev, label: e.target.value }))}
@@ -821,19 +1063,19 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
           />
         </div>
 
-        <div className="space-y-1.5">
-          <Label>Help Text <span className="text-muted-foreground">(optional)</span></Label>
+        <div className="space-y-1">
+          <Label className="text-xs">Help Text <span className="text-muted-foreground">(optional)</span></Label>
           <Input
             value={local.helpText ?? ""}
             onChange={e => setLocal(prev => ({ ...prev, helpText: e.target.value }))}
-            placeholder="Additional instruction for the patient"
+            placeholder="Additional instruction"
             data-testid="input-field-help"
           />
         </div>
 
-        {!["heading", "paragraph", "signature"].includes(local.fieldType) && (
-          <div className="space-y-1.5">
-            <Label>Placeholder</Label>
+        {!isDecorative && !["signature", "yes_no", "scale"].includes(local.fieldType) && (
+          <div className="space-y-1">
+            <Label className="text-xs">Placeholder</Label>
             <Input
               value={local.placeholder ?? ""}
               onChange={e => setLocal(prev => ({ ...prev, placeholder: e.target.value }))}
@@ -843,31 +1085,62 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
         )}
 
         {hasOptions && !isSmart && (
-          <div className="space-y-1.5">
-            <Label>Options <span className="text-muted-foreground">(one per line)</span></Label>
+          <div className="space-y-1">
+            <Label className="text-xs">
+              {local.fieldType === "symptom_checklist" ? "Symptom Items" : "Options"} <span className="text-muted-foreground">(one per line)</span>
+            </Label>
             <Textarea
               value={optionsText}
               onChange={e => setOptionsText(e.target.value)}
-              rows={6}
-              placeholder={"Option A\nOption B\nOption C"}
+              rows={5}
+              placeholder={local.fieldType === "symptom_checklist"
+                ? "Fatigue\nInsomnia\nWeight gain\nMood changes"
+                : "Option A\nOption B\nOption C"}
               data-testid="textarea-field-options"
             />
           </div>
         )}
 
-        <div className="flex items-center justify-between py-2 border-t">
-          <Label className="cursor-pointer">Required field</Label>
-          <Switch
-            checked={local.isRequired}
-            onCheckedChange={v => setLocal(prev => ({ ...prev, isRequired: v }))}
-            data-testid="switch-field-required"
-          />
-        </div>
+        {isScale && (
+          <div className="space-y-2">
+            <Label className="text-xs">Scale Range</Label>
+            <div className="flex gap-2">
+              <div className="flex-1 space-y-0.5">
+                <span className="text-[10px] text-muted-foreground">Min</span>
+                <Input type="number" value={scaleMin} onChange={e => setScaleMin(parseInt(e.target.value) || 0)} className="text-xs" data-testid="input-scale-min" />
+              </div>
+              <div className="flex-1 space-y-0.5">
+                <span className="text-[10px] text-muted-foreground">Max</span>
+                <Input type="number" value={scaleMax} onChange={e => setScaleMax(parseInt(e.target.value) || 5)} className="text-xs" data-testid="input-scale-max" />
+              </div>
+            </div>
+            <div className="flex gap-2">
+              <div className="flex-1 space-y-0.5">
+                <span className="text-[10px] text-muted-foreground">Low Label</span>
+                <Input value={scaleLowLabel} onChange={e => setScaleLowLabel(e.target.value)} className="text-xs" placeholder="e.g. Poor" data-testid="input-scale-low" />
+              </div>
+              <div className="flex-1 space-y-0.5">
+                <span className="text-[10px] text-muted-foreground">High Label</span>
+                <Input value={scaleHighLabel} onChange={e => setScaleHighLabel(e.target.value)} className="text-xs" placeholder="e.g. Excellent" data-testid="input-scale-high" />
+              </div>
+            </div>
+          </div>
+        )}
 
-        <div className="space-y-1.5">
-          <Label>Column Width</Label>
-          <p className="text-xs text-muted-foreground">Place multiple fields side-by-side on the same row</p>
-          <div className="flex gap-1.5">
+        {!isDecorative && (
+          <div className="flex items-center justify-between py-2 border-t">
+            <Label className="text-xs cursor-pointer">Required field</Label>
+            <Switch
+              checked={local.isRequired}
+              onCheckedChange={v => setLocal(prev => ({ ...prev, isRequired: v }))}
+              data-testid="switch-field-required"
+            />
+          </div>
+        )}
+
+        <div className="space-y-1">
+          <Label className="text-xs">Column Width</Label>
+          <div className="flex gap-1">
             {([
               { value: "full", label: "Full" },
               { value: "half", label: "1/2" },
@@ -877,10 +1150,10 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
                 key={opt.value}
                 type="button"
                 onClick={() => setColumnWidth(opt.value)}
-                className={`flex-1 py-1.5 text-xs font-medium rounded-md border transition-colors ${
+                className={`flex-1 py-1 text-[11px] font-medium rounded-md border transition-colors ${
                   columnWidth === opt.value
                     ? "bg-primary text-primary-foreground border-primary"
-                    : "bg-background text-muted-foreground border-border hover:text-foreground"
+                    : "bg-background text-muted-foreground border-border"
                 }`}
                 data-testid={`button-col-width-${opt.value}`}
               >
@@ -893,11 +1166,10 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
         {!isSmart && (
           <>
             <Separator />
-            <div className="space-y-1.5">
-              <Label>Sync to Patient Chart</Label>
-              <p className="text-xs text-muted-foreground">Automatically populate chart fields when a submission is synced</p>
+            <div className="space-y-1">
+              <Label className="text-xs">Sync to Patient Chart</Label>
               <Select value={syncDomain} onValueChange={setSyncDomain}>
-                <SelectTrigger data-testid="select-sync-domain">
+                <SelectTrigger className="text-xs" data-testid="select-sync-domain">
                   <SelectValue />
                 </SelectTrigger>
                 <SelectContent>
@@ -910,7 +1182,7 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
       </div>
 
       <div className="pt-2">
-        <Button onClick={handleSave} disabled={isPending} data-testid="button-save-field">
+        <Button onClick={handleSave} disabled={isPending} className="w-full" data-testid="button-save-field">
           {isPending ? "Saving..." : "Save Field"}
         </Button>
       </div>
