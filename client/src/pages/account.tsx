@@ -629,6 +629,16 @@ export default function Account() {
 
   const onSubmit = (data: ProfileForm) => updateMutation.mutate(data);
 
+  const onSubmitClinic = () => {
+    const vals = form.getValues();
+    updateMutation.mutate({ clinicName: vals.clinicName, email: vals.email, phone: vals.phone, address: vals.address } as any);
+  };
+
+  const onSubmitProvider = () => {
+    const vals = form.getValues();
+    updateMutation.mutate({ firstName: vals.firstName, lastName: vals.lastName, title: vals.title, npi: vals.npi } as any);
+  };
+
   const brandingMutation = useMutation({
     mutationFn: async (payload: { clinicLogo?: string | null; signatureImage?: string | null }) => {
       const res = await apiRequest("PATCH", "/api/auth/profile", payload);
@@ -677,7 +687,7 @@ export default function Account() {
             <Card>
               <CardContent className="pt-5">
                 <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                  <form onSubmit={(e) => { e.preventDefault(); onSubmitClinic(); }} className="space-y-5">
                     <div className="space-y-4">
                       <FormField control={form.control} name="clinicName" render={({ field }) => (
                         <FormItem>
@@ -742,7 +752,7 @@ export default function Account() {
             <Card>
               <CardContent className="pt-5">
                 <Form {...form}>
-                  <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-5">
+                  <form onSubmit={(e) => { e.preventDefault(); onSubmitProvider(); }} className="space-y-5">
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                       <FormField control={form.control} name="firstName" render={({ field }) => (
                         <FormItem>
