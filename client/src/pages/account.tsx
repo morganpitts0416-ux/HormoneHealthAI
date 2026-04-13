@@ -22,6 +22,7 @@ import {
   Building2, User, SlidersHorizontal, FileText, ClipboardList, Shield,
   Bell, Inbox,
 } from "lucide-react";
+import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PreferencesPanel } from "@/components/preferences-panel";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
@@ -212,13 +213,90 @@ interface BillingStatus {
   stripeSubscriptionId: string | null;
   stripeCurrentPeriodEnd: string | null;
   stripeCancelAtPeriodEnd: boolean;
+  clinicPlan: string;
+  clinicMaxProviders: number;
+  clinicBaseProviderLimit: number;
+  clinicExtraSeats: number;
+  freeAccount?: boolean;
 }
 
 function BillingSection() {
   const [, setLocation] = useLocation();
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const queryClient = useQueryClient();
   const { data: billing, isLoading } = useQuery<BillingStatus>({
     queryKey: ["/api/billing/status"],
   });
+
+  const [addProviderOpen, setAddProviderOpen] = useState(false);
+  const [addStep, setAddStep] = useState<"form" | "confirm">("form");
+  const [pName, setPName] = useState("");
+  const [pCreds, setPCreds] = useState("");
+  const [pNpi, setPNpi] = useState("");
+  const [confirmCheck, setConfirmCheck] = useState<{ monthly_price_increase: number } | null>(null);
+  const [addingProvider, setAddingProvider] = useState(false);
+
+  const clinicId = (user as any)?.defaultClinicId;
+  const isSuite = billing?.clinicPlan === "suite";
+
+  function resetDialog() {
+    setAddStep("form");
+    setPName("");
+    setPCreds("");
+    setPNpi("");
+    setConfirmCheck(null);
+    setAddingProvider(false);
+  }
+
+  async function handleCheckAndProceed() {
+    if (!pName.trim()) {
+      toast({ title: "Name required", description: "Please enter the provider's name.", variant: "destructive" });
+      return;
+    }
+    if (!clinicId) return;
+    setAddingProvider(true);
+    try {
+      const checkRes = await apiRequest("POST", `/api/clinics/${clinicId}/providers/check`);
+      const checkData = await checkRes.json();
+      if (checkData.upgrade_required) {
+        toast({ title: "Cannot add provider", description: checkData.message, variant: "destructive" });
+        setAddingProvider(false);
+        return;
+      }
+      if (checkData.confirmation_required) {
+        setConfirmCheck({ monthly_price_increase: checkData.monthly_price_increase });
+        setAddStep("confirm");
+        setAddingProvider(false);
+        return;
+      }
+      await doAdd();
+    } catch {
+      toast({ title: "Error", description: "Failed to check provider status.", variant: "destructive" });
+      setAddingProvider(false);
+    }
+  }
+
+  async function doAdd() {
+    setAddingProvider(true);
+    try {
+      const res = await apiRequest("POST", `/api/clinics/${clinicId}/providers/confirm-add`, {
+        displayName: pName.trim(),
+        credentials: pCreds.trim() || null,
+        npi: pNpi.trim() || null,
+      });
+      const data = await res.json();
+      if (!res.ok) throw new Error(data.message || "Failed to add provider");
+      toast({ title: "Provider added", description: `${pName.trim()} has been added to your clinic.` });
+      setAddProviderOpen(false);
+      resetDialog();
+      queryClient.invalidateQueries({ queryKey: ["/api/billing/status"] });
+    } catch (err: any) {
+      toast({ title: "Failed to add provider", description: err.message, variant: "destructive" });
+    } finally {
+      setAddingProvider(false);
+    }
+  }
 
   function formatDate(iso: string | null) {
     if (!iso) return "—";
@@ -236,6 +314,8 @@ function BillingSection() {
     unpaid: "text-red-600",
   };
 
+  const planLabel = billing?.clinicPlan === "suite" ? "ClinIQ Suite" : "ClinIQ Solo";
+
   return (
     <div className="space-y-4">
       <div>
@@ -250,8 +330,8 @@ function BillingSection() {
             <>
               <div className="flex items-center justify-between gap-4 flex-wrap">
                 <div>
-                  <p className="text-sm font-medium">ClinIQ Professional</p>
-                  <p className="text-xs text-muted-foreground">$97/month</p>
+                  <p className="text-sm font-medium">{planLabel}</p>
+                  <p className="text-xs text-muted-foreground capitalize">{billing?.subscriptionStatus ?? "Unknown"}</p>
                 </div>
                 <Badge variant="outline" className={cn("capitalize", statusColors[billing?.subscriptionStatus ?? ""])}>
                   {billing?.subscriptionStatus ?? "Unknown"}
@@ -268,6 +348,28 @@ function BillingSection() {
                   <span>Your subscription will end at the current period. You can reactivate from the billing portal.</span>
                 </div>
               )}
+              {isSuite && (
+                <div className="pt-3 border-t" style={{ borderColor: "#e5e2dc" }}>
+                  <div className="flex items-center justify-between gap-4 flex-wrap">
+                    <div>
+                      <p className="text-sm font-medium" style={{ color: "#1c2414" }}>Provider Seats</p>
+                      <p className="text-xs text-muted-foreground">
+                        {billing.clinicMaxProviders ?? "—"} provider{(billing.clinicMaxProviders ?? 1) !== 1 ? "s" : ""} included
+                        {(billing.clinicExtraSeats ?? 0) > 0 && ` · ${billing.clinicExtraSeats} extra seat${billing.clinicExtraSeats !== 1 ? "s" : ""} purchased`}
+                      </p>
+                    </div>
+                    <Button
+                      size="sm"
+                      onClick={() => { setAddProviderOpen(true); resetDialog(); }}
+                      data-testid="button-add-provider-seat"
+                      style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}
+                    >
+                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                      Add Provider
+                    </Button>
+                  </div>
+                </div>
+              )}
             </>
           )}
           <Button
@@ -280,6 +382,108 @@ function BillingSection() {
           </Button>
         </CardContent>
       </Card>
+
+      <Dialog open={addProviderOpen} onOpenChange={(open) => { if (!open) { setAddProviderOpen(false); resetDialog(); } }}>
+        <DialogContent>
+          <DialogHeader>
+            <DialogTitle>Add Provider Seat</DialogTitle>
+            <DialogDescription>
+              {addStep === "form"
+                ? "Enter the provider's details. They will be added to your clinic's provider list."
+                : "Review the billing change before confirming."}
+            </DialogDescription>
+          </DialogHeader>
+
+          {addStep === "form" ? (
+            <div className="space-y-3 py-1">
+              <div>
+                <label className="text-sm font-medium block mb-1.5">
+                  Full Name / Display Name <span className="text-destructive">*</span>
+                </label>
+                <Input
+                  value={pName}
+                  onChange={e => setPName(e.target.value)}
+                  placeholder="e.g. Dr. Sarah Johnson"
+                  data-testid="input-provider-name"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1.5">
+                  Credentials <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                </label>
+                <Input
+                  value={pCreds}
+                  onChange={e => setPCreds(e.target.value)}
+                  placeholder="e.g. MD, NP-C, PA-C"
+                  data-testid="input-provider-credentials"
+                />
+              </div>
+              <div>
+                <label className="text-sm font-medium block mb-1.5">
+                  NPI <span className="text-xs font-normal text-muted-foreground">(optional)</span>
+                </label>
+                <Input
+                  value={pNpi}
+                  onChange={e => setPNpi(e.target.value)}
+                  placeholder="10-digit NPI number"
+                  data-testid="input-provider-npi"
+                />
+              </div>
+            </div>
+          ) : (
+            <div className="space-y-3 py-1">
+              <div className="rounded-md p-3 space-y-1.5" style={{ backgroundColor: "#fef9ec", border: "1px solid #f5d97a" }}>
+                <div className="flex items-start gap-2">
+                  <AlertTriangle className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#b45309" }} />
+                  <div>
+                    <p className="text-sm font-semibold" style={{ color: "#92400e" }}>Additional charge required</p>
+                    <p className="text-sm mt-1" style={{ color: "#78350f" }}>
+                      Adding <strong>{pName.trim()}</strong> as a provider will add{" "}
+                      <strong>${confirmCheck?.monthly_price_increase}/month</strong> to your subscription.
+                      Your card on file will be billed pro-rated immediately for the remainder of this billing period.
+                    </p>
+                  </div>
+                </div>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                This seat renews monthly with your subscription. You can remove the provider at any time, though refunds are not issued for partial billing periods.
+              </p>
+            </div>
+          )}
+
+          <DialogFooter>
+            {addStep === "form" ? (
+              <>
+                <Button variant="outline" onClick={() => { setAddProviderOpen(false); resetDialog(); }} data-testid="button-cancel-add-provider">
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleCheckAndProceed}
+                  disabled={addingProvider || !pName.trim()}
+                  data-testid="button-next-add-provider"
+                  style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}
+                >
+                  {addingProvider ? "Checking..." : "Continue"}
+                </Button>
+              </>
+            ) : (
+              <>
+                <Button variant="outline" onClick={() => setAddStep("form")} disabled={addingProvider} data-testid="button-back-confirm-provider">
+                  Back
+                </Button>
+                <Button
+                  onClick={doAdd}
+                  disabled={addingProvider}
+                  data-testid="button-confirm-add-provider"
+                  style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}
+                >
+                  {addingProvider ? "Adding..." : "Confirm & Add Provider"}
+                </Button>
+              </>
+            )}
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }
