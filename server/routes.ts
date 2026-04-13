@@ -33,6 +33,7 @@ import { validatePasswordStrength } from "@shared/password-policy";
 import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
 import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail } from "./email-service";
 import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
+import Stripe from "stripe";
 import bcrypt from "bcrypt";
 
 // ── Auth middleware ────────────────────────────────────────────────────────────
@@ -5738,7 +5739,6 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   });
 
   function getStripe() {
-    const Stripe = require("stripe");
     return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-03-31.basil" });
   }
 
