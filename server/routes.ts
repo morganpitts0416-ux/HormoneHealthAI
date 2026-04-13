@@ -6590,51 +6590,74 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       }
       const form = await storage.getIntakeFormById(pub.formId);
       if (!form) return res.status(404).json({ message: "Form not found" });
-      const { responses, patientId, submitterName, submitterEmail, signature } = req.body;
+      const { responses, submitterName, submitterEmail, signature } = req.body;
       if (!responses || typeof responses !== "object") {
         return res.status(400).json({ message: "Responses are required" });
       }
 
       // ── Auto-match or auto-create patient from form demographics ─────────────
-      let resolvedPatientId: number | null = patientId ? parseInt(patientId) : null;
+      let resolvedPatientId: number | null = null;
       let autoCreated = false;
 
       if (!resolvedPatientId && form.clinicianId) {
-        // Helper: extract a response value by matching field key patterns
-        const pick = (...patterns: RegExp[]) => {
+        const fields = await storage.getFormFields(pub.formId);
+
+        // Build a map of smartFieldKey → response value for quick lookup
+        const smartValues: Record<string, string> = {};
+        for (const f of fields) {
+          if (f.smartFieldKey && responses[f.fieldKey] != null) {
+            smartValues[f.smartFieldKey] = String(responses[f.fieldKey]).trim();
+          }
+        }
+
+        // Helper: extract a response value by smart key first, then fallback to regex patterns
+        const pick = (smartKey: string, ...patterns: RegExp[]) => {
+          if (smartValues[smartKey]) return smartValues[smartKey];
           const key = Object.keys(responses).find(k =>
             patterns.some(p => p.test(k.toLowerCase().replace(/[\s-]/g, "_")))
           );
           return key ? String(responses[key] ?? "").trim() : "";
         };
 
-        // Extract first / last name
-        let firstName = pick(/^first_?name$/, /^fname$/, /^given_name$/);
-        let lastName = pick(/^last_?name$/, /^lname$/, /^family_name$/, /^surname$/);
+        // Extract demographics — smart keys take priority
+        let firstName = pick("patient_first_name", /^first_?name$/, /^fname$/, /^given_name$/);
+        let lastName = pick("patient_last_name", /^last_?name$/, /^lname$/, /^family_name$/, /^surname$/);
 
-        // Fall back to submitterName if no explicit name fields
         if ((!firstName || !lastName) && submitterName) {
           const parts = String(submitterName).trim().split(/\s+/);
           if (!firstName) firstName = parts[0] ?? "";
           if (!lastName) lastName = parts.slice(1).join(" ") || (parts[0] ?? "");
         }
 
-        // Extract other demographics
-        const dobRaw = pick(/^date_of_birth$/, /^dob$/, /^birth_?date$/, /^birthday$/);
-        const email = pick(/^email$/, /^email_address$/) || (submitterEmail ? String(submitterEmail).trim() : "");
-        const phone = pick(/^phone$/, /^phone_?number$/, /^mobile$/, /^cell$/, /^telephone$/);
-        const genderRaw = pick(/^gender$/, /^sex$/);
+        const dobRaw = pick("patient_dob", /^date_of_birth$/, /^dob$/, /^birth_?date$/, /^birthday$/);
+        const email = pick("patient_email", /^email$/, /^email_address$/) || (submitterEmail ? String(submitterEmail).trim() : "");
+        const phone = pick("patient_phone", /^phone$/, /^phone_?number$/, /^mobile$/, /^cell$/, /^telephone$/);
+        const address = smartValues["patient_address"] || "";
+        const genderRaw = pick("patient_gender", /^gender$/, /^sex$/);
         const gender = genderRaw
           ? (genderRaw.toLowerCase().startsWith("f") ? "female" : "male")
           : "male";
 
         if (firstName && lastName) {
-          // Try to find an existing patient by name
-          const existing = await storage.getPatientByName(firstName, lastName, form.clinicianId);
+          // Match priority: email > (firstName + lastName + DOB) > create new
+          let existing: any = null;
+
+          if (email) {
+            existing = await storage.getPatientByEmail?.(email, form.clinicianId) ?? null;
+          }
+          if (!existing && dobRaw) {
+            const candidate = await storage.getPatientByName(firstName, lastName, form.clinicianId);
+            if (candidate && candidate.dateOfBirth) {
+              const candidateDob = new Date(candidate.dateOfBirth as any).toISOString().split("T")[0];
+              const submittedDob = new Date(dobRaw).toISOString().split("T")[0];
+              if (candidateDob === submittedDob) existing = candidate;
+            } else if (candidate && !candidate.dateOfBirth) {
+              existing = candidate;
+            }
+          }
 
           if (existing) {
             resolvedPatientId = existing.id;
-            // Optionally fill in any missing demographics
             const updates: Record<string, any> = {};
             if (!existing.dateOfBirth && dobRaw) updates.dateOfBirth = new Date(dobRaw);
             if (!existing.email && email) updates.email = email;
@@ -6643,7 +6666,6 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
               await storage.updatePatient(existing.id, updates, form.clinicianId);
             }
           } else {
-            // Create a new patient record
             const created = await storage.createPatient({
               userId: form.clinicianId,
               firstName,
@@ -6924,6 +6946,113 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to update submission" });
+    }
+  });
+
+  // PATCH /api/form-submissions/:id/reassign — reassign to different patient
+  app.patch("/api/form-submissions/:id/reassign", requireClinicianOnly, async (req: any, res) => {
+    try {
+      const submissionId = parseInt(req.params.id);
+      if (isNaN(submissionId)) return res.status(400).json({ message: "Invalid ID" });
+      const { patientId } = req.body;
+      if (!patientId) return res.status(400).json({ message: "patientId is required" });
+
+      const submission = await storage.getFormSubmission(submissionId);
+      if (!submission) return res.status(404).json({ message: "Submission not found" });
+
+      const clinicianId = getClinicianId(req);
+      const form = await storage.getIntakeFormById(submission.formId);
+      if (!form || form.clinicianId !== clinicianId) return res.status(403).json({ message: "Not authorized" });
+
+      const patient = await storage.getPatient(parseInt(patientId), clinicianId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      const updated = await storage.updateFormSubmission(submissionId, {
+        patientId: patient.id,
+        syncStatus: "not_synced",
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("[Reassign]", err);
+      res.status(500).json({ message: "Failed to reassign submission" });
+    }
+  });
+
+  // POST /api/patients/merge — merge two patient profiles
+  app.post("/api/patients/merge", requireClinicianOnly, async (req: any, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const { keepId, discardId } = req.body;
+      if (!keepId || !discardId) return res.status(400).json({ message: "keepId and discardId are required" });
+      const parsedKeepId = parseInt(keepId);
+      const parsedDiscardId = parseInt(discardId);
+      if (isNaN(parsedKeepId) || isNaN(parsedDiscardId)) return res.status(400).json({ message: "Invalid patient IDs" });
+      if (parsedKeepId === parsedDiscardId) return res.status(400).json({ message: "Cannot merge a patient with itself" });
+
+      const keepPatient = await storage.getPatient(parsedKeepId, clinicianId);
+      const discardPatient = await storage.getPatient(parsedDiscardId, clinicianId);
+      if (!keepPatient) return res.status(404).json({ message: "Keep patient not found" });
+      if (!discardPatient) return res.status(404).json({ message: "Discard patient not found" });
+
+      // Fill in missing demographics from discard → keep
+      const updates: Record<string, any> = {};
+      if (!keepPatient.email && discardPatient.email) updates.email = discardPatient.email;
+      if (!keepPatient.phone && discardPatient.phone) updates.phone = discardPatient.phone;
+      if (!keepPatient.dateOfBirth && discardPatient.dateOfBirth) updates.dateOfBirth = discardPatient.dateOfBirth;
+      if (Object.keys(updates).length > 0) {
+        await storage.updatePatient(keepPatient.id, updates, clinicianId);
+      }
+
+      // Transfer lab results
+      const discardLabs = await storage.getLabResultsByPatient(discardPatient.id);
+      for (const lab of discardLabs) {
+        await storage.updateLabResult(lab.id, { patientId: keepPatient.id });
+      }
+
+      // Transfer encounters
+      const discardEncounters = await storage.getEncountersByClinicianId(clinicianId, discardPatient.id);
+      for (const enc of discardEncounters) {
+        await storage.updateEncounter(enc.id, clinicianId, { patientId: keepPatient.id });
+      }
+
+      // Transfer form submissions
+      const discardSubmissions = await storage.getFormSubmissionsByClinician(clinicianId);
+      for (const sub of discardSubmissions.filter(s => s.patientId === discardPatient.id)) {
+        await storage.updateFormSubmission(sub.id, { patientId: keepPatient.id });
+      }
+
+      // Merge charts (append clinical data)
+      const keepChart = await storage.getPatientChart(keepPatient.id, clinicianId);
+      const discardChart = await storage.getPatientChart(discardPatient.id, clinicianId);
+      if (discardChart) {
+        const mergeArrays = (a: any, b: any) => {
+          const arr = Array.isArray(a) ? [...a] : [];
+          const toAdd = Array.isArray(b) ? b : [];
+          const norm = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "");
+          for (const item of toAdd) {
+            if (!arr.some(e => norm(String(e)) === norm(String(item)))) {
+              arr.push(item);
+            }
+          }
+          return arr;
+        };
+        await storage.upsertPatientChart(keepPatient.id, clinicianId, {
+          currentMedications: mergeArrays(keepChart?.currentMedications, discardChart.currentMedications),
+          allergies: mergeArrays(keepChart?.allergies, discardChart.allergies),
+          medicalHistory: mergeArrays(keepChart?.medicalHistory, discardChart.medicalHistory),
+          surgicalHistory: mergeArrays(keepChart?.surgicalHistory, discardChart.surgicalHistory),
+          familyHistory: mergeArrays(keepChart?.familyHistory, discardChart.familyHistory),
+          socialHistory: mergeArrays(keepChart?.socialHistory, discardChart.socialHistory),
+        });
+      }
+
+      // Delete the discard patient
+      await storage.deletePatient(discardPatient.id, clinicianId);
+
+      res.json({ success: true, keptPatientId: keepPatient.id, mergedFrom: discardPatient.id });
+    } catch (err: any) {
+      console.error("[PatientMerge]", err);
+      res.status(500).json({ message: "Merge failed", error: err.message });
     }
   });
 
