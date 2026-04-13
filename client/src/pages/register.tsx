@@ -669,7 +669,17 @@ export default function Register() {
                 </>
               )}
 
-              {step === 4 && (
+              {step === 4 && !paymentMethodId && (
+                <div className="py-8 text-center space-y-3">
+                  <AlertCircle className="w-8 h-8 mx-auto text-destructive" />
+                  <p className="text-sm font-medium text-destructive">Payment setup is required before creating your account.</p>
+                  <Button type="button" variant="outline" onClick={() => setStep(3)} className="mt-2" data-testid="button-return-payment">
+                    <ChevronLeft className="w-4 h-4 mr-1" />Return to Payment
+                  </Button>
+                </div>
+              )}
+
+              {step === 4 && paymentMethodId && (
                 <Form {...form}>
                   <form onSubmit={(e) => e.preventDefault()} className="space-y-4">
                     {paymentMethodId && (
@@ -721,7 +731,19 @@ export default function Register() {
                 </Form>
               )}
 
-              {step === 5 && (
+              {step === 5 && (!paymentMethodId || !registrationDone) && (
+                <div className="py-8 text-center space-y-3">
+                  <AlertCircle className="w-8 h-8 mx-auto text-destructive" />
+                  <p className="text-sm font-medium text-destructive">
+                    {!paymentMethodId ? "Payment setup is required." : "Account creation must be completed first."}
+                  </p>
+                  <Button type="button" variant="outline" onClick={() => setStep(!paymentMethodId ? 3 : 4)} className="mt-2" data-testid="button-return-previous">
+                    <ChevronLeft className="w-4 h-4 mr-1" />Go Back
+                  </Button>
+                </div>
+              )}
+
+              {step === 5 && paymentMethodId && registrationDone && (
                 <div className="space-y-4">
                   <div className="flex items-center gap-2 mb-1">
                     <Shield className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />

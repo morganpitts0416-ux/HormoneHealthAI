@@ -88,47 +88,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (existingByEmail) {
         return res.status(409).json({ message: "Email already registered" });
       }
-      const passwordHash = await hashPassword(password);
-      const user = await storage.createUser({
-        email,
-        username,
-        passwordHash,
-        firstName,
-        lastName,
-        title,
-        npi: npi || null,
-        clinicName,
-        phone: phone || null,
-        address: address || null,
-      });
 
-      // Bootstrap multi-clinic structure for every new signup.
-      try {
-        await setupClinicForNewUser(user);
-      } catch (clinicErr) {
-        console.error("setupClinicForNewUser failed for user", user.id, clinicErr);
+      // ── STEP 1: Stripe — create customer, attach PM, create subscription ──
+      // Stripe MUST succeed BEFORE the user record is created in the database.
+      // This prevents orphaned users with valid credentials but no billing.
+      const stripe = getStripe();
+      const selectedPlan = plan || "solo";
+      const SOLO_PRICE_ID = "price_1TJb7eKbgudErHaMxs1B2BzZ";
+      const SUITE_PRICE_ID = process.env.STRIPE_SUITE_PRICE_ID;
+      if (selectedPlan === "suite" && !SUITE_PRICE_ID) {
+        return res.status(500).json({ message: "Suite plan is not available at this time. Please contact support." });
       }
+      const priceId = selectedPlan === "suite" && SUITE_PRICE_ID ? SUITE_PRICE_ID : SOLO_PRICE_ID;
 
-      // ── Stripe: create customer, attach PM, create subscription ──
-      let updatedUser = user;
+      let customer: any;
+      let subscription: any;
       try {
-        const stripe = getStripe();
-
-        const customer = await stripe.customers.create({
-          email: user.email,
-          name: `${user.firstName} ${user.lastName}`,
-          metadata: { userId: String(user.id), clinicName: user.clinicName },
+        customer = await stripe.customers.create({
+          email,
+          name: `${firstName} ${lastName}`,
+          metadata: { clinicName },
         });
 
         await stripe.paymentMethods.attach(paymentMethodId, { customer: customer.id });
         await stripe.customers.update(customer.id, {
           invoice_settings: { default_payment_method: paymentMethodId },
         });
-
-        const selectedPlan = plan || "solo";
-        const SOLO_PRICE_ID = "price_1TJb7eKbgudErHaMxs1B2BzZ";
-        const SUITE_PRICE_ID = process.env.STRIPE_SUITE_PRICE_ID;
-        const priceId = selectedPlan === "suite" && SUITE_PRICE_ID ? SUITE_PRICE_ID : SOLO_PRICE_ID;
 
         let promotionCodeId: string | undefined;
         if (promoCode && selectedPlan === "solo") {
@@ -151,51 +136,89 @@ export async function registerRoutes(app: Express): Promise<Server> {
         if (promotionCodeId) {
           subParams.discounts = [{ promotion_code: promotionCodeId }];
         }
-        const subscription = await stripe.subscriptions.create(subParams);
-
-        const periodEnd = new Date((subscription as any).current_period_end * 1000);
-        const stripeData: any = {
-          stripeCustomerId: customer.id,
-          stripeSubscriptionId: subscription.id,
-          stripeCurrentPeriodEnd: periodEnd,
-          stripeCancelAtPeriodEnd: false,
-          subscriptionStatus: subscription.status === "trialing" ? "trial" : subscription.status,
-        };
-        const updated = await storage.updateUserStripe(user.id, stripeData);
-        if (updated) updatedUser = updated;
-
-        if (selectedPlan === "suite" && SUITE_PRICE_ID) {
-          try {
-            const [clinic] = await storageDb
-              .select()
-              .from(clinics)
-              .where(eq(clinics.ownerUserId, user.id))
-              .limit(1);
-            if (clinic) {
-              await storageDb
-                .update(clinics)
-                .set({
-                  subscriptionPlan: "suite",
-                  maxProviders: 10,
-                  baseProviderLimit: 3,
-                })
-                .where(eq(clinics.id, clinic.id));
-            }
-          } catch (clinicPlanErr) {
-            console.error("Suite clinic plan update failed:", clinicPlanErr);
-          }
-        }
+        subscription = await stripe.subscriptions.create(subParams);
       } catch (stripeErr: any) {
-        console.error("[Register] Stripe setup failed for user", user.id, stripeErr);
+        console.error("[Register] Stripe setup failed (no user created):", stripeErr);
+        if (customer?.id) {
+          try { await stripe.customers.del(customer.id); } catch (_) {}
+        }
         return res.status(500).json({
           message: "Payment setup failed. Your card was not charged. Please try again.",
           billingError: stripeErr.message,
         });
       }
 
-      req.login(updatedUser, (err) => {
+      // ── STEP 2: Stripe succeeded — now create the user with billing data ──
+      const passwordHash = await hashPassword(password);
+      const periodEnd = new Date((subscription as any).current_period_end * 1000);
+      let user: any;
+      try {
+        user = await storage.createUser({
+          email,
+          username,
+          passwordHash,
+          firstName,
+          lastName,
+          title,
+          npi: npi || null,
+          clinicName,
+          phone: phone || null,
+          address: address || null,
+          stripeCustomerId: customer.id,
+          stripeSubscriptionId: subscription.id,
+          stripeCurrentPeriodEnd: periodEnd,
+          stripeCancelAtPeriodEnd: false,
+          subscriptionStatus: subscription.status === "trialing" ? "trial" : subscription.status,
+        });
+      } catch (dbErr: any) {
+        console.error("[Register] DB user creation failed after Stripe succeeded — rolling back Stripe:", dbErr);
+        try { await stripe.subscriptions.cancel(subscription.id); } catch (_) {}
+        try { await stripe.customers.del(customer.id); } catch (_) {}
+        return res.status(500).json({ message: "Account creation failed. No charges were made. Please try again." });
+      }
+
+      // Update Stripe customer metadata with the new user ID
+      try {
+        await stripe.customers.update(customer.id, {
+          metadata: { userId: String(user.id), clinicName: user.clinicName },
+        });
+      } catch (metaErr) {
+        console.error("[Register] Stripe metadata update failed (non-blocking):", metaErr);
+      }
+
+      // Bootstrap multi-clinic structure for every new signup.
+      try {
+        await setupClinicForNewUser(user);
+      } catch (clinicErr) {
+        console.error("setupClinicForNewUser failed for user", user.id, clinicErr);
+      }
+
+      // Stamp suite plan on clinic if applicable
+      if (selectedPlan === "suite" && SUITE_PRICE_ID) {
+        try {
+          const [clinic] = await storageDb
+            .select()
+            .from(clinics)
+            .where(eq(clinics.ownerUserId, user.id))
+            .limit(1);
+          if (clinic) {
+            await storageDb
+              .update(clinics)
+              .set({
+                subscriptionPlan: "suite",
+                maxProviders: 10,
+                baseProviderLimit: 3,
+              })
+              .where(eq(clinics.id, clinic.id));
+          }
+        } catch (clinicPlanErr) {
+          console.error("Suite clinic plan update failed:", clinicPlanErr);
+        }
+      }
+
+      req.login(user, (err: any) => {
         if (err) return res.status(500).json({ message: "Login after registration failed" });
-        const { passwordHash: _ph, ...safeUser } = updatedUser;
+        const { passwordHash: _ph, ...safeUser } = user;
         res.status(201).json(safeUser);
       });
     } catch (error) {
@@ -5195,6 +5218,10 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.post("/api/baa/sign", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
+      const billingOk = user.freeAccount || (user.stripeSubscriptionId && ["trial", "active", "trialing"].includes(user.subscriptionStatus));
+      if (!billingOk) {
+        return res.status(403).json({ message: "Active billing is required before signing the BAA" });
+      }
       const { signatureName } = req.body;
       if (!signatureName || typeof signatureName !== "string" || signatureName.trim().length < 2) {
         return res.status(400).json({ message: "Full legal name is required to sign the BAA" });

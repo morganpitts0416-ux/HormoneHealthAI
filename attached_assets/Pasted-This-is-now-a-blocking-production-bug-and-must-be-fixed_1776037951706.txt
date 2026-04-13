@@ -1,0 +1,145 @@
+This is now a blocking production bug and must be fixed before any further rollout.
+
+The payment method step is still not being enforced. A user can continue through enrollment without ever being prompted to enter a payment method. That is incorrect.
+
+I need you to stop and fix the onboarding flow logic so that payment collection is REQUIRED and cannot be bypassed.
+
+## The bug
+
+Right now, the user is able to:
+
+* select a plan
+* continue onboarding
+* create account credentials and/or sign the BAA
+* access the app
+
+without successfully completing the Stripe payment method setup step.
+
+That must not happen.
+
+## Required behavior
+
+Implement this exact gate order:
+
+1. Plan selection
+2. Payment method collection through Stripe
+3. Billing disclosure + recurring billing consent checkbox
+4. Account creation
+5. BAA / legal agreements
+6. App access
+
+The user must NOT be able to continue to steps 4, 5, or 6 unless step 2 has succeeded.
+
+## Hard requirements
+
+1. Payment method collection must be mandatory even during the 14-day free trial.
+2. The user should not be charged today if trial settings are correct, but a valid card must be placed on file.
+3. Username/password creation must not finalize if Stripe setup has not succeeded.
+4. The BAA must not be shown until billing setup is complete.
+5. The dashboard/app must not load if billing setup is incomplete.
+6. If the Stripe step fails, the user must remain blocked on the billing step with a clear error.
+7. No “continue anyway” path.
+8. No fallback path that creates a free account unless explicitly intended and separately configured.
+9. Both configured plans must use their correct Stripe price IDs.
+
+## Investigate and fix specifically
+
+Please inspect and verify all of the following:
+
+### A. Frontend onboarding flow
+
+* Identify the exact component/page that controls the enrollment stepper
+* Find where the payment step is being skipped or treated as optional
+* Make the “Continue” button disabled until payment method setup succeeds
+* Ensure the route transition to the next step is blocked without billing completion
+* Ensure trial disclosure text and required checkbox are present on the billing step
+
+### B. Stripe payment setup logic
+
+* Confirm whether the app is actually creating a SetupIntent or subscription flow before allowing onboarding to continue
+* Confirm whether the Stripe Elements form is mounted and required
+* Confirm whether success from Stripe is actually being stored in state
+* Confirm whether the selected plan is mapped to the right Stripe price ID
+* Confirm whether the subscription is created with the 14-day trial and payment method attached
+
+### C. Backend enforcement
+
+Do not rely on frontend only.
+
+Add backend guards so a user cannot become active unless:
+
+* stripe customer exists
+* stripe subscription exists or valid trial state exists
+* payment method setup succeeded
+* required billing flags are stored
+
+If billing is incomplete:
+
+* onboarding state should remain incomplete
+* login/dashboard access should redirect the user back into onboarding/billing
+* BAA submission should be rejected until billing is complete
+
+### D. Database/application state
+
+Add or verify explicit fields/state such as:
+
+* billing_setup_complete
+* onboarding_step
+* baa_signed_at
+* stripe_customer_id
+* stripe_subscription_id
+* subscription_status
+* trial_end_date if applicable
+
+Make the app use a clear source of truth instead of inferring completion loosely.
+
+## UI copy that must be shown
+
+On the billing step, show this clearly:
+
+* 14-day free trial
+* card required today
+* no charge today during trial
+* automatic monthly billing begins when trial ends unless cancelled before trial end
+* exact monthly price for selected plan
+* first charge timing
+
+Add a required checkbox with wording similar to:
+“I understand that my 14-day free trial will automatically convert to a paid monthly subscription unless I cancel before the trial ends.”
+
+The user cannot continue unless this box is checked.
+
+## What I need back from you
+
+Do not just say “fixed.” I need a concrete response with:
+
+1. Root cause:
+
+* exactly why the payment method step is currently being skipped
+
+2. Files changed:
+
+* exact frontend components/pages changed
+* exact backend routes changed
+* exact guards/middleware changed
+* any schema changes added
+
+3. Flow summary:
+
+* explain the new enforced step order
+
+4. Test instructions:
+   Give me exact step-by-step QA for:
+
+* Plan A signup
+* Plan B signup
+* trial with card on file
+* Stripe failure case
+* attempting to bypass billing
+* login attempt before onboarding complete
+
+5. Deployment note:
+
+* confirm whether any migration is required before this fix can go live
+
+This is urgent. Treat this as a blocking production enrollment bug, not a future enhancement.
