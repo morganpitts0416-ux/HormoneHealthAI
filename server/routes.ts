@@ -1816,7 +1816,7 @@ Return ONLY this JSON structure:
   // Create a new clinician account via invite (admin only — no password required)
   app.post("/api/admin/clinicians", requireAdmin, async (req, res) => {
     try {
-      const { email, username, firstName, lastName, title, npi, clinicName, phone, address, subscriptionStatus, freeAccount, notes } = req.body;
+      const { email, username, firstName, lastName, title, npi, clinicName, phone, address, subscriptionStatus, freeAccount, notes, clinicPlan, partnerEmail } = req.body;
       if (!email || !username || !firstName || !lastName || !title || !clinicName) {
         return res.status(400).json({ message: "All required fields must be provided" });
       }
@@ -1839,6 +1839,56 @@ Return ONLY this JSON structure:
         notes: notes || null,
       } as any);
 
+      // Set up clinic structure (creates clinic row, membership, provider profile, stamps defaultClinicId)
+      const isSuite = clinicPlan === "suite";
+      const { clinicId } = await setupClinicForNewUser(user);
+
+      // If Suite plan, upgrade the clinic's plan and seat limit
+      if (isSuite) {
+        await storageDb
+          .update(clinics)
+          .set({ subscriptionPlan: "suite", maxProviders: 10, baseProviderLimit: 2 })
+          .where(eq(clinics.id, clinicId));
+        await storageDb
+          .update(schema.users)
+          .set({ userType: "clinic_admin" })
+          .where(eq(schema.users.id, user.id));
+      }
+
+      // If a partner email was provided, link them to this clinic too
+      if (partnerEmail) {
+        const partner = await storage.getUserByEmail(partnerEmail.trim().toLowerCase());
+        if (partner) {
+          // Add partner as provider in this clinic
+          const existingMembership = await storageDb
+            .select()
+            .from(clinicMemberships)
+            .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.userId, partner.id)));
+          if (existingMembership.length === 0) {
+            await storageDb.insert(clinicMemberships).values({
+              clinicId,
+              userId: partner.id,
+              role: "provider",
+              isActive: true,
+              isPrimaryClinic: true,
+            });
+            // Create provider profile for partner
+            await storageDb.insert(providersTable).values({
+              clinicId,
+              userId: partner.id,
+              displayName: [partner.title, partner.firstName, partner.lastName].filter(Boolean).join(" "),
+              npi: (partner as any).npi ?? null,
+              isActive: true,
+            });
+            // Stamp clinic onto partner's user row
+            await storageDb
+              .update(schema.users)
+              .set({ defaultClinicId: clinicId, userType: "provider", freeAccount: true, subscriptionStatus: "active" })
+              .where(eq(schema.users.id, partner.id));
+          }
+        }
+      }
+
       // Generate invite token (72-hour expiry)
       const token = crypto.randomBytes(32).toString("hex");
       const expires = new Date(Date.now() + 72 * 60 * 60 * 1000);
@@ -1855,6 +1905,8 @@ Return ONLY this JSON structure:
       res.status(201).json({
         message: "Clinician account created and invite email sent",
         user: { id: user.id, username: user.username, email: user.email },
+        clinicId,
+        clinicPlan: isSuite ? "suite" : "solo",
         inviteToken: process.env.NODE_ENV === "development" ? token : undefined,
       });
     } catch (error) {

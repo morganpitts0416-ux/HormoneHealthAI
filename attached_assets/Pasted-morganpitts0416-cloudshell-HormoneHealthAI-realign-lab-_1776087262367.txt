@@ -1,0 +1,62 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ psql "postgresql://postgres:Knight1234Server@136.113.109.193:5432/realdata"
+psql (16.13 (Ubuntu 16.13-1.pgdg24.04+1), server 18.3)
+WARNING: psql major version 16, server major version 18.
+         Some psql features might not work.
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
+Type "help" for help.
+
+realdata=> -- Find the new user ID
+SELECT id, email, username FROM users WHERE email = 'morgan@womenswellnessms.com';
+ id |            email            | username 
+----+-----------------------------+----------
+ 10 | morgan@womenswellnessms.com | morgan.p
+(1 row)
+
+realdata=> -- 1. Create the Suite clinic
+INSERT INTO clinics (name, owner_user_id, is_active, subscription_plan, max_providers, base_provider_limit, extra_provider_seats)
+VALUES ('Women''s Wellness of Mississippi', NEW_ID, true, 'suite', 5, 2, 0)
+RETURNING id;
+ERROR:  column "new_id" does not exist
+LINE 2: VALUES ('Women''s Wellness of Mississippi', NEW_ID, true, 's...
+                                                    ^
+realdata=> -- 2. Link morgan as clinic admin
+INSERT INTO clinic_memberships (clinic_id, user_id, role, is_active, is_primary_clinic)
+VALUES (CLINIC_ID, NEW_ID, 'admin', true, true);
+
+-- 3. Link kdavis (user #3) as provider
+INSERT INTO clinic_memberships (clinic_id, user_id, role, is_active, is_primary_clinic)
+VALUES (CLINIC_ID, 3, 'provider', true, true);
+
+-- 4. Create provider profiles for both
+INSERT INTO providers (clinic_id, user_id, display_name, is_active)
+SELECT CLINIC_ID, NEW_ID, first_name || ' ' || last_name, true FROM users WHERE id = NEW_ID;
+
+INSERT INTO providers (clinic_id, user_id, display_name, is_active)
+SELECT CLINIC_ID, 3, first_name || ' ' || last_name, true FROM users WHERE id = 3;
+
+-- 5. Stamp defaultClinicId on both user rows
+UPDATE users SET default_clinic_id = CLINIC_ID, user_type = 'clinic_admin', free_account = true, subscription_status = 'active' WHERE id = NEW_ID;
+UPDATE users SET default_clinic_id = CLINIC_ID, user_type = 'provider', free_account = true, subscription_status = 'active' WHERE id = 3;
+ERROR:  column "clinic_id" does not exist
+LINE 2: VALUES (CLINIC_ID, NEW_ID, 'admin', true, true);
+                ^
+DETAIL:  There is a column named "clinic_id" in table "clinic_memberships", but it cannot be referenced from this part of the query.
+ERROR:  column "clinic_id" does not exist
+LINE 2: VALUES (CLINIC_ID, 3, 'provider', true, true);
+                ^
+DETAIL:  There is a column named "clinic_id" in table "clinic_memberships", but it cannot be referenced from this part of the query.
+ERROR:  column "clinic_id" does not exist
+LINE 2: SELECT CLINIC_ID, NEW_ID, first_name || ' ' || last_name, tr...
+               ^
+DETAIL:  There is a column named "clinic_id" in table "providers", but it cannot be referenced from this part of the query.
+ERROR:  column "clinic_id" does not exist
+LINE 2: SELECT CLINIC_ID, 3, first_name || ' ' || last_name, true FR...
+               ^
+DETAIL:  There is a column named "clinic_id" in table "providers", but it cannot be referenced from this part of the query.
+ERROR:  column "new_id" does not exist
+LINE 1: ...nt = true, subscription_status = 'active' WHERE id = NEW_ID;
+                                                                ^
+ERROR:  column "clinic_id" does not exist
+LINE 1: UPDATE users SET default_clinic_id = CLINIC_ID, user_type = ...
+                                             ^
+realdata=> 
