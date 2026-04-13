@@ -351,6 +351,8 @@ export default function Register() {
   useEffect(() => {
     if (isMarketingDomain()) {
       window.location.href = appUrl(`/register?plan=${plan}`);
+    } else {
+      window.history.replaceState(null, "", `/register?plan=${plan}`);
     }
   }, [plan]);
 
