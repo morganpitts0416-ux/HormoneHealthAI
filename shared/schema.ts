@@ -1165,7 +1165,19 @@ export const clinicMemberships = pgTable("clinic_memberships", {
   id: serial("id").primaryKey(),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  // Legacy single-role field — kept for backward compat. Use clinicalRole + adminRole going forward.
   role: varchar("role", { length: 30 }).notNull().default("provider"), // 'admin' | 'provider' | 'staff'
+  // Clinical role: what this person does clinically (signing authority, rendering provider, etc.)
+  // 'provider' = MD/DO/NP/PA — can sign notes, appears as rendering clinician
+  // 'rn'       = Registered Nurse — limited signing authority
+  // 'staff'    = Non-clinical staff — no signing authority
+  clinicalRole: varchar("clinical_role", { length: 30 }).notNull().default("provider"),
+  // Administrative role: what this person can manage operationally
+  // 'owner'         = Full control including billing and user management
+  // 'admin'         = Full operational access, no billing
+  // 'limited_admin' = Can manage forms, scheduling; no billing/user-management
+  // 'standard'      = No admin access
+  adminRole: varchar("admin_role", { length: 30 }).notNull().default("standard"),
   isActive: boolean("is_active").notNull().default(true),
   isPrimaryClinic: boolean("is_primary_clinic").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),

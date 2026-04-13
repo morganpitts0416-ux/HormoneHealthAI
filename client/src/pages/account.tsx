@@ -1112,44 +1112,61 @@ export default function Account() {
           <div className="space-y-4">
             <div className="flex items-center justify-between gap-4 flex-wrap">
               <div>
-                <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>Team Members</h3>
-                <p className="text-sm text-muted-foreground mt-1">Invite nurses or assistants to share your workspace</p>
+                <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>Staff &amp; Team</h3>
+                <p className="text-sm text-muted-foreground mt-1">Invite clinical and administrative staff to your clinic workspace</p>
               </div>
               <Button variant="outline" onClick={() => setShowInviteForm((v) => !v)} data-testid="button-invite-staff">
                 <UserPlus className="w-4 h-4 mr-2" />
                 {showInviteForm ? "Cancel" : "Invite Staff"}
               </Button>
             </div>
+
+            {/* Permission model explanation */}
+            <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-1.5">
+              <p className="text-xs font-semibold text-foreground uppercase tracking-wide">Permission Layers</p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-muted-foreground">
+                <div>
+                  <p className="font-medium text-foreground mb-0.5">Clinical Role</p>
+                  <p>Controls signing authority, clinical documentation, and whether the person appears as a rendering clinician. Examples: Provider, RN, Staff.</p>
+                </div>
+                <div>
+                  <p className="font-medium text-foreground mb-0.5">Administrative Role</p>
+                  <p>Controls access to account settings, billing, user management, forms, and clinic configuration. Examples: Owner, Admin, Standard.</p>
+                </div>
+              </div>
+            </div>
+
             <Card>
               <CardContent className="pt-5 space-y-4">
                 {showInviteForm && (
                   <div className="rounded-md border bg-muted/40 p-4 space-y-3">
-                    <p className="text-sm font-medium text-foreground">Send an invite</p>
+                    <p className="text-sm font-medium text-foreground">Send a staff invite</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">First Name</label>
-                        <Input placeholder="Jane" value={inviteFirstName} onChange={(e) => setInviteFirstName(e.target.value)} data-testid="input-staff-first-name" />
+                        <Input placeholder="Jane" autoComplete="off" value={inviteFirstName} onChange={(e) => setInviteFirstName(e.target.value)} data-testid="input-staff-first-name" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">Last Name</label>
-                        <Input placeholder="Smith" value={inviteLastName} onChange={(e) => setInviteLastName(e.target.value)} data-testid="input-staff-last-name" />
+                        <Input placeholder="Smith" autoComplete="off" value={inviteLastName} onChange={(e) => setInviteLastName(e.target.value)} data-testid="input-staff-last-name" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">Email</label>
                         <Input type="email" placeholder="jane@clinic.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} data-testid="input-staff-email" />
                       </div>
                       <div className="space-y-1">
-                        <label className="text-xs font-medium text-muted-foreground">Role</label>
+                        <label className="text-xs font-medium text-muted-foreground">Clinical Role</label>
                         <Select value={inviteRole} onValueChange={setInviteRole}>
                           <SelectTrigger data-testid="select-staff-role"><SelectValue /></SelectTrigger>
                           <SelectContent>
-                            <SelectItem value="nurse">Nurse</SelectItem>
+                            <SelectItem value="nurse">RN / Nurse</SelectItem>
                             <SelectItem value="assistant">Medical Assistant</SelectItem>
                             <SelectItem value="staff">Staff</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
                     </div>
+                    <p className="text-xs text-muted-foreground">Staff added here have <strong>Standard</strong> administrative access — no access to billing, account settings, or user management.</p>
                     <Button onClick={() => inviteStaffMutation.mutate()} disabled={inviteStaffMutation.isPending || !inviteEmail || !inviteFirstName || !inviteLastName} data-testid="button-send-staff-invite">
                       <Mail className="w-4 h-4 mr-2" />
                       {inviteStaffMutation.isPending ? "Sending..." : "Send Invite"}
@@ -1173,7 +1190,12 @@ export default function Account() {
                           </div>
                         </div>
                         <div className="flex items-center gap-2">
-                          <Badge variant="secondary" className="capitalize text-xs">{member.role}</Badge>
+                          <div className="flex flex-col items-end gap-1">
+                            <Badge variant="secondary" className="capitalize text-xs">
+                              {member.role === "nurse" ? "RN" : member.role === "assistant" ? "MA" : "Staff"} · Clinical
+                            </Badge>
+                            <Badge variant="outline" className="text-xs">Standard · Admin</Badge>
+                          </div>
                           <Button variant="ghost" size="icon" onClick={() => { if (confirm(`Remove ${member.firstName} ${member.lastName}?`)) removeStaffMutation.mutate(member.id); }} disabled={removeStaffMutation.isPending} data-testid={`button-remove-staff-${member.id}`}>
                             <Trash2 className="w-4 h-4 text-muted-foreground" />
                           </Button>
