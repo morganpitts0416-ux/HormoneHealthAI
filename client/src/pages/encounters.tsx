@@ -22,7 +22,7 @@ import { Separator } from "@/components/ui/separator";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest, queryClient as qc } from "@/lib/queryClient";
-import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult, PatternMatchResult, PatternMatch } from "@shared/schema";
+import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult, PatternMatchResult, PatternMatch, EncounterDraft } from "@shared/schema";
 import { useGlobalLoading } from "@/hooks/use-global-loading";
 import { exportSoapPdf } from "@/lib/soap-pdf-export";
 import { SoapNoteViewer, EvidenceCard } from "@/components/soap-note-viewer";
@@ -1675,11 +1675,16 @@ function EncounterEditor({
                     }
                   } else if (!isAutoSavingRef.current) {
                     try {
-                      const drafts = JSON.parse(localStorage.getItem("cliniq_draft_transcriptions") || "[]");
-                      drafts.push({ transcription: updated, visitDate, visitType, savedAt: new Date().toISOString() });
-                      localStorage.setItem("cliniq_draft_transcriptions", JSON.stringify(drafts));
-                      toast({ title: "Transcription saved locally", description: "Select a patient and save to complete this encounter." });
-                    } catch {}
+                      await apiRequest("POST", "/api/encounter-drafts", {
+                        transcription: updated,
+                        visitDate,
+                        visitType: visitType || "follow-up",
+                      });
+                      qc.invalidateQueries({ queryKey: ["/api/encounter-drafts"] });
+                      toast({ title: "Transcription draft saved", description: "Select a patient to complete this encounter. Your draft is accessible from any device." });
+                    } catch {
+                      toast({ variant: "destructive", title: "Draft save failed", description: "Could not save draft to server. Please save manually." });
+                    }
                   }
                 }}
                 onPartialTranscription={(accumulatedText) => {
@@ -3202,13 +3207,9 @@ export default function EncountersPage() {
   const [draftTranscription, setDraftTranscription] = useState<string | undefined>(undefined);
   const urlParamApplied = useRef(false);
 
-  const [localDrafts, setLocalDrafts] = useState<Array<{ transcription: string; visitDate: string; visitType: string; savedAt: string }>>([]);
-  useEffect(() => {
-    try {
-      const raw = localStorage.getItem("cliniq_draft_transcriptions");
-      if (raw) setLocalDrafts(JSON.parse(raw));
-    } catch {}
-  }, []);
+  const { data: serverDrafts = [] } = useQuery<EncounterDraft[]>({
+    queryKey: ["/api/encounter-drafts"],
+  });
 
   const { data: encounters = [], isLoading: encountersLoading } = useQuery<EncounterWithPatient[]>({
     queryKey: ["/api/encounters"],
@@ -3312,28 +3313,29 @@ export default function EncountersPage() {
             />
           </div>
           <div className="flex-1 overflow-y-auto p-2">
-            {localDrafts.length > 0 && (
+            {serverDrafts.length > 0 && (
               <div className="mb-3">
-                <p className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 px-2 mb-1">Unsaved Drafts</p>
-                {localDrafts.map((draft, idx) => (
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 px-2 mb-1">Transcription Drafts</p>
+                {serverDrafts.map((draft) => (
                   <div
-                    key={`draft-${idx}`}
+                    key={`draft-${draft.id}`}
                     className="px-2 py-2 rounded-md cursor-pointer hover-elevate border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 mb-1"
-                    data-testid={`draft-encounter-${idx}`}
-                    onClick={() => {
+                    data-testid={`draft-encounter-${draft.id}`}
+                    onClick={async () => {
                       setDraftTranscription(draft.transcription);
                       setIsNew(true);
                       setSelectedId(null);
-                      const updated = localDrafts.filter((_, i) => i !== idx);
-                      setLocalDrafts(updated);
-                      localStorage.setItem("cliniq_draft_transcriptions", JSON.stringify(updated));
+                      try {
+                        await apiRequest("DELETE", `/api/encounter-drafts/${draft.id}`);
+                        qc.invalidateQueries({ queryKey: ["/api/encounter-drafts"] });
+                      } catch {}
                     }}
                   >
                     <div className="flex items-center gap-1.5">
                       <Badge variant="outline" className="text-[10px] py-0 h-4 text-amber-600 border-amber-300">
                         {VISIT_TYPES.find(v => v.value === draft.visitType)?.label ?? draft.visitType}
                       </Badge>
-                      <span className="text-[10px] text-muted-foreground">{new Date(draft.savedAt).toLocaleString()}</span>
+                      <span className="text-[10px] text-muted-foreground">{new Date(draft.createdAt).toLocaleString()}</span>
                     </div>
                     <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{draft.transcription.slice(0, 120)}...</p>
                   </div>
@@ -3342,7 +3344,7 @@ export default function EncountersPage() {
             )}
             {encountersLoading ? (
               <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">Loading...</div>
-            ) : filtered.length === 0 && localDrafts.length === 0 ? (
+            ) : filtered.length === 0 && serverDrafts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
                 <Stethoscope className="w-10 h-10 text-muted-foreground" />
                 <div>

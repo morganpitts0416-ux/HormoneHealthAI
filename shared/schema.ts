@@ -555,7 +555,9 @@ export const labResults = pgTable("lab_results", {
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 
-export const insertPatientSchema = createInsertSchema(patients).omit({
+export const insertPatientSchema = createInsertSchema(patients, {
+  preferredPharmacy: z.string().nullable().optional(),
+}).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
@@ -1473,3 +1475,19 @@ export const formExpirationTracking = pgTable("form_expiration_tracking", {
 export type FormExpirationTracking = typeof formExpirationTracking.$inferSelect;
 export const insertFormExpirationTrackingSchema = createInsertSchema(formExpirationTracking).omit({ id: true, createdAt: true, updatedAt: true });
 export type InsertFormExpirationTracking = z.infer<typeof insertFormExpirationTrackingSchema>;
+
+// ─── Encounter Drafts (server-side, cross-device) ──────────────────────────
+// Transcription-only drafts saved before a patient is selected. Replaced
+// the old localStorage-only approach so drafts sync across devices/browsers.
+export const encounterDrafts = pgTable("encounter_drafts", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  transcription: text("transcription").notNull(),
+  visitDate: varchar("visit_date", { length: 20 }).notNull(),
+  visitType: varchar("visit_type", { length: 50 }).notNull().default("follow-up"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type EncounterDraft = typeof encounterDrafts.$inferSelect;
+export const insertEncounterDraftSchema = createInsertSchema(encounterDrafts).omit({ id: true, createdAt: true });
+export type InsertEncounterDraft = z.infer<typeof insertEncounterDraftSchema>;

@@ -5744,6 +5744,54 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // ─── Encounter Drafts (server-side, cross-device) ────────────────────────────
+  // These hold transcription-only drafts saved before a patient is selected.
+  // They replace the old localStorage approach so drafts sync across devices.
+
+  // GET /api/encounter-drafts — list drafts for current clinician
+  app.get("/api/encounter-drafts", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const drafts = await storage.getEncounterDrafts(clinicianId);
+      res.json(drafts);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load encounter drafts" });
+    }
+  });
+
+  // POST /api/encounter-drafts — save a new draft
+  app.post("/api/encounter-drafts", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const { transcription, visitDate, visitType } = req.body;
+      if (!transcription || !visitDate) {
+        return res.status(400).json({ message: "transcription and visitDate are required" });
+      }
+      const draft = await storage.createEncounterDraft({
+        clinicianId,
+        transcription,
+        visitDate,
+        visitType: visitType || "follow-up",
+      });
+      res.status(201).json(draft);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to save encounter draft" });
+    }
+  });
+
+  // DELETE /api/encounter-drafts/:id — delete a draft (used or discarded)
+  app.delete("/api/encounter-drafts/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteEncounterDraft(id, clinicianId);
+      if (!deleted) return res.status(404).json({ message: "Draft not found" });
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete encounter draft" });
+    }
+  });
+
   // ─── BAA e-Signature Routes ───────────────────────────────────────────────────
 
   // GET /api/baa/status — has the current clinician signed the BAA?
