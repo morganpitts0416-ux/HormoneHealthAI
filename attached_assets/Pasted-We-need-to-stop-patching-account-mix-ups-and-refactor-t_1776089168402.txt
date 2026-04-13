@@ -1,0 +1,57 @@
+We need to stop patching account mix-ups and refactor the identity model correctly.
+
+Current problem:
+
+* Patient visibility and clinician visibility have become fragile because records appear to have been tied too closely to user accounts and clinician/account changes.
+* Patient data must never disappear or become orphaned because a clinician changes email, a clinic changes name, or an admin account is edited.
+
+Required architecture:
+
+1. Clinic must be the stable parent entity.
+
+   * Every clinic gets a permanent clinic_id / clinic_code.
+   * Clinics own the workspace, subscription, branding, and membership context.
+
+2. Clinicians must have their own stable clinician identity.
+
+   * Each clinician gets a clinician_id.
+   * Clinicians can belong to multiple clinics.
+   * Use a join table for clinician-to-clinic membership.
+
+3. Patients must have their own stable patient identity.
+
+   * Each patient gets a patient_id.
+   * Patients are not owned by a clinician account.
+   * Patients can belong to multiple clinics through a clinic-patient join table.
+
+4. Within a clinic, patients are assigned to clinicians through a second-layer assignment table.
+
+   * A patient can be assigned to one or more clinicians within a clinic.
+   * Clinician assignment must be independent from the patient’s base identity.
+
+5. Patient portal behavior should work like MyChart:
+
+   * Patient logs in and first sees a dashboard of all clinics they are associated with.
+   * Patient can select a clinic to enter that clinic’s portal.
+   * There is also an “Add Clinic” option.
+   * Patient enters demographics plus clinic code.
+   * System should attempt to match existing patient by normalized name + DOB, optionally using email/phone as confidence checks.
+   * If a match is found, link the existing patient to that clinic instead of throwing “account already exists.”
+
+6. User accounts must be login identities only.
+
+   * Changing a user’s email, name, role, or clinic display info must never move or orphan patient records.
+   * Patient chart access must derive from clinic membership and clinician assignment, not from raw user ownership.
+
+Immediate cleanup plan:
+
+1. Keep current account #1 as super-admin/testing/billing oversight only.
+2. Create a fresh real clinician Suite account for me and add my partner in the same clinic workspace.
+3. Create or confirm the real clinic record for our production clinic.
+4. Migrate existing patients into that clinic context using stable clinic relationships, not user ownership.
+5. Reassign patient-clinician relationships inside the clinic to my new clinician account and my partner as appropriate.
+6. Preserve encounters, labs, chart records, and patient portal continuity wherever possible.
+7. Replace any remaining logic that relies on patients.user_id as the primary source of truth for visibility.
+
+Please do this as a proper data model correction, not a one-off patch.
+I want the admin account separated from real clinical use, and I want the production clinic workspace built in a way that is safe for real users and future multi-clinic support.

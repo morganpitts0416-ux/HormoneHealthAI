@@ -64,17 +64,24 @@ export interface IStorage {
   promoteToAdmin(id: number): Promise<User | undefined>;
   updateUserAdmin(id: number, data: Partial<Pick<User, 'subscriptionStatus' | 'role' | 'notes' | 'freeAccount'>>): Promise<User | undefined>;
   deleteUserAdmin(id: number): Promise<boolean>;
-  getPatientCountByUser(userId: number): Promise<number>;
+  getPatientCountByUser(userId: number, clinicId?: number | null): Promise<number>;
 
-  // Patient operations (scoped by userId)
-  getPatient(id: number, userId: number): Promise<Patient | undefined>;
-  getAllPatients(userId: number): Promise<Patient[]>;
-  searchPatients(searchTerm: string, userId: number, gender?: string): Promise<Patient[]>;
-  getPatientByName(firstName: string, lastName: string, userId: number): Promise<Patient | undefined>;
-  getPatientByEmail(email: string, userId: number): Promise<Patient | undefined>;
+  // Patient operations (clinic-aware: clinicId preferred, userId fallback for legacy records)
+  getPatient(id: number, userId: number, clinicId?: number | null): Promise<Patient | undefined>;
+  getAllPatients(userId: number, clinicId?: number | null): Promise<Patient[]>;
+  searchPatients(searchTerm: string, userId: number, gender?: string, clinicId?: number | null): Promise<Patient[]>;
+  getPatientByName(firstName: string, lastName: string, userId: number, clinicId?: number | null): Promise<Patient | undefined>;
+  getPatientByEmail(email: string, userId: number, clinicId?: number | null): Promise<Patient | undefined>;
   createPatient(patient: InsertPatient): Promise<Patient>;
-  updatePatient(id: number, patient: Partial<InsertPatient>, userId: number): Promise<Patient | undefined>;
-  deletePatient(id: number, userId: number): Promise<boolean>;
+  updatePatient(id: number, patient: Partial<InsertPatient>, userId: number, clinicId?: number | null): Promise<Patient | undefined>;
+  deletePatient(id: number, userId: number, clinicId?: number | null): Promise<boolean>;
+
+  // Clinic management
+  getClinicForUser(userId: number): Promise<schema.Clinic | undefined>;
+  getAllClinicsAdmin(): Promise<Array<schema.Clinic & { memberCount: number; patientCount: number; ownerEmail: string | null }>>;
+  backfillPatientsToClinic(userId: number, clinicId: number): Promise<number>;
+  addUserToClinic(clinicId: number, userId: number, role: string): Promise<schema.ClinicMembership>;
+  getClinicMembers(clinicId: number): Promise<Array<schema.ClinicMembership & { userEmail: string; userName: string }>>;
 
   // Lab result operations
   getLabResult(id: number): Promise<LabResult | undefined>;
@@ -192,6 +199,19 @@ export interface IStorage {
   addSingleMedicationEntry(entry: schema.InsertMedicationEntry): Promise<schema.MedicationEntry>;
   updateMedicationEntryAliases(id: number, clinicianId: number, fields: Partial<Pick<schema.MedicationEntry, "brandNames" | "commonSpokenVariants" | "commonMisspellings" | "drugClass" | "subclass" | "route" | "notes">>): Promise<schema.MedicationEntry | null>;
   deleteMedicationEntry(id: number, clinicianId: number): Promise<boolean>;
+}
+
+// ─── Patient scope helper ────────────────────────────────────────────────────
+// Builds the WHERE condition for patient visibility:
+//   • When clinicId is set → filter by clinic_id (immune to account/email changes)
+//   • When clinicId is null → legacy fallback: filter by user_id where clinic_id IS NULL
+// This dual-condition guarantees both clinic-enrolled and legacy patients are visible.
+function patientScopeCondition(userId: number, clinicId: number | null) {
+  if (clinicId) {
+    return eq(schema.patients.clinicId, clinicId);
+  }
+  // Legacy: user owns this patient and it hasn't been assigned to a clinic yet
+  return and(eq(schema.patients.userId, userId), isNull(schema.patients.clinicId));
 }
 
 export class DbStorage implements IStorage {
@@ -355,53 +375,57 @@ export class DbStorage implements IStorage {
     return result.length > 0;
   }
 
-  async getPatientCountByUser(userId: number): Promise<number> {
+  async getPatientCountByUser(userId: number, clinicId?: number | null): Promise<number> {
+    const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     const result = await db
-      .select()
+      .select({ cnt: count() })
       .from(schema.patients)
-      .where(eq(schema.patients.userId, userId));
-    return result.length;
+      .where(scopeCondition);
+    return Number(result[0]?.cnt ?? 0);
   }
 
   // ── Patient operations ───────────────────────────────────────────────────────
-  async getPatient(id: number, userId: number): Promise<Patient | undefined> {
+  async getPatient(id: number, userId: number, clinicId?: number | null): Promise<Patient | undefined> {
+    const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     const result = await db
       .select()
       .from(schema.patients)
-      .where(and(eq(schema.patients.id, id), eq(schema.patients.userId, userId)));
+      .where(and(eq(schema.patients.id, id), scopeCondition));
     return result[0];
   }
 
-  async getAllPatients(userId: number): Promise<Patient[]> {
+  async getAllPatients(userId: number, clinicId?: number | null): Promise<Patient[]> {
+    const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     return await db
       .select()
       .from(schema.patients)
-      .where(eq(schema.patients.userId, userId))
+      .where(scopeCondition)
       .orderBy(desc(schema.patients.updatedAt));
   }
 
-  async searchPatients(searchTerm: string, userId: number, gender?: string): Promise<Patient[]> {
+  async searchPatients(searchTerm: string, userId: number, gender?: string, clinicId?: number | null): Promise<Patient[]> {
     const searchPattern = `%${searchTerm}%`;
     const nameCondition = or(
       ilike(schema.patients.firstName, searchPattern),
       ilike(schema.patients.lastName, searchPattern)
     );
-    const userCondition = eq(schema.patients.userId, userId);
+    const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     if (gender) {
       return await db
         .select()
         .from(schema.patients)
-        .where(and(nameCondition, userCondition, eq(schema.patients.gender, gender)))
+        .where(and(nameCondition, scopeCondition, eq(schema.patients.gender, gender)))
         .orderBy(desc(schema.patients.updatedAt));
     }
     return await db
       .select()
       .from(schema.patients)
-      .where(and(nameCondition!, userCondition))
+      .where(and(nameCondition!, scopeCondition))
       .orderBy(desc(schema.patients.updatedAt));
   }
 
-  async getPatientByName(firstName: string, lastName: string, userId: number): Promise<Patient | undefined> {
+  async getPatientByName(firstName: string, lastName: string, userId: number, clinicId?: number | null): Promise<Patient | undefined> {
+    const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     const result = await db
       .select()
       .from(schema.patients)
@@ -409,20 +433,21 @@ export class DbStorage implements IStorage {
         and(
           ilike(schema.patients.firstName, firstName),
           ilike(schema.patients.lastName, lastName),
-          eq(schema.patients.userId, userId)
+          scopeCondition
         )
       );
     return result[0];
   }
 
-  async getPatientByEmail(email: string, userId: number): Promise<Patient | undefined> {
+  async getPatientByEmail(email: string, userId: number, clinicId?: number | null): Promise<Patient | undefined> {
+    const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     const result = await db
       .select()
       .from(schema.patients)
       .where(
         and(
           ilike(schema.patients.email, email),
-          eq(schema.patients.userId, userId)
+          scopeCondition
         )
       );
     return result[0];
@@ -433,21 +458,109 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async updatePatient(id: number, patient: Partial<InsertPatient>, userId: number): Promise<Patient | undefined> {
+  async updatePatient(id: number, patient: Partial<InsertPatient>, userId: number, clinicId?: number | null): Promise<Patient | undefined> {
+    const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     const result = await db
       .update(schema.patients)
       .set({ ...patient, updatedAt: new Date() })
-      .where(and(eq(schema.patients.id, id), eq(schema.patients.userId, userId)))
+      .where(and(eq(schema.patients.id, id), scopeCondition))
       .returning();
     return result[0];
   }
 
-  async deletePatient(id: number, userId: number): Promise<boolean> {
+  async deletePatient(id: number, userId: number, clinicId?: number | null): Promise<boolean> {
+    const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     const result = await db
       .delete(schema.patients)
-      .where(and(eq(schema.patients.id, id), eq(schema.patients.userId, userId)))
+      .where(and(eq(schema.patients.id, id), scopeCondition))
       .returning();
     return result.length > 0;
+  }
+
+  // ── Clinic management ────────────────────────────────────────────────────────
+  async getClinicForUser(userId: number): Promise<schema.Clinic | undefined> {
+    const membership = await db
+      .select()
+      .from(schema.clinicMemberships)
+      .where(and(eq(schema.clinicMemberships.userId, userId), eq(schema.clinicMemberships.isActive, true)))
+      .limit(1);
+    if (!membership[0]) return undefined;
+    const clinic = await db
+      .select()
+      .from(schema.clinics)
+      .where(eq(schema.clinics.id, membership[0].clinicId))
+      .limit(1);
+    return clinic[0];
+  }
+
+  async getAllClinicsAdmin(): Promise<Array<schema.Clinic & { memberCount: number; patientCount: number; ownerEmail: string | null }>> {
+    const allClinics = await db.select().from(schema.clinics).orderBy(schema.clinics.name);
+    return await Promise.all(allClinics.map(async (c) => {
+      const [memberRes, patientRes, adminRes] = await Promise.all([
+        db.select({ cnt: count() }).from(schema.clinicMemberships).where(eq(schema.clinicMemberships.clinicId, c.id)),
+        db.select({ cnt: count() }).from(schema.patients).where(eq(schema.patients.clinicId, c.id)),
+        db.select({ email: schema.users.email })
+          .from(schema.clinicMemberships)
+          .innerJoin(schema.users, eq(schema.users.id, schema.clinicMemberships.userId))
+          .where(and(
+            eq(schema.clinicMemberships.clinicId, c.id),
+            eq(schema.clinicMemberships.isPrimaryClinic, true),
+          ))
+          .limit(1),
+      ]);
+      return {
+        ...c,
+        memberCount: Number(memberRes[0]?.cnt ?? 0),
+        patientCount: Number(patientRes[0]?.cnt ?? 0),
+        ownerEmail: adminRes[0]?.email ?? null,
+      };
+    }));
+  }
+
+  async backfillPatientsToClinic(userId: number, clinicId: number): Promise<number> {
+    // Stamp clinic_id on all patients owned by userId that don't yet have one
+    const result = await db
+      .update(schema.patients)
+      .set({ clinicId, updatedAt: new Date() })
+      .where(and(eq(schema.patients.userId, userId), isNull(schema.patients.clinicId)))
+      .returning({ id: schema.patients.id });
+    return result.length;
+  }
+
+  async addUserToClinic(clinicId: number, userId: number, role: string): Promise<schema.ClinicMembership> {
+    const existing = await db
+      .select()
+      .from(schema.clinicMemberships)
+      .where(and(eq(schema.clinicMemberships.clinicId, clinicId), eq(schema.clinicMemberships.userId, userId)));
+    if (existing[0]) {
+      const updated = await db
+        .update(schema.clinicMemberships)
+        .set({ role, isActive: true, updatedAt: new Date() })
+        .where(eq(schema.clinicMemberships.id, existing[0].id))
+        .returning();
+      return updated[0];
+    }
+    const inserted = await db
+      .insert(schema.clinicMemberships)
+      .values({ clinicId, userId, role, isActive: true, isPrimaryClinic: true })
+      .returning();
+    return inserted[0];
+  }
+
+  async getClinicMembers(clinicId: number): Promise<Array<schema.ClinicMembership & { userEmail: string; userName: string }>> {
+    const members = await db
+      .select()
+      .from(schema.clinicMemberships)
+      .where(eq(schema.clinicMemberships.clinicId, clinicId));
+    return await Promise.all(members.map(async (m) => {
+      const user = await db.select({ email: schema.users.email, firstName: schema.users.firstName, lastName: schema.users.lastName })
+        .from(schema.users).where(eq(schema.users.id, m.userId)).limit(1);
+      return {
+        ...m,
+        userEmail: user[0]?.email ?? "",
+        userName: user[0] ? `${user[0].firstName} ${user[0].lastName}`.trim() : "",
+      };
+    }));
   }
 
   // ── Lab result operations ────────────────────────────────────────────────────

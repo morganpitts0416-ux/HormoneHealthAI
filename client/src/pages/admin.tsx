@@ -23,6 +23,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   ArrowLeft, Plus, Trash2, Users, Activity, ShieldCheck,
   MoreVertical, Building2, Mail, Phone, User, Lock, ChevronDown,
+  Layers, UserPlus, RefreshCw,
 } from "lucide-react";
 import {
   DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger,
@@ -76,6 +77,31 @@ type Clinician = {
   patientCount: number;
 };
 
+type ClinicRow = {
+  id: number;
+  name: string;
+  subscriptionPlan: string;
+  maxProviders: number;
+  memberCount: number;
+  patientCount: number;
+  ownerEmail: string | null;
+};
+
+const setupClinicSchema = z.object({
+  userId: z.string().min(1, "User ID is required"),
+  clinicName: z.string().optional(),
+  plan: z.enum(["solo", "suite"]).default("solo"),
+  partnerEmail: z.string().email("Valid email required").optional().or(z.literal("")),
+  backfillPatients: z.boolean().default(true),
+});
+type SetupClinicForm = z.infer<typeof setupClinicSchema>;
+
+const addMemberSchema = z.object({
+  userId: z.string().min(1, "User ID is required"),
+  role: z.enum(["provider", "staff", "clinic_admin"]).default("provider"),
+});
+type AddMemberForm = z.infer<typeof addMemberSchema>;
+
 function StatusBadge({ status }: { status: string }) {
   const cfg = STATUS_CONFIG[status] ?? { label: status, color: "#555", bg: "#eee" };
   return (
@@ -96,6 +122,11 @@ export default function AdminDashboard() {
   const [deleteTarget, setDeleteTarget] = useState<Clinician | null>(null);
   const [editStatusTarget, setEditStatusTarget] = useState<Clinician | null>(null);
   const [editNotes, setEditNotes] = useState("");
+
+  // Clinic management state
+  const [showSetupClinic, setShowSetupClinic] = useState(false);
+  const [addMemberClinicId, setAddMemberClinicId] = useState<number | null>(null);
+  const [backfillingClinicId, setBackfillingClinicId] = useState<number | null>(null);
 
   const { data: clinicians = [], isLoading, isError, error } = useQuery<Clinician[]>({
     queryKey: ["/api/admin/clinicians"],
@@ -179,6 +210,95 @@ export default function AdminDashboard() {
       username: "", npi: "", phone: "", subscriptionStatus: "active", freeAccount: false, notes: "",
       clinicPlan: "solo", partnerEmail: "",
     },
+  });
+
+  // Clinic management queries
+  const { data: clinicList = [], refetch: refetchClinics } = useQuery<ClinicRow[]>({
+    queryKey: ["/api/admin/clinics"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/clinics", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load clinics");
+      return res.json();
+    },
+    staleTime: 15 * 1000,
+  });
+
+  const setupClinicForm = useForm<SetupClinicForm>({
+    resolver: zodResolver(setupClinicSchema),
+    defaultValues: { userId: "", clinicName: "", plan: "solo", partnerEmail: "", backfillPatients: true },
+  });
+
+  const addMemberForm = useForm<AddMemberForm>({
+    resolver: zodResolver(addMemberSchema),
+    defaultValues: { userId: "", role: "provider" },
+  });
+
+  const setupClinicMutation = useMutation({
+    mutationFn: async (data: SetupClinicForm) => {
+      const res = await fetch("/api/admin/clinics/setup", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ ...data, userId: parseInt(data.userId) }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to set up clinic");
+      }
+      return res.json();
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/clinics"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/clinicians"] });
+      setShowSetupClinic(false);
+      setupClinicForm.reset();
+      toast({
+        title: "Clinic created",
+        description: `Clinic #${result.clinicId} set up. ${result.patientsMigrated} patients migrated.`,
+      });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const addMemberMutation = useMutation({
+    mutationFn: async ({ clinicId, data }: { clinicId: number; data: AddMemberForm }) => {
+      const res = await fetch(`/api/admin/clinics/${clinicId}/members`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId: parseInt(data.userId), role: data.role }),
+      });
+      if (!res.ok) {
+        const err = await res.json();
+        throw new Error(err.message || "Failed to add member");
+      }
+      return res.json();
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/admin/clinics"] });
+      setAddMemberClinicId(null);
+      addMemberForm.reset();
+      toast({ title: "Member added", description: `${result.patientsMigrated} patients migrated.` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
+  });
+
+  const backfillMutation = useMutation({
+    mutationFn: async ({ clinicId, userId }: { clinicId: number; userId: number }) => {
+      const res = await fetch(`/api/admin/clinics/${clinicId}/backfill`, {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        credentials: "include",
+        body: JSON.stringify({ userId }),
+      });
+      if (!res.ok) throw new Error("Backfill failed");
+      return res.json();
+    },
+    onSuccess: (result) => {
+      refetchClinics();
+      toast({ title: "Backfill complete", description: `${result.count} patients migrated.` });
+    },
+    onError: (err: any) => toast({ title: "Error", description: err.message, variant: "destructive" }),
   });
 
   const stats = {
@@ -407,7 +527,236 @@ export default function AdminDashboard() {
         <div className="text-xs text-muted-foreground text-center pb-4">
           All patient data is isolated per clinician account. Deleting an account permanently removes all associated patient records.
         </div>
+
+        {/* ── Clinic Architecture Management ─────────────────────────────────── */}
+        <Card>
+          <CardHeader className="flex flex-row items-center justify-between gap-4 pb-4 flex-wrap">
+            <div>
+              <CardTitle className="text-base flex items-center gap-2">
+                <Layers className="w-4 h-4" style={{ color: "#2e3a20" }} />
+                Clinic Architecture
+              </CardTitle>
+              <CardDescription>
+                Create and manage multi-provider clinics. Assign providers and migrate legacy patients to their clinic workspace.
+              </CardDescription>
+            </div>
+            <Button onClick={() => setShowSetupClinic(true)} data-testid="button-setup-clinic">
+              <Plus className="w-4 h-4 mr-2" />
+              Setup Clinic
+            </Button>
+          </CardHeader>
+          <CardContent className="p-0">
+            {clinicList.length === 0 ? (
+              <div className="px-6 py-10 text-center">
+                <Layers className="w-7 h-7 mx-auto mb-3 text-muted-foreground opacity-40" />
+                <p className="text-sm text-muted-foreground">No clinics created yet.</p>
+                <p className="text-xs text-muted-foreground mt-1">
+                  Use "Setup Clinic" to create a clinic for an existing clinician.
+                </p>
+              </div>
+            ) : (
+              <div className="overflow-x-auto">
+                <table className="w-full text-sm">
+                  <thead>
+                    <tr className="border-b text-xs text-muted-foreground">
+                      <th className="text-left px-6 py-3 font-medium">Clinic</th>
+                      <th className="text-left px-4 py-3 font-medium">Plan</th>
+                      <th className="text-center px-4 py-3 font-medium">Providers</th>
+                      <th className="text-center px-4 py-3 font-medium">Patients</th>
+                      <th className="text-right px-6 py-3 font-medium">Actions</th>
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {clinicList.map((clinic) => (
+                      <tr key={clinic.id} className="border-b last:border-0 hover:bg-muted/30 transition-colors">
+                        <td className="px-6 py-3">
+                          <div className="font-medium">{clinic.name}</div>
+                          <div className="text-xs text-muted-foreground mt-0.5">
+                            ID #{clinic.id} {clinic.ownerEmail ? `· ${clinic.ownerEmail}` : ""}
+                          </div>
+                        </td>
+                        <td className="px-4 py-3">
+                          <Badge
+                            variant="outline"
+                            className="text-xs"
+                            style={clinic.subscriptionPlan === "suite"
+                              ? { color: "#2e3a20", borderColor: "#5a7040", backgroundColor: "#eaf2e0" }
+                              : {}}
+                          >
+                            {clinic.subscriptionPlan}
+                          </Badge>
+                        </td>
+                        <td className="px-4 py-3 text-center">
+                          <span className="font-mono text-sm">{clinic.memberCount}</span>
+                          <span className="text-muted-foreground text-xs"> / {clinic.maxProviders}</span>
+                        </td>
+                        <td className="px-4 py-3 text-center font-mono text-sm">{clinic.patientCount}</td>
+                        <td className="px-6 py-3 text-right">
+                          <div className="flex items-center justify-end gap-2">
+                            <Button
+                              variant="outline"
+                              size="sm"
+                              onClick={() => {
+                                setAddMemberClinicId(clinic.id);
+                                addMemberForm.reset();
+                              }}
+                              data-testid={`button-add-member-${clinic.id}`}
+                            >
+                              <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                              Add Provider
+                            </Button>
+                          </div>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+              </div>
+            )}
+          </CardContent>
+        </Card>
       </main>
+
+      {/* Setup Clinic dialog */}
+      <Dialog open={showSetupClinic} onOpenChange={setShowSetupClinic}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle>Setup Clinic</DialogTitle>
+            <DialogDescription>
+              Creates a clinic for an existing user, stamps their account, and optionally migrates their legacy patients.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...setupClinicForm}>
+            <form
+              onSubmit={setupClinicForm.handleSubmit((d) => setupClinicMutation.mutate(d))}
+              className="space-y-4 pt-1"
+            >
+              <FormField control={setupClinicForm.control} name="userId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>User ID *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. 10" data-testid="input-setup-userId" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={setupClinicForm.control} name="clinicName" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Clinic Name <span className="text-muted-foreground font-normal text-xs">(optional — uses account default)</span></FormLabel>
+                  <FormControl>
+                    <Input placeholder="Women's Wellness of Mississippi" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <div className="grid grid-cols-2 gap-3">
+                <FormField control={setupClinicForm.control} name="plan" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Plan</FormLabel>
+                    <Select onValueChange={field.onChange} value={field.value}>
+                      <FormControl>
+                        <SelectTrigger><SelectValue /></SelectTrigger>
+                      </FormControl>
+                      <SelectContent>
+                        <SelectItem value="solo">Solo</SelectItem>
+                        <SelectItem value="suite">Suite</SelectItem>
+                      </SelectContent>
+                    </Select>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+                <FormField control={setupClinicForm.control} name="partnerEmail" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel>Partner Email <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
+                    <FormControl>
+                      <Input placeholder="partner@clinic.com" {...field} />
+                    </FormControl>
+                    <FormMessage />
+                  </FormItem>
+                )} />
+              </div>
+              <FormField control={setupClinicForm.control} name="backfillPatients" render={({ field }) => (
+                <FormItem>
+                  <div className="flex items-start gap-3 rounded-md border p-3">
+                    <Checkbox
+                      id="setup-backfill"
+                      checked={field.value}
+                      onCheckedChange={field.onChange}
+                    />
+                    <div className="space-y-0.5">
+                      <FormLabel htmlFor="setup-backfill" className="cursor-pointer leading-snug">
+                        Migrate legacy patients
+                      </FormLabel>
+                      <p className="text-xs text-muted-foreground">
+                        Stamp clinic_id onto all existing patients for this user.
+                      </p>
+                    </div>
+                  </div>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setShowSetupClinic(false)}>Cancel</Button>
+                <Button type="submit" disabled={setupClinicMutation.isPending} data-testid="button-setup-submit">
+                  {setupClinicMutation.isPending ? "Setting up..." : "Create Clinic"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
+
+      {/* Add Member dialog */}
+      <Dialog open={addMemberClinicId !== null} onOpenChange={() => setAddMemberClinicId(null)}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add Provider to Clinic</DialogTitle>
+            <DialogDescription>
+              Link an existing user to clinic #{addMemberClinicId} as a provider. Their patients will be migrated to this clinic.
+            </DialogDescription>
+          </DialogHeader>
+          <Form {...addMemberForm}>
+            <form
+              onSubmit={addMemberForm.handleSubmit((d) =>
+                addMemberClinicId && addMemberMutation.mutate({ clinicId: addMemberClinicId, data: d })
+              )}
+              className="space-y-4 pt-1"
+            >
+              <FormField control={addMemberForm.control} name="userId" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>User ID *</FormLabel>
+                  <FormControl>
+                    <Input placeholder="e.g. 3" data-testid="input-member-userId" {...field} />
+                  </FormControl>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <FormField control={addMemberForm.control} name="role" render={({ field }) => (
+                <FormItem>
+                  <FormLabel>Role</FormLabel>
+                  <Select onValueChange={field.onChange} value={field.value}>
+                    <FormControl>
+                      <SelectTrigger><SelectValue /></SelectTrigger>
+                    </FormControl>
+                    <SelectContent>
+                      <SelectItem value="provider">Provider</SelectItem>
+                      <SelectItem value="clinic_admin">Clinic Admin</SelectItem>
+                      <SelectItem value="staff">Staff</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <FormMessage />
+                </FormItem>
+              )} />
+              <DialogFooter>
+                <Button type="button" variant="outline" onClick={() => setAddMemberClinicId(null)}>Cancel</Button>
+                <Button type="submit" disabled={addMemberMutation.isPending} data-testid="button-add-member-submit">
+                  {addMemberMutation.isPending ? "Adding..." : "Add Provider"}
+                </Button>
+              </DialogFooter>
+            </form>
+          </Form>
+        </DialogContent>
+      </Dialog>
 
       {/* Create clinician dialog */}
       <Dialog open={showCreate} onOpenChange={setShowCreate}>

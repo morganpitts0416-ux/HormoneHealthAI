@@ -14,7 +14,8 @@ ClinIQ is a multi-tenant SaaS platform for staff in men's and women's hormone an
 The ClinIQ platform features comprehensive lab input, results display with color-coded status indicators, a red flag alert system, AI-powered recommendations, and a patient summary generator, all within a professional medical UI.
 
 **Core Architectural Decisions and Features:**
--   **Multi-tenant SaaS**: Ensures isolated data for each clinician account.
+-   **Multi-tenant SaaS**: Ensures isolated data for each clinician account. Patient visibility is scoped by `clinic_id` (prefers) with `user_id + clinic_id IS NULL` fallback for legacy records. The `getEffectiveClinicId(req)` helper resolves clinicId for both regular and staff sessions.
+-   **Clinic-Centric Architecture**: `clinics`, `clinic_memberships`, `providers`, `patient_assignments` tables. Every new user registration auto-creates a clinic via `setupClinicForNewUser()`. All 8 patient storage methods accept optional `clinicId`. Boulevard webhook and form auto-match both resolve clinicId from the clinician's `defaultClinicId`. Admin clinic management API + UI available at `/admin` (Setup Clinic, Add Provider, Backfill patients).
 -   **Authentication & Authorization**: Session-based authentication with `express-session`, `passport-local`, and `bcrypt`. Supports staff access with role-based restrictions.
 -   **AI-Powered PDF Upload**: Extracts lab values from Pathgroup and hospital PDFs.
 -   **Advanced Risk Assessments**: Includes PREVENT Cardiovascular Risk Assessment (2023 AHA), Advanced Lipid Marker Assessment (ApoB, Lp(a)), and hs-CRP interpretation.
