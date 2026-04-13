@@ -208,9 +208,15 @@ export interface IStorage {
 // This dual-condition guarantees both clinic-enrolled and legacy patients are visible.
 function patientScopeCondition(userId: number, clinicId: number | null) {
   if (clinicId) {
-    return eq(schema.patients.clinicId, clinicId);
+    // Show clinic patients AND this user's own legacy patients (clinic_id IS NULL).
+    // The legacy OR ensures pre-backfill and auto-created patients without clinic_id
+    // are never invisible. Each provider only sees their OWN legacy rows (by userId).
+    return or(
+      eq(schema.patients.clinicId, clinicId),
+      and(eq(schema.patients.userId, userId), isNull(schema.patients.clinicId))
+    );
   }
-  // Legacy: user owns this patient and it hasn't been assigned to a clinic yet
+  // No clinic context: show only this user's own legacy patients
   return and(eq(schema.patients.userId, userId), isNull(schema.patients.clinicId));
 }
 

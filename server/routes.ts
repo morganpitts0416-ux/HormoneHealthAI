@@ -1706,6 +1706,7 @@ Return ONLY this JSON structure:
   app.post("/api/saved-interpretations", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const { patientName, gender, labValues, interpretation, labDate } = req.body;
       if (!patientName || !gender || !labValues || !interpretation) {
         return res.status(400).json({ 
@@ -1727,14 +1728,18 @@ Return ONLY this JSON structure:
         const firstName = nameParts[0] || patientName.trim();
         const lastName = nameParts.length > 1 ? nameParts.slice(1).join(' ') : '';
         if (firstName) {
-          let patient = await storage.getPatientByName(firstName, lastName, clinicianId);
+          let patient = await storage.getPatientByName(firstName, lastName, clinicianId, clinicId);
           if (!patient) {
             patient = await storage.createPatient({
               userId: clinicianId,
+              ...(clinicId ? { clinicId } : {}),
               firstName,
               lastName,
               gender: gender as 'male' | 'female',
             });
+          } else if (patient && clinicId && !patient.clinicId) {
+            // Backfill clinic_id onto legacy patient found via userId fallback
+            await storage.updatePatient(patient.id, { clinicId }, clinicianId, clinicId);
           }
           await storage.createLabResult({
             patientId: patient.id,
@@ -6565,7 +6570,8 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
             const svcStr = (serviceType ?? "").toLowerCase();
             const gender = svcStr.includes("women") || svcStr.includes("female") || svcStr.includes("estrogen") ? "female" : "male";
             const newPatient = await storage.createPatient({
-              clinicianId,
+              userId: clinicianId,
+              ...(webhookClinicId ? { clinicId: webhookClinicId } : {}),
               firstName,
               lastName,
               gender,
