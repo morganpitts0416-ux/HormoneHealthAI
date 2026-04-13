@@ -1108,6 +1108,11 @@ export default function PatientProfiles() {
   const [amendText, setAmendText] = useState("");
   const [savingAmend, setSavingAmend] = useState(false);
   const [evidenceOpenId, setEvidenceOpenId] = useState<number | null>(null);
+  const [summaryOpenId, setSummaryOpenId] = useState<number | null>(null);
+  const [summaryTextMap, setSummaryTextMap] = useState<Record<number, string>>({});
+  const [generatingSummaryId, setGeneratingSummaryId] = useState<number | null>(null);
+  const [savingSummaryId, setSavingSummaryId] = useState<number | null>(null);
+  const [publishingSummaryId, setPublishingSummaryId] = useState<number | null>(null);
   const [listCollapsed, setListCollapsed] = useState(false);
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
@@ -2042,204 +2047,229 @@ export default function PatientProfiles() {
                       const isSigned = !!enc.signedAt;
                       const hasSoap = !!enc.soapNote;
                       const isExpanded = expandedEncounterId === enc.id;
+                      const isAmending = amendingEncounterId === enc.id;
+                      const isEvidenceOpen = evidenceOpenId === enc.id;
+                      const isSummaryOpen = summaryOpenId === enc.id;
+                      const evidenceSuggestions = (enc as any).evidenceSuggestions?.suggestions ?? [];
+                      const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
 
                       const handleClick = () => {
-                        setExpandedEncounterId(isExpanded ? null : enc.id);
-                        if (!hasSoap) setShowEncounters(true);
+                        if (isExpanded) {
+                          setExpandedEncounterId(null);
+                          setAmendingEncounterId(null);
+                          setEvidenceOpenId(null);
+                          setSummaryOpenId(null);
+                        } else {
+                          setExpandedEncounterId(enc.id);
+                        }
+                      };
+
+                      const handlePrintPdf = async (e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        setPdfExportingEncounterId(enc.id);
+                        try {
+                          await exportSoapPdf({
+                            soapText,
+                            patientName: `${selectedPatient?.firstName ?? ''} ${selectedPatient?.lastName ?? ''}`.trim(),
+                            visitDate: enc.visitDate as unknown as string,
+                            providerName: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
+                            providerTitle: (user as any)?.title ?? '',
+                            providerNpi: (user as any)?.npi ?? null,
+                            clinicName: (user as any)?.clinicName ?? 'Clinic',
+                            clinicAddress: (user as any)?.address ?? null,
+                            clinicPhone: (user as any)?.phone ?? null,
+                            clinicLogo: (user as any)?.clinicLogo ?? null,
+                            signedAt: isSigned ? (enc.signedAt as unknown as string) : null,
+                            signedBy: enc.signedBy ?? null,
+                            signatureImage: isSigned ? ((user as any)?.signatureImage ?? null) : null,
+                            isAmended: !!enc.isAmended,
+                          });
+                        } catch { } finally {
+                          setPdfExportingEncounterId(null);
+                        }
+                      };
+
+                      const summaryText = summaryTextMap[enc.id] ?? "";
+
+                      const handleGenerateSummary = async (e: React.MouseEvent) => {
+                        e.stopPropagation();
+                        setGeneratingSummaryId(enc.id);
+                        setSummaryOpenId(enc.id);
+                        try {
+                          const res = await apiRequest("POST", `/api/encounters/${enc.id}/generate-summary`);
+                          const data = await res.json();
+                          const text = data.summary ?? data.patientSummary ?? "";
+                          setSummaryTextMap(prev => ({ ...prev, [enc.id]: text }));
+                        } catch (err: any) {
+                          toast({ variant: "destructive", title: "Summary generation failed", description: err?.message });
+                        } finally {
+                          setGeneratingSummaryId(null);
+                        }
+                      };
+
+                      const handleSaveSummary = async () => {
+                        setSavingSummaryId(enc.id);
+                        try {
+                          await apiRequest("PUT", `/api/encounters/${enc.id}/summary`, { patientSummary: summaryText });
+                          await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
+                          toast({ title: "Summary saved" });
+                        } catch (err: any) {
+                          toast({ variant: "destructive", title: "Save failed", description: err?.message });
+                        } finally {
+                          setSavingSummaryId(null);
+                        }
+                      };
+
+                      const handlePublishSummary = async () => {
+                        setPublishingSummaryId(enc.id);
+                        try {
+                          if (summaryText !== (enc.patientSummary ?? "")) {
+                            await apiRequest("PUT", `/api/encounters/${enc.id}/summary`, { patientSummary: summaryText });
+                          }
+                          await apiRequest("POST", `/api/encounters/${enc.id}/publish`);
+                          await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
+                          toast({ title: "Summary published", description: "The patient can now view this summary in their portal." });
+                        } catch (err: any) {
+                          toast({ variant: "destructive", title: "Publish failed", description: err?.message });
+                        } finally {
+                          setPublishingSummaryId(null);
+                        }
                       };
 
                       return (
                         <div key={enc.id} className="rounded-md border overflow-hidden">
-                          <button
+                          {/* ── Encounter row header ── */}
+                          <div
                             data-testid={`encounter-row-${enc.id}`}
+                            className="w-full text-left p-3 hover-elevate transition-colors cursor-pointer"
                             onClick={handleClick}
-                            className="w-full text-left p-3 hover-elevate transition-colors"
                           >
                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="flex items-center gap-2">
+                              <div className="flex items-center gap-2 min-w-0">
                                 <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                                 <span className="text-sm font-medium">{safeDate(enc.visitDate as unknown as string)}</span>
                                 <Badge variant="outline" className="text-[10px] py-0 h-4">
                                   {VISIT_LABELS[enc.visitType] ?? enc.visitType}
                                 </Badge>
-                              </div>
-                              <div className="flex items-center gap-1.5">
-                                {isSigned ? (
+                                {isSigned && (
                                   <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-700 border-emerald-300 flex items-center gap-0.5">
                                     <Lock className="w-2.5 h-2.5" />
                                     {enc.isAmended ? "Amended" : "Signed"}
                                   </Badge>
-                                ) : hasSoap ? (
-                                  <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-600 border-emerald-200">SOAP</Badge>
-                                ) : null}
-                                {enc.summaryPublished ? (
+                                )}
+                                {enc.summaryPublished && (
                                   <Badge variant="outline" className="text-[10px] py-0 h-4 text-violet-600 border-violet-200">Published</Badge>
-                                ) : enc.patientSummary ? (
-                                  <Badge variant="outline" className="text-[10px] py-0 h-4 text-amber-600 border-amber-200">Draft</Badge>
-                                ) : null}
-                                {hasSoap
-                                  ? <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                                  : <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />}
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1 flex-shrink-0">
+                                {hasSoap && (
+                                  <>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isAmending) {
+                                          setAmendingEncounterId(null);
+                                          setAmendText("");
+                                        } else {
+                                          setAmendText(soapText);
+                                          setAmendingEncounterId(enc.id);
+                                          setExpandedEncounterId(enc.id);
+                                        }
+                                      }}
+                                      data-testid={`button-amend-encounter-${enc.id}`}
+                                      title="Amend / Edit"
+                                    >
+                                      <PenLine className={`w-3.5 h-3.5 ${isAmending ? "text-amber-600" : "text-muted-foreground"}`} />
+                                    </Button>
+                                    {evidenceSuggestions.length > 0 && (
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-7 w-7"
+                                        onClick={(e) => {
+                                          e.stopPropagation();
+                                          setEvidenceOpenId(isEvidenceOpen ? null : enc.id);
+                                          setExpandedEncounterId(enc.id);
+                                        }}
+                                        data-testid={`button-evidence-encounter-${enc.id}`}
+                                        title="Evidence"
+                                      >
+                                        <BookOpen className={`w-3.5 h-3.5 ${isEvidenceOpen ? "text-primary" : "text-muted-foreground"}`} />
+                                      </Button>
+                                    )}
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        if (isSummaryOpen) {
+                                          setSummaryOpenId(null);
+                                        } else {
+                                          setSummaryOpenId(enc.id);
+                                          setExpandedEncounterId(enc.id);
+                                          if (enc.patientSummary) {
+                                            setSummaryTextMap(prev => ({ ...prev, [enc.id]: enc.patientSummary ?? "" }));
+                                          } else {
+                                            handleGenerateSummary(e);
+                                          }
+                                        }
+                                      }}
+                                      data-testid={`button-summary-encounter-${enc.id}`}
+                                      title="Patient Summary"
+                                    >
+                                      <Sparkles className={`w-3.5 h-3.5 ${isSummaryOpen ? "text-primary" : "text-muted-foreground"}`} />
+                                    </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7"
+                                      disabled={pdfExportingEncounterId === enc.id}
+                                      onClick={handlePrintPdf}
+                                      data-testid={`button-print-pdf-encounter-${enc.id}`}
+                                      title="Print PDF"
+                                    >
+                                      {pdfExportingEncounterId === enc.id
+                                        ? <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
+                                        : <FileDown className="w-3.5 h-3.5 text-muted-foreground" />}
+                                    </Button>
+                                  </>
+                                )}
+                                <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
                               </div>
                             </div>
                             {enc.chiefComplaint && (
-                              <p className="text-xs text-muted-foreground mt-1.5 truncate">{enc.chiefComplaint}</p>
+                              <p className="text-xs text-muted-foreground mt-1 truncate">{enc.chiefComplaint}</p>
                             )}
-                          </button>
+                            {isSigned && enc.signedBy && (
+                              <p className="text-[10px] text-emerald-600/80 mt-0.5">
+                                {enc.isAmended ? "Amended and signed" : "Signed"} by {enc.signedBy}
+                                {enc.signedAt ? ` · ${new Date(enc.signedAt as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
+                              </p>
+                            )}
+                          </div>
 
-                          {/* Inline SOAP viewer — signed and unsigned */}
+                          {/* ── Expanded content ── */}
                           {isExpanded && !hasSoap && (
                             <div className="border-t bg-muted/10 px-4 py-3 flex items-center gap-2 text-xs text-muted-foreground">
                               <FileText className="w-3.5 h-3.5 flex-shrink-0" />
-                              <span>No SOAP note documented for this visit. Use the Encounters section to add clinical documentation.</span>
+                              <span>No SOAP note documented for this visit.</span>
                             </div>
                           )}
-                          {isExpanded && hasSoap && (() => {
-                            const isAmending = amendingEncounterId === enc.id;
-                            const isEvidenceOpen = evidenceOpenId === enc.id;
-                            const evidenceSuggestions = (enc as any).evidenceSuggestions?.suggestions ?? [];
-                            return (
+                          {isExpanded && hasSoap && (
                             <div className="border-t bg-muted/10">
-                              {/* Banner — signed vs draft + action buttons */}
-                              {isSigned ? (
-                                <div className="flex items-center gap-2 px-4 py-2 border-b bg-emerald-50/60 text-xs text-emerald-700 flex-wrap">
-                                  <Lock className="w-3 h-3 flex-shrink-0" />
-                                  <span className="flex-1 min-w-0">
-                                    {enc.isAmended ? "Amended and signed" : "Electronically signed"}
-                                    {enc.signedBy ? ` by ${enc.signedBy}` : ""}
-                                    {enc.signedAt ? ` · ${new Date(enc.signedAt as string).toLocaleString('en-US', { month: 'short', day: 'numeric', year: 'numeric', hour: 'numeric', minute: '2-digit' })}` : ""}
-                                  </span>
-                                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                                    {evidenceSuggestions.length > 0 && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className={`h-6 px-2 text-xs gap-1 ${isEvidenceOpen ? "text-primary" : "text-muted-foreground"}`}
-                                        onClick={(e) => { e.stopPropagation(); setEvidenceOpenId(isEvidenceOpen ? null : enc.id); }}
-                                        data-testid={`button-evidence-encounter-${enc.id}`}
-                                      >
-                                        <BookOpen className="w-3 h-3" />
-                                        Evidence
-                                      </Button>
-                                    )}
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 px-2 text-xs text-muted-foreground gap-1"
-                                      disabled={pdfExportingEncounterId === enc.id}
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        setPdfExportingEncounterId(enc.id);
-                                        try {
-                                          const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
-                                          await exportSoapPdf({
-                                            soapText,
-                                            patientName: `${selectedPatient?.firstName ?? ''} ${selectedPatient?.lastName ?? ''}`.trim(),
-                                            visitDate: enc.visitDate as unknown as string,
-                                            providerName: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
-                                            providerTitle: (user as any)?.title ?? '',
-                                            providerNpi: (user as any)?.npi ?? null,
-                                            clinicName: (user as any)?.clinicName ?? 'Clinic',
-                                            clinicAddress: (user as any)?.address ?? null,
-                                            clinicPhone: (user as any)?.phone ?? null,
-                                            clinicLogo: (user as any)?.clinicLogo ?? null,
-                                            signedAt: enc.signedAt as unknown as string,
-                                            signedBy: enc.signedBy ?? null,
-                                            signatureImage: (user as any)?.signatureImage ?? null,
-                                            isAmended: !!enc.isAmended,
-                                          });
-                                        } catch { } finally {
-                                          setPdfExportingEncounterId(null);
-                                        }
-                                      }}
-                                      data-testid={`button-print-pdf-encounter-${enc.id}`}
-                                    >
-                                      <FileDown className="w-3 h-3" />
-                                      {pdfExportingEncounterId === enc.id ? "Generating…" : "Print PDF"}
-                                    </Button>
-                                    {!isAmending && (
-                                      <Button
-                                        size="sm"
-                                        variant="ghost"
-                                        className="h-6 px-2 text-xs text-amber-700 gap-1"
-                                        onClick={(e) => {
-                                          e.stopPropagation();
-                                          const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
-                                          setAmendText(soapText);
-                                          setAmendingEncounterId(enc.id);
-                                        }}
-                                        data-testid={`button-amend-encounter-${enc.id}`}
-                                      >
-                                        <PenLine className="w-3 h-3" />
-                                        Amend
-                                      </Button>
-                                    )}
-                                  </div>
-                                </div>
-                              ) : (
-                                <div className="flex items-center gap-2 px-4 py-2 border-b bg-amber-50/60 text-xs text-amber-700 flex-wrap">
-                                  <FileText className="w-3 h-3 flex-shrink-0" />
-                                  <span className="flex-1 min-w-0">Draft SOAP note — not yet signed</span>
-                                  <div className="flex items-center gap-1.5 flex-shrink-0">
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 px-2 text-xs text-muted-foreground gap-1"
-                                      onClick={(e) => {
-                                        e.stopPropagation();
-                                        const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
-                                        navigator.clipboard.writeText(soapText).then(() => {
-                                          setCopiedEncounterId(enc.id);
-                                          setTimeout(() => setCopiedEncounterId(null), 2000);
-                                        });
-                                      }}
-                                      data-testid={`button-copy-encounter-${enc.id}`}
-                                    >
-                                      {copiedEncounterId === enc.id ? <><Check className="w-3 h-3" />Copied!</> : <><Copy className="w-3 h-3" />Copy Note</>}
-                                    </Button>
-                                    <Button
-                                      size="sm"
-                                      variant="ghost"
-                                      className="h-6 px-2 text-xs text-muted-foreground gap-1"
-                                      disabled={pdfExportingEncounterId === enc.id}
-                                      onClick={async (e) => {
-                                        e.stopPropagation();
-                                        setPdfExportingEncounterId(enc.id);
-                                        try {
-                                          const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
-                                          await exportSoapPdf({
-                                            soapText,
-                                            patientName: `${selectedPatient?.firstName ?? ''} ${selectedPatient?.lastName ?? ''}`.trim(),
-                                            visitDate: enc.visitDate as unknown as string,
-                                            providerName: `${user?.firstName ?? ''} ${user?.lastName ?? ''}`.trim(),
-                                            providerTitle: (user as any)?.title ?? '',
-                                            providerNpi: (user as any)?.npi ?? null,
-                                            clinicName: (user as any)?.clinicName ?? 'Clinic',
-                                            clinicAddress: (user as any)?.address ?? null,
-                                            clinicPhone: (user as any)?.phone ?? null,
-                                            clinicLogo: (user as any)?.clinicLogo ?? null,
-                                            signedAt: null,
-                                            signedBy: null,
-                                            signatureImage: null,
-                                            isAmended: false,
-                                          });
-                                        } catch { } finally {
-                                          setPdfExportingEncounterId(null);
-                                        }
-                                      }}
-                                      data-testid={`button-print-pdf-draft-${enc.id}`}
-                                    >
-                                      <FileDown className="w-3 h-3" />
-                                      {pdfExportingEncounterId === enc.id ? "Generating…" : "Print PDF"}
-                                    </Button>
-                                  </div>
-                                </div>
-                              )}
-
                               {/* Inline Evidence Panel */}
                               {isEvidenceOpen && evidenceSuggestions.length > 0 && (
                                 <div className="border-b bg-primary/5 px-4 py-3 space-y-2">
-                                  <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">Evidence-Based Suggestions</p>
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-[10px] font-semibold text-primary/70 uppercase tracking-wide">Evidence-Based Suggestions</p>
+                                    <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setEvidenceOpenId(null)} data-testid={`button-close-evidence-${enc.id}`}>
+                                      <X className="w-3 h-3 text-muted-foreground" />
+                                    </Button>
+                                  </div>
                                   {evidenceSuggestions.map((s: any, idx: number) => (
                                     <div key={idx} className="rounded-md border bg-background px-3 py-2 space-y-1">
                                       <div className="flex items-start gap-2">
@@ -2261,6 +2291,75 @@ export default function PatientProfiles() {
                                       )}
                                     </div>
                                   ))}
+                                </div>
+                              )}
+
+                              {/* Inline Patient Summary Panel */}
+                              {isSummaryOpen && (
+                                <div className="border-b bg-violet-50/40 px-4 py-3 space-y-3">
+                                  <div className="flex items-center justify-between">
+                                    <p className="text-[10px] font-semibold text-violet-700/70 uppercase tracking-wide">Patient Summary</p>
+                                    <div className="flex items-center gap-1.5">
+                                      <Button
+                                        size="sm"
+                                        variant="ghost"
+                                        className="h-6 px-2 text-xs text-muted-foreground gap-1"
+                                        disabled={generatingSummaryId === enc.id}
+                                        onClick={handleGenerateSummary}
+                                        data-testid={`button-regenerate-summary-${enc.id}`}
+                                      >
+                                        <RefreshCw className={`w-3 h-3 ${generatingSummaryId === enc.id ? "animate-spin" : ""}`} />
+                                        {enc.patientSummary ? "Regenerate" : "Generate"}
+                                      </Button>
+                                      <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => setSummaryOpenId(null)} data-testid={`button-close-summary-${enc.id}`}>
+                                        <X className="w-3 h-3 text-muted-foreground" />
+                                      </Button>
+                                    </div>
+                                  </div>
+                                  {generatingSummaryId === enc.id ? (
+                                    <div className="flex items-center gap-2 py-6 justify-center text-xs text-muted-foreground">
+                                      <Loader2 className="w-4 h-4 animate-spin text-primary" />
+                                      Generating patient summary...
+                                    </div>
+                                  ) : (
+                                    <>
+                                      <Textarea
+                                        value={summaryText}
+                                        onChange={(e) => setSummaryTextMap(prev => ({ ...prev, [enc.id]: e.target.value }))}
+                                        className="text-xs min-h-[12rem] resize-y"
+                                        data-testid={`textarea-summary-${enc.id}`}
+                                      />
+                                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                                        <div className="flex items-center gap-1.5">
+                                          {enc.summaryPublished && (
+                                            <Badge variant="outline" className="text-[10px] py-0 h-4 text-violet-600 border-violet-200">Published to portal</Badge>
+                                          )}
+                                        </div>
+                                        <div className="flex items-center gap-2">
+                                          <Button
+                                            size="sm"
+                                            variant="outline"
+                                            className="text-xs"
+                                            disabled={savingSummaryId === enc.id || !summaryText.trim()}
+                                            onClick={handleSaveSummary}
+                                            data-testid={`button-save-summary-${enc.id}`}
+                                          >
+                                            {savingSummaryId === enc.id ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving...</> : "Save Draft"}
+                                          </Button>
+                                          <Button
+                                            size="sm"
+                                            className="text-xs gap-1.5"
+                                            style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                                            disabled={publishingSummaryId === enc.id || !summaryText.trim()}
+                                            onClick={handlePublishSummary}
+                                            data-testid={`button-publish-summary-${enc.id}`}
+                                          >
+                                            {publishingSummaryId === enc.id ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Publishing...</> : <><Send className="w-3 h-3" />Publish to Portal</>}
+                                          </Button>
+                                        </div>
+                                      </div>
+                                    </>
+                                  )}
                                 </div>
                               )}
 
@@ -2305,24 +2404,21 @@ export default function PatientProfiles() {
                                       }}
                                       data-testid={`button-resignlock-amend-${enc.id}`}
                                     >
-                                      {savingAmend ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving…</> : <><Lock className="w-3 h-3 mr-1.5" />Re-sign &amp; Lock</>}
+                                      {savingAmend ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving...</> : <><Lock className="w-3 h-3 mr-1.5" />Re-sign and Lock</>}
                                     </Button>
                                   </div>
                                 </div>
                               ) : (
                                 <div className="px-5 py-4 max-h-96 overflow-y-auto">
                                   <SoapNoteViewer
-                                    text={typeof enc.soapNote === 'string'
-                                      ? enc.soapNote
-                                      : (enc.soapNote as any)?.fullNote ?? JSON.stringify(enc.soapNote, null, 2)}
+                                    text={soapText}
                                     evidence={evidenceSuggestions}
                                     mode="flags"
                                   />
                                 </div>
                               )}
                             </div>
-                            );
-                          })()}
+                          )}
                         </div>
                       );
                     })}
