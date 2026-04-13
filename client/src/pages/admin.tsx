@@ -97,14 +97,18 @@ export default function AdminDashboard() {
   const [editStatusTarget, setEditStatusTarget] = useState<Clinician | null>(null);
   const [editNotes, setEditNotes] = useState("");
 
-  const { data: clinicians = [], isLoading } = useQuery<Clinician[]>({
+  const { data: clinicians = [], isLoading, isError, error } = useQuery<Clinician[]>({
     queryKey: ["/api/admin/clinicians"],
     queryFn: async () => {
       const res = await fetch("/api/admin/clinicians", { credentials: "include" });
-      if (!res.ok) throw new Error("Failed to load clinicians");
+      if (!res.ok) {
+        const body = await res.json().catch(() => ({}));
+        throw new Error(body.message || `Server error ${res.status}`);
+      }
       return res.json();
     },
     staleTime: 15 * 1000,
+    retry: false,
   });
 
   const createMutation = useMutation({
@@ -273,6 +277,17 @@ export default function AdminDashboard() {
           <CardContent className="p-0">
             {isLoading ? (
               <div className="px-6 py-12 text-center text-sm text-muted-foreground">Loading accounts...</div>
+            ) : isError ? (
+              <div className="px-6 py-12 text-center">
+                <div className="w-10 h-10 rounded-full flex items-center justify-center mx-auto mb-3" style={{ backgroundColor: "#fee2e2" }}>
+                  <Lock className="w-5 h-5" style={{ color: "#b91c1c" }} />
+                </div>
+                <p className="text-sm font-medium" style={{ color: "#7f1d1d" }}>Could not load clinician accounts</p>
+                <p className="text-xs text-muted-foreground mt-1">{(error as Error)?.message || "Unknown error"}</p>
+                <Button variant="outline" size="sm" className="mt-4" onClick={() => window.location.reload()}>
+                  Retry
+                </Button>
+              </div>
             ) : clinicians.length === 0 ? (
               <div className="px-6 py-12 text-center">
                 <Users className="w-8 h-8 mx-auto mb-3 text-muted-foreground opacity-40" />
