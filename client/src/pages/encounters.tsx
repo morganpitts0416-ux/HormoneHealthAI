@@ -99,9 +99,9 @@ function EncounterStatusBadges({ enc }: { enc: EncounterWithPatient }) {
       <Badge variant="outline" className="text-[10px] py-0 h-4">
         {VISIT_TYPES.find(v => v.value === enc.visitType)?.label ?? enc.visitType}
       </Badge>
-      {enc.transcription && (
-        <Badge variant="outline" className="text-[10px] py-0 h-4 text-blue-600 border-blue-200">
-          Transcribed
+      {enc.transcription && !enc.soapNote && (
+        <Badge variant="outline" className="text-[10px] py-0 h-4 text-amber-600 border-amber-300">
+          Needs SOAP
         </Badge>
       )}
       {enc.soapNote && (
@@ -724,12 +724,14 @@ function EncounterEditor({
   onClose,
   onDeleted,
   initialPatientId,
+  initialTranscription,
 }: {
   encounter: EncounterWithPatient | null;
   patients: Patient[];
   onClose: () => void;
   onDeleted: () => void;
   initialPatientId?: string;
+  initialTranscription?: string;
 }) {
   const { toast } = useToast();
   const { user } = useAuth();
@@ -756,14 +758,15 @@ function EncounterEditor({
   const [linkedLabResultId, setLinkedLabResultId] = useState<string>(
     encounter?.linkedLabResultId?.toString() ?? ""
   );
-  const [transcription, setTranscription] = useState<string>(encounter?.transcription ?? "");
+  const [transcription, setTranscription] = useState<string>(encounter?.transcription ?? initialTranscription ?? "");
   const [recorderState, setRecorderState] = useState<RecorderState>("idle");
   // Captures what was in the textarea before a recording session starts, so partial
   // transcription updates can be prepended correctly without doubling text.
   const preRecordingTranscriptionRef = useRef<string>("");
+  const isAutoSavingRef = useRef(false);
   const [soap, setSoap] = useState<SoapNote>(initSoap(encounter?.soapNote));
   const [patientSummary, setPatientSummary] = useState<string>(encounter?.patientSummary ?? "");
-  const [activeTab, setActiveTab] = useState<"details" | "transcript" | "soap" | "evidence" | "summary">("details");
+  const [activeTab, setActiveTab] = useState<"details" | "transcript" | "soap" | "evidence" | "summary">(initialTranscription ? "transcript" : "details");
   const [savedId, setSavedId] = useState<number | null>(encounter?.id ?? null);
   const [published, setPublished] = useState<boolean>(encounter?.summaryPublished ?? false);
 
@@ -1636,8 +1639,7 @@ function EncounterEditor({
 
               <AudioCapture
                 visitType={visitType}
-                onTranscribed={(text, utterances) => {
-                  // Use the pre-recording snapshot so we don't double-append partial text
+                onTranscribed={async (text, utterances) => {
                   const base = preRecordingTranscriptionRef.current;
                   const updated = base ? base + "\n\n" + text : text;
                   setTranscription(updated);
@@ -1646,10 +1648,38 @@ function EncounterEditor({
                     setRawUtterances(utterances);
                     setDiarizedTranscript(utterances);
                   }
-                  // Auto-save transcript to encounter immediately if already saved
                   if (savedId) {
                     apiRequest("PUT", `/api/encounters/${savedId}`, { transcription: updated })
-                      .catch(() => {}); // silent — user can manually save if this fails
+                      .catch(() => {
+                        toast({ variant: "destructive", title: "Auto-save failed", description: "Transcription update could not be saved. Please save manually." });
+                      });
+                  } else if (patientId && !isAutoSavingRef.current) {
+                    isAutoSavingRef.current = true;
+                    try {
+                      const body = {
+                        patientId: parseInt(patientId),
+                        visitDate,
+                        visitType: visitType || "follow-up",
+                        chiefComplaint: chiefComplaint || null,
+                        transcription: updated,
+                      };
+                      const res = await apiRequest("POST", "/api/encounters", body);
+                      const data = await res.json();
+                      setSavedId(data.id);
+                      invalidate();
+                      toast({ title: "Transcription auto-saved", description: "You can finish the SOAP note later." });
+                    } catch {
+                      toast({ variant: "destructive", title: "Auto-save failed", description: "Please manually save your encounter." });
+                    } finally {
+                      isAutoSavingRef.current = false;
+                    }
+                  } else if (!isAutoSavingRef.current) {
+                    try {
+                      const drafts = JSON.parse(localStorage.getItem("cliniq_draft_transcriptions") || "[]");
+                      drafts.push({ transcription: updated, visitDate, visitType, savedAt: new Date().toISOString() });
+                      localStorage.setItem("cliniq_draft_transcriptions", JSON.stringify(drafts));
+                      toast({ title: "Transcription saved locally", description: "Select a patient and save to complete this encounter." });
+                    } catch {}
                   }
                 }}
                 onPartialTranscription={(accumulatedText) => {
@@ -3169,7 +3199,16 @@ export default function EncountersPage() {
   const [isNew, setIsNew] = useState(false);
   const [initialPatientId, setInitialPatientId] = useState<string | undefined>(undefined);
   const [search, setSearch] = useState("");
+  const [draftTranscription, setDraftTranscription] = useState<string | undefined>(undefined);
   const urlParamApplied = useRef(false);
+
+  const [localDrafts, setLocalDrafts] = useState<Array<{ transcription: string; visitDate: string; visitType: string; savedAt: string }>>([]);
+  useEffect(() => {
+    try {
+      const raw = localStorage.getItem("cliniq_draft_transcriptions");
+      if (raw) setLocalDrafts(JSON.parse(raw));
+    } catch {}
+  }, []);
 
   const { data: encounters = [], isLoading: encountersLoading } = useQuery<EncounterWithPatient[]>({
     queryKey: ["/api/encounters"],
@@ -3227,6 +3266,11 @@ export default function EncountersPage() {
     return e.patientName.toLowerCase().includes(q) ||
       (e.chiefComplaint?.toLowerCase().includes(q) ?? false) ||
       VISIT_TYPES.find(v => v.value === e.visitType)?.label.toLowerCase().includes(q);
+  }).sort((a, b) => {
+    const aNeeds = a.transcription && !a.soapNote ? 1 : 0;
+    const bNeeds = b.transcription && !b.soapNote ? 1 : 0;
+    if (aNeeds !== bNeeds) return bNeeds - aNeeds;
+    return 0;
   });
 
   return (
@@ -3268,9 +3312,37 @@ export default function EncountersPage() {
             />
           </div>
           <div className="flex-1 overflow-y-auto p-2">
+            {localDrafts.length > 0 && (
+              <div className="mb-3">
+                <p className="text-[10px] uppercase tracking-wider font-semibold text-amber-700 px-2 mb-1">Unsaved Drafts</p>
+                {localDrafts.map((draft, idx) => (
+                  <div
+                    key={`draft-${idx}`}
+                    className="px-2 py-2 rounded-md cursor-pointer hover-elevate border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 mb-1"
+                    data-testid={`draft-encounter-${idx}`}
+                    onClick={() => {
+                      setDraftTranscription(draft.transcription);
+                      setIsNew(true);
+                      setSelectedId(null);
+                      const updated = localDrafts.filter((_, i) => i !== idx);
+                      setLocalDrafts(updated);
+                      localStorage.setItem("cliniq_draft_transcriptions", JSON.stringify(updated));
+                    }}
+                  >
+                    <div className="flex items-center gap-1.5">
+                      <Badge variant="outline" className="text-[10px] py-0 h-4 text-amber-600 border-amber-300">
+                        {VISIT_TYPES.find(v => v.value === draft.visitType)?.label ?? draft.visitType}
+                      </Badge>
+                      <span className="text-[10px] text-muted-foreground">{new Date(draft.savedAt).toLocaleString()}</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{draft.transcription.slice(0, 120)}...</p>
+                  </div>
+                ))}
+              </div>
+            )}
             {encountersLoading ? (
               <div className="flex items-center justify-center py-16 text-sm text-muted-foreground">Loading...</div>
-            ) : filtered.length === 0 ? (
+            ) : filtered.length === 0 && localDrafts.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-16 gap-3 text-center px-4">
                 <Stethoscope className="w-10 h-10 text-muted-foreground" />
                 <div>
@@ -3310,12 +3382,13 @@ export default function EncountersPage() {
           <div className="flex-1 overflow-hidden flex flex-col bg-background">
             <EncounterErrorBoundary>
               <EncounterEditor
-                key={selectedId ?? `new-${initialPatientId ?? ""}`}
+                key={selectedId ?? `new-${initialPatientId ?? ""}-${draftTranscription?.slice(0, 20) ?? ""}`}
                 encounter={selectedEncounter}
                 patients={patients}
-                onClose={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); }}
-                onDeleted={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); }}
+                onClose={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); setDraftTranscription(undefined); }}
+                onDeleted={() => { setSelectedId(null); setIsNew(false); setInitialPatientId(undefined); setDraftTranscription(undefined); }}
                 initialPatientId={isNew ? initialPatientId : undefined}
+                initialTranscription={isNew ? draftTranscription : undefined}
               />
             </EncounterErrorBoundary>
           </div>
