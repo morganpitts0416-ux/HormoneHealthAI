@@ -914,6 +914,7 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
         onPublish={() => publishMutation.mutate({ mode: "link" })}
         onDeactivate={() => activePublication && deactivatePubMutation.mutate({ pubId: activePublication.id })}
         isPending={publishMutation.isPending}
+        formId={formId}
       />
     </div>
   );
@@ -1485,7 +1486,7 @@ function SubmissionStatusBadge({ status, type }: { status: string; type: "review
 
 // ─── Publish Dialog ───────────────────────────────────────────────────────────
 
-function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, onDeactivate, isPending }: {
+function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, onDeactivate, isPending, formId }: {
   open: boolean;
   onOpenChange: (v: boolean) => void;
   publicUrl: string | null;
@@ -1493,9 +1494,40 @@ function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, 
   onPublish: () => void;
   onDeactivate: () => void;
   isPending: boolean;
+  formId: number | null;
 }) {
   const { toast } = useToast();
   const [showEmbed, setShowEmbed] = useState(false);
+  const [showSendToPatient, setShowSendToPatient] = useState(false);
+  const [patientSearch, setPatientSearch] = useState("");
+  const [selectedPatient, setSelectedPatient] = useState<any>(null);
+
+  const { data: patients = [] } = useQuery<any[]>({
+    queryKey: ["/api/patients"],
+    enabled: open && showSendToPatient,
+  });
+
+  const filteredPatients = patientSearch.trim().length >= 2
+    ? patients.filter((p: any) => `${p.firstName} ${p.lastName}`.toLowerCase().includes(patientSearch.toLowerCase()) || (p.email || "").toLowerCase().includes(patientSearch.toLowerCase()))
+    : [];
+
+  const sendToPatientMutation = useMutation({
+    mutationFn: async () => {
+      if (!selectedPatient || !formId) return;
+      const res = await apiRequest("POST", `/api/patients/${selectedPatient.id}/forms/send-link`, { formId, method: "email" });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to send"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Form link sent", description: `Email sent to ${selectedPatient?.email || selectedPatient?.firstName}` });
+      setSelectedPatient(null);
+      setPatientSearch("");
+      setShowSendToPatient(false);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Send failed", description: err.message, variant: "destructive" });
+    },
+  });
 
   const handleCopy = () => {
     if (publicUrl) {
@@ -1562,6 +1594,76 @@ function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, 
                     <p className="text-xs text-muted-foreground">
                       Paste this code into your website HTML to embed the form. Works with any website builder, EHR portal, or custom site.
                     </p>
+                  </div>
+                )}
+              </div>
+
+              {/* Send to Patient */}
+              <div className="space-y-2 pt-1">
+                <button
+                  onClick={() => setShowSendToPatient(v => !v)}
+                  className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground"
+                  data-testid="button-toggle-send-patient"
+                >
+                  <Send className="h-3.5 w-3.5" />
+                  Send to a patient via email
+                  <ChevronDown className={`h-3 w-3 transition-transform ${showSendToPatient ? "rotate-180" : ""}`} />
+                </button>
+                {showSendToPatient && (
+                  <div className="space-y-2 rounded-md border bg-muted/30 p-3">
+                    {selectedPatient ? (
+                      <div className="space-y-2">
+                        <div className="flex items-center justify-between gap-2 rounded-md border bg-background px-3 py-2">
+                          <div>
+                            <p className="text-sm font-medium">{selectedPatient.firstName} {selectedPatient.lastName}</p>
+                            <p className="text-xs text-muted-foreground">{selectedPatient.email || "No email on file"}</p>
+                          </div>
+                          <Button variant="ghost" size="sm" onClick={() => setSelectedPatient(null)} className="text-xs">Change</Button>
+                        </div>
+                        {!selectedPatient.email && (
+                          <p className="text-xs text-destructive">This patient has no email address on file. Add an email to their profile first.</p>
+                        )}
+                        <Button
+                          size="sm"
+                          onClick={() => sendToPatientMutation.mutate()}
+                          disabled={sendToPatientMutation.isPending || !selectedPatient.email}
+                          data-testid="button-send-form-to-patient"
+                          className="w-full"
+                        >
+                          <Send className="w-3.5 h-3.5 mr-1.5" />
+                          {sendToPatientMutation.isPending ? "Sending…" : "Send Form Link via Email"}
+                        </Button>
+                      </div>
+                    ) : (
+                      <div className="space-y-2">
+                        <Input
+                          placeholder="Search by name or email…"
+                          value={patientSearch}
+                          onChange={e => setPatientSearch(e.target.value)}
+                          data-testid="input-patient-search-send"
+                          autoFocus
+                        />
+                        {patientSearch.trim().length >= 2 && (
+                          <div className="max-h-40 overflow-y-auto rounded-md border bg-background divide-y">
+                            {filteredPatients.length === 0 ? (
+                              <p className="px-3 py-2 text-xs text-muted-foreground">No patients found</p>
+                            ) : (
+                              filteredPatients.slice(0, 8).map((p: any) => (
+                                <button
+                                  key={p.id}
+                                  className="w-full px-3 py-2 text-left hover-elevate"
+                                  onClick={() => { setSelectedPatient(p); setPatientSearch(""); }}
+                                  data-testid={`button-select-patient-send-${p.id}`}
+                                >
+                                  <p className="text-sm font-medium">{p.firstName} {p.lastName}</p>
+                                  <p className="text-xs text-muted-foreground">{p.email || "No email"}</p>
+                                </button>
+                              ))
+                            )}
+                          </div>
+                        )}
+                      </div>
+                    )}
                   </div>
                 )}
               </div>

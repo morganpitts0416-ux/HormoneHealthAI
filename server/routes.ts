@@ -6,7 +6,7 @@ import path from "path";
 import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -31,7 +31,7 @@ import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
 import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
-import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail } from "./email-service";
+import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail, sendProviderInviteEmail } from "./email-service";
 import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
 import Stripe from "stripe";
 import bcrypt from "bcrypt";
@@ -3313,13 +3313,14 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       // Send invite email (fire-and-forget)
       const clinician = await storage.getUserById(clinicianId);
-      sendStaffInviteEmail({
-        to: staffMember.email,
-        firstName: staffMember.firstName,
-        clinicianName: clinician ? `${clinician.firstName} ${clinician.lastName}` : 'Your clinician',
-        clinicName: clinician?.clinicName || 'the clinic',
+      sendStaffInviteEmail(
+        staffMember.email,
+        staffMember.firstName,
+        clinician?.clinicName || 'the clinic',
+        clinician ? `${clinician.firstName} ${clinician.lastName}` : 'Your clinician',
         inviteToken,
-      }).catch(err => console.error('[EMAIL] Staff invite email failed:', err));
+        req
+      ).catch(err => console.error('[EMAIL] Staff invite email failed:', err));
 
       const { passwordHash: _ph, inviteToken: _it, ...safeStaff } = staffMember;
       res.status(201).json(safeStaff);
@@ -3348,6 +3349,234 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     } catch (error) {
       console.error('[API] Error deleting staff:', error);
       res.status(500).json({ message: "Failed to remove staff member" });
+    }
+  });
+
+  // PATCH /api/staff/:id — update staff clinical or admin role
+  app.patch("/api/staff/:id", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const staffId = parseInt(req.params.id);
+      if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+      const staffMember = await storage.getClinicianStaffById(staffId);
+      if (!staffMember || staffMember.clinicianId !== clinicianId) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+      const { role, adminRole } = req.body;
+      const updates: Record<string, string> = {};
+      const validRoles = ["provider", "nurse", "assistant", "staff"];
+      const validAdminRoles = ["standard", "limited_admin", "admin"];
+      if (role && validRoles.includes(role)) updates.role = role;
+      if (adminRole && validAdminRoles.includes(adminRole)) updates.adminRole = adminRole;
+      if (Object.keys(updates).length === 0) return res.status(400).json({ message: "No valid fields to update" });
+      const updated = await storage.updateClinicianStaff(staffId, updates);
+      if (!updated) return res.status(404).json({ message: "Staff member not found" });
+      const { passwordHash: _ph, inviteToken: _it, ...safe } = updated;
+      res.json(safe);
+    } catch (err) {
+      console.error('[API] Error updating staff:', err);
+      res.status(500).json({ message: "Failed to update staff member" });
+    }
+  });
+
+  // GET /api/clinic/invites — list pending provider invites for this clinic
+  app.get("/api/clinic/invites", requireClinicianOnly, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const clinicId = user.defaultClinicId;
+      if (!clinicId) return res.json([]);
+      const invites = await storage.getClinicProviderInvites(clinicId);
+      res.json(invites);
+    } catch (err) {
+      console.error('[API] Error fetching clinic invites:', err);
+      res.status(500).json({ message: "Failed to fetch invites" });
+    }
+  });
+
+  // POST /api/clinic/invite-provider — invite a provider (full clinician) to join this clinic
+  app.post("/api/clinic/invite-provider", requireClinicianOnly, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const clinicId = user.defaultClinicId;
+      if (!clinicId) return res.status(400).json({ message: "No clinic associated with your account" });
+      const { email, firstName, lastName, clinicalRole, adminRole } = req.body;
+      if (!email || !firstName || !lastName) {
+        return res.status(400).json({ message: "email, firstName, and lastName are required" });
+      }
+      // Check if email already has a ClinIQ account
+      const existingUser = await storage.getUserByEmail(email.trim().toLowerCase());
+      if (existingUser) {
+        return res.status(409).json({ message: "A clinician with this email already has a ClinIQ account. Ask them to contact support to join your clinic." });
+      }
+      const inviteToken = crypto.randomBytes(32).toString('hex');
+      const inviteExpires = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
+      const validClinicalRoles = ["provider", "nurse", "assistant", "staff"];
+      const validAdminRoles = ["standard", "limited_admin", "admin"];
+      const invite = await storage.createClinicProviderInvite({
+        clinicId,
+        invitedByUserId: user.id,
+        email: email.trim().toLowerCase(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        clinicalRole: validClinicalRoles.includes(clinicalRole) ? clinicalRole : "provider",
+        adminRole: validAdminRoles.includes(adminRole) ? adminRole : "standard",
+        inviteToken,
+        inviteExpires,
+        status: "pending",
+      });
+      const clinic = await storageDb.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+      const clinicName = clinic[0]?.name || user.clinicName || "the clinic";
+      const inviterName = `${user.firstName} ${user.lastName}`;
+      sendProviderInviteEmail(
+        invite.email,
+        invite.firstName,
+        clinicName,
+        inviterName,
+        inviteToken,
+        req
+      ).catch(err => console.error('[EMAIL] Provider invite email failed:', err));
+      res.status(201).json({ success: true, invite });
+    } catch (err) {
+      console.error('[API] Error inviting provider:', err);
+      res.status(500).json({ message: "Failed to send provider invite" });
+    }
+  });
+
+  // DELETE /api/clinic/invites/:id — revoke a pending provider invite
+  app.delete("/api/clinic/invites/:id", requireClinicianOnly, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const clinicId = user.defaultClinicId;
+      const inviteId = parseInt(req.params.id);
+      if (isNaN(inviteId)) return res.status(400).json({ message: "Invalid invite ID" });
+      const invite = await storageDb.select().from(clinicProviderInvites)
+        .where(and(eq(clinicProviderInvites.id, inviteId), eq(clinicProviderInvites.clinicId, clinicId)))
+        .limit(1);
+      if (!invite.length) return res.status(404).json({ message: "Invite not found" });
+      await storage.deleteClinicProviderInvite(inviteId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error('[API] Error revoking clinic invite:', err);
+      res.status(500).json({ message: "Failed to revoke invite" });
+    }
+  });
+
+  // GET /api/join-clinic/:token — validate a provider invite token (no auth required)
+  app.get("/api/join-clinic/:token", async (req, res) => {
+    try {
+      const invite = await storage.getClinicProviderInviteByToken(req.params.token);
+      if (!invite) return res.status(404).json({ message: "Invite link is invalid or has expired." });
+      if (invite.status !== "pending") return res.status(410).json({ message: "This invite has already been accepted." });
+      if (new Date() > new Date(invite.inviteExpires)) {
+        await storage.updateClinicProviderInviteStatus(invite.id, "expired");
+        return res.status(410).json({ message: "This invite link has expired. Please ask the clinic to resend your invitation." });
+      }
+      const clinic = await storageDb.select().from(clinics).where(eq(clinics.id, invite.clinicId)).limit(1);
+      res.json({
+        valid: true,
+        invite: { id: invite.id, firstName: invite.firstName, lastName: invite.lastName, email: invite.email, clinicalRole: invite.clinicalRole, adminRole: invite.adminRole },
+        clinic: { name: clinic[0]?.name || "the clinic" },
+      });
+    } catch (err) {
+      console.error('[API] Error validating join-clinic token:', err);
+      res.status(500).json({ message: "Failed to validate invite" });
+    }
+  });
+
+  // POST /api/join-clinic/:token — accept provider invite, create clinician account
+  app.post("/api/join-clinic/:token", async (req, res) => {
+    try {
+      const invite = await storage.getClinicProviderInviteByToken(req.params.token);
+      if (!invite || invite.status !== "pending" || new Date() > new Date(invite.inviteExpires)) {
+        return res.status(410).json({ message: "Invite link is invalid or has expired." });
+      }
+      const { password, npi, title, phone, clinicPhone, clinicAddress } = req.body;
+      if (!password || password.length < 8) {
+        return res.status(400).json({ message: "Password must be at least 8 characters." });
+      }
+      // Check if email already used
+      const existingUser = await storage.getUserByEmail(invite.email);
+      if (existingUser) {
+        return res.status(409).json({ message: "An account with this email already exists. Please log in." });
+      }
+      const passwordHash = await hashPassword(password);
+      // Get clinic info for the new user
+      const clinic = await storageDb.select().from(clinics).where(eq(clinics.id, invite.clinicId)).limit(1);
+      const clinicName = clinic[0]?.name || "the clinic";
+      // Create the new clinician account
+      const newUser = await storage.createUser({
+        email: invite.email,
+        firstName: invite.firstName,
+        lastName: invite.lastName,
+        password: passwordHash,
+        title: title?.trim() || null,
+        npi: npi?.trim() || null,
+        phone: phone?.trim() || null,
+        clinicName,
+        clinicPhone: clinicPhone?.trim() || null,
+        clinicAddress: clinicAddress?.trim() || null,
+        subscriptionStatus: "trialing",
+        defaultClinicId: invite.clinicId,
+      } as any);
+      // Add to clinic membership
+      await storage.addUserToClinic(invite.clinicId, newUser.id, invite.clinicalRole);
+      // Also update the membership adminRole
+      await storageDb.update(clinicMemberships)
+        .set({ adminRole: invite.adminRole as any })
+        .where(and(eq(clinicMemberships.clinicId, invite.clinicId), eq(clinicMemberships.userId, newUser.id)));
+      // Create provider entry
+      try {
+        await storageDb.insert(providersTable).values({
+          clinicId: invite.clinicId,
+          userId: newUser.id,
+          displayName: `${invite.firstName} ${invite.lastName}`.trim(),
+          npi: npi?.trim() || null,
+        } as any);
+      } catch {}
+      // Mark invite as accepted
+      await storage.updateClinicProviderInviteStatus(invite.id, "accepted");
+      res.status(201).json({ success: true, message: "Account created. You can now log in." });
+    } catch (err: any) {
+      console.error('[API] Error accepting clinic invite:', err);
+      res.status(500).json({ message: err.message || "Failed to create account" });
+    }
+  });
+
+  // GET /api/clinic/members — list all full-clinician members of this clinic (for team view)
+  app.get("/api/clinic/members", requireClinicianOnly, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const clinicId = user.defaultClinicId;
+      if (!clinicId) return res.json([]);
+      const members = await storageDb
+        .select({
+          userId: clinicMemberships.userId,
+          clinicalRole: clinicMemberships.clinicalRole,
+          adminRole: clinicMemberships.adminRole,
+          isActive: clinicMemberships.isActive,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+          email: usersTable.email,
+          title: usersTable.title,
+        })
+        .from(clinicMemberships)
+        .innerJoin(usersTable, eq(clinicMemberships.userId, usersTable.id))
+        .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.isActive, true)))
+        .orderBy(clinicMemberships.adminRole);
+      res.json(members.map(m => ({
+        id: m.userId,
+        firstName: m.firstName,
+        lastName: m.lastName,
+        email: m.email,
+        title: m.title,
+        clinicalRole: m.clinicalRole,
+        adminRole: m.adminRole,
+        isOwner: m.adminRole === "owner",
+        displayName: `${m.title ? m.title + " " : ""}${m.firstName} ${m.lastName}`.trim(),
+      })));
+    } catch (err) {
+      console.error('[API] Error fetching clinic members:', err);
+      res.status(500).json({ message: "Failed to fetch clinic members" });
     }
   });
 

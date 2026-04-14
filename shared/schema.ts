@@ -624,6 +624,29 @@ export const insertClinicianStaffSchema = createInsertSchema(clinicianStaff).omi
 export type InsertClinicianStaff = z.infer<typeof insertClinicianStaffSchema>;
 export type ClinicianStaff = typeof clinicianStaff.$inferSelect;
 
+// ─── Clinic Provider Invites (suite: invite a new full-clinician to join clinic) ─
+export const clinicProviderInvites = pgTable("clinic_provider_invites", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: 'cascade' }),
+  invitedByUserId: integer("invited_by_user_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
+  email: varchar("email", { length: 255 }).notNull(),
+  firstName: varchar("first_name", { length: 100 }).notNull(),
+  lastName: varchar("last_name", { length: 100 }).notNull(),
+  clinicalRole: varchar("clinical_role", { length: 50 }).notNull().default("provider"),
+  adminRole: varchar("admin_role", { length: 30 }).notNull().default("standard"),
+  inviteToken: varchar("invite_token", { length: 255 }).notNull().unique(),
+  inviteExpires: timestamp("invite_expires").notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertClinicProviderInviteSchema = createInsertSchema(clinicProviderInvites).omit({
+  id: true,
+  createdAt: true,
+});
+export type InsertClinicProviderInvite = z.infer<typeof insertClinicProviderInviteSchema>;
+export type ClinicProviderInvite = typeof clinicProviderInvites.$inferSelect;
+
 // ─── Patient Portal Accounts ───────────────────────────────────────────────────
 export const patientPortalAccounts = pgTable("patient_portal_accounts", {
   id: serial("id").primaryKey(),
