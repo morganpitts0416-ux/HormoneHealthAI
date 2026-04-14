@@ -384,19 +384,53 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ message: "Not authenticated" });
     }
     const { passwordHash: _ph, externalMessagingApiKey, ...safeUser } = req.user as any;
-    res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey) });
+    let membershipInfo: { clinicalRole?: string; adminRole?: string } = {};
+    if (safeUser.defaultClinicId) {
+      try {
+        const [membership] = await storageDb
+          .select({ clinicalRole: clinicMemberships.clinicalRole, adminRole: clinicMemberships.adminRole })
+          .from(clinicMemberships)
+          .where(and(eq(clinicMemberships.userId, safeUser.id), eq(clinicMemberships.clinicId, safeUser.defaultClinicId)))
+          .limit(1);
+        if (membership) membershipInfo = membership;
+      } catch {}
+    }
+    res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey), ...membershipInfo });
   });
 
   // Update profile (clinicians only — staff cannot change clinic settings)
   app.patch("/api/auth/profile", requireClinicianOnly, async (req, res) => {
     try {
       const userId = (req.user as any).id;
+      const defaultClinicId = (req.user as any).defaultClinicId;
+
+      let isOwnerOrAdmin = !defaultClinicId;
+      if (defaultClinicId) {
+        const [membership] = await storageDb
+          .select({ adminRole: clinicMemberships.adminRole })
+          .from(clinicMemberships)
+          .where(and(eq(clinicMemberships.userId, userId), eq(clinicMemberships.clinicId, defaultClinicId)))
+          .limit(1);
+        if (membership && (membership.adminRole === "owner" || membership.adminRole === "admin")) {
+          isOwnerOrAdmin = true;
+        }
+      }
+
       const {
         firstName, lastName, title, npi, clinicName, phone, address, email,
         messagingPreference, messagingPhone,
         externalMessagingProvider, externalMessagingApiKey, externalMessagingChannelId,
         clinicLogo, signatureImage,
       } = req.body;
+
+      if (!isOwnerOrAdmin) {
+        if (clinicName !== undefined || phone !== undefined || address !== undefined ||
+            messagingPreference !== undefined || messagingPhone !== undefined ||
+            externalMessagingProvider !== undefined || externalMessagingApiKey !== undefined ||
+            externalMessagingChannelId !== undefined || clinicLogo !== undefined) {
+          return res.status(403).json({ message: "Only clinic owners and admins can modify clinic-wide settings." });
+        }
+      }
 
       // Prevent email change to an email already used by another account
       if (email !== undefined && email) {

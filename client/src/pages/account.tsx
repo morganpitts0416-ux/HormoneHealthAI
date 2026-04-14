@@ -126,17 +126,17 @@ interface MessagingSettings {
 
 type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "forms" | "submissions" | "baa" | "billing";
 
-const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; badge?: string }[] = [
-  { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true },
-  { id: "provider", label: "Provider Details", icon: User, clinicianOnly: true },
-  { id: "branding", label: "Branding & Signature", icon: ImagePlus, clinicianOnly: true },
-  { id: "team", label: "Staff & Team", icon: Users, clinicianOnly: true },
-  { id: "messaging", label: "Messaging Settings", icon: MessageSquare, clinicianOnly: true },
-  { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true },
-  { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true },
-  { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true },
-  { id: "baa", label: "BAA / HIPAA", icon: Shield, clinicianOnly: true },
-  { id: "billing", label: "Billing & Plan", icon: CreditCard, clinicianOnly: true },
+const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; badge?: string }[] = [
+  { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
+  { id: "provider", label: "Provider Details", icon: User, clinicianOnly: true, providerVisible: true },
+  { id: "branding", label: "Branding & Signature", icon: ImagePlus, clinicianOnly: true, providerVisible: true },
+  { id: "team", label: "Staff & Team", icon: Users, clinicianOnly: true, ownerOnly: true },
+  { id: "messaging", label: "Messaging Settings", icon: MessageSquare, clinicianOnly: true, ownerOnly: true },
+  { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, ownerOnly: true },
+  { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true, ownerOnly: true },
+  { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true, ownerOnly: true },
+  { id: "baa", label: "BAA / HIPAA", icon: Shield, clinicianOnly: true, ownerOnly: true },
+  { id: "billing", label: "Billing & Plan", icon: CreditCard, clinicianOnly: true, ownerOnly: true },
 ];
 
 function readFileAsDataUrl(file: File): Promise<string> {
@@ -696,6 +696,15 @@ export default function Account() {
   const logoInputRef = useRef<HTMLInputElement>(null);
 
   const isStaff = !!(user as any)?.isStaff;
+  const adminRole = (user as any)?.adminRole as string | undefined;
+  const isOwnerOrAdmin = adminRole === "owner" || adminRole === "admin" || !(user as any)?.defaultClinicId;
+  const isSuiteProvider = !isStaff && !isOwnerOrAdmin && !!(user as any)?.defaultClinicId;
+
+  useEffect(() => {
+    if (isSuiteProvider && activeSection !== "provider" && activeSection !== "branding") {
+      setActiveSection("provider");
+    }
+  }, [isSuiteProvider]);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteFirstName, setInviteFirstName] = useState("");
@@ -878,8 +887,8 @@ export default function Account() {
       const res = await apiRequest("PATCH", "/api/auth/profile", data);
       return res.json();
     },
-    onSuccess: (updated) => {
-      queryClient.setQueryData(["/api/auth/me"], updated);
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setSaved(true);
       toast({ title: "Profile updated", description: "Your information has been saved." });
       setTimeout(() => setSaved(false), 3000);
@@ -905,8 +914,8 @@ export default function Account() {
       const res = await apiRequest("PATCH", "/api/auth/profile", payload);
       return res.json();
     },
-    onSuccess: (updated) => {
-      queryClient.setQueryData(["/api/auth/me"], updated);
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       queryClient.invalidateQueries({ queryKey: ["/api/auth/messaging-settings"] });
       setExternalApiKey('');
       setMessagingSaved(true);
@@ -936,8 +945,8 @@ export default function Account() {
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
       return res.json();
     },
-    onSuccess: (updated) => {
-      queryClient.setQueryData(["/api/auth/me"], updated);
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setBrandingSaved(true);
       toast({ title: "Branding saved", description: "Your clinic logo and signature have been updated." });
       setTimeout(() => setBrandingSaved(false), 3000);
@@ -958,7 +967,11 @@ export default function Account() {
     (messagingPreference === 'external_api' && !externalChannelId.trim() &&
       externalProvider !== 'custom');
 
-  const visibleSections = isStaff ? [] : SECTIONS;
+  const visibleSections = isStaff
+    ? []
+    : isSuiteProvider
+      ? SECTIONS.filter(s => s.providerVisible)
+      : SECTIONS;
   const filteredSections = visibleSections.filter(s => {
     if (!search) return true;
     return s.label.toLowerCase().includes(search.toLowerCase());
@@ -1109,58 +1122,67 @@ export default function Account() {
         return (
           <div className="space-y-4">
             <div>
-              <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>Branding & Provider Signature</h3>
-              <p className="text-sm text-muted-foreground mt-1">Your logo appears as letterhead on printed SOAP notes. Your signature is embedded when a note is electronically signed.</p>
+              <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>
+                {isSuiteProvider ? "Your Provider Signature" : "Branding & Provider Signature"}
+              </h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                {isSuiteProvider
+                  ? "Your personal electronic signature. It will appear at the bottom of SOAP note PDFs that you sign."
+                  : "Your logo appears as letterhead on printed SOAP notes. Your signature is embedded when a note is electronically signed."}
+              </p>
             </div>
             <Card>
               <CardContent className="pt-5 space-y-6">
-                <div>
-                  <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Clinic Logo</p>
-                  <div className="flex items-start gap-4 flex-wrap">
-                    <div
-                      className="w-48 h-24 rounded-md border flex items-center justify-center bg-muted/30 overflow-hidden cursor-pointer"
-                      onClick={() => logoInputRef.current?.click()}
-                      data-testid="button-upload-logo"
-                    >
-                      {clinicLogoPreview
-                        ? <img src={clinicLogoPreview} alt="Clinic logo" className="max-h-full max-w-full object-contain p-2" />
-                        : <div className="flex flex-col items-center gap-1 text-muted-foreground">
-                            <ImagePlus className="w-7 h-7" />
-                            <span className="text-xs">Click to upload</span>
-                          </div>
-                      }
+                {!isSuiteProvider && (
+                  <>
+                    <div>
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Clinic Logo</p>
+                      <div className="flex items-start gap-4 flex-wrap">
+                        <div
+                          className="w-48 h-24 rounded-md border flex items-center justify-center bg-muted/30 overflow-hidden cursor-pointer"
+                          onClick={() => logoInputRef.current?.click()}
+                          data-testid="button-upload-logo"
+                        >
+                          {clinicLogoPreview
+                            ? <img src={clinicLogoPreview} alt="Clinic logo" className="max-h-full max-w-full object-contain p-2" />
+                            : <div className="flex flex-col items-center gap-1 text-muted-foreground">
+                                <ImagePlus className="w-7 h-7" />
+                                <span className="text-xs">Click to upload</span>
+                              </div>
+                          }
+                        </div>
+                        <div className="flex flex-col gap-2 justify-center">
+                          <Button size="sm" variant="outline" onClick={() => logoInputRef.current?.click()} data-testid="button-choose-logo">
+                            <ImagePlus className="w-3.5 h-3.5 mr-1.5" />
+                            {clinicLogoPreview ? "Replace Logo" : "Upload Logo"}
+                          </Button>
+                          {clinicLogoPreview && (
+                            <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setClinicLogoPreview(null)} data-testid="button-remove-logo">
+                              <X className="w-3.5 h-3.5 mr-1.5" />Remove
+                            </Button>
+                          )}
+                          <p className="text-xs text-muted-foreground">PNG or JPEG, max 2MB</p>
+                        </div>
+                      </div>
+                      <input
+                        ref={logoInputRef}
+                        type="file"
+                        accept="image/png,image/jpeg"
+                        className="hidden"
+                        data-testid="input-clinic-logo"
+                        onChange={async (e) => {
+                          const file = e.target.files?.[0];
+                          if (!file) return;
+                          if (file.size > 2_097_152) { toast({ title: "File too large", description: "Please choose an image under 2MB.", variant: "destructive" }); return; }
+                          const dataUrl = await readFileAsDataUrl(file);
+                          setClinicLogoPreview(dataUrl);
+                          e.target.value = "";
+                        }}
+                      />
                     </div>
-                    <div className="flex flex-col gap-2 justify-center">
-                      <Button size="sm" variant="outline" onClick={() => logoInputRef.current?.click()} data-testid="button-choose-logo">
-                        <ImagePlus className="w-3.5 h-3.5 mr-1.5" />
-                        {clinicLogoPreview ? "Replace Logo" : "Upload Logo"}
-                      </Button>
-                      {clinicLogoPreview && (
-                        <Button size="sm" variant="ghost" className="text-destructive" onClick={() => setClinicLogoPreview(null)} data-testid="button-remove-logo">
-                          <X className="w-3.5 h-3.5 mr-1.5" />Remove
-                        </Button>
-                      )}
-                      <p className="text-xs text-muted-foreground">PNG or JPEG, max 2MB</p>
-                    </div>
-                  </div>
-                  <input
-                    ref={logoInputRef}
-                    type="file"
-                    accept="image/png,image/jpeg"
-                    className="hidden"
-                    data-testid="input-clinic-logo"
-                    onChange={async (e) => {
-                      const file = e.target.files?.[0];
-                      if (!file) return;
-                      if (file.size > 2_097_152) { toast({ title: "File too large", description: "Please choose an image under 2MB.", variant: "destructive" }); return; }
-                      const dataUrl = await readFileAsDataUrl(file);
-                      setClinicLogoPreview(dataUrl);
-                      e.target.value = "";
-                    }}
-                  />
-                </div>
-
-                <Separator />
+                    <Separator />
+                  </>
+                )}
 
                 <div>
                   <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">
@@ -1207,17 +1229,17 @@ export default function Account() {
                   <div className="h-5">
                     {brandingSaved && (
                       <span className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
-                        <CheckCircle className="w-4 h-4" />Branding saved
+                        <CheckCircle className="w-4 h-4" />{isSuiteProvider ? "Signature saved" : "Branding saved"}
                       </span>
                     )}
                   </div>
                   <Button
                     data-testid="button-save-branding"
                     disabled={brandingMutation.isPending}
-                    onClick={() => brandingMutation.mutate({ clinicLogo: clinicLogoPreview, signatureImage: signaturePreview })}
+                    onClick={() => brandingMutation.mutate(isSuiteProvider ? { signatureImage: signaturePreview } : { clinicLogo: clinicLogoPreview, signatureImage: signaturePreview })}
                   >
                     <Save className="w-4 h-4 mr-2" />
-                    {brandingMutation.isPending ? "Saving..." : "Save Branding"}
+                    {brandingMutation.isPending ? "Saving..." : isSuiteProvider ? "Save Signature" : "Save Branding"}
                   </Button>
                 </div>
               </CardContent>
