@@ -168,7 +168,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // ── STEP 2: Stripe succeeded — now create the user with billing data ──
       const passwordHash = await hashPassword(password);
-      const periodEnd = new Date((subscription as any).current_period_end * 1000);
+      // Log subscription shape for diagnostics (safe to remove once confirmed stable)
+      console.log("[Register] Stripe subscription fields:", JSON.stringify({
+        id: subscription.id,
+        status: subscription.status,
+        current_period_end: (subscription as any).current_period_end,
+        trial_end: (subscription as any).trial_end,
+        trial_start: (subscription as any).trial_start,
+      }));
+      const periodEnd = subPeriodEnd(subscription);
       let user: any;
       try {
         user = await storage.createUser({
@@ -5858,6 +5866,26 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-03-31.basil" });
   }
 
+  /**
+   * Safely convert a Stripe Unix-seconds timestamp to a Date.
+   * Returns null if the value is missing, zero, or would produce an invalid Date.
+   * Stripe's newer API versions can return null for current_period_end on trialing
+   * subscriptions, so we fall back to trial_end when needed.
+   */
+  function stripeTs(unixSeconds: number | null | undefined): Date | null {
+    if (unixSeconds == null || unixSeconds === 0) return null;
+    const d = new Date(unixSeconds * 1000);
+    return isNaN(d.getTime()) ? null : d;
+  }
+
+  /**
+   * Resolve the effective period-end Date from a Stripe subscription.
+   * Prefers current_period_end; falls back to trial_end for trialing subs.
+   */
+  function subPeriodEnd(sub: any): Date | null {
+    return stripeTs(sub.current_period_end) ?? stripeTs(sub.trial_end) ?? null;
+  }
+
   // GET /api/billing/status — return subscription info for the current clinician
   app.get("/api/billing/status", requireAuth, async (req, res) => {
     try {
@@ -6011,7 +6039,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       }
       const subscription = await stripe.subscriptions.create(subscriptionParams);
 
-      const periodEnd = new Date((subscription as any).current_period_end * 1000);
+      const periodEnd = subPeriodEnd(subscription);
       const updated = await storage.updateUserStripe(user.id, {
         stripeCustomerId: customerId,
         stripeSubscriptionId: subscription.id,
@@ -6089,7 +6117,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         metadata: { plan: "suite", userId: String(user.id) },
       });
 
-      const periodEnd = new Date((subscription as any).current_period_end * 1000);
+      const periodEnd = subPeriodEnd(subscription);
       const subStatus = subscription.status === "trialing" ? "trial" : subscription.status;
 
       const updated = await storage.updateUserStripe(user.id, {
@@ -6170,7 +6198,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         metadata: { plan: "suite", upgraded_from: "solo", userId: String(user.id) },
       } as any);
 
-      const periodEnd = new Date((updatedSub as any).current_period_end * 1000);
+      const periodEnd = subPeriodEnd(updatedSub);
       const subStatus = (updatedSub as any).status === "trialing" ? "trial" : (updatedSub as any).status;
 
       const updated = await storage.updateUserStripe(user.id, {
@@ -6289,7 +6317,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
 
           await storage.updateUserStripe(user.id, {
             stripeSubscriptionId: subscription.id,
-            stripeCurrentPeriodEnd: new Date(subscription.current_period_end * 1000),
+            stripeCurrentPeriodEnd: subPeriodEnd(subscription),
             stripeCancelAtPeriodEnd: subscription.cancel_at_period_end ?? false,
             subscriptionStatus: status,
           });
