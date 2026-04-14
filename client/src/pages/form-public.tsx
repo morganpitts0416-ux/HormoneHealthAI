@@ -39,16 +39,30 @@ interface IntakeForm {
   requiresPatientSignature: boolean;
 }
 
+interface ClinicBranding {
+  clinicName?: string;
+  clinicLogo?: string | null;
+  phone?: string;
+  address?: string;
+}
+
 interface PublicFormData {
   form: IntakeForm;
   sections: FormSection[];
   fields: FormField[];
   publication: { id: number; mode: string };
+  clinic?: ClinicBranding;
 }
 
 export default function FormPublicPage() {
   const params = useParams<{ token: string }>();
   const token = params.token;
+  const isEmbedded = (() => {
+    try {
+      if (new URLSearchParams(window.location.search).get("embed") === "1") return true;
+      return window.self !== window.top;
+    } catch { return true; }
+  })();
   const [responses, setResponses] = useState<Record<string, any>>({});
   const [submitterName, setSubmitterName] = useState("");
   const [submitterEmail, setSubmitterEmail] = useState("");
@@ -128,7 +142,7 @@ export default function FormPublicPage() {
 
   if (isLoading) {
     return (
-      <PageShell>
+      <PageShell isEmbedded={isEmbedded}>
         <div className="flex flex-col items-center justify-center gap-3 py-20">
           <RefreshCw className="h-6 w-6 animate-spin text-muted-foreground" />
           <p className="text-muted-foreground">Loading form...</p>
@@ -139,7 +153,7 @@ export default function FormPublicPage() {
 
   if (error || !data) {
     return (
-      <PageShell>
+      <PageShell isEmbedded={isEmbedded}>
         <div className="flex flex-col items-center justify-center gap-3 py-20 text-center">
           <AlertCircle className="h-10 w-10 text-destructive" />
           <p className="font-semibold text-lg">Form Not Available</p>
@@ -153,7 +167,7 @@ export default function FormPublicPage() {
 
   if (submitted) {
     return (
-      <PageShell>
+      <PageShell isEmbedded={isEmbedded} clinic={data?.clinic}>
         <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
           <CheckCircle2 className="h-12 w-12 text-green-500" />
           <p className="font-semibold text-xl">Thank You!</p>
@@ -183,14 +197,16 @@ export default function FormPublicPage() {
   }
 
   return (
-    <PageShell>
+    <PageShell isEmbedded={isEmbedded} clinic={data.clinic}>
       {/* Form header */}
       <div className="mb-8">
-        <div className="flex items-center gap-2 mb-2">
-          <ClipboardList className="h-5 w-5 text-muted-foreground" />
-          <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Patient Form</span>
-        </div>
-        <h1 className="text-2xl font-bold text-foreground">{form.name}</h1>
+        {isEmbedded && (
+          <div className="flex items-center gap-2 mb-2">
+            <ClipboardList className="h-5 w-5 text-muted-foreground" />
+            <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Patient Form</span>
+          </div>
+        )}
+        <h1 className="text-2xl font-bold" style={{ color: "#2e3a20" }}>{form.name}</h1>
         {form.description && (
           <p className="mt-2 text-muted-foreground">{form.description}</p>
         )}
@@ -251,7 +267,8 @@ export default function FormPublicPage() {
           onClick={handleSubmit}
           disabled={submitMutation.isPending}
           data-testid="button-submit-form"
-          className="w-full sm:w-auto">
+          className="w-full sm:w-auto"
+          style={!isEmbedded ? { backgroundColor: "#2e3a20", color: "#f9f6f0" } : undefined}>
           {submitMutation.isPending ? (
             <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Submitting...</>
           ) : "Submit Form"}
@@ -268,11 +285,55 @@ export default function FormPublicPage() {
 
 // ─── Page Shell ───────────────────────────────────────────────────────────────
 
-function PageShell({ children }: { children: React.ReactNode }) {
+function PageShell({ children, clinic, isEmbedded }: {
+  children: React.ReactNode;
+  clinic?: ClinicBranding;
+  isEmbedded?: boolean;
+}) {
+  if (isEmbedded) {
+    return (
+      <div className="bg-transparent">
+        <div className="max-w-2xl mx-auto px-4 py-4">
+          {children}
+        </div>
+      </div>
+    );
+  }
+
   return (
-    <div className="min-h-screen bg-background">
+    <div className="min-h-screen" style={{ backgroundColor: "#f9f6f0" }}>
+      {clinic?.clinicName && (
+        <div style={{ backgroundColor: "#e8ddd0", borderBottom: "1px solid #d4c9b5" }}>
+          <div className="max-w-2xl mx-auto px-4 py-4">
+            <div className="flex items-center gap-4 flex-wrap">
+              {clinic.clinicLogo && (
+                <img
+                  src={clinic.clinicLogo}
+                  alt={clinic.clinicName}
+                  className="h-10 max-w-[160px] object-contain"
+                />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm" style={{ color: "#2e3a20" }}>
+                  {clinic.clinicName}
+                </p>
+                {(clinic.phone || clinic.address) && (
+                  <p className="text-xs mt-0.5" style={{ color: "#5a7040" }}>
+                    {[clinic.phone, clinic.address].filter(Boolean).join(" \u00B7 ")}
+                  </p>
+                )}
+              </div>
+            </div>
+          </div>
+        </div>
+      )}
       <div className="max-w-2xl mx-auto px-4 py-10">
         {children}
+      </div>
+      <div className="border-t py-6 text-center" style={{ borderColor: "#d4c9b5" }}>
+        <p className="text-xs" style={{ color: "#8a7e6b" }}>
+          Powered by ClinIQ by ReAlign Health
+        </p>
       </div>
     </div>
   );
