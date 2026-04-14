@@ -701,6 +701,7 @@ export default function Account() {
   const [inviteFirstName, setInviteFirstName] = useState("");
   const [inviteLastName, setInviteLastName] = useState("");
   const [inviteRole, setInviteRole] = useState("staff");
+  const [inviteAdminRole, setInviteAdminRole] = useState("standard");
   const [showInviteForm, setShowInviteForm] = useState(false);
 
   const { data: staffList = [], refetch: refetchStaff } = useQuery<StaffMember[]>({
@@ -720,6 +721,7 @@ export default function Account() {
         firstName: inviteFirstName.trim(),
         lastName: inviteLastName.trim(),
         role: inviteRole,
+        adminRole: inviteAdminRole,
       });
       if (!res.ok) {
         const err = await res.json();
@@ -733,6 +735,7 @@ export default function Account() {
       setInviteFirstName("");
       setInviteLastName("");
       setInviteRole("staff");
+      setInviteAdminRole("standard");
       setShowInviteForm(false);
       refetchStaff();
     },
@@ -1361,28 +1364,58 @@ export default function Account() {
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">Clinical Role</label>
                         <Select value={inviteRole} onValueChange={setInviteRole}>
-                          <SelectTrigger data-testid="select-staff-role"><SelectValue /></SelectTrigger>
+                          <SelectTrigger data-testid="select-staff-clinical-role"><SelectValue /></SelectTrigger>
                           <SelectContent>
+                            <SelectItem value="provider">Provider (MD/DO/NP/PA)</SelectItem>
                             <SelectItem value="nurse">RN / Nurse</SelectItem>
                             <SelectItem value="assistant">Medical Assistant</SelectItem>
                             <SelectItem value="staff">Staff</SelectItem>
                           </SelectContent>
                         </Select>
                       </div>
+                      <div className="space-y-1">
+                        <label className="text-xs font-medium text-muted-foreground">Administrative Role</label>
+                        <Select value={inviteAdminRole} onValueChange={setInviteAdminRole}>
+                          <SelectTrigger data-testid="select-staff-admin-role"><SelectValue /></SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="admin">Admin — full operational access</SelectItem>
+                            <SelectItem value="limited_admin">Limited Admin — forms &amp; scheduling</SelectItem>
+                            <SelectItem value="standard">Standard — no admin access</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">Staff added here have <strong>Standard</strong> administrative access — no access to billing, account settings, or user management.</p>
+                    <p className="text-xs text-muted-foreground">The clinician who created this account is the <strong>Owner</strong> and cannot be changed here.</p>
                     <Button onClick={() => inviteStaffMutation.mutate()} disabled={inviteStaffMutation.isPending || !inviteEmail || !inviteFirstName || !inviteLastName} data-testid="button-send-staff-invite">
                       <Mail className="w-4 h-4 mr-2" />
                       {inviteStaffMutation.isPending ? "Sending..." : "Send Invite"}
                     </Button>
                   </div>
                 )}
-                {staffList.length === 0 && !showInviteForm && (
-                  <p className="text-sm text-muted-foreground py-2">No staff members yet. Invite a nurse or assistant to get started.</p>
-                )}
-                {staffList.length > 0 && (
-                  <div className="space-y-2">
-                    {staffList.map((member) => (
+                <div className="space-y-2">
+                  {/* Owner row — always shown first */}
+                  {user && (
+                    <div className="flex items-center justify-between gap-3 rounded-md border px-4 py-3 bg-muted/20" data-testid="row-staff-owner">
+                      <div className="flex items-center gap-3">
+                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
+                          {user.firstName?.[0]}{user.lastName?.[0]}
+                        </div>
+                        <div>
+                          <p className="text-sm font-medium text-foreground">{user.firstName} {user.lastName} <span className="text-xs text-muted-foreground">(you)</span></p>
+                          <p className="text-xs text-muted-foreground">{user.email}</p>
+                        </div>
+                      </div>
+                      <div className="flex flex-col items-end gap-1">
+                        <Badge variant="secondary" className="text-xs capitalize">Provider · Clinical</Badge>
+                        <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}>Owner · Admin</Badge>
+                      </div>
+                    </div>
+                  )}
+                  {/* Invited staff members */}
+                  {staffList.map((member) => {
+                    const clinicalLabel = member.role === "nurse" ? "RN" : member.role === "assistant" ? "MA" : member.role === "provider" ? "Provider" : "Staff";
+                    const adminLabel = (member as any).adminRole === "admin" ? "Admin" : (member as any).adminRole === "limited_admin" ? "Limited Admin" : "Standard";
+                    return (
                       <div key={member.id} className="flex items-center justify-between gap-3 rounded-md border px-4 py-3" data-testid={`row-staff-${member.id}`}>
                         <div className="flex items-center gap-3">
                           <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">
@@ -1395,19 +1428,20 @@ export default function Account() {
                         </div>
                         <div className="flex items-center gap-2">
                           <div className="flex flex-col items-end gap-1">
-                            <Badge variant="secondary" className="capitalize text-xs">
-                              {member.role === "nurse" ? "RN" : member.role === "assistant" ? "MA" : "Staff"} · Clinical
-                            </Badge>
-                            <Badge variant="outline" className="text-xs">Standard · Admin</Badge>
+                            <Badge variant="secondary" className="text-xs">{clinicalLabel} · Clinical</Badge>
+                            <Badge variant="outline" className="text-xs">{adminLabel} · Admin</Badge>
                           </div>
                           <Button variant="ghost" size="icon" onClick={() => { if (confirm(`Remove ${member.firstName} ${member.lastName}?`)) removeStaffMutation.mutate(member.id); }} disabled={removeStaffMutation.isPending} data-testid={`button-remove-staff-${member.id}`}>
                             <Trash2 className="w-4 h-4 text-muted-foreground" />
                           </Button>
                         </div>
                       </div>
-                    ))}
-                  </div>
-                )}
+                    );
+                  })}
+                  {staffList.length === 0 && !showInviteForm && (
+                    <p className="text-sm text-muted-foreground py-2 text-center">No additional staff members yet. Use "Invite Staff" to add a nurse, assistant, or provider to your clinic.</p>
+                  )}
+                </div>
               </CardContent>
             </Card>
           </div>
