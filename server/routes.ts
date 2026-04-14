@@ -4422,15 +4422,38 @@ When a DRUG CLASS is mentioned (e.g., "GLP-1", "statin", "SSRI", "progesterone")
 - If a specific drug is ALSO mentioned in the transcript (e.g., "tirzepatide 15mg"), record that specific drug and note it resolves the class mention
 - NEVER add a drug to medications_current or medication_changes_discussed unless it was explicitly named or its class was the ONLY reference (keep as class name, not specific drug)
 
+WHOLE-VISIT EXTRACTION — CRITICAL RULE:
+Treat the encounter as a TOTAL WELLNESS VISIT, not a narrow single-issue visit. Even if the visit focus is hormones, menopause, or weight loss, capture the FULL clinically relevant conversation:
+- Scan the ENTIRE transcript for medications — not just a "medication section." If a medication is mentioned anywhere in relevant conversation (during history-taking, while discussing symptoms, in passing), capture it.
+- Capture secondary concerns discussed during the visit even if they are not the primary reason for the encounter.
+- Capture lifestyle factors, mental health context, prior treatments, side effects, allergies, surgical history, family history, and social history when mentioned.
+
+CONTEXT CLUE REQUIREMENT:
+Use context clues to capture clinically relevant information, but do not hallucinate:
+- If something is strongly supported by transcript context, capture it in the appropriate field.
+- If something is implied but not explicitly confirmed, capture it in "context_inferred_items" with cautious phrasing.
+- Do NOT omit relevant details just because they were mentioned casually during the encounter.
+
 Return this exact JSON structure (all arrays, even if empty):
 {
   "visit_type": "",
   "chief_concerns": [],
+  "secondary_concerns": [],
   "symptoms_reported": [],
   "symptoms_denied": [],
   "medications_current": [],
   "medication_changes_discussed": [],
+  "supplements_current": [],
   "labs_reviewed": [],
+  "allergies": [],
+  "past_medical_history": [],
+  "surgical_history": [],
+  "family_history": [],
+  "social_history": [],
+  "mental_health_context": [],
+  "lifestyle_factors": [],
+  "prior_treatments_and_trials": [],
+  "side_effects_reported": [],
   "diagnoses_discussed": [],
   "assessment_candidates": [],
   "plan_candidates": [],
@@ -4438,6 +4461,7 @@ Return this exact JSON structure (all arrays, even if empty):
   "patient_questions": [],
   "red_flags": [],
   "uncertain_items": [],
+  "context_inferred_items": [],
   "source_utterance_ids": []
 }`;
 
@@ -5293,15 +5317,46 @@ When a DRUG CLASS is mentioned (e.g., "GLP-1", "statin", "SSRI", "progesterone")
 - If a specific drug is ALSO mentioned in the transcript (e.g., "tirzepatide 15mg"), record that specific drug and note it resolves the class mention
 - NEVER add a drug to medications_current or medication_changes_discussed unless it was explicitly named or its class was the ONLY reference (keep as class name, not specific drug)
 
+WHOLE-VISIT EXTRACTION — CRITICAL RULE:
+Treat the encounter as a TOTAL WELLNESS VISIT, not a narrow single-issue visit. Even if the visit focus is hormones, menopause, or weight loss, capture the FULL clinically relevant conversation:
+- Scan the ENTIRE transcript for medications — not just a "medication section." If a medication is mentioned anywhere in relevant conversation (during history-taking, while discussing symptoms, in passing), capture it.
+- Capture secondary concerns discussed during the visit even if they are not the primary reason for the encounter (e.g., anxiety mentioned during a hormone visit, sleep complaints during a weight loss visit, constipation, headaches, palpitations).
+- Capture lifestyle factors that are clinically relevant: exercise habits, diet discussions, alcohol/tobacco use, stress levels, sleep quality.
+- Capture mental health context: anxiety symptoms, depression history, mood changes, stress, prior psychiatric treatment.
+- Capture prior treatments and medication trials: medications tried and stopped, treatments that failed, reasons for discontinuation, side effects experienced.
+- Capture allergies, surgical history, family history, and social history when mentioned.
+
+CONTEXT CLUE REQUIREMENT:
+Use context clues to capture clinically relevant information, but do not hallucinate:
+- If something is strongly supported by transcript context, capture it in the appropriate field.
+- If something is implied but not explicitly confirmed, capture it in "context_inferred_items" with cautious phrasing.
+- Example: If a patient says she takes Lexapro, capture "Lexapro" in medications_current AND add "History suggestive of anxiety/depression based on Lexapro use — confirm specific diagnosis" in context_inferred_items.
+- Do NOT omit relevant details just because they were mentioned casually during the encounter.
+
+EXCLUDE from extraction:
+- Clearly irrelevant small talk with no clinical value
+- Non-medical conversation (shoes, shopping, weather, random social chatter)
+
 Return this exact JSON structure (all arrays, even if empty):
 {
   "visit_type": "",
   "chief_concerns": [],
+  "secondary_concerns": [],
   "symptoms_reported": [],
   "symptoms_denied": [],
   "medications_current": [],
   "medication_changes_discussed": [],
+  "supplements_current": [],
   "labs_reviewed": [],
+  "allergies": [],
+  "past_medical_history": [],
+  "surgical_history": [],
+  "family_history": [],
+  "social_history": [],
+  "mental_health_context": [],
+  "lifestyle_factors": [],
+  "prior_treatments_and_trials": [],
+  "side_effects_reported": [],
   "diagnoses_discussed": [],
   "assessment_candidates": [],
   "plan_candidates": [],
@@ -5309,6 +5364,7 @@ Return this exact JSON structure (all arrays, even if empty):
   "patient_questions": [],
   "red_flags": [],
   "uncertain_items": [],
+  "context_inferred_items": [],
   "source_utterance_ids": []
 }` },
             { role: "user", content: `Visit Type: ${encounter.visitType}\nChief Complaint: ${encounter.chiefComplaint ?? "Not specified"}\n\nTranscript:\n${extractInput}` },
@@ -5319,17 +5375,29 @@ Return this exact JSON structure (all arrays, even if empty):
         await storage.updateEncounter(id, clinicianId, { clinicalExtraction: freshExtraction });
         const exLines: string[] = [];
         if (freshExtraction.chief_concerns?.length)             exLines.push(`Chief concerns: ${freshExtraction.chief_concerns.join("; ")}`);
+        if (freshExtraction.secondary_concerns?.length)         exLines.push(`Secondary concerns: ${freshExtraction.secondary_concerns.join("; ")}`);
         if (freshExtraction.symptoms_reported?.length)           exLines.push(`Symptoms reported: ${freshExtraction.symptoms_reported.join("; ")}`);
         if (freshExtraction.symptoms_denied?.length)             exLines.push(`Symptoms denied: ${freshExtraction.symptoms_denied.join("; ")}`);
         if (freshExtraction.medications_current?.length)         exLines.push(`Current medications: ${freshExtraction.medications_current.join("; ")}`);
+        if (freshExtraction.supplements_current?.length)         exLines.push(`Current supplements: ${freshExtraction.supplements_current.join("; ")}`);
         if (freshExtraction.medication_changes_discussed?.length) exLines.push(`Medication changes discussed: ${freshExtraction.medication_changes_discussed.join("; ")}`);
         if (freshExtraction.labs_reviewed?.length)               exLines.push(`Labs reviewed: ${freshExtraction.labs_reviewed.join("; ")}`);
+        if (freshExtraction.allergies?.length)                   exLines.push(`Allergies: ${freshExtraction.allergies.join("; ")}`);
+        if (freshExtraction.past_medical_history?.length)        exLines.push(`Past medical history: ${freshExtraction.past_medical_history.join("; ")}`);
+        if (freshExtraction.surgical_history?.length)            exLines.push(`Surgical history: ${freshExtraction.surgical_history.join("; ")}`);
+        if (freshExtraction.family_history?.length)              exLines.push(`Family history: ${freshExtraction.family_history.join("; ")}`);
+        if (freshExtraction.social_history?.length)              exLines.push(`Social history: ${freshExtraction.social_history.join("; ")}`);
+        if (freshExtraction.mental_health_context?.length)       exLines.push(`Mental health context: ${freshExtraction.mental_health_context.join("; ")}`);
+        if (freshExtraction.lifestyle_factors?.length)           exLines.push(`Lifestyle factors: ${freshExtraction.lifestyle_factors.join("; ")}`);
+        if (freshExtraction.prior_treatments_and_trials?.length) exLines.push(`Prior treatments/trials: ${freshExtraction.prior_treatments_and_trials.join("; ")}`);
+        if (freshExtraction.side_effects_reported?.length)       exLines.push(`Side effects reported: ${freshExtraction.side_effects_reported.join("; ")}`);
         if (freshExtraction.diagnoses_discussed?.length)         exLines.push(`Diagnoses discussed: ${freshExtraction.diagnoses_discussed.join("; ")}`);
         if (freshExtraction.assessment_candidates?.length)       exLines.push(`Assessment candidates (uncertain): ${freshExtraction.assessment_candidates.join("; ")}`);
         if (freshExtraction.plan_candidates?.length)             exLines.push(`Plan items discussed: ${freshExtraction.plan_candidates.join("; ")}`);
         if (freshExtraction.follow_up_items?.length)             exLines.push(`Follow-up items: ${freshExtraction.follow_up_items.join("; ")}`);
         if (freshExtraction.red_flags?.length)                   exLines.push(`Red flags noted: ${freshExtraction.red_flags.join("; ")}`);
         if (freshExtraction.uncertain_items?.length)             exLines.push(`Uncertain/unresolved: ${freshExtraction.uncertain_items.join("; ")}`);
+        if (freshExtraction.context_inferred_items?.length)      exLines.push(`Context-inferred (confirm with patient): ${freshExtraction.context_inferred_items.join("; ")}`);
         if (exLines.length) extractionContext = `\n\nSTRUCTURED CLINICAL EXTRACTION (verified from transcript):\n${exLines.join('\n')}`;
       } catch (extractErr) {
         console.warn("[SOAP Pipeline] Extraction failed:", extractErr);
@@ -5504,14 +5572,26 @@ Return this exact JSON structure (all arrays, even if empty):
         const pmExtLines: string[] = [];
         if (freshExtraction) {
           if (freshExtraction.chief_concerns?.length)           pmExtLines.push(`Chief concerns: ${freshExtraction.chief_concerns.join("; ")}`);
+          if (freshExtraction.secondary_concerns?.length)       pmExtLines.push(`Secondary concerns: ${freshExtraction.secondary_concerns.join("; ")}`);
           if (freshExtraction.symptoms_reported?.length)         pmExtLines.push(`Symptoms reported: ${freshExtraction.symptoms_reported.join("; ")}`);
           if (freshExtraction.symptoms_denied?.length)           pmExtLines.push(`Symptoms denied: ${freshExtraction.symptoms_denied.join("; ")}`);
           if (freshExtraction.medications_current?.length)       pmExtLines.push(`Current medications: ${freshExtraction.medications_current.join("; ")}`);
+          if (freshExtraction.supplements_current?.length)       pmExtLines.push(`Current supplements: ${freshExtraction.supplements_current.join("; ")}`);
+          if (freshExtraction.mental_health_context?.length)     pmExtLines.push(`Mental health context: ${freshExtraction.mental_health_context.join("; ")}`);
+          if (freshExtraction.lifestyle_factors?.length)         pmExtLines.push(`Lifestyle factors: ${freshExtraction.lifestyle_factors.join("; ")}`);
           if (freshExtraction.diagnoses_discussed?.length)       pmExtLines.push(`Diagnoses discussed: ${freshExtraction.diagnoses_discussed.join("; ")}`);
           if (freshExtraction.assessment_candidates?.length)     pmExtLines.push(`Assessment candidates: ${freshExtraction.assessment_candidates.join("; ")}`);
           if (freshExtraction.plan_candidates?.length)           pmExtLines.push(`Plan items: ${freshExtraction.plan_candidates.join("; ")}`);
           if (freshExtraction.red_flags?.length)                 pmExtLines.push(`Red flags: ${freshExtraction.red_flags.join("; ")}`);
           if (freshExtraction.medication_changes_discussed?.length) pmExtLines.push(`Medication changes: ${freshExtraction.medication_changes_discussed.join("; ")}`);
+          if (freshExtraction.side_effects_reported?.length)     pmExtLines.push(`Side effects: ${freshExtraction.side_effects_reported.join("; ")}`);
+          if (freshExtraction.prior_treatments_and_trials?.length) pmExtLines.push(`Prior treatments/trials: ${freshExtraction.prior_treatments_and_trials.join("; ")}`);
+          if (freshExtraction.allergies?.length)                 pmExtLines.push(`Allergies: ${freshExtraction.allergies.join("; ")}`);
+          if (freshExtraction.past_medical_history?.length)      pmExtLines.push(`Past medical history: ${freshExtraction.past_medical_history.join("; ")}`);
+          if (freshExtraction.surgical_history?.length)           pmExtLines.push(`Surgical history: ${freshExtraction.surgical_history.join("; ")}`);
+          if (freshExtraction.family_history?.length)             pmExtLines.push(`Family history: ${freshExtraction.family_history.join("; ")}`);
+          if (freshExtraction.social_history?.length)             pmExtLines.push(`Social history: ${freshExtraction.social_history.join("; ")}`);
+          if (freshExtraction.context_inferred_items?.length)     pmExtLines.push(`Context-inferred (confirm): ${freshExtraction.context_inferred_items.join("; ")}`);
         }
         const pmExtContext = pmExtLines.length ? `\n\nSTRUCTURED CLINICAL FACTS (extracted from transcript):\n${pmExtLines.join('\n')}` : "";
         const pmCompletion = await openai.chat.completions.create({
@@ -5732,13 +5812,22 @@ The clinical extraction data distinguishes between "medications_current" (what t
 - If a drug CLASS name was recorded (e.g., "GLP-1 receptor agonist (class)") without a specific drug, use the class name in the SOAP — do NOT expand it to a specific drug unless one was explicitly named. Example: write "GLP-1 receptor agonist therapy" not "semaglutide/tirzepatide"
 - If both a class mention AND a specific drug are in the transcript, use the specific drug name and discard the class-only reference
 
-HPI — Write as a flowing clinical narrative (2–4 sentences of cohesive prose, NOT bullet points):
-- Begin with clinical context: "[Patient] presents for [visit reason]." If gender/age are known, include them.
-- Include: current treatment context (medication, duration, indication), patient-reported response to therapy, symptom trajectory (improving/stable/worsening), tolerability of medications, and relevant patient-reported outcomes
+HPI — Write as a DETAILED, THOROUGH clinical narrative (NOT bullet points). The HPI is the clinical story of this encounter and must be comprehensive:
+
+LENGTH AND DEPTH: The HPI should be as long as the clinical conversation warrants. For a 5-minute focused visit, 3-4 sentences may suffice. For a 20-30 minute wellness encounter with multiple topics discussed, the HPI should be 2-4 full paragraphs capturing the complete clinical story. Do NOT compress a rich, multi-topic encounter into a brief summary.
+
+STRUCTURE — Build the HPI chronologically and thematically:
+Paragraph 1 — OPENING + PRIMARY CONCERN: Begin with clinical context: "[Patient] presents for [visit reason]." If gender/age are known, include them. State the primary concern, current treatment context (medication name, dose, duration, indication), patient-reported response to therapy, symptom trajectory (improving/stable/worsening), and tolerability.
+Paragraph 2 — SECONDARY CONCERNS + SYMPTOMS: Document ALL secondary medically relevant concerns discussed during the visit. If the patient mentioned anxiety, sleep issues, fatigue, constipation, headaches, palpitations, or any other symptom — include it here even if it was not the primary reason for the visit. Capture the patient's own words in clinical paraphrase.
+Paragraph 3 — MEDICATION & TREATMENT HISTORY: Document all current medications and supplements discussed, any prior medication trials and their outcomes, side effects experienced, reasons for discontinuation of prior treatments. Capture the medication story.
+Paragraph 4 — ADDITIONAL CONTEXT: Document relevant lifestyle factors (exercise, diet, sleep, stress), mental health context, patient questions, patient education provided, and patient-stated decisions or preferences.
+
+WRITING STYLE:
 - Use active clinical language: "She reports tolerating the medication well, with mild initial nausea that resolved after the first week" — NOT "she said she felt a little sick at first but it went away"
 - Weave in denied symptoms naturally: "She denies injection site reactions, vomiting, or significant GI distress."
-- Example HPI opening for a weight management follow-up: "Patient presents for routine follow-up of pharmacotherapy-assisted weight management. She has been on [medication] for approximately [X] weeks, initiated for medically supervised obesity treatment. She reports [response], and tolerates the current dose well. She denies [denied symptoms]."
-- Example HPI for a testosterone/hormone visit: "Patient presents for hormone optimization follow-up. She has been on testosterone [route] for [duration] and reports [response to therapy]. She notes [symptom changes] and denies [denied symptoms]. Labs reviewed from [date] are notable for [key findings]."
+- Do NOT omit relevant details just because they were mentioned casually — if it was discussed and is medically relevant, it belongs in the HPI.
+- Do NOT reduce the note to only the primary complaint. This is a whole-patient wellness encounter.
+- Preserve the clinically relevant story of the encounter — what brought the patient in, what was discussed, what decisions were made, and what the patient's perspective was.
 
 ROS — Use standard clinical system format:
 - Write as: "CONSTITUTIONAL: [positive/negative findings]. CARDIOVASCULAR: [findings]. GASTROINTESTINAL: [findings]..."
@@ -5830,7 +5919,7 @@ CC/Reason: [chief complaint or visit reason]
 
 SUBJECTIVE
 
-HPI: [clinically complete history — visit context, duration of current treatment, response to therapy, relevant symptoms, patient-reported outcomes]
+HPI: [DETAILED clinical narrative — multiple paragraphs as warranted by the encounter depth. Include: visit context, primary concern, current treatment context, response to therapy, secondary concerns discussed, medication and treatment history, side effects, lifestyle factors, mental health context, patient questions, patient education provided, and patient-stated decisions. See HPI instructions above for full guidance.]
 
 Medical History:
 - Allergies: [if mentioned, else "Not reported at this visit"]
