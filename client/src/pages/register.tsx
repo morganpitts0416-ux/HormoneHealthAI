@@ -377,7 +377,9 @@ export default function Register() {
       const res = await apiRequest("POST", "/api/auth/register", data);
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Registration failed");
+        const e: any = new Error(err.message || "Registration failed");
+        e.billingError = err.billingError || null;
+        throw e;
       }
       return res.json();
     },
@@ -388,7 +390,19 @@ export default function Register() {
       setLocation("/dashboard");
     },
     onError: (error: any) => {
-      toast({ title: "Registration failed", description: error?.message || "Please try again.", variant: "destructive" });
+      const billingErr: string = error?.billingError ?? "";
+      const isPmReused = billingErr.toLowerCase().includes("previously used") || billingErr.toLowerCase().includes("detached");
+      if (isPmReused) {
+        setPaymentMethodId(null);
+        setStep(1);
+        toast({
+          title: "New payment method required",
+          description: "Your saved card could not be reused. Please enter a new payment method to complete registration.",
+          variant: "destructive",
+        });
+      } else {
+        toast({ title: "Registration failed", description: error?.message || "Please try again.", variant: "destructive" });
+      }
     },
   });
 
