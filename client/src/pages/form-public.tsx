@@ -22,6 +22,7 @@ interface FormField {
   optionsJson: any;
   sectionId: number | null;
   layoutJson: any;
+  smartFieldKey: string | null;
 }
 
 interface FormSection {
@@ -101,10 +102,25 @@ export default function FormPublicPage() {
       setValidationErrors(errors);
       return;
     }
+    let effectiveName = submitterName || null;
+    let effectiveEmail = submitterEmail || null;
+    if (data.fields.length > 0) {
+      const firstNameField = data.fields.find(f => f.smartFieldKey === "firstName");
+      const lastNameField = data.fields.find(f => f.smartFieldKey === "lastName");
+      const emailField = data.fields.find(f => f.smartFieldKey === "email");
+      if (firstNameField || lastNameField) {
+        const fn = firstNameField ? (responses[firstNameField.fieldKey] || "") : "";
+        const ln = lastNameField ? (responses[lastNameField.fieldKey] || "") : "";
+        effectiveName = `${fn} ${ln}`.trim() || effectiveName;
+      }
+      if (emailField) {
+        effectiveEmail = responses[emailField.fieldKey] || effectiveEmail;
+      }
+    }
     submitMutation.mutate({
       responses,
-      submitterName: submitterName || null,
-      submitterEmail: submitterEmail || null,
+      submitterName: effectiveName,
+      submitterEmail: effectiveEmail,
     });
   };
 
@@ -153,6 +169,10 @@ export default function FormPublicPage() {
   const sortedFields = [...fields].sort((a, b) => a.orderIndex - b.orderIndex);
   const sortedSections = [...sections].sort((a, b) => a.orderIndex - b.orderIndex);
 
+  const hasSmartName = fields.some(f => f.smartFieldKey === "firstName" || f.smartFieldKey === "lastName");
+  const hasSmartEmail = fields.some(f => f.smartFieldKey === "email");
+  const hideSubmitterBox = hasSmartName && hasSmartEmail;
+
   // Group fields by section (null = no section)
   const fieldsBySectionId: Record<string | "null", FormField[]> = { null: [] };
   for (const sec of sortedSections) fieldsBySectionId[sec.id] = [];
@@ -176,28 +196,29 @@ export default function FormPublicPage() {
         )}
       </div>
 
-      {/* Submitter info */}
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 p-4 rounded-md border bg-muted/20">
-        <div className="space-y-1.5">
-          <Label>Your Full Name <span className="text-muted-foreground">(optional)</span></Label>
-          <Input
-            value={submitterName}
-            onChange={e => setSubmitterName(e.target.value)}
-            placeholder="Jane Doe"
-            data-testid="input-submitter-name"
-          />
+      {!hideSubmitterBox && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 p-4 rounded-md border bg-muted/20">
+          <div className="space-y-1.5">
+            <Label>Your Full Name <span className="text-muted-foreground">(optional)</span></Label>
+            <Input
+              value={submitterName}
+              onChange={e => setSubmitterName(e.target.value)}
+              placeholder="Jane Doe"
+              data-testid="input-submitter-name"
+            />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Your Email <span className="text-muted-foreground">(optional)</span></Label>
+            <Input
+              type="email"
+              value={submitterEmail}
+              onChange={e => setSubmitterEmail(e.target.value)}
+              placeholder="jane@example.com"
+              data-testid="input-submitter-email"
+            />
+          </div>
         </div>
-        <div className="space-y-1.5">
-          <Label>Your Email <span className="text-muted-foreground">(optional)</span></Label>
-          <Input
-            type="email"
-            value={submitterEmail}
-            onChange={e => setSubmitterEmail(e.target.value)}
-            placeholder="jane@example.com"
-            data-testid="input-submitter-email"
-          />
-        </div>
-      </div>
+      )}
 
       {/* Fields without section */}
       {fieldsBySectionId["null"]?.length > 0 && (
