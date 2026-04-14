@@ -1452,11 +1452,36 @@ export class DbStorage implements IStorage {
       .orderBy(desc(schema.intakeForms.updatedAt));
   }
 
+  async getIntakeFormsByClinic(clinicId: number): Promise<schema.IntakeForm[]> {
+    return db.select().from(schema.intakeForms)
+      .where(eq(schema.intakeForms.clinicId, clinicId))
+      .orderBy(desc(schema.intakeForms.updatedAt));
+  }
+
+  async getIntakeFormsByClinicOrClinician(clinicId: number | null, clinicianId: number): Promise<schema.IntakeForm[]> {
+    if (clinicId) {
+      return db.select().from(schema.intakeForms)
+        .where(or(eq(schema.intakeForms.clinicId, clinicId), eq(schema.intakeForms.clinicianId, clinicianId)))
+        .orderBy(desc(schema.intakeForms.updatedAt));
+    }
+    return this.getIntakeForms(clinicianId);
+  }
+
   async getIntakeForm(id: number, clinicianId: number): Promise<schema.IntakeForm | undefined> {
     const rows = await db.select().from(schema.intakeForms)
       .where(and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId)))
       .limit(1);
     return rows[0];
+  }
+
+  async getIntakeFormByIdAndClinic(id: number, clinicId: number | null, clinicianId: number): Promise<schema.IntakeForm | undefined> {
+    if (clinicId) {
+      const rows = await db.select().from(schema.intakeForms)
+        .where(and(eq(schema.intakeForms.id, id), or(eq(schema.intakeForms.clinicId, clinicId), eq(schema.intakeForms.clinicianId, clinicianId))))
+        .limit(1);
+      return rows[0];
+    }
+    return this.getIntakeForm(id, clinicianId);
   }
 
   async getIntakeFormById(id: number): Promise<schema.IntakeForm | undefined> {
@@ -1477,9 +1502,28 @@ export class DbStorage implements IStorage {
     return row;
   }
 
+  async updateIntakeFormByClinic(id: number, clinicId: number | null, clinicianId: number, data: Partial<schema.InsertIntakeForm>): Promise<schema.IntakeForm | undefined> {
+    const condition = clinicId
+      ? and(eq(schema.intakeForms.id, id), or(eq(schema.intakeForms.clinicId, clinicId), eq(schema.intakeForms.clinicianId, clinicianId)))
+      : and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId));
+    const [row] = await db.update(schema.intakeForms)
+      .set({ ...data, updatedAt: new Date() })
+      .where(condition)
+      .returning();
+    return row;
+  }
+
   async deleteIntakeForm(id: number, clinicianId: number): Promise<boolean> {
     const result = await db.delete(schema.intakeForms)
       .where(and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId)));
+    return (result.rowCount ?? 0) > 0;
+  }
+
+  async deleteIntakeFormByClinic(id: number, clinicId: number | null, clinicianId: number): Promise<boolean> {
+    const condition = clinicId
+      ? and(eq(schema.intakeForms.id, id), or(eq(schema.intakeForms.clinicId, clinicId), eq(schema.intakeForms.clinicianId, clinicianId)))
+      : and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId));
+    const result = await db.delete(schema.intakeForms).where(condition);
     return (result.rowCount ?? 0) > 0;
   }
 
@@ -1594,6 +1638,15 @@ export class DbStorage implements IStorage {
     return db.select().from(schema.formSubmissions)
       .where(eq(schema.formSubmissions.clinicianId, clinicianId))
       .orderBy(desc(schema.formSubmissions.submittedAt));
+  }
+
+  async getFormSubmissionsByClinic(clinicId: number | null, clinicianId: number): Promise<schema.FormSubmission[]> {
+    if (clinicId) {
+      return db.select().from(schema.formSubmissions)
+        .where(or(eq(schema.formSubmissions.clinicId, clinicId), eq(schema.formSubmissions.clinicianId, clinicianId)))
+        .orderBy(desc(schema.formSubmissions.submittedAt));
+    }
+    return this.getFormSubmissionsByClinician(clinicianId);
   }
 
   async getFormSubmission(id: number): Promise<schema.FormSubmission | undefined> {
