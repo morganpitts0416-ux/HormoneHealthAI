@@ -7430,7 +7430,8 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       });
       res.json(field);
     } catch (err) {
-      res.status(500).json({ message: "Failed to create field" });
+      console.error("[createFormField] Error:", err);
+      res.status(500).json({ message: "Failed to create field", detail: String(err) });
     }
   });
 

@@ -15,10 +15,13 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Separator } from "@/components/ui/separator";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Tooltip, TooltipContent, TooltipTrigger } from "@/components/ui/tooltip";
 import {
   FileText, Plus, Settings, Trash2, Copy, Eye, Link2, ChevronDown, ChevronUp,
   ClipboardList, CheckCircle2, Clock, AlertCircle, GripVertical, Tag,
-  LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code
+  LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
+  Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
+  Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft, LayoutDashboard
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -438,28 +441,82 @@ export default function IntakeFormsPage() {
   );
 }
 
-// ─── Field Type Icons ─────────────────────────────────────────────────────────
+// ─── Field Type Icons & Palette ──────────────────────────────────────────────
+
+const FIELD_TYPE_ICONS: Record<string, React.ElementType> = {
+  short_text: Type,
+  long_text: AlignLeft,
+  number: Hash,
+  email: Mail,
+  phone: Phone,
+  date: Calendar,
+  single_choice: Circle,
+  multi_choice: CheckSquare,
+  dropdown: List,
+  yes_no: ToggleLeft,
+  scale: Star,
+  signature: PenLine,
+  heading: Heading,
+  paragraph: AlignJustify,
+  medication_list: Pill,
+  symptom_checklist: Activity,
+};
 
 function getFieldTypeIcon(type: string) {
-  const iconMap: Record<string, any> = {
-    short_text: "Aa",
-    long_text: "Pg",
-    number: "#",
-    email: "@",
-    phone: "Ph",
-    date: "Cal",
-    single_choice: "Rad",
-    multi_choice: "Chk",
-    dropdown: "Sel",
-    yes_no: "Y/N",
-    scale: "Scl",
-    signature: "Sig",
-    heading: "H",
-    paragraph: "P",
-    medication_list: "Rx",
-    symptom_checklist: "Sx",
-  };
-  return iconMap[type] ?? "?";
+  const IconComp = FIELD_TYPE_ICONS[type];
+  if (IconComp) return <IconComp className="h-3.5 w-3.5" />;
+  return <FileText className="h-3.5 w-3.5" />;
+}
+
+// ─── Clickable Field Type Palette ─────────────────────────────────────────────
+
+const FIELD_PALETTE_GROUPS = [
+  {
+    label: "Basic",
+    types: ["short_text", "long_text", "number", "email", "phone", "date"],
+  },
+  {
+    label: "Choice",
+    types: ["single_choice", "multi_choice", "dropdown", "yes_no", "scale"],
+  },
+  {
+    label: "Clinical",
+    types: ["medication_list", "symptom_checklist"],
+  },
+  {
+    label: "Layout",
+    types: ["heading", "paragraph", "signature"],
+  },
+];
+
+function FieldTypePalette({ onAdd, isAdding }: { onAdd: (type: string) => void; isAdding: boolean }) {
+  return (
+    <div className="space-y-2">
+      {FIELD_PALETTE_GROUPS.map(group => (
+        <div key={group.label}>
+          <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1 mb-1">{group.label}</p>
+          <div className="grid grid-cols-2 gap-1">
+            {group.types.map(type => {
+              const def = FIELD_TYPES.find(t => t.value === type);
+              const IconComp = FIELD_TYPE_ICONS[type] ?? FileText;
+              return (
+                <button
+                  key={type}
+                  disabled={isAdding}
+                  onClick={() => onAdd(type)}
+                  className="flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs text-left hover-elevate border border-border bg-background disabled:opacity-50 disabled:cursor-not-allowed transition-colors"
+                  data-testid={`button-add-field-${type}`}
+                >
+                  <IconComp className="h-3 w-3 text-muted-foreground flex-shrink-0" />
+                  <span className="truncate">{def?.label ?? type}</span>
+                </button>
+              );
+            })}
+          </div>
+        </div>
+      ))}
+    </div>
+  );
 }
 
 // ─── Live Form Preview ───────────────────────────────────────────────────────
@@ -605,10 +662,13 @@ function FieldPreview({ field, isSelected, onClick }: { field: FormField; isSele
 
 function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => void }) {
   const { toast } = useToast();
+  const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("fields");
   const [selectedFieldId, setSelectedFieldId] = useState<number | null>(null);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
   const [dragIdx, setDragIdx] = useState<number | null>(null);
+  const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
+  const [showFieldPalette, setShowFieldPalette] = useState(false);
 
   const { data: form, isLoading } = useQuery<IntakeForm>({
     queryKey: ["/api/intake-forms", formId],
@@ -621,10 +681,18 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
   });
 
   const addFieldMutation = useMutation({
-    mutationFn: (data: any) => apiRequest("POST", `/api/intake-forms/${formId}/fields`, data),
-    onSuccess: () => {
+    mutationFn: async (data: any) => {
+      const res = await apiRequest("POST", `/api/intake-forms/${formId}/fields`, data);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail ?? errBody.message ?? `HTTP ${res.status}`);
+      }
+      return res.json();
+    },
+    onSuccess: (newField: any) => {
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] });
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms"] });
+      if (newField?.id) setSelectedFieldId(newField.id);
     },
     onError: (err: any) => toast({ title: "Failed to add field", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
@@ -696,19 +764,24 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
 
   const sortedFields = [...(form.fields ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
 
-  const handleDragStart = (idx: number) => setDragIdx(idx);
+  const handleDragStart = (idx: number) => { setDragIdx(idx); setDragOverIdx(idx); };
   const handleDragOver = (e: React.DragEvent, idx: number) => {
     e.preventDefault();
     e.dataTransfer.dropEffect = "move";
+    setDragOverIdx(idx);
   };
+  const handleDragEnd = () => { setDragIdx(null); setDragOverIdx(null); };
   const handleDrop = (e: React.DragEvent, targetIdx: number) => {
     e.preventDefault();
-    if (dragIdx === null || dragIdx === targetIdx) { setDragIdx(null); return; }
-    const newOrder = [...sortedFields];
-    const [moved] = newOrder.splice(dragIdx, 1);
-    newOrder.splice(targetIdx, 0, moved);
-    reorderMutation.mutate(newOrder.map(f => f.id));
+    if (dragIdx === null) { setDragIdx(null); setDragOverIdx(null); return; }
+    if (dragIdx !== targetIdx) {
+      const newOrder = [...sortedFields];
+      const [moved] = newOrder.splice(dragIdx, 1);
+      newOrder.splice(targetIdx, 0, moved);
+      reorderMutation.mutate(newOrder.map(f => f.id));
+    }
     setDragIdx(null);
+    setDragOverIdx(null);
   };
 
   const addSmartField = (sf: SmartFieldDef) => {
@@ -738,10 +811,20 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
     <div className="flex flex-col h-full">
       {/* Header */}
       <div className="border-b px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
-          <Button size="icon" variant="ghost" onClick={onBack} data-testid="button-back-to-forms">
-            <ChevronDown className="h-4 w-4 rotate-90" />
+        <div className="flex items-center gap-2">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-go-to-dashboard">
+                <LayoutDashboard className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Back to Dashboard</TooltipContent>
+          </Tooltip>
+          <span className="text-muted-foreground text-sm">/</span>
+          <Button size="sm" variant="ghost" onClick={onBack} className="text-xs text-muted-foreground" data-testid="button-back-to-forms">
+            Forms
           </Button>
+          <span className="text-muted-foreground text-sm">/</span>
           <div>
             <div className="flex items-center gap-2 flex-wrap">
               <span className="font-semibold text-sm">{form.name}</span>
@@ -749,7 +832,6 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
                 {form.status}
               </span>
             </div>
-            <p className="text-xs text-muted-foreground">Form Builder · v{form.version}</p>
           </div>
         </div>
         <div className="flex items-center gap-2">
@@ -792,66 +874,119 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
       {activeTab === "fields" && (
         <div className="flex flex-1 overflow-hidden">
           {/* Left: Field list sidebar */}
-          <div className="w-60 border-r flex flex-col bg-muted/20">
-            <div className="px-3 py-2 border-b flex items-center justify-between">
-              <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Fields ({sortedFields.length})</span>
+          <div className="w-64 border-r flex flex-col bg-muted/20">
+            {/* Panel header toggle */}
+            <div className="flex border-b">
+              <button
+                onClick={() => setShowFieldPalette(false)}
+                className={`flex-1 py-2 text-xs font-medium transition-colors ${!showFieldPalette ? "text-foreground border-b-2 border-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
+                data-testid="button-panel-fields"
+              >
+                Fields {sortedFields.length > 0 && `(${sortedFields.length})`}
+              </button>
+              <button
+                onClick={() => setShowFieldPalette(true)}
+                className={`flex-1 py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1 ${showFieldPalette ? "text-foreground border-b-2 border-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
+                data-testid="button-panel-add"
+              >
+                <Plus className="h-3 w-3" /> Add Field
+              </button>
             </div>
-            <ScrollArea className="flex-1">
-              <div className="p-1.5 space-y-0.5">
-                {sortedFields.length === 0 && (
-                  <p className="text-xs text-muted-foreground px-2 py-4 text-center">No fields yet. Add one below.</p>
-                )}
-                {sortedFields.map((field, idx) => (
-                  <div
-                    key={field.id}
-                    draggable
-                    onDragStart={() => handleDragStart(idx)}
-                    onDragOver={(e) => handleDragOver(e, idx)}
-                    onDrop={(e) => handleDrop(e, idx)}
-                    onClick={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
-                    className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-colors select-none
-                      ${selectedFieldId === field.id
-                        ? "bg-primary/10 text-primary font-medium ring-1 ring-primary/30"
-                        : "hover:bg-muted"}`}
-                    data-testid={`button-select-field-${field.id}`}
-                  >
-                    <GripVertical className="h-3 w-3 text-muted-foreground flex-shrink-0 cursor-grab" />
-                    <span className="w-6 h-5 rounded text-[10px] font-mono flex items-center justify-center bg-muted text-muted-foreground flex-shrink-0">
-                      {getFieldTypeIcon(field.fieldType)}
-                    </span>
-                    <span className="truncate flex-1">{field.label}</span>
-                    {field.smartFieldKey && (
-                      <span className="text-[9px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded px-1 flex-shrink-0">
-                        {SMART_FIELDS.find(s => s.key === field.smartFieldKey)?.category === "demographics" ? "ID" : "Rx"}
-                      </span>
+
+            {/* Field list */}
+            {!showFieldPalette && (
+              <>
+                <ScrollArea className="flex-1">
+                  <div className="p-1.5 space-y-0.5">
+                    {sortedFields.length === 0 && (
+                      <div className="flex flex-col items-center gap-2 px-2 py-8 text-center">
+                        <LayoutList className="h-8 w-8 text-muted-foreground/30" />
+                        <p className="text-xs text-muted-foreground">No fields yet.</p>
+                        <button
+                          onClick={() => setShowFieldPalette(true)}
+                          className="text-xs text-primary font-medium"
+                          data-testid="button-start-adding-fields"
+                        >
+                          + Add your first field
+                        </button>
+                      </div>
                     )}
-                    {field.isRequired && <span className="text-red-500 text-[10px] flex-shrink-0">*</span>}
+                    {sortedFields.map((field, idx) => {
+                      const IconComp = FIELD_TYPE_ICONS[field.fieldType] ?? FileText;
+                      const isDragging = dragIdx === idx;
+                      const isDropTarget = dragOverIdx === idx && dragIdx !== null && dragIdx !== idx;
+                      return (
+                        <div key={field.id}>
+                          {isDropTarget && (
+                            <div className="h-0.5 bg-primary rounded-full mx-2 mb-0.5" />
+                          )}
+                          <div
+                            draggable
+                            onDragStart={() => handleDragStart(idx)}
+                            onDragOver={(e) => handleDragOver(e, idx)}
+                            onDragEnd={handleDragEnd}
+                            onDrop={(e) => handleDrop(e, idx)}
+                            onClick={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
+                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-all select-none
+                              ${isDragging ? "opacity-40 scale-95" : ""}
+                              ${selectedFieldId === field.id && !isDragging
+                                ? "bg-primary/10 text-primary font-medium ring-1 ring-primary/30"
+                                : !isDragging ? "hover:bg-muted" : ""}`}
+                            data-testid={`button-select-field-${field.id}`}
+                          >
+                            <GripVertical className="h-3.5 w-3.5 text-muted-foreground/50 flex-shrink-0 cursor-grab active:cursor-grabbing" />
+                            <span className="w-5 h-5 flex items-center justify-center flex-shrink-0 text-muted-foreground">
+                              <IconComp className="h-3 w-3" />
+                            </span>
+                            <span className="truncate flex-1">{field.label}</span>
+                            {field.smartFieldKey && (
+                              <span className="text-[9px] font-medium bg-blue-100 text-blue-700 dark:bg-blue-900/30 dark:text-blue-300 rounded px-1 flex-shrink-0">
+                                {SMART_FIELDS.find(s => s.key === field.smartFieldKey)?.category === "demographics" ? "ID" : "RX"}
+                              </span>
+                            )}
+                            {field.isRequired && <span className="text-destructive text-[10px] flex-shrink-0">*</span>}
+                          </div>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
-              </div>
-            </ScrollArea>
-            <div className="p-2 border-t space-y-1.5">
-              <Select
-                value="placeholder_add"
-                onValueChange={(type) => {
-                  if (type !== "placeholder_add") addFieldMutation.mutate({ fieldType: type, label: FIELD_TYPES.find(t => t.value === type)?.label ?? "New Field" });
-                }}>
-                <SelectTrigger className="text-xs" data-testid="select-add-field-type">
-                  <Plus className="h-3.5 w-3.5 mr-1" />
-                  <SelectValue placeholder="Add field..." />
-                </SelectTrigger>
-                <SelectContent>
-                  <SelectItem value="placeholder_add" disabled>Choose type...</SelectItem>
-                  {FIELD_TYPES.map(t => (
-                    <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>
-                  ))}
-                </SelectContent>
-              </Select>
-              <SmartFieldPalette
-                existingSmartKeys={(form?.fields ?? []).map(f => f.smartFieldKey).filter(Boolean) as string[]}
-                onAdd={addSmartField}
-              />
-            </div>
+                </ScrollArea>
+                {sortedFields.length > 0 && (
+                  <div className="p-2 border-t">
+                    <SmartFieldPalette
+                      existingSmartKeys={(form?.fields ?? []).map(f => f.smartFieldKey).filter(Boolean) as string[]}
+                      onAdd={addSmartField}
+                    />
+                  </div>
+                )}
+              </>
+            )}
+
+            {/* Add field palette */}
+            {showFieldPalette && (
+              <ScrollArea className="flex-1">
+                <div className="p-3 space-y-3">
+                  <FieldTypePalette
+                    onAdd={(type) => {
+                      addFieldMutation.mutate({
+                        fieldType: type,
+                        label: FIELD_TYPES.find(t => t.value === type)?.label ?? "New Field",
+                      });
+                      setShowFieldPalette(false);
+                    }}
+                    isAdding={addFieldMutation.isPending}
+                  />
+                  <Separator />
+                  <div>
+                    <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1 mb-2">Smart Fields</p>
+                    <SmartFieldPalette
+                      existingSmartKeys={(form?.fields ?? []).map(f => f.smartFieldKey).filter(Boolean) as string[]}
+                      onAdd={(sf) => { addSmartField(sf); setShowFieldPalette(false); }}
+                    />
+                  </div>
+                </div>
+              </ScrollArea>
+            )}
           </div>
 
           {/* Center: Live form preview */}
