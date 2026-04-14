@@ -1,0 +1,25 @@
+ => ERROR [7/8] RUN npm run build                                                                                                                                                                                                          1.2s 
+------                                                                                                                                                                                                                                          
+ > [7/8] RUN npm run build:                                                                                                                                                                                                                     
+1.084 npm error Missing script: "build"                                                                                                                                                                                                         
+1.084 npm error                                                                                                                                                                                                                                 
+1.084 npm error To see a list of scripts, run:
+1.084 npm error   npm run
+1.088 npm error A complete log of this run can be found in: /root/.npm/_logs/2026-04-14T17_17_54_552Z-debug-0.log
+------
+Dockerfile:7
+--------------------
+   5 |     RUN npm ci
+   6 |     COPY . .
+   7 | >>> RUN npm run build
+   8 |     RUN npm prune --production
+   9 |     EXPOSE 8080
+--------------------
+ERROR: failed to build: failed to solve: process "/bin/sh -c npm run build" did not complete successfully: exit code: 1
+Building using Dockerfile and deploying container to Cloud Run service [hormonehealthai] in project [realign-lab-app] region [us-central1]
+Building and deploying...                                                                                                                                                                                                                      
+  Validating configuration...done                                                                                                                                                                                                              
+  Uploading sources...done                                                                                                                                                                                                                     
+  Building Container... Logs are available at [https://console.cloud.google.com/cloud-build/builds;region=us-central1/9aa3e3a3-0a4e-43e6-9481-5d23645387a7?project=384086867382]....failed                                                     
+Deployment failed                                                                                                                                                                                                                              
+ERROR: (gcloud.run.deploy) Build failed; check build logs for details
