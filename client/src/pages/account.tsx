@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Save, CheckCircle, MessageSquare, Phone, BanIcon, Smartphone,
   Zap, Copy, Eye, EyeOff, Key, Globe, Info,
-  Users, UserPlus, Trash2, ShieldAlert, Mail,
+  Users, UserPlus, Trash2, ShieldAlert, Mail, Pencil,
   CreditCard, Clock, AlertTriangle, XCircle,
   ImagePlus, PenLine, X, Search,
   Building2, User, SlidersHorizontal, FileText, ClipboardList, Shield,
@@ -704,9 +704,32 @@ export default function Account() {
   const [inviteAdminRole, setInviteAdminRole] = useState("standard");
   const [showInviteForm, setShowInviteForm] = useState(false);
 
+  // Provider (clinician) invite form for suite accounts
+  const [showProviderInviteForm, setShowProviderInviteForm] = useState(false);
+  const [providerInviteEmail, setProviderInviteEmail] = useState("");
+  const [providerInviteFirstName, setProviderInviteFirstName] = useState("");
+  const [providerInviteLastName, setProviderInviteLastName] = useState("");
+  const [providerInviteClinicalRole, setProviderInviteClinicalRole] = useState("provider");
+  const [providerInviteAdminRole, setProviderInviteAdminRole] = useState("standard");
+
+  // Edit staff role dialog
+  const [editStaffMember, setEditStaffMember] = useState<StaffMember | null>(null);
+  const [editStaffRole, setEditStaffRole] = useState("staff");
+  const [editStaffAdminRole, setEditStaffAdminRole] = useState("standard");
+
   const { data: staffList = [], refetch: refetchStaff } = useQuery<StaffMember[]>({
     queryKey: ["/api/staff"],
     enabled: !isStaff,
+  });
+
+  const { data: clinicMembers = [] } = useQuery<any[]>({
+    queryKey: ["/api/clinic/members"],
+    enabled: !isStaff && !!(user as any)?.defaultClinicId,
+  });
+
+  const { data: pendingProviderInvites = [], refetch: refetchInvites } = useQuery<any[]>({
+    queryKey: ["/api/clinic/invites"],
+    enabled: !isStaff && !!(user as any)?.defaultClinicId,
   });
 
   const { data: pendingSubmissions = [] } = useQuery<any[]>({
@@ -756,6 +779,64 @@ export default function Account() {
     },
     onError: () => {
       toast({ title: "Remove failed", variant: "destructive" });
+    },
+  });
+
+  const editStaffRoleMutation = useMutation({
+    mutationFn: async ({ id, role, adminRole }: { id: number; role: string; adminRole: string }) => {
+      const res = await apiRequest("PATCH", `/api/staff/${id}`, { role, adminRole });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to update"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Roles updated" });
+      setEditStaffMember(null);
+      refetchStaff();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const inviteProviderMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/clinic/invite-provider", {
+        email: providerInviteEmail.trim(),
+        firstName: providerInviteFirstName.trim(),
+        lastName: providerInviteLastName.trim(),
+        clinicalRole: providerInviteClinicalRole,
+        adminRole: providerInviteAdminRole,
+      });
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to send invite"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Provider invited", description: `${providerInviteFirstName} will receive an email with a link to create their account.` });
+      setProviderInviteEmail("");
+      setProviderInviteFirstName("");
+      setProviderInviteLastName("");
+      setProviderInviteClinicalRole("provider");
+      setProviderInviteAdminRole("standard");
+      setShowProviderInviteForm(false);
+      refetchInvites();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Invite failed", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const revokeProviderInviteMutation = useMutation({
+    mutationFn: async (inviteId: number) => {
+      const res = await apiRequest("DELETE", `/api/clinic/invites/${inviteId}`);
+      if (!res.ok) throw new Error("Failed to revoke");
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Invite revoked" });
+      refetchInvites();
+    },
+    onError: () => {
+      toast({ title: "Failed to revoke invite", variant: "destructive" });
     },
   });
 
@@ -1316,50 +1397,178 @@ export default function Account() {
 
       case "team":
         return (
-          <div className="space-y-4">
-            <div className="flex items-center justify-between gap-4 flex-wrap">
-              <div>
-                <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>Staff &amp; Team</h3>
-                <p className="text-sm text-muted-foreground mt-1">Invite clinical and administrative staff to your clinic workspace</p>
-              </div>
-              <Button variant="outline" onClick={() => setShowInviteForm((v) => !v)} data-testid="button-invite-staff">
-                <UserPlus className="w-4 h-4 mr-2" />
-                {showInviteForm ? "Cancel" : "Invite Staff"}
-              </Button>
+          <div className="space-y-5">
+            <div>
+              <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>Staff &amp; Team</h3>
+              <p className="text-sm text-muted-foreground mt-1">Manage clinicians and staff who access your clinic workspace</p>
             </div>
 
-            {/* Permission model explanation */}
-            <div className="rounded-md border bg-muted/30 px-4 py-3 space-y-1.5">
-              <p className="text-xs font-semibold text-foreground uppercase tracking-wide">Permission Layers</p>
+            {/* Permission model note */}
+            <div className="rounded-md border bg-muted/30 px-4 py-3">
+              <p className="text-xs font-semibold text-foreground uppercase tracking-wide mb-2">Two Permission Layers</p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-3 text-xs text-muted-foreground">
-                <div>
-                  <p className="font-medium text-foreground mb-0.5">Clinical Role</p>
-                  <p>Controls signing authority, clinical documentation, and whether the person appears as a rendering clinician. Examples: Provider, RN, Staff.</p>
-                </div>
-                <div>
-                  <p className="font-medium text-foreground mb-0.5">Administrative Role</p>
-                  <p>Controls access to account settings, billing, user management, forms, and clinic configuration. Examples: Owner, Admin, Standard.</p>
-                </div>
+                <div><p className="font-medium text-foreground mb-0.5">Clinical Role</p><p>Signing authority, clinical documentation, rendering clinician eligibility (Provider, RN, MA, Staff)</p></div>
+                <div><p className="font-medium text-foreground mb-0.5">Administrative Role</p><p>Account settings, billing, user management, forms (Owner, Admin, Limited Admin, Standard)</p></div>
               </div>
             </div>
 
+            {/* ── Suite: Full Clinician Providers ── */}
+            {(user as any)?.defaultClinicId && (
+              <Card>
+                <CardContent className="pt-5 space-y-4">
+                  <div className="flex items-center justify-between gap-3 flex-wrap">
+                    <div>
+                      <p className="text-sm font-semibold text-foreground">Clinic Providers</p>
+                      <p className="text-xs text-muted-foreground">Full clinician accounts that share this clinic</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setShowProviderInviteForm(v => !v)} data-testid="button-invite-provider">
+                      <UserPlus className="w-4 h-4 mr-2" />
+                      {showProviderInviteForm ? "Cancel" : "Invite Provider"}
+                    </Button>
+                  </div>
+
+                  {showProviderInviteForm && (
+                    <div className="rounded-md border bg-muted/40 p-4 space-y-3">
+                      <p className="text-sm font-medium">Invite a provider to this clinic</p>
+                      <p className="text-xs text-muted-foreground">They will receive an email with a link to create their own ClinIQ account linked to your clinic.</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">First Name</label>
+                          <Input placeholder="Jane" value={providerInviteFirstName} onChange={e => setProviderInviteFirstName(e.target.value)} data-testid="input-provider-first-name" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Last Name</label>
+                          <Input placeholder="Smith" value={providerInviteLastName} onChange={e => setProviderInviteLastName(e.target.value)} data-testid="input-provider-last-name" />
+                        </div>
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-xs font-medium text-muted-foreground">Email Address</label>
+                          <Input type="email" placeholder="jane@clinic.com" value={providerInviteEmail} onChange={e => setProviderInviteEmail(e.target.value)} data-testid="input-provider-email" />
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Clinical Role</label>
+                          <Select value={providerInviteClinicalRole} onValueChange={setProviderInviteClinicalRole}>
+                            <SelectTrigger data-testid="select-provider-clinical-role"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="provider">Provider (MD/DO/NP/PA)</SelectItem>
+                              <SelectItem value="nurse">RN / Nurse</SelectItem>
+                              <SelectItem value="assistant">Medical Assistant</SelectItem>
+                              <SelectItem value="staff">Staff</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Administrative Role</label>
+                          <Select value={providerInviteAdminRole} onValueChange={setProviderInviteAdminRole}>
+                            <SelectTrigger data-testid="select-provider-admin-role"><SelectValue /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="admin">Admin — full access</SelectItem>
+                              <SelectItem value="limited_admin">Limited Admin</SelectItem>
+                              <SelectItem value="standard">Standard — no admin</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                      </div>
+                      <Button onClick={() => inviteProviderMutation.mutate()} disabled={inviteProviderMutation.isPending || !providerInviteEmail || !providerInviteFirstName || !providerInviteLastName} data-testid="button-send-provider-invite">
+                        <Mail className="w-4 h-4 mr-2" />
+                        {inviteProviderMutation.isPending ? "Sending..." : "Send Provider Invite"}
+                      </Button>
+                    </div>
+                  )}
+
+                  {/* Pending provider invites */}
+                  {pendingProviderInvites.length > 0 && (
+                    <div className="space-y-2">
+                      <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pending Invites</p>
+                      {pendingProviderInvites.map((inv: any) => (
+                        <div key={inv.id} className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50/40 px-4 py-3" data-testid={`row-provider-invite-${inv.id}`}>
+                          <div className="flex items-center gap-3">
+                            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-xs font-semibold text-amber-800">{inv.firstName?.[0]}{inv.lastName?.[0]}</div>
+                            <div>
+                              <p className="text-sm font-medium text-foreground">{inv.firstName} {inv.lastName}</p>
+                              <p className="text-xs text-muted-foreground">{inv.email} · Invite expires {new Date(inv.inviteExpires).toLocaleDateString()}</p>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-2">
+                            <Badge variant="outline" className="text-xs capitalize">{inv.clinicalRole}</Badge>
+                            <Button variant="ghost" size="icon" onClick={() => { if (confirm("Revoke this invite?")) revokeProviderInviteMutation.mutate(inv.id); }} data-testid={`button-revoke-invite-${inv.id}`}>
+                              <X className="w-4 h-4 text-muted-foreground" />
+                            </Button>
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Active clinic members (other than the logged-in user) */}
+                  <div className="space-y-2">
+                    {clinicMembers.filter((m: any) => m.id !== (user as any)?.id).map((m: any) => (
+                      <div key={m.id} className="flex items-center justify-between gap-3 rounded-md border px-4 py-3" data-testid={`row-clinic-member-${m.id}`}>
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">{m.firstName?.[0]}{m.lastName?.[0]}</div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{m.title ? `${m.title} ` : ""}{m.firstName} {m.lastName}</p>
+                            <p className="text-xs text-muted-foreground">{m.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="secondary" className="text-xs capitalize">{m.clinicalRole} · Clinical</Badge>
+                          <Badge variant="outline" className="text-xs capitalize">{m.isOwner ? "Owner" : m.adminRole === "admin" ? "Admin" : m.adminRole === "limited_admin" ? "Limited Admin" : "Standard"} · Admin</Badge>
+                        </div>
+                      </div>
+                    ))}
+                    {/* Self row */}
+                    {user && (
+                      <div className="flex items-center justify-between gap-3 rounded-md border px-4 py-3 bg-muted/20" data-testid="row-clinic-member-self">
+                        <div className="flex items-center gap-3">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>{user.firstName?.[0]}{user.lastName?.[0]}</div>
+                          <div>
+                            <p className="text-sm font-medium text-foreground">{user.firstName} {user.lastName} <span className="text-xs text-muted-foreground">(you)</span></p>
+                            <p className="text-xs text-muted-foreground">{user.email}</p>
+                          </div>
+                        </div>
+                        <div className="flex flex-col items-end gap-1">
+                          <Badge variant="secondary" className="text-xs">Provider · Clinical</Badge>
+                          <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}>Owner · Admin</Badge>
+                        </div>
+                      </div>
+                    )}
+                    {clinicMembers.filter((m: any) => m.id !== (user as any)?.id).length === 0 && !showProviderInviteForm && pendingProviderInvites.length === 0 && (
+                      <p className="text-sm text-muted-foreground text-center py-2">You are the only provider in this clinic. Use "Invite Provider" to add another clinician.</p>
+                    )}
+                  </div>
+                </CardContent>
+              </Card>
+            )}
+
+            {/* ── Staff Members (sub-clinician access) ── */}
             <Card>
               <CardContent className="pt-5 space-y-4">
+                <div className="flex items-center justify-between gap-3 flex-wrap">
+                  <div>
+                    <p className="text-sm font-semibold text-foreground">Staff Members</p>
+                    <p className="text-xs text-muted-foreground">Nurses, MAs, and admin staff with limited access (no separate ClinIQ subscription required)</p>
+                  </div>
+                  <Button variant="outline" size="sm" onClick={() => setShowInviteForm(v => !v)} data-testid="button-invite-staff">
+                    <UserPlus className="w-4 h-4 mr-2" />
+                    {showInviteForm ? "Cancel" : "Invite Staff"}
+                  </Button>
+                </div>
+
                 {showInviteForm && (
                   <div className="rounded-md border bg-muted/40 p-4 space-y-3">
-                    <p className="text-sm font-medium text-foreground">Send a staff invite</p>
+                    <p className="text-sm font-medium">Send a staff invite</p>
                     <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">First Name</label>
-                        <Input placeholder="Jane" autoComplete="off" value={inviteFirstName} onChange={(e) => setInviteFirstName(e.target.value)} data-testid="input-staff-first-name" />
+                        <Input placeholder="Jane" autoComplete="off" value={inviteFirstName} onChange={e => setInviteFirstName(e.target.value)} data-testid="input-staff-first-name" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">Last Name</label>
-                        <Input placeholder="Smith" autoComplete="off" value={inviteLastName} onChange={(e) => setInviteLastName(e.target.value)} data-testid="input-staff-last-name" />
+                        <Input placeholder="Smith" autoComplete="off" value={inviteLastName} onChange={e => setInviteLastName(e.target.value)} data-testid="input-staff-last-name" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">Email</label>
-                        <Input type="email" placeholder="jane@clinic.com" value={inviteEmail} onChange={(e) => setInviteEmail(e.target.value)} data-testid="input-staff-email" />
+                        <Input type="email" placeholder="jane@clinic.com" value={inviteEmail} onChange={e => setInviteEmail(e.target.value)} data-testid="input-staff-email" />
                       </div>
                       <div className="space-y-1">
                         <label className="text-xs font-medium text-muted-foreground">Clinical Role</label>
@@ -1385,42 +1594,21 @@ export default function Account() {
                         </Select>
                       </div>
                     </div>
-                    <p className="text-xs text-muted-foreground">The clinician who created this account is the <strong>Owner</strong> and cannot be changed here.</p>
                     <Button onClick={() => inviteStaffMutation.mutate()} disabled={inviteStaffMutation.isPending || !inviteEmail || !inviteFirstName || !inviteLastName} data-testid="button-send-staff-invite">
                       <Mail className="w-4 h-4 mr-2" />
                       {inviteStaffMutation.isPending ? "Sending..." : "Send Invite"}
                     </Button>
                   </div>
                 )}
+
                 <div className="space-y-2">
-                  {/* Owner row — always shown first */}
-                  {user && (
-                    <div className="flex items-center justify-between gap-3 rounded-md border px-4 py-3 bg-muted/20" data-testid="row-staff-owner">
-                      <div className="flex items-center gap-3">
-                        <div className="w-8 h-8 rounded-full bg-primary/10 flex items-center justify-center text-xs font-semibold text-primary">
-                          {user.firstName?.[0]}{user.lastName?.[0]}
-                        </div>
-                        <div>
-                          <p className="text-sm font-medium text-foreground">{user.firstName} {user.lastName} <span className="text-xs text-muted-foreground">(you)</span></p>
-                          <p className="text-xs text-muted-foreground">{user.email}</p>
-                        </div>
-                      </div>
-                      <div className="flex flex-col items-end gap-1">
-                        <Badge variant="secondary" className="text-xs capitalize">Provider · Clinical</Badge>
-                        <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}>Owner · Admin</Badge>
-                      </div>
-                    </div>
-                  )}
-                  {/* Invited staff members */}
                   {staffList.map((member) => {
                     const clinicalLabel = member.role === "nurse" ? "RN" : member.role === "assistant" ? "MA" : member.role === "provider" ? "Provider" : "Staff";
                     const adminLabel = (member as any).adminRole === "admin" ? "Admin" : (member as any).adminRole === "limited_admin" ? "Limited Admin" : "Standard";
                     return (
                       <div key={member.id} className="flex items-center justify-between gap-3 rounded-md border px-4 py-3" data-testid={`row-staff-${member.id}`}>
                         <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">
-                            {member.firstName[0]}{member.lastName[0]}
-                          </div>
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">{member.firstName[0]}{member.lastName[0]}</div>
                           <div>
                             <p className="text-sm font-medium text-foreground">{member.firstName} {member.lastName}</p>
                             <p className="text-xs text-muted-foreground">{member.email}</p>
@@ -1431,6 +1619,9 @@ export default function Account() {
                             <Badge variant="secondary" className="text-xs">{clinicalLabel} · Clinical</Badge>
                             <Badge variant="outline" className="text-xs">{adminLabel} · Admin</Badge>
                           </div>
+                          <Button variant="ghost" size="icon" onClick={() => { setEditStaffMember(member); setEditStaffRole(member.role); setEditStaffAdminRole((member as any).adminRole || "standard"); }} data-testid={`button-edit-staff-${member.id}`}>
+                            <Pencil className="w-4 h-4 text-muted-foreground" />
+                          </Button>
                           <Button variant="ghost" size="icon" onClick={() => { if (confirm(`Remove ${member.firstName} ${member.lastName}?`)) removeStaffMutation.mutate(member.id); }} disabled={removeStaffMutation.isPending} data-testid={`button-remove-staff-${member.id}`}>
                             <Trash2 className="w-4 h-4 text-muted-foreground" />
                           </Button>
@@ -1438,12 +1629,55 @@ export default function Account() {
                       </div>
                     );
                   })}
-                  {staffList.length === 0 && !showInviteForm && (
-                    <p className="text-sm text-muted-foreground py-2 text-center">No additional staff members yet. Use "Invite Staff" to add a nurse, assistant, or provider to your clinic.</p>
+                  {!staffList.length && !showInviteForm && (
+                    <p className="text-sm text-muted-foreground text-center py-2">No staff members yet. Use "Invite Staff" to add a nurse, MA, or admin assistant.</p>
                   )}
                 </div>
               </CardContent>
             </Card>
+
+            {/* Edit Staff Role dialog */}
+            {editStaffMember && (
+              <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 p-4" onClick={() => setEditStaffMember(null)}>
+                <div className="bg-background rounded-md border shadow-lg p-6 w-full max-w-sm space-y-4" onClick={e => e.stopPropagation()}>
+                  <div className="flex items-center justify-between">
+                    <p className="text-sm font-semibold">Edit Roles — {editStaffMember.firstName} {editStaffMember.lastName}</p>
+                    <Button variant="ghost" size="icon" onClick={() => setEditStaffMember(null)}><X className="w-4 h-4" /></Button>
+                  </div>
+                  <div className="space-y-3">
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Clinical Role</label>
+                      <Select value={editStaffRole} onValueChange={setEditStaffRole}>
+                        <SelectTrigger data-testid="select-edit-clinical-role"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="provider">Provider (MD/DO/NP/PA)</SelectItem>
+                          <SelectItem value="nurse">RN / Nurse</SelectItem>
+                          <SelectItem value="assistant">Medical Assistant</SelectItem>
+                          <SelectItem value="staff">Staff</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    <div className="space-y-1">
+                      <label className="text-xs font-medium text-muted-foreground">Administrative Role</label>
+                      <Select value={editStaffAdminRole} onValueChange={setEditStaffAdminRole}>
+                        <SelectTrigger data-testid="select-edit-admin-role"><SelectValue /></SelectTrigger>
+                        <SelectContent>
+                          <SelectItem value="admin">Admin</SelectItem>
+                          <SelectItem value="limited_admin">Limited Admin</SelectItem>
+                          <SelectItem value="standard">Standard</SelectItem>
+                        </SelectContent>
+                      </Select>
+                    </div>
+                  </div>
+                  <div className="flex justify-end gap-2">
+                    <Button variant="outline" onClick={() => setEditStaffMember(null)}>Cancel</Button>
+                    <Button onClick={() => editStaffRoleMutation.mutate({ id: editStaffMember.id, role: editStaffRole, adminRole: editStaffAdminRole })} disabled={editStaffRoleMutation.isPending} data-testid="button-save-staff-roles">
+                      {editStaffRoleMutation.isPending ? "Saving..." : "Save Roles"}
+                    </Button>
+                  </div>
+                </div>
+              </div>
+            )}
           </div>
         );
 

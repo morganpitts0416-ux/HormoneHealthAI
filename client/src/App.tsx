@@ -38,6 +38,7 @@ import PrivacyPolicy from "@/pages/privacy";
 import TermsOfService from "@/pages/terms";
 import BusinessAssociateAgreement from "@/pages/baa";
 import HelpCenter from "@/pages/help";
+import JoinClinicPage from "@/pages/join-clinic";
 import { BaaGate } from "@/components/baa-gate";
 import { BillingGate } from "@/components/billing-gate";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
@@ -235,6 +236,7 @@ function Router() {
       <Route path="/portal/messages" component={PortalMessages} />
       <Route path="/portal/forms" component={PortalForms} />
       <Route path="/staff-set-password" component={StaffSetPassword} />
+      <Route path="/join-clinic" component={JoinClinicPage} />
       <Route>
         {() => <RootRedirect />}
       </Route>

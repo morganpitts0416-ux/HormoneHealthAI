@@ -106,6 +106,13 @@ export interface IStorage {
   updateClinicianStaff(id: number, data: Partial<ClinicianStaff>): Promise<ClinicianStaff | undefined>;
   deleteClinicianStaff(id: number): Promise<boolean>;
 
+  // Clinic provider invites
+  createClinicProviderInvite(data: schema.InsertClinicProviderInvite): Promise<schema.ClinicProviderInvite>;
+  getClinicProviderInviteByToken(token: string): Promise<schema.ClinicProviderInvite | undefined>;
+  getClinicProviderInvites(clinicId: number): Promise<schema.ClinicProviderInvite[]>;
+  updateClinicProviderInviteStatus(id: number, status: string): Promise<void>;
+  deleteClinicProviderInvite(id: number): Promise<boolean>;
+
   // Patient portal account operations
   getPatientById(id: number): Promise<Patient | undefined>;
   getPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined>;
@@ -865,6 +872,33 @@ export class DbStorage implements IStorage {
 
   async deleteClinicianStaff(id: number): Promise<boolean> {
     const result = await db.delete(schema.clinicianStaff).where(eq(schema.clinicianStaff.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ── Clinic Provider Invites ───────────────────────────────────────────────────
+  async createClinicProviderInvite(data: schema.InsertClinicProviderInvite): Promise<schema.ClinicProviderInvite> {
+    const result = await db.insert(schema.clinicProviderInvites).values(data).returning();
+    return result[0];
+  }
+
+  async getClinicProviderInviteByToken(token: string): Promise<schema.ClinicProviderInvite | undefined> {
+    const result = await db.select().from(schema.clinicProviderInvites)
+      .where(eq(schema.clinicProviderInvites.inviteToken, token)).limit(1);
+    return result[0];
+  }
+
+  async getClinicProviderInvites(clinicId: number): Promise<schema.ClinicProviderInvite[]> {
+    return db.select().from(schema.clinicProviderInvites)
+      .where(and(eq(schema.clinicProviderInvites.clinicId, clinicId), eq(schema.clinicProviderInvites.status, "pending")))
+      .orderBy(desc(schema.clinicProviderInvites.createdAt));
+  }
+
+  async updateClinicProviderInviteStatus(id: number, status: string): Promise<void> {
+    await db.update(schema.clinicProviderInvites).set({ status }).where(eq(schema.clinicProviderInvites.id, id));
+  }
+
+  async deleteClinicProviderInvite(id: number): Promise<boolean> {
+    const result = await db.delete(schema.clinicProviderInvites).where(eq(schema.clinicProviderInvites.id, id)).returning();
     return result.length > 0;
   }
 
