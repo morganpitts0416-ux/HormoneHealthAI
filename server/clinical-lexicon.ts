@@ -410,45 +410,42 @@ export function buildMedicalTermsList(visitType: string): string {
  * Staying at ~180 leaves headroom for the visit-type suffix.
  */
 export function buildWhisperPrompt(visitType: string): string {
-  const visitProse: Record<string, string> = {
-    "new-patient":
-      "New patient presenting for comprehensive hormone, metabolic, and cardiovascular evaluation.",
-    "follow-up":
-      "Follow-up visit for hormone optimization, metabolic management, and cardiovascular risk review.",
-    "lab-review":
-      "Lab review appointment. Panels include thyroid, hormone, metabolic, lipid, and inflammatory markers.",
-    "wellness":
-      "Annual wellness visit with preventive care, metabolic screening, and cardiovascular risk assessment.",
-    "acute":
-      "Acute care visit. Reviewing current symptoms, medications, and recent labs.",
-    "telemedicine":
-      "Telemedicine follow-up for hormone and metabolic management.",
-    "procedure":
-      "Procedure visit. Pellet insertion, therapeutic phlebotomy, or injection today.",
+  // IMPORTANT: This prompt is a vocabulary hint, NOT a clinical statement.
+  // It must NOT use phrases like "Patient's medications include..." because
+  // both gpt-4o-transcribe and whisper-1 will hallucinate those phrases
+  // verbatim into the transcript. The format below is clearly labeled as
+  // vocabulary/glossary context so the model uses it for spelling, not content.
+
+  const visitLabel: Record<string, string> = {
+    "new-patient": "new patient hormone and metabolic evaluation",
+    "follow-up": "hormone and metabolic follow-up visit",
+    "lab-review": "lab review appointment",
+    "wellness": "annual wellness and preventive care visit",
+    "acute": "acute care visit",
+    "telemedicine": "telemedicine hormone follow-up",
+    "procedure": "procedure visit (pellet, phlebotomy, or injection)",
   };
 
-  const intro = visitProse[visitType] ?? visitProse["follow-up"];
+  const label = visitLabel[visitType] ?? visitLabel["follow-up"];
 
-  // Core medication sentence — phonetically hardest drugs always included.
-  // Written as prose so Whisper sees these spellings in context, not isolation.
-  const meds =
-    "Patient's medications include semaglutide, tirzepatide, Ozempic, Wegovy, " +
-    "Mounjaro, Zepbound, testosterone cypionate, testosterone pellet, " +
-    "micronized progesterone, estradiol patch, anastrozole, letrozole, DHEA, " +
-    "levothyroxine, liothyronine, Armour thyroid, metformin, empagliflozin, " +
+  // Medications listed as a glossary, NOT as a patient medication list.
+  // This teaches the model correct spellings without generating hallucinated content.
+  const medGlossary =
+    "semaglutide, tirzepatide, Ozempic, Wegovy, Mounjaro, Zepbound, " +
+    "testosterone cypionate, micronized progesterone, estradiol, anastrozole, " +
+    "letrozole, DHEA, levothyroxine, Armour thyroid, metformin, empagliflozin, " +
     "dapagliflozin, rosuvastatin, atorvastatin, ezetimibe, evolocumab, inclisiran, " +
-    "losartan, lisinopril, amlodipine, metoprolol succinate, carvedilol, " +
-    "hydrochlorothiazide, spironolactone, apixaban, rivaroxaban, " +
-    "naltrexone, low-dose naltrexone, berberine, myo-inositol, CoQ10.";
+    "spironolactone, apixaban, rivaroxaban, naltrexone, low-dose naltrexone, " +
+    "trazodone, vortioxetine, Trintellix, sertraline, escitalopram, bupropion, " +
+    "berberine, myo-inositol, CoQ10.";
 
-  // Core lab marker sentence — acronyms Whisper frequently spells out or mangles.
-  const labs =
-    "Labs ordered: HbA1c, HOMA-IR, ApoB, Lp(a), hs-CRP, eGFR, FIB-4, IGF-1, " +
+  // Lab markers listed as a glossary.
+  const labGlossary =
+    "HbA1c, HOMA-IR, ApoB, Lp(a), hs-CRP, eGFR, FIB-4, IGF-1, " +
     "SHBG, DHEA-S, LH, FSH, TSH, free T3, free T4, reverse T3, " +
     "ferritin, TIBC, transferrin saturation, 25-hydroxyvitamin D, " +
     "CBC, CMP, lipid panel, ASCVD, GLP-1, PCOS.";
 
-  // Visit-type extras woven in as a short prose clause
   const groups = getRelevantLexiconGroups(visitType);
   const extras: string[] = [];
   if (groups.includes("hormones_and_menopause")) {
@@ -459,29 +456,22 @@ export function buildWhisperPrompt(visitType: string): string {
   }
   if (groups.includes("metabolic_and_weight")) {
     extras.push(
-      "insulin resistance, metabolic syndrome, hepatic steatosis, " +
-      "NAFLD, MASLD, hyperinsulinemia, pioglitazone, tirzepatide"
+      "insulin resistance, metabolic syndrome, hepatic steatosis, NAFLD, MASLD"
     );
   }
   if (groups.includes("lipid_and_cardiometabolic")) {
     extras.push(
-      "PREVENT score, homocysteine, bempedoic acid, Nexletol, " +
-      "lipoprotein(a), sacubitril-valsartan, Entresto"
-    );
-  }
-  if (groups.includes("procedure_terms")) {
-    extras.push(
-      "subcutaneous injection, intramuscular injection, " +
-      "therapeutic phlebotomy, pellet insertion, DEXA scan"
+      "PREVENT score, homocysteine, bempedoic acid, Nexletol, lipoprotein(a), sacubitril-valsartan, Entresto"
     );
   }
 
-  const extrasClause =
-    extras.length
-      ? ` Also discussed: ${extras.join("; ")}.`
-      : "";
+  const extrasClause = extras.length ? ` Additional vocabulary: ${extras.join("; ")}.` : "";
 
-  return `${intro} ${meds} ${labs}${extrasClause}`;
+  return (
+    `Clinical encounter type: ${label}. ` +
+    `Medication glossary (spelling reference only — do not insert into transcript): ${medGlossary} ` +
+    `Lab marker glossary: ${labGlossary}${extrasClause}`
+  );
 }
 
 export function buildNormalizationRules(visitType: string): string {
