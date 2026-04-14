@@ -4371,6 +4371,14 @@ CRITICAL RULES — SAFETY GUARDRAILS:
 6. Map every extracted fact to source_utterance_ids (the [ID:N] numbers in the transcript)
 7. If something is only mentioned as a possibility, put it in assessment_candidates, NOT diagnoses_discussed
 
+LAB LEVEL TARGETS vs MEDICATION DOSES — CRITICAL RULE:
+When a clinician says "increase vitamin D to 60-80" or "optimize vitamin D to 60-80 ng/mL", the number is a LAB LEVEL TARGET (a goal serum level), NOT a medication dose.
+- Phrases like "increase X to [range]", "optimize X to [range]", "target X to [range]", "get X to [range]" where X is a vitamin, mineral, or lab marker describe a clinical goal, NOT a medication order.
+- These belong in plan_candidates (e.g., "Target vitamin D (25-OH) to 60–80 ng/mL") — NEVER in uncertain_items and NEVER as a medication with unrecognized dosing.
+- Common examples of lab-level targets (never flag these as uncertain): vitamin D to 60-80, TSH to 1-2, ferritin to 70-100, testosterone to X, A1c to <6.5, B12 to 800-1000.
+- Only flag as uncertain_items if a word genuinely appears to be a garbled or unknown DRUG NAME that you cannot identify at all.
+- Vitamins, minerals, and standard supplements (vitamin D, vitamin B12, vitamin C, omega-3, magnesium, zinc, iron, folate, CoQ10, etc.) are NEVER uncertain — they are well-known agents. Record them in medication_changes_discussed (if a dose/supplement amount is stated) or plan_candidates (if a lab level target is stated).
+
 MEDICATION TENSE & INTENT — CRITICAL RULE:
 You MUST distinguish between what the patient is CURRENTLY taking vs what the clinician is RECOMMENDING they begin:
 - medications_current = medications the patient is already taking RIGHT NOW at the time of the visit
@@ -4382,6 +4390,7 @@ EXAMPLES:
   - "Once stable on progesterone we'll add estrogen" → medication_changes_discussed: ["Add estrogen once stable on progesterone (future plan)"]
   - "She's been on tirzepatide 15mg for 3 months" → medications_current: ["Tirzepatide 15mg SQ weekly"]
   - "I said we'd consider adding testosterone later" → medication_changes_discussed only — NOT medications_current
+  - "Increase vitamin D to 60-80" → plan_candidates: ["Target vitamin D (25-OH) to 60–80 ng/mL"] — NOT uncertain_items
 When in doubt, put the item in medication_changes_discussed and flag in uncertain_items — never assume a recommended drug is current.
 
 DRUG CLASS NAMES — CRITICAL RULE:
@@ -5215,6 +5224,14 @@ CRITICAL RULES — SAFETY GUARDRAILS:
 6. Map every extracted fact to source_utterance_ids (the [ID:N] numbers in the transcript)
 7. If something is only mentioned as a possibility, put it in assessment_candidates, NOT diagnoses_discussed
 
+LAB LEVEL TARGETS vs MEDICATION DOSES — CRITICAL RULE:
+When a clinician says "increase vitamin D to 60-80" or "optimize vitamin D to 60-80 ng/mL", the number is a LAB LEVEL TARGET (a goal serum level), NOT a medication dose.
+- Phrases like "increase X to [range]", "optimize X to [range]", "target X to [range]", "get X to [range]" where X is a vitamin, mineral, or lab marker describe a clinical goal, NOT a medication order.
+- These belong in plan_candidates (e.g., "Target vitamin D (25-OH) to 60–80 ng/mL") — NEVER in uncertain_items and NEVER as a medication with unrecognized dosing.
+- Common examples of lab-level targets (never flag these as uncertain): vitamin D to 60-80, TSH to 1-2, ferritin to 70-100, testosterone to X, A1c to <6.5, B12 to 800-1000.
+- Only flag as uncertain_items if a word genuinely appears to be a garbled or unknown DRUG NAME that you cannot identify at all.
+- Vitamins, minerals, and standard supplements (vitamin D, vitamin B12, vitamin C, omega-3, magnesium, zinc, iron, folate, CoQ10, etc.) are NEVER uncertain — they are well-known agents. Record them in medication_changes_discussed (if a dose/supplement amount is stated) or plan_candidates (if a lab level target is stated).
+
 MEDICATION TENSE & INTENT — CRITICAL RULE:
 You MUST distinguish between what the patient is CURRENTLY taking vs what the clinician is RECOMMENDING they begin:
 - medications_current = medications the patient is already taking RIGHT NOW at the time of the visit
@@ -5226,6 +5243,7 @@ EXAMPLES:
   - "Once stable on progesterone we'll add estrogen" → medication_changes_discussed: ["Add estrogen once stable on progesterone (future plan)"]
   - "She's been on tirzepatide 15mg for 3 months" → medications_current: ["Tirzepatide 15mg SQ weekly"]
   - "I said we'd consider adding testosterone later" → medication_changes_discussed only — NOT medications_current
+  - "Increase vitamin D to 60-80" → plan_candidates: ["Target vitamin D (25-OH) to 60–80 ng/mL"] — NOT uncertain_items
 When in doubt, put the item in medication_changes_discussed and flag in uncertain_items — never assume a recommended drug is current.
 
 DRUG CLASS NAMES — CRITICAL RULE:
@@ -5664,6 +5682,7 @@ Your output must read as if written by an experienced physician or advanced prac
 
 MEDICATION NAMES — CRITICAL RULE:
 Use the medication list and diarized transcript provided — those have already been normalized by the clinical medication engine. Do NOT attempt to phonetically decode drug names yourself. If a word in the transcript looks like it might be a garbled medication name but does not appear in the provided medication list, add it to uncertain_items for clinician review. Never substitute a different medication name based on phonetic guessing — this is a patient safety issue.
+IMPORTANT EXCEPTION — LAB LEVEL TARGETS: If the transcript contains phrases like "increase vitamin D to 60-80", "optimize ferritin to 70-100", "target TSH to 1-2", or similar, the numbers represent LAB LEVEL TARGETS (goal serum levels in ng/mL, pg/mL, etc.) — NOT medication doses. Do NOT add these to uncertain_items. Instead document them in the PLAN as clinical optimization goals (e.g., "Target 25-OH vitamin D to 60–80 ng/mL"). Vitamins (D, B12, C, etc.), minerals (magnesium, zinc, iron), and standard supplements are NEVER uncertain — they are well-known agents and should never appear in uncertain_items.
 
 MEDICATION TENSE & PLACEMENT — CRITICAL RULE:
 The clinical extraction data distinguishes between "medications_current" (what the patient is already taking) and "medication_changes_discussed" (what is being recommended, started, stopped, or planned at this visit). You MUST honor this distinction:
