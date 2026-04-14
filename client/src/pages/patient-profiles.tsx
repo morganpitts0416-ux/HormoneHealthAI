@@ -17,7 +17,7 @@ import {
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
-  Link2, Clock,
+  Link2, Clock, Building2,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -1086,7 +1086,7 @@ export default function PatientProfiles() {
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
-  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", primaryProvider: "" });
+  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", primaryProvider: "", preferredPharmacy: "" });
   const [showNewPatientDialog, setShowNewPatientDialog] = useState(false);
   const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", gender: "female" as "male" | "female", email: "", phone: "" });
   const [showFullDemographics, setShowFullDemographics] = useState(false);
@@ -1505,7 +1505,7 @@ export default function PatientProfiles() {
   });
 
   const updatePatientMutation = useMutation({
-    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; primaryProvider: string }) => {
+    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; primaryProvider: string; preferredPharmacy: string }) => {
       const { id, ...fields } = data;
       const body: Record<string, string | null> = {
         firstName: fields.firstName,
@@ -1514,6 +1514,7 @@ export default function PatientProfiles() {
         phone: fields.phone || null,
         dateOfBirth: fields.dateOfBirth || null,
         primaryProvider: fields.primaryProvider || null,
+        preferredPharmacy: fields.preferredPharmacy || null,
       };
       const res = await apiRequest("PATCH", `/api/patients/${id}`, body);
       if (!res.ok) throw new Error("Failed to update patient");
@@ -1601,6 +1602,7 @@ export default function PatientProfiles() {
       dateOfBirth: dob,
       phone: (selectedPatient as any).phone ?? "",
       primaryProvider: defaultProvider,
+      preferredPharmacy: (selectedPatient as any).preferredPharmacy ?? "",
     });
     setShowEditPatient(true);
   };
@@ -1852,7 +1854,7 @@ export default function PatientProfiles() {
                       {selectedPatient.firstName} {selectedPatient.lastName}
                     </h2>
 
-                    {/* Always-visible: clinic type badge + DOB + phone */}
+                    {/* Always-visible: clinic type badge + DOB + phone + provider */}
                     <div className="flex items-center gap-2 flex-wrap mt-1">
                       <Badge variant="secondary" className="text-xs">
                         {selectedPatient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
@@ -1867,6 +1869,11 @@ export default function PatientProfiles() {
                           Ph: <span className="font-medium text-foreground">{(selectedPatient as any).phone}</span>
                         </span>
                       )}
+                      {(selectedPatient as any).primaryProvider && (
+                        <span className="text-xs text-muted-foreground flex items-center gap-1">
+                          <User className="w-3 h-3" /> <span className="font-medium text-foreground">{(selectedPatient as any).primaryProvider}</span>
+                        </span>
+                      )}
                       <button
                         onClick={() => setShowFullDemographics(v => !v)}
                         className="flex items-center gap-0.5 text-xs text-muted-foreground hover:text-foreground transition-colors"
@@ -1877,7 +1884,7 @@ export default function PatientProfiles() {
                       </button>
                     </div>
 
-                    {/* Collapsible: email, MRN, provider, portal status, lab count */}
+                    {/* Collapsible: email, MRN, pharmacy, portal status, lab count */}
                     {showFullDemographics && (
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 pl-0">
                         {(selectedPatient as any).email && (
@@ -1888,9 +1895,9 @@ export default function PatientProfiles() {
                         {selectedPatient.mrn && (
                           <span className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</span>
                         )}
-                        {(selectedPatient as any).primaryProvider && (
+                        {(selectedPatient as any).preferredPharmacy && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <User className="w-3 h-3" /> Provider: <span className="font-medium text-foreground">{(selectedPatient as any).primaryProvider}</span>
+                            <Building2 className="w-3 h-3" /> Pharmacy: <span className="font-medium text-foreground">{(selectedPatient as any).preferredPharmacy}</span>
                           </span>
                         )}
                         <Badge variant="outline" className="text-xs">
@@ -3185,6 +3192,16 @@ export default function PatientProfiles() {
                 />
               )}
               <p className="text-xs text-muted-foreground">Defaults to clinic owner. Will become a dropdown when multiple providers are in the clinic.</p>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-pharmacy">Preferred Pharmacy</Label>
+              <Input
+                id="edit-pharmacy"
+                placeholder="Pharmacy name, address, or phone"
+                value={editPatientForm.preferredPharmacy}
+                onChange={e => setEditPatientForm(f => ({ ...f, preferredPharmacy: e.target.value }))}
+                data-testid="input-edit-patient-pharmacy"
+              />
             </div>
           </div>
           <DialogFooter className="gap-2">
