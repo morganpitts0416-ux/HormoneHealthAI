@@ -1342,6 +1342,7 @@ export type InsertCalendarBlock = z.infer<typeof insertCalendarBlockSchema>;
 export const intakeForms = pgTable("intake_forms", {
   id: serial("id").primaryKey(),
   clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: "cascade" }),
   name: text("name").notNull(),
   slug: varchar("slug", { length: 120 }),
   description: text("description"),
@@ -1445,6 +1446,7 @@ export const formSubmissions = pgTable("form_submissions", {
   formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
   formVersion: integer("form_version").notNull().default(1),
   clinicianId: integer("clinician_id").references(() => users.id),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: "cascade" }),
   patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
   assignmentId: integer("assignment_id").references(() => patientFormAssignments.id, { onDelete: "set null" }),
   submittedByPatient: boolean("submitted_by_patient").notNull().default(false),

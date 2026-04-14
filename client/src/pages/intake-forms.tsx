@@ -241,6 +241,10 @@ export default function IntakeFormsPage() {
   const [filterStatus, setFilterStatus] = useState("all");
   const { toast } = useToast();
 
+  const { data: currentUser } = useQuery<any>({ queryKey: ["/api/auth/me"] });
+  const userAdminRole = currentUser?.adminRole;
+  const canEditForms = !currentUser?.isStaff || userAdminRole === "owner" || userAdminRole === "admin" || userAdminRole === "limited_admin";
+
   const { data: forms = [], isLoading } = useQuery<IntakeForm[]>({
     queryKey: ["/api/intake-forms"],
   });
@@ -289,6 +293,7 @@ export default function IntakeFormsPage() {
       <FormBuilderView
         formId={activeFormId}
         onBack={() => setActiveFormId(null)}
+        canEdit={canEditForms}
       />
     );
   }
@@ -323,9 +328,11 @@ export default function IntakeFormsPage() {
               <SelectItem value="archived">Archived</SelectItem>
             </SelectContent>
           </Select>
-          <Button onClick={() => setShowCreate(true)} data-testid="button-create-form">
-            <Plus className="h-4 w-4 mr-1" /> New Form
-          </Button>
+          {canEditForms && (
+            <Button onClick={() => setShowCreate(true)} data-testid="button-create-form">
+              <Plus className="h-4 w-4 mr-1" /> New Form
+            </Button>
+          )}
         </div>
       </div>
 
@@ -340,10 +347,12 @@ export default function IntakeFormsPage() {
           <div className="flex flex-col items-center justify-center py-20 text-center gap-3">
             <ClipboardList className="h-12 w-12 text-muted-foreground/40" />
             <p className="text-muted-foreground font-medium">No forms yet</p>
-            <p className="text-sm text-muted-foreground">Create your first intake form to get started</p>
-            <Button onClick={() => setShowCreate(true)} data-testid="button-create-form-empty">
-              <Plus className="h-4 w-4 mr-1" /> Create Form
-            </Button>
+            <p className="text-sm text-muted-foreground">{canEditForms ? "Create your first intake form to get started" : "No forms have been created for this clinic yet"}</p>
+            {canEditForms && (
+              <Button onClick={() => setShowCreate(true)} data-testid="button-create-form-empty">
+                <Plus className="h-4 w-4 mr-1" /> Create Form
+              </Button>
+            )}
           </div>
         ) : (
           <div className="space-y-3 max-w-3xl">
@@ -378,23 +387,27 @@ export default function IntakeFormsPage() {
                       </div>
                     </div>
                     <div className="flex items-center gap-1" onClick={e => e.stopPropagation()}>
-                      <Button size="icon" variant="ghost" title="Edit form"
+                      <Button size="icon" variant="ghost" title={canEditForms ? "Edit form" : "View form"}
                         onClick={() => setActiveFormId(form.id)}
                         data-testid={`button-edit-form-${form.id}`}>
                         <Edit3 className="h-4 w-4" />
                       </Button>
-                      <Button size="icon" variant="ghost" title="Duplicate"
-                        onClick={() => duplicateMutation.mutate(form.id)}
-                        data-testid={`button-duplicate-form-${form.id}`}>
-                        <Copy className="h-4 w-4" />
-                      </Button>
-                      <Button size="icon" variant="ghost" title="Archive"
-                        onClick={() => {
-                          if (confirm(`Archive "${form.name}"?`)) archiveMutation.mutate(form.id);
-                        }}
-                        data-testid={`button-archive-form-${form.id}`}>
-                        <Trash2 className="h-4 w-4" />
-                      </Button>
+                      {canEditForms && (
+                        <>
+                          <Button size="icon" variant="ghost" title="Duplicate"
+                            onClick={() => duplicateMutation.mutate(form.id)}
+                            data-testid={`button-duplicate-form-${form.id}`}>
+                            <Copy className="h-4 w-4" />
+                          </Button>
+                          <Button size="icon" variant="ghost" title="Archive"
+                            onClick={() => {
+                              if (confirm(`Archive "${form.name}"?`)) archiveMutation.mutate(form.id);
+                            }}
+                            data-testid={`button-archive-form-${form.id}`}>
+                            <Trash2 className="h-4 w-4" />
+                          </Button>
+                        </>
+                      )}
                     </div>
                   </div>
                 </CardContent>
@@ -720,7 +733,7 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
 
 // ─── Form Builder View ────────────────────────────────────────────────────────
 
-function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => void }) {
+function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; onBack: () => void; canEdit?: boolean }) {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("fields");

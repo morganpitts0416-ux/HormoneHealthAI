@@ -185,6 +185,22 @@ CREATE TABLE IF NOT EXISTS encounter_drafts (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+-- 14. Add clinic_id to intake_forms (clinic-scoped forms)
+ALTER TABLE intake_forms ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id) ON DELETE CASCADE;
+
+-- 15. Add clinic_id to form_submissions (clinic-scoped submissions)
+ALTER TABLE form_submissions ADD COLUMN IF NOT EXISTS clinic_id INTEGER REFERENCES clinics(id) ON DELETE CASCADE;
+
+-- 16. Backfill clinic_id on existing intake_forms from the creating clinician's defaultClinicId
+UPDATE intake_forms SET clinic_id = u.default_clinic_id
+FROM users u
+WHERE intake_forms.clinician_id = u.id AND intake_forms.clinic_id IS NULL AND u.default_clinic_id IS NOT NULL;
+
+-- 17. Backfill clinic_id on existing form_submissions from the linked form
+UPDATE form_submissions SET clinic_id = f.clinic_id
+FROM intake_forms f
+WHERE form_submissions.form_id = f.id AND form_submissions.clinic_id IS NULL AND f.clinic_id IS NOT NULL;
+
 -- ============================================================================
 -- Done! All missing columns and tables have been added.
 -- ============================================================================
