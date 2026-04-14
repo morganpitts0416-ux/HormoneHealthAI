@@ -6,7 +6,7 @@ import path from "path";
 import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments } from "@shared/schema";
 import { eq, and } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -7857,11 +7857,35 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       });
 
       // Update assignment status if applicable
-      if (resolvedPatientId && pub.mode !== "embed") {
-        const assignments = await storage.getPatientFormAssignments(resolvedPatientId);
-        const pending = assignments.find(a => a.formId === pub.formId && a.status === "pending");
-        if (pending) {
-          await storage.updatePatientFormAssignment(pending.id, { status: "completed" });
+      if (pub.mode !== "embed") {
+        try {
+          if (resolvedPatientId) {
+            const assignments = await storage.getPatientFormAssignments(resolvedPatientId);
+            const pending = assignments.find(a => a.formId === pub.formId && a.status === "pending");
+            if (pending) {
+              await storage.updatePatientFormAssignment(pending.id, { status: "completed" });
+            }
+          }
+          if (!resolvedPatientId) {
+            const allPendingForForm = await storageDb
+              .select({ id: patientFormAssignments.id, patientId: patientFormAssignments.patientId })
+              .from(patientFormAssignments)
+              .where(and(
+                eq(patientFormAssignments.formId, pub.formId),
+                eq(patientFormAssignments.status, "pending")
+              ))
+              .orderBy(patientFormAssignments.assignedAt)
+              .limit(1);
+            if (allPendingForForm.length > 0) {
+              await storage.updatePatientFormAssignment(allPendingForForm[0].id, { status: "completed" });
+              if (!resolvedPatientId) resolvedPatientId = allPendingForForm[0].patientId;
+              if (resolvedPatientId) {
+                await storage.updateFormSubmission(submission.id, { patientId: resolvedPatientId });
+              }
+            }
+          }
+        } catch (assignErr) {
+          console.error("[FormSubmit] assignment update error:", assignErr);
         }
       }
 
