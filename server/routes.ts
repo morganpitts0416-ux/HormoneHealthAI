@@ -3436,9 +3436,16 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         req
       ).catch(err => console.error('[EMAIL] Provider invite email failed:', err));
       res.status(201).json({ success: true, invite });
-    } catch (err) {
+    } catch (err: any) {
       console.error('[API] Error inviting provider:', err);
-      res.status(500).json({ message: "Failed to send provider invite" });
+      const detail = err?.message ?? String(err);
+      const isTableMissing = detail.includes("does not exist") || detail.includes("relation");
+      res.status(500).json({
+        message: isTableMissing
+          ? "Provider invite table not found in database. Please run the production migration SQL on your Cloud SQL instance."
+          : "Failed to send provider invite",
+        detail,
+      });
     }
   });
 
