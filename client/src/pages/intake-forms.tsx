@@ -21,7 +21,8 @@ import {
   ClipboardList, CheckCircle2, Clock, AlertCircle, GripVertical, Tag,
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
-  Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft, LayoutDashboard
+  Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft, LayoutDashboard,
+  ArrowUp, ArrowDown, Home
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -521,7 +522,21 @@ function FieldTypePalette({ onAdd, isAdding }: { onAdd: (type: string) => void; 
 
 // ─── Live Form Preview ───────────────────────────────────────────────────────
 
-function FieldPreview({ field, isSelected, onClick }: { field: FormField; isSelected: boolean; onClick: () => void }) {
+function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onDragStart, onDragOver, onDragEnd, onDrop, isDragging, isDropTarget }: {
+  field: FormField;
+  isSelected: boolean;
+  onClick: () => void;
+  onMoveUp?: () => void;
+  onMoveDown?: () => void;
+  canMoveUp?: boolean;
+  canMoveDown?: boolean;
+  onDragStart?: () => void;
+  onDragOver?: (e: React.DragEvent) => void;
+  onDragEnd?: () => void;
+  onDrop?: (e: React.DragEvent) => void;
+  isDragging?: boolean;
+  isDropTarget?: boolean;
+}) {
   const options = Array.isArray(field.optionsJson) ? field.optionsJson : [];
   const scaleOpts = (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
     ? field.optionsJson as { min?: number; max?: number; step?: number; labels?: { low?: string; high?: string } }
@@ -635,25 +650,62 @@ function FieldPreview({ field, isSelected, onClick }: { field: FormField; isSele
   const isDecorative = ["heading", "paragraph"].includes(field.fieldType);
 
   return (
-    <div
-      onClick={onClick}
-      className={`cursor-pointer rounded-lg p-4 transition-all border-2 ${
-        isSelected
-          ? "border-primary bg-primary/5 shadow-sm"
-          : "border-transparent hover:border-border hover:bg-muted/20"
-      }`}
-      data-testid={`preview-field-${field.id}`}
-    >
-      {!isDecorative && (
-        <label className="block text-sm font-medium mb-1.5">
-          {field.label}
-          {field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
-        </label>
-      )}
-      {!isDecorative && field.helpText && (
-        <p className="text-xs text-muted-foreground mb-2">{field.helpText}</p>
-      )}
-      {renderInput()}
+    <div className="relative group">
+      {isDropTarget && <div className="absolute -top-1 left-2 right-2 h-0.5 bg-primary rounded-full z-10" />}
+      <div
+        draggable={!!onDragStart}
+        onDragStart={onDragStart}
+        onDragOver={onDragOver}
+        onDragEnd={onDragEnd}
+        onDrop={onDrop}
+        onClick={onClick}
+        className={`cursor-pointer rounded-lg p-4 transition-all border-2 ${
+          isDragging ? "opacity-40 scale-[0.98]" : ""
+        } ${
+          isSelected
+            ? "border-primary bg-primary/5 shadow-sm"
+            : "border-transparent hover:border-border hover:bg-muted/20"
+        }`}
+        data-testid={`preview-field-${field.id}`}
+      >
+        <div className="flex items-start gap-2">
+          <div className="flex flex-col items-center gap-0.5 pt-0.5 invisible group-hover:visible flex-shrink-0">
+            <GripVertical className="h-4 w-4 text-muted-foreground/50 cursor-grab active:cursor-grabbing" />
+            {onMoveUp && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onMoveUp(); }}
+                disabled={!canMoveUp}
+                className={`p-0.5 rounded transition-colors ${canMoveUp ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/20"}`}
+                data-testid={`button-move-up-${field.id}`}
+              >
+                <ArrowUp className="h-3 w-3" />
+              </button>
+            )}
+            {onMoveDown && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onMoveDown(); }}
+                disabled={!canMoveDown}
+                className={`p-0.5 rounded transition-colors ${canMoveDown ? "text-muted-foreground hover:text-foreground" : "text-muted-foreground/20"}`}
+                data-testid={`button-move-down-${field.id}`}
+              >
+                <ArrowDown className="h-3 w-3" />
+              </button>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            {!isDecorative && (
+              <label className="block text-sm font-medium mb-1.5">
+                {field.label}
+                {field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+              </label>
+            )}
+            {!isDecorative && field.helpText && (
+              <p className="text-xs text-muted-foreground mb-2">{field.helpText}</p>
+            )}
+            {renderInput()}
+          </div>
+        </div>
+      </div>
     </div>
   );
 }
@@ -779,6 +831,30 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
       const [moved] = newOrder.splice(dragIdx, 1);
       newOrder.splice(targetIdx, 0, moved);
       reorderMutation.mutate(newOrder.map(f => f.id));
+    }
+    setDragIdx(null);
+    setDragOverIdx(null);
+  };
+
+  const moveField = (fromIdx: number, toIdx: number) => {
+    if (toIdx < 0 || toIdx >= sortedFields.length) return;
+    const newOrder = [...sortedFields];
+    const [moved] = newOrder.splice(fromIdx, 1);
+    newOrder.splice(toIdx, 0, moved);
+    reorderMutation.mutate(newOrder.map(f => f.id));
+  };
+
+  const handlePreviewDragStart = (idx: number) => { setDragIdx(idx); setDragOverIdx(idx); };
+  const handlePreviewDragOver = (e: React.DragEvent, idx: number) => {
+    e.preventDefault();
+    e.dataTransfer.dropEffect = "move";
+    setDragOverIdx(idx);
+  };
+  const handlePreviewDrop = (e: React.DragEvent, targetIdx: number) => {
+    e.preventDefault();
+    if (dragIdx === null) { setDragIdx(null); setDragOverIdx(null); return; }
+    if (dragIdx !== targetIdx) {
+      moveField(dragIdx, targetIdx);
     }
     setDragIdx(null);
     setDragOverIdx(null);
@@ -1006,7 +1082,7 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
                     </div>
                   ) : (
                     <div className="flex flex-wrap -mx-2">
-                      {sortedFields.map(field => {
+                      {sortedFields.map((field, idx) => {
                         const colWidth = (field.layoutJson as any)?.columnWidth ?? "full";
                         const widthClass = colWidth === "half" ? "w-1/2" : colWidth === "third" ? "w-1/3" : "w-full";
                         return (
@@ -1015,6 +1091,16 @@ function FormBuilderView({ formId, onBack }: { formId: number; onBack: () => voi
                               field={field}
                               isSelected={selectedFieldId === field.id}
                               onClick={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
+                              onMoveUp={() => moveField(idx, idx - 1)}
+                              onMoveDown={() => moveField(idx, idx + 1)}
+                              canMoveUp={idx > 0}
+                              canMoveDown={idx < sortedFields.length - 1}
+                              onDragStart={() => handlePreviewDragStart(idx)}
+                              onDragOver={(e) => handlePreviewDragOver(e, idx)}
+                              onDragEnd={handleDragEnd}
+                              onDrop={(e) => handlePreviewDrop(e, idx)}
+                              isDragging={dragIdx === idx}
+                              isDropTarget={dragOverIdx === idx && dragIdx !== null && dragIdx !== idx}
                             />
                           </div>
                         );

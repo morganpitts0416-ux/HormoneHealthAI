@@ -17,7 +17,7 @@ import {
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
-  Link2, Clock, Building2,
+  Link2, Clock, Building2, Eye,
 } from "lucide-react";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -1317,9 +1317,17 @@ export default function PatientProfiles() {
     },
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'form-assignments'] });
-      if (data.formUrl) {
+      if (data.method === "email") {
+        toast({ title: "Form sent via email", description: `Email sent to ${selectedPatient?.email || "patient"}` });
+      } else if (data.method === "email_skipped") {
+        if (data.formUrl) navigator.clipboard.writeText(data.formUrl);
+        toast({ title: "Email not configured", description: "Link copied to clipboard instead. Set up email integration to send directly.", variant: "destructive" });
+      } else if (data.method === "email_failed") {
+        if (data.formUrl) navigator.clipboard.writeText(data.formUrl);
+        toast({ title: "Email failed to send", description: "Link copied to clipboard instead.", variant: "destructive" });
+      } else if (data.formUrl) {
         navigator.clipboard.writeText(data.formUrl);
-        toast({ title: data.method === "email" ? "Form sent via email and link copied" : "Form link copied to clipboard" });
+        toast({ title: "Form link copied to clipboard" });
       } else {
         toast({ title: "Form link sent" });
       }
@@ -2715,18 +2723,33 @@ export default function PatientProfiles() {
                                     <Clock className="h-2.5 w-2.5 mr-1" />Awaiting Patient
                                   </Badge>
                                   {selectedPatient?.email && (
-                                    <Button size="sm" variant="outline" className="text-xs h-7"
+                                    <Button size="sm" variant="outline" className="text-xs"
                                       onClick={() => sendFormLinkMutation.mutate({ patientId: selectedPatient!.id, formId: assignment.formId, method: "email" })}
                                       disabled={sendFormLinkMutation.isPending}
                                       data-testid={`button-send-form-email-${assignment.id}`}>
-                                      <Mail className="h-3 w-3 mr-1" /> Email
+                                      <Send className="h-3 w-3 mr-1" /> Send Email
                                     </Button>
                                   )}
-                                  <Button size="sm" variant="outline" className="text-xs h-7"
+                                  <Button size="sm" variant="outline" className="text-xs"
                                     onClick={() => sendFormLinkMutation.mutate({ patientId: selectedPatient!.id, formId: assignment.formId, method: "link" })}
                                     disabled={sendFormLinkMutation.isPending}
                                     data-testid={`button-copy-form-link-${assignment.id}`}>
-                                    <Link2 className="h-3 w-3 mr-1" /> Copy Link
+                                    <Copy className="h-3 w-3 mr-1" /> Copy Link
+                                  </Button>
+                                  <Button size="sm" variant="outline" className="text-xs"
+                                    onClick={() => {
+                                      const newTab = window.open("about:blank", "_blank");
+                                      sendFormLinkMutation.mutate({ patientId: selectedPatient!.id, formId: assignment.formId, method: "link" }, {
+                                        onSuccess: (data: any) => {
+                                          if (data.formUrl && newTab) { newTab.location.href = data.formUrl; }
+                                          else if (data.formUrl) { window.open(data.formUrl, "_blank"); }
+                                        },
+                                        onError: () => { if (newTab) newTab.close(); }
+                                      });
+                                    }}
+                                    disabled={sendFormLinkMutation.isPending}
+                                    data-testid={`button-fill-in-clinic-${assignment.id}`}>
+                                    <Eye className="h-3 w-3 mr-1" /> Fill In Clinic
                                   </Button>
                                 </div>
                               </div>
@@ -2774,7 +2797,7 @@ export default function PatientProfiles() {
 
               {/* Assign Form Dialog */}
               <Dialog open={showAssignFormDialog} onOpenChange={setShowAssignFormDialog}>
-                <DialogContent>
+                <DialogContent className="max-w-lg">
                   <DialogHeader>
                     <DialogTitle>Assign Form to Patient</DialogTitle>
                   </DialogHeader>
@@ -2782,51 +2805,70 @@ export default function PatientProfiles() {
                     <p className="text-sm text-muted-foreground">
                       Select a form to assign to {selectedPatient?.firstName} {selectedPatient?.lastName}. They will see it in their portal and can also receive it via email.
                     </p>
-                    <ScrollArea className="h-64">
-                      <div className="space-y-1.5">
+                    <ScrollArea className="h-72">
+                      <div className="space-y-2 pr-2">
                         {availableForms.length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-6">No forms created yet. Create one from the Forms page.</p>
                         )}
                         {availableForms.map((form: any) => {
                           const alreadyPending = patientFormAssignments.some((a: any) => a.formId === form.id && a.status === "pending");
                           return (
-                            <div key={form.id} className="flex items-center justify-between gap-2 p-2.5 rounded-md border" data-testid={`assign-form-option-${form.id}`}>
-                              <div className="min-w-0">
-                                <p className="text-sm font-medium truncate">{form.name}</p>
-                                <p className="text-xs text-muted-foreground">{form.category} · {form.status}</p>
+                            <div key={form.id} className="rounded-md border p-3 space-y-2" data-testid={`assign-form-option-${form.id}`}>
+                              <div className="flex items-start justify-between gap-3">
+                                <div className="min-w-0">
+                                  <p className="text-sm font-medium">{form.name}</p>
+                                  <p className="text-xs text-muted-foreground mt-0.5">{form.category} · {form.status}</p>
+                                </div>
+                                {alreadyPending && (
+                                  <Badge variant="outline" className="text-xs text-amber-600 flex-shrink-0">Already assigned</Badge>
+                                )}
                               </div>
-                              <div className="flex items-center gap-1.5 flex-shrink-0">
-                                {alreadyPending ? (
-                                  <Badge variant="outline" className="text-xs text-amber-600">Already assigned</Badge>
-                                ) : (
-                                  <>
-                                    <Button size="sm" className="text-xs h-7"
+                              {!alreadyPending && (
+                                <div className="flex items-center gap-2 flex-wrap">
+                                  <Button size="sm" className="text-xs"
+                                    onClick={() => {
+                                      if (selectedPatient) {
+                                        assignFormMutation.mutate({ patientId: selectedPatient.id, formId: form.id });
+                                        setShowAssignFormDialog(false);
+                                      }
+                                    }}
+                                    disabled={assignFormMutation.isPending}
+                                    data-testid={`button-assign-form-${form.id}`}>
+                                    <Plus className="h-3 w-3 mr-1" /> Assign
+                                  </Button>
+                                  {selectedPatient?.email && (
+                                    <Button size="sm" variant="outline" className="text-xs"
                                       onClick={() => {
                                         if (selectedPatient) {
-                                          assignFormMutation.mutate({ patientId: selectedPatient.id, formId: form.id });
+                                          sendFormLinkMutation.mutate({ patientId: selectedPatient.id, formId: form.id, method: "email" });
                                           setShowAssignFormDialog(false);
                                         }
                                       }}
-                                      disabled={assignFormMutation.isPending}
-                                      data-testid={`button-assign-form-${form.id}`}>
-                                      <Plus className="h-3 w-3 mr-1" /> Assign
+                                      disabled={sendFormLinkMutation.isPending}
+                                      data-testid={`button-assign-send-email-${form.id}`}>
+                                      <Send className="h-3 w-3 mr-1" /> Send Email
                                     </Button>
-                                    {selectedPatient?.email && (
-                                      <Button size="sm" variant="outline" className="text-xs h-7"
-                                        onClick={() => {
-                                          if (selectedPatient) {
-                                            sendFormLinkMutation.mutate({ patientId: selectedPatient.id, formId: form.id, method: "email" });
+                                  )}
+                                  <Button size="sm" variant="outline" className="text-xs"
+                                    onClick={() => {
+                                      if (selectedPatient) {
+                                        const newTab = window.open("about:blank", "_blank");
+                                        sendFormLinkMutation.mutate({ patientId: selectedPatient.id, formId: form.id, method: "link" }, {
+                                          onSuccess: (data: any) => {
+                                            if (data.formUrl && newTab) { newTab.location.href = data.formUrl; }
+                                            else if (data.formUrl) { window.open(data.formUrl, "_blank"); }
                                             setShowAssignFormDialog(false);
-                                          }
-                                        }}
-                                        disabled={sendFormLinkMutation.isPending}
-                                        data-testid={`button-assign-send-email-${form.id}`}>
-                                        <Mail className="h-3 w-3 mr-1" /> Email
-                                      </Button>
-                                    )}
-                                  </>
-                                )}
-                              </div>
+                                          },
+                                          onError: () => { if (newTab) newTab.close(); }
+                                        });
+                                      }
+                                    }}
+                                    disabled={sendFormLinkMutation.isPending}
+                                    data-testid={`button-assign-fill-clinic-${form.id}`}>
+                                    <Eye className="h-3 w-3 mr-1" /> Fill In Clinic
+                                  </Button>
+                                </div>
+                              )}
                             </div>
                           );
                         })}

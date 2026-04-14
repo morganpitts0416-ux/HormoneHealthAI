@@ -3075,11 +3075,13 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
             if (!emailRes.ok) throw new Error(`Resend ${emailRes.status}`);
           } else {
             console.log("[Send Form Link] No RESEND_API_KEY — skipping email send. Link:", formUrl);
+            res.json({ success: true, method: "email_skipped", formUrl, note: "Email service not configured — link generated instead" });
+            return;
           }
           res.json({ success: true, method: "email", formUrl });
         } catch (emailErr) {
           console.error("[Send Form Link] Email error:", emailErr);
-          res.json({ success: true, method: "link_only", formUrl, note: "Email sending failed but link generated" });
+          res.json({ success: true, method: "email_failed", formUrl, note: "Email sending failed but link generated" });
         }
       } else {
         res.json({ success: true, method: "link", formUrl });
