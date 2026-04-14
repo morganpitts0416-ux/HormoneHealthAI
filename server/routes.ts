@@ -4386,10 +4386,18 @@ When a clinician says "increase vitamin D to 60-80" or "optimize vitamin D to 60
 - Only flag as uncertain_items if a word genuinely appears to be a garbled or unknown DRUG NAME that you cannot identify at all.
 - Vitamins, minerals, and standard supplements (vitamin D, vitamin B12, vitamin C, omega-3, magnesium, zinc, iron, folate, CoQ10, etc.) are NEVER uncertain — they are well-known agents. Record them in medication_changes_discussed (if a dose/supplement amount is stated) or plan_candidates (if a lab level target is stated).
 
+MEDICATION LIST CONTEXT — CRITICAL RULE:
+A clinician may recite a broad list of medications the CLINIC prescribes in general (a "formulary recitation") while teaching, presenting options, or explaining their practice. This is NOT the patient's medication list.
+PATIENT-SPECIFIC vs. GENERAL FORMULARY — how to tell the difference:
+- PATIENT-SPECIFIC (include in medications_current): "she is on X", "he takes X", "patient is currently on X", "patient's medications include X", "she's been on X for [duration]", "continues on X", "patient started X [time] ago"
+- GENERAL FORMULARY (DO NOT include in medications_current): a rapid succession of 8+ medications spanning unrelated drug classes; "we prescribe X", "we use X", "patients at our clinic are on X"; any list covering treatments across many unrelated conditions simultaneously
+- DECISIVE TEST: If more than 8-10 medications across 4+ unrelated drug classes are listed in a short span with no "patient takes" framing, treat the entire list as a FORMULARY DISCUSSION — put NONE of those as medications_current. The patient's actual medications will be mentioned separately with explicit attribution.
+- When formulary medications ARE also explicitly stated as patient-specific (e.g., "she's on spironolactone" after a general list), ONLY THEN add them to medications_current.
+
 MEDICATION TENSE & INTENT — CRITICAL RULE:
 You MUST distinguish between what the patient is CURRENTLY taking vs what the clinician is RECOMMENDING they begin:
 - medications_current = medications the patient is already taking RIGHT NOW at the time of the visit
-  → Triggered by: "she is on", "he takes", "currently taking", "has been on", "patient is on", "continues on", "she's been on for X weeks/months"
+  → Triggered by: "she is on", "he takes", "currently taking", "has been on", "patient is on", "continues on", "she's been on for X weeks/months", "patient's medications include"
 - medication_changes_discussed = medications being RECOMMENDED, STARTED, STOPPED, ADJUSTED, or PLANNED at this visit
   → Triggered by: "I recommend starting", "we'll begin", "I'd like to add", "we'll add once", "let's start", "I'm going to start her on", "she should start", "I recommended", "plan to initiate", "we'll hold off on X until Y"
 EXAMPLES:
@@ -4399,6 +4407,13 @@ EXAMPLES:
   - "I said we'd consider adding testosterone later" → medication_changes_discussed only — NOT medications_current
   - "Increase vitamin D to 60-80" → plan_candidates: ["Target vitamin D (25-OH) to 60–80 ng/mL"] — NOT uncertain_items
 When in doubt, put the item in medication_changes_discussed and flag in uncertain_items — never assume a recommended drug is current.
+
+PSYCHIATRIC / SLEEP MEDICATIONS — MANDATORY DIAGNOSIS INFERENCE RULE:
+When a patient's medications_current includes any psychiatric or sleep medication, you MUST include the corresponding condition in diagnoses_discussed or assessment_candidates:
+- Antidepressants (vortioxetine/Trintellix, sertraline/Zoloft, fluoxetine/Prozac, escitalopram/Lexapro, venlafaxine/Effexor, duloxetine/Cymbalta, bupropion/Wellbutrin, mirtazapine/Remeron, nortriptyline, amitriptyline): Add "Major depressive disorder" or "Anxiety disorder" — use the stated indication if known
+- Trazodone: Add "Insomnia" and/or "Depressive disorder" as assessment_candidates
+- Benzodiazepines (alprazolam, lorazepam, clonazepam): Add "Anxiety disorder" to diagnoses_discussed
+- Sleep aids (zolpidem, eszopiclone, suvorexant): Add "Insomnia" to diagnoses_discussed
 
 DRUG CLASS NAMES — CRITICAL RULE:
 When a DRUG CLASS is mentioned (e.g., "GLP-1", "statin", "SSRI", "progesterone") without naming a specific drug:
@@ -5239,10 +5254,18 @@ When a clinician says "increase vitamin D to 60-80" or "optimize vitamin D to 60
 - Only flag as uncertain_items if a word genuinely appears to be a garbled or unknown DRUG NAME that you cannot identify at all.
 - Vitamins, minerals, and standard supplements (vitamin D, vitamin B12, vitamin C, omega-3, magnesium, zinc, iron, folate, CoQ10, etc.) are NEVER uncertain — they are well-known agents. Record them in medication_changes_discussed (if a dose/supplement amount is stated) or plan_candidates (if a lab level target is stated).
 
+MEDICATION LIST CONTEXT — CRITICAL RULE:
+A clinician may recite a broad list of medications the CLINIC prescribes in general (a "formulary recitation") while teaching, presenting options, or explaining their practice. This is NOT the patient's medication list.
+PATIENT-SPECIFIC vs. GENERAL FORMULARY — how to tell the difference:
+- PATIENT-SPECIFIC (include in medications_current): "she is on X", "he takes X", "patient is currently on X", "patient's medications include X", "she's been on X for [duration]", "continues on X", "patient started X [time] ago"
+- GENERAL FORMULARY (DO NOT include in medications_current): a rapid succession of 8+ medications spanning unrelated drug classes (GLP-1s, statins, ARBs, beta blockers, SSRIs, diuretics all in one breath); "we prescribe X", "we use X", "patients at our clinic are on X"; any list that covers treatments across many unrelated conditions simultaneously
+- DECISIVE TEST: If more than 8-10 medications across 4+ unrelated drug classes are listed in a short span with no "patient takes" framing, treat the entire list as a FORMULARY DISCUSSION — put NONE of those as medications_current for this patient. The patient's actual medications will be mentioned separately with explicit attribution.
+- When formulary medications ARE also explicitly stated as patient-specific (e.g., "she's on spironolactone" after a general formulary list), ONLY THEN add them to medications_current.
+
 MEDICATION TENSE & INTENT — CRITICAL RULE:
 You MUST distinguish between what the patient is CURRENTLY taking vs what the clinician is RECOMMENDING they begin:
 - medications_current = medications the patient is already taking RIGHT NOW at the time of the visit
-  → Triggered by: "she is on", "he takes", "currently taking", "has been on", "patient is on", "continues on", "she's been on for X weeks/months"
+  → Triggered by: "she is on", "he takes", "currently taking", "has been on", "patient is on", "continues on", "she's been on for X weeks/months", "patient's medications include"
 - medication_changes_discussed = medications being RECOMMENDED, STARTED, STOPPED, ADJUSTED, or PLANNED at this visit
   → Triggered by: "I recommend starting", "we'll begin", "I'd like to add", "we'll add once", "let's start", "I'm going to start her on", "she should start", "I recommended", "plan to initiate", "we'll hold off on X until Y"
 EXAMPLES:
@@ -5252,6 +5275,16 @@ EXAMPLES:
   - "I said we'd consider adding testosterone later" → medication_changes_discussed only — NOT medications_current
   - "Increase vitamin D to 60-80" → plan_candidates: ["Target vitamin D (25-OH) to 60–80 ng/mL"] — NOT uncertain_items
 When in doubt, put the item in medication_changes_discussed and flag in uncertain_items — never assume a recommended drug is current.
+
+PSYCHIATRIC / SLEEP MEDICATIONS — MANDATORY DIAGNOSIS INFERENCE RULE:
+When a patient's medications_current includes any psychiatric or sleep medication, you MUST include the corresponding condition in diagnoses_discussed or assessment_candidates:
+- Antidepressants (SSRIs: sertraline, fluoxetine, escitalopram, citalopram; SNRIs: venlafaxine, duloxetine, desvenlafaxine; others: vortioxetine/Trintellix, bupropion, mirtazapine, nortriptyline, amitriptyline): Add "Major depressive disorder" or "Anxiety disorder" or "Depression/anxiety" — use the stated indication if known, otherwise add both as assessment_candidates
+- Trazodone: Add "Insomnia" and/or "Depression" as assessment_candidates (trazodone is used for both)
+- Benzodiazepines (alprazolam, lorazepam, clonazepam, diazepam): Add "Anxiety disorder" to diagnoses_discussed
+- Sleep aids (zolpidem, eszopiclone, suvorexant, lemborexant, ramelteon): Add "Insomnia" to diagnoses_discussed
+- Spironolactone (without cardiac/HTN context): Add "Acne" or "PCOS" or "Hirsutism" as assessment_candidates
+- Naltrexone/LDN: Add the probable indication (AUD, immune, weight management) as assessment_candidates if not stated
+This rule is MANDATORY — these medications imply underlying conditions that MUST be documented.
 
 DRUG CLASS NAMES — CRITICAL RULE:
 When a DRUG CLASS is mentioned (e.g., "GLP-1", "statin", "SSRI", "progesterone") without naming a specific drug:
@@ -5740,6 +5773,19 @@ PLAN — Write as precise clinical orders, not conversation summaries:
 - Document patient education: "Patient counseled on [specific topic]" — specify what was discussed
 - Avoid vague entries: never write "continue treatment" — always specify which treatment and what the parameters are
 
+MEDICATION-IMPLIED PMH — MANDATORY RULE:
+When the patient's current medications include any of the following, you MUST document the corresponding condition in Past Medical Hx AND include it as a numbered Assessment/Plan item if it was discussed or is the indication for the medication:
+- Antidepressants (vortioxetine/Trintellix, sertraline/Zoloft, fluoxetine/Prozac, escitalopram/Lexapro, citalopram/Celexa, venlafaxine/Effexor, desvenlafaxine/Pristiq, duloxetine/Cymbalta, bupropion/Wellbutrin, mirtazapine/Remeron, nortriptyline, amitriptyline): Include "Depression" and/or "Anxiety disorder" in PMH. If the specific indication was stated (anxiety vs. depression), use the stated indication.
+- Trazodone: Include "Insomnia" in PMH. If also used for depression, include "Depressive disorder" as well.
+- Benzodiazepines (alprazolam, lorazepam, clonazepam): Include "Anxiety disorder" in PMH.
+- Sleep aids (zolpidem, eszopiclone, suvorexant, lemborexant): Include "Insomnia" in PMH.
+- Mood stabilizers (lithium, lamotrigine/Lamictal, quetiapine/Seroquel): Include the relevant psychiatric diagnosis in PMH.
+- Spironolactone (in a female patient without documented cardiac/HTN indication): Include "Acne" or "PCOS" or "Androgen excess" in PMH based on context.
+CRITICAL: Failure to document anxiety, depression, or insomnia when their medications are present is a clinical documentation error. These diagnoses MUST appear in Past Medical Hx even if the visit was primarily for another reason (e.g., hormone optimization). They are part of the complete patient picture.
+
+COMPLETE MEDICATION DOCUMENTATION RULE:
+ALL medications explicitly listed in medications_current must appear in the SOAP note — either in the HPI (as ongoing treatment context) or in the Care Plan. No patient medication may be silently omitted. If a medication's inclusion in the current visit discussion is unclear, list it in the HPI with "Patient continues [medication] for [condition as known from PMH or context]."
+
 GENERAL PROSE STANDARDS:
 - Write in third person; Subjective section uses past tense (what patient reported); Assessment/Plan use present tense for status and imperative for orders
 - Use standard medical abbreviations where appropriate: SQ, PO, BID, TID, PRN, GLP-1, HRT, TRT, A1c, CVD, HTN, T2DM, SHBG, FSH, LH, CBC, CMP, LFTs, etc.
@@ -5788,7 +5834,7 @@ HPI: [clinically complete history — visit context, duration of current treatme
 
 Medical History:
 - Allergies: [if mentioned, else "Not reported at this visit"]
-- Past Medical Hx: [if mentioned]
+- Past Medical Hx: [list all mentioned conditions PLUS any conditions implied by current medications — see MEDICATION-IMPLIED PMH rule below]
 - Past Surgical Hx: [if mentioned]
 - Social Hx: [if mentioned]
 - Family Hx: [if mentioned]

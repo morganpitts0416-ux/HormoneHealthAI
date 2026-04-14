@@ -224,15 +224,34 @@ export const LEXICONS: Record<LexiconGroup, string[]> = {
     "escitalopram", "Lexapro",
     "citalopram", "Celexa",
     "venlafaxine", "Effexor",
+    "desvenlafaxine", "Pristiq",
     "duloxetine", "Cymbalta",
+    "levomilnacipran", "Fetzima",
+    "vilazodone", "Viibryd",
+    "vortioxetine", "Trintellix",
     "mirtazapine", "Remeron",
+    "trazodone", "Desyrel",
+    "nefazodone", "Serzone",
     "buspirone", "Buspar",
+    "hydroxyzine", "Vistaril", "Atarax",
     "alprazolam", "Xanax",
     "lorazepam", "Ativan",
     "clonazepam", "Klonopin",
+    "diazepam", "Valium",
     "zolpidem", "Ambien",
+    "eszopiclone", "Lunesta",
+    "suvorexant", "Belsomra",
+    "lemborexant", "Dayvigo",
+    "ramelteon", "Rozerem",
+    "quetiapine", "Seroquel",
+    "aripiprazole", "Abilify",
+    "lithium", "lithium carbonate",
+    "lamotrigine", "Lamictal",
     "gabapentin", "Neurontin",
     "pregabalin", "Lyrica",
+    "amitriptyline", "Elavil",
+    "nortriptyline", "Pamelor",
+    "imipramine", "Tofranil",
 
     // Erectile dysfunction / BPH
     "sildenafil", "Viagra",
@@ -583,11 +602,27 @@ Examples of speech-to-text errors to correct:
 ── Psychiatric / pain / other ──
 - "boo pro pi on" or "byoo pro pee on" or "byu pro pee on" → "bupropion"
 - "ser tra line" or "sert ra leen" or "ser tra leen" → "sertraline"
+- "flu ox e teen" or "floo ox eh teen" → "fluoxetine"
 - "es cit a lo pram" or "es sit a lo pram" → "escitalopram"
+- "sit a lo pram" or "sit al o pram" → "citalopram"
 - "ven la fax een" or "ven la fax in" → "venlafaxine"
+- "des ven la fax een" or "des ven la fax in" → "desvenlafaxine"
 - "dul ox e teen" or "dull ox e teen" → "duloxetine"
+- "vor tee ox e teen" or "vor ti ox e teen" or "vortee ox a teen" or "Trintelex" or "Trin te lex" or "Trinta lex" or "Trin tel ix" or "trin tel ex" → "Trintellix (vortioxetine)"
+- "mir taz a peen" or "mir taz a pin" → "mirtazapine"
+- "tra zo done" or "tra zo doan" or "traz o doan" → "trazodone"
+- "hye drox ee zeen" or "hi drox i zeen" or "hy drox ih zeen" → "hydroxyzine"
+- "al praz o lam" or "al praz oh lam" → "alprazolam"
+- "lor az e pam" or "lor az a pam" → "lorazepam"
+- "clon az e pam" or "clon az a pam" → "clonazepam"
+- "zol pi dem" or "zolp i dem" → "zolpidem"
+- "quet i a peen" or "kwet ee a peen" or "quet eye a peen" → "quetiapine"
+- "la moe tri jeen" or "lam oh tri jeen" or "lam o try jeen" → "lamotrigine"
 - "gab a pen tin" or "gab a pen teen" → "gabapentin"
 - "prega balin" or "preg a ba lin" or "preg a ba leen" → "pregabalin"
+- "a mi trip ta leen" or "a mi trip ti leen" → "amitriptyline"
+- "nor trip ta leen" or "nor trip ti leen" → "nortriptyline"
+- "bu pro pi on" or "byoo pro pee on" → "bupropion"
 - "fin as ter ide" or "fin ass ter ide" → "finasteride"
 - "nal trex own" or "nal trex one" or "low dose nal trex one" → "naltrexone"
 - "de no su mab" or "den o sue mab" → "denosumab"
