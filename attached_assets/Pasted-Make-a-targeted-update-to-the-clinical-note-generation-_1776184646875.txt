@@ -1,0 +1,134 @@
+Make a targeted update to the clinical note-generation pipeline ONLY.
+
+IMPORTANT SCOPE CONTROL:
+Do not change anything unrelated to the specific issue described below.
+Do not refactor unrelated logic.
+Do not modify the evidence generation pipeline.
+Do not modify how evidence is retrieved, ranked, generated, attached, displayed, or populated as evidence pills on the note.
+Do not modify the UI layout for evidence pills.
+Do not modify any workflow steps that happen before or after SOAP note generation.
+Do not change the post-generation flow, note finalization flow, save flow, signing flow, or anything else downstream once the SOAP note has been generated.
+Do not change front-end behavior except where absolutely required to support this exact note-content improvement.
+This request is ONLY to improve the completeness and detail of SOAP note content, especially the HPI and capture of medically relevant details from the transcript.
+
+CURRENT PROBLEM:
+The current Whisper + GPT-4o office visit note generation is summarizing visits too aggressively and omitting medically relevant parts of the conversation. The HPI is too compressed. The note often behaves like a narrow complaint-focused summary instead of a full wellness/primary-care style office note.
+
+DESIRED OUTCOME:
+Generate clinically thorough, transcript-grounded SOAP notes that preserve medically relevant details discussed during the visit, while excluding obvious irrelevant small talk. The note should reflect a whole-patient wellness encounter even when the visit focus is hormones, menopause, weight loss, or aesthetics.
+
+REQUIRED IMPLEMENTATION:
+Change ONLY the SOAP note content-generation logic by adding a structured clinical extraction pass before SOAP generation.
+
+Required workflow for note content generation:
+Transcript/audio -> structured clinical extraction -> SOAP note generation
+
+The structured extraction step should capture and normalize all clinically relevant information mentioned in the medically relevant conversation, including:
+- chief concerns
+- symptoms discussed
+- current medications
+- supplements
+- hormone therapies
+- past medical history
+- surgical history if mentioned
+- prior treatments or medication trials
+- side effects
+- allergies if mentioned
+- lifestyle factors relevant to care
+- mental health history
+- secondary concerns discussed during the visit
+- items implied by context that should be cautiously flagged for confirmation
+
+Then generate the SOAP note from BOTH:
+1. the transcript
+2. the structured extracted data
+
+HPI REQUIREMENTS:
+The HPI must become more detailed and less compressed.
+The HPI should:
+- be more thorough
+- be chronological when possible
+- preserve the clinically relevant story of the encounter
+- include secondary medically relevant concerns discussed during the visit
+- reflect what the patient actually said, not just a short generic summary
+
+Do not reduce the note to only the primary complaint.
+Do not omit relevant details just because they were mentioned casually during the encounter.
+
+WHOLE-VISIT LOGIC:
+Treat the encounter as a total wellness visit, not a narrow single-issue visit.
+Even if the visit is focused on hormones, menopause, or weight loss, the SOAP note should still capture the broader clinically relevant conversation.
+
+Examples of details that should be retained when medically relevant:
+- medications mentioned anywhere in the transcript
+- anxiety or depression history
+- sleep complaints
+- fatigue
+- constipation
+- headaches
+- palpitations
+- prior medication intolerance
+- past failed treatments
+- chronic conditions mentioned in passing
+- relevant lifestyle or mental health details
+
+Examples of details that should still be excluded:
+- clearly irrelevant small talk
+- non-medical conversation such as shoes, shopping, random social chatter with no clinical value
+
+CONTEXT CLUE REQUIREMENT:
+Use context clues better, but do not hallucinate.
+If something is strongly supported by transcript context, capture it appropriately.
+If something is implied but not explicitly confirmed, use cautious phrasing instead of omitting it.
+
+Example:
+If a patient says she takes Lexapro, the system should:
+- include Lexapro in current medications
+- capture anxiety/depression history if supported by transcript context
+- if diagnosis is implied but not explicitly confirmed, phrase cautiously, such as:
+  “history suggestive of anxiety/depression based on Lexapro use; confirm diagnosis”
+
+MEDICATION CAPTURE REQUIREMENT:
+Medication detection must scan the full medically relevant transcript, not just a medication section.
+If a medication is mentioned anywhere in relevant conversation, it should be considered for:
+- current medications
+- prior medication trials
+- assessment context
+- plan context
+
+Use transcript context to help resolve likely medication names and indications.
+
+STRICT NON-GOALS:
+Do NOT change evidence generation.
+Do NOT change evidence pill creation or display.
+Do NOT change how the evidence is generated at the same time as the SOAP note.
+Do NOT change anything about the clinician view that shows SOAP plus evidence pills together.
+Do NOT change the sequence or flow after SOAP note generation.
+Do NOT change signing workflow.
+Do NOT change save workflow.
+Do NOT change note status workflow.
+Do NOT change billing workflow.
+Do NOT change encounter workflow.
+Do NOT change transcript display tabs unless absolutely necessary for this exact note-content improvement.
+Do NOT perform unrelated cleanup or architecture refactors.
+
+IMPLEMENTATION BOUNDARY:
+This should be a minimal-scope, targeted change to the note-generation backend/service/prompting logic only.
+Preserve all existing interfaces and outputs relied on by the evidence-generation and post-generation workflow unless absolutely necessary.
+If a new intermediate extraction object is introduced, it must be internal and must not break existing downstream behavior.
+
+ACCEPTANCE CRITERIA:
+The change is correct only if all of the following are true:
+- HPI is more detailed and less compressed
+- medications mentioned casually are retained
+- medically relevant secondary concerns are retained
+- PMH, mental health history, side effects, and prior treatments are captured when discussed
+- hormone and weight-loss visits still read like complete wellness office notes
+- irrelevant small talk is excluded
+- evidence generation still works exactly as it does now
+- evidence pills still populate exactly as they do now
+- the clinician still sees SOAP + evidence pills in the same view exactly as before
+- the workflow after SOAP generation behaves exactly as before
+- no unrelated UI or workflow changes are introduced
+
+Before finishing, verify that only the SOAP note content generation was changed and that evidence generation plus downstream note workflow remain unchanged.
