@@ -84,8 +84,12 @@ CREATE TABLE IF NOT EXISTS form_fields (
   sync_config_json JSONB,
   duplicate_handling_json JSONB,
   order_index INTEGER NOT NULL DEFAULT 0,
-  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+-- Ensure smart_field_key exists if table was previously created without it
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS smart_field_key VARCHAR(60);
+ALTER TABLE form_fields ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP NOT NULL DEFAULT NOW();
 
 -- 7. Table: form_publications
 CREATE TABLE IF NOT EXISTS form_publications (
@@ -130,12 +134,14 @@ CREATE TABLE IF NOT EXISTS form_submissions (
   status VARCHAR(20) NOT NULL DEFAULT 'submitted',
   submitted_at TIMESTAMP NOT NULL DEFAULT NOW(),
   expires_at TIMESTAMP,
-  reviewed_at TIMESTAMP,
-  reviewed_by INTEGER REFERENCES users(id),
-  responses_json JSONB NOT NULL DEFAULT '{}',
-  patient_signature TEXT,
-  staff_signature TEXT,
-  metadata_json JSONB,
+  raw_submission_json JSONB NOT NULL DEFAULT '{}',
+  normalized_submission_json JSONB,
+  signature_json JSONB,
+  review_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  sync_status VARCHAR(20) NOT NULL DEFAULT 'not_synced',
+  sync_summary_json JSONB,
+  submitter_name TEXT,
+  submitter_email TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );

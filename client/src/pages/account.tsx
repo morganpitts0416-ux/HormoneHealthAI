@@ -807,7 +807,10 @@ export default function Account() {
         clinicalRole: providerInviteClinicalRole,
         adminRole: providerInviteAdminRole,
       });
-      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to send invite"); }
+      if (!res.ok) {
+        const e = await res.json();
+        throw new Error(e.message || "Failed to send invite");
+      }
       return res.json();
     },
     onSuccess: () => {
@@ -821,7 +824,7 @@ export default function Account() {
       refetchInvites();
     },
     onError: (err: Error) => {
-      toast({ title: "Invite failed", description: err.message, variant: "destructive" });
+      toast({ title: "Failed to invite provider", description: err.message, variant: "destructive", duration: 8000 });
     },
   });
 
