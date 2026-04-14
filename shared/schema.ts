@@ -602,8 +602,10 @@ export const clinicianStaff = pgTable("clinician_staff", {
   email: varchar("email", { length: 255 }).notNull().unique(),
   firstName: varchar("first_name", { length: 100 }).notNull(),
   lastName: varchar("last_name", { length: 100 }).notNull(),
-  // 'nurse' | 'assistant' | 'staff'
+  // 'nurse' | 'assistant' | 'staff' | 'provider' — clinical role
   role: varchar("role", { length: 50 }).notNull().default("staff"),
+  // 'owner' | 'admin' | 'limited_admin' | 'standard' — administrative role
+  adminRole: varchar("admin_role", { length: 30 }).notNull().default("standard"),
   passwordHash: varchar("password_hash", { length: 255 }),
   inviteToken: varchar("invite_token", { length: 255 }),
   inviteExpires: timestamp("invite_expires"),

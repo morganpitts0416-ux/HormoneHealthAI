@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
@@ -1280,6 +1281,10 @@ export default function PatientProfiles() {
     enabled: !!selectedPatient,
   });
 
+  const { data: clinicProviders = [] } = useQuery<any[]>({
+    queryKey: ['/api/clinic/providers'],
+  });
+
   const { data: patientFormAssignments = [] } = useQuery<any[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'form-assignments'],
     queryFn: async () => {
@@ -1550,13 +1555,17 @@ export default function PatientProfiles() {
     const dob = selectedPatient.dateOfBirth
       ? new Date(selectedPatient.dateOfBirth as unknown as string).toISOString().split("T")[0]
       : "";
+    // Default primary provider to clinic owner if not set
+    const existingProvider = (selectedPatient as any).primaryProvider ?? "";
+    const ownerProvider = (clinicProviders as any[]).find((p: any) => p.isOwner);
+    const defaultProvider = existingProvider || (ownerProvider ? ownerProvider.displayName : "");
     setEditPatientForm({
       firstName: selectedPatient.firstName,
       lastName: selectedPatient.lastName,
       email: (selectedPatient as any).email ?? "",
       dateOfBirth: dob,
       phone: (selectedPatient as any).phone ?? "",
-      primaryProvider: (selectedPatient as any).primaryProvider ?? "",
+      primaryProvider: defaultProvider,
     });
     setShowEditPatient(true);
   };
@@ -3014,14 +3023,32 @@ export default function PatientProfiles() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-provider">Primary Provider</Label>
-              <Input
-                id="edit-provider"
-                placeholder="e.g. Dr. Smith, NP Jones"
-                value={editPatientForm.primaryProvider}
-                onChange={e => setEditPatientForm(f => ({ ...f, primaryProvider: e.target.value }))}
-                data-testid="input-edit-patient-provider"
-              />
-              <p className="text-xs text-muted-foreground">Assign a provider name for multi-provider clinics</p>
+              {clinicProviders.length > 1 ? (
+                <Select
+                  value={editPatientForm.primaryProvider}
+                  onValueChange={v => setEditPatientForm(f => ({ ...f, primaryProvider: v }))}
+                >
+                  <SelectTrigger id="edit-provider" data-testid="select-edit-patient-provider">
+                    <SelectValue placeholder="Select a provider" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(clinicProviders as any[]).map((p: any) => (
+                      <SelectItem key={p.id} value={p.displayName}>
+                        {p.displayName}{p.isOwner ? " (Owner)" : ""}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              ) : (
+                <Input
+                  id="edit-provider"
+                  value={editPatientForm.primaryProvider}
+                  readOnly
+                  className="bg-muted/40 cursor-default"
+                  data-testid="input-edit-patient-provider"
+                />
+              )}
+              <p className="text-xs text-muted-foreground">Defaults to clinic owner. Will become a dropdown when multiple providers are in the clinic.</p>
             </div>
           </div>
           <DialogFooter className="gap-2">

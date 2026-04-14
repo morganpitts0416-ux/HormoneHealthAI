@@ -3284,7 +3284,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.post("/api/staff", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = (req.user as any).id;
-      const { email, firstName, lastName, role } = req.body;
+      const { email, firstName, lastName, role, adminRole } = req.body;
       if (!email || !firstName || !lastName) {
         return res.status(400).json({ message: "email, firstName, and lastName are required" });
       }
@@ -3298,12 +3298,14 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const inviteToken = crypto.randomBytes(32).toString('hex');
       const inviteExpires = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
 
+      const validAdminRoles = ["standard", "limited_admin", "admin"];
       const staffMember = await storage.createClinicianStaff({
         clinicianId,
         email: email.trim().toLowerCase(),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
         role: role || 'staff',
+        adminRole: validAdminRoles.includes(adminRole) ? adminRole : "standard",
         inviteToken,
         inviteExpires,
         isActive: true,
@@ -3346,6 +3348,57 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     } catch (error) {
       console.error('[API] Error deleting staff:', error);
       res.status(500).json({ message: "Failed to remove staff member" });
+    }
+  });
+
+  // GET /api/clinic/providers — list all providers/clinicians associated with the current user's clinic
+  // Used to populate provider assignment dropdowns throughout the app
+  app.get("/api/clinic/providers", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const clinicianId = getClinicianId(req);
+
+      if (clinicId) {
+        // Multi-provider clinic: return all clinic members with a clinical role
+        const members = await storageDb
+          .select({
+            userId: clinicMemberships.userId,
+            clinicalRole: clinicMemberships.clinicalRole,
+            adminRole: clinicMemberships.adminRole,
+            firstName: usersTable.firstName,
+            lastName: usersTable.lastName,
+            title: usersTable.title,
+            npi: usersTable.npi,
+          })
+          .from(clinicMemberships)
+          .innerJoin(usersTable, eq(clinicMemberships.userId, usersTable.id))
+          .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.isActive, true)))
+          .orderBy(clinicMemberships.adminRole); // owners first
+
+        const providers = members.map(m => ({
+          id: m.userId,
+          displayName: `${m.title ? m.title + " " : ""}${m.firstName} ${m.lastName}`.trim(),
+          clinicalRole: m.clinicalRole,
+          adminRole: m.adminRole,
+          isOwner: m.adminRole === "owner",
+        }));
+
+        return res.json(providers);
+      }
+
+      // Solo: just return the current clinician
+      const me = await storage.getUserById(clinicianId);
+      if (!me) return res.json([]);
+      return res.json([{
+        id: me.id,
+        displayName: `${me.title ? me.title + " " : ""}${me.firstName} ${me.lastName}`.trim(),
+        clinicalRole: "provider",
+        adminRole: "owner",
+        isOwner: true,
+      }]);
+    } catch (err) {
+      console.error("[API] Error fetching clinic providers:", err);
+      res.status(500).json({ message: "Failed to fetch providers" });
     }
   });
 
