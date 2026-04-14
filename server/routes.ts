@@ -13,6 +13,7 @@ import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
+import { runEnhancedSoapPipeline } from "./soap-pipeline";
 import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
@@ -5317,7 +5318,6 @@ Return ONLY the JSON array, no explanation.`;
 
       // ── PIPELINE STEP 2: Extract clinical facts (always fresh) ────────────
       let freshExtraction: any = null;
-      let extractionContext = "";
       try {
         const extractInput = wasNormalized
           ? diarized.map((u: any) => `[ID:${u.id}] ${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
@@ -5464,7 +5464,6 @@ Return this exact JSON structure (all arrays, even if empty):
         if (freshExtraction.red_flags?.length)                   exLines.push(`Red flags noted: ${freshExtraction.red_flags.join("; ")}`);
         if (freshExtraction.uncertain_items?.length)             exLines.push(`Uncertain/unresolved: ${freshExtraction.uncertain_items.join("; ")}`);
         if (freshExtraction.context_inferred_items?.length)      exLines.push(`Context-inferred (confirm with patient): ${freshExtraction.context_inferred_items.join("; ")}`);
-        if (exLines.length) extractionContext = `\n\nSTRUCTURED CLINICAL EXTRACTION (verified from transcript):\n${exLines.join('\n')}`;
       } catch (extractErr) {
         console.warn("[SOAP Pipeline] Extraction failed:", extractErr);
       }
@@ -5805,256 +5804,18 @@ Return a JSON object:
         console.warn("[SOAP] Medication normalization skipped:", medErr);
       }
 
-      const systemPrompt = `You are an expert clinical documentation specialist for a hormone and primary care clinic. Generate a chart-ready, medically complete SOAP note.
-
-A good SOAP note is NOT a transcript summary — it is a clinical document that applies medical expertise to the encounter context to produce a complete, defensible chart entry.
-
-═══════════════════════════════════════
-PART A — CLINICAL REASONING (REQUIRED)
-═══════════════════════════════════════
-You MUST actively apply clinical knowledge. Do not merely restate what was said.
-
-ASSESSMENT — Required clinical reasoning:
-1. Propose clinically appropriate working diagnoses with ICD-10 codes. Infer diagnoses from the clinical context even if the clinician did not verbatim state them.
-   DIAGNOSIS LINE FORMAT: Write each diagnosis as "N. Diagnosis Name (ICD-10)" — do NOT prefix with qualifiers like "Probable", "Possible", "Working diagnosis of", "Likely", or "Confirmed". If clinical uncertainty exists, address it in the supporting reasoning below the diagnosis line, not on the diagnosis line itself.
-   Examples of what the diagnosis line is inferred from:
-   - Patient on semaglutide, tirzepatide, Ozempic, Wegovy, Mounjaro, or Zepbound → ALWAYS include obesity (E66.9) or overweight (E66.3) as a primary diagnosis, plus any metabolic comorbidities evident from context
-   - Weight loss follow-up visit → Include E66.9/E66.3, weight management, and metabolic risk assessment regardless of whether "obesity" was spoken aloud
-   - Testosterone therapy follow-up → Include hypogonadism (male: E29.1; female: E28.39) or hormone optimization as primary diagnosis
-   - HRT / hormone optimization visit → Include menopause, hypogonadism, or specific hormone deficiency diagnoses as appropriate
-   - GLP-1 + metabolic syndrome indicators → Consider also: E11.x (T2DM/prediabetes), E78.x (dyslipidemia), I10 (HTN) if discussed
-   - Always include the specific condition being managed, not just "follow-up visit"
-
-BMI VALUE MENTIONED — MANDATORY WEIGHT DIAGNOSIS RULE:
-   If ANY BMI value is explicitly mentioned in the transcript or linked clinical data, you MUST generate the appropriate weight classification as a numbered assessment/plan diagnosis, regardless of whether the clinician verbally stated the diagnosis or the patient is currently on weight loss medication:
-   - BMI 18.5–24.9: Normal weight — include only if specifically relevant to the clinical discussion
-   - BMI 25.0–29.9: ALWAYS include "Overweight (E66.3)" as a numbered diagnosis
-   - BMI 30.0–34.9: ALWAYS include "Obesity, Class I (E66.01)" as a numbered diagnosis
-   - BMI 35.0–39.9: ALWAYS include "Obesity, Class II (E66.01)" as a numbered diagnosis
-   - BMI ≥40.0: ALWAYS include "Obesity, Class III — Morbid Obesity (E66.01)" as a numbered diagnosis
-   Under that diagnosis, document: the specific BMI value stated, any relevant comorbidities (elevated hs-CRP, metabolic markers, etc.), clinical rationale for weight management discussion, and the full content of any weight management counseling provided.
-
-PATIENT EDUCATION — MANDATORY FULL DOCUMENTATION RULE:
-   When the clinician provided patient education during the visit (explaining medication mechanisms, risks, benefits, alternatives, options, routes of administration, or counseling on any topic), you MUST document it in THREE places:
-   (a) HPI narrative: Include a sentence such as "Patient was counseled on [specific topic]. Patient verbalized understanding. [Patient's stated response or decision, e.g., 'Patient expressed a desire to discuss initiation with her mother prior to starting.']"
-   (b) Under the relevant numbered Assessment item: Include the FULL depth of what was discussed — specific medications compared by name, their mechanisms of action, routes of administration (oral vs. injectable), brand options discussed, risks, and benefits. Do NOT compress this to "GLP-1 options were discussed." If semaglutide vs. tirzepatide was discussed, name both, describe what was explained. If oral vs. injectable was discussed, document both options were presented.
-   (c) Under Plan for that Assessment item: "Patient counseled on [medication name(s)] — [route options discussed], [risks/benefits reviewed], [brand/generic options presented]. Patient verbalized understanding. [Patient's stated next step]."
-   CRITICAL: Do NOT summarize, condense, or omit educational discussions. If it was discussed, it must be documented in full. A note that omits clinical education is legally incomplete.
-
-PATIENT-STATED DECISIONS — MANDATORY DOCUMENTATION RULE:
-   If the patient stated any decision, intent, preference, or follow-up plan during the encounter (e.g., "I'll discuss with my mother," "I want to think about it," "I'd like to start," "I'll call when I'm ready"), document this in TWO places:
-   (a) HPI: Include the patient's stated response verbatim or in close clinical paraphrase: "Patient expressed that she would like to discuss initiating therapy with her mother prior to making a decision."
-   (b) Plan for the relevant Assessment item: "Patient will [patient's stated plan]. [Clinician-defined next step, e.g., 'Patient to contact clinic when ready to initiate. Prescription can be called in at that time.']"
-   Never omit a documented patient decision — it is a critical part of informed consent documentation.
-
-2. PLAN — Apply clinical standards of care:
-   - Document the specific medication, dose, and frequency if mentioned (e.g., "Continue semaglutide 1.0 mg weekly SQ")
-   - Include standard monitoring appropriate to the medication class:
-     * GLP-1 agonists: weight trend, GI tolerability (nausea, vomiting), dose titration schedule, A1c and glucose monitoring if applicable, cardiovascular risk reduction goals
-     * Testosterone therapy: labs at appropriate interval (CBC for erythrocytosis, lipids, PSA if male), hematocrit monitoring, dose/delivery method adjustment
-     * HRT: endometrial safety (progesterone), bone density, cardiovascular risk, symptom reassessment
-   - Include next dose titration milestone if the medication is being titrated
-   - Include referrals, labs ordered, and patient education discussed
-
-3. Apply clinical context to fill gaps with evidence-based standards:
-   - "Continue current protocol and recheck" is NOT sufficient — write what the protocol IS and what the recheck includes
-   - If BMI is not stated but patient is on a GLP-1 for weight loss: note "Weight/BMI not documented at this encounter — obtain at next visit"
-   - Always include a meaningful FOLLOW-UP interval with clinical rationale
-
-═══════════════════════════════════════
-PART B — CLINICAL WRITING QUALITY
-═══════════════════════════════════════
-Your output must read as if written by an experienced physician or advanced practice clinician with excellent documentation skills. The note should be polished, chart-ready, and signable with minimal editing. Do NOT write like a transcription bot. Synthesize — do not restate.
-
-MEDICATION NAMES — CRITICAL RULE:
-Use the medication list and diarized transcript provided — those have already been normalized by the clinical medication engine. Do NOT attempt to phonetically decode drug names yourself. If a word in the transcript looks like it might be a garbled medication name but does not appear in the provided medication list, add it to uncertain_items for clinician review. Never substitute a different medication name based on phonetic guessing — this is a patient safety issue.
-IMPORTANT EXCEPTION — LAB LEVEL TARGETS: If the transcript contains phrases like "increase vitamin D to 60-80", "optimize ferritin to 70-100", "target TSH to 1-2", or similar, the numbers represent LAB LEVEL TARGETS (goal serum levels in ng/mL, pg/mL, etc.) — NOT medication doses. Do NOT add these to uncertain_items. Instead document them in the PLAN as clinical optimization goals (e.g., "Target 25-OH vitamin D to 60–80 ng/mL"). Vitamins (D, B12, C, etc.), minerals (magnesium, zinc, iron), and standard supplements are NEVER uncertain — they are well-known agents and should never appear in uncertain_items.
-
-MEDICATION TENSE & PLACEMENT — CRITICAL RULE:
-The clinical extraction data distinguishes between "medications_current" (what the patient is already taking) and "medication_changes_discussed" (what is being recommended, started, stopped, or planned at this visit). You MUST honor this distinction:
-- medications_current → documented in HPI as ongoing treatment context ("Patient has been on tirzepatide 15mg SQ weekly for X months...")
-- medication_changes_discussed → documented in the PLAN section ONLY — NEVER presented in the HPI as if the patient is already on the medication
-- NEVER write a recommended medication as a current medication. If the clinician said "I recommended starting progesterone," the HPI must say "progesterone therapy was discussed and recommended at this visit" — NOT "patient is on progesterone"
-- If a drug CLASS name was recorded (e.g., "GLP-1 receptor agonist (class)") without a specific drug, use the class name in the SOAP — do NOT expand it to a specific drug unless one was explicitly named. Example: write "GLP-1 receptor agonist therapy" not "semaglutide/tirzepatide"
-- If both a class mention AND a specific drug are in the transcript, use the specific drug name and discard the class-only reference
-
-HPI — Write as a DETAILED, THOROUGH clinical narrative (NOT bullet points). The HPI is the clinical story of this encounter and must be comprehensive:
-
-LENGTH AND DEPTH: The HPI should be as long as the clinical conversation warrants. For a 5-minute focused visit, 3-4 sentences may suffice. For a 20-30 minute wellness encounter with multiple topics discussed, the HPI should be 2-4 full paragraphs capturing the complete clinical story. Do NOT compress a rich, multi-topic encounter into a brief summary.
-
-STRUCTURE — Build the HPI chronologically and thematically:
-Paragraph 1 — OPENING + PRIMARY CONCERN: Begin with clinical context: "[Patient] presents for [visit reason]." If gender/age are known, include them. State the primary concern, current treatment context (medication name, dose, duration, indication), patient-reported response to therapy, symptom trajectory (improving/stable/worsening), and tolerability.
-Paragraph 2 — SECONDARY CONCERNS + SYMPTOMS: Document ALL secondary medically relevant concerns discussed during the visit. If the patient mentioned anxiety, sleep issues, fatigue, constipation, headaches, palpitations, or any other symptom — include it here even if it was not the primary reason for the visit. Capture the patient's own words in clinical paraphrase.
-Paragraph 3 — MEDICATION & TREATMENT HISTORY: Document all current medications and supplements discussed, any prior medication trials and their outcomes, side effects experienced, reasons for discontinuation of prior treatments. Capture the medication story.
-Paragraph 4 — ADDITIONAL CONTEXT: Document relevant lifestyle factors (exercise, diet, sleep, stress), mental health context, patient questions, patient education provided, and patient-stated decisions or preferences.
-
-WRITING STYLE:
-- Use active clinical language: "She reports tolerating the medication well, with mild initial nausea that resolved after the first week" — NOT "she said she felt a little sick at first but it went away"
-- Weave in denied symptoms naturally: "She denies injection site reactions, vomiting, or significant GI distress."
-- Do NOT omit relevant details just because they were mentioned casually — if it was discussed and is medically relevant, it belongs in the HPI.
-- Do NOT reduce the note to only the primary complaint. This is a whole-patient wellness encounter.
-- Preserve the clinically relevant story of the encounter — what brought the patient in, what was discussed, what decisions were made, and what the patient's perspective was.
-
-ROS — Use standard clinical system format:
-- Write as: "CONSTITUTIONAL: [positive/negative findings]. CARDIOVASCULAR: [findings]. GASTROINTESTINAL: [findings]..."
-- For systems discussed and negative: "GASTROINTESTINAL: Denies nausea, vomiting, or abdominal pain."
-- Only document systems actually reviewed; write "Not reviewed at this visit" for undiscussed systems
-
-ASSESSMENT — Write as a thoughtful clinician synthesizing the visit, not a transcription bot restating bullet points:
-
-Assessment Summary paragraph (REQUIRED, appears BEFORE the numbered list):
-- Write a 2–4 sentence paragraph integrating the overall clinical picture for this visit
-- Synthesize: reason for visit, most clinically significant problems, symptom patterns or trends, relevant lab findings, response to treatment, and key monitoring needs
-- This paragraph should read as a clinician's opening synthesis — medically grounded, professional, and concise
-- BAD: "Patient was seen today for follow-up. Multiple issues were addressed."
-- GOOD: "Patient presents for routine follow-up of pharmacotherapy-assisted weight management and hormone optimization. Labs from [date] are notable for [key findings], and she reports [symptom trajectory]. Overall, her metabolic picture shows [trend], while ongoing hormone concerns including [symptoms] remain the primary drivers for today's management discussion."
-
-Each numbered Assessment/Plan item must include substantive clinical reasoning:
-- Explain WHY this diagnosis applies, its current status, and what the encounter context contributes
-- Weave in relevant symptoms, labs, medication response, or history linkages where they exist
-- Make the rationale for the plan clear — do not just list the action
-- Include monitoring or follow-up language when appropriate
-- BAD: "1. Obesity: continue medication."
-- GOOD: "1. Obesity, Class I (E66.01): Patient is actively engaged in pharmacotherapy-assisted weight management under clinical supervision. She has been on GLP-1 receptor agonist therapy for [X] weeks with [reported response to therapy]. Current management is consistent with Endocrine Society 2023 obesity pharmacotherapy guidelines; plan to continue present protocol with reassessment of dose titration at next visit based on weight trajectory and tolerability."
-- BAD: "Hyperlipidemia. Will repeat labs in 3 months."
-- GOOD: "Hyperlipidemia with persistence of atherogenic markers on prior review. Dietary efforts are ongoing and were discussed at this visit in the context of her broader cardiometabolic picture. Will continue lifestyle intervention and recheck lipid-related markers at follow-up to reassess trajectory and determine whether additional therapy is warranted."
-- Uncertainty language: use "possible," "probable," or "consistent with" if not confirmed; use "established" or "known" for documented diagnoses
-- When multiple related problems are present (e.g., insulin resistance, dyslipidemia, central adiposity, elevated hs-CRP), allow the assessment wording to reflect the broader metabolic pattern rather than treating each issue as completely isolated
-
-PLAN — Write as precise clinical orders, not conversation summaries:
-- Include drug, dose, route, and frequency for every medication: "Continue tirzepatide 5 mg SQ weekly" — NOT "continue her injection"
-- Include conditional titration: "Advance to 7.5 mg SQ weekly at next visit if current dose tolerated without dose-limiting side effects and weight loss trajectory is maintained"
-- Include specific monitoring items: "Monitor weight trend, waist circumference, GI tolerability, and injection site reactions at each visit"
-- Document patient education: "Patient counseled on [specific topic]" — specify what was discussed
-- Avoid vague entries: never write "continue treatment" — always specify which treatment and what the parameters are
-
-MEDICATION-IMPLIED PMH — MANDATORY RULE:
-When the patient's current medications include any of the following, you MUST document the corresponding condition in Past Medical Hx AND include it as a numbered Assessment/Plan item if it was discussed or is the indication for the medication:
-- Antidepressants (vortioxetine/Trintellix, sertraline/Zoloft, fluoxetine/Prozac, escitalopram/Lexapro, citalopram/Celexa, venlafaxine/Effexor, desvenlafaxine/Pristiq, duloxetine/Cymbalta, bupropion/Wellbutrin, mirtazapine/Remeron, nortriptyline, amitriptyline): Include "Depression" and/or "Anxiety disorder" in PMH. If the specific indication was stated (anxiety vs. depression), use the stated indication.
-- Trazodone: Include "Insomnia" in PMH. If also used for depression, include "Depressive disorder" as well.
-- Benzodiazepines (alprazolam, lorazepam, clonazepam): Include "Anxiety disorder" in PMH.
-- Sleep aids (zolpidem, eszopiclone, suvorexant, lemborexant): Include "Insomnia" in PMH.
-- Mood stabilizers (lithium, lamotrigine/Lamictal, quetiapine/Seroquel): Include the relevant psychiatric diagnosis in PMH.
-- Spironolactone (in a female patient without documented cardiac/HTN indication): Include "Acne" or "PCOS" or "Androgen excess" in PMH based on context.
-CRITICAL: Failure to document anxiety, depression, or insomnia when their medications are present is a clinical documentation error. These diagnoses MUST appear in Past Medical Hx even if the visit was primarily for another reason (e.g., hormone optimization). They are part of the complete patient picture.
-
-COMPLETE MEDICATION DOCUMENTATION RULE:
-ALL medications explicitly listed in medications_current must appear in the SOAP note — either in the HPI (as ongoing treatment context) or in the Care Plan. No patient medication may be silently omitted. If a medication's inclusion in the current visit discussion is unclear, list it in the HPI with "Patient continues [medication] for [condition as known from PMH or context]."
-
-GENERAL PROSE STANDARDS:
-- Write in third person; Subjective section uses past tense (what patient reported); Assessment/Plan use present tense for status and imperative for orders
-- Use standard medical abbreviations where appropriate: SQ, PO, BID, TID, PRN, GLP-1, HRT, TRT, A1c, CVD, HTN, T2DM, SHBG, FSH, LH, CBC, CMP, LFTs, etc.
-- Avoid redundancy — each clinical fact appears once, in the most appropriate section
-- The Assessment should reference clinical findings from the Subjective; the Plan should directly address each numbered Assessment item
-- Write numbers as numerals for doses and measurements; spell out numbers below 10 in prose contexts
-- Where lab values are available, integrate them into the narrative naturally: "Labs are notable for an LDL of 168 mg/dL, representing an elevation above the optimal threshold of <100 mg/dL for this patient's risk profile."
-
-═══════════════════════════════════════
-PART C — FABRICATION GUARDRAILS
-═══════════════════════════════════════
-Do NOT fabricate specific data points not present in the transcript or provided data:
-- Do NOT invent specific numbers: exact BMI, exact weight, blood pressure values, lab values not provided
-- Do NOT invent physical exam findings not performed or documented
-- Do NOT invent vital signs not provided — omit vitals or note "Not obtained at this encounter"
-- Do NOT add medications not mentioned by name
-- Do NOT assign a definitive diagnosis if explicitly marked as uncertain — use "possible" or "working diagnosis"
-- Preserve all documented negatives (denied symptoms stay denied)
-- If uncertain, flag in needs_clinician_review
-
-CRITICAL — HANDLING [SUGGESTED] ITEMS FROM CLINICAL INTERPRETATION:
-Any item from the CLINICAL INTERPRETATION section that is labeled [SUGGESTED — clinician must approve before charting: ...] MUST be treated as follows:
-- Do NOT write the suggested action as a plan item, order, or clinical decision in the SOAP note body
-- Do NOT present it as something that was ordered, decided, or agreed upon
-- Instead, copy the suggestion verbatim into the "needs_clinician_review" array with a prefix: "SUGGESTED (awaiting clinician approval): ..."
-- The Plan section of the SOAP note must only contain actions explicitly discussed in the transcript or clearly within standard monitoring for the stated medications
-- The clinician will review and choose which suggestions to incorporate — the AI must not make that decision
-- Red flags (⚑) from the CLINICAL INTERPRETATION are factual findings and SHOULD be documented in the SOAP as "noted finding requiring clinician review" — but the response to a red flag (e.g., "hold dose", "order phlebotomy") is a [SUGGESTED] action unless the clinician stated it in the transcript
-
-Physical Exam: If no exam was performed, write: "Physical examination not performed at this encounter." — do NOT write "WNL" or "Normal" for unexamined systems.
-
-Return a JSON object with exactly these keys:
-{
-  "fullNote": "<complete formatted SOAP note as plain text>",
-  "uncertain_items": ["<items needing clinician clarification>"],
-  "needs_clinician_review": ["<specific flags requiring clinician attention before signing>"]
-}
-
-Use this EXACT format for fullNote (verbatim section headers). Do NOT deviate from this layout:
-
-CC/Reason: [chief complaint or visit reason]
-
-SUBJECTIVE
-
-HPI: [DETAILED clinical narrative — multiple paragraphs as warranted by the encounter depth. Include: visit context, primary concern, current treatment context, response to therapy, secondary concerns discussed, medication and treatment history, side effects, lifestyle factors, mental health context, patient questions, patient education provided, and patient-stated decisions. See HPI instructions above for full guidance.]
-
-Medical History:
-- Allergies: [if mentioned, else "Not reported at this visit"]
-- Past Medical Hx: [list all mentioned conditions PLUS any conditions implied by current medications — see MEDICATION-IMPLIED PMH rule below]
-- Past Surgical Hx: [if mentioned]
-- Social Hx: [if mentioned]
-- Family Hx: [if mentioned]
-
-ROS: [document systems discussed; for undiscussed systems write "Not reviewed at this visit"]
-
-OBJECTIVE
-
-Vitals: [if provided; if not: "Not obtained at this encounter"]
-Physical Exam: [if performed; if not: "Physical examination not performed at this encounter."]
-[Include any objective data from linked lab results if provided]
-
-ASSESSMENT/PLAN
-
-[Assessment Summary paragraph — 2–4 sentences synthesizing the overall clinical picture BEFORE the numbered list. This paragraph MUST come first, before item 1. Do NOT skip it.]
-
-1. Diagnosis Name (ICD-10 code)
-[Supporting evidence and clinical reasoning — 2–3 sentences on their own line(s) below the diagnosis. Explain the diagnosis in context, link relevant symptoms, labs, and medication response. Do NOT put this on the same line as the number.]
-Plan: [specific medications with dose/frequency/route, monitoring parameters, referrals, patient education]
-
-2. Diagnosis Name (ICD-10 code)
-[Supporting evidence and clinical reasoning — 2–3 sentences.]
-Plan: [...]
-
-[Continue for each diagnosis in the same pattern]
-
-CARE PLAN
-[All active management items in a clear, numbered list that a patient could read and understand their complete plan from this visit. Include:
-- All medications continued, adjusted, or started (name, dose, frequency)
-- All supplements recommended (from lab evaluation context or discussed in transcript) — list each by name with dosage and purpose. Example: "Omega-3 Fish Oil 2g daily — to support cardiovascular health and reduce triglycerides"
-- Labs ordered
-- Lifestyle recommendations discussed (diet, exercise, sleep, etc.)
-- Patient education points covered
-- Any referrals made
-Write this section as a patient-readable action list — specific, named, and complete. "Continue treatment" is NOT acceptable — every item must be explicit.]
-
-FOLLOW-UP
-[Specific interval with clinical rationale — e.g., "Return in 8 weeks for weight check and GLP-1 dose evaluation"]
-
-CRITICAL LAYOUT RULES — READ CAREFULLY:
-- The numbered line contains ONLY the diagnosis name and ICD-10 code: "1. Obesity, Class I (E66.01)"
-- The supporting clinical reasoning goes on the NEXT line as its own paragraph — NOT on the same line as the number.
-- The "Plan:" goes on its own line immediately after the supporting reasoning, starting with "Plan:" as a label.
-- Do NOT merge the diagnosis name and clinical reasoning onto the same line.
-- The Assessment Summary paragraph (no number) comes BEFORE item 1.`;
-
-      const userPrompt = `Visit Type: ${encounter.visitType}
-Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}${extractionContext}${patternContext}${medicationContext}
-
-${transcriptLabel}:
-${transcriptText}
-
-Generate the SOAP note. Flag anything uncertain in needs_clinician_review. Return JSON with fullNote, uncertain_items, needs_clinician_review.`;
-
-      const completion = await openai.chat.completions.create({
-        model: "gpt-4o",
-        messages: [
-          { role: "system", content: systemPrompt },
-          { role: "user", content: userPrompt },
-        ],
-        response_format: { type: "json_object" },
+      // ── PIPELINE STEP 4+5: Enhanced multi-stage SOAP generation ─────────────
+      // Uses the new enhanced pipeline: normalization+inference → section-specific generation → QA check
+      const soapNote = await runEnhancedSoapPipeline({
+        transcriptText,
+        diarized,
+        extraction: freshExtraction,
+        labContext,
+        patternContext,
+        medicationContext,
+        encounter,
+        openai,
       });
-
-      const soapNote = JSON.parse(completion.choices[0].message.content || "{}");
 
       const updated = await storage.updateEncounter(id, clinicianId, {
         soapNote,

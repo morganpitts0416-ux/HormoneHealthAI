@@ -1,0 +1,258 @@
+Build a targeted upgrade to the transcription-to-SOAP pipeline to make note generation significantly more clinically intelligent, detailed, and medically intuitive, while preserving the existing evidence layer, current visual style, SOAP layout, and all workflow behavior after SOAP generation.
+
+NON-NEGOTIABLE SCOPE / DO NOT CHANGE:
+- Do NOT change the current evidence generation pipeline.
+- Do NOT change how evidence is retrieved, ranked, attached, displayed, or rendered as evidence pills.
+- Do NOT change the current SOAP note visual style or layout.
+- Do NOT change where evidence pills appear in the SOAP note.
+- Do NOT change any clinician-facing view after SOAP generation.
+- Do NOT change the post-SOAP workflow, note save workflow, signing workflow, status workflow, approval workflow, encounter workflow, or downstream UI flow.
+- Do NOT refactor unrelated features.
+- Do NOT change recommendation approval UI placement or general approval flow mechanics unless required for the recommendation-content logic described below.
+- This is a backend / note-intelligence upgrade with minimal-scope UI impact only if strictly necessary.
+
+PRIMARY GOAL:
+Upgrade the note engine so it behaves like a high-end clinical intelligence system rather than a simple transcript summarizer.
+
+The output should be:
+- highly accurate at distinguishing patient vs provider in conversation
+- much more detailed in HPI and clinical story reconstruction
+- better at capturing medications, PMH, symptoms, side effects, prior treatments, and secondary concerns
+- medically intuitive about clinically relevant implications of medications and conversation context
+- better at noticing preventative medicine opportunities and “between the lines” clinical clues
+- still grounded in the transcript and not hallucinating
+- still compatible with the current evidence-pill workflow and current SOAP display
+
+ARCHITECTURE CHANGE REQUIRED:
+Do NOT go directly from transcript -> SOAP note.
+
+Replace the current note-content generation path with this internal pipeline:
+
+1. audio / transcript input
+2. speaker-role attribution pass
+3. structured clinical extraction pass
+4. medical normalization + inference pass
+5. SOAP section generation
+6. omission / contradiction quality check
+7. hand off final SOAP output exactly as the system currently expects so evidence generation and all downstream behavior remain unchanged
+
+OPENAI / MODEL USAGE GUIDANCE:
+Use a diarized transcription-capable path where appropriate. OpenAI supports diarized transcription output and a diarization model for speaker-segment association, and structured outputs can be used to force strict schemas for extraction. The implementation should take advantage of these capabilities where compatible with the current app architecture, but must preserve existing downstream interfaces. If realtime transcription is used, preserve the current user-visible workflow and note finalization behavior. :contentReference[oaicite:0]{index=0}
+
+DETAILED IMPLEMENTATION REQUIREMENTS:
+
+A) SPEAKER ROLE ATTRIBUTION LAYER
+Create a dedicated internal pass whose only job is to determine who is the patient and who is the provider in the conversation.
+
+Do not blindly trust raw diarization labels.
+Map raw segments into:
+- patient
+- provider
+- uncertain
+
+Use transcript cues such as:
+- first-person symptom reporting
+- medication adherence statements
+- side-effect descriptions
+- narrative history
+- provider counseling language
+- recommendation language
+- interpretation language
+- “we can start”, “I recommend”, “let’s do”, “I’d like to check”, etc.
+
+Store a speaker-role confidence score and preserve uncertainty internally where needed.
+If a segment is uncertain, do not let that uncertainty silently degrade note quality.
+
+B) STRUCTURED CLINICAL EXTRACTION LAYER
+Before generating the SOAP note, extract structured clinical data using a strict internal schema. The purpose of this layer is to preserve medically relevant facts before prose generation compresses them.
+
+Required internal extraction schema should capture at minimum:
+- speaker map and confidence
+- chief concerns
+- symptom list
+- symptom timeline details
+- current medications
+- supplements
+- hormones
+- past medical history
+- surgical history
+- family history if mentioned
+- social history / lifestyle factors relevant to care
+- allergies if mentioned
+- prior medication trials
+- prior failed treatments
+- side effects / tolerability issues
+- diagnostic clues
+- cardiometabolic / preventative risk clues
+- secondary medically relevant concerns discussed during visit
+- items implied by context that require confirmation
+- clearly irrelevant small talk segments that should be excluded
+
+This structured extraction must be internal only unless some fields are already exposed elsewhere in the current system.
+Use a schema-driven extraction approach so outputs are deterministic and consistent. :contentReference[oaicite:1]{index=1}
+
+C) MEDICAL NORMALIZATION + CONTEXT INFERENCE LAYER
+Add an internal normalization step after extraction that:
+- normalizes medications from brand/generic/misheard forms
+- maps known clinic vocabulary and medication dictionary matches
+- resolves likely intended medication names from transcript context
+- identifies medically meaningful implications of medications and scenarios discussed
+- labels inferred items by confidence
+
+Use three inference categories internally:
+1. explicitly stated
+2. strongly implied
+3. requires confirmation
+
+Examples:
+- If Lexapro is mentioned, add Lexapro to current medications.
+- If transcript context supports anxiety/depression history, capture that appropriately.
+- If anxiety/depression is only implied by Lexapro use and not directly stated, mark as requires confirmation rather than omitting it.
+- If levothyroxine / Synthroid is discussed, recognize likely thyroid-history relevance.
+- If metformin / GLP-1 use is discussed, recognize insulin-resistance / metabolic-management relevance when supported by context.
+- If spironolactone is mentioned with acne / hirsutism / hair changes, recognize possible androgen-related context when supported by transcript.
+- If statin, ApoB, Lp(a), CAC, family history, or menopause risk context is discussed, preserve preventative cardiometabolic relevance.
+
+The system must be clinically intuitive without promoting implied information to confirmed diagnoses unless the transcript supports it.
+
+D) HPI GENERATION UPGRADE
+The HPI is currently too compressed. Rebuild it as a clinical story reconstruction task, not a short summary task.
+
+HPI requirements:
+- more detailed
+- more chronological when possible
+- preserve the patient’s medically relevant story
+- include relevant secondary issues discussed during the encounter
+- include relevant medication context
+- include prior treatment history and tolerability where discussed
+- include provider clarifications that shape the clinical picture
+- remain clinically readable and concise enough for use, but do not flatten the visit into a generic summary
+
+Do NOT reduce the visit to a single-complaint note when the conversation contained broader medically relevant material.
+
+Even in hormone, menopause, weight loss, or aesthetics visits, the note should still read like a complete wellness-oriented office visit when broader clinical issues were discussed.
+
+E) SECTION-SPECIFIC SOAP GENERATION
+Do not generate the whole note in one generic summarization pass.
+
+Generate SOAP sections using the extracted and normalized clinical data plus transcript context:
+- HPI / Subjective narrative
+- medication / history components as applicable
+- assessment
+- plan
+
+Each section should have different prompting objectives.
+The HPI should optimize for completeness and chronology.
+The assessment should optimize for clinical reasoning and prioritization.
+The plan should reflect what was actually decided in the visit.
+
+IMPORTANT:
+The final SOAP output contract must remain compatible with the existing evidence-layer attachment process and existing clinician view.
+
+F) OMISSION / CONTRADICTION QUALITY CHECK
+Before finalizing the SOAP content, add an internal QA pass that compares:
+- transcript / extracted structured facts
+vs
+- generated SOAP note
+
+This pass should catch:
+- clinically relevant meds omitted from note
+- symptoms omitted from HPI
+- secondary concerns lost during summarization
+- side effects or prior treatment failures not carried through
+- contradictions between transcript facts and note content
+- over-compression into vague wording such as “patient here for hormone consult” when materially more detail was discussed
+
+If clinically relevant details were lost, revise the SOAP content before returning it.
+
+G) PREVENTATIVE MEDICINE SIGNALS
+Add internal handling for preventative / “between the lines” clues.
+These should influence extraction and assessment quality, but must stay transcript-grounded.
+
+Examples of clues that should be noticed when supported:
+- fatigue + heavy menses + hair shedding -> possible iron deficiency context
+- constipation + fatigue + weight change + thyroid treatment -> thyroid-relevant context
+- perimenopause / menopause discussion + ApoB / Lp(a) / family history -> cardiometabolic prevention opportunity
+- GLP-1 discussion + constipation / nausea / poor intake -> treatment-management issue
+- SSRI discussion + sexual side effects / weight change -> relevant medication counseling context
+
+Do not hallucinate diagnoses.
+Do preserve relevant clues and assessment context when grounded in the conversation.
+
+H) RECOMMENDATIONS-FOR-APPROVAL LOGIC FIX
+The current recommendation suggestions are low quality because they often repeat decisions that were already explicitly made during the appointment.
+
+This must be changed.
+
+Current bad behavior example:
+Provider says “let’s start testosterone today,” patient agrees, and the recommendation approval suggestion says “initiate testosterone.”
+
+That should NOT happen.
+
+NEW RECOMMENDATION RULE:
+Recommendation suggestions must only surface clinically relevant follow-up actions, considerations, or unresolved next steps that were discussed or implied in the appointment but were NOT already explicitly decided and finalized by the provider during the conversation.
+
+In other words:
+- if the provider already explicitly made the plan, do NOT surface it as a recommendation for approval
+- if the plan was already stated, agreed to, and incorporated into the encounter plan, do NOT suggest it again
+- recommendation suggestions should represent “possible additions / unresolved items / discussed but not finalized items,” not duplicates of the chosen plan
+
+Recommendation engine should classify discussed items into:
+1. explicitly decided plan items
+2. discussed but not decided items
+3. clinically relevant follow-up considerations inferred from discussion
+4. irrelevant / duplicate items
+
+Only categories 2 and 3 may be surfaced as recommendation suggestions for approval.
+
+Examples:
+- If provider explicitly decides to start testosterone -> do not recommend “initiate testosterone”
+- If provider discusses checking ferritin because of fatigue and hair shedding but never explicitly commits -> this may be a valid recommendation suggestion
+- If provider discusses possible sleep optimization, nutrition counseling, CAC consideration, follow-up labs, or medication reconciliation but does not explicitly finalize those items -> these may be valid recommendation suggestions if grounded in the visit
+- If something is already in the explicit plan -> suppress it from recommendations
+- If a suggestion is redundant with the final plan content -> suppress it
+
+Add duplicate-suppression logic so recommendation suggestions are checked against the final explicit plan before surfacing to the user.
+
+I) STABILITY REQUIREMENT FOR EVIDENCE LAYER
+Preserve the current evidence behavior exactly.
+The note engine may become smarter internally, but the handoff to evidence generation must remain stable unless absolutely necessary.
+Evidence should still generate automatically and layer into the note exactly the way it does now, with pills placed in their current locations in the note. Do not alter the visual style or placement behavior.
+
+J) STABILITY REQUIREMENT FOR POST-SOAP FLOW
+Once SOAP generation is complete, everything downstream must behave exactly as it does now.
+No changes to:
+- save behavior
+- sign behavior
+- note status behavior
+- evidence rendering behavior
+- clinician review flow
+- encounter closing flow
+- existing layout and user experience after the note appears
+
+K) ACCEPTANCE CRITERIA
+This work is complete only if all of the following are true:
+- speaker attribution is more reliable for patient vs provider
+- HPI is materially more detailed and less compressed
+- medications mentioned casually are captured more consistently
+- PMH, secondary concerns, side effects, prior treatment failures, and broader wellness details are preserved when clinically relevant
+- inferred medical context is handled intelligently with confidence-aware phrasing rather than omission or overstatement
+- preventative / “between the lines” clinical clues are better reflected in note quality when supported by transcript
+- explicit plans already made by the provider are NOT surfaced again as approval recommendations
+- approval recommendations now represent unresolved, discussed-but-not-finalized, or clinically relevant additional considerations only
+- evidence generation still works exactly as it does now
+- evidence pills still appear in the same places and style as they do now
+- nothing about the UI or workflow after SOAP generation is materially changed
+
+L) IMPLEMENTATION BOUNDARY
+Keep this as a targeted intelligence-layer upgrade.
+Prefer adding internal modules / helpers / schemas / prompt layers rather than rewriting unrelated app architecture.
+Preserve existing interfaces wherever possible.
+If an internal extraction object is added, keep it internal unless required elsewhere.
+Do not create regressions in evidence attachment or downstream clinician workflow.
+
+Before finalizing, verify that:
+1. only the transcription / extraction / note-intelligence / recommendation-content logic changed
+2. evidence generation behavior is unchanged
+3. post-SOAP workflow is unchanged
+4. recommendation suggestions no longer duplicate explicit plan decisions
