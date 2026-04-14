@@ -1087,6 +1087,8 @@ export default function PatientProfiles() {
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
   const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", primaryProvider: "" });
+  const [showNewPatientDialog, setShowNewPatientDialog] = useState(false);
+  const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", gender: "female" as "male" | "female", email: "", phone: "" });
   const [showFullDemographics, setShowFullDemographics] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
@@ -1528,6 +1530,39 @@ export default function PatientProfiles() {
     },
   });
 
+  const createNewPatientMutation = useMutation({
+    mutationFn: async (data: { firstName: string; lastName: string; gender: string; dateOfBirth: string; email: string; phone: string }) => {
+      const body: Record<string, string | null> = {
+        firstName: data.firstName.trim(),
+        lastName: data.lastName.trim(),
+        gender: data.gender,
+      };
+      if (data.dateOfBirth) body.dateOfBirth = new Date(data.dateOfBirth).toISOString();
+      if (data.email.trim()) body.email = data.email.trim().toLowerCase();
+      if (data.phone.trim()) body.phone = data.phone.trim();
+      // Assign primary provider to clinic owner
+      const ownerProvider = (clinicProviders as any[]).find((p: any) => p.isOwner);
+      if (ownerProvider) body.primaryProvider = ownerProvider.displayName;
+      const res = await apiRequest("POST", "/api/patients", body);
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.message || "Failed to create patient");
+      }
+      return res.json() as Promise<Patient>;
+    },
+    onSuccess: (newPatient) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients/search', ''] });
+      queryClient.invalidateQueries({ queryKey: ['/api/patients'] });
+      setSelectedPatient(newPatient);
+      setShowNewPatientDialog(false);
+      setNewPatientForm({ firstName: "", lastName: "", dateOfBirth: "", gender: "female", email: "", phone: "" });
+      toast({ title: "Patient Created", description: `${newPatient.firstName} ${newPatient.lastName}'s profile is ready.` });
+    },
+    onError: (err: any) => {
+      toast({ variant: "destructive", title: "Error", description: err.message || "Failed to create patient." });
+    },
+  });
+
   const mergePatientsMutation = useMutation({
     mutationFn: async ({ keepId, discardId }: { keepId: number; discardId: number }) => {
       const res = await apiRequest("POST", "/api/patients/merge", { keepId, discardId });
@@ -1634,15 +1669,26 @@ export default function PatientProfiles() {
           {/* Full panel — search + filter controls + list */}
           {(!listCollapsed || !selectedPatient) && (<>
           <div className="p-3 border-b space-y-2 flex-shrink-0">
-            <div className="relative">
-              <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
-              <Input
-                placeholder="Search by name or MRN..."
-                value={searchTerm}
-                onChange={(e) => setSearchTerm(e.target.value)}
-                className="pl-9 h-8 text-sm"
-                data-testid="input-patient-profile-search"
-              />
+            <div className="flex items-center gap-1.5">
+              <div className="relative flex-1">
+                <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-3.5 w-3.5 text-muted-foreground" />
+                <Input
+                  placeholder="Search by name or MRN..."
+                  value={searchTerm}
+                  onChange={(e) => setSearchTerm(e.target.value)}
+                  className="pl-9 h-8 text-sm"
+                  data-testid="input-patient-profile-search"
+                />
+              </div>
+              <Button
+                size="sm"
+                className="h-8 px-2 shrink-0 text-xs font-medium"
+                onClick={() => setShowNewPatientDialog(true)}
+                data-testid="button-new-patient-profile"
+                style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+              >
+                <Plus className="h-3.5 w-3.5 mr-1" />New
+              </Button>
             </div>
             <div className="flex gap-1">
               <Button
@@ -1695,8 +1741,11 @@ export default function PatientProfiles() {
               <div className="p-6 text-center space-y-3">
                 <User className="h-8 w-8 text-muted-foreground mx-auto" />
                 <p className="text-xs text-muted-foreground leading-relaxed">
-                  No patients yet. Save a lab interpretation to create a patient profile.
+                  No patients yet. Click <strong>New</strong> to add a patient manually, or save a lab evaluation to auto-create a profile.
                 </p>
+                <Button size="sm" variant="outline" className="text-xs" onClick={() => setShowNewPatientDialog(true)} data-testid="button-new-patient-empty-state">
+                  <Plus className="h-3 w-3 mr-1" />Add First Patient
+                </Button>
               </div>
             )}
             {!patientsLoading && allPatients.length > 0 && filteredPatients.length === 0 && (
@@ -2956,6 +3005,93 @@ export default function PatientProfiles() {
         </div>
       )}
 
+      {/* New Patient dialog */}
+      <Dialog open={showNewPatientDialog} onOpenChange={setShowNewPatientDialog}>
+        <DialogContent className="max-w-md">
+          <DialogHeader>
+            <DialogTitle className="flex items-center gap-2">
+              <Plus className="h-4 w-4" />
+              New Patient Profile
+            </DialogTitle>
+          </DialogHeader>
+          <div className="space-y-3 py-1">
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>First Name <span className="text-destructive">*</span></Label>
+                <Input
+                  placeholder="Jane"
+                  value={newPatientForm.firstName}
+                  onChange={e => setNewPatientForm(f => ({ ...f, firstName: e.target.value }))}
+                  data-testid="input-new-patient-first-name"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Last Name <span className="text-destructive">*</span></Label>
+                <Input
+                  placeholder="Smith"
+                  value={newPatientForm.lastName}
+                  onChange={e => setNewPatientForm(f => ({ ...f, lastName: e.target.value }))}
+                  data-testid="input-new-patient-last-name"
+                />
+              </div>
+            </div>
+            <div className="grid grid-cols-2 gap-3">
+              <div className="space-y-1.5">
+                <Label>Date of Birth</Label>
+                <Input
+                  type="date"
+                  value={newPatientForm.dateOfBirth}
+                  onChange={e => setNewPatientForm(f => ({ ...f, dateOfBirth: e.target.value }))}
+                  data-testid="input-new-patient-dob"
+                />
+              </div>
+              <div className="space-y-1.5">
+                <Label>Sex</Label>
+                <Select value={newPatientForm.gender} onValueChange={v => setNewPatientForm(f => ({ ...f, gender: v as "male" | "female" }))}>
+                  <SelectTrigger data-testid="select-new-patient-gender"><SelectValue /></SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="female">Female</SelectItem>
+                    <SelectItem value="male">Male</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label>Email <span className="text-xs text-muted-foreground">(optional — used for form & appointment matching)</span></Label>
+              <Input
+                type="email"
+                placeholder="jane@email.com"
+                value={newPatientForm.email}
+                onChange={e => setNewPatientForm(f => ({ ...f, email: e.target.value }))}
+                data-testid="input-new-patient-email"
+              />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Phone <span className="text-xs text-muted-foreground">(optional)</span></Label>
+              <Input
+                type="tel"
+                placeholder="(555) 000-0000"
+                value={newPatientForm.phone}
+                onChange={e => setNewPatientForm(f => ({ ...f, phone: e.target.value }))}
+                data-testid="input-new-patient-phone"
+              />
+            </div>
+          </div>
+          <DialogFooter className="gap-2">
+            <Button variant="outline" size="sm" onClick={() => setShowNewPatientDialog(false)}>Cancel</Button>
+            <Button
+              size="sm"
+              disabled={!newPatientForm.firstName.trim() || !newPatientForm.lastName.trim() || createNewPatientMutation.isPending}
+              onClick={() => createNewPatientMutation.mutate(newPatientForm)}
+              data-testid="button-create-new-patient"
+              style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+            >
+              {createNewPatientMutation.isPending ? "Creating..." : "Create Patient"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
       {/* Edit Patient dialog */}
       <Dialog open={showEditPatient} onOpenChange={setShowEditPatient}>
         <DialogContent className="max-w-md">
@@ -3034,7 +3170,7 @@ export default function PatientProfiles() {
                   <SelectContent>
                     {(clinicProviders as any[]).map((p: any) => (
                       <SelectItem key={p.id} value={p.displayName}>
-                        {p.displayName}{p.isOwner ? " (Owner)" : ""}
+                        {p.displayName}
                       </SelectItem>
                     ))}
                   </SelectContent>
