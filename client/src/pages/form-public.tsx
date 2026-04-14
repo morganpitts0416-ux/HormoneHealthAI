@@ -119,9 +119,9 @@ export default function FormPublicPage() {
     let effectiveName = submitterName || null;
     let effectiveEmail = submitterEmail || null;
     if (data.fields.length > 0) {
-      const firstNameField = data.fields.find(f => f.smartFieldKey === "firstName");
-      const lastNameField = data.fields.find(f => f.smartFieldKey === "lastName");
-      const emailField = data.fields.find(f => f.smartFieldKey === "email");
+      const firstNameField = data.fields.find(f => f.smartFieldKey === "patient_first_name");
+      const lastNameField = data.fields.find(f => f.smartFieldKey === "patient_last_name");
+      const emailField = data.fields.find(f => f.smartFieldKey === "patient_email");
       if (firstNameField || lastNameField) {
         const fn = firstNameField ? (responses[firstNameField.fieldKey] || "") : "";
         const ln = lastNameField ? (responses[lastNameField.fieldKey] || "") : "";
@@ -183,8 +183,8 @@ export default function FormPublicPage() {
   const sortedFields = [...fields].sort((a, b) => a.orderIndex - b.orderIndex);
   const sortedSections = [...sections].sort((a, b) => a.orderIndex - b.orderIndex);
 
-  const hasSmartName = fields.some(f => f.smartFieldKey === "firstName" || f.smartFieldKey === "lastName");
-  const hasSmartEmail = fields.some(f => f.smartFieldKey === "email");
+  const hasSmartName = fields.some(f => f.smartFieldKey === "patient_first_name" || f.smartFieldKey === "patient_last_name");
+  const hasSmartEmail = fields.some(f => f.smartFieldKey === "patient_email");
   const hideSubmitterBox = hasSmartName && hasSmartEmail;
 
   // Group fields by section (null = no section)
