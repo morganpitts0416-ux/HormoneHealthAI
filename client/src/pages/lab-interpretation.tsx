@@ -120,19 +120,35 @@ export default function LabInterpretation() {
           interpretationResult: data,
         }).then(() => {
           queryClient.invalidateQueries({ queryKey: [`/api/patients/${resolvedPatient!.id}/labs`] });
+          queryClient.invalidateQueries({ queryKey: ['/api/patients'] });
           console.log('[Frontend] Auto-saved interpretation to patient profile');
         }).catch(err => console.error('[Frontend] Auto-save failed:', err));
       } else if (labValues.patientName) {
-        apiRequest('POST', '/api/saved-interpretations', {
-          patientName: labValues.patientName,
-          gender: 'male',
-          labValues,
-          interpretation: data,
-          labDate,
-        }).then(() => {
-          queryClient.invalidateQueries({ queryKey: ['/api/saved-interpretations'] });
-          console.log('[Frontend] Auto-saved interpretation with patient name (no unique patient match)');
-        }).catch(err => console.error('[Frontend] Auto-save failed:', err));
+        // Auto-create a patient profile from the name typed in the form
+        (async () => {
+          try {
+            const nameParts = labValues.patientName!.trim().split(/\s+/);
+            const firstName = nameParts[0];
+            const lastName = nameParts.slice(1).join(' ') || nameParts[0];
+            const createRes = await apiRequest('POST', '/api/patients', { firstName, lastName, gender: 'male' });
+            if (createRes.ok) {
+              const newPatient = await createRes.json();
+              setSelectedPatient(newPatient);
+              queryClient.invalidateQueries({ queryKey: ['/api/patients'] });
+              await apiRequest('POST', `/api/patients/${newPatient.id}/labs`, {
+                labDate, labValues, interpretationResult: data,
+              });
+              queryClient.invalidateQueries({ queryKey: [`/api/patients/${newPatient.id}/labs`] });
+              console.log('[Frontend] Auto-created patient profile and saved labs:', newPatient.id);
+            } else {
+              // Fallback to saved-interpretations
+              await apiRequest('POST', '/api/saved-interpretations', { patientName: labValues.patientName, gender: 'male', labValues, interpretation: data, labDate });
+              queryClient.invalidateQueries({ queryKey: ['/api/saved-interpretations'] });
+            }
+          } catch (e) {
+            console.error('[Frontend] Auto-create patient failed:', e);
+          }
+        })();
       }
     },
     onError: (error) => {
@@ -583,6 +599,7 @@ export default function LabInterpretation() {
                   onSubmit={handleSubmit} 
                   isLoading={interpretMutation.isPending}
                   initialValues={labValues}
+                  onPatientSelect={(patient) => setSelectedPatient(patient)}
                 />
               </CardContent>
             </Card>

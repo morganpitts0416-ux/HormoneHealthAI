@@ -1,6 +1,7 @@
-import { useForm } from "react-hook-form";
+import { useForm, useWatch } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
-import { useEffect } from "react";
+import { useEffect, useState, useRef } from "react";
+import { useQuery } from "@tanstack/react-query";
 import { labValuesSchema, type LabValues } from "@shared/schema";
 import { Form, FormControl, FormField, FormItem, FormLabel, FormMessage } from "@/components/ui/form";
 import { Input } from "@/components/ui/input";
@@ -9,14 +10,16 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
 import { Sparkles, User } from "lucide-react";
+import { Card, CardContent } from "@/components/ui/card";
 
 interface LabInputFormProps {
   onSubmit: (values: LabValues) => void;
   isLoading?: boolean;
   initialValues?: LabValues;
+  onPatientSelect?: (patient: any) => void;
 }
 
-export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }: LabInputFormProps) {
+export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, onPatientSelect }: LabInputFormProps) {
   // Merge initialValues with default booleans to ensure calculators always receive defined values
   const defaultValues: LabValues = {
     onTRT: false,
@@ -65,6 +68,51 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
     form.reset(mergedValues, { keepDirtyValues: true });
   }, [initialValues]);
 
+  // Patient name autocomplete
+  const watchedPatientName = useWatch({ control: form.control, name: "patientName" }) as string | undefined;
+  const [showPatientDropdown, setShowPatientDropdown] = useState(false);
+  const [patientSelectedFlag, setPatientSelectedFlag] = useState(false);
+  const patientNameRef = useRef<HTMLDivElement>(null);
+  const searchQuery = (!patientSelectedFlag && (watchedPatientName?.length ?? 0) >= 2) ? (watchedPatientName ?? "") : "";
+  const { data: patientSuggestions } = useQuery<any[]>({
+    queryKey: ["/api/patients/search", searchQuery],
+    enabled: searchQuery.length >= 2,
+  });
+
+  // Show dropdown when we have results and haven't yet picked one
+  useEffect(() => {
+    if (!patientSelectedFlag && (patientSuggestions?.length ?? 0) > 0 && (watchedPatientName?.length ?? 0) >= 2) {
+      setShowPatientDropdown(true);
+    } else {
+      setShowPatientDropdown(false);
+    }
+  }, [patientSuggestions, watchedPatientName, patientSelectedFlag]);
+
+  // Close dropdown when clicking outside
+  useEffect(() => {
+    const handler = (e: MouseEvent) => {
+      if (patientNameRef.current && !patientNameRef.current.contains(e.target as Node)) {
+        setShowPatientDropdown(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, []);
+
+  const handlePatientSuggestionSelect = (patient: any) => {
+    const fullName = `${patient.firstName} ${patient.lastName}`;
+    form.setValue("patientName", fullName);
+    // If patient has DOB, calculate age and set it
+    if (patient.dateOfBirth) {
+      const dob = new Date(patient.dateOfBirth);
+      const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
+      form.setValue("demographics.age" as any, age);
+    }
+    setPatientSelectedFlag(true);
+    setShowPatientDropdown(false);
+    if (onPatientSelect) onPatientSelect(patient);
+  };
+
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
@@ -86,15 +134,44 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {} }
                   render={({ field }) => (
                     <FormItem>
                       <FormLabel className="text-xs font-medium uppercase">Patient Name</FormLabel>
-                      <FormControl>
-                        <Input
-                          type="text"
-                          placeholder="Enter patient name"
-                          {...field}
-                          value={field.value ?? ''}
-                          data-testid="input-patient-name"
-                        />
-                      </FormControl>
+                      <div ref={patientNameRef} className="relative">
+                        <FormControl>
+                          <Input
+                            type="text"
+                            placeholder="Enter patient name"
+                            {...field}
+                            value={field.value ?? ''}
+                            autoComplete="off"
+                            data-testid="input-patient-name"
+                            onChange={(e) => {
+                              field.onChange(e);
+                              setPatientSelectedFlag(false);
+                            }}
+                          />
+                        </FormControl>
+                        {showPatientDropdown && patientSuggestions && patientSuggestions.length > 0 && (
+                          <Card className="absolute z-50 left-0 right-0 top-full mt-1 shadow-md max-h-48 overflow-y-auto">
+                            <CardContent className="p-1">
+                              {patientSuggestions.slice(0, 8).map((p: any) => {
+                                const age = p.dateOfBirth ? Math.floor((Date.now() - new Date(p.dateOfBirth).getTime()) / (365.25 * 24 * 60 * 60 * 1000)) : null;
+                                return (
+                                  <button
+                                    key={p.id}
+                                    type="button"
+                                    onMouseDown={(e) => { e.preventDefault(); handlePatientSuggestionSelect(p); }}
+                                    className="w-full text-left px-3 py-2 text-sm rounded hover-elevate flex items-center gap-2"
+                                    data-testid={`option-patient-suggestion-${p.id}`}
+                                  >
+                                    <User className="h-3.5 w-3.5 text-muted-foreground shrink-0" />
+                                    <span className="font-medium">{p.firstName} {p.lastName}</span>
+                                    {age !== null && <span className="text-muted-foreground text-xs">({age}y {p.gender})</span>}
+                                  </button>
+                                );
+                              })}
+                            </CardContent>
+                          </Card>
+                        )}
+                      </div>
                       <FormMessage />
                     </FormItem>
                   )}
