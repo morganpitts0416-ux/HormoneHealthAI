@@ -7622,7 +7622,8 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       if (!form) return res.status(404).json({ message: "Form not found" });
       const { fieldIds } = req.body;
       if (!Array.isArray(fieldIds)) return res.status(400).json({ message: "fieldIds array required" });
-      const formFieldIds = new Set((form.fields ?? []).map((f: any) => f.id));
+      const existingFields = await storage.getFormFields(formId);
+      const formFieldIds = new Set(existingFields.map((f: any) => f.id));
       for (const id of fieldIds) {
         if (!formFieldIds.has(parseInt(id))) {
           return res.status(403).json({ message: "Field does not belong to this form" });
