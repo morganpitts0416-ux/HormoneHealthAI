@@ -272,6 +272,25 @@ export const LEXICONS: Record<LexiconGroup, string[]> = {
     // Naltrexone
     "naltrexone", "low-dose naltrexone", "LDN", "Vivitrol",
 
+    // GI / acid reflux
+    "omeprazole", "Prilosec",
+    "pantoprazole", "Protonix",
+    "esomeprazole", "Nexium",
+    "lansoprazole", "Prevacid",
+    "famotidine", "Pepcid",
+    "ranitidine",
+    "sucralfate", "Carafate",
+
+    // Respiratory / allergy
+    "albuterol", "ProAir", "Ventolin",
+    "montelukast", "Singulair",
+    "fluticasone", "Flovent", "Flonase",
+    "budesonide", "Pulmicort",
+    "cetirizine", "Zyrtec",
+    "loratadine", "Claritin",
+    "fexofenadine", "Allegra",
+    "diphenhydramine", "Benadryl",
+
     // Supplements and nutraceuticals
     "berberine", "myo-inositol", "inositol",
     "magnesium glycinate", "magnesium malate", "magnesium",
@@ -433,11 +452,14 @@ export function buildWhisperPrompt(visitType: string): string {
   const medGlossary =
     "semaglutide, tirzepatide, Ozempic, Wegovy, Mounjaro, Zepbound, " +
     "testosterone cypionate, micronized progesterone, estradiol, anastrozole, " +
-    "letrozole, DHEA, levothyroxine, Armour thyroid, metformin, empagliflozin, " +
-    "dapagliflozin, rosuvastatin, atorvastatin, ezetimibe, evolocumab, inclisiran, " +
-    "spironolactone, apixaban, rivaroxaban, naltrexone, low-dose naltrexone, " +
-    "trazodone, vortioxetine, Trintellix, sertraline, escitalopram, bupropion, " +
-    "berberine, myo-inositol, CoQ10.";
+    "letrozole, DHEA, levothyroxine, liothyronine, Armour thyroid, metformin, " +
+    "empagliflozin, dapagliflozin, rosuvastatin, atorvastatin, ezetimibe, " +
+    "evolocumab, inclisiran, spironolactone, apixaban, rivaroxaban, " +
+    "naltrexone, low-dose naltrexone, trazodone, vortioxetine, Trintellix, " +
+    "sertraline, escitalopram, citalopram, fluoxetine, bupropion, venlafaxine, " +
+    "duloxetine, buspirone, alprazolam, lorazepam, clonazepam, hydroxyzine, " +
+    "zolpidem, omeprazole, pantoprazole, famotidine, albuterol, montelukast, " +
+    "cetirizine, berberine, myo-inositol, CoQ10.";
 
   // Lab markers listed as a glossary.
   const labGlossary =
@@ -616,6 +638,21 @@ Examples of speech-to-text errors to correct:
 - "fin as ter ide" or "fin ass ter ide" → "finasteride"
 - "nal trex own" or "nal trex one" or "low dose nal trex one" → "naltrexone"
 - "de no su mab" or "den o sue mab" → "denosumab"
+
+── GI / acid reflux ──
+- "oh mep ra zole" or "oh mep rah zole" or "oh me pra zole" → "omeprazole"
+- "pan toe pra zole" or "pan ta pra zole" → "pantoprazole"
+- "es oh mep ra zole" or "es oh me pra zole" → "esomeprazole"
+- "lan so pra zole" or "lan sop ra zole" → "lansoprazole"
+- "fam oh ti deen" or "fam oh teh deen" → "famotidine"
+
+── Respiratory / allergy ──
+- "al byoo ter ol" or "al byu ter all" or "al bu ter ol" → "albuterol"
+- "mon te loo kast" or "mon ta loo kast" or "monty loo kast" → "montelukast"
+- "flu tik a sone" or "floo tick a sone" → "fluticasone"
+- "seh tir i zeen" or "set ear a zeen" or "set ih ree zeen" → "cetirizine"
+- "lor at a deen" or "lor at eh deen" → "loratadine"
+- "fex oh fen a deen" or "fex o fen ah deen" → "fexofenadine"
 
 ── Supplements & nutraceuticals ──
 - "N A C" or "N-A-C" → "NAC"

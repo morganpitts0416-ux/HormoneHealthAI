@@ -1,0 +1,195 @@
+[
+  {
+    "canonical": "escitalopram",
+    "brand": "Lexapro",
+    "variations": ["lexapro", "lex pro", "lexa pro", "escitalopram", "es citalopram"]
+  },
+  {
+    "canonical": "citalopram",
+    "brand": "Celexa",
+    "variations": ["celexa", "cilexa", "citalopram"]
+  },
+  {
+    "canonical": "sertraline",
+    "brand": "Zoloft",
+    "variations": ["zoloft", "sertraline", "zolo"]
+  },
+  {
+    "canonical": "fluoxetine",
+    "brand": "Prozac",
+    "variations": ["prozac", "fluoxetine", "pro zak"]
+  },
+  {
+    "canonical": "bupropion",
+    "brand": "Wellbutrin",
+    "variations": ["wellbutrin", "wellbutren", "bupropion", "buproprion"]
+  },
+  {
+    "canonical": "venlafaxine",
+    "brand": "Effexor",
+    "variations": ["effexor", "effexer", "venlafaxine"]
+  },
+  {
+    "canonical": "duloxetine",
+    "brand": "Cymbalta",
+    "variations": ["cymbalta", "duloxetine"]
+  },
+  {
+    "canonical": "buspirone",
+    "brand": "Buspar",
+    "variations": ["buspar", "buspirone", "buspiron"]
+  },
+  {
+    "canonical": "alprazolam",
+    "brand": "Xanax",
+    "variations": ["xanax", "zanax", "alprazolam"]
+  },
+  {
+    "canonical": "lorazepam",
+    "brand": "Ativan",
+    "variations": ["ativan", "lorazepam"]
+  },
+  {
+    "canonical": "clonazepam",
+    "brand": "Klonopin",
+    "variations": ["klonopin", "clonazepam", "clonopin"]
+  },
+
+  {
+    "canonical": "levothyroxine",
+    "brand": "Synthroid",
+    "variations": ["synthroid", "levothyroxine", "levo thyroxine", "levo"]
+  },
+  {
+    "canonical": "liothyronine",
+    "brand": "Cytomel",
+    "variations": ["cytomel", "liothyronine", "t3"]
+  },
+  {
+    "canonical": "desiccated thyroid",
+    "brand": "Armour Thyroid",
+    "variations": ["armour thyroid", "armor thyroid", "np thyroid", "nature thyroid"]
+  },
+
+  {
+    "canonical": "metformin",
+    "brand": "Glucophage",
+    "variations": ["metformin", "metforman", "glucophage"]
+  },
+  {
+    "canonical": "semaglutide",
+    "brand": "Ozempic/Wegovy",
+    "variations": ["semaglutide", "ozempic", "wegovy", "semaglutid"]
+  },
+  {
+    "canonical": "tirzepatide",
+    "brand": "Mounjaro/Zepbound",
+    "variations": ["tirzepatide", "mounjaro", "zepbound", "tirzepatid"]
+  },
+
+  {
+    "canonical": "spironolactone",
+    "brand": "Aldactone",
+    "variations": ["spironolactone", "spironolacton", "spiro"]
+  },
+  {
+    "canonical": "progesterone",
+    "brand": "Prometrium",
+    "variations": ["progesterone", "prometrium", "progesteron"]
+  },
+  {
+    "canonical": "estradiol",
+    "brand": "Estrace",
+    "variations": ["estradiol", "estrace", "estrodial", "estridol"]
+  },
+  {
+    "canonical": "testosterone",
+    "brand": "Testosterone",
+    "variations": ["testosterone", "testosteron", "test"]
+  },
+
+  {
+    "canonical": "lisinopril",
+    "brand": "Prinivil/Zestril",
+    "variations": ["lisinopril", "lisinipril", "lisinoprol"]
+  },
+  {
+    "canonical": "losartan",
+    "brand": "Cozaar",
+    "variations": ["losartan", "losartin"]
+  },
+  {
+    "canonical": "amlodipine",
+    "brand": "Norvasc",
+    "variations": ["amlodipine", "amolodipine"]
+  },
+  {
+    "canonical": "hydrochlorothiazide",
+    "brand": "HCTZ",
+    "variations": ["hydrochlorothiazide", "hctz", "hydrochloro"]
+  },
+  {
+    "canonical": "metoprolol",
+    "brand": "Lopressor/Toprol",
+    "variations": ["metoprolol", "metoprol", "metroprolol"]
+  },
+
+  {
+    "canonical": "rosuvastatin",
+    "brand": "Crestor",
+    "variations": ["rosuvastatin", "crestor", "rosuva"]
+  },
+  {
+    "canonical": "atorvastatin",
+    "brand": "Lipitor",
+    "variations": ["atorvastatin", "lipitor", "atorva"]
+  },
+
+  {
+    "canonical": "omeprazole",
+    "brand": "Prilosec",
+    "variations": ["omeprazole", "prilosec", "omeprazol"]
+  },
+  {
+    "canonical": "pantoprazole",
+    "brand": "Protonix",
+    "variations": ["pantoprazole", "protonix"]
+  },
+  {
+    "canonical": "famotidine",
+    "brand": "Pepcid",
+    "variations": ["famotidine", "pepcid"]
+  },
+
+  {
+    "canonical": "trazodone",
+    "brand": "Desyrel",
+    "variations": ["trazodone", "trazadon"]
+  },
+  {
+    "canonical": "hydroxyzine",
+    "brand": "Vistaril",
+    "variations": ["hydroxyzine", "hydroxizine", "vistaril"]
+  },
+  {
+    "canonical": "zolpidem",
+    "brand": "Ambien",
+    "variations": ["zolpidem", "ambien"]
+  },
+
+  {
+    "canonical": "albuterol",
+    "brand": "ProAir/Ventolin",
+    "variations": ["albuterol", "proair", "ventolin", "albuteral"]
+  },
+  {
+    "canonical": "montelukast",
+    "brand": "Singulair",
+    "variations": ["montelukast", "singulair", "singulair"]
+  },
+  {
+    "canonical": "cetirizine",
+    "brand": "Zyrtec",
+    "variations": ["cetirizine", "zyrtec", "cetirazin"]
+  }
+]
