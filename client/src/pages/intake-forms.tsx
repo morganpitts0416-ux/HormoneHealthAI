@@ -297,6 +297,14 @@ export default function IntakeFormsPage() {
     <div className="flex flex-col h-full">
       <div className="border-b px-6 py-4 flex flex-wrap items-center justify-between gap-3">
         <div className="flex items-center gap-3">
+          <Tooltip>
+            <TooltipTrigger asChild>
+              <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-back-to-dashboard">
+                <ChevronLeft className="h-4 w-4" />
+              </Button>
+            </TooltipTrigger>
+            <TooltipContent>Back to Dashboard</TooltipContent>
+          </Tooltip>
           <ClipboardList className="h-5 w-5 text-muted-foreground" />
           <div>
             <h1 className="text-lg font-semibold">Digital Forms</h1>
@@ -1758,7 +1766,7 @@ function PublishDialog({ open, onOpenChange, publicUrl, publication, onPublish, 
   };
 
   const embedCode = publicUrl
-    ? `<iframe src="${publicUrl}" style="width:100%;min-height:600px;border:none;" title="Patient Form"></iframe>`
+    ? `<iframe src="${publicUrl}?embed=1" style="width:100%;min-height:600px;border:none;" title="Patient Form"></iframe>`
     : "";
 
   const handleCopyEmbed = () => {

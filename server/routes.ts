@@ -7711,7 +7711,19 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         storage.getFormSections(pub.formId),
         storage.getFormFields(pub.formId),
       ]);
-      res.json({ form, sections, fields, publication: pub });
+      let clinic: { clinicName?: string; clinicLogo?: string | null; phone?: string; address?: string } = {};
+      try {
+        const owner = await storage.getUserById(form.clinicianId);
+        if (owner) {
+          clinic = {
+            clinicName: owner.clinicName || undefined,
+            clinicLogo: owner.clinicLogo || null,
+            phone: owner.phone || undefined,
+            address: owner.address || undefined,
+          };
+        }
+      } catch {}
+      res.json({ form, sections, fields, publication: pub, clinic });
     } catch (err) {
       res.status(500).json({ message: "Failed to load form" });
     }
