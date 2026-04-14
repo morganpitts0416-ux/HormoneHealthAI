@@ -1,0 +1,195 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run services logs read hormonehealthai --region=us-central1 --limit=200
+2026-04-14 04:29:15 GET 304 https://app.cliniqapp.ai/favicon.png
+2026-04-14 04:29:15 GET 304 https://app.cliniqapp.ai/api/baa/status
+2026-04-14 04:29:15 4:29:15 AM [express] GET /api/baa/status 304 in 6ms :: {"signed":true,"signedAt":"2026-04-14T03:19:2…
+2026-04-14 04:29:15 GET 304 https://app.cliniqapp.ai/favicon.png
+2026-04-14 04:29:15 GET 200 https://app.cliniqapp.ai/realign-health-logo.png
+2026-04-14 04:29:16 GET 304 https://app.cliniqapp.ai/favicon.png
+2026-04-14 04:29:55 POST 500 https://app.cliniqapp.ai/api/patients
+2026-04-14 04:29:55 Error creating patient: error: column "preferred_pharmacy" of relation "patients" does not exist
+2026-04-14 04:29:55     at /app/node_modules/pg-pool/index.js:45:11
+2026-04-14 04:29:55     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-14 04:29:55     at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-14 04:29:55     at async DbStorage.createPatient (file:///app/dist/index.js:2293:20)
+2026-04-14 04:29:55     at async file:///app/dist/index.js:13078:23 {
+2026-04-14 04:29:55   length: 140,
+2026-04-14 04:29:55   severity: 'ERROR',
+2026-04-14 04:29:55   code: '42703',
+2026-04-14 04:29:55   detail: undefined,
+2026-04-14 04:29:55   hint: undefined,
+2026-04-14 04:29:55   position: '121',
+2026-04-14 04:29:55   internalPosition: undefined,
+2026-04-14 04:29:55   internalQuery: undefined,
+2026-04-14 04:29:55   where: undefined,
+2026-04-14 04:29:55   schema: undefined,
+2026-04-14 04:29:55   table: undefined,
+2026-04-14 04:29:55   column: undefined,
+2026-04-14 04:29:55   dataType: undefined,
+2026-04-14 04:29:55   constraint: undefined,
+2026-04-14 04:29:55   file: 'parse_target.c',
+2026-04-14 04:29:55   line: '1073',
+2026-04-14 04:29:55   routine: 'checkInsertTargets'
+2026-04-14 04:29:55 }
+2026-04-14 04:29:55 4:29:55 AM [express] POST /api/patients 500 in 16ms :: {"error":"Failed to create patient"}
+2026-04-14 04:31:02 GET 500 https://app.cliniqapp.ai/api/patients/search
+2026-04-14 04:31:02 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-14 04:31:02 GET 304 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-14 04:31:02 [DEBUG] /api/patients/search — clinicianId=12, clinicId=null, q=""
+2026-04-14 04:31:02 Error searching patients: error: column "preferred_pharmacy" does not exist
+2026-04-14 04:31:02     at /app/node_modules/pg-pool/index.js:45:11
+2026-04-14 04:31:02     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-14 04:31:02     at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-14 04:31:02     at async DbStorage.getAllPatients (file:///app/dist/index.js:2257:12)
+2026-04-14 04:31:02     at async file:///app/dist/index.js:13093:29 {
+2026-04-14 04:31:02   length: 119,
+2026-04-14 04:31:02   severity: 'ERROR',
+2026-04-14 04:31:02   code: '42703',
+2026-04-14 04:31:02   detail: undefined,
+2026-04-14 04:31:02   hint: undefined,
+2026-04-14 04:31:02   position: '104',
+2026-04-14 04:31:02   internalPosition: undefined,
+2026-04-14 04:31:02   internalQuery: undefined,
+2026-04-14 04:31:02   where: undefined,
+2026-04-14 04:31:02   schema: undefined,
+2026-04-14 04:31:02   table: undefined,
+2026-04-14 04:31:02   column: undefined,
+2026-04-14 04:31:02   dataType: undefined,
+2026-04-14 04:31:02   constraint: undefined,
+2026-04-14 04:31:02   file: 'parse_relation.c',
+2026-04-14 04:31:02   line: '3827',
+2026-04-14 04:31:02   routine: 'errorMissingColumn'
+2026-04-14 04:31:02 }
+2026-04-14 04:31:02 4:31:02 AM [express] GET /api/patients/search 500 in 12ms :: {"error":"Failed to search patients"}
+2026-04-14 04:31:02 4:31:02 AM [express] GET /api/intake-forms/submissions/pending 304 in 12ms :: []
+2026-04-14 04:31:02 4:31:02 AM [express] GET /api/clinician/notifications 304 in 20ms :: {"unreadMessages":[],"pendingOr…
+2026-04-14 04:31:06 GET 500 https://app.cliniqapp.ai/api/staff
+2026-04-14 04:31:06 GET 304 https://app.cliniqapp.ai/api/auth/messaging-settings
+2026-04-14 04:31:06 [API] Error fetching staff: error: column "admin_role" does not exist
+2026-04-14 04:31:06     at /app/node_modules/pg-pool/index.js:45:11
+2026-04-14 04:31:06     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-14 04:31:06     at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-14 04:31:06     at async file:///app/dist/index.js:14703:21 {
+2026-04-14 04:31:06   length: 110,
+2026-04-14 04:31:06   severity: 'ERROR',
+2026-04-14 04:31:06   code: '42703',
+2026-04-14 04:31:06   detail: undefined,
+2026-04-14 04:31:06   hint: undefined,
+2026-04-14 04:31:06   position: '74',
+2026-04-14 04:31:06   internalPosition: undefined,
+2026-04-14 04:31:06   internalQuery: undefined,
+2026-04-14 04:31:06   where: undefined,
+2026-04-14 04:31:06   schema: undefined,
+2026-04-14 04:31:06   table: undefined,
+2026-04-14 04:31:06   column: undefined,
+2026-04-14 04:31:06   dataType: undefined,
+2026-04-14 04:31:06   constraint: undefined,
+2026-04-14 04:31:06   file: 'parse_relation.c',
+2026-04-14 04:31:06   line: '3827',
+2026-04-14 04:31:06   routine: 'errorMissingColumn'
+2026-04-14 04:31:06 }
+2026-04-14 04:31:06 4:31:06 AM [express] GET /api/staff 500 in 13ms :: {"message":"Failed to fetch staff"}
+2026-04-14 04:31:06 4:31:06 AM [express] GET /api/auth/messaging-settings 304 in 7ms :: {"messagingPreference":"none","m…
+2026-04-14 04:32:26 GET 304 https://app.cliniqapp.ai/api/billing/status
+2026-04-14 04:32:26 GET 200 https://app.cliniqapp.ai/api/intake-forms
+2026-04-14 04:32:26 4:32:26 AM [express] GET /api/billing/status 304 in 3ms :: {"subscriptionStatus":"trial","freeAccoun…
+2026-04-14 04:32:26 4:32:26 AM [express] GET /api/intake-forms 200 in 5ms :: []
+2026-04-14 04:32:48 POST 200 https://app.cliniqapp.ai/api/intake-forms
+2026-04-14 04:32:48 4:32:48 AM [express] POST /api/intake-forms 200 in 14ms :: {"id":2,"clinicianId":12,"name":"Women's …
+2026-04-14 04:32:48 GET 200 https://app.cliniqapp.ai/api/intake-forms
+2026-04-14 04:32:48 GET 500 https://app.cliniqapp.ai/api/intake-forms/2
+2026-04-14 04:32:48 4:32:48 AM [express] GET /api/intake-forms 200 in 8ms :: [{"id":2,"clinicianId":12,"name":"Women's W…
+2026-04-14 04:32:48 4:32:48 AM [express] GET /api/intake-forms/2 500 in 16ms :: {"message":"Failed to fetch form"}
+2026-04-14 04:33:11 POST 500 https://app.cliniqapp.ai/api/intake-forms/2/fields
+2026-04-14 04:33:11 4:33:11 AM [express] POST /api/intake-forms/2/fields 500 in 8ms :: {"message":"Failed to create fiel…
+2026-04-14 04:42:48 [startup] registering routes…
+2026-04-14 04:42:48 [startup] serving static files…
+2026-04-14 04:42:48 [startup] binding to 0.0.0.0:8080…
+2026-04-14 04:42:49 4:42:48 AM [express] serving on port 8080
+2026-04-14 04:43:32 GET 304 https://app.cliniqapp.ai/api/auth/messaging-settings
+2026-04-14 04:43:32 GET 304 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-14 04:43:32 GET 304 https://app.cliniqapp.ai/api/auth/me
+2026-04-14 04:43:32 GET 500 https://app.cliniqapp.ai/api/staff
+2026-04-14 04:43:32 4:43:32 AM [express] GET /api/auth/messaging-settings 304 in 99ms :: {"messagingPreference":"none","…
+2026-04-14 04:43:32 4:43:32 AM [express] GET /api/intake-forms/submissions/pending 304 in 33ms :: []
+2026-04-14 04:43:32 [API] Error fetching staff: error: column "admin_role" does not exist
+2026-04-14 04:43:32     at /app/node_modules/pg-pool/index.js:45:11
+2026-04-14 04:43:32     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-14 04:43:32     at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-14 04:43:32     at async file:///app/dist/index.js:14703:21 {
+2026-04-14 04:43:32   length: 110,
+2026-04-14 04:43:32   severity: 'ERROR',
+2026-04-14 04:43:32   code: '42703',
+2026-04-14 04:43:32   detail: undefined,
+2026-04-14 04:43:32   hint: undefined,
+2026-04-14 04:43:32   position: '74',
+2026-04-14 04:43:32   internalPosition: undefined,
+2026-04-14 04:43:32   internalQuery: undefined,
+2026-04-14 04:43:32   where: undefined,
+2026-04-14 04:43:32   schema: undefined,
+2026-04-14 04:43:32   table: undefined,
+2026-04-14 04:43:32   column: undefined,
+2026-04-14 04:43:32   dataType: undefined,
+2026-04-14 04:43:32   constraint: undefined,
+2026-04-14 04:43:32   file: 'parse_relation.c',
+2026-04-14 04:43:32   line: '3827',
+2026-04-14 04:43:32   routine: 'errorMissingColumn'
+2026-04-14 04:43:32 }
+2026-04-14 04:43:32 4:43:32 AM [express] GET /api/auth/me 304 in 16ms :: {"id":12,"email":"morgan@womenswellnessms.com",…
+2026-04-14 04:43:32 4:43:32 AM [express] GET /api/staff 500 in 22ms :: {"message":"Failed to fetch staff"}
+2026-04-14 04:43:36 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-14 04:43:36 GET 500 https://app.cliniqapp.ai/api/patients/search
+2026-04-14 04:43:36 GET 304 https://app.cliniqapp.ai/api/billing/status
+2026-04-14 04:43:36 [DEBUG] /api/patients/search — clinicianId=12, clinicId=null, q=""
+2026-04-14 04:43:36 Error searching patients: error: column "preferred_pharmacy" does not exist
+2026-04-14 04:43:36     at /app/node_modules/pg-pool/index.js:45:11
+2026-04-14 04:43:36     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-14 04:43:36     at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-14 04:43:36     at async DbStorage.getAllPatients (file:///app/dist/index.js:2257:12)
+2026-04-14 04:43:36     at async file:///app/dist/index.js:13093:29 {
+2026-04-14 04:43:36   length: 119,
+2026-04-14 04:43:36   severity: 'ERROR',
+2026-04-14 04:43:36   code: '42703',
+2026-04-14 04:43:36   detail: undefined,
+2026-04-14 04:43:36   hint: undefined,
+2026-04-14 04:43:36   position: '104',
+2026-04-14 04:43:36   internalPosition: undefined,
+2026-04-14 04:43:36   internalQuery: undefined,
+2026-04-14 04:43:36   where: undefined,
+2026-04-14 04:43:36   schema: undefined,
+2026-04-14 04:43:36   table: undefined,
+2026-04-14 04:43:36   column: undefined,
+2026-04-14 04:43:36   dataType: undefined,
+2026-04-14 04:43:36   constraint: undefined,
+2026-04-14 04:43:36   file: 'parse_relation.c',
+2026-04-14 04:43:36   line: '3827',
+2026-04-14 04:43:36   routine: 'errorMissingColumn'
+2026-04-14 04:43:36 }
+2026-04-14 04:43:36 4:43:36 AM [express] GET /api/clinician/notifications 304 in 36ms :: {"unreadMessages":[],"pendingOr…
+2026-04-14 04:43:36 4:43:36 AM [express] GET /api/patients/search 500 in 10ms :: {"error":"Failed to search patients"}
+2026-04-14 04:43:36 4:43:36 AM [express] GET /api/billing/status 304 in 5ms :: {"subscriptionStatus":"trial","freeAccoun…
+2026-04-14 04:44:30 POST 500 https://app.cliniqapp.ai/api/patients
+2026-04-14 04:44:31 Error creating patient: error: column "preferred_pharmacy" of relation "patients" does not exist
+2026-04-14 04:44:31     at /app/node_modules/pg-pool/index.js:45:11
+2026-04-14 04:44:31     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-14 04:44:31     at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-14 04:44:31     at async DbStorage.createPatient (file:///app/dist/index.js:2293:20)
+2026-04-14 04:44:31     at async file:///app/dist/index.js:13078:23 {
+2026-04-14 04:44:31   length: 140,
+2026-04-14 04:44:31   severity: 'ERROR',
+2026-04-14 04:44:31   code: '42703',
+2026-04-14 04:44:31   detail: undefined,
+2026-04-14 04:44:31   hint: undefined,
+2026-04-14 04:44:31   position: '121',
+2026-04-14 04:44:31   internalPosition: undefined,
+2026-04-14 04:44:31   internalQuery: undefined,
+2026-04-14 04:44:31   where: undefined,
+2026-04-14 04:44:31   schema: undefined,
+2026-04-14 04:44:31   table: undefined,
+2026-04-14 04:44:31   column: undefined,
+2026-04-14 04:44:31   dataType: undefined,
+2026-04-14 04:44:31   constraint: undefined,
+2026-04-14 04:44:31   file: 'parse_target.c',
+2026-04-14 04:44:31   line: '1073',
+2026-04-14 04:44:31   routine: 'checkInsertTargets'
+2026-04-14 04:44:31 }
+2026-04-14 04:44:31 4:44:31 AM [express] POST /api/patients 500 in 14ms :: {"error":"Failed to create patient"}
