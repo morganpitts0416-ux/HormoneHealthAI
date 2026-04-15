@@ -27,6 +27,7 @@ interface PipelineInput {
   medicationContext: string;
   encounter: any;
   openai: OpenAI;
+  patientName?: string;
 }
 
 interface PipelineOutput {
@@ -204,7 +205,8 @@ async function generateSoapSections(
   labContext: string,
   patternContext: string,
   medicationContext: string,
-  encounter: any
+  encounter: any,
+  patientName?: string
 ): Promise<PipelineOutput> {
   const diarizedInput = diarized.length > 0
     ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
@@ -439,16 +441,22 @@ PROSE STANDARDS:
 - Standard medical abbreviations
 - No redundancy
 - Numerals for doses/measurements
-- Integrate lab values naturally into narrative`;
+- Integrate lab values naturally into narrative
 
+CRITICAL — PATIENT vs. CLINICIAN IDENTITY:
+- The PATIENT is the person being treated. Their name will be provided below. Use ONLY the patient's name (or "patient"/"she"/"he") when referring to the person receiving care.
+- The CLINICIAN/PROVIDER is the person conducting the visit. NEVER use the clinician's name as the patient. The transcript is often recorded from the clinician's perspective — do NOT confuse the speaker with the patient.
+- If the transcript is narrated in first person by the clinician (e.g., "I told her...", "we discussed..."), the "I" is the CLINICIAN, not the patient.`;
+
+  const patientLine = patientName ? `\nPatient Name: ${patientName}` : "";
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
 
 TRANSCRIPT:
 ${diarizedInput}
 
-Generate the SOAP note following all rules above. The HPI must be a DETAILED RECONSTRUCTION of the clinical encounter, not a compressed summary. Flag uncertain items and non-duplicate recommendations in needs_clinician_review.`;
+Generate the SOAP note following all rules above. The HPI must be a DETAILED RECONSTRUCTION of the clinical encounter, not a compressed summary.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} Flag uncertain items and non-duplicate recommendations in needs_clinician_review.`;
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
@@ -616,7 +624,7 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
   try {
     soapOutput = await generateSoapSections(
       openai, extraction, normalized, transcriptText, diarized,
-      labContext, patternContext, medicationContext, encounter
+      labContext, patternContext, medicationContext, encounter, input.patientName
     );
   } catch (err) {
     console.error("[SOAP Pipeline] SOAP generation failed:", err);
