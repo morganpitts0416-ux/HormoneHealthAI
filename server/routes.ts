@@ -106,13 +106,29 @@ async function resolveClinicOwnerSubscription(clinicId: number): Promise<{
   freeAccount: boolean;
   stripeCustomerId: string | null;
 }> {
+  let ownerUserId: number | null = null;
+
   const ownerMembership = await storageDb
     .select({ userId: clinicMemberships.userId })
     .from(clinicMemberships)
     .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.adminRole, "owner" as any)))
     .limit(1);
+
   if (ownerMembership.length) {
-    const [ownerUser] = await storageDb.select().from(usersTable).where(eq(usersTable.id, ownerMembership[0].userId)).limit(1);
+    ownerUserId = ownerMembership[0].userId;
+  } else {
+    const [clinicRecord] = await storageDb
+      .select({ ownerUserId: clinics.ownerUserId })
+      .from(clinics)
+      .where(eq(clinics.id, clinicId))
+      .limit(1);
+    if (clinicRecord?.ownerUserId) {
+      ownerUserId = clinicRecord.ownerUserId;
+    }
+  }
+
+  if (ownerUserId) {
+    const [ownerUser] = await storageDb.select().from(usersTable).where(eq(usersTable.id, ownerUserId)).limit(1);
     if (ownerUser) {
       return {
         stripeSubscriptionId: ownerUser.stripeSubscriptionId ?? null,
@@ -6543,16 +6559,32 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
           .where(and(eq(clinicMemberships.clinicId, user.defaultClinicId), eq(clinicMemberships.userId, user.id)))
           .limit(1);
         const myRole = membership[0]?.adminRole;
-        isClinicOwner = myRole === "owner";
+
+        const [clinicRecord] = await storageDb
+          .select({ ownerUserId: clinics.ownerUserId })
+          .from(clinics)
+          .where(eq(clinics.id, user.defaultClinicId))
+          .limit(1);
+
+        isClinicOwner = myRole === "owner" || (clinicRecord?.ownerUserId === user.id);
 
         if (!isClinicOwner) {
+          let ownerUserId: number | null = null;
+
           const ownerMembership = await storageDb
             .select({ userId: clinicMemberships.userId })
             .from(clinicMemberships)
             .where(and(eq(clinicMemberships.clinicId, user.defaultClinicId), eq(clinicMemberships.adminRole, "owner" as any)))
             .limit(1);
+
           if (ownerMembership.length) {
-            const [ownerUser] = await storageDb.select().from(usersTable).where(eq(usersTable.id, ownerMembership[0].userId)).limit(1);
+            ownerUserId = ownerMembership[0].userId;
+          } else if (clinicRecord?.ownerUserId) {
+            ownerUserId = clinicRecord.ownerUserId;
+          }
+
+          if (ownerUserId) {
+            const [ownerUser] = await storageDb.select().from(usersTable).where(eq(usersTable.id, ownerUserId)).limit(1);
             if (ownerUser) {
               effectiveSubStatus = ownerUser.subscriptionStatus;
               effectiveSubId = ownerUser.stripeSubscriptionId;
