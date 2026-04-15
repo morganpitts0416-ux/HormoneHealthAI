@@ -2094,6 +2094,69 @@ Return ONLY this JSON structure:
     }
   });
 
+  // GET /api/admin/usage-report — aggregate platform usage & cost analytics
+  app.get("/api/admin/usage-report", requireAdmin, async (req, res) => {
+    try {
+      const users = await storage.getAllUsers();
+      const allClinics = await storage.getAllClinicsAdmin();
+
+      const totalProviders = users.length;
+      const activeStatuses = ["active", "trialing", "trial"];
+      const activeProviders = users.filter(u => activeStatuses.includes(u.subscriptionStatus ?? "")).length;
+      const freeProviders = users.filter(u => u.freeAccount && activeStatuses.includes(u.subscriptionStatus ?? "")).length;
+      const paidProviders = users.filter(u => !u.freeAccount && activeStatuses.includes(u.subscriptionStatus ?? "")).length;
+      const canceledProviders = users.filter(u => u.subscriptionStatus === "canceled").length;
+      const trialProviders = users.filter(u => u.subscriptionStatus === "trial" || u.subscriptionStatus === "trialing").length;
+
+      let totalPatients = 0;
+      for (const c of allClinics) {
+        totalPatients += c.patientCount ?? 0;
+      }
+
+      const soloClinicCount = allClinics.filter((c: any) => (c.subscriptionPlan ?? "solo") === "solo").length;
+      const suiteClinicCount = allClinics.filter((c: any) => c.subscriptionPlan === "suite").length;
+
+      const billableSolo = allClinics.filter((c: any) => (c.subscriptionPlan ?? "solo") === "solo" && paidProviders > 0).length;
+      const billableSuite = allClinics.filter((c: any) => c.subscriptionPlan === "suite").length;
+      const totalExtraSeats = allClinics.reduce((sum: number, c: any) => sum + (c.extraProviderSeats ?? 0), 0);
+
+      const SOLO_PRICE = 149;
+      const SUITE_PRICE = 249;
+      const EXTRA_SEAT_PRICE = 79;
+      const estimatedMRR =
+        (billableSuite * SUITE_PRICE) +
+        ((paidProviders > 0 ? billableSolo : 0) * SOLO_PRICE) +
+        (totalExtraSeats * EXTRA_SEAT_PRICE);
+
+      const clinicDetails = allClinics.map((c: any) => ({
+        id: c.id,
+        name: c.name,
+        plan: c.subscriptionPlan ?? "solo",
+        memberCount: c.memberCount ?? 0,
+        patientCount: c.patientCount ?? 0,
+        extraSeats: c.extraProviderSeats ?? 0,
+      }));
+
+      res.json({
+        totalProviders,
+        activeProviders,
+        paidProviders,
+        freeProviders,
+        canceledProviders,
+        trialProviders,
+        totalPatients,
+        soloClinicCount,
+        suiteClinicCount,
+        totalExtraSeats,
+        estimatedMRR,
+        clinicDetails,
+      });
+    } catch (error) {
+      console.error("[ADMIN] Error generating usage report:", error);
+      res.status(500).json({ message: "Failed to generate usage report" });
+    }
+  });
+
   // ══════════════════════════════════════════════════════════════════════════
   // ADMIN — Clinic Management
   // Tools for the ReAlign admin to create clinics, assign members, and run
