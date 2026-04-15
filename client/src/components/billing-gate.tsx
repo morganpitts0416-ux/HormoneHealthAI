@@ -9,6 +9,8 @@ interface BillingStatus {
   freeAccount: boolean;
   stripeCustomerId: string | null;
   stripeSubscriptionId: string | null;
+  isClinicOwner?: boolean;
+  ownerName?: string | null;
 }
 
 export function BillingGate({ children }: { children: React.ReactNode }) {
@@ -71,10 +73,51 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
 
   const allowedStatuses = ["trial", "active", "trialing"];
   const hasValidBilling = billing.freeAccount || (!!billing.stripeSubscriptionId && allowedStatuses.includes(billing.subscriptionStatus));
-  const isCanceled = billing.subscriptionStatus === "canceled";
+  const isCanceled = billing.subscriptionStatus === "canceled" || billing.subscriptionStatus === "past_due";
+  const isNonOwner = billing.isClinicOwner === false;
 
   if (hasValidBilling) {
     return <>{children}</>;
+  }
+
+  if (isNonOwner) {
+    return (
+      <div className="min-h-screen flex items-center justify-center bg-background p-8">
+        <div className="max-w-md w-full text-center space-y-6">
+          <div className="mx-auto w-16 h-16 rounded-full flex items-center justify-center" style={{ backgroundColor: "#fef3c7" }}>
+            <AlertCircle className="w-8 h-8" style={{ color: "#b45309" }} />
+          </div>
+          <div>
+            <h2 className="text-xl font-semibold mb-2" style={{ color: "#1c2414" }}>
+              Account Access Issue
+            </h2>
+            <p className="text-sm text-muted-foreground">
+              {isCanceled
+                ? "Your clinic's subscription is no longer active. Please contact your clinic administrator to resolve the billing issue."
+                : "There is a billing issue with your clinic's account. Please contact your clinic administrator to restore access."}
+            </p>
+            {billing.ownerName && (
+              <p className="text-sm text-muted-foreground mt-2">
+                Account owner: <span className="font-medium text-foreground">{billing.ownerName}</span>
+              </p>
+            )}
+          </div>
+          <div className="space-y-3">
+            <Button
+              className="w-full"
+              onClick={() => window.location.reload()}
+              variant="outline"
+              data-testid="button-retry-billing"
+            >
+              Try Again
+            </Button>
+            <p className="text-xs text-muted-foreground">
+              Need help? Contact support at support@realignhealth.com
+            </p>
+          </div>
+        </div>
+      </div>
+    );
   }
 
   return (

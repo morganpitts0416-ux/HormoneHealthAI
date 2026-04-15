@@ -101,6 +101,29 @@ function canEditForms(adminRole: string | null): boolean {
   return adminRole === "owner" || adminRole === "admin" || adminRole === "limited_admin";
 }
 
+async function resolveClinicOwnerSubscription(clinicId: number): Promise<{
+  stripeSubscriptionId: string | null;
+  freeAccount: boolean;
+  stripeCustomerId: string | null;
+}> {
+  const ownerMembership = await storageDb
+    .select({ userId: clinicMemberships.userId })
+    .from(clinicMemberships)
+    .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.adminRole, "owner" as any)))
+    .limit(1);
+  if (ownerMembership.length) {
+    const [ownerUser] = await storageDb.select().from(usersTable).where(eq(usersTable.id, ownerMembership[0].userId)).limit(1);
+    if (ownerUser) {
+      return {
+        stripeSubscriptionId: ownerUser.stripeSubscriptionId ?? null,
+        freeAccount: ownerUser.freeAccount ?? false,
+        stripeCustomerId: ownerUser.stripeCustomerId ?? null,
+      };
+    }
+  }
+  return { stripeSubscriptionId: null, freeAccount: false, stripeCustomerId: null };
+}
+
 export async function registerRoutes(app: Express): Promise<Server> {
 
   // ── Auth routes ────────────────────────────────────────────────────────────
@@ -3461,12 +3484,54 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   });
 
   // POST /api/clinic/invite-provider — invite a provider (full clinician) to join this clinic
+  // GET /api/clinic/seat-check — check if adding a provider requires a paid seat (owner/admin only)
+  app.get("/api/clinic/seat-check", requireClinicianOnly, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const clinicId = user.defaultClinicId;
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const adminRole = await getSessionAdminRole(user);
+      if (adminRole !== "owner" && adminRole !== "admin") {
+        return res.status(403).json({ message: "Only clinic owners or admins can check seat availability." });
+      }
+      const ownerSub = await resolveClinicOwnerSubscription(clinicId);
+      const planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
+      const pendingInvites = await storageDb
+        .select({ id: clinicProviderInvites.id })
+        .from(clinicProviderInvites)
+        .where(and(eq(clinicProviderInvites.clinicId, clinicId), eq(clinicProviderInvites.status, "pending")));
+      const effectiveCount = planState.activeProviderCount + pendingInvites.length;
+      const requiresPaidSeat = !planState.isFreeAccount && planState.isSuitePlan && effectiveCount >= planState.maxProviders;
+      const withinBase = effectiveCount < planState.baseProviderLimit;
+      res.json({
+        activeProviders: planState.activeProviderCount,
+        pendingInvites: pendingInvites.length,
+        effectiveCount,
+        maxProviders: planState.maxProviders,
+        baseProviderLimit: planState.baseProviderLimit,
+        extraProviderSeats: planState.extraProviderSeats,
+        requiresPaidSeat,
+        withinBase,
+        seatPrice: EXTRA_SEAT_MONTHLY_PRICE,
+        isSuitePlan: planState.isSuitePlan,
+        isSoloPlan: planState.isSoloPlan,
+      });
+    } catch (err) {
+      console.error("[SeatCheck]", err);
+      res.status(500).json({ message: "Failed to check seat availability" });
+    }
+  });
+
   app.post("/api/clinic/invite-provider", requireClinicianOnly, async (req, res) => {
     try {
       const user = req.user as any;
       const clinicId = user.defaultClinicId;
       if (!clinicId) return res.status(400).json({ message: "No clinic associated with your account" });
-      const { email, firstName, lastName, clinicalRole, adminRole } = req.body;
+      const callerAdminRole = await getSessionAdminRole(user);
+      if (callerAdminRole !== "owner" && callerAdminRole !== "admin") {
+        return res.status(403).json({ message: "Only clinic owners or admins can invite providers." });
+      }
+      const { email, firstName, lastName, clinicalRole, adminRole, confirmExtraSeat } = req.body;
       if (!email || !firstName || !lastName) {
         return res.status(400).json({ message: "email, firstName, and lastName are required" });
       }
@@ -3475,6 +3540,49 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (existingUser) {
         return res.status(409).json({ message: "A clinician with this email already has a ClinIQ account. Ask them to contact support to join your clinic." });
       }
+
+      // Resolve the clinic owner's subscription for billing operations
+      const ownerSub = await resolveClinicOwnerSubscription(clinicId);
+      const planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
+      if (planState.isSoloPlan) {
+        return res.status(403).json({ message: "Solo plan supports only 1 provider. Upgrade to ClinIQ Suite to add additional providers." });
+      }
+      const pendingInvites = await storageDb
+        .select({ id: clinicProviderInvites.id })
+        .from(clinicProviderInvites)
+        .where(and(eq(clinicProviderInvites.clinicId, clinicId), eq(clinicProviderInvites.status, "pending")));
+      const effectiveCount = planState.activeProviderCount + pendingInvites.length;
+      const requiresPaidSeat = !planState.isFreeAccount && planState.isSuitePlan && effectiveCount >= planState.maxProviders;
+
+      if (requiresPaidSeat) {
+        if (!confirmExtraSeat) {
+          return res.status(402).json({
+            requiresSeatConfirmation: true,
+            seatPrice: EXTRA_SEAT_MONTHLY_PRICE,
+            currentProviders: planState.activeProviderCount,
+            pendingInvites: pendingInvites.length,
+            maxIncluded: planState.baseProviderLimit,
+            message: `Adding this provider will add $${EXTRA_SEAT_MONTHLY_PRICE}/month to your subscription. Please confirm to proceed.`,
+          });
+        }
+
+        // Confirmed — add the extra seat via owner's Stripe subscription
+        const SUITE_SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+        if (!SUITE_SEAT_PRICE_ID || !ownerSub.stripeSubscriptionId) {
+          return res.status(503).json({ message: "Provider seat billing is not configured. Contact support." });
+        }
+        const stripe = getStripe();
+        const subscription = await stripe.subscriptions.retrieve(ownerSub.stripeSubscriptionId, { expand: ["items"] });
+        const items: any[] = (subscription as any).items?.data ?? [];
+        const seatItem = items.find((item: any) => item.price?.id === SUITE_SEAT_PRICE_ID);
+        if (seatItem) {
+          await stripe.subscriptionItems.update(seatItem.id, { quantity: (seatItem.quantity ?? 0) + 1 });
+        } else {
+          await stripe.subscriptionItems.create({ subscription: ownerSub.stripeSubscriptionId, price: SUITE_SEAT_PRICE_ID, quantity: 1 });
+        }
+        await updateClinicSeats(clinicId, (planState.extraProviderSeats ?? 0) + 1);
+      }
+
       const inviteToken = crypto.randomBytes(32).toString('hex');
       const inviteExpires = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
       const validClinicalRoles = ["provider", "nurse", "assistant", "staff"];
@@ -3502,7 +3610,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         inviteToken,
         req
       ).catch(err => console.error('[EMAIL] Provider invite email failed:', err));
-      res.status(201).json({ success: true, invite });
+      res.status(201).json({ success: true, invite, billingUpdated: requiresPaidSeat });
     } catch (err: any) {
       console.error('[API] Error inviting provider:', err);
       const detail = err?.message ?? String(err);
@@ -3577,6 +3685,19 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       // Get clinic info for the new user
       const clinic = await storageDb.select().from(clinics).where(eq(clinics.id, invite.clinicId)).limit(1);
       const clinicName = clinic[0]?.name || "the clinic";
+      // Resolve the clinic owner's subscription status so the invited user inherits it
+      let inheritedSubStatus = "active";
+      const ownerMembership = await storageDb
+        .select({ userId: clinicMemberships.userId })
+        .from(clinicMemberships)
+        .where(and(eq(clinicMemberships.clinicId, invite.clinicId), eq(clinicMemberships.adminRole, "owner" as any)))
+        .limit(1);
+      if (ownerMembership.length) {
+        const [ownerUser] = await storageDb.select().from(usersTable).where(eq(usersTable.id, ownerMembership[0].userId)).limit(1);
+        if (ownerUser?.subscriptionStatus) {
+          inheritedSubStatus = ownerUser.subscriptionStatus;
+        }
+      }
       // Create the new clinician account
       const newUser = await storage.createUser({
         email: invite.email,
@@ -3589,7 +3710,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         clinicName,
         clinicPhone: clinicPhone?.trim() || null,
         clinicAddress: clinicAddress?.trim() || null,
-        subscriptionStatus: "trialing",
+        subscriptionStatus: inheritedSubStatus,
         defaultClinicId: invite.clinicId,
       } as any);
       // Add to clinic membership
@@ -6172,15 +6293,23 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   }
 
   // GET /api/billing/status — return subscription info for the current clinician
+  // Suite members inherit billing from the clinic owner's subscription.
   app.get("/api/billing/status", requireAuth, async (req, res) => {
     try {
       const user = req.user as any;
 
-      // Also fetch clinic-level plan fields so the frontend can show the correct plan tier
       let clinicPlan: string = "solo";
       let clinicMaxProviders: number = 1;
       let clinicBaseProviderLimit: number = 1;
       let clinicExtraSeats: number = 0;
+      let isClinicOwner = true;
+      let ownerName: string | null = null;
+
+      let effectiveSubStatus = user.subscriptionStatus;
+      let effectiveSubId = user.stripeSubscriptionId;
+      let effectivePeriodEnd = user.stripeCurrentPeriodEnd;
+      let effectiveCancelAtPeriodEnd = user.stripeCancelAtPeriodEnd ?? false;
+      let effectiveFreeAccount = user.freeAccount ?? false;
 
       if (user.defaultClinicId) {
         const [clinic] = await storageDb
@@ -6199,19 +6328,48 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
           clinicBaseProviderLimit = clinic.baseProviderLimit ?? 1;
           clinicExtraSeats = clinic.extraProviderSeats ?? 0;
         }
+
+        const membership = await storageDb
+          .select({ adminRole: clinicMemberships.adminRole })
+          .from(clinicMemberships)
+          .where(and(eq(clinicMemberships.clinicId, user.defaultClinicId), eq(clinicMemberships.userId, user.id)))
+          .limit(1);
+        const myRole = membership[0]?.adminRole;
+        isClinicOwner = myRole === "owner";
+
+        if (!isClinicOwner) {
+          const ownerMembership = await storageDb
+            .select({ userId: clinicMemberships.userId })
+            .from(clinicMemberships)
+            .where(and(eq(clinicMemberships.clinicId, user.defaultClinicId), eq(clinicMemberships.adminRole, "owner" as any)))
+            .limit(1);
+          if (ownerMembership.length) {
+            const [ownerUser] = await storageDb.select().from(usersTable).where(eq(usersTable.id, ownerMembership[0].userId)).limit(1);
+            if (ownerUser) {
+              effectiveSubStatus = ownerUser.subscriptionStatus;
+              effectiveSubId = ownerUser.stripeSubscriptionId;
+              effectivePeriodEnd = ownerUser.stripeCurrentPeriodEnd;
+              effectiveCancelAtPeriodEnd = ownerUser.stripeCancelAtPeriodEnd ?? false;
+              effectiveFreeAccount = ownerUser.freeAccount ?? false;
+              ownerName = `${ownerUser.firstName ?? ""} ${ownerUser.lastName ?? ""}`.trim() || ownerUser.email;
+            }
+          }
+        }
       }
 
       res.json({
-        subscriptionStatus: user.subscriptionStatus,
-        freeAccount: user.freeAccount ?? false,
+        subscriptionStatus: effectiveSubStatus,
+        freeAccount: effectiveFreeAccount,
         stripeCustomerId: user.stripeCustomerId,
-        stripeSubscriptionId: user.stripeSubscriptionId,
-        stripeCurrentPeriodEnd: user.stripeCurrentPeriodEnd,
-        stripeCancelAtPeriodEnd: user.stripeCancelAtPeriodEnd ?? false,
+        stripeSubscriptionId: effectiveSubId,
+        stripeCurrentPeriodEnd: effectivePeriodEnd,
+        stripeCancelAtPeriodEnd: effectiveCancelAtPeriodEnd,
         clinicPlan,
         clinicMaxProviders,
         clinicBaseProviderLimit,
         clinicExtraSeats,
+        isClinicOwner,
+        ownerName,
       });
     } catch (err) {
       console.error("[Billing] Status error:", err);
