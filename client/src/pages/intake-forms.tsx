@@ -22,7 +22,7 @@ import {
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
   Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft, LayoutDashboard,
-  ArrowUp, ArrowDown, Home
+  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -300,25 +300,25 @@ export default function IntakeFormsPage() {
 
   return (
     <div className="flex flex-col h-full">
-      <div className="border-b px-6 py-4 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-3">
+      <div className="border-b px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3">
+        <div className="flex items-center gap-2 sm:gap-3 min-w-0">
           <Tooltip>
             <TooltipTrigger asChild>
-              <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-back-to-dashboard">
+              <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-back-to-dashboard" className="flex-shrink-0">
                 <ChevronLeft className="h-4 w-4" />
               </Button>
             </TooltipTrigger>
             <TooltipContent>Back to Dashboard</TooltipContent>
           </Tooltip>
-          <ClipboardList className="h-5 w-5 text-muted-foreground" />
-          <div>
-            <h1 className="text-lg font-semibold">Digital Forms</h1>
-            <p className="text-xs text-muted-foreground">Build and manage patient intake forms</p>
+          <ClipboardList className="h-5 w-5 text-muted-foreground flex-shrink-0 hidden sm:block" />
+          <div className="min-w-0">
+            <h1 className="text-base sm:text-lg font-semibold">Digital Forms</h1>
+            <p className="text-xs text-muted-foreground hidden sm:block">Build and manage patient intake forms</p>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-shrink-0">
           <Select value={filterStatus} onValueChange={setFilterStatus}>
-            <SelectTrigger className="w-36" data-testid="select-filter-status">
+            <SelectTrigger className="w-28 sm:w-36" data-testid="select-filter-status">
               <SelectValue />
             </SelectTrigger>
             <SelectContent>
@@ -329,14 +329,19 @@ export default function IntakeFormsPage() {
             </SelectContent>
           </Select>
           {canEditForms && (
-            <Button onClick={() => setShowCreate(true)} data-testid="button-create-form">
+            <Button onClick={() => setShowCreate(true)} data-testid="button-create-form" className="hidden sm:inline-flex">
               <Plus className="h-4 w-4 mr-1" /> New Form
+            </Button>
+          )}
+          {canEditForms && (
+            <Button size="icon" onClick={() => setShowCreate(true)} data-testid="button-create-form-mobile" className="sm:hidden">
+              <Plus className="h-4 w-4" />
             </Button>
           )}
         </div>
       </div>
 
-      <ScrollArea className="flex-1 p-6">
+      <ScrollArea className="flex-1 p-3 sm:p-6">
         {isLoading ? (
           <div className="space-y-3">
             {[1, 2, 3].map(i => (
@@ -742,6 +747,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
   const [dragIdx, setDragIdx] = useState<number | null>(null);
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [showFieldPalette, setShowFieldPalette] = useState(false);
+  const [mobilePanel, setMobilePanel] = useState<"preview" | "fields" | "editor">("preview");
 
   const { data: form, isLoading } = useQuery<IntakeForm>({
     queryKey: ["/api/intake-forms", formId],
@@ -907,83 +913,149 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b px-4 py-3 flex flex-wrap items-center justify-between gap-3">
-        <div className="flex items-center gap-2">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-go-to-dashboard">
-                <LayoutDashboard className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Back to Dashboard</TooltipContent>
-          </Tooltip>
-          <span className="text-muted-foreground text-sm">/</span>
-          <Button size="sm" variant="ghost" onClick={onBack} className="text-xs text-muted-foreground" data-testid="button-back-to-forms">
-            Forms
-          </Button>
-          <span className="text-muted-foreground text-sm">/</span>
-          <div>
-            <div className="flex items-center gap-2 flex-wrap">
-              <span className="font-semibold text-sm">{form.name}</span>
-              <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${STATUS_COLORS[form.status] ?? ""}`}>
-                {form.status}
-              </span>
+      <div className="border-b px-3 sm:px-4 py-2 sm:py-3 space-y-2">
+        <div className="flex items-center justify-between gap-2">
+          <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-go-to-dashboard" className="flex-shrink-0">
+                  <LayoutDashboard className="h-4 w-4" />
+                </Button>
+              </TooltipTrigger>
+              <TooltipContent>Back to Dashboard</TooltipContent>
+            </Tooltip>
+            <span className="text-muted-foreground text-sm hidden sm:inline">/</span>
+            <Button size="sm" variant="ghost" onClick={onBack} className="text-xs text-muted-foreground hidden sm:inline-flex" data-testid="button-back-to-forms">
+              Forms
+            </Button>
+            <Button size="icon" variant="ghost" onClick={onBack} className="sm:hidden flex-shrink-0" data-testid="button-back-to-forms-mobile">
+              <ChevronLeft className="h-4 w-4" />
+            </Button>
+            <span className="text-muted-foreground text-sm hidden sm:inline">/</span>
+            <div className="min-w-0">
+              <div className="flex items-center gap-2 flex-wrap">
+                <span className="font-semibold text-sm truncate">{form.name}</span>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[form.status] ?? ""}`}>
+                  {form.status}
+                </span>
+              </div>
             </div>
+          </div>
+          <div className="flex items-center gap-1.5 sm:gap-2 flex-shrink-0">
+            {publicUrl && (
+              <Button size="icon" variant="outline"
+                onClick={() => window.open(publicUrl, "_blank")}
+                data-testid="button-preview-form"
+                className="sm:hidden">
+                <Eye className="h-4 w-4" />
+              </Button>
+            )}
+            {publicUrl && (
+              <Button size="sm" variant="outline"
+                onClick={() => window.open(publicUrl, "_blank")}
+                data-testid="button-preview-form-desktop"
+                className="hidden sm:inline-flex">
+                <Eye className="h-3 w-3 mr-1.5" /> Preview
+              </Button>
+            )}
+            <Button size="sm"
+              onClick={() => setShowPublishDialog(true)}
+              data-testid="button-publish-form"
+              className="hidden sm:inline-flex">
+              <Globe className="h-3 w-3 mr-1.5" />
+              {activePublication ? "Manage Link" : "Publish"}
+            </Button>
+            <Button size="icon"
+              onClick={() => setShowPublishDialog(true)}
+              data-testid="button-publish-form-mobile"
+              className="sm:hidden">
+              <Globe className="h-4 w-4" />
+            </Button>
           </div>
         </div>
         <div className="flex items-center gap-2">
-          <Tabs value={activeTab} onValueChange={setActiveTab}>
-            <TabsList className="h-auto p-1">
-              <TabsTrigger value="fields" data-testid="tab-builder" className="text-xs">Builder</TabsTrigger>
-              <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs">Settings</TabsTrigger>
-              <TabsTrigger value="submissions" data-testid="tab-submissions" className="text-xs">Submissions</TabsTrigger>
+          <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
+            <TabsList className="h-auto p-1 w-full sm:w-auto">
+              <TabsTrigger value="fields" data-testid="tab-builder" className="text-xs flex-1 sm:flex-none">Builder</TabsTrigger>
+              <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs flex-1 sm:flex-none">Settings</TabsTrigger>
+              <TabsTrigger value="submissions" data-testid="tab-submissions" className="text-xs flex-1 sm:flex-none">Submissions</TabsTrigger>
             </TabsList>
           </Tabs>
-          {publicUrl && (
-            <Button size="sm" variant="outline"
-              onClick={() => window.open(publicUrl, "_blank")}
-              data-testid="button-preview-form">
-              <Eye className="h-3 w-3 mr-1.5" /> Preview
-            </Button>
-          )}
-          <Button size="sm"
-            onClick={() => setShowPublishDialog(true)}
-            data-testid="button-publish-form">
-            <Globe className="h-3 w-3 mr-1.5" />
-            {activePublication ? "Manage Link" : "Publish"}
-          </Button>
         </div>
       </div>
 
       {/* Non-builder tabs */}
       {activeTab === "settings" && (
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-3 sm:p-6">
           <FormSettingsPanel form={form} onUpdate={(data) => updateFormMutation.mutate(data)} />
         </div>
       )}
       {activeTab === "submissions" && (
-        <div className="flex-1 overflow-auto p-6">
+        <div className="flex-1 overflow-auto p-3 sm:p-6">
           <FormSubmissionsPanel formId={formId} />
         </div>
       )}
 
-      {/* Builder: Three-panel layout */}
+      {/* Builder: Three-panel layout (responsive) */}
       {activeTab === "fields" && (
-        <div className="flex flex-1 overflow-hidden">
-          {/* Left: Field list sidebar */}
-          <div className="w-64 border-r flex flex-col bg-muted/20">
+        <div className="flex flex-1 overflow-hidden relative">
+          {/* Mobile bottom toolbar — hidden when overlay panels are active */}
+          <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 border-t bg-background px-2 py-1.5 flex items-center gap-1.5 ${mobilePanel !== "preview" ? "hidden" : ""}`}>
+            <Button
+              size="sm"
+              variant={mobilePanel === "fields" ? "default" : "outline"}
+              onClick={() => setMobilePanel(mobilePanel === "fields" ? "preview" : "fields")}
+              className="flex-1 text-xs"
+              data-testid="button-mobile-fields"
+            >
+              <PanelLeft className="h-3.5 w-3.5 mr-1" />
+              Fields {sortedFields.length > 0 && `(${sortedFields.length})`}
+            </Button>
+            <Button
+              size="sm"
+              variant={mobilePanel === "preview" ? "default" : "outline"}
+              onClick={() => setMobilePanel("preview")}
+              className="flex-1 text-xs"
+              data-testid="button-mobile-preview"
+            >
+              <Eye className="h-3.5 w-3.5 mr-1" />
+              Preview
+            </Button>
+            {selectedField && (
+              <Button
+                size="sm"
+                variant={mobilePanel === "editor" ? "default" : "outline"}
+                onClick={() => setMobilePanel(mobilePanel === "editor" ? "preview" : "editor")}
+                className="flex-1 text-xs"
+                data-testid="button-mobile-editor"
+              >
+                <SlidersHorizontal className="h-3.5 w-3.5 mr-1" />
+                Edit
+              </Button>
+            )}
+          </div>
+
+          {/* Left: Field list sidebar — desktop: always visible, mobile: full-screen overlay */}
+          <div className={`${mobilePanel === "fields" ? "flex" : "hidden"} md:flex w-full md:w-64 border-r flex-col bg-muted/20 absolute md:relative inset-0 md:inset-auto z-30 md:z-auto bg-background md:bg-muted/20`}>
+            {/* Mobile header with back */}
+            <div className="flex md:hidden items-center justify-between px-3 py-2.5 border-b bg-background">
+              <span className="text-sm font-semibold">Fields</span>
+              <Button size="sm" variant="outline" onClick={() => setMobilePanel("preview")} data-testid="button-close-fields-panel">
+                <Eye className="h-3.5 w-3.5 mr-1" /> Preview
+              </Button>
+            </div>
             {/* Panel header toggle */}
             <div className="flex border-b">
               <button
                 onClick={() => setShowFieldPalette(false)}
-                className={`flex-1 py-2 text-xs font-medium transition-colors ${!showFieldPalette ? "text-foreground border-b-2 border-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
+                className={`flex-1 py-2.5 md:py-2 text-xs font-medium transition-colors ${!showFieldPalette ? "text-foreground border-b-2 border-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
                 data-testid="button-panel-fields"
               >
                 Fields {sortedFields.length > 0 && `(${sortedFields.length})`}
               </button>
               <button
                 onClick={() => setShowFieldPalette(true)}
-                className={`flex-1 py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1 ${showFieldPalette ? "text-foreground border-b-2 border-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
+                className={`flex-1 py-2.5 md:py-2 text-xs font-medium transition-colors flex items-center justify-center gap-1 ${showFieldPalette ? "text-foreground border-b-2 border-primary bg-background" : "text-muted-foreground hover:text-foreground"}`}
                 data-testid="button-panel-add"
               >
                 <Plus className="h-3 w-3" /> Add Field
@@ -1023,8 +1095,11 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
                             onDragOver={(e) => handleDragOver(e, idx)}
                             onDragEnd={handleDragEnd}
                             onDrop={(e) => handleDrop(e, idx)}
-                            onClick={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
-                            className={`flex items-center gap-1.5 px-2 py-1.5 rounded-md text-xs cursor-pointer transition-all select-none
+                            onClick={() => {
+                              setSelectedFieldId(field.id === selectedFieldId ? null : field.id);
+                              setMobilePanel("preview");
+                            }}
+                            className={`flex items-center gap-1.5 px-2 py-2 md:py-1.5 rounded-md text-xs cursor-pointer transition-all select-none
                               ${isDragging ? "opacity-40 scale-95" : ""}
                               ${selectedFieldId === field.id && !isDragging
                                 ? "bg-primary/10 text-primary font-medium ring-1 ring-primary/30"
@@ -1049,10 +1124,10 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
                   </div>
                 </ScrollArea>
                 {sortedFields.length > 0 && (
-                  <div className="p-2 border-t">
+                  <div className="p-2 border-t mb-12 md:mb-0">
                     <SmartFieldPalette
                       existingSmartKeys={(form?.fields ?? []).map(f => f.smartFieldKey).filter(Boolean) as string[]}
-                      onAdd={addSmartField}
+                      onAdd={(sf) => { addSmartField(sf); setMobilePanel("preview"); }}
                     />
                   </div>
                 )}
@@ -1062,7 +1137,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
             {/* Add field palette */}
             {showFieldPalette && (
               <ScrollArea className="flex-1">
-                <div className="p-3 space-y-3">
+                <div className="p-3 space-y-3 mb-12 md:mb-0">
                   <FieldTypePalette
                     onAdd={(type) => {
                       addFieldMutation.mutate({
@@ -1070,6 +1145,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
                         label: FIELD_TYPES.find(t => t.value === type)?.label ?? "New Field",
                       });
                       setShowFieldPalette(false);
+                      setMobilePanel("preview");
                     }}
                     isAdding={addFieldMutation.isPending}
                   />
@@ -1078,7 +1154,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
                     <p className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground px-1 mb-2">Smart Fields</p>
                     <SmartFieldPalette
                       existingSmartKeys={(form?.fields ?? []).map(f => f.smartFieldKey).filter(Boolean) as string[]}
-                      onAdd={(sf) => { addSmartField(sf); setShowFieldPalette(false); }}
+                      onAdd={(sf) => { addSmartField(sf); setShowFieldPalette(false); setMobilePanel("preview"); }}
                     />
                   </div>
                 </div>
@@ -1086,32 +1162,41 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
             )}
           </div>
 
-          {/* Center: Live form preview */}
-          <div className="flex-1 overflow-auto bg-muted/10">
-            <div className="max-w-2xl mx-auto py-6 px-4">
+          {/* Center: Live form preview — always in flow on desktop, conditionally shown on mobile */}
+          <div className={`${mobilePanel === "preview" ? "flex" : "hidden"} md:flex flex-1 flex-col overflow-auto bg-muted/10 pb-14 md:pb-0`}>
+            <div className="max-w-2xl mx-auto py-4 md:py-6 px-3 md:px-4 w-full">
               <div className="rounded-xl border bg-background shadow-sm">
-                <div className="px-6 py-5 border-b">
-                  <h2 className="text-lg font-semibold">{form.name}</h2>
-                  {form.description && <p className="text-sm text-muted-foreground mt-1">{form.description}</p>}
+                <div className="px-4 md:px-6 py-4 md:py-5 border-b">
+                  <h2 className="text-base md:text-lg font-semibold">{form.name}</h2>
+                  {form.description && <p className="text-xs md:text-sm text-muted-foreground mt-1">{form.description}</p>}
                 </div>
-                <div className="p-6">
+                <div className="p-3 md:p-6">
                   {sortedFields.length === 0 ? (
-                    <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+                    <div className="flex flex-col items-center justify-center py-12 md:py-16 text-center gap-3">
                       <LayoutList className="h-10 w-10 text-muted-foreground/30" />
                       <p className="font-medium text-muted-foreground">No fields yet</p>
-                      <p className="text-sm text-muted-foreground">Add fields from the left panel to build your form</p>
+                      <p className="text-sm text-muted-foreground">
+                        <span className="hidden md:inline">Add fields from the left panel to build your form</span>
+                        <span className="md:hidden">Tap "Fields" below to add fields</span>
+                      </p>
+                      <Button size="sm" variant="outline" onClick={() => { setMobilePanel("fields"); setShowFieldPalette(true); }} className="md:hidden" data-testid="button-add-fields-mobile">
+                        <Plus className="h-3 w-3 mr-1" /> Add Fields
+                      </Button>
                     </div>
                   ) : (
                     <div className="flex flex-wrap -mx-2">
                       {sortedFields.map((field, idx) => {
                         const colWidth = (field.layoutJson as any)?.columnWidth ?? "full";
-                        const widthClass = colWidth === "half" ? "w-1/2" : colWidth === "third" ? "w-1/3" : "w-full";
+                        const widthClass = colWidth === "half" ? "w-full sm:w-1/2" : colWidth === "third" ? "w-full sm:w-1/3" : "w-full";
                         return (
                           <div key={field.id} className={`${widthClass} px-2 mb-2`}>
                             <FieldPreview
                               field={field}
                               isSelected={selectedFieldId === field.id}
-                              onClick={() => setSelectedFieldId(field.id === selectedFieldId ? null : field.id)}
+                              onClick={() => {
+                                const newId = field.id === selectedFieldId ? null : field.id;
+                                setSelectedFieldId(newId);
+                              }}
                               onMoveUp={() => moveField(idx, idx - 1)}
                               onMoveDown={() => moveField(idx, idx + 1)}
                               canMoveUp={idx > 0}
@@ -1133,15 +1218,24 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
             </div>
           </div>
 
-          {/* Right: Field editor (conditional) */}
+          {/* Right: Field editor — desktop: inline, mobile: full-screen overlay */}
           {selectedField && (
-            <div className="w-80 border-l overflow-auto bg-background">
-              <FieldEditor
-                field={selectedField}
-                onUpdate={(data) => updateFieldMutation.mutate({ fieldId: selectedField.id, data })}
-                onDelete={() => deleteFieldMutation.mutate(selectedField.id)}
-                isPending={updateFieldMutation.isPending}
-              />
+            <div className={`${mobilePanel === "editor" ? "flex" : "hidden"} md:flex w-full md:w-80 border-l flex-col overflow-auto bg-background absolute md:relative inset-0 md:inset-auto z-30 md:z-auto`}>
+              {/* Mobile editor header with back */}
+              <div className="flex md:hidden items-center justify-between px-3 py-2.5 border-b">
+                <span className="text-sm font-semibold">Edit Field</span>
+                <Button size="sm" variant="outline" onClick={() => setMobilePanel("preview")} data-testid="button-close-editor-panel">
+                  <Eye className="h-3.5 w-3.5 mr-1" /> Preview
+                </Button>
+              </div>
+              <div className="flex-1 overflow-auto pb-14 md:pb-0">
+                <FieldEditor
+                  field={selectedField}
+                  onUpdate={(data) => updateFieldMutation.mutate({ fieldId: selectedField.id, data })}
+                  onDelete={() => { deleteFieldMutation.mutate(selectedField.id); setMobilePanel("preview"); }}
+                  isPending={updateFieldMutation.isPending}
+                />
+              </div>
             </div>
           )}
         </div>
