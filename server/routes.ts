@@ -325,11 +325,26 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       if (user) {
         // Clinician login succeeded
-        return req.login(user, (loginErr) => {
+        return req.login(user, async (loginErr) => {
           if (loginErr) return next(loginErr);
           logAudit(req, { action: "LOGIN", clinicianId: user.id });
           const { passwordHash: _ph, externalMessagingApiKey, ...safeUser } = user;
-          res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey) });
+          let membershipInfo: { clinicalRole?: string; adminRole?: string } = {};
+          if (safeUser.defaultClinicId) {
+            try {
+              const membershipRows = await storageDb.execute(
+                sql`SELECT role, admin_role, clinical_role FROM clinic_memberships WHERE user_id = ${safeUser.id} AND clinic_id = ${safeUser.defaultClinicId} LIMIT 1`
+              );
+              const row = (membershipRows as any)?.rows?.[0];
+              if (row) {
+                membershipInfo = {
+                  adminRole: row.admin_role || "standard",
+                  clinicalRole: row.clinical_role || row.role || "provider",
+                };
+              }
+            } catch (e) { console.error("[AUTH login] membership lookup:", e); }
+          }
+          res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey), ...membershipInfo });
         });
       }
 
