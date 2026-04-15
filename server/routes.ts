@@ -4594,7 +4594,15 @@ EXAMPLES:
   - "She's been on tirzepatide 15mg for 3 months" → medications_current: ["Tirzepatide 15mg SQ weekly"]
   - "I said we'd consider adding testosterone later" → medication_changes_discussed only — NOT medications_current
   - "Increase vitamin D to 60-80" → plan_candidates: ["Target vitamin D (25-OH) to 60–80 ng/mL"] — NOT uncertain_items
-When in doubt, put the item in medication_changes_discussed and flag in uncertain_items — never assume a recommended drug is current.
+When in doubt about whether a drug is current vs recommended, put the item in medication_changes_discussed — never assume a recommended drug is current.
+
+UNCERTAIN_ITEMS — STRICT CLASSIFICATION RULES:
+- uncertain_items is EXCLUSIVELY for garbled, misheard, or completely unidentifiable DRUG NAMES — single words or short noun phrases that appear to be a medication but cannot be identified.
+- NEVER put plan items, action items, monitoring instructions, assessment phrases, or follow-up items in uncertain_items. These belong in plan_candidates, follow_up_items, or medication_changes_discussed.
+- Phrases that START WITH a verb (e.g., "Monitor...", "Assess...", "Evaluate...", "Continue...", "Adjust...", "Optimize...", "Check...", "Follow up...", "Consider...") are ALWAYS plan/follow-up items — NEVER uncertain_items.
+- If a phrase contains a well-known medication name (testosterone, estrogen, tirzepatide, metformin, etc.) it is NOT uncertain — route it to the correct field (medication_changes_discussed, plan_candidates, or follow_up_items).
+- Examples of what IS an uncertain_item: "testozepam" (garbled word, unknown drug), "lopatinide" (sounds like a drug but can't be identified)
+- Examples of what is NOT an uncertain_item: "Monitor symptom improvement with low-dose estrogen patch" (plan item → plan_candidates), "Assess effectiveness of testosterone adjustments" (follow-up → follow_up_items), "Evaluate response to tirzepatide" (follow-up → follow_up_items)
 
 PSYCHIATRIC / SLEEP MEDICATIONS — MANDATORY DIAGNOSIS INFERENCE RULE:
 When a patient's medications_current includes any psychiatric or sleep medication, you MUST include the corresponding condition in diagnoses_discussed or assessment_candidates:
@@ -4663,6 +4671,30 @@ Return this exact JSON structure (all arrays, even if empty):
       });
 
       const extraction = JSON.parse(completion.choices[0].message.content || "{}");
+
+      if (Array.isArray(extraction.uncertain_items)) {
+        const ACTION_VERB_PATTERN = /^(monitor|assess|evaluate|continue|adjust|optimize|check|follow|consider|review|titrate|taper|increase|decrease|start|stop|discontinue|order|schedule|refer|counsel|educate|target|maintain|obtain|ensure|verify|confirm|discuss|recommend|initiate|plan|manage|track|watch|observe|recheck|measure|repeat|address|complete|begin|transition|switch|add|remove|reduce|modify|update|document)/i;
+        const KNOWN_MEDS_PATTERN = /\b(testosterone|estrogen|estradiol|progesterone|tirzepatide|semaglutide|liraglutide|metformin|levothyroxine|liothyronine|spironolactone|finasteride|dutasteride|anastrozole|letrozole|tamoxifen|clomiphene|enclomiphene|gonadorelin|hcg|dhea|pregnenolone|oxandrolone|nandrolone|stanozolol|sildenafil|tadalafil|vardenafil|avanafil|cabergoline|bromocriptine|naltrexone|bupropion|sertraline|escitalopram|fluoxetine|venlafaxine|duloxetine|trazodone|buspirone|alprazolam|lorazepam|clonazepam|diazepam|zolpidem|gabapentin|pregabalin|topiramate|phentermine|orlistat|vitamin\s*d|vitamin\s*b12|omega|magnesium|zinc|iron|folate|coq10|melatonin|ashwagandha|berberine)\b/i;
+
+        const misclassified: string[] = [];
+        extraction.uncertain_items = extraction.uncertain_items.filter((item: string) => {
+          if (ACTION_VERB_PATTERN.test(item.trim())) {
+            misclassified.push(item);
+            return false;
+          }
+          if (item.split(/\s+/).length > 4 && KNOWN_MEDS_PATTERN.test(item)) {
+            misclassified.push(item);
+            return false;
+          }
+          return true;
+        });
+
+        if (misclassified.length > 0) {
+          if (!Array.isArray(extraction.plan_candidates)) extraction.plan_candidates = [];
+          extraction.plan_candidates.push(...misclassified);
+        }
+      }
+
       await storage.updateEncounter(id, clinicianId, { clinicalExtraction: extraction });
 
       res.json({ clinicalExtraction: extraction });
@@ -5485,7 +5517,15 @@ EXAMPLES:
   - "She's been on tirzepatide 15mg for 3 months" → medications_current: ["Tirzepatide 15mg SQ weekly"]
   - "I said we'd consider adding testosterone later" → medication_changes_discussed only — NOT medications_current
   - "Increase vitamin D to 60-80" → plan_candidates: ["Target vitamin D (25-OH) to 60–80 ng/mL"] — NOT uncertain_items
-When in doubt, put the item in medication_changes_discussed and flag in uncertain_items — never assume a recommended drug is current.
+When in doubt about whether a drug is current vs recommended, put the item in medication_changes_discussed — never assume a recommended drug is current.
+
+UNCERTAIN_ITEMS — STRICT CLASSIFICATION RULES:
+- uncertain_items is EXCLUSIVELY for garbled, misheard, or completely unidentifiable DRUG NAMES — single words or short noun phrases that appear to be a medication but cannot be identified.
+- NEVER put plan items, action items, monitoring instructions, assessment phrases, or follow-up items in uncertain_items. These belong in plan_candidates, follow_up_items, or medication_changes_discussed.
+- Phrases that START WITH a verb (e.g., "Monitor...", "Assess...", "Evaluate...", "Continue...", "Adjust...", "Optimize...", "Check...", "Follow up...", "Consider...") are ALWAYS plan/follow-up items — NEVER uncertain_items.
+- If a phrase contains a well-known medication name (testosterone, estrogen, tirzepatide, metformin, etc.) it is NOT uncertain — route it to the correct field (medication_changes_discussed, plan_candidates, or follow_up_items).
+- Examples of what IS an uncertain_item: "testozepam" (garbled word, unknown drug), "lopatinide" (sounds like a drug but can't be identified)
+- Examples of what is NOT an uncertain_item: "Monitor symptom improvement with low-dose estrogen patch" (plan item → plan_candidates), "Assess effectiveness of testosterone adjustments" (follow-up → follow_up_items), "Evaluate response to tirzepatide" (follow-up → follow_up_items)
 
 PSYCHIATRIC / SLEEP MEDICATIONS — MANDATORY DIAGNOSIS INFERENCE RULE:
 When a patient's medications_current includes any psychiatric or sleep medication, you MUST include the corresponding condition in diagnoses_discussed or assessment_candidates:
@@ -5559,6 +5599,30 @@ Return this exact JSON structure (all arrays, even if empty):
           response_format: { type: "json_object" },
         });
         freshExtraction = JSON.parse(extractCompletion.choices[0].message.content || "{}");
+
+        if (Array.isArray(freshExtraction.uncertain_items)) {
+          const ACTION_VERB_PATTERN = /^(monitor|assess|evaluate|continue|adjust|optimize|check|follow|consider|review|titrate|taper|increase|decrease|start|stop|discontinue|order|schedule|refer|counsel|educate|target|maintain|obtain|ensure|verify|confirm|discuss|recommend|initiate|plan|manage|track|watch|observe|recheck|measure|repeat|address|complete|begin|transition|switch|add|remove|reduce|modify|update|document)/i;
+          const KNOWN_MEDS_PATTERN = /\b(testosterone|estrogen|estradiol|progesterone|tirzepatide|semaglutide|liraglutide|metformin|levothyroxine|liothyronine|spironolactone|finasteride|dutasteride|anastrozole|letrozole|tamoxifen|clomiphene|enclomiphene|gonadorelin|hcg|dhea|pregnenolone|oxandrolone|nandrolone|stanozolol|sildenafil|tadalafil|vardenafil|avanafil|cabergoline|bromocriptine|naltrexone|bupropion|sertraline|escitalopram|fluoxetine|venlafaxine|duloxetine|trazodone|buspirone|alprazolam|lorazepam|clonazepam|diazepam|zolpidem|gabapentin|pregabalin|topiramate|phentermine|orlistat|vitamin\s*d|vitamin\s*b12|omega|magnesium|zinc|iron|folate|coq10|melatonin|ashwagandha|berberine)\b/i;
+
+          const misclassified: string[] = [];
+          freshExtraction.uncertain_items = freshExtraction.uncertain_items.filter((item: string) => {
+            if (ACTION_VERB_PATTERN.test(item.trim())) {
+              misclassified.push(item);
+              return false;
+            }
+            if (item.split(/\s+/).length > 4 && KNOWN_MEDS_PATTERN.test(item)) {
+              misclassified.push(item);
+              return false;
+            }
+            return true;
+          });
+
+          if (misclassified.length > 0) {
+            if (!Array.isArray(freshExtraction.plan_candidates)) freshExtraction.plan_candidates = [];
+            freshExtraction.plan_candidates.push(...misclassified);
+          }
+        }
+
         await storage.updateEncounter(id, clinicianId, { clinicalExtraction: freshExtraction });
         const exLines: string[] = [];
         if (freshExtraction.chief_concerns?.length)             exLines.push(`Chief concerns: ${freshExtraction.chief_concerns.join("; ")}`);
