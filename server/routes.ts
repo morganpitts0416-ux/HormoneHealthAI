@@ -8258,6 +8258,152 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // ── Ask ClinIQ — AI Clinical Colleague Chat ─────────────────────────────
+  app.post("/api/ai-chat", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const { messages, patientId } = req.body;
+      if (!messages || !Array.isArray(messages) || messages.length === 0) {
+        return res.status(400).json({ message: "messages array is required" });
+      }
+      if (messages.length > 50) {
+        return res.status(400).json({ message: "Too many messages. Please start a new conversation." });
+      }
+      for (const m of messages) {
+        if (!m.content || typeof m.content !== "string" || m.content.length > 10000) {
+          return res.status(400).json({ message: "Each message must be a string under 10,000 characters." });
+        }
+      }
+
+      let patientContext = "";
+      let patientName = "";
+      if (patientId) {
+        try {
+          const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+          if (patient) {
+            patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
+            const gender = patient.gender || "unknown";
+            const dob = patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : "unknown";
+            patientContext += `\n\n--- CURRENT PATIENT CONTEXT ---\nPatient: ${patientName}\nGender: ${gender}\nDOB: ${dob}\n`;
+
+            const chart = await storage.getPatientChart(patientId, clinicianId);
+            if (chart) {
+              const formatList = (arr: any) => Array.isArray(arr) && arr.length > 0 ? arr.map((a: any) => typeof a === 'string' ? a : a.name || a.label || JSON.stringify(a)).join(', ') : 'None documented';
+              patientContext += `\nCurrent Medications: ${formatList(chart.currentMedications)}`;
+              patientContext += `\nAllergies: ${formatList(chart.allergies)}`;
+              patientContext += `\nMedical History: ${formatList(chart.medicalHistory)}`;
+              patientContext += `\nSurgical History: ${formatList(chart.surgicalHistory)}`;
+              patientContext += `\nFamily History: ${formatList(chart.familyHistory)}`;
+              patientContext += `\nSocial History: ${formatList(chart.socialHistory)}`;
+            }
+
+            const labResults = await storage.getLabResultsByPatient(patientId);
+            if (labResults && labResults.length > 0) {
+              const latest = labResults[0];
+              const labDate = latest.createdAt ? new Date(latest.createdAt).toLocaleDateString() : "unknown date";
+              patientContext += `\n\nMost Recent Labs (${labDate}):\n`;
+              const vals = latest.labValues as any;
+              if (vals && typeof vals === 'object') {
+                for (const [key, val] of Object.entries(vals)) {
+                  if (val !== null && val !== undefined && val !== "") {
+                    patientContext += `  ${key}: ${val}\n`;
+                  }
+                }
+              }
+              if (labResults.length > 1) {
+                patientContext += `\n(${labResults.length} total lab panels on file — most recent shown above)`;
+              }
+            }
+            patientContext += `\n--- END PATIENT CONTEXT ---`;
+          }
+        } catch (e) {
+          console.error("[AI-Chat] Error loading patient context:", e);
+        }
+      }
+
+      const { LAB_MARKER_DEFAULTS } = await import("./lab-marker-defaults");
+      const rangesRef = LAB_MARKER_DEFAULTS.map(m => `${m.displayName} (${m.gender}): Optimal ${m.optimalMin ?? '—'}–${m.optimalMax ?? '—'} ${m.unit}, Ref ${m.normalMin ?? '—'}–${m.normalMax ?? '—'} ${m.unit}${m.notes ? ` [${m.notes}]` : ''}`).join('\n');
+
+      const systemPrompt = `You are ClinIQ, an AI clinical colleague embedded in a hormone and primary care clinic platform. You speak as a knowledgeable, approachable fellow clinician — not a chatbot. Use professional but conversational language, like you'd talk with a colleague in the break room or during a case consult.
+
+CORE BEHAVIOR:
+- Be direct, specific, and clinically useful. No generic filler.
+- When making clinical recommendations, ALWAYS cite the evidence. Include study names, guideline sources, or established protocols (e.g., "per AHA 2023 PREVENT guidelines," "Endocrine Society 2018 guidelines," "AACE/ACE 2020 consensus").
+- When referencing ranges, use the clinic's optimized functional ranges (listed below), not just conventional reference ranges. Explain when functional ranges differ from standard lab ranges and why.
+- If you're unsure about something, say so honestly. Never fabricate evidence or studies.
+- Format evidence citations clearly — use bold for guideline names or study titles.
+
+CLINIC PROTOCOLS & RANGES:
+The clinic uses both conventional reference ranges AND functional/optimized ranges for clinical decision-making. Here are the key markers:
+
+${rangesRef}
+
+RED FLAG THRESHOLDS (immediate clinical action required):
+- Hematocrit ≥54% (male on TRT): HOLD testosterone, order therapeutic phlebotomy
+- Hematocrit ≥50% (male on TRT): Warning — monitor closely, consider dose reduction
+- PSA >4.0 ng/mL or velocity >1.4 ng/mL/year: Urgent urology referral
+- AST or ALT >5x upper limit of normal: Hold hepatotoxic medications, urgent workup
+- Potassium >5.5 mEq/L: Critical hyperkalemia — repeat STAT, ECG
+- Potassium <3.0 mEq/L: Critical hypokalemia — urgent correction
+- Glucose ≥126 mg/dL or A1c ≥6.5%: Diabetes diagnostic threshold
+- Platelets <100 K/µL with elevated AST: Calculate FIB-4 for fibrosis risk
+
+CLINICAL ALGORITHMS AVAILABLE:
+- ASCVD 10-year risk (2013 ACC/AHA Pooled Cohort Equations)
+- AHA PREVENT 10/30-year cardiovascular risk (2023, includes eGFR)
+- STOP-BANG Sleep Apnea Screening
+- Insulin Resistance phenotype detection (4 phenotypes)
+- Advanced lipid interpretation (ApoB, Lp(a), hs-CRP)
+- Female phenotype detection: Estrogen Dominance, Inflammatory Burden, Insulin Resistance
+
+SUPPLEMENT PROTOCOLS:
+The clinic uses Metagenics supplement protocols based on lab values and symptoms. Reference these when discussing supplement recommendations — always with the clinical rationale.
+
+RESPONSE FORMAT:
+- Use markdown formatting for readability
+- Bold key clinical values and recommendations
+- When citing evidence, format as: **[Guideline/Study Name, Year]** — brief description
+- Include a "References" section at the end of detailed clinical discussions
+- For patient-specific discussions, structure your response with clear sections${patientContext}
+
+IMPORTANT:
+- You are an AI assistant. Always remind the provider that clinical decisions are theirs — you're here to support, not replace their judgment.
+- Never fabricate citations. If you don't know the specific study, say "based on clinical practice guidelines" or "per generally accepted clinical consensus" rather than making up a citation.
+- Protect patient privacy — never include patient identifiers in any way that could be logged or exposed outside this conversation.`;
+
+      const openai = new OpenAI({
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
+      });
+
+      const chatMessages: any[] = [
+        { role: "system", content: systemPrompt },
+        ...messages.slice(-20).map((m: any) => ({
+          role: m.role === "user" ? "user" : "assistant",
+          content: m.content,
+        })),
+      ];
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: chatMessages,
+        temperature: 0.4,
+        max_tokens: 2000,
+      });
+
+      const reply = completion.choices[0]?.message?.content || "I'm sorry, I wasn't able to generate a response. Please try rephrasing your question.";
+
+      res.json({ reply, patientName: patientName || null });
+    } catch (err: any) {
+      console.error("[AI-Chat] Error:", err);
+      if (err.status === 429) {
+        return res.status(429).json({ message: "AI rate limit reached. Please wait a moment and try again." });
+      }
+      res.status(500).json({ message: "Failed to get AI response" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

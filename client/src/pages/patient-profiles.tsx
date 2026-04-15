@@ -1,4 +1,5 @@
 import { useState, useMemo, useRef, useEffect } from "react";
+import { usePatientContext } from "@/hooks/use-patient-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
@@ -1082,6 +1083,14 @@ export default function PatientProfiles() {
   const [, setLocation] = useLocation();
   const searchStr = useSearch();
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const { setCurrentPatient } = usePatientContext();
+  useEffect(() => {
+    if (selectedPatient) {
+      setCurrentPatient({ id: selectedPatient.id, name: `${selectedPatient.firstName ?? ""} ${selectedPatient.lastName ?? ""}`.trim() });
+    } else {
+      setCurrentPatient(null);
+    }
+  }, [selectedPatient, setCurrentPatient]);
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
