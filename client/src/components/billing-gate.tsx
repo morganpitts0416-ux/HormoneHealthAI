@@ -105,9 +105,12 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
   }
 
   const allowedStatuses = ["trial", "active", "trialing"];
-  const hasValidBilling = billing.freeAccount || (!!billing.stripeSubscriptionId && allowedStatuses.includes(billing.subscriptionStatus));
-  const isCanceled = billing.subscriptionStatus === "canceled" || billing.subscriptionStatus === "past_due";
   const isNonOwner = billing.isClinicOwner === false;
+  const hasValidBilling =
+    billing.freeAccount ||
+    (!!billing.stripeSubscriptionId && allowedStatuses.includes(billing.subscriptionStatus)) ||
+    (isNonOwner && allowedStatuses.includes(billing.subscriptionStatus));
+  const isCanceled = billing.subscriptionStatus === "canceled" || billing.subscriptionStatus === "past_due";
 
   if (hasValidBilling) {
     return <>{children}</>;
