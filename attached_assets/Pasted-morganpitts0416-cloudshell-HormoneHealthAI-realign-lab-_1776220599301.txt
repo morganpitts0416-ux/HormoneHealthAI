@@ -1,0 +1,196 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run services logs read hormonehealthai --region us-central1 --limit 200
+2026-04-15 01:34:33 1:34:33 AM [express] GET /api/patients/67/form-submissions 200 in 27ms :: []
+2026-04-15 01:34:33 1:34:33 AM [express] GET /api/patients/67/messages/unread 200 in 63ms :: {"count":0}
+2026-04-15 01:34:33 1:34:33 AM [express] GET /api/patients/67/form-assignments 200 in 16ms :: []
+2026-04-15 01:34:33 1:34:33 AM [express] GET /api/portal/status/67 200 in 25ms :: {"hasPortalAccount":false,"hasPassword…
+2026-04-15 01:34:33 1:34:33 AM [express] GET /api/patients/67/labs 200 in 14ms :: []
+2026-04-15 01:34:33 1:34:33 AM [express] GET /api/patients/67/supplement-orders 200 in 63ms :: []
+2026-04-15 01:34:33 1:34:33 AM [express] GET /api/patients/67/chart 200 in 10ms
+2026-04-15 01:34:33 1:34:33 AM [express] GET /api/encounters 200 in 14ms :: [{"id":18,"clinicianId":12,"patientId":67,"v…
+2026-04-15 01:34:56 GET 304 https://app.realignlabeval.com/api/patients/search
+2026-04-15 01:34:56 [DEBUG] /api/patients/search — clinicianId=12, clinicId=null, q=""
+2026-04-15 01:34:56 [DEBUG] /api/patients/search — returned 8 patients for clinicId=legacy:12
+2026-04-15 01:34:56 1:34:56 AM [express] GET /api/patients/search 304 in 6ms :: [{"id":68,"userId":12,"firstName":"Joy",…
+2026-04-15 01:35:38 GET 304 https://app.realignlabeval.com/api/clinician/notifications
+2026-04-15 01:35:38 1:35:38 AM [express] GET /api/clinician/notifications 304 in 19ms :: {"unreadMessages":[],"pendingOr…
+2026-04-15 01:37:58 GET 304 https://app.realignlabeval.com/api/clinician/notifications
+2026-04-15 01:37:58 1:37:58 AM [express] GET /api/clinician/notifications 304 in 23ms :: {"unreadMessages":[],"pendingOr…
+2026-04-15 01:38:08 GET 304 https://app.realignlabeval.com/api/intake-forms/submissions/pending
+2026-04-15 01:38:08 1:38:08 AM [express] GET /api/intake-forms/submissions/pending 304 in 9ms :: [{"id":1,"formId":2,"fo…
+2026-04-15 01:38:18 GET 304 https://app.realignlabeval.com/api/clinician/notifications
+2026-04-15 01:38:18 1:38:18 AM [express] GET /api/clinician/notifications 304 in 8ms :: {"unreadMessages":[],"pendingOrd…
+2026-04-15 01:38:38 GET 304 https://app.realignlabeval.com/api/intake-forms/submissions/pending
+2026-04-15 01:38:38 1:38:38 AM [express] GET /api/intake-forms/submissions/pending 304 in 9ms :: [{"id":1,"formId":2,"fo…
+2026-04-15 01:38:38 GET 304 https://app.realignlabeval.com/api/clinician/notifications
+2026-04-15 01:38:38 1:38:38 AM [express] GET /api/clinician/notifications 304 in 8ms :: {"unreadMessages":[],"pendingOrd…
+2026-04-15 01:39:08 GET 304 https://app.realignlabeval.com/api/intake-forms/submissions/pending
+2026-04-15 01:39:08 1:39:08 AM [express] GET /api/intake-forms/submissions/pending 304 in 9ms :: [{"id":1,"formId":2,"fo…
+2026-04-15 01:39:09 POST 200 https://app.realignlabeval.com/api/auth/logout
+2026-04-15 01:39:09 1:39:09 AM [express] POST /api/auth/logout 200 in 12ms :: {"success":true}
+2026-04-15 01:39:09 GET 401 https://app.realignlabeval.com/api/auth/me
+2026-04-15 01:39:09 1:39:09 AM [express] GET /api/auth/me 401 in 4ms :: {"message":"Not authenticated"}
+2026-04-15 01:39:50 POST 401 https://app.realignlabeval.com/api/portal/login
+2026-04-15 01:39:50 1:39:50 AM [express] POST /api/portal/login 401 in 18ms :: {"message":"Invalid email or password"}
+2026-04-15 01:40:04 GET 200 https://cliniqapp.ai/
+2026-04-15 01:40:04 GET 200 https://cliniqapp.ai/assets/index-CRjc-Ulk.css
+2026-04-15 01:40:04 GET 200 https://cliniqapp.ai/assets/index-BEf3eO14.js
+2026-04-15 01:40:04 GET 200 https://cliniqapp.ai/favicon.png
+2026-04-15 01:40:04 GET 401 https://cliniqapp.ai/api/auth/me
+2026-04-15 01:40:04 1:40:04 AM [express] GET /api/auth/me 401 in 1ms :: {"message":"Not authenticated"}
+2026-04-15 01:40:05 GET 200 https://cliniqapp.ai/cliniq-logo.png
+2026-04-15 01:40:05 GET 200 https://cliniqapp.ai/help-shots/lab-results.png
+2026-04-15 01:40:05 GET 200 https://cliniqapp.ai/help-shots/portal-overview.png
+2026-04-15 01:40:05 GET 200 https://cliniqapp.ai/realign-health-logo.png
+2026-04-15 01:40:13 GET 206 https://cliniqapp.ai/demo.mp4
+2026-04-15 01:40:13 GET 206 https://cliniqapp.ai/demo.mp4
+2026-04-15 01:40:14 GET 200 https://cliniqapp.ai/apple-touch-icon.png
+2026-04-15 01:40:14 GET 206 https://cliniqapp.ai/demo.mp4
+2026-04-15 02:00:21 GET 200 https://cliniqapp.ai/
+2026-04-15 02:00:21 GET 200 https://cliniqapp.ai/.env
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/%22/assets/index-BEf3eO14.js%22
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/.env.bak
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/assets/index-BEf3eO14.js
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/.env.save
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/.env.local
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/backend/.env
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/admin/.env
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/.git/config
+2026-04-15 02:00:22 GET 200 https://cliniqapp.ai/wp-config.php
+2026-04-15 02:00:23 GET 200 https://cliniqapp.ai/wp-config.php.old
+2026-04-15 02:00:23 GET 200 https://cliniqapp.ai/config.php
+2026-04-15 02:00:23 GET 200 https://cliniqapp.ai/config.php.bak
+2026-04-15 02:00:23 GET 200 https://cliniqapp.ai/config.js
+2026-04-15 02:00:23 GET 200 https://cliniqapp.ai/aws-config.js
+2026-04-15 02:00:23 GET 200 https://cliniqapp.ai/aws.config.js
+2026-04-15 02:00:23 GET 200 https://cliniqapp.ai/phpinfo.php
+2026-04-15 02:00:23 GET 200 https://cliniqapp.ai/.git/HEAD
+2026-04-15 02:00:24 GET 200 https://cliniqapp.ai/.git/config
+2026-04-15 02:14:05 GET 401 https://app.cliniqapp.ai/api/auth/me
+2026-04-15 02:14:05 2:14:05 AM [express] GET /api/auth/me 401 in 1ms :: {"message":"Not authenticated"}
+2026-04-15 02:22:25 [startup] registering routes…
+2026-04-15 02:22:25 [startup] serving static files…
+2026-04-15 02:22:25 [startup] binding to 0.0.0.0:8080…
+2026-04-15 02:22:25 2:22:25 AM [express] serving on port 8080
+2026-04-15 02:31:21 POST 200 https://app.cliniqapp.ai/api/auth/login
+2026-04-15 02:31:21 2:31:21 AM [express] POST /api/auth/login 200 in 411ms :: {"id":12,"email":"morgan@womenswellnessms.…
+2026-04-15 02:31:21 GET 304 https://app.cliniqapp.ai/api/billing/status
+2026-04-15 02:31:21 2:31:21 AM [express] GET /api/billing/status 304 in 13ms :: {"subscriptionStatus":"trial","freeAccou…
+2026-04-15 02:31:21 GET 304 https://app.cliniqapp.ai/api/baa/status
+2026-04-15 02:31:21 2:31:21 AM [express] GET /api/baa/status 304 in 14ms :: {"signed":true,"signedAt":"2026-04-14T03:19:…
+2026-04-15 02:31:22 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-15 02:31:22 GET 500 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-15 02:31:22 GET 304 https://app.cliniqapp.ai/api/patients/search
+2026-04-15 02:31:22 GET 200 https://app.cliniqapp.ai/realign-health-logo.png
+2026-04-15 02:31:22 [DEBUG] /api/patients/search — clinicianId=12, clinicId=null, q=""
+2026-04-15 02:31:22 [DEBUG] /api/patients/search — returned 8 patients for clinicId=legacy:12
+2026-04-15 02:31:22 2:31:22 AM [express] GET /api/clinician/notifications 304 in 101ms :: {"unreadMessages":[],"pendingO…
+2026-04-15 02:31:22 2:31:22 AM [express] GET /api/patients/search 304 in 48ms :: [{"id":68,"userId":12,"firstName":"Joy"…
+2026-04-15 02:31:22 2:31:22 AM [express] GET /api/intake-forms/submissions/pending 500 in 19ms :: {"message":"Failed to …
+2026-04-15 02:31:34 GET 304 https://app.cliniqapp.ai/api/encounter-drafts
+2026-04-15 02:31:34 GET 200 https://app.cliniqapp.ai/api/encounters
+2026-04-15 02:31:34 2:31:34 AM [express] GET /api/encounter-drafts 304 in 14ms :: []
+2026-04-15 02:31:34 2:31:34 AM [express] GET /api/encounters 200 in 16ms :: [{"id":19,"clinicianId":12,"patientId":68,"v…
+2026-04-15 02:31:35 GET 304 https://app.cliniqapp.ai/api/patients/search
+2026-04-15 02:31:35 GET 304 https://app.cliniqapp.ai/api/clinic/providers
+2026-04-15 02:31:35 [DEBUG] /api/patients/search — clinicianId=12, clinicId=null, q=""
+2026-04-15 02:31:35 [DEBUG] /api/patients/search — returned 8 patients for clinicId=legacy:12
+2026-04-15 02:31:35 2:31:35 AM [express] GET /api/patients/search 304 in 7ms :: [{"id":68,"userId":12,"firstName":"Joy",…
+2026-04-15 02:31:35 2:31:35 AM [express] GET /api/clinic/providers 304 in 6ms :: [{"id":12,"displayName":"FNP-C Morgan P…
+2026-04-15 02:31:35 GET 200 https://app.cliniqapp.ai/api/portal/status/63
+2026-04-15 02:31:35 GET 200 https://app.cliniqapp.ai/api/patients/63/messages/unread
+2026-04-15 02:31:35 GET 500 https://app.cliniqapp.ai/api/patients/63/form-submissions
+2026-04-15 02:31:35 GET 200 https://app.cliniqapp.ai/api/patients/63/supplement-orders
+2026-04-15 02:31:35 GET 200 https://app.cliniqapp.ai/api/encounters?patientId=63
+2026-04-15 02:31:35 GET 200 https://app.cliniqapp.ai/api/patients/63/form-assignments
+2026-04-15 02:31:35 GET 304 https://app.cliniqapp.ai/api/patients/63/labs
+2026-04-15 02:31:35 GET 200 https://app.cliniqapp.ai/api/patients/63/chart
+2026-04-15 02:31:35 GET 500 https://app.cliniqapp.ai/api/intake-forms
+2026-04-15 02:31:35 2:31:35 AM [express] GET /api/patients/63/messages/unread 200 in 28ms :: {"count":0}
+2026-04-15 02:31:35 2:31:35 AM [express] GET /api/intake-forms 500 in 11ms :: {"message":"Failed to fetch forms"}
+2026-04-15 02:31:35 2:31:35 AM [express] GET /api/patients/63/form-assignments 200 in 11ms :: []
+2026-04-15 02:31:35 2:31:35 AM [express] GET /api/portal/status/63 200 in 129ms :: {"hasPortalAccount":false,"hasPasswor…
+2026-04-15 02:31:36 2:31:36 AM [express] GET /api/patients/63/form-submissions 500 in 69ms :: {"message":"Failed to fetc…
+2026-04-15 02:31:36 2:31:36 AM [express] GET /api/patients/63/supplement-orders 200 in 65ms :: []
+2026-04-15 02:31:36 2:31:36 AM [express] GET /api/patients/63/labs 304 in 170ms :: [{"id":122,"patientId":63,"labDate":"…
+2026-04-15 02:31:36 2:31:36 AM [express] GET /api/encounters 200 in 30ms :: [{"id":14,"clinicianId":12,"patientId":63,"v…
+2026-04-15 02:31:36 2:31:36 AM [express] GET /api/patients/63/chart 200 in 5ms
+2026-04-15 02:31:42 GET 500 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-15 02:31:42 2:31:42 AM [express] GET /api/intake-forms/submissions/pending 500 in 9ms :: {"message":"Failed to f…
+2026-04-15 02:31:49 GET 200 https://app.cliniqapp.ai/api/encounters/19
+2026-04-15 02:31:49 GET 304 https://app.cliniqapp.ai/api/patients/68/labs
+2026-04-15 02:31:49 2:31:49 AM [express] GET /api/encounters/19 200 in 10ms :: {"id":19,"clinicianId":12,"patientId":68,…
+2026-04-15 02:31:49 2:31:49 AM [express] GET /api/patients/68/labs 304 in 16ms :: [{"id":126,"patientId":68,"labDate":"2…
+2026-04-15 02:31:58 PUT 200 https://app.cliniqapp.ai/api/encounters/19
+2026-04-15 02:31:58 2:31:58 AM [express] PUT /api/encounters/19 200 in 22ms :: {"id":19,"clinicianId":12,"patientId":68,…
+2026-04-15 02:31:59 POST 500 https://app.cliniqapp.ai/api/encounters/19/generate-soap
+2026-04-15 02:31:59 POST 500 https://app.cliniqapp.ai/api/encounters/19/evidence
+2026-04-15 02:31:59 GET 200 https://app.cliniqapp.ai/realign-emblem.png
+2026-04-15 02:33:06 [Evidence] Error: RateLimitError: 429 Rate limit reached for gpt-4o in organization org-l53pgz151JlLLTW02RfkPEjp on tokens per min (TPM): Limit 30000, Used 29505, Requested 12140. Please try again in 23.29s. Visit https://platform.openai.com/account/rate-limits to learn more.
+2026-04-15 02:33:06     at APIError.generate (file:///app/node_modules/openai/core/error.mjs:59:20)
+2026-04-15 02:33:06     at OpenAI.makeStatusError (file:///app/node_modules/openai/client.mjs:162:32)
+2026-04-15 02:33:06     at OpenAI.makeRequest (file:///app/node_modules/openai/client.mjs:330:30)
+2026-04-15 02:33:06     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-15 02:33:06     at async file:///app/dist/index.js:16637:33 {
+2026-04-15 02:33:06   status: 429,
+2026-04-15 02:33:06   headers: Headers {
+2026-04-15 02:33:06     date: 'Wed, 15 Apr 2026 02:33:06 GMT',
+2026-04-15 02:33:06     'content-type': 'application/json; charset=utf-8',
+2026-04-15 02:33:06     'content-length': '373',
+2026-04-15 02:33:06     connection: 'keep-alive',
+2026-04-15 02:33:06     'set-cookie': '__cf_bm=bSAkDBEi8Cer.XXfEtUauIEz6rIjKIT5azXTVaFWN_E-1776220386.7274776-1.0.1.1-wrk_JW7hHhV62fuwCaxXTkwKRV45sHvbqJt2lfp4uLL.Axn9E1_h9nEMhbEs3nZrufapp0f8MejKQ9Rmz7U3KwZKR83rOyW_9KzpmvWq9afOEzxRsooqGjO_VgYzOw3L; HttpOnly; Secure; Path=/; Domain=api.openai.com; Expires=Wed, 15 Apr 2026 03:03:06 GMT, _cfuvid=ma1ysVThZzjQ6cmbppCeIzNPLCuLiGjJrqajH0K9JX4-1776220386.7274776-1.0.1.1-cFgDwvjO4C2Ge0QmhKaqXzHmApUPoxObwu2LaOdYeCc; HttpOnly; SameSite=None; Secure; Path=/; Domain=api.openai.com',
+2026-04-15 02:33:06     'cf-ray': '9ec78b290f1488cd-ORD',
+2026-04-15 02:33:06     'cf-cache-status': 'DYNAMIC',
+2026-04-15 02:33:06     'retry-after': '24',
+2026-04-15 02:33:06     server: 'cloudflare',
+2026-04-15 02:33:06     'strict-transport-security': 'max-age=31536000; includeSubDomains; preload',
+2026-04-15 02:33:06     vary: 'Origin',
+2026-04-15 02:33:06     'x-content-type-options': 'nosniff',
+2026-04-15 02:33:06     'retry-after-ms': '23290',
+2026-04-15 02:33:06     'x-openai-proxy-wasm': 'v0.1',
+2026-04-15 02:33:06     'x-ratelimit-limit-requests': '500',
+2026-04-15 02:33:06     'x-ratelimit-limit-tokens': '30000',
+2026-04-15 02:33:06     'x-ratelimit-remaining-requests': '499',
+2026-04-15 02:33:06     'x-ratelimit-remaining-tokens': '495',
+2026-04-15 02:33:06     'x-ratelimit-reset-requests': '120ms',
+2026-04-15 02:33:06     'x-ratelimit-reset-tokens': '59.008s',
+2026-04-15 02:33:06     'x-request-id': 'req_827c5ccf899a40aba44218268b54d2c8',
+2026-04-15 02:33:06     'alt-svc': 'h3=":443"; ma=86400'
+2026-04-15 02:33:06   },
+2026-04-15 02:33:06   requestID: 'req_827c5ccf899a40aba44218268b54d2c8',
+2026-04-15 02:33:06   error: {
+2026-04-15 02:33:06     message: 'Rate limit reached for gpt-4o in organization org-l53pgz151JlLLTW02RfkPEjp on tokens per min (TPM): Limit 30000, Used 29505, Requested 12140. Please try again in 23.29s. Visit https://platform.openai.com/account/rate-limits to learn more.',
+2026-04-15 02:33:06     type: 'tokens',
+2026-04-15 02:33:06     param: null,
+2026-04-15 02:33:06     code: 'rate_limit_exceeded'
+2026-04-15 02:33:06   },
+2026-04-15 02:33:06   code: 'rate_limit_exceeded',
+2026-04-15 02:33:06   param: null,
+2026-04-15 02:33:06   type: 'tokens'
+2026-04-15 02:33:06 }
+2026-04-15 02:33:06 2:33:06 AM [express] POST /api/encounters/19/evidence 500 in 67593ms :: {"message":"Evidence lookup …
+2026-04-15 02:33:22 [SOAP Pipeline] Step 3c: Medical normalization + context inference...
+2026-04-15 02:33:42 [SOAP Pipeline] Normalization complete: 6 meds, 4 conditions, 3 preventative signals
+2026-04-15 02:33:42 [SOAP Pipeline] Plan classification: 4 decided, 1 discussed, 3 follow-up
+2026-04-15 02:33:42 [SOAP Pipeline] Step 4: Section-specific SOAP generation (HPI reconstruction)...
+2026-04-15 02:33:42 [SOAP Pipeline] SOAP generation failed: TypeError: Cannot read properties of undefined (reading 'join')
+2026-04-15 02:33:42     at file:///app/dist/index.js:8084:87
+2026-04-15 02:33:42     at Array.map (<anonymous>)
+2026-04-15 02:33:42     at generateSoapSections (file:///app/dist/index.js:8083:35)
+2026-04-15 02:33:42     at runEnhancedSoapPipeline (file:///app/dist/index.js:8447:24)
+2026-04-15 02:33:42     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-15 02:33:42     at async file:///app/dist/index.js:17653:24
+2026-04-15 02:33:42 [SOAP] Generation error: TypeError: Cannot read properties of undefined (reading 'join')
+2026-04-15 02:33:42     at file:///app/dist/index.js:8084:87
+2026-04-15 02:33:42     at Array.map (<anonymous>)
+2026-04-15 02:33:42     at generateSoapSections (file:///app/dist/index.js:8083:35)
+2026-04-15 02:33:42     at runEnhancedSoapPipeline (file:///app/dist/index.js:8447:24)
+2026-04-15 02:33:42     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-15 02:33:42     at async file:///app/dist/index.js:17653:24
+2026-04-15 02:33:42 2:33:42 AM [express] POST /api/encounters/19/generate-soap 500 in 103713ms :: {"message":"Failed to …
+2026-04-15 02:33:43 GET 200 https://app.cliniqapp.ai/api/encounters/19
+2026-04-15 02:33:43 GET 200 https://app.cliniqapp.ai/api/encounters
+2026-04-15 02:33:43 2:33:43 AM [express] GET /api/encounters/19 200 in 12ms :: {"id":19,"clinicianId":12,"patientId":68,…
+2026-04-15 02:33:43 2:33:43 AM [express] GET /api/encounters 200 in 15ms :: [{"id":19,"clinicianId":12,"patientId":68,"v…
+2026-04-15 02:33:43 GET 304 https://app.cliniqapp.ai/api/encounters/19
+2026-04-15 02:33:43 2:33:43 AM [express] GET /api/encounters/19 304 in 30ms :: {"id":19,"clinicianId":12,"patientId":68,…
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
