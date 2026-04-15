@@ -47,6 +47,7 @@ import { GlobalLoadingOverlay } from "@/components/global-loading-overlay";
 import { TourProvider } from "@/components/product-tour";
 import { AiChatDrawer } from "@/components/ai-chat-drawer";
 import { PatientContextProvider, usePatientContext } from "@/hooks/use-patient-context";
+import { AppHeader } from "@/components/app-header";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -76,7 +77,12 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     <BillingGate>
       <BaaGate>
         <SessionTimeoutModal />
-        <Component />
+        <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
+          <AppHeader />
+          <div className="flex-1 flex flex-col overflow-hidden">
+            <Component />
+          </div>
+        </div>
         <ProtectedChatDrawer />
       </BaaGate>
     </BillingGate>
@@ -114,7 +120,12 @@ function BillingExemptRoute({ component: Component }: { component: React.Compone
   return (
     <BaaGate>
       <SessionTimeoutModal />
-      <Component />
+      <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
+        <AppHeader />
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <Component />
+        </div>
+      </div>
     </BaaGate>
   );
 }
@@ -139,7 +150,14 @@ function AdminRoute({ component: Component }: { component: React.ComponentType }
   }
 
   if (!user || (user as any).role !== "admin") return null;
-  return <Component />;
+  return (
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
+      <AppHeader />
+      <div className="flex-1 flex flex-col overflow-hidden">
+        <Component />
+      </div>
+    </div>
+  );
 }
 
 function RootRedirect() {

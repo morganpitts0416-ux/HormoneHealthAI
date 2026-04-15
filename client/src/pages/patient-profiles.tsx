@@ -1630,32 +1630,16 @@ export default function PatientProfiles() {
   const femaleCount = allPatients.filter(p => p.gender === 'female').length;
 
   return (
-    <div className="flex flex-col h-screen bg-background overflow-hidden">
-      {/* Header */}
-      <div className="flex-shrink-0 sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="px-3 sm:px-4 h-16 flex items-center gap-2 sm:gap-3">
-          <Link href="/dashboard">
-            <Button variant="ghost" size="sm" data-testid="button-back-to-labs" style={{ color: "#2e3a20" }} title="Dashboard">
-              <ArrowLeft className="h-4 w-4" />
-              <span className="hidden sm:inline ml-1">Dashboard</span>
-            </Button>
-          </Link>
-          <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
-          <img
-            src="/realign-health-logo.png"
-            alt="ReAlign Health"
-            className="h-14 sm:h-16 w-auto flex-shrink-0"
-            style={{ mixBlendMode: "multiply" }}
-          />
-          <div className="h-4 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
-          <div className="hidden sm:flex items-center gap-2">
-            <h1 className="text-sm font-semibold" style={{ color: "#1c2414" }}>Patient Profiles</h1>
-            {!patientsLoading && (
-              <Badge variant="secondary" className="text-xs">
-                {allPatients.length} patient{allPatients.length !== 1 ? 's' : ''}
-              </Badge>
-            )}
-          </div>
+    <div className="flex flex-col flex-1 bg-background overflow-hidden">
+      {/* Page sub-header */}
+      <div className="flex-shrink-0 border-b px-3 sm:px-4 py-2 flex items-center gap-2" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-semibold" style={{ color: "#1c2414" }}>Patient Profiles</h1>
+          {!patientsLoading && (
+            <Badge variant="secondary" className="text-xs">
+              {allPatients.length} patient{allPatients.length !== 1 ? 's' : ''}
+            </Badge>
+          )}
         </div>
       </div>
 

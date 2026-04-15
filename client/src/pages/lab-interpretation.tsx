@@ -404,38 +404,26 @@ export default function LabInterpretation() {
   useEffect(() => () => { clearGlobalLoading(); }, []);
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="border-b sticky top-0 z-10" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-7xl mx-auto px-3 sm:px-4 h-16 flex items-center">
-          <div className="flex items-center justify-between w-full gap-2 sm:gap-4">
-            <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-              <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-14 sm:h-16 w-auto flex-shrink-0" style={{ mixBlendMode: "multiply" }} />
-              <div className="h-4 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
-              <div className="hidden sm:block">
-                <h1 className="text-sm font-semibold leading-tight" style={{ color: "#1c2414" }}>Men's Lab Interpretation</h1>
-                <p className="text-xs leading-tight" style={{ color: "#7a8a64" }}>Hormone & Primary Care</p>
-              </div>
-            </div>
-            <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
-              <Link href="/dashboard">
-                <Button variant="ghost" size="sm" data-testid="link-to-dashboard" style={{ color: "#2e3a20" }} title="Dashboard">
-                  <span className="hidden sm:inline">Dashboard</span>
-                  <span className="sm:hidden">Home</span>
-                </Button>
-              </Link>
-              <Link href="/patients">
-                <Button variant="outline" size="sm" data-testid="link-to-patient-profiles" title="Patient Profiles">
-                  <span className="hidden sm:inline">Patient Profiles</span>
-                  <span className="sm:hidden">Patients</span>
-                </Button>
-              </Link>
-              <Link href="/female">
-                <Button variant="outline" size="sm" data-testid="link-to-womens-labs" title="Switch to Women's Labs">
-                  <span className="hidden sm:inline">Switch to Women's Labs</span>
-                  <span className="sm:hidden">Women's</span>
-                </Button>
-              </Link>
+    <div className="flex-1 overflow-auto bg-background">
+      {/* Page toolbar */}
+      <div className="border-b px-3 sm:px-4 py-2 flex items-center justify-between gap-2 flex-wrap" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
+        <div className="flex items-center gap-2">
+          <h1 className="text-sm font-semibold" style={{ color: "#1c2414" }}>Men's Lab Interpretation</h1>
+          <span className="text-xs hidden sm:inline" style={{ color: "#7a8a64" }}>Hormone &amp; Primary Care</span>
+        </div>
+        <div className="flex items-center gap-1 sm:gap-2 flex-wrap justify-end">
+          <Link href="/patients">
+            <Button variant="outline" size="sm" data-testid="link-to-patient-profiles" title="Patient Profiles">
+              <span className="hidden sm:inline">Patient Profiles</span>
+              <span className="sm:hidden">Patients</span>
+            </Button>
+          </Link>
+          <Link href="/female">
+            <Button variant="outline" size="sm" data-testid="link-to-womens-labs" title="Switch to Women's Labs">
+              <span className="hidden sm:inline">Switch to Women's Labs</span>
+              <span className="sm:hidden">Women's</span>
+            </Button>
+          </Link>
               {interpretationResult && (
                 <>
                   <Button 
@@ -474,10 +462,8 @@ export default function LabInterpretation() {
                   </Button>
                 </>
               )}
-            </div>
-          </div>
         </div>
-      </header>
+      </div>
 
       {/* Main Content */}
       <main className="max-w-7xl mx-auto px-4 py-6">

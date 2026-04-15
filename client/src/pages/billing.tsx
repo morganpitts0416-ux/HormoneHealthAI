@@ -303,7 +303,7 @@ export default function BillingPage() {
   const canOneClickUpgrade = isOnSolo && hasSubscription && !isCanceled;
 
   return (
-    <div className="min-h-screen bg-background">
+    <div className="flex-1 overflow-auto bg-background">
       <div className="max-w-2xl mx-auto px-4 py-10 space-y-6">
 
         {/* Header */}

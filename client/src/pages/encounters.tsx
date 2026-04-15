@@ -3275,12 +3275,8 @@ export default function EncountersPage() {
   });
 
   return (
-    <div className="min-h-screen flex flex-col" style={{ background: "#f9f6f0" }}>
-      {/* Top nav */}
-      <header className="sticky top-0 z-50 border-b px-4 py-2.5 flex items-center gap-3" style={{ background: "#e8ddd0" }}>
-        <Button variant="ghost" size="icon" onClick={() => setLocation("/dashboard")} data-testid="button-back-dashboard">
-          <ChevronLeft className="w-4 h-4" style={{ color: "#2e3a20" }} />
-        </Button>
+    <div className="flex-1 flex flex-col" style={{ background: "#f9f6f0" }}>
+      <div className="border-b px-4 py-2 flex items-center gap-3" style={{ background: "#f5f2ed", borderColor: "#d4c9b5" }}>
         <div className="flex items-center gap-2">
           <Stethoscope className="w-4 h-4" style={{ color: "#2e3a20" }} />
           <span className="font-semibold text-sm" style={{ color: "#2e3a20" }}>Encounter Documentation</span>
@@ -3296,9 +3292,9 @@ export default function EncountersPage() {
             New Encounter
           </Button>
         </div>
-      </header>
+      </div>
 
-      <div className="flex flex-1 overflow-hidden" style={{ height: "calc(100vh - 48px)" }}>
+      <div className="flex flex-1 overflow-hidden">
         {/* Encounter List */}
         <div
           className={`flex flex-col border-r bg-background ${showEditor ? "hidden lg:flex lg:w-72 xl:w-80 flex-shrink-0" : "flex-1"}`}

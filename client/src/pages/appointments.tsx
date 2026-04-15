@@ -4,7 +4,7 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  CalendarDays, ArrowLeft, Copy, Check, Clock, User, MapPin,
+  CalendarDays, Copy, Check, Clock, User, MapPin,
   Stethoscope, Link2, RefreshCw, CalendarOff
 } from "lucide-react";
 import { useState } from "react";
@@ -65,18 +65,12 @@ export default function AppointmentsPage() {
   const pastGroups = groupByDate(past.slice(0, 30));
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f5f2ed" }}>
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-5xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between gap-3">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/dashboard")} style={{ color: "#2e3a20" }}>
-              <ArrowLeft className="w-4 h-4" />
-            </Button>
-            <div className="flex items-center gap-2">
-              <CalendarDays className="w-5 h-5" style={{ color: "#5a7040" }} />
-              <h1 className="text-lg font-semibold" style={{ color: "#1c2414" }}>Appointments</h1>
-            </div>
+    <div className="flex-1 overflow-auto" style={{ backgroundColor: "#f5f2ed" }}>
+      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
+        <div className="flex items-center justify-between gap-3 flex-wrap">
+          <div className="flex items-center gap-2">
+            <CalendarDays className="w-5 h-5" style={{ color: "#5a7040" }} />
+            <h1 className="text-lg font-semibold" style={{ color: "#1c2414" }}>Appointments</h1>
           </div>
           <Button
             variant="ghost"
@@ -90,9 +84,6 @@ export default function AppointmentsPage() {
             <RefreshCw className={`w-4 h-4 ${isFetching ? "animate-spin" : ""}`} />
           </Button>
         </div>
-      </header>
-
-      <main className="max-w-5xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
         {/* Zapier Setup Card */}
         <div className="rounded-md border p-4 space-y-3" style={{ backgroundColor: "#ffffff", borderColor: "#d4c9b5" }}>

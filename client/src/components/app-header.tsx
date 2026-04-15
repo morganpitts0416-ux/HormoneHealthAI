@@ -1,0 +1,189 @@
+import { useLocation } from "wouter";
+import { useAuth } from "@/hooks/use-auth";
+import { Button } from "@/components/ui/button";
+import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
+import {
+  LogOut,
+  Settings,
+  ShieldCheck,
+  CreditCard,
+  HelpCircle,
+  CalendarDays,
+  Menu,
+  LayoutDashboard,
+} from "lucide-react";
+
+export function AppHeader() {
+  const { user, logoutMutation } = useAuth();
+  const [location, setLocation] = useLocation();
+
+  if (!user) return null;
+
+  const isStaff = (user as any)?.isStaff;
+
+  return (
+    <header
+      className="sticky top-0 z-50 border-b flex-shrink-0"
+      style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}
+      data-testid="app-header"
+    >
+      <div className="max-w-[1400px] mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 min-w-0">
+          <img
+            src="/realign-health-logo.png"
+            alt="ReAlign Health"
+            className="h-12 sm:h-14 w-auto flex-shrink-0 cursor-pointer"
+            style={{ mixBlendMode: "multiply" }}
+            onClick={() => setLocation("/dashboard")}
+            data-testid="logo-home"
+          />
+          <div className="h-5 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
+          <div className="hidden sm:block min-w-0">
+            <p className="text-sm font-medium leading-tight truncate" style={{ color: "#1c2414" }}>{user?.clinicName}</p>
+            <p className="text-xs leading-tight truncate" style={{ color: "#7a8a64" }}>
+              {isStaff
+                ? `${(user as any)?.staffFirstName ?? ""} ${(user as any)?.staffLastName ?? ""}`
+                : `${user?.title ?? ""} ${user?.firstName ?? ""} ${user?.lastName ?? ""}`
+              }
+            </p>
+          </div>
+        </div>
+
+        <div className="flex items-center gap-1">
+          <div className="hidden sm:flex items-center gap-0.5">
+            {(user as any)?.role === "admin" && (
+              <NavButton
+                icon={ShieldCheck}
+                label="Admin"
+                onClick={() => setLocation("/admin")}
+                active={location === "/admin"}
+                testId="nav-admin"
+              />
+            )}
+            <NavButton
+              icon={LayoutDashboard}
+              label="Dashboard"
+              onClick={() => setLocation("/dashboard")}
+              active={location === "/dashboard"}
+              testId="nav-dashboard"
+            />
+            <NavButton
+              icon={CalendarDays}
+              label="Appointments"
+              onClick={() => setLocation("/appointments")}
+              active={location === "/appointments"}
+              testId="nav-appointments"
+            />
+            <NavButton
+              icon={HelpCircle}
+              label="Help"
+              onClick={() => setLocation("/help")}
+              active={location === "/help"}
+              testId="nav-help"
+            />
+            <NavButton
+              icon={CreditCard}
+              label="Billing"
+              onClick={() => setLocation("/billing")}
+              active={location === "/billing"}
+              testId="nav-billing"
+            />
+            <NavButton
+              icon={Settings}
+              label="Account"
+              onClick={() => setLocation("/account")}
+              active={location === "/account"}
+              testId="nav-account"
+            />
+            <NavButton
+              icon={LogOut}
+              label="Sign Out"
+              onClick={() => logoutMutation.mutateAsync()}
+              disabled={logoutMutation.isPending}
+              testId="nav-logout"
+            />
+          </div>
+
+          <Sheet>
+            <SheetTrigger asChild>
+              <Button size="icon" variant="ghost" className="sm:hidden" style={{ color: "#2e3a20" }} data-testid="button-mobile-menu">
+                <Menu className="w-5 h-5" />
+              </Button>
+            </SheetTrigger>
+            <SheetContent side="right" className="w-64 p-0">
+              <div className="flex flex-col h-full" style={{ backgroundColor: "#f5f2ed" }}>
+                <div className="px-4 py-4 border-b" style={{ borderColor: "#d4c9b5", backgroundColor: "#e8ddd0" }}>
+                  <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>{user?.clinicName}</p>
+                  <p className="text-xs" style={{ color: "#7a8a64" }}>
+                    {isStaff
+                      ? `${(user as any)?.staffFirstName ?? ""} ${(user as any)?.staffLastName ?? ""}`
+                      : `${user?.title ?? ""} ${user?.firstName ?? ""} ${user?.lastName ?? ""}`
+                    }
+                  </p>
+                </div>
+                <nav className="flex flex-col gap-1 p-3 flex-1">
+                  <MobileNavButton icon={LayoutDashboard} label="Dashboard" onClick={() => setLocation("/dashboard")} active={location === "/dashboard"} />
+                  {(user as any)?.role === "admin" && (
+                    <MobileNavButton icon={ShieldCheck} label="Admin" onClick={() => setLocation("/admin")} active={location === "/admin"} />
+                  )}
+                  <MobileNavButton icon={CalendarDays} label="Appointments" onClick={() => setLocation("/appointments")} active={location === "/appointments"} />
+                  <MobileNavButton icon={HelpCircle} label="Help" onClick={() => setLocation("/help")} active={location === "/help"} />
+                  <MobileNavButton icon={CreditCard} label="Billing" onClick={() => setLocation("/billing")} active={location === "/billing"} />
+                  <MobileNavButton icon={Settings} label="Account" onClick={() => setLocation("/account")} active={location === "/account"} />
+                </nav>
+                <div className="p-3 border-t" style={{ borderColor: "#d4c9b5" }}>
+                  <Button variant="ghost" className="justify-start gap-3 w-full text-destructive" onClick={() => logoutMutation.mutateAsync()} disabled={logoutMutation.isPending}>
+                    <LogOut className="w-4 h-4" /> Sign Out
+                  </Button>
+                </div>
+              </div>
+            </SheetContent>
+          </Sheet>
+        </div>
+      </div>
+    </header>
+  );
+}
+
+function NavButton({ icon: Icon, label, onClick, active, disabled, testId }: {
+  icon: any;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+  disabled?: boolean;
+  testId: string;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      size="sm"
+      onClick={onClick}
+      disabled={disabled}
+      className={active ? "font-semibold" : ""}
+      style={{ color: "#2e3a20" }}
+      title={label}
+      data-testid={testId}
+    >
+      <Icon className="w-4 h-4 mr-1.5" />
+      <span className="hidden md:inline">{label}</span>
+    </Button>
+  );
+}
+
+function MobileNavButton({ icon: Icon, label, onClick, active }: {
+  icon: any;
+  label: string;
+  onClick: () => void;
+  active?: boolean;
+}) {
+  return (
+    <Button
+      variant="ghost"
+      className={`justify-start gap-3 w-full ${active ? "font-semibold" : ""}`}
+      style={{ color: "#2e3a20", backgroundColor: active ? "rgba(90,112,64,0.1)" : undefined }}
+      onClick={onClick}
+    >
+      <Icon className="w-4 h-4" /> {label}
+    </Button>
+  );
+}

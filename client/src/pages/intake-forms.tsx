@@ -1,6 +1,5 @@
 import { useState, useEffect } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { useLocation } from "wouter";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
@@ -21,7 +20,7 @@ import {
   ClipboardList, CheckCircle2, Clock, AlertCircle, GripVertical, Tag,
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
-  Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft, LayoutDashboard,
+  Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft,
   ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal
 } from "lucide-react";
 
@@ -233,7 +232,6 @@ function SmartFieldPalette({ existingSmartKeys, onAdd }: {
 }
 
 export default function IntakeFormsPage() {
-  const [, setLocation] = useLocation();
   const [activeFormId, setActiveFormId] = useState<number | null>(null);
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
@@ -299,17 +297,9 @@ export default function IntakeFormsPage() {
   }
 
   return (
-    <div className="flex flex-col h-full">
-      <div className="border-b px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3">
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <div className="border-b px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
         <div className="flex items-center gap-2 sm:gap-3 min-w-0">
-          <Tooltip>
-            <TooltipTrigger asChild>
-              <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-back-to-dashboard" className="flex-shrink-0">
-                <ChevronLeft className="h-4 w-4" />
-              </Button>
-            </TooltipTrigger>
-            <TooltipContent>Back to Dashboard</TooltipContent>
-          </Tooltip>
           <ClipboardList className="h-5 w-5 text-muted-foreground flex-shrink-0 hidden sm:block" />
           <div className="min-w-0">
             <h1 className="text-base sm:text-lg font-semibold">Digital Forms</h1>
@@ -740,7 +730,6 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
 
 function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; onBack: () => void; canEdit?: boolean }) {
   const { toast } = useToast();
-  const [, setLocation] = useLocation();
   const [activeTab, setActiveTab] = useState("fields");
   const [selectedFieldId, setSelectedFieldId] = useState<number | null>(null);
   const [showPublishDialog, setShowPublishDialog] = useState(false);
@@ -913,19 +902,11 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
   return (
     <div className="flex flex-col h-full">
       {/* Header */}
-      <div className="border-b px-3 sm:px-4 py-2 sm:py-3 space-y-2">
+      <div className="border-b px-3 sm:px-4 py-2 sm:py-3 space-y-2" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-go-to-dashboard" className="flex-shrink-0">
-                  <LayoutDashboard className="h-4 w-4" />
-                </Button>
-              </TooltipTrigger>
-              <TooltipContent>Back to Dashboard</TooltipContent>
-            </Tooltip>
-            <span className="text-muted-foreground text-sm hidden sm:inline">/</span>
             <Button size="sm" variant="ghost" onClick={onBack} className="text-xs text-muted-foreground hidden sm:inline-flex" data-testid="button-back-to-forms">
+              <ChevronLeft className="h-3 w-3 mr-1" />
               Forms
             </Button>
             <Button size="icon" variant="ghost" onClick={onBack} className="sm:hidden flex-shrink-0" data-testid="button-back-to-forms-mobile">
