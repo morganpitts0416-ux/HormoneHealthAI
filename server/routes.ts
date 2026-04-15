@@ -7,7 +7,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments } from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, sql } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
@@ -462,7 +462,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
           .where(and(eq(clinicMemberships.userId, safeUser.id), eq(clinicMemberships.clinicId, safeUser.defaultClinicId)))
           .limit(1);
         if (membership) membershipInfo = membership;
-      } catch {}
+      } catch (membershipErr) {
+        console.error("[AUTH /api/auth/me] Membership lookup failed, trying fallback:", membershipErr);
+        try {
+          const fallbackRows = await storageDb.execute(
+            sql`SELECT admin_role, clinical_role FROM clinic_memberships WHERE user_id = ${safeUser.id} AND clinic_id = ${safeUser.defaultClinicId} LIMIT 1`
+          );
+          const row = (fallbackRows as any)?.rows?.[0];
+          if (row) {
+            membershipInfo = { adminRole: row.admin_role || "standard", clinicalRole: row.clinical_role || "provider" };
+          }
+        } catch (fallbackErr) {
+          console.error("[AUTH /api/auth/me] Fallback membership lookup also failed:", fallbackErr);
+        }
+      }
     }
     res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey), ...membershipInfo });
   });
