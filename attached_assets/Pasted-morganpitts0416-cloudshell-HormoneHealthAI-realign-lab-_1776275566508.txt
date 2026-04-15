@@ -1,0 +1,105 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud logging read \
+'resource.type="cloud_run_revision" AND resource.labels.service_name="hormonehealthai"' \
+--project=realign-lab-app \
+--limit=100 \
+--format="value(timestamp,textPayload)"
+2026-04-15T17:52:01.799192Z     5:52:01 PM [express] GET /api/billing/status 500 in 8ms :: {"message":"Failed to load billing status…
+2026-04-15T17:52:01.795154Z     }
+2026-04-15T17:52:01.795152Z       routine: 'errorMissingColumn'
+2026-04-15T17:52:01.795149Z       line: '3827',
+2026-04-15T17:52:01.795147Z       file: 'parse_relation.c',
+2026-04-15T17:52:01.795145Z       constraint: undefined,
+2026-04-15T17:52:01.795143Z       dataType: undefined,
+2026-04-15T17:52:01.795140Z       column: undefined,
+2026-04-15T17:52:01.795138Z       table: undefined,
+2026-04-15T17:52:01.795136Z       schema: undefined,
+2026-04-15T17:52:01.795134Z       where: undefined,
+2026-04-15T17:52:01.795132Z       internalQuery: undefined,
+2026-04-15T17:52:01.795129Z       internalPosition: undefined,
+2026-04-15T17:52:01.795126Z       position: '8',
+2026-04-15T17:52:01.795123Z       hint: undefined,
+2026-04-15T17:52:01.795121Z       detail: undefined,
+2026-04-15T17:52:01.795118Z       code: '42703',
+2026-04-15T17:52:01.795116Z       severity: 'ERROR',
+2026-04-15T17:52:01.795114Z       length: 109,
+2026-04-15T17:52:01.795111Z         at async file:///app/dist/index.js:18302:28 {
+2026-04-15T17:52:01.795109Z         at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-15T17:52:01.795107Z         at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-15T17:52:01.795104Z         at /app/node_modules/pg-pool/index.js:45:11
+2026-04-15T17:52:01.795097Z     [Billing] Status error: error: column "admin_role" does not exist
+2026-04-15T17:52:01.759730Z
+2026-04-15T17:52:00.715583Z     5:52:00 PM [express] GET /api/billing/status 500 in 12ms :: {"message":"Failed to load billing statu…
+2026-04-15T17:52:00.707701Z     }
+2026-04-15T17:52:00.707698Z       routine: 'errorMissingColumn'
+2026-04-15T17:52:00.707696Z       line: '3827',
+2026-04-15T17:52:00.707694Z       file: 'parse_relation.c',
+2026-04-15T17:52:00.707692Z       constraint: undefined,
+2026-04-15T17:52:00.707690Z       dataType: undefined,
+2026-04-15T17:52:00.707688Z       column: undefined,
+2026-04-15T17:52:00.707686Z       table: undefined,
+2026-04-15T17:52:00.707684Z       schema: undefined,
+2026-04-15T17:52:00.707682Z       where: undefined,
+2026-04-15T17:52:00.707680Z       internalQuery: undefined,
+2026-04-15T17:52:00.707678Z       internalPosition: undefined,
+2026-04-15T17:52:00.707676Z       position: '8',
+2026-04-15T17:52:00.707674Z       hint: undefined,
+2026-04-15T17:52:00.707672Z       detail: undefined,
+2026-04-15T17:52:00.707670Z       code: '42703',
+2026-04-15T17:52:00.707669Z       severity: 'ERROR',
+2026-04-15T17:52:00.707667Z       length: 109,
+2026-04-15T17:52:00.707665Z         at async file:///app/dist/index.js:18302:28 {
+2026-04-15T17:52:00.707662Z         at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-15T17:52:00.707660Z         at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-15T17:52:00.707657Z         at /app/node_modules/pg-pool/index.js:45:11
+2026-04-15T17:52:00.707646Z     [Billing] Status error: error: column "admin_role" does not exist
+2026-04-15T17:52:00.688921Z
+2026-04-15T17:52:00.641949Z     5:52:00 PM [express] GET /api/auth/me 304 in 7ms :: {"id":1,"email":"morganpitts0416@gmail.com","use…
+2026-04-15T17:52:00.624744Z
+2026-04-15T17:52:00.623559Z
+2026-04-15T17:52:00.516649Z
+2026-04-15T17:52:00.516304Z
+2026-04-15T17:52:00.435228Z
+2026-04-15T17:52:00.372294Z     5:52:00 PM [express] POST /api/logout 200 in 5ms
+2026-04-15T17:52:00.319410Z
+2026-04-15T17:48:35.016580Z     5:48:35 PM [express] GET /api/billing/status 500 in 9ms :: {"message":"Failed to load billing status…
+2026-04-15T17:48:35.012512Z     }
+2026-04-15T17:48:35.012510Z       routine: 'errorMissingColumn'
+2026-04-15T17:48:35.012508Z       line: '3827',
+2026-04-15T17:48:35.012506Z       file: 'parse_relation.c',
+2026-04-15T17:48:35.012504Z       constraint: undefined,
+2026-04-15T17:48:35.012501Z       dataType: undefined,
+2026-04-15T17:48:35.012499Z       column: undefined,
+2026-04-15T17:48:35.012497Z       table: undefined,
+2026-04-15T17:48:35.012495Z       schema: undefined,
+2026-04-15T17:48:35.012493Z       where: undefined,
+2026-04-15T17:48:35.012492Z       internalQuery: undefined,
+2026-04-15T17:48:35.012489Z       internalPosition: undefined,
+2026-04-15T17:48:35.012487Z       position: '8',
+2026-04-15T17:48:35.012485Z       hint: undefined,
+2026-04-15T17:48:35.012483Z       detail: undefined,
+2026-04-15T17:48:35.012481Z       code: '42703',
+2026-04-15T17:48:35.012480Z       severity: 'ERROR',
+2026-04-15T17:48:35.012478Z       length: 109,
+2026-04-15T17:48:35.012476Z         at async file:///app/dist/index.js:18302:28 {
+2026-04-15T17:48:35.012474Z         at async file:///app/node_modules/drizzle-orm/node-postgres/session.js:83:22
+2026-04-15T17:48:35.012472Z         at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-15T17:48:35.012469Z         at /app/node_modules/pg-pool/index.js:45:11
+2026-04-15T17:48:35.012463Z     [Billing] Status error: error: column "admin_role" does not exist
+2026-04-15T17:48:34.970520Z
+2026-04-15T17:48:32.925800Z     5:48:32 PM [express] GET /api/billing/status 500 in 8ms :: {"message":"Failed to load billing status…
+2026-04-15T17:48:32.921481Z     }
+2026-04-15T17:48:32.921479Z       routine: 'errorMissingColumn'
+2026-04-15T17:48:32.921477Z       line: '3827',
+2026-04-15T17:48:32.921475Z       file: 'parse_relation.c',
+2026-04-15T17:48:32.921472Z       constraint: undefined,
+2026-04-15T17:48:32.921470Z       dataType: undefined,
+2026-04-15T17:48:32.921468Z       column: undefined,
+2026-04-15T17:48:32.921466Z       table: undefined,
+2026-04-15T17:48:32.921464Z       schema: undefined,
+2026-04-15T17:48:32.921462Z       where: undefined,
+2026-04-15T17:48:32.921460Z       internalQuery: undefined,
+2026-04-15T17:48:32.921458Z       internalPosition: undefined,
+2026-04-15T17:48:32.921456Z       position: '8',
+2026-04-15T17:48:32.921454Z       hint: undefined,
+2026-04-15T17:48:32.921452Z       detail: undefined,
+2026-04-15T17:48:32.921448Z       code: '42703',
