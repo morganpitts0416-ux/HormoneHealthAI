@@ -21,7 +21,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import {
-  Plus, Trash2, Users, Activity,
+  Plus, Trash2, Users, Activity, DollarSign, BarChart3, TrendingUp,
   MoreVertical, Building2, Mail, Phone, User, Lock, ChevronDown,
   Layers, UserPlus, RefreshCw, Pencil,
 } from "lucide-react";
@@ -150,6 +150,17 @@ export default function AdminDashboard() {
       return res.json();
     },
     staleTime: 15 * 1000,
+    retry: false,
+  });
+
+  const { data: usageReport } = useQuery<any>({
+    queryKey: ["/api/admin/usage-report"],
+    queryFn: async () => {
+      const res = await fetch("/api/admin/usage-report", { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to fetch usage report");
+      return res.json();
+    },
+    staleTime: 30 * 1000,
     retry: false,
   });
 
@@ -383,6 +394,102 @@ export default function AdminDashboard() {
             </Card>
           ))}
         </div>
+
+        {/* Usage & Revenue Report */}
+        {usageReport && (
+          <Card>
+            <CardContent className="pt-5 pb-5">
+              <div className="flex items-center gap-3 mb-4">
+                <div className="w-9 h-9 rounded-lg flex items-center justify-center" style={{ backgroundColor: "#e8ddd0" }}>
+                  <BarChart3 className="w-4 h-4" style={{ color: "#2e3a20" }} />
+                </div>
+                <div>
+                  <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>Platform Usage Report</p>
+                  <p className="text-xs text-muted-foreground">Revenue, subscriptions, and clinic breakdown</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+                <div className="rounded-md border px-3 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <DollarSign className="w-3.5 h-3.5 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">Est. MRR</p>
+                  </div>
+                  <p className="text-xl font-semibold" style={{ color: "#2e3a20" }}>${usageReport.estimatedMRR?.toLocaleString()}</p>
+                </div>
+                <div className="rounded-md border px-3 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <TrendingUp className="w-3.5 h-3.5 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">Paid Accounts</p>
+                  </div>
+                  <p className="text-xl font-semibold" style={{ color: "#2e3a20" }}>{usageReport.paidProviders}</p>
+                </div>
+                <div className="rounded-md border px-3 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Users className="w-3.5 h-3.5 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">Free Accounts</p>
+                  </div>
+                  <p className="text-xl font-semibold" style={{ color: "#2e3a20" }}>{usageReport.freeProviders}</p>
+                </div>
+                <div className="rounded-md border px-3 py-3">
+                  <div className="flex items-center gap-2 mb-1">
+                    <Activity className="w-3.5 h-3.5 text-muted-foreground" />
+                    <p className="text-xs text-muted-foreground">On Trial</p>
+                  </div>
+                  <p className="text-xl font-semibold" style={{ color: "#2e3a20" }}>{usageReport.trialProviders}</p>
+                </div>
+              </div>
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-4 mb-5">
+                <div className="rounded-md border px-3 py-3">
+                  <p className="text-xs text-muted-foreground mb-1">Solo Clinics</p>
+                  <p className="text-lg font-semibold" style={{ color: "#1c2414" }}>{usageReport.soloClinicCount}</p>
+                </div>
+                <div className="rounded-md border px-3 py-3">
+                  <p className="text-xs text-muted-foreground mb-1">Suite Clinics</p>
+                  <p className="text-lg font-semibold" style={{ color: "#1c2414" }}>{usageReport.suiteClinicCount}</p>
+                </div>
+                <div className="rounded-md border px-3 py-3">
+                  <p className="text-xs text-muted-foreground mb-1">Extra Provider Seats</p>
+                  <p className="text-lg font-semibold" style={{ color: "#1c2414" }}>{usageReport.totalExtraSeats}</p>
+                </div>
+                <div className="rounded-md border px-3 py-3">
+                  <p className="text-xs text-muted-foreground mb-1">Canceled</p>
+                  <p className="text-lg font-semibold" style={{ color: "#1c2414" }}>{usageReport.canceledProviders}</p>
+                </div>
+              </div>
+              {usageReport.clinicDetails?.length > 0 && (
+                <div>
+                  <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide mb-2">Clinic Breakdown</p>
+                  <div className="overflow-x-auto border rounded-md">
+                    <table className="w-full text-sm">
+                      <thead>
+                        <tr style={{ backgroundColor: "#faf8f5" }}>
+                          <th className="text-left px-4 py-2 text-xs font-medium text-muted-foreground">Clinic</th>
+                          <th className="text-center px-4 py-2 text-xs font-medium text-muted-foreground">Plan</th>
+                          <th className="text-center px-4 py-2 text-xs font-medium text-muted-foreground">Members</th>
+                          <th className="text-center px-4 py-2 text-xs font-medium text-muted-foreground">Extra Seats</th>
+                          <th className="text-center px-4 py-2 text-xs font-medium text-muted-foreground">Patients</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {usageReport.clinicDetails.map((clinic: any) => (
+                          <tr key={clinic.id} className="border-t">
+                            <td className="px-4 py-2.5 font-medium" style={{ color: "#1c2414" }}>{clinic.name}</td>
+                            <td className="px-4 py-2.5 text-center">
+                              <Badge variant={clinic.plan === "suite" ? "default" : "secondary"} className="text-xs capitalize">{clinic.plan}</Badge>
+                            </td>
+                            <td className="px-4 py-2.5 text-center">{clinic.memberCount}</td>
+                            <td className="px-4 py-2.5 text-center">{clinic.extraSeats}</td>
+                            <td className="px-4 py-2.5 text-center font-medium" style={{ color: "#2e3a20" }}>{clinic.patientCount}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                </div>
+              )}
+            </CardContent>
+          </Card>
+        )}
 
         {/* Clinician accounts table */}
         <Card>
