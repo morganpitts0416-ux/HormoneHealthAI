@@ -12,6 +12,7 @@ interface BillingStatus {
   stripeSubscriptionId: string | null;
   isClinicOwner?: boolean;
   ownerName?: string | null;
+  billingValid?: boolean;
 }
 
 function forceSignOut() {
@@ -107,6 +108,7 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
   const allowedStatuses = ["trial", "active", "trialing"];
   const isNonOwner = billing.isClinicOwner === false;
   const hasValidBilling =
+    billing.billingValid ||
     billing.freeAccount ||
     (!!billing.stripeSubscriptionId && allowedStatuses.includes(billing.subscriptionStatus)) ||
     (isNonOwner && allowedStatuses.includes(billing.subscriptionStatus));

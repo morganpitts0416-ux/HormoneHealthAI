@@ -6565,6 +6565,12 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         }
       }
 
+      const allowedStatuses = ["active", "trial", "trialing"];
+      const billingValid =
+        effectiveFreeAccount ||
+        (!!effectiveSubId && allowedStatuses.includes(effectiveSubStatus ?? "")) ||
+        (!isClinicOwner && allowedStatuses.includes(effectiveSubStatus ?? ""));
+
       res.json({
         subscriptionStatus: effectiveSubStatus,
         freeAccount: effectiveFreeAccount,
@@ -6578,6 +6584,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         clinicExtraSeats,
         isClinicOwner,
         ownerName,
+        billingValid,
       });
     } catch (err) {
       console.error("[Billing] Status error:", err);
