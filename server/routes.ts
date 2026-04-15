@@ -3362,7 +3362,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     try {
       const clinicianId = (req.user as any).id;
       const staff = await storage.getAllStaffForClinician(clinicianId);
-      const safeStaff = staff.map(({ passwordHash: _ph, inviteToken: _it, ...s }) => s);
+      const safeStaff = staff.map(({ passwordHash, inviteToken: _it, ...s }) => ({
+        ...s,
+        hasSetPassword: !!passwordHash,
+      }));
       res.json(safeStaff);
     } catch (error) {
       console.error('[API] Error fetching staff:', error);
@@ -3417,6 +3420,43 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     } catch (error) {
       console.error('[API] Error inviting staff:', error);
       res.status(500).json({ message: "Failed to invite staff member" });
+    }
+  });
+
+  // POST /api/staff/:id/resend — resend a staff invite with a fresh token
+  app.post("/api/staff/:id/resend", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicianId = (req.user as any).id;
+      const staffId = parseInt(req.params.id);
+      if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
+
+      const staffMember = await storage.getClinicianStaffById(staffId);
+      if (!staffMember || staffMember.clinicianId !== clinicianId) {
+        return res.status(404).json({ message: "Staff member not found" });
+      }
+      if (staffMember.passwordHash) {
+        return res.status(400).json({ message: "This staff member has already set their password. They can use 'Forgot Password' to reset it." });
+      }
+
+      const newToken = crypto.randomBytes(32).toString('hex');
+      const newExpires = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+      await storage.updateClinicianStaff(staffId, { inviteToken: newToken, inviteExpires: newExpires });
+
+      const clinician = await storage.getUserById(clinicianId);
+      sendStaffInviteEmail(
+        staffMember.email,
+        staffMember.firstName,
+        clinician?.clinicName || 'the clinic',
+        clinician ? `${clinician.firstName} ${clinician.lastName}` : 'Your clinician',
+        newToken,
+        req
+      ).catch(err => console.error('[EMAIL] Staff invite resend failed:', err));
+
+      res.json({ success: true, message: "Invite resent" });
+    } catch (error) {
+      console.error('[API] Error resending staff invite:', error);
+      res.status(500).json({ message: "Failed to resend invite" });
     }
   });
 
@@ -3621,6 +3661,47 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           : "Failed to send provider invite",
         detail,
       });
+    }
+  });
+
+  // POST /api/clinic/invites/:id/resend — resend a provider invite with a fresh token
+  app.post("/api/clinic/invites/:id/resend", requireClinicianOnly, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const clinicId = user.defaultClinicId;
+      if (!clinicId) return res.status(400).json({ message: "No clinic associated with your account" });
+
+      const callerAdminRole = await getSessionAdminRole(user);
+      if (callerAdminRole !== "owner" && callerAdminRole !== "admin") {
+        return res.status(403).json({ message: "Only clinic owners or admins can resend provider invites." });
+      }
+
+      const inviteId = parseInt(req.params.id);
+      if (isNaN(inviteId)) return res.status(400).json({ message: "Invalid invite ID" });
+
+      const rows = await storageDb.select().from(clinicProviderInvites)
+        .where(and(eq(clinicProviderInvites.id, inviteId), eq(clinicProviderInvites.clinicId, clinicId), eq(clinicProviderInvites.status, "pending")))
+        .limit(1);
+      if (!rows.length) return res.status(404).json({ message: "Pending invite not found" });
+      const invite = rows[0];
+
+      const newToken = crypto.randomBytes(32).toString('hex');
+      const newExpires = new Date(Date.now() + 72 * 60 * 60 * 1000);
+
+      await storageDb.update(clinicProviderInvites)
+        .set({ inviteToken: newToken, inviteExpires: newExpires })
+        .where(eq(clinicProviderInvites.id, inviteId));
+
+      const clinic = await storageDb.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+      const clinicName = clinic[0]?.name || user.clinicName || "the clinic";
+      const inviterName = `${user.firstName} ${user.lastName}`;
+      sendProviderInviteEmail(invite.email, invite.firstName, clinicName, inviterName, newToken, req)
+        .catch(err => console.error('[EMAIL] Provider invite resend failed:', err));
+
+      res.json({ success: true, message: "Invite resent" });
+    } catch (err) {
+      console.error('[API] Error resending provider invite:', err);
+      res.status(500).json({ message: "Failed to resend invite" });
     }
   });
 

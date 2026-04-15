@@ -16,7 +16,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Save, CheckCircle, MessageSquare, Phone, BanIcon, Smartphone,
   Zap, Copy, Eye, EyeOff, Key, Globe, Info,
-  Users, UserPlus, Trash2, ShieldAlert, Mail, Pencil,
+  Users, UserPlus, Trash2, ShieldAlert, Mail, Pencil, RotateCw,
   CreditCard, Clock, AlertTriangle, AlertCircle, XCircle,
   ImagePlus, PenLine, X, Search,
   Building2, User, SlidersHorizontal, FileText, ClipboardList, Shield,
@@ -860,6 +860,42 @@ export default function Account() {
     },
   });
 
+  const resendProviderInviteMutation = useMutation({
+    mutationFn: async (inviteId: number) => {
+      const res = await apiRequest("POST", `/api/clinic/invites/${inviteId}/resend`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Failed to resend");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Invite resent", description: "A new invite email has been sent with a fresh 72-hour link." });
+      refetchInvites();
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to resend invite", description: err.message, variant: "destructive" });
+    },
+  });
+
+  const resendStaffInviteMutation = useMutation({
+    mutationFn: async (staffId: number) => {
+      const res = await apiRequest("POST", `/api/staff/${staffId}/resend`);
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({}));
+        throw new Error(data.message || "Failed to resend");
+      }
+      return res.json();
+    },
+    onSuccess: () => {
+      toast({ title: "Invite resent", description: "A new invite email has been sent with a fresh 72-hour link." });
+      queryClient.invalidateQueries({ queryKey: ["/api/staff"] });
+    },
+    onError: (err: Error) => {
+      toast({ title: "Failed to resend invite", description: err.message, variant: "destructive" });
+    },
+  });
+
   const [messagingPreference, setMessagingPreference] = useState<MessagingPreference>(
     ((user as any)?.messagingPreference as MessagingPreference) || 'none'
   );
@@ -1553,6 +1589,9 @@ export default function Account() {
                           </div>
                           <div className="flex items-center gap-2 flex-shrink-0">
                             <Badge variant="outline" className="text-xs capitalize">{inv.clinicalRole}</Badge>
+                            <Button variant="ghost" size="icon" onClick={() => resendProviderInviteMutation.mutate(inv.id)} disabled={resendProviderInviteMutation.isPending} data-testid={`button-resend-invite-${inv.id}`}>
+                              <RotateCw className={`w-4 h-4 text-muted-foreground ${resendProviderInviteMutation.isPending ? "animate-spin" : ""}`} />
+                            </Button>
                             <Button variant="ghost" size="icon" onClick={() => { if (confirm("Revoke this invite?")) revokeProviderInviteMutation.mutate(inv.id); }} data-testid={`button-revoke-invite-${inv.id}`}>
                               <X className="w-4 h-4 text-muted-foreground" />
                             </Button>
@@ -1682,6 +1721,11 @@ export default function Account() {
                             <Badge variant="secondary" className="text-xs">{clinicalLabel} · Clinical</Badge>
                             <Badge variant="outline" className="text-xs">{adminLabel} · Admin</Badge>
                           </div>
+                          {!(member as any).hasSetPassword && (
+                            <Button variant="ghost" size="icon" onClick={() => resendStaffInviteMutation.mutate(member.id)} disabled={resendStaffInviteMutation.isPending} data-testid={`button-resend-staff-invite-${member.id}`}>
+                              <RotateCw className={`w-4 h-4 text-muted-foreground ${resendStaffInviteMutation.isPending ? "animate-spin" : ""}`} />
+                            </Button>
+                          )}
                           <Button variant="ghost" size="icon" onClick={() => { setEditStaffMember(member); setEditStaffRole(member.role); setEditStaffAdminRole((member as any).adminRole || "standard"); }} data-testid={`button-edit-staff-${member.id}`}>
                             <Pencil className="w-4 h-4 text-muted-foreground" />
                           </Button>
