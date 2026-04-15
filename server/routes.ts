@@ -5804,6 +5804,17 @@ Return a JSON object:
         console.warn("[SOAP] Medication normalization skipped:", medErr);
       }
 
+      // ── Resolve patient name for SOAP identity disambiguation ─────────────
+      let patientName: string | undefined;
+      if (encounter.patientId) {
+        try {
+          const patient = await storage.getPatient(encounter.patientId);
+          if (patient) {
+            patientName = `${patient.firstName} ${patient.lastName}`.trim();
+          }
+        } catch {}
+      }
+
       // ── PIPELINE STEP 4+5: Enhanced multi-stage SOAP generation ─────────────
       // Uses the new enhanced pipeline: normalization+inference → section-specific generation → QA check
       const soapNote = await runEnhancedSoapPipeline({
@@ -5815,6 +5826,7 @@ Return a JSON object:
         medicationContext,
         encounter,
         openai,
+        patientName,
       });
 
       const updated = await storage.updateEncounter(id, clinicianId, {
