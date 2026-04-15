@@ -17,7 +17,7 @@ import {
   ArrowLeft, Save, CheckCircle, MessageSquare, Phone, BanIcon, Smartphone,
   Zap, Copy, Eye, EyeOff, Key, Globe, Info,
   Users, UserPlus, Trash2, ShieldAlert, Mail, Pencil,
-  CreditCard, Clock, AlertTriangle, XCircle,
+  CreditCard, Clock, AlertTriangle, AlertCircle, XCircle,
   ImagePlus, PenLine, X, Search,
   Building2, User, SlidersHorizontal, FileText, ClipboardList, Shield,
   Bell, Inbox,
@@ -720,6 +720,7 @@ export default function Account() {
   const [providerInviteLastName, setProviderInviteLastName] = useState("");
   const [providerInviteClinicalRole, setProviderInviteClinicalRole] = useState("provider");
   const [providerInviteAdminRole, setProviderInviteAdminRole] = useState("standard");
+  const [seatConfirmDialog, setSeatConfirmDialog] = useState<{ open: boolean; seatPrice: number; message: string }>({ open: false, seatPrice: 0, message: "" });
 
   // Edit staff role dialog
   const [editStaffMember, setEditStaffMember] = useState<StaffMember | null>(null);
@@ -808,28 +809,35 @@ export default function Account() {
   });
 
   const inviteProviderMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (opts?: { confirmExtraSeat?: boolean }) => {
       const res = await apiRequest("POST", "/api/clinic/invite-provider", {
         email: providerInviteEmail.trim(),
         firstName: providerInviteFirstName.trim(),
         lastName: providerInviteLastName.trim(),
         clinicalRole: providerInviteClinicalRole,
         adminRole: providerInviteAdminRole,
+        confirmExtraSeat: opts?.confirmExtraSeat ?? false,
       });
+      const data = await res.json();
       if (!res.ok) {
-        const e = await res.json();
-        throw new Error(e.message || "Failed to send invite");
+        if (res.status === 402 && data.requiresSeatConfirmation) {
+          setSeatConfirmDialog({ open: true, seatPrice: data.seatPrice, message: data.message });
+          return { needsConfirmation: true };
+        }
+        throw new Error(data.message || "Failed to send invite");
       }
-      return res.json();
+      return data;
     },
-    onSuccess: () => {
-      toast({ title: "Provider invited", description: `${providerInviteFirstName} will receive an email with a link to create their account.` });
+    onSuccess: (data: any) => {
+      if (data?.needsConfirmation) return;
+      toast({ title: "Provider invited", description: `${providerInviteFirstName} will receive an email with a link to create their account.${data?.billingUpdated ? " An additional seat charge has been added to your subscription." : ""}` });
       setProviderInviteEmail("");
       setProviderInviteFirstName("");
       setProviderInviteLastName("");
       setProviderInviteClinicalRole("provider");
       setProviderInviteAdminRole("standard");
       setShowProviderInviteForm(false);
+      setSeatConfirmDialog({ open: false, seatPrice: 0, message: "" });
       refetchInvites();
     },
     onError: (err: Error) => {
@@ -1493,10 +1501,40 @@ export default function Account() {
                           </Select>
                         </div>
                       </div>
-                      <Button onClick={() => inviteProviderMutation.mutate()} disabled={inviteProviderMutation.isPending || !providerInviteEmail || !providerInviteFirstName || !providerInviteLastName} data-testid="button-send-provider-invite">
+                      <Button onClick={() => inviteProviderMutation.mutate({})} disabled={inviteProviderMutation.isPending || !providerInviteEmail || !providerInviteFirstName || !providerInviteLastName} data-testid="button-send-provider-invite">
                         <Mail className="w-4 h-4 mr-2" />
                         {inviteProviderMutation.isPending ? "Sending..." : "Send Provider Invite"}
                       </Button>
+                    </div>
+                  )}
+
+                  {seatConfirmDialog.open && (
+                    <div className="rounded-md border border-amber-300 bg-amber-50 p-4 space-y-3">
+                      <div className="flex items-start gap-2">
+                        <AlertCircle className="w-5 h-5 text-amber-600 flex-shrink-0 mt-0.5" />
+                        <div>
+                          <p className="text-sm font-medium text-amber-900">Additional Seat Required</p>
+                          <p className="text-sm text-amber-800 mt-1">{seatConfirmDialog.message}</p>
+                        </div>
+                      </div>
+                      <div className="flex gap-2">
+                        <Button
+                          variant="outline"
+                          size="sm"
+                          onClick={() => setSeatConfirmDialog({ open: false, seatPrice: 0, message: "" })}
+                          data-testid="button-cancel-seat-confirm"
+                        >
+                          Cancel
+                        </Button>
+                        <Button
+                          size="sm"
+                          onClick={() => inviteProviderMutation.mutate({ confirmExtraSeat: true })}
+                          disabled={inviteProviderMutation.isPending}
+                          data-testid="button-confirm-seat-purchase"
+                        >
+                          {inviteProviderMutation.isPending ? "Processing..." : `Confirm — Add $${seatConfirmDialog.seatPrice}/mo`}
+                        </Button>
+                      </div>
                     </div>
                   )}
 

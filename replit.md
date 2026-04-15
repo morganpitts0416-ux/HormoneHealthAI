@@ -1,7 +1,7 @@
 # ClinIQ Lab Interpretation - Multi-Tenant SaaS Platform
 
 ## Overview
-ClinIQ is a multi-tenant SaaS platform for staff in men's and women's hormone and primary care clinics. It provides an isolated workspace for clinicians to interpret standard lab panels, apply clinical protocols, generate AI-powered recommendations, and identify critical "red flag" values. The platform supports gender-specific lab interpretation, comprehensive patient wellness reports, and advanced risk assessments, aiming to streamline clinical decision-making and enhance patient care.
+ClinIQ is a multi-tenant SaaS platform designed for staff in men's and women's hormone and primary care clinics. It provides an isolated workspace for clinicians to interpret standard lab panels, apply clinical protocols, generate AI-powered recommendations, and identify critical "red flag" values. The platform supports gender-specific lab interpretation, comprehensive patient wellness reports, and advanced risk assessments, aiming to streamline clinical decision-making and enhance patient care. The business vision is to improve clinical efficiency and patient outcomes in hormone and primary care.
 
 ## User Preferences
 - Medical-grade professional interface
@@ -14,52 +14,44 @@ ClinIQ is a multi-tenant SaaS platform for staff in men's and women's hormone an
 The ClinIQ platform features comprehensive lab input, results display with color-coded status indicators, a red flag alert system, AI-powered recommendations, and a patient summary generator, all within a professional medical UI.
 
 **Core Architectural Decisions and Features:**
--   **Multi-tenant SaaS**: Ensures isolated data for each clinician account. Patient visibility is scoped by `clinic_id` (prefers) with `user_id + clinic_id IS NULL` fallback for legacy records. The `getEffectiveClinicId(req)` helper resolves clinicId for both regular and staff sessions.
--   **Clinic-Centric Architecture**: `clinics`, `clinic_memberships`, `providers`, `patient_assignments` tables. Every new user registration auto-creates a clinic via `setupClinicForNewUser()`. All 8 patient storage methods accept optional `clinicId`. Boulevard webhook and form auto-match both resolve clinicId from the clinician's `defaultClinicId`. Admin clinic management API + UI available at `/admin` (Setup Clinic, Add Provider, Backfill patients).
--   **Two-Layer Permission Model** (clinic_memberships): `clinicalRole` (provider/rn/staff — controls signing authority, clinical documentation, rendering clinician eligibility) and `adminRole` (owner/admin/limited_admin/standard — controls account settings, billing, user management, forms). These two dimensions are independent — a provider can be an owner; an RN can be an admin; a staff member can have limited_admin. Clinic identity stays separate from user identity: changing a user's name/email/role does NOT affect clinic ownership or patient data. Admin dashboard includes "Edit name & clinic" per clinician to correct any mis-entered data.
--   **Per-Provider Account Settings Scoping**: Suite members (non-owner, non-admin) see only "Provider Details" and "Branding & Signature" sections in Account Settings. Clinic-wide settings (Clinic Information, Staff & Team, Messaging, Lab Settings, Forms, Billing, BAA) are restricted to owners/admins. Signature is per-user (`users.signatureImage`), so each provider uploads their own. Server-side PATCH `/api/auth/profile` blocks non-owners from modifying clinic-wide fields (clinicName, phone, address, messaging, clinicLogo). `/api/auth/me` now returns `clinicalRole` and `adminRole` from `clinic_memberships`.
--   **Authentication & Authorization**: Session-based authentication with `express-session`, `passport-local`, and `bcrypt`. Supports staff access with role-based restrictions.
--   **AI-Powered PDF Upload**: Extracts lab values from Pathgroup and hospital PDFs.
--   **Advanced Risk Assessments**: Includes PREVENT Cardiovascular Risk Assessment (2023 AHA), Advanced Lipid Marker Assessment (ApoB, Lp(a)), and hs-CRP interpretation.
--   **STOP-BANG Sleep Apnea Screening**: Integrates an 8-component questionnaire.
--   **Clinical Logic Engine**: Implements standing orders and red flag thresholds for various conditions with gender-specific logic, including platelet interpretation and FIB-4 scoring.
--   **Female-Specific Workflows**: Dedicated routes, reference ranges, menstrual phase context, and Female Testosterone Pattern Recognition.
--   **Insulin Resistance Screening**: Identifies likelihood and four phenotypes with recommendations.
--   **AI-Generated SOAP Notes**: Creates chart-ready notes incorporating lab values, red flags, risk scores, and supplement recommendations.
--   **Patient Profiles & Lab History Tracking**: Persistent patient profiles with searchable selection, lab history view, trend indicators, and trend charts for 21 lab markers.
--   **Patient Wellness PDF Report**: Generates comprehensive patient-facing wellness PDFs with AI-powered personalized diet, supplement, and lifestyle recommendations.
--   **Metagenics Supplement Catalog Integration**: Recommends Metagenics supplements based on lab values, symptoms, and phenotypes.
--   **Portal Messaging System**: Supports None, In-app, SMS link, and External API (two-way bridge via webhooks).
--   **HIPAA Technical Controls**: Includes audit logging, login lockout, client-side session timeout, and robust password strength.
--   **Email Integration**: Supports clinician invite flows and password resets.
--   **Clinical Encounter Documentation & Enhanced Multi-Stage AI Pipeline** (`server/soap-pipeline.ts`): Full visit documentation workflow including audio upload/recording (OpenAI Whisper), transcription, medical term normalization, fact extraction, and a multi-stage SOAP generation pipeline with HPI reconstruction (not summary). Pipeline stages: (1) Whisper transcription, (2) medical term normalization, (3a) clinical fact extraction, (3b) pattern matching + medication detection, (3c) medical normalization & context inference (medication-implied PMH, inferred conditions, symptom-medication correlations), (4) section-specific SOAP generation (HPI reconstruction with chronological narrative, Assessment with clinical reasoning, Plan with precise orders — each section generated with dedicated prompts), (5) omission/contradiction QA check with automatic revision, (6) evidence suggestions (fire-and-forget). Recommendation duplicate suppression ensures AI-suggested supplements don't duplicate patient's current regimen. HIPAA-conscious: no audio stored. Transcription-only drafts (before patient selection) are stored server-side in `encounter_drafts` table via `GET/POST/DELETE /api/encounter-drafts` — cross-device, no longer localStorage-only.
--   **Clinician Customizable Supplement Library**: Clinicians can add, edit, and delete custom supplements with lab-value, symptom-based, or combined trigger rules.
--   **Supplement Pricing & Discount Settings**: Per-clinician discount settings applied to supplement orders.
--   **Clinician Lab Range Preferences**: Clinicians can override optimal and reference ranges for 60+ lab markers on a per-gender basis.
--   **Boulevard Appointment Sync (Zapier)**: Appointments flow into the app via Zapier webhooks for display on the Appointments page and patient portal.
--   **Medication Dictionary (CSV Upload)**: Clinicians can upload custom CSV medication dictionaries for detecting medications in encounter transcripts using a multi-pass matching engine.
--   **Stripe Billing & Subscriptions**: Full Stripe integration for clinician billing, including free trials, subscription management, and webhook handling. Registration requires payment method upfront (guest SetupIntent → atomic Stripe-first flow: customer+subscription created BEFORE DB user, with rollback on failure). BillingGate component enforces active subscription status (`trial`/`active`/`trialing`) before accessing protected routes (fail-closed). BAA signing endpoint requires active billing. Account/billing routes exempt from BillingGate to allow recovery. Suite pricing fails closed if `STRIPE_SUITE_PRICE_ID` env var is missing.
--   **EHR-Style Patient Chart**: Persistent per-patient chart panel storing `currentMedications`, `medicalHistory`, `familyHistory`, `socialHistory`, `allergies`, `surgicalHistory` as JSONB arrays. Supports manual editing and AI-extraction from encounters.
--   **SOAP Note PDF Export with Clinical Letterhead**: Generates formatted medical documents with clinic letterhead, provider info, patient details, and SOAP content.
--   **Clinic Branding & Provider Signature Uploads**: Clinicians upload logo and signature images via Account Settings.
--   **Registration — Required Clinic Fields**: NPI, clinic phone, and clinic address are required at registration.
--   **Signed & Locked Chart Notes (EMR)**: Clinicians can electronically sign and lock SOAP notes, creating an immutable version snapshot and audit trail. Supports amendments.
--   **Enhanced SOAP Generation Pipeline**: Multi-stage pipeline in `server/soap-pipeline.ts` replaces the former monolithic prompt. Includes mandatory clinical documentation rules for BMI, patient education, patient-stated decisions, medication-implied PMH, and fabrication guardrails — now enforced across dedicated section-specific prompts with a QA verification pass.
--   **Smart Intake + Digital Forms Module**: Clinicians build and publish patient intake forms with a three-panel form builder (left: field list with drag-and-drop reorder + field type icons, center: live form preview showing exact patient view, right: contextual field editor). Supports 16 field types with full preview rendering: short_text, long_text, number, email, phone, date, single_choice, multi_choice, dropdown, yes_no, scale (with min/max/labels), signature, heading, paragraph, medication_list, symptom_checklist. Forms are published via unique shareable links (`/f/:token`) requiring no patient login. Submissions are reviewed in the app and synced to the patient chart via a deduplication-aware sync engine. Dashboard shows pending submissions notification column alongside Messages and Orders. **Smart Fields**: Predefined fields (Demographics: firstName, lastName, DOB, gender, email, phone, address, preferredPharmacy; Clinical: currentMedications, allergies, medicalHistory, surgicalHistory, familyHistory, socialHistory) that auto-link form responses to patient profiles and charts. Smart fields are type-locked with `smartFieldKey` column. Auto-match logic: email > name match. **Form Reassignment**: PATCH endpoint to reassign submissions to a different patient with patient picker dialog. **Patient Profile Merge**: POST endpoint to consolidate two patient profiles — transfers all labs, encounters, submissions, chart data to the "keep" profile and deletes the "discard" profile; accessible via merge dialog on patient profiles page. **Field Reorder API**: PUT `/api/intake-forms/:id/fields/reorder` with IDOR protection (validates all fieldIds belong to the form). **Form Assignments**: `patient_form_assignments` table tracks form assignments per patient (pending/completed). Clinicians assign forms from patient profile "Forms & Consents" section with assign dialog, email link, or copy link. **Portal Forms Page** (`/portal/forms`): Patients view pending/completed forms, fill out assigned forms with full 16-field-type rendering including signature pad, submit directly. Bottom nav "Forms" tab on all portal pages. **Embeddable Forms**: Publish dialog includes iframe embed code snippet for embedding forms in external websites/EHR portals. **Send Form Link API**: POST `/api/patients/:id/forms/send-link` sends form via email (Resend) and auto-creates assignment. **Clinic-Scoped Forms**: `intakeForms` and `formSubmissions` have nullable `clinicId` column (FK to `clinics.id` with CASCADE). All intake-form CRUD routes use `getIntakeFormByIdAndClinic()` and `getIntakeFormsByClinicOrClinician()` for multi-tenant isolation. Form creation/edit/delete guarded by `canEditForms(adminRole)` — requires owner/admin/limited_admin. All staff+providers can read/send/assign forms. Submission read/review/sync routes enforce clinic ownership. `getSessionAdminRole()` helper extracts admin role from both clinician and staff sessions. Frontend hides create/edit/delete controls for standard staff users.
--   **Account Settings — Sidebar Navigation**: Account page (`/account`) uses a sidebar navigation pattern with 10 sections: Clinic Information, Provider Details, Branding & Signature, Staff & Team, Messaging Settings, Lab & Clinical Settings, Form Builder, Form Submissions (with pending count badge), BAA/HIPAA, Billing & Plan. Profile hero in sidebar, search filter, staff users see read-only view. Form Builder section links to `/intake-forms` page. Form Submissions section shows pending intake submissions with "Mark Reviewed" action.
+-   **Multi-tenant SaaS**: Ensures isolated data for each clinician account using `clinic_id` scoping for all patient data.
+-   **Clinic-Centric Architecture**: Dedicated tables for `clinics`, `clinic_memberships`, `providers`, `patient_assignments`. New user registration automatically provisions a new clinic.
+-   **Two-Layer Permission Model**: Independent `clinicalRole` (provider/rn/staff) and `adminRole` (owner/admin/limited_admin/standard) for fine-grained access control.
+-   **Per-Provider Account Settings Scoping**: Limits access to clinic-wide settings based on `adminRole`.
+-   **Authentication & Authorization**: Session-based with `express-session`, `passport-local`, and `bcrypt`. Role-based restrictions for staff.
+-   **AI-Powered PDF Upload**: Extracts lab values from various PDF formats.
+-   **Advanced Risk Assessments**: Integrates PREVENT Cardiovascular Risk, Advanced Lipid Marker Assessment, and hs-CRP interpretation.
+-   **STOP-BANG Sleep Apnea Screening**: 8-component questionnaire.
+-   **Clinical Logic Engine**: Implements standing orders and red flag thresholds with gender-specific logic, including platelet interpretation and FIB-4 scoring.
+-   **Female-Specific Workflows**: Dedicated features for female lab interpretation, including menstrual phase context and Female Testosterone Pattern Recognition.
+-   **Insulin Resistance Screening**: Identifies likelihood and phenotypes with recommendations.
+-   **AI-Generated SOAP Notes**: Creates chart-ready notes incorporating lab values, red flags, risk scores, and supplement recommendations through a multi-stage pipeline.
+-   **Patient Profiles & Lab History Tracking**: Persistent patient profiles with searchable selection, lab history view, trend indicators, and charts for key markers.
+-   **Patient Wellness PDF Report**: Generates comprehensive patient-facing wellness reports with AI-powered personalized recommendations.
+-   **Clinician Customizable Supplement Library**: Allows clinicians to add, edit, and delete custom supplements with trigger rules.
+-   **Clinician Lab Range Preferences**: Clinicians can override optimal and reference ranges for 60+ lab markers per gender.
+-   **Medication Dictionary**: Clinicians can upload custom CSV medication dictionaries for detection in encounter transcripts.
+-   **Stripe Billing & Subscriptions**: Full integration for clinician billing, subscription management, and seat-count enforcement for provider invites.
+-   **EHR-Style Patient Chart**: Persistent per-patient chart panel for `currentMedications`, `medicalHistory`, `familyHistory`, `socialHistory`, `allergies`, `surgicalHistory` as JSONB arrays, supporting manual editing and AI extraction.
+-   **SOAP Note PDF Export with Clinical Letterhead**: Generates formatted medical documents with clinic branding.
+-   **Clinic Branding & Provider Signature Uploads**: Clinicians can upload logos and signature images.
+-   **Signed & Locked Chart Notes (EMR)**: Electronic signing and locking of SOAP notes for immutability and audit trails, with amendment support.
+-   **Smart Intake + Digital Forms Module**: Clinicians can build, publish, and manage patient intake forms with 16 field types, smart field auto-linking to patient profiles, and patient portal access. Supports form reassignment and patient profile merging.
+-   **Account Settings — Sidebar Navigation**: Comprehensive account management via a sidebar navigation with role-based access.
 
 **Technology Stack:**
 -   **Frontend**: React, TypeScript, Wouter, Shadcn UI, TanStack Query, Tailwind CSS, React Hook Form, Zod.
 -   **Backend**: Express.js.
--   **Database**: PostgreSQL with Drizzle ORM (`drizzle-orm/node-postgres` + `pg` Pool).
+-   **Database**: PostgreSQL with Drizzle ORM.
 -   **Design System**: Inter and JetBrains Mono fonts, professional blue color scheme, Material Design-inspired components.
 
 ## External Dependencies
--   **OpenAI**: For AI-powered recommendations, PDF text extraction, and summary generation.
--   **PostgreSQL**: Primary database.
--   **multer**: For handling file uploads (PDFs).
--   **jsPDF**: For programmatic generation of PDF reports.
--   **Resend API (Optional)**: For sending emails.
--   **Spruce, Klara (or other webhook-capable platforms)**: For external messaging system integration.
--   **Zapier**: For integrating with Boulevard for appointment synchronization.
--   **Stripe**: For billing and subscription management.
+-   **OpenAI**: AI-powered recommendations, PDF text extraction, summary generation, and multi-stage SOAP note pipeline (Whisper for transcription).
+-   **PostgreSQL**: Primary database for all application data.
+-   **multer**: Middleware for handling file uploads (e.g., PDFs).
+-   **jsPDF**: Programmatic generation of PDF reports.
+-   **Resend API**: Optional email sending (e.g., for form links, password resets).
+-   **Spruce, Klara (or other webhook-capable platforms)**: Integration for external messaging systems.
+-   **Zapier**: Integration with Boulevard for appointment synchronization.
+-   **Stripe**: Billing and subscription management for clinicians.
+-   **Metagenics**: Supplement catalog integration for recommendations.
