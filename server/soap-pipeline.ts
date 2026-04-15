@@ -364,7 +364,10 @@ SECTION 5 — FABRICATION GUARDRAILS
 - Physical Exam not performed → "Physical examination not performed at this encounter."
 
 CRITICAL — HANDLING [SUGGESTED] ITEMS FROM CLINICAL INTERPRETATION:
-Items labeled [SUGGESTED — clinician must approve before charting] must NOT be written as plan items. Copy them to needs_clinician_review with prefix "SUGGESTED (awaiting clinician approval): ..."
+Items labeled [SUGGESTED — clinician must approve before charting] require careful classification:
+1. If the transcript shows the provider and patient DISCUSSED and AGREED to initiate/continue/adjust this item (i.e., it appears in "explicitly_decided_plan_items" or was clearly decided in the transcript) → include it as a regular numbered Plan item. It is NO LONGER a suggestion — it was adopted during the encounter.
+2. If the item was NOT discussed or decided during the encounter → copy it to needs_clinician_review with prefix "SUGGESTED (awaiting clinician approval): ..."
+3. The purpose of suggestions is to surface GAPS — things the lab interpretation flagged that the provider did NOT address during the visit. If the provider DID address it, it belongs in the Plan, not as a suggestion.
 
 BMI VALUE MENTIONED — MANDATORY WEIGHT DIAGNOSIS RULE:
 If ANY BMI value is explicitly mentioned, generate the appropriate weight classification as a numbered assessment item:
@@ -497,6 +500,7 @@ CHECK FOR:
 10. OVER-COMPRESSION: Does the HPI reduce a rich, multi-topic encounter to a brief summary? Is the HPI proportional to the visit depth?
 11. PREVENTATIVE SIGNALS LOST: Were clinically relevant "between the lines" clues identified in normalization but not reflected in the Assessment?
 12. RECOMMENDATION DUPLICATES: Does needs_clinician_review contain items that duplicate the explicit Plan?
+13. MISCLASSIFIED SUGGESTIONS: Does needs_clinician_review contain "SUGGESTED (awaiting clinician approval):" items for actions that were EXPLICITLY DISCUSSED AND DECIDED during the encounter? If the transcript and extraction show the provider and patient agreed to initiate/adjust/continue something, it must be in the Plan as a decided action, NOT in needs_clinician_review as a suggestion. Move it to the Plan and remove from needs_clinician_review.
 
 RESPONSE FORMAT:
 {
