@@ -1,5 +1,23 @@
 import OpenAI from "openai";
 
+async function retryOnRateLimit<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
+  for (let attempt = 0; attempt <= maxRetries; attempt++) {
+    try {
+      return await fn();
+    } catch (err: any) {
+      if (err?.status === 429 && attempt < maxRetries) {
+        const retryAfter = parseInt(err?.headers?.get?.("retry-after-ms") || err?.headers?.["retry-after-ms"] || "0", 10);
+        const waitMs = retryAfter > 0 ? retryAfter + 1000 : (attempt + 1) * 15000;
+        console.warn(`[SOAP Pipeline] Rate limited (429). Waiting ${Math.round(waitMs / 1000)}s before retry ${attempt + 1}/${maxRetries}...`);
+        await new Promise(r => setTimeout(r, waitMs));
+        continue;
+      }
+      throw err;
+    }
+  }
+  throw new Error("Exhausted retries");
+}
+
 interface PipelineInput {
   transcriptText: string;
   diarized: any[];
@@ -151,20 +169,24 @@ ${JSON.stringify(extraction, null, 2)}
 TRANSCRIPT:
 ${diarizedInput}`;
 
-  const completion = await openai.chat.completions.create({
+  const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     response_format: { type: "json_object" },
-  });
+  }));
 
   const result = JSON.parse(completion.choices[0].message.content || "{}");
   return {
     medications_normalized: result.medications_normalized ?? [],
     conditions_inferred: result.conditions_inferred ?? [],
-    preventative_signals: result.preventative_signals ?? [],
+    preventative_signals: (result.preventative_signals ?? []).map((s: any) => ({
+      signal: s.signal ?? "",
+      clinical_relevance: s.clinical_relevance ?? "",
+      supporting_evidence: Array.isArray(s.supporting_evidence) ? s.supporting_evidence : [],
+    })),
     symptom_timeline: result.symptom_timeline ?? [],
     explicitly_decided_plan_items: result.explicitly_decided_plan_items ?? [],
     discussed_but_not_decided: result.discussed_but_not_decided ?? [],
@@ -202,7 +224,7 @@ async function generateSoapSections(
 
   const preventativeContext = normalized.preventative_signals.length
     ? `\nPREVENTATIVE MEDICINE SIGNALS:\n${normalized.preventative_signals.map(s =>
-        `- ${s.signal}: ${s.clinical_relevance} (evidence: ${s.supporting_evidence.join("; ")})`
+        `- ${s.signal}: ${s.clinical_relevance}${Array.isArray(s.supporting_evidence) && s.supporting_evidence.length ? ` (evidence: ${s.supporting_evidence.join("; ")})` : ""}`
       ).join('\n')}`
     : "";
 
@@ -214,9 +236,9 @@ async function generateSoapSections(
 
   const planClassification = `
 PLAN DECISION CLASSIFICATION:
-Explicitly decided (DO include in Plan): ${normalized.explicitly_decided_plan_items.length ? normalized.explicitly_decided_plan_items.join("; ") : "none identified"}
-Discussed but not decided (mention in HPI/Assessment, do NOT put in Plan as decided): ${normalized.discussed_but_not_decided.length ? normalized.discussed_but_not_decided.join("; ") : "none"}
-Clinically relevant follow-up considerations (for needs_clinician_review only): ${normalized.clinically_relevant_followup.length ? normalized.clinically_relevant_followup.join("; ") : "none"}`;
+Explicitly decided (DO include in Plan): ${normalized.explicitly_decided_plan_items?.length ? normalized.explicitly_decided_plan_items.join("; ") : "none identified"}
+Discussed but not decided (mention in HPI/Assessment, do NOT put in Plan as decided): ${normalized.discussed_but_not_decided?.length ? normalized.discussed_but_not_decided.join("; ") : "none"}
+Clinically relevant follow-up considerations (for needs_clinician_review only): ${normalized.clinically_relevant_followup?.length ? normalized.clinically_relevant_followup.join("; ") : "none"}`;
 
   const hpiElements = normalized.enhanced_extraction?.hpi_chronological_elements?.length
     ? `\nHPI CHRONOLOGICAL ELEMENTS (use these to reconstruct the clinical story in order):\n${normalized.enhanced_extraction.hpi_chronological_elements.map((e: string, i: number) => `${i + 1}. ${e}`).join('\n')}`
@@ -428,14 +450,14 @@ ${diarizedInput}
 
 Generate the SOAP note following all rules above. The HPI must be a DETAILED RECONSTRUCTION of the clinical encounter, not a compressed summary. Flag uncertain items and non-duplicate recommendations in needs_clinician_review.`;
 
-  const completion = await openai.chat.completions.create({
+  const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     response_format: { type: "json_object" },
-  });
+  }));
 
   const soapResult = JSON.parse(completion.choices[0].message.content || "{}");
   return {
@@ -508,14 +530,14 @@ ${transcriptText.substring(0, 8000)}
 
 Review the note for quality issues. If critical/important issues are found, provide a corrected version.`;
 
-  const completion = await openai.chat.completions.create({
+  const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
     ],
     response_format: { type: "json_object" },
-  });
+  }));
 
   const qaResult = JSON.parse(completion.choices[0].message.content || "{}");
 
