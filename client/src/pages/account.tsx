@@ -1505,15 +1505,15 @@ export default function Account() {
                     <div className="space-y-2">
                       <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Pending Invites</p>
                       {pendingProviderInvites.map((inv: any) => (
-                        <div key={inv.id} className="flex items-center justify-between gap-3 rounded-md border border-amber-200 bg-amber-50/40 px-4 py-3" data-testid={`row-provider-invite-${inv.id}`}>
-                          <div className="flex items-center gap-3">
-                            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-xs font-semibold text-amber-800">{inv.firstName?.[0]}{inv.lastName?.[0]}</div>
-                            <div>
-                              <p className="text-sm font-medium text-foreground">{inv.firstName} {inv.lastName}</p>
-                              <p className="text-xs text-muted-foreground">{inv.email} · Invite expires {new Date(inv.inviteExpires).toLocaleDateString()}</p>
+                        <div key={inv.id} className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 rounded-md border border-amber-200 bg-amber-50/40 px-3 sm:px-4 py-3" data-testid={`row-provider-invite-${inv.id}`}>
+                          <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                            <div className="w-8 h-8 rounded-full bg-amber-100 flex items-center justify-center text-xs font-semibold text-amber-800 flex-shrink-0">{inv.firstName?.[0]}{inv.lastName?.[0]}</div>
+                            <div className="min-w-0">
+                              <p className="text-sm font-medium text-foreground truncate">{inv.firstName} {inv.lastName}</p>
+                              <p className="text-xs text-muted-foreground truncate">{inv.email} · Expires {new Date(inv.inviteExpires).toLocaleDateString()}</p>
                             </div>
                           </div>
-                          <div className="flex items-center gap-2">
+                          <div className="flex items-center gap-2 flex-shrink-0">
                             <Badge variant="outline" className="text-xs capitalize">{inv.clinicalRole}</Badge>
                             <Button variant="ghost" size="icon" onClick={() => { if (confirm("Revoke this invite?")) revokeProviderInviteMutation.mutate(inv.id); }} data-testid={`button-revoke-invite-${inv.id}`}>
                               <X className="w-4 h-4 text-muted-foreground" />
@@ -1527,15 +1527,15 @@ export default function Account() {
                   {/* Active clinic members (other than the logged-in user) */}
                   <div className="space-y-2">
                     {clinicMembers.filter((m: any) => m.id !== (user as any)?.id).map((m: any) => (
-                      <div key={m.id} className="flex items-center justify-between gap-3 rounded-md border px-4 py-3" data-testid={`row-clinic-member-${m.id}`}>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">{m.firstName?.[0]}{m.lastName?.[0]}</div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{m.title ? `${m.title} ` : ""}{m.firstName} {m.lastName}</p>
-                            <p className="text-xs text-muted-foreground">{m.email}</p>
+                      <div key={m.id} className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 rounded-md border px-3 sm:px-4 py-3" data-testid={`row-clinic-member-${m.id}`}>
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground flex-shrink-0">{m.firstName?.[0]}{m.lastName?.[0]}</div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{m.title ? `${m.title} ` : ""}{m.firstName} {m.lastName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{m.email}</p>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           <Badge variant="secondary" className="text-xs capitalize">{m.clinicalRole} · Clinical</Badge>
                           <Badge variant="outline" className="text-xs capitalize">{m.isOwner ? "Owner" : m.adminRole === "admin" ? "Admin" : m.adminRole === "limited_admin" ? "Limited Admin" : "Standard"} · Admin</Badge>
                         </div>
@@ -1543,15 +1543,15 @@ export default function Account() {
                     ))}
                     {/* Self row */}
                     {user && (
-                      <div className="flex items-center justify-between gap-3 rounded-md border px-4 py-3 bg-muted/20" data-testid="row-clinic-member-self">
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>{user.firstName?.[0]}{user.lastName?.[0]}</div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{user.firstName} {user.lastName} <span className="text-xs text-muted-foreground">(you)</span></p>
-                            <p className="text-xs text-muted-foreground">{user.email}</p>
+                      <div className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 rounded-md border px-3 sm:px-4 py-3 bg-muted/20" data-testid="row-clinic-member-self">
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>{user.firstName?.[0]}{user.lastName?.[0]}</div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{user.firstName} {user.lastName} <span className="text-xs text-muted-foreground">(you)</span></p>
+                            <p className="text-xs text-muted-foreground truncate">{user.email}</p>
                           </div>
                         </div>
-                        <div className="flex flex-col items-end gap-1">
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
                           <Badge variant="secondary" className="text-xs">Provider · Clinical</Badge>
                           <Badge className="text-xs" style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}>Owner · Admin</Badge>
                         </div>
@@ -1631,15 +1631,15 @@ export default function Account() {
                     const clinicalLabel = member.role === "nurse" ? "RN" : member.role === "assistant" ? "MA" : member.role === "provider" ? "Provider" : "Staff";
                     const adminLabel = (member as any).adminRole === "admin" ? "Admin" : (member as any).adminRole === "limited_admin" ? "Limited Admin" : "Standard";
                     return (
-                      <div key={member.id} className="flex items-center justify-between gap-3 rounded-md border px-4 py-3" data-testid={`row-staff-${member.id}`}>
-                        <div className="flex items-center gap-3">
-                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground">{member.firstName[0]}{member.lastName[0]}</div>
-                          <div>
-                            <p className="text-sm font-medium text-foreground">{member.firstName} {member.lastName}</p>
-                            <p className="text-xs text-muted-foreground">{member.email}</p>
+                      <div key={member.id} className="flex flex-wrap items-center justify-between gap-2 sm:gap-3 rounded-md border px-3 sm:px-4 py-3" data-testid={`row-staff-${member.id}`}>
+                        <div className="flex items-center gap-2 sm:gap-3 min-w-0 flex-1">
+                          <div className="w-8 h-8 rounded-full bg-muted flex items-center justify-center text-xs font-semibold text-muted-foreground flex-shrink-0">{member.firstName[0]}{member.lastName[0]}</div>
+                          <div className="min-w-0">
+                            <p className="text-sm font-medium text-foreground truncate">{member.firstName} {member.lastName}</p>
+                            <p className="text-xs text-muted-foreground truncate">{member.email}</p>
                           </div>
                         </div>
-                        <div className="flex items-center gap-2">
+                        <div className="flex items-center gap-1 sm:gap-2 flex-shrink-0">
                           <div className="flex flex-col items-end gap-1">
                             <Badge variant="secondary" className="text-xs">{clinicalLabel} · Clinical</Badge>
                             <Badge variant="outline" className="text-xs">{adminLabel} · Admin</Badge>
@@ -1761,14 +1761,14 @@ export default function Account() {
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#f9f6f0" }}>
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-4">
-          <div className="flex items-center gap-3">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/dashboard")} data-testid="button-back" style={{ color: "#2e3a20" }}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-2">
+          <div className="flex items-center gap-2 min-w-0">
+            <Button variant="ghost" size="icon" onClick={() => setLocation("/dashboard")} data-testid="button-back" style={{ color: "#2e3a20" }} className="flex-shrink-0">
               <ArrowLeft className="w-5 h-5" />
             </Button>
-            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-14 w-auto" style={{ mixBlendMode: "multiply" }} />
-            <div className="h-4 w-px" style={{ backgroundColor: "#c4b9a5" }} />
-            <span className="font-medium text-sm" style={{ color: "#2e3a20" }}>Account Settings</span>
+            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-14 w-auto hidden sm:block" style={{ mixBlendMode: "multiply" }} />
+            <div className="h-4 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
+            <span className="font-medium text-sm truncate" style={{ color: "#2e3a20" }}>Account Settings</span>
           </div>
           <Button variant="ghost" onClick={() => logoutMutation.mutate()} disabled={logoutMutation.isPending} className="text-sm" style={{ color: "#2e3a20" }} data-testid="button-logout">
             Sign Out
@@ -1776,7 +1776,7 @@ export default function Account() {
         </div>
       </header>
 
-      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex gap-6">
+      <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col md:flex-row gap-6">
         {/* Sidebar Navigation */}
         <aside className="hidden md:flex flex-col gap-1 w-56 flex-shrink-0">
           {/* Profile hero */}
@@ -1841,38 +1841,44 @@ export default function Account() {
         </aside>
 
         {/* Mobile section picker */}
-        <div className="md:hidden w-full mb-4">
+        <div className="md:hidden w-full">
           <div className="flex items-center gap-3 mb-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
+            <div className="w-10 h-10 rounded-full flex items-center justify-center text-sm font-bold flex-shrink-0" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
               {isStaff
                 ? `${(user as any)?.staffFirstName?.[0] ?? ""}${(user as any)?.staffLastName?.[0] ?? ""}`
                 : `${user?.firstName?.[0] ?? ""}${user?.lastName?.[0] ?? ""}`}
             </div>
-            <div>
-              <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+            <div className="min-w-0">
+              <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
                 {isStaff ? `${(user as any)?.staffFirstName} ${(user as any)?.staffLastName}` : `${user?.firstName} ${user?.lastName}`}
               </p>
-              <p className="text-xs text-muted-foreground">{user?.clinicName}</p>
+              <p className="text-xs text-muted-foreground truncate">{user?.clinicName}</p>
             </div>
           </div>
-          <div className="flex flex-wrap gap-2">
-            {filteredSections.map(section => (
-              <button
-                key={section.id}
-                onClick={() => { setActiveSection(section.id); setSearch(""); }}
-                className="text-xs px-3 py-1.5 rounded-full border font-medium"
-                style={{
-                  backgroundColor: section.id === activeSection ? "#2e3a20" : "#fdf9f5",
-                  color: section.id === activeSection ? "#f9f6f0" : "#3d4a30",
-                  borderColor: section.id === activeSection ? "#2e3a20" : "#d4c9b5",
-                }}
-              >
-                {section.label}
-                {section.id === "submissions" && submissionCount > 0 && (
-                  <span className="ml-1 bg-red-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-full">{submissionCount}</span>
-                )}
-              </button>
-            ))}
+          <div className="overflow-x-auto -mx-4 px-4 pb-2">
+            <div className="flex gap-2 w-max">
+              {filteredSections.map(section => {
+                const Icon = section.icon;
+                return (
+                  <button
+                    key={section.id}
+                    onClick={() => { setActiveSection(section.id); setSearch(""); }}
+                    className="flex items-center gap-1.5 text-xs px-3 py-2 rounded-full border font-medium whitespace-nowrap"
+                    style={{
+                      backgroundColor: section.id === activeSection ? "#2e3a20" : "#fdf9f5",
+                      color: section.id === activeSection ? "#f9f6f0" : "#3d4a30",
+                      borderColor: section.id === activeSection ? "#2e3a20" : "#d4c9b5",
+                    }}
+                  >
+                    <Icon className="h-3.5 w-3.5 flex-shrink-0" />
+                    {section.label}
+                    {section.id === "submissions" && submissionCount > 0 && (
+                      <span className="ml-0.5 bg-red-500 text-white text-[9px] font-bold px-1 py-0.5 rounded-full">{submissionCount}</span>
+                    )}
+                  </button>
+                );
+              })}
+            </div>
           </div>
         </div>
 
