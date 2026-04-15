@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { usePatientContext } from "@/hooks/use-patient-context";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -44,6 +45,14 @@ export default function LabInterpretation() {
   const [pdfFileName, setPdfFileName] = useState<string | null>(null);
   const [isPdfPendingReview, setIsPdfPendingReview] = useState(false);
   const [selectedPatient, setSelectedPatient] = useState<Patient | null>(null);
+  const { setCurrentPatient } = usePatientContext();
+  useEffect(() => {
+    if (selectedPatient) {
+      setCurrentPatient({ id: selectedPatient.id, name: `${selectedPatient.firstName ?? ""} ${selectedPatient.lastName ?? ""}`.trim() });
+    } else {
+      setCurrentPatient(null);
+    }
+  }, [selectedPatient, setCurrentPatient]);
   const [selectedSupplementNames, setSelectedSupplementNames] = useState<Set<string>>(new Set());
   const [customSupplements, setCustomSupplements] = useState<CustomSupplement[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);

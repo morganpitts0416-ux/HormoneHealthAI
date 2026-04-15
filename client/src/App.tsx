@@ -45,6 +45,8 @@ import { SessionTimeoutModal } from "@/components/session-timeout-modal";
 import { GlobalLoadingProvider } from "@/hooks/use-global-loading";
 import { GlobalLoadingOverlay } from "@/components/global-loading-overlay";
 import { TourProvider } from "@/components/product-tour";
+import { AiChatDrawer } from "@/components/ai-chat-drawer";
+import { PatientContextProvider, usePatientContext } from "@/hooks/use-patient-context";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -75,9 +77,15 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
       <BaaGate>
         <SessionTimeoutModal />
         <Component />
+        <ProtectedChatDrawer />
       </BaaGate>
     </BillingGate>
   );
+}
+
+function ProtectedChatDrawer() {
+  const { currentPatient } = usePatientContext();
+  return <AiChatDrawer patientContext={currentPatient} />;
 }
 
 function BillingExemptRoute({ component: Component }: { component: React.ComponentType }) {
@@ -254,14 +262,16 @@ function App() {
   return (
     <QueryClientProvider client={queryClient}>
       <GlobalLoadingProvider>
-        <TooltipProvider>
-          <TourProvider>
-            <FaviconSpinner />
-            <GlobalLoadingOverlay />
-            <Toaster />
-            <Router />
-          </TourProvider>
-        </TooltipProvider>
+        <PatientContextProvider>
+          <TooltipProvider>
+            <TourProvider>
+              <FaviconSpinner />
+              <GlobalLoadingOverlay />
+              <Toaster />
+              <Router />
+            </TourProvider>
+          </TooltipProvider>
+        </PatientContextProvider>
       </GlobalLoadingProvider>
     </QueryClientProvider>
   );
