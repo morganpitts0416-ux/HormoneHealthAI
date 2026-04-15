@@ -454,35 +454,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
     const { passwordHash: _ph, externalMessagingApiKey, ...safeUser } = req.user as any;
     let membershipInfo: { clinicalRole?: string; adminRole?: string } = {};
-    console.log(`[AUTH /api/auth/me] userId=${safeUser.id}, defaultClinicId=${safeUser.defaultClinicId}`);
     if (safeUser.defaultClinicId) {
       try {
-        const [membership] = await storageDb
-          .select({ clinicalRole: clinicMemberships.clinicalRole, adminRole: clinicMemberships.adminRole })
-          .from(clinicMemberships)
-          .where(and(eq(clinicMemberships.userId, safeUser.id), eq(clinicMemberships.clinicId, safeUser.defaultClinicId)))
-          .limit(1);
-        console.log(`[AUTH /api/auth/me] Drizzle membership result:`, JSON.stringify(membership));
-        if (membership) membershipInfo = membership;
-      } catch (membershipErr) {
-        console.error("[AUTH /api/auth/me] Membership lookup failed, trying fallback:", membershipErr);
-        try {
-          const fallbackRows = await storageDb.execute(
-            sql`SELECT admin_role, clinical_role FROM clinic_memberships WHERE user_id = ${safeUser.id} AND clinic_id = ${safeUser.defaultClinicId} LIMIT 1`
-          );
-          console.log(`[AUTH /api/auth/me] Fallback result:`, JSON.stringify(fallbackRows));
-          const row = (fallbackRows as any)?.rows?.[0];
-          if (row) {
-            membershipInfo = { adminRole: row.admin_role || "standard", clinicalRole: row.clinical_role || "provider" };
-          }
-        } catch (fallbackErr) {
-          console.error("[AUTH /api/auth/me] Fallback membership lookup also failed:", fallbackErr);
+        const membershipRows = await storageDb.execute(
+          sql`SELECT role, admin_role, clinical_role FROM clinic_memberships WHERE user_id = ${safeUser.id} AND clinic_id = ${safeUser.defaultClinicId} LIMIT 1`
+        );
+        const row = (membershipRows as any)?.rows?.[0];
+        if (row) {
+          membershipInfo = {
+            adminRole: row.admin_role || "standard",
+            clinicalRole: row.clinical_role || row.role || "provider",
+          };
         }
+        console.log(`[AUTH /api/auth/me] userId=${safeUser.id} clinicId=${safeUser.defaultClinicId} membership:`, JSON.stringify(membershipInfo));
+      } catch (membershipErr) {
+        console.error("[AUTH /api/auth/me] Membership lookup failed:", membershipErr);
       }
-    } else {
-      console.log("[AUTH /api/auth/me] No defaultClinicId — skipping membership lookup");
     }
-    console.log(`[AUTH /api/auth/me] Final membershipInfo:`, JSON.stringify(membershipInfo));
     res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey), ...membershipInfo });
   });
 
