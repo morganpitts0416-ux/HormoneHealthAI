@@ -1,8 +1,9 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
-import { CreditCard, AlertCircle } from "lucide-react";
+import { CreditCard, AlertCircle, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { apiRequest } from "@/lib/queryClient";
 
 interface BillingStatus {
   subscriptionStatus: string;
@@ -16,6 +17,15 @@ interface BillingStatus {
 export function BillingGate({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
+
+  const logoutMutation = useMutation({
+    mutationFn: async () => {
+      await apiRequest("POST", "/api/logout");
+    },
+    onSuccess: () => {
+      window.location.href = "/";
+    },
+  });
 
   const { data: billing, isLoading, isError } = useQuery<BillingStatus>({
     queryKey: ["/api/billing/status"],
@@ -61,6 +71,16 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
               data-testid="button-go-to-account"
             >
               Go to Account Settings
+            </Button>
+            <Button
+              className="w-full"
+              variant="ghost"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              data-testid="button-signout-billing-error"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              {logoutMutation.isPending ? "Signing out..." : "Sign Out & Switch Account"}
             </Button>
             <p className="text-xs text-muted-foreground">
               Need help? Contact support at support@realignhealth.com
@@ -111,6 +131,16 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
             >
               Try Again
             </Button>
+            <Button
+              className="w-full"
+              variant="ghost"
+              onClick={() => logoutMutation.mutate()}
+              disabled={logoutMutation.isPending}
+              data-testid="button-signout-nonowner"
+            >
+              <LogOut className="w-4 h-4 mr-2" />
+              {logoutMutation.isPending ? "Signing out..." : "Sign Out & Switch Account"}
+            </Button>
             <p className="text-xs text-muted-foreground">
               Need help? Contact support at support@realignhealth.com
             </p>
@@ -151,6 +181,16 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
           >
             <CreditCard className="w-4 h-4 mr-2" />
             {isCanceled ? "Reactivate Subscription" : "Set Up Billing"}
+          </Button>
+          <Button
+            className="w-full"
+            variant="ghost"
+            onClick={() => logoutMutation.mutate()}
+            disabled={logoutMutation.isPending}
+            data-testid="button-signout-billing-setup"
+          >
+            <LogOut className="w-4 h-4 mr-2" />
+            {logoutMutation.isPending ? "Signing out..." : "Sign Out & Switch Account"}
           </Button>
           <p className="text-xs text-muted-foreground">
             Need help? Contact support at support@realignhealth.com
