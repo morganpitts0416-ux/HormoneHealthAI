@@ -5808,11 +5808,14 @@ Return a JSON object:
       let patientName: string | undefined;
       if (encounter.patientId) {
         try {
-          const patient = await storage.getPatient(encounter.patientId);
+          const clinicId = getEffectiveClinicId(req);
+          const patient = await storage.getPatient(encounter.patientId, clinicianId, clinicId);
           if (patient) {
             patientName = `${patient.firstName} ${patient.lastName}`.trim();
           }
-        } catch {}
+        } catch (pErr) {
+          console.warn("[SOAP] Could not resolve patient name:", pErr);
+        }
       }
 
       // ── PIPELINE STEP 4+5: Enhanced multi-stage SOAP generation ─────────────
