@@ -1,11 +1,11 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
 import { TourLauncher } from "@/components/product-tour";
+
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import {
-  ArrowLeft, Search, ChevronRight, FlaskConical, Users, Mic, FileText,
+  Search, ChevronRight, FlaskConical, Users, Mic, FileText,
   Heart, Moon, BarChart3, MessageSquare, Settings, ShieldCheck,
   Pill, BookOpen, Star, AlertTriangle, ZoomIn, X,
   HelpCircle, Video, SlidersHorizontal, Link2, CheckCircle2, Info,
@@ -767,7 +767,6 @@ const CONTENT: Record<string, React.ReactNode> = {
 // ── Main component ─────────────────────────────────────────────────────────
 
 export default function HelpCenter() {
-  const [, setLocation] = useLocation();
   const [activeSection, setActiveSection] = useState("getting-started");
   const [search, setSearch] = useState("");
 
@@ -778,23 +777,7 @@ export default function HelpCenter() {
   const active = SECTIONS.find(s => s.id === activeSection);
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f9f6f0", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center gap-3">
-          <Button variant="ghost" size="icon" onClick={() => setLocation("/dashboard")} style={{ color: "#2e3a20" }} data-testid="button-back-dashboard">
-            <ArrowLeft className="h-4 w-4" />
-          </Button>
-          <div className="flex items-center gap-2">
-            <HelpCircle className="h-5 w-5" style={{ color: "#5a7040" }} />
-            <span className="font-semibold text-base" style={{ color: "#1c2414" }}>Help Center</span>
-          </div>
-          <Badge className="ml-1 text-xs" style={{ backgroundColor: "#e8f0de", color: "#2e3a20" }}>
-            ClinIQ Documentation
-          </Badge>
-        </div>
-      </header>
-
+    <div className="flex-1 overflow-auto" style={{ backgroundColor: "#f9f6f0", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex gap-6">
         {/* Sidebar */}
         <aside className="hidden md:flex flex-col gap-1 w-64 flex-shrink-0">

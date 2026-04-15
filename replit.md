@@ -39,6 +39,7 @@ The ClinIQ platform features comprehensive lab input, results display with color
 -   **Signed & Locked Chart Notes (EMR)**: Electronic signing and locking of SOAP notes for immutability and audit trails, with amendment support.
 -   **Smart Intake + Digital Forms Module**: Clinicians can build, publish, and manage patient intake forms with 16 field types, smart field auto-linking to patient profiles, and patient portal access. Supports form reassignment and patient profile merging.
 -   **Account Settings — Sidebar Navigation**: Comprehensive account management via a sidebar navigation with role-based access.
+-   **Shared AppHeader Component**: `client/src/components/app-header.tsx` provides consistent navigation (Dashboard, Appointments, Help, Billing, Account, Sign Out) with logo, clinic/provider name, and mobile hamburger menu. Injected by `ProtectedRoute`, `BillingExemptRoute`, and `AdminRoute` wrappers in `App.tsx`. Individual page files use `flex-1 overflow-auto` (not `min-h-screen`) as their top-level container since AppHeader is rendered above them.
 
 **Technology Stack:**
 -   **Frontend**: React, TypeScript, Wouter, Shadcn UI, TanStack Query, Tailwind CSS, React Hook Form, Zod.

@@ -4,16 +4,13 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import { useFirstVisitTour } from "@/components/product-tour";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
-  LogOut,
   FlaskConical,
   HeartPulse,
   ChevronRight,
   Settings,
-  ShieldCheck,
   MessageSquare,
   ShoppingBag,
   CheckCircle2,
@@ -23,11 +20,7 @@ import {
   Clock,
   Users,
   Stethoscope,
-  CreditCard,
-  HelpCircle,
-  CalendarDays,
   Pill,
-  Menu,
   ClipboardList,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
@@ -106,7 +99,7 @@ function PatientInitials({ first, last, gender }: { first: string; last: string;
 }
 
 export default function Dashboard() {
-  const { user, logoutMutation } = useAuth();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
   useFirstVisitTour();
 
@@ -149,114 +142,7 @@ export default function Dashboard() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f5f2ed" }}>
-
-      {/* ── Header ─────────────────────────────────────────────────── */}
-      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0">
-            <img
-              src="/realign-health-logo.png"
-              alt="ReAlign Health"
-              className="h-14 sm:h-16 w-auto flex-shrink-0"
-              style={{ mixBlendMode: "multiply" }}
-            />
-            <div className="h-5 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
-            <div className="hidden sm:block">
-              <p className="text-sm font-medium leading-tight" style={{ color: "#1c2414" }}>{user?.clinicName}</p>
-              <p className="text-xs leading-tight" style={{ color: "#7a8a64" }}>{user?.title} {user?.firstName} {user?.lastName}</p>
-            </div>
-          </div>
-
-          <div className="flex items-center gap-1">
-            {/* Bell badge — always visible */}
-            {totalNotifications > 0 && (
-              <div className="relative mr-1">
-                <div
-                  className="flex items-center gap-1.5 px-2.5 py-1.5 rounded-lg cursor-pointer"
-                  style={{ backgroundColor: "#2e3a20" }}
-                  onClick={() => document.getElementById("notifications-anchor")?.scrollIntoView({ behavior: "smooth" })}
-                  data-testid="header-notification-bell"
-                >
-                  <Bell className="w-4 h-4 text-white" />
-                  <span className="text-white text-xs font-bold">{totalNotifications}</span>
-                </div>
-              </div>
-            )}
-
-            {/* Desktop nav — hidden on mobile */}
-            <div className="hidden sm:flex items-center gap-0.5">
-              {(user as any)?.role === "admin" && (
-                <Button data-testid="button-admin" variant="ghost" size="icon" onClick={() => setLocation("/admin")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Admin">
-                  <ShieldCheck className="w-4 h-4" />
-                  <span className="hidden sm:inline ml-2">Admin</span>
-                </Button>
-              )}
-              <Button data-testid="button-appointments" variant="ghost" size="icon" onClick={() => setLocation("/appointments")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Appointments">
-                <CalendarDays className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Appointments</span>
-              </Button>
-              <Button data-testid="button-help" variant="ghost" size="icon" onClick={() => setLocation("/help")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Help">
-                <HelpCircle className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Help</span>
-              </Button>
-              <Button data-testid="button-billing" variant="ghost" size="icon" onClick={() => setLocation("/billing")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Billing">
-                <CreditCard className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Billing</span>
-              </Button>
-              <Button data-testid="button-account" variant="ghost" size="icon" onClick={() => setLocation("/account")} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Account">
-                <Settings className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Account</span>
-              </Button>
-              <Button data-testid="button-logout" variant="ghost" size="icon" onClick={() => logoutMutation.mutateAsync()} disabled={logoutMutation.isPending} className="sm:w-auto sm:px-3" style={{ color: "#2e3a20" }} title="Sign Out">
-                <LogOut className="w-4 h-4" />
-                <span className="hidden sm:inline ml-2">Sign Out</span>
-              </Button>
-            </div>
-
-            {/* Mobile hamburger menu */}
-            <Sheet>
-              <SheetTrigger asChild>
-                <Button size="icon" variant="ghost" className="sm:hidden" style={{ color: "#2e3a20" }} data-testid="button-mobile-menu">
-                  <Menu className="w-5 h-5" />
-                </Button>
-              </SheetTrigger>
-              <SheetContent side="right" className="w-64 p-0">
-                <div className="flex flex-col h-full" style={{ backgroundColor: "#f5f2ed" }}>
-                  <div className="px-4 py-4 border-b" style={{ borderColor: "#d4c9b5", backgroundColor: "#e8ddd0" }}>
-                    <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>{user?.clinicName}</p>
-                    <p className="text-xs" style={{ color: "#7a8a64" }}>{user?.title} {user?.firstName} {user?.lastName}</p>
-                  </div>
-                  <nav className="flex flex-col gap-1 p-3 flex-1">
-                    {(user as any)?.role === "admin" && (
-                      <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/admin")}>
-                        <ShieldCheck className="w-4 h-4" /> Admin
-                      </Button>
-                    )}
-                    <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/appointments")}>
-                      <CalendarDays className="w-4 h-4" /> Appointments
-                    </Button>
-                    <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/help")}>
-                      <HelpCircle className="w-4 h-4" /> Help
-                    </Button>
-                    <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/billing")}>
-                      <CreditCard className="w-4 h-4" /> Billing
-                    </Button>
-                    <Button variant="ghost" className="justify-start gap-3 w-full" style={{ color: "#2e3a20" }} onClick={() => setLocation("/account")}>
-                      <Settings className="w-4 h-4" /> Account
-                    </Button>
-                  </nav>
-                  <div className="p-3 border-t" style={{ borderColor: "#d4c9b5" }}>
-                    <Button variant="ghost" className="justify-start gap-3 w-full text-destructive" onClick={() => logoutMutation.mutateAsync()} disabled={logoutMutation.isPending}>
-                      <LogOut className="w-4 h-4" /> Sign Out
-                    </Button>
-                  </div>
-                </div>
-              </SheetContent>
-            </Sheet>
-          </div>
-        </div>
-      </header>
+    <div className="flex-1 overflow-auto" style={{ backgroundColor: "#f5f2ed" }}>
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 

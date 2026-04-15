@@ -1797,23 +1797,7 @@ export default function Account() {
   };
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f9f6f0" }}>
-      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 min-w-0">
-            <Button variant="ghost" size="icon" onClick={() => setLocation("/dashboard")} data-testid="button-back" style={{ color: "#2e3a20" }} className="flex-shrink-0">
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-14 w-auto hidden sm:block" style={{ mixBlendMode: "multiply" }} />
-            <div className="h-4 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
-            <span className="font-medium text-sm truncate" style={{ color: "#2e3a20" }}>Account Settings</span>
-          </div>
-          <Button variant="ghost" onClick={() => logoutMutation.mutate()} disabled={logoutMutation.isPending} className="text-sm" style={{ color: "#2e3a20" }} data-testid="button-logout">
-            Sign Out
-          </Button>
-        </div>
-      </header>
-
+    <div className="flex-1 overflow-auto" style={{ backgroundColor: "#f9f6f0" }}>
       <div className="max-w-6xl mx-auto px-4 sm:px-6 py-6 flex flex-col md:flex-row gap-6">
         {/* Sidebar Navigation */}
         <aside className="hidden md:flex flex-col gap-1 w-56 flex-shrink-0">

@@ -21,7 +21,7 @@ import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useToast } from "@/hooks/use-toast";
 import {
-  ArrowLeft, Plus, Trash2, Users, Activity, ShieldCheck,
+  Plus, Trash2, Users, Activity,
   MoreVertical, Building2, Mail, Phone, User, Lock, ChevronDown,
   Layers, UserPlus, RefreshCw, Pencil,
 } from "lucide-react";
@@ -125,7 +125,7 @@ function StatusBadge({ status }: { status: string }) {
 }
 
 export default function AdminDashboard() {
-  const { user, logoutMutation } = useAuth();
+  const { user } = useAuth();
   const [, setLocation] = useLocation();
   const { toast } = useToast();
   const [showCreate, setShowCreate] = useState(false);
@@ -359,40 +359,7 @@ export default function AdminDashboard() {
   }
 
   return (
-    <div className="min-h-screen bg-background">
-      {/* Header */}
-      <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#e8ddd0", borderColor: "#d4c9b5" }}>
-        <div className="max-w-6xl mx-auto px-3 sm:px-6 h-16 flex items-center justify-between gap-2">
-          <div className="flex items-center gap-2 sm:gap-3 flex-shrink-0">
-            <Button
-              variant="ghost" size="icon"
-              onClick={() => setLocation("/dashboard")}
-              style={{ color: "#2e3a20" }}
-              data-testid="button-back"
-            >
-              <ArrowLeft className="w-5 h-5" />
-            </Button>
-            <img
-              src="/realign-health-logo.png"
-              alt="ReAlign Health"
-              className="h-14 sm:h-16 w-auto flex-shrink-0"
-              style={{ mixBlendMode: "multiply" }}
-            />
-            <div className="h-4 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
-            <div className="hidden sm:flex items-center gap-2">
-              <ShieldCheck className="w-4 h-4" style={{ color: "#2e3a20" }} />
-              <span className="font-medium text-sm" style={{ color: "#2e3a20" }}>Developer Dashboard</span>
-            </div>
-          </div>
-          <div className="flex items-center gap-1 sm:gap-2 text-xs" style={{ color: "#7a8a64" }}>
-            <span className="hidden sm:inline">Signed in as <strong>{user.username}</strong></span>
-            <Button variant="ghost" size="sm" style={{ color: "#2e3a20" }} onClick={() => logoutMutation.mutate()}>
-              Sign Out
-            </Button>
-          </div>
-        </div>
-      </header>
-
+    <div className="flex-1 overflow-auto bg-background">
       <main className="max-w-6xl mx-auto px-6 py-8 space-y-6">
         {/* Stats row */}
         <div className="grid grid-cols-3 gap-4">
