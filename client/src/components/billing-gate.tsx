@@ -1,9 +1,9 @@
-import { useQuery, useMutation } from "@tanstack/react-query";
+import { useQuery } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
 import { CreditCard, AlertCircle, LogOut } from "lucide-react";
 import { Button } from "@/components/ui/button";
-import { apiRequest } from "@/lib/queryClient";
+import { useState } from "react";
 
 interface BillingStatus {
   subscriptionStatus: string;
@@ -14,18 +14,40 @@ interface BillingStatus {
   ownerName?: string | null;
 }
 
+function forceSignOut() {
+  fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+    .catch(() => {})
+    .finally(() => {
+      document.cookie.split(";").forEach((c) => {
+        const name = c.split("=")[0].trim();
+        document.cookie = name + "=;expires=Thu, 01 Jan 1970 00:00:00 GMT;path=/";
+      });
+      window.location.href = "/auth";
+    });
+}
+
+function SignOutButton({ testId }: { testId: string }) {
+  const [signingOut, setSigningOut] = useState(false);
+  return (
+    <Button
+      className="w-full"
+      variant="ghost"
+      onClick={() => {
+        setSigningOut(true);
+        forceSignOut();
+      }}
+      disabled={signingOut}
+      data-testid={testId}
+    >
+      <LogOut className="w-4 h-4 mr-2" />
+      {signingOut ? "Signing out..." : "Sign Out & Switch Account"}
+    </Button>
+  );
+}
+
 export function BillingGate({ children }: { children: React.ReactNode }) {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
-
-  const logoutMutation = useMutation({
-    mutationFn: async () => {
-      await apiRequest("POST", "/api/auth/logout");
-    },
-    onSuccess: () => {
-      window.location.href = "/";
-    },
-  });
 
   const { data: billing, isLoading, isError } = useQuery<BillingStatus>({
     queryKey: ["/api/billing/status"],
@@ -72,16 +94,7 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
             >
               Go to Account Settings
             </Button>
-            <Button
-              className="w-full"
-              variant="ghost"
-              onClick={() => logoutMutation.mutate()}
-              disabled={logoutMutation.isPending}
-              data-testid="button-signout-billing-error"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              {logoutMutation.isPending ? "Signing out..." : "Sign Out & Switch Account"}
-            </Button>
+            <SignOutButton testId="button-signout-billing-error" />
             <p className="text-xs text-muted-foreground">
               Need help? Contact support at support@realignhealth.com
             </p>
@@ -131,16 +144,7 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
             >
               Try Again
             </Button>
-            <Button
-              className="w-full"
-              variant="ghost"
-              onClick={() => logoutMutation.mutate()}
-              disabled={logoutMutation.isPending}
-              data-testid="button-signout-nonowner"
-            >
-              <LogOut className="w-4 h-4 mr-2" />
-              {logoutMutation.isPending ? "Signing out..." : "Sign Out & Switch Account"}
-            </Button>
+            <SignOutButton testId="button-signout-nonowner" />
             <p className="text-xs text-muted-foreground">
               Need help? Contact support at support@realignhealth.com
             </p>
@@ -182,16 +186,7 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
             <CreditCard className="w-4 h-4 mr-2" />
             {isCanceled ? "Reactivate Subscription" : "Set Up Billing"}
           </Button>
-          <Button
-            className="w-full"
-            variant="ghost"
-            onClick={() => logoutMutation.mutate()}
-            disabled={logoutMutation.isPending}
-            data-testid="button-signout-billing-setup"
-          >
-            <LogOut className="w-4 h-4 mr-2" />
-            {logoutMutation.isPending ? "Signing out..." : "Sign Out & Switch Account"}
-          </Button>
+          <SignOutButton testId="button-signout-billing-setup" />
           <p className="text-xs text-muted-foreground">
             Need help? Contact support at support@realignhealth.com
           </p>
