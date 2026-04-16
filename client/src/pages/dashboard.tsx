@@ -580,7 +580,13 @@ export default function Dashboard() {
       <FormSubmissionPreviewDialog
         submissionId={previewSubId}
         onClose={() => setPreviewSubId(null)}
-        clinicName={(user as any)?.clinicName ?? "ClinIQ"}
+        clinic={{
+          clinicName: (user as any)?.clinicName ?? "ClinIQ",
+          clinicLogo: (user as any)?.clinicLogo ?? null,
+          phone: (user as any)?.phone ?? null,
+          address: (user as any)?.address ?? null,
+          email: (user as any)?.email ?? null,
+        }}
       />
     </div>
   );
