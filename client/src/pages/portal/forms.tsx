@@ -24,6 +24,7 @@ interface FormField {
   optionsJson?: any;
   smartFieldKey?: string | null;
   orderIndex: number;
+  layoutJson?: any;
 }
 
 interface FormAssignment {
@@ -154,14 +155,16 @@ function PortalFormField({ field, value, onChange }: {
         </div>
       );
     case "multi_choice":
-    case "symptom_checklist":
+    case "symptom_checklist": {
+      const cols = (field.layoutJson as any)?.optionColumns ?? 1;
+      const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1";
       return (
         <div className="space-y-1.5">
           <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
             {field.label}{field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
           </label>
           {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
-          <div className="space-y-2">
+          <div className={`grid gap-x-4 gap-y-2 ${colClass}`}>
             {options.map((opt: string, i: number) => {
               const selected = Array.isArray(value) ? value.includes(opt) : false;
               return (
@@ -187,6 +190,7 @@ function PortalFormField({ field, value, onChange }: {
           </div>
         </div>
       );
+    }
     case "dropdown":
       return (
         <div className="space-y-1.5">

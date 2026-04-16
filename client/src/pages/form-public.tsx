@@ -661,26 +661,30 @@ function FieldRenderer({ field, value, onChange, error }: {
         </RadioGroup>
       )}
 
-      {field.fieldType === "multi_choice" && options.length > 0 && (
-        <div className="space-y-2">
-          {options.map(opt => {
-            const checked = Array.isArray(value) ? value.includes(opt) : false;
-            return (
-              <div key={opt} className="flex items-center gap-2">
-                <Checkbox
-                  id={`${field.fieldKey}-${opt}`}
-                  checked={checked}
-                  onCheckedChange={c => {
-                    const current = Array.isArray(value) ? value : [];
-                    onChange(c ? [...current, opt] : current.filter((v: string) => v !== opt));
-                  }}
-                />
-                <Label htmlFor={`${field.fieldKey}-${opt}`} className="font-normal cursor-pointer">{opt}</Label>
-              </div>
-            );
-          })}
-        </div>
-      )}
+      {field.fieldType === "multi_choice" && options.length > 0 && (() => {
+        const cols = (field.layoutJson as any)?.optionColumns ?? 1;
+        const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1";
+        return (
+          <div className={`grid gap-x-4 gap-y-2 ${colClass}`}>
+            {options.map(opt => {
+              const checked = Array.isArray(value) ? value.includes(opt) : false;
+              return (
+                <div key={opt} className="flex items-center gap-2">
+                  <Checkbox
+                    id={`${field.fieldKey}-${opt}`}
+                    checked={checked}
+                    onCheckedChange={c => {
+                      const current = Array.isArray(value) ? value : [];
+                      onChange(c ? [...current, opt] : current.filter((v: string) => v !== opt));
+                    }}
+                  />
+                  <Label htmlFor={`${field.fieldKey}-${opt}`} className="font-normal cursor-pointer">{opt}</Label>
+                </div>
+              );
+            })}
+          </div>
+        );
+      })()}
 
       {field.fieldType === "dropdown" && options.length > 0 && (
         <Select value={value ?? ""} onValueChange={onChange}>
