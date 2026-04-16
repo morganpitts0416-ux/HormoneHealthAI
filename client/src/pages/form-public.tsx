@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Button } from "@/components/ui/button";
@@ -8,7 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CheckCircle2, AlertCircle, RefreshCw, ClipboardList } from "lucide-react";
+import { CheckCircle2, AlertCircle, RefreshCw, ClipboardList, Plus, X } from "lucide-react";
 
 interface FormField {
   id: number;
@@ -108,7 +108,10 @@ export default function FormPublicPage() {
       if (!field.isRequired) continue;
       if (["heading", "paragraph"].includes(field.fieldType)) continue;
       const val = responses[field.fieldKey];
-      if (val === undefined || val === null || val === "" || (Array.isArray(val) && val.length === 0)) {
+      const isEmpty = val === undefined || val === null || val === "" ||
+        (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) ||
+        (field.fieldType === "family_history_chart" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim()));
+      if (isEmpty) {
         errors[field.fieldKey] = "This field is required";
       }
     }
@@ -370,6 +373,96 @@ function FieldGrid({ fields, responses, setResponse, validationErrors, className
   );
 }
 
+function SignatureField({ value, onChange, fieldKey }: { value: string; onChange: (v: string) => void; fieldKey: string }) {
+  const [tab, setTab] = useState<"draw" | "type">("type");
+  const [typedName, setTypedName] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawingRef = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || tab !== "draw") return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.lineWidth = 2;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#222";
+    const rect = () => canvas.getBoundingClientRect();
+    const getPos = (e: MouseEvent | TouchEvent) => {
+      const r = rect();
+      const pt = "touches" in e ? e.touches[0] : e;
+      return { x: pt.clientX - r.left, y: pt.clientY - r.top };
+    };
+    const start = (e: MouseEvent | TouchEvent) => { e.preventDefault(); isDrawingRef.current = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    const move = (e: MouseEvent | TouchEvent) => { if (!isDrawingRef.current) return; e.preventDefault(); const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+    const end = () => { if (isDrawingRef.current) { isDrawingRef.current = false; onChange(canvas.toDataURL("image/png")); } };
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mousemove", move);
+    canvas.addEventListener("mouseup", end);
+    canvas.addEventListener("mouseleave", end);
+    canvas.addEventListener("touchstart", start, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", end);
+    return () => {
+      canvas.removeEventListener("mousedown", start);
+      canvas.removeEventListener("mousemove", move);
+      canvas.removeEventListener("mouseup", end);
+      canvas.removeEventListener("mouseleave", end);
+      canvas.removeEventListener("touchstart", start);
+      canvas.removeEventListener("touchmove", move);
+      canvas.removeEventListener("touchend", end);
+    };
+  }, [tab, onChange]);
+
+  const clearDraw = () => {
+    const canvas = canvasRef.current;
+    if (canvas) { const ctx = canvas.getContext("2d"); if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height); }
+    onChange("");
+  };
+
+  const handleTypedName = (name: string) => {
+    setTypedName(name);
+    if (!name.trim()) { onChange(""); return; }
+    const c = document.createElement("canvas");
+    c.width = 400; c.height = 80;
+    const ctx = c.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 400, 80);
+      ctx.font = "italic 32px 'Georgia', 'Times New Roman', serif";
+      ctx.fillStyle = "#222"; ctx.textBaseline = "middle";
+      ctx.fillText(name, 16, 40);
+      onChange(c.toDataURL("image/png"));
+    }
+  };
+
+  return (
+    <div className="border rounded-md p-3 bg-muted/20 space-y-2" data-testid={`field-${fieldKey}`}>
+      <div className="flex gap-2">
+        <button type="button" onClick={() => { if (tab !== "draw") { setTab("draw"); setTypedName(""); onChange(""); } }} className={`text-xs px-3 py-1 rounded-md border transition-colors ${tab === "draw" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>Draw</button>
+        <button type="button" onClick={() => { if (tab !== "type") { setTab("type"); clearDraw(); setTypedName(""); } }} className={`text-xs px-3 py-1 rounded-md border transition-colors ${tab === "type" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>Type</button>
+      </div>
+      {tab === "draw" ? (
+        <div>
+          <canvas ref={canvasRef} width={400} height={100} className="border rounded bg-white w-full cursor-crosshair" style={{ touchAction: "none" }} />
+          <div className="flex justify-end mt-1">
+            <Button size="sm" variant="ghost" type="button" onClick={clearDraw} className="text-xs">Clear</Button>
+          </div>
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Input value={typedName} onChange={e => handleTypedName(e.target.value)} placeholder="Type your full legal name" data-testid={`input-${fieldKey}`} />
+          {typedName.trim() && (
+            <div className="border rounded bg-white px-4 py-3">
+              <p className="text-2xl" style={{ fontFamily: "'Georgia', 'Times New Roman', serif", fontStyle: "italic", color: "#222" }}>{typedName}</p>
+            </div>
+          )}
+        </div>
+      )}
+      <p className="text-xs text-muted-foreground">By signing, you acknowledge this as your electronic signature.</p>
+    </div>
+  );
+}
+
 function FieldRenderer({ field, value, onChange, error }: {
   field: FormField;
   value: any;
@@ -423,15 +516,73 @@ function FieldRenderer({ field, value, onChange, error }: {
         />
       )}
 
-      {field.fieldType === "medication_list" && (
-        <Textarea
-          value={value ?? ""}
-          onChange={e => onChange(e.target.value)}
-          placeholder={"Medication name, dose, frequency (one per line)"}
-          rows={5}
-          data-testid={`textarea-${field.fieldKey}`}
-        />
-      )}
+      {(field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && (() => {
+        const listItems = Array.isArray(value) ? value : [];
+        const listLabels: Record<string, { placeholder: string; addLabel: string }> = {
+          medication_list: { placeholder: "Medication name, dosage, frequency", addLabel: "Add medication" },
+          allergy_list: { placeholder: "Allergy (include reaction type if known)", addLabel: "Add allergy" },
+          medical_history_list: { placeholder: "Condition or diagnosis", addLabel: "Add condition" },
+          surgical_history_list: { placeholder: "Surgery name and approximate date", addLabel: "Add surgery" },
+        };
+        const cfg = listLabels[field.fieldType] || listLabels.medication_list;
+        return (
+          <div className="space-y-2">
+            {listItems.map((item: string, i: number) => (
+              <div key={i} className="flex items-center gap-2">
+                <Input
+                  value={item}
+                  onChange={e => { const arr = [...listItems]; arr[i] = e.target.value; onChange(arr); }}
+                  placeholder={field.placeholder || cfg.placeholder}
+                  data-testid={`input-${field.fieldKey}-${i}`}
+                />
+                <Button size="icon" variant="ghost" type="button" onClick={() => { const arr = [...listItems]; arr.splice(i, 1); onChange(arr); }}>
+                  <X className="h-3.5 w-3.5" />
+                </Button>
+              </div>
+            ))}
+            <Button size="sm" variant="outline" type="button" className="text-xs gap-1" onClick={() => onChange([...listItems, ""])}>
+              <Plus className="h-3 w-3" /> {cfg.addLabel}
+            </Button>
+          </div>
+        );
+      })()}
+
+      {field.fieldType === "family_history_chart" && (() => {
+        const FAMILY_MEMBERS = [
+          "Mother", "Father",
+          "Maternal Grandmother", "Maternal Grandfather",
+          "Paternal Grandmother", "Paternal Grandfather",
+          "Siblings", "Children",
+        ];
+        const chart = (typeof value === "object" && value !== null && !Array.isArray(value))
+          ? value as Record<string, string>
+          : {} as Record<string, string>;
+        return (
+          <div className="border rounded-md overflow-hidden">
+            <div className="grid grid-cols-[140px_1fr] sm:grid-cols-[180px_1fr] text-xs font-medium bg-muted/40 border-b">
+              <div className="px-3 py-2">Family Member</div>
+              <div className="px-3 py-2">Medical Conditions</div>
+            </div>
+            {FAMILY_MEMBERS.map((member) => (
+              <div key={member} className="grid grid-cols-[140px_1fr] sm:grid-cols-[180px_1fr] border-b last:border-b-0">
+                <div className="px-3 py-2 text-sm font-medium bg-muted/20 flex items-center">
+                  {member}
+                </div>
+                <div className="px-2 py-1.5">
+                  <Input
+                    value={chart[member] ?? ""}
+                    onChange={e => onChange({ ...chart, [member]: e.target.value })}
+                    placeholder="e.g., Diabetes, Heart Disease, Cancer"
+                    className="h-8 text-sm"
+                    data-testid={`input-${field.fieldKey}-${member.toLowerCase().replace(/\s+/g, "-")}`}
+                  />
+                </div>
+              </div>
+            ))}
+            <p className="px-3 py-1.5 text-[11px] text-muted-foreground">Enter "None" or "N/A" if not applicable. Separate multiple conditions with commas.</p>
+          </div>
+        );
+      })()}
 
       {field.fieldType === "symptom_checklist" && (
         <Textarea
@@ -564,15 +715,11 @@ function FieldRenderer({ field, value, onChange, error }: {
       )}
 
       {field.fieldType === "signature" && (
-        <div className="border rounded-md p-3 bg-muted/20">
-          <Input
-            value={value ?? ""}
-            onChange={e => onChange(e.target.value)}
-            placeholder="Type your full name as your signature"
-            data-testid={`input-${field.fieldKey}`}
-          />
-          <p className="text-xs text-muted-foreground mt-1">Typing your name here constitutes your electronic signature.</p>
-        </div>
+        <SignatureField
+          value={value ?? ""}
+          onChange={onChange}
+          fieldKey={field.fieldKey}
+        />
       )}
 
       {error && <p className="text-xs text-destructive">{error}</p>}

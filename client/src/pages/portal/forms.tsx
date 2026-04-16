@@ -584,7 +584,14 @@ export default function PortalForms() {
 
   const handleSubmit = () => {
     if (!formDetail) return;
-    const missing = formDetail.fields.filter(f => f.isRequired && !["heading", "paragraph"].includes(f.fieldType) && !responses[f.id]);
+    const missing = formDetail.fields.filter(f => {
+      if (!f.isRequired || ["heading", "paragraph"].includes(f.fieldType)) return false;
+      const val = responses[f.id];
+      if (!val) return true;
+      if (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) return true;
+      if (f.fieldType === "family_history_chart" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim())) return true;
+      return false;
+    });
     if (missing.length > 0) {
       toast({ title: `Please fill in all required fields (${missing.length} remaining)`, variant: "destructive" });
       return;
