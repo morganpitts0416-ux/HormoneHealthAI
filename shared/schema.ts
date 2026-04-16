@@ -1518,3 +1518,26 @@ export const encounterDrafts = pgTable("encounter_drafts", {
 export type EncounterDraft = typeof encounterDrafts.$inferSelect;
 export const insertEncounterDraftSchema = createInsertSchema(encounterDrafts).omit({ id: true, createdAt: true });
 export type InsertEncounterDraft = z.infer<typeof insertEncounterDraftSchema>;
+
+// ─── Diagnosis Presets (clinic-wide shared ICD-10 shortcuts) ────────────────
+// Any provider in a clinic can create a preset: a custom title bundling one
+// or more ICD-10 codes. Presets are shared clinic-wide and appear in the /dx
+// shortcut search alongside the built-in ICD-10 list.
+export const diagnosisPresets = pgTable("diagnosis_presets", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  createdByUserId: integer("created_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  title: text("title").notNull(),
+  // [{ code: "N95.1", name: "Menopausal and female climacteric states" }, ...]
+  codes: jsonb("codes").notNull().$type<{ code: string; name: string }[]>(),
+  aliases: text("aliases").array().notNull().default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type DiagnosisPreset = typeof diagnosisPresets.$inferSelect;
+export const insertDiagnosisPresetSchema = createInsertSchema(diagnosisPresets).omit({
+  id: true,
+  createdAt: true,
+  updatedAt: true,
+});
+export type InsertDiagnosisPreset = z.infer<typeof insertDiagnosisPresetSchema>;

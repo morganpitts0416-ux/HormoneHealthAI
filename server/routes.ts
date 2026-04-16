@@ -6,6 +6,7 @@ import path from "path";
 import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
+import { z } from "zod";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments } from "@shared/schema";
 import { eq, and, sql } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
@@ -8862,12 +8863,130 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.get("/api/diagnoses/search", requireAuth, async (req, res) => {
     try {
       const { searchDiagnoses } = await import("./icd10-diagnoses");
-      const q = (req.query.q as string) || "";
-      const results = searchDiagnoses(q, 15);
-      res.json(results);
+      const q = ((req.query.q as string) || "").trim();
+      const qLower = q.toLowerCase();
+      const builtIn = searchDiagnoses(q, 15).map(d => ({ ...d, isPreset: false as const }));
+
+      // Merge in clinic-scoped custom presets
+      const clinicId = getEffectiveClinicId(req);
+      let presetResults: any[] = [];
+      if (clinicId) {
+        const allPresets = await storage.getDiagnosisPresets(clinicId);
+        const terms = qLower.split(/\s+/).filter(Boolean);
+        const scored: { preset: typeof allPresets[number]; score: number }[] = [];
+        for (const p of allPresets) {
+          const titleL = (p.title || "").toLowerCase();
+          const aliasStr = (p.aliases ?? []).join(" ").toLowerCase();
+          const codesStr = (p.codes as any[] ?? []).map(c => `${c.code} ${c.name}`).join(" ").toLowerCase();
+          const haystack = `${titleL} ${aliasStr} ${codesStr}`;
+          let score = 0;
+          if (!qLower) {
+            score = 1;
+          } else if (titleL === qLower) {
+            score = 110;
+          } else if (titleL.startsWith(qLower)) {
+            score = 95;
+          } else if ((p.aliases ?? []).some(a => a.toLowerCase() === qLower)) {
+            score = 92;
+          } else if (terms.every(t => haystack.includes(t))) {
+            score = titleL.includes(qLower) ? 75 : 50;
+          }
+          if (score > 0) scored.push({ preset: p, score });
+        }
+        scored.sort((a, b) => b.score - a.score);
+        presetResults = scored.slice(0, 10).map(s => ({
+          isPreset: true as const,
+          id: s.preset.id,
+          title: s.preset.title,
+          codes: s.preset.codes,
+          aliases: s.preset.aliases ?? [],
+        }));
+      }
+
+      // Presets first, then built-in codes
+      res.json([...presetResults, ...builtIn]);
     } catch (err: any) {
       console.error("[Diagnosis Search] Error:", err);
       res.status(500).json({ message: "Failed to search diagnoses" });
+    }
+  });
+
+  // ── Diagnosis Presets CRUD (clinic-wide; any provider can create/edit/delete) ──
+  const diagnosisPresetInput = z.object({
+    title: z.string().trim().min(1, "Title is required").max(300),
+    codes: z
+      .array(z.object({ code: z.string().trim().min(1).max(20), name: z.string().trim().min(1).max(300) }))
+      .min(1, "At least one ICD-10 code is required")
+      .max(20),
+    aliases: z.array(z.string().trim().min(1).max(100)).max(20).optional().default([]),
+  });
+
+  app.get("/api/diagnosis-presets", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json([]);
+      const rows = await storage.getDiagnosisPresets(clinicId);
+      res.json(rows);
+    } catch (err: any) {
+      console.error("[Diagnosis Presets] List error:", err);
+      res.status(500).json({ message: "Failed to list diagnosis presets" });
+    }
+  });
+
+  app.post("/api/diagnosis-presets", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const userId = getClinicianId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const parsed = diagnosisPresetInput.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+      }
+      const row = await storage.createDiagnosisPreset({
+        clinicId,
+        createdByUserId: userId,
+        title: parsed.data.title,
+        codes: parsed.data.codes,
+        aliases: parsed.data.aliases ?? [],
+      } as any);
+      res.status(201).json(row);
+    } catch (err: any) {
+      console.error("[Diagnosis Presets] Create error:", err);
+      res.status(500).json({ message: "Failed to create diagnosis preset" });
+    }
+  });
+
+  app.patch("/api/diagnosis-presets/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const parsed = diagnosisPresetInput.partial().safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid input", errors: parsed.error.flatten() });
+      }
+      const row = await storage.updateDiagnosisPreset(id, clinicId, parsed.data as any);
+      if (!row) return res.status(404).json({ message: "Preset not found" });
+      res.json(row);
+    } catch (err: any) {
+      console.error("[Diagnosis Presets] Update error:", err);
+      res.status(500).json({ message: "Failed to update diagnosis preset" });
+    }
+  });
+
+  app.delete("/api/diagnosis-presets/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const ok = await storage.deleteDiagnosisPreset(id, clinicId);
+      if (!ok) return res.status(404).json({ message: "Preset not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Diagnosis Presets] Delete error:", err);
+      res.status(500).json({ message: "Failed to delete diagnosis preset" });
     }
   });
 

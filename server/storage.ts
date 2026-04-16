@@ -227,6 +227,13 @@ export interface IStorage {
   getEncounterDrafts(clinicianId: number): Promise<schema.EncounterDraft[]>;
   createEncounterDraft(draft: schema.InsertEncounterDraft): Promise<schema.EncounterDraft>;
   deleteEncounterDraft(id: number, clinicianId: number): Promise<boolean>;
+
+  // ── Diagnosis Presets (clinic-wide shared /dx shortcuts) ──────────────────
+  getDiagnosisPresets(clinicId: number): Promise<schema.DiagnosisPreset[]>;
+  getDiagnosisPreset(id: number, clinicId: number): Promise<schema.DiagnosisPreset | undefined>;
+  createDiagnosisPreset(data: schema.InsertDiagnosisPreset): Promise<schema.DiagnosisPreset>;
+  updateDiagnosisPreset(id: number, clinicId: number, data: Partial<schema.InsertDiagnosisPreset>): Promise<schema.DiagnosisPreset | undefined>;
+  deleteDiagnosisPreset(id: number, clinicId: number): Promise<boolean>;
 }
 
 // ─── Patient scope helper ────────────────────────────────────────────────────
@@ -1973,3 +1980,50 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
 
   return { clinicId: clinic.id, providerId: provider.id };
 }
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── Diagnosis Presets (clinic-wide /dx shortcuts) ─────────────────────────
+// Implemented on DbStorage prototype to avoid disturbing the main class block.
+// ═══════════════════════════════════════════════════════════════════════════
+(DbStorage.prototype as any).getDiagnosisPresets = async function(clinicId: number): Promise<schema.DiagnosisPreset[]> {
+  return await db
+    .select()
+    .from(schema.diagnosisPresets)
+    .where(eq(schema.diagnosisPresets.clinicId, clinicId))
+    .orderBy(desc(schema.diagnosisPresets.updatedAt));
+};
+
+(DbStorage.prototype as any).getDiagnosisPreset = async function(id: number, clinicId: number): Promise<schema.DiagnosisPreset | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.diagnosisPresets)
+    .where(and(eq(schema.diagnosisPresets.id, id), eq(schema.diagnosisPresets.clinicId, clinicId)))
+    .limit(1);
+  return row;
+};
+
+(DbStorage.prototype as any).createDiagnosisPreset = async function(data: schema.InsertDiagnosisPreset): Promise<schema.DiagnosisPreset> {
+  const [row] = await db.insert(schema.diagnosisPresets).values(data).returning();
+  return row;
+};
+
+(DbStorage.prototype as any).updateDiagnosisPreset = async function(
+  id: number,
+  clinicId: number,
+  data: Partial<schema.InsertDiagnosisPreset>,
+): Promise<schema.DiagnosisPreset | undefined> {
+  const [row] = await db
+    .update(schema.diagnosisPresets)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(schema.diagnosisPresets.id, id), eq(schema.diagnosisPresets.clinicId, clinicId)))
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).deleteDiagnosisPreset = async function(id: number, clinicId: number): Promise<boolean> {
+  const result = await db
+    .delete(schema.diagnosisPresets)
+    .where(and(eq(schema.diagnosisPresets.id, id), eq(schema.diagnosisPresets.clinicId, clinicId)))
+    .returning({ id: schema.diagnosisPresets.id });
+  return result.length > 0;
+};
