@@ -7828,10 +7828,16 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       const submission = await storage.getFormSubmission(submissionId);
       if (!submission) return res.status(404).json({ message: "Submission not found" });
       const clinicId = getEffectiveClinicId(req);
-      const form = await storage.getIntakeFormById(submission.formId);
-      if (!form) return res.status(404).json({ message: "Form not found" });
-      if (clinicId && form.clinicId !== clinicId) return res.status(403).json({ message: "Not authorized" });
-      if (!clinicId && form.clinicianId !== getClinicianId(req)) return res.status(403).json({ message: "Not authorized" });
+      const clinicianId = getClinicianId(req);
+      const isOwner = submission.clinicianId === clinicianId;
+      const isClinicMember = clinicId && (submission as any).clinicId === clinicId;
+      if (!isOwner && !isClinicMember) {
+        const form = await storage.getIntakeFormById(submission.formId);
+        if (!form) return res.status(404).json({ message: "Form not found" });
+        const formInClinic = clinicId && form.clinicId === clinicId;
+        const formOwnedByUser = form.clinicianId === clinicianId;
+        if (!formInClinic && !formOwnedByUser) return res.status(403).json({ message: "Not authorized" });
+      }
       const updated = await storage.updateFormSubmission(submissionId, {
         reviewStatus: "reviewed",
         syncStatus: "synced",
