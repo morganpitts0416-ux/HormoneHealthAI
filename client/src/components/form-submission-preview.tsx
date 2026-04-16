@@ -291,7 +291,15 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     for (let i = 0; i < row.fields.length; i++) {
       const field = row.fields[i];
       const value = data[field.fieldKey];
-      const displayValue = sanitizeForPdf(Array.isArray(value) ? value.join(", ") : String(value));
+      let rawDisplay: string;
+      if (field.fieldType === "family_history_chart" && typeof value === "object" && !Array.isArray(value)) {
+        rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "None reported";
+      } else if (Array.isArray(value)) {
+        rawDisplay = value.filter(Boolean).join("\n");
+      } else {
+        rawDisplay = String(value);
+      }
+      const displayValue = sanitizeForPdf(rawDisplay);
 
       const lines = doc.splitTextToSize(displayValue, colWidths[i] - 4);
       const h = 4 + lines.length * 4 + 3;
@@ -401,7 +409,13 @@ function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: 
             const gapTotal = (row.fields.length - 1) * 8;
             const widthCalc = `calc(${(frac * 100).toFixed(1)}% - ${Math.round(gapTotal * frac)}px)`;
             const value = data[field.fieldKey];
-            const displayValue = Array.isArray(value) ? value.join(", ") : String(value);
+            const isFamChart = field.fieldType === "family_history_chart" && typeof value === "object" && !Array.isArray(value);
+            const isList = (field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && Array.isArray(value);
+            const displayValue = isFamChart
+              ? Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ")
+              : isList
+                ? value.filter(Boolean).join("; ")
+                : Array.isArray(value) ? value.join(", ") : String(value);
 
             return (
               <div
@@ -418,9 +432,32 @@ function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: 
                 <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#5a7040" }}>
                   {field.label}
                 </p>
-                <p className="text-sm mt-0.5 break-words" style={{ color: "#1c2414" }}>
-                  {displayValue}
-                </p>
+                {isList ? (
+                  <ul className="text-sm mt-0.5 space-y-0.5" style={{ color: "#1c2414" }}>
+                    {(value as string[]).filter(Boolean).map((item: string, ii: number) => (
+                      <li key={ii} className="flex items-start gap-1.5">
+                        <span className="text-muted-foreground mt-1">-</span>
+                        <span className="break-words">{item}</span>
+                      </li>
+                    ))}
+                  </ul>
+                ) : isFamChart ? (
+                  <div className="text-sm mt-0.5 space-y-0.5" style={{ color: "#1c2414" }}>
+                    {Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([member, conditions]) => (
+                      <div key={member} className="flex items-start gap-1.5">
+                        <span className="font-medium text-xs min-w-[100px]" style={{ color: "#5a7040" }}>{member}:</span>
+                        <span className="break-words">{String(conditions)}</span>
+                      </div>
+                    ))}
+                    {Object.entries(value).filter(([, v]) => v && String(v).trim()).length === 0 && (
+                      <span className="text-muted-foreground italic text-xs">None reported</span>
+                    )}
+                  </div>
+                ) : (
+                  <p className="text-sm mt-0.5 break-words" style={{ color: "#1c2414" }}>
+                    {displayValue}
+                  </p>
+                )}
               </div>
             );
           })}

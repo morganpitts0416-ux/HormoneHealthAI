@@ -274,8 +274,18 @@ function PortalFormField({ field, value, onChange }: {
           <SignaturePad value={value} onChange={onChange} fieldId={field.id} />
         </div>
       );
-    case "medication_list": {
-      const meds = Array.isArray(value) ? value : [];
+    case "medication_list":
+    case "allergy_list":
+    case "medical_history_list":
+    case "surgical_history_list": {
+      const listItems = Array.isArray(value) ? value : [];
+      const listLabels: Record<string, { placeholder: string; addLabel: string }> = {
+        medication_list: { placeholder: "Medication name, dosage, frequency", addLabel: "Add medication" },
+        allergy_list: { placeholder: "Allergy (include reaction type if known)", addLabel: "Add allergy" },
+        medical_history_list: { placeholder: "Condition or diagnosis", addLabel: "Add condition" },
+        surgical_history_list: { placeholder: "Surgery name and approximate date", addLabel: "Add surgery" },
+      };
+      const cfg = listLabels[field.fieldType] || listLabels.medication_list;
       return (
         <div className="space-y-1.5">
           <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
@@ -283,24 +293,66 @@ function PortalFormField({ field, value, onChange }: {
           </label>
           {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
           <div className="space-y-2">
-            {meds.map((med: string, i: number) => (
+            {listItems.map((item: string, i: number) => (
               <div key={i} className="flex items-center gap-2">
                 <Input
-                  value={med}
-                  onChange={e => { const arr = [...meds]; arr[i] = e.target.value; onChange(arr); }}
-                  placeholder={field.placeholder || "Medication name, dosage, frequency"}
+                  value={item}
+                  onChange={e => { const arr = [...listItems]; arr[i] = e.target.value; onChange(arr); }}
+                  placeholder={field.placeholder || cfg.placeholder}
                   className="border-gray-300"
-                  data-testid={`portal-field-${field.id}-med-${i}`}
+                  data-testid={`portal-field-${field.id}-item-${i}`}
                 />
-                <Button size="icon" variant="ghost" onClick={() => { const arr = [...meds]; arr.splice(i, 1); onChange(arr); }}>
+                <Button size="icon" variant="ghost" onClick={() => { const arr = [...listItems]; arr.splice(i, 1); onChange(arr); }}>
                   <X className="h-3.5 w-3.5" />
                 </Button>
               </div>
             ))}
-            <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => onChange([...meds, ""])}>
-              <Plus className="h-3 w-3" /> Add medication
+            <Button size="sm" variant="outline" className="text-xs gap-1" onClick={() => onChange([...listItems, ""])}>
+              <Plus className="h-3 w-3" /> {cfg.addLabel}
             </Button>
           </div>
+        </div>
+      );
+    }
+    case "family_history_chart": {
+      const FAMILY_MEMBERS = [
+        "Mother", "Father",
+        "Maternal Grandmother", "Maternal Grandfather",
+        "Paternal Grandmother", "Paternal Grandfather",
+        "Siblings", "Children",
+      ];
+      const chart = (typeof value === "object" && value !== null && !Array.isArray(value))
+        ? value as Record<string, string>
+        : {} as Record<string, string>;
+      return (
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
+            {field.label}{field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+          </label>
+          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          <div className="border border-gray-300 rounded-md overflow-hidden">
+            <div className="grid grid-cols-[140px_1fr] sm:grid-cols-[180px_1fr] text-xs font-medium bg-gray-50 border-b border-gray-200" style={{ color: "#2e3a20" }}>
+              <div className="px-3 py-2">Family Member</div>
+              <div className="px-3 py-2">Medical Conditions</div>
+            </div>
+            {FAMILY_MEMBERS.map((member) => (
+              <div key={member} className="grid grid-cols-[140px_1fr] sm:grid-cols-[180px_1fr] border-b border-gray-100 last:border-b-0">
+                <div className="px-3 py-2 text-sm font-medium bg-gray-50/50 flex items-center" style={{ color: "#2e3a20" }}>
+                  {member}
+                </div>
+                <div className="px-2 py-1.5">
+                  <Input
+                    value={chart[member] ?? ""}
+                    onChange={e => onChange({ ...chart, [member]: e.target.value })}
+                    placeholder="e.g., Diabetes, Heart Disease, Cancer"
+                    className="border-gray-200 text-sm h-8"
+                    data-testid={`portal-field-${field.id}-fam-${member.toLowerCase().replace(/\s+/g, "-")}`}
+                  />
+                </div>
+              </div>
+            ))}
+          </div>
+          <p className="text-[11px] text-muted-foreground">Enter "None" or "N/A" if not applicable. Separate multiple conditions with commas.</p>
         </div>
       );
     }
@@ -324,7 +376,10 @@ function PortalFormField({ field, value, onChange }: {
 
 function SignaturePad({ value, onChange, fieldId }: { value: any; onChange: (val: string) => void; fieldId: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
+  const typedCanvasRef = useRef<HTMLCanvasElement>(null);
   const [isDrawing, setIsDrawing] = useState(false);
+  const [mode, setMode] = useState<"draw" | "type">("draw");
+  const [typedName, setTypedName] = useState("");
 
   useEffect(() => {
     const canvas = canvasRef.current;
@@ -336,12 +391,33 @@ function SignaturePad({ value, onChange, fieldId }: { value: any; onChange: (val
     ctx.strokeStyle = "#2e3a20";
     ctx.lineWidth = 2;
     ctx.lineCap = "round";
-    if (value) {
+    if (value && mode === "draw") {
       const img = new Image();
       img.onload = () => ctx.drawImage(img, 0, 0);
       img.src = value;
     }
-  }, []);
+  }, [mode]);
+
+  useEffect(() => {
+    if (mode !== "type") return;
+    const canvas = typedCanvasRef.current;
+    if (!canvas) return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    canvas.width = canvas.offsetWidth * 2;
+    canvas.height = canvas.offsetHeight * 2;
+    ctx.scale(2, 2);
+    ctx.clearRect(0, 0, canvas.offsetWidth, canvas.offsetHeight);
+    if (!typedName.trim()) {
+      onChange("");
+      return;
+    }
+    ctx.fillStyle = "#2e3a20";
+    ctx.font = "italic 28px 'Georgia', 'Times New Roman', serif";
+    ctx.textBaseline = "middle";
+    ctx.fillText(typedName, 16, canvas.offsetHeight / 2);
+    onChange(canvas.toDataURL());
+  }, [typedName, mode]);
 
   const getPos = (e: React.MouseEvent | React.TouchEvent) => {
     const canvas = canvasRef.current!;
@@ -377,30 +453,76 @@ function SignaturePad({ value, onChange, fieldId }: { value: any; onChange: (val
   };
 
   const clear = () => {
-    const canvas = canvasRef.current;
-    if (!canvas) return;
-    const ctx = canvas.getContext("2d");
-    if (!ctx) return;
-    ctx.clearRect(0, 0, canvas.width, canvas.height);
+    if (mode === "draw") {
+      const canvas = canvasRef.current;
+      if (!canvas) return;
+      const ctx = canvas.getContext("2d");
+      if (!ctx) return;
+      ctx.clearRect(0, 0, canvas.width, canvas.height);
+    } else {
+      setTypedName("");
+    }
     onChange("");
   };
 
   return (
     <div className="space-y-1">
-      <div className="relative border-2 border-dashed border-gray-300 rounded-md bg-white">
-        <canvas
-          ref={canvasRef}
-          className="w-full h-24 touch-none cursor-crosshair"
-          onMouseDown={start}
-          onMouseMove={draw}
-          onMouseUp={end}
-          onMouseLeave={end}
-          onTouchStart={start}
-          onTouchMove={draw}
-          onTouchEnd={end}
-          data-testid={`portal-field-${fieldId}-signature`}
-        />
+      <div className="flex items-center gap-1 mb-1">
+        <button
+          type="button"
+          onClick={() => { setMode("draw"); clear(); }}
+          className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${mode === "draw" ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600"}`}
+          data-testid={`portal-field-${fieldId}-sig-draw-tab`}
+        >
+          Draw
+        </button>
+        <button
+          type="button"
+          onClick={() => { setMode("type"); clear(); }}
+          className={`px-3 py-1 text-xs rounded-md font-medium transition-colors ${mode === "type" ? "bg-gray-800 text-white" : "bg-gray-100 text-gray-600"}`}
+          data-testid={`portal-field-${fieldId}-sig-type-tab`}
+        >
+          Type
+        </button>
       </div>
+      {mode === "draw" ? (
+        <div className="relative border-2 border-dashed border-gray-300 rounded-md bg-white">
+          <canvas
+            ref={canvasRef}
+            className="w-full h-24 touch-none cursor-crosshair"
+            onMouseDown={start}
+            onMouseMove={draw}
+            onMouseUp={end}
+            onMouseLeave={end}
+            onTouchStart={start}
+            onTouchMove={draw}
+            onTouchEnd={end}
+            data-testid={`portal-field-${fieldId}-signature`}
+          />
+        </div>
+      ) : (
+        <div className="space-y-2">
+          <Input
+            value={typedName}
+            onChange={e => setTypedName(e.target.value)}
+            placeholder="Type your full legal name"
+            className="border-gray-300"
+            data-testid={`portal-field-${fieldId}-sig-typed-input`}
+          />
+          <div className="relative border-2 border-dashed border-gray-300 rounded-md bg-white overflow-hidden">
+            <canvas
+              ref={typedCanvasRef}
+              className="w-full h-24"
+              data-testid={`portal-field-${fieldId}-sig-typed-preview`}
+            />
+            {!typedName.trim() && (
+              <div className="absolute inset-0 flex items-center justify-center text-sm text-muted-foreground">
+                Signature preview
+              </div>
+            )}
+          </div>
+        </div>
+      )}
       <Button size="sm" variant="ghost" className="text-xs" onClick={clear} data-testid={`portal-field-${fieldId}-clear-sig`}>
         Clear signature
       </Button>

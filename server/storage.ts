@@ -1551,7 +1551,7 @@ export class DbStorage implements IStorage {
     for (const [key, col] of Object.entries(fieldMap)) {
       if (key in data) {
         let val = (data as any)[key];
-        if (typeof val === 'object' && val !== null && !Array.isArray(val) && !(val instanceof Date)) {
+        if (typeof val === 'object' && val !== null && !(val instanceof Date)) {
           val = JSON.stringify(val);
         }
         setClauses.push(`${col} = $${values.length + 1}`);
@@ -1745,7 +1745,7 @@ export class DbStorage implements IStorage {
     for (const [key, col] of Object.entries(fieldMap)) {
       if (key in data) {
         let val = (data as any)[key];
-        if (typeof val === 'object' && val !== null && !Array.isArray(val) && !(val instanceof Date)) {
+        if (typeof val === 'object' && val !== null && !(val instanceof Date)) {
           val = JSON.stringify(val);
         }
         setClauses.push(`${col} = $${values.length + 1}`);

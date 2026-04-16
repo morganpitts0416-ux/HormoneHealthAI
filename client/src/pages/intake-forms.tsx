@@ -102,6 +102,10 @@ const FIELD_TYPES = [
   { value: "heading", label: "Section Heading" },
   { value: "paragraph", label: "Paragraph / Instructions" },
   { value: "medication_list", label: "Medication List" },
+  { value: "allergy_list", label: "Allergy List" },
+  { value: "medical_history_list", label: "Medical History List" },
+  { value: "surgical_history_list", label: "Surgical History List" },
+  { value: "family_history_chart", label: "Family History Chart" },
   { value: "symptom_checklist", label: "Symptom Checklist" },
 ];
 
@@ -148,10 +152,10 @@ const SMART_FIELDS: SmartFieldDef[] = [
   { key: "patient_address", label: "Address", fieldType: "short_text", placeholder: "Street, City, State ZIP", category: "demographics", syncTarget: "patient.address" },
   { key: "patient_preferred_pharmacy", label: "Preferred Pharmacy", fieldType: "short_text", placeholder: "Pharmacy name, address, and phone", category: "demographics", syncTarget: "patient.preferredPharmacy", helpText: "Where should we send your prescriptions?" },
   { key: "current_medications", label: "Current Medications", fieldType: "medication_list", placeholder: "List each medication, dosage, and frequency", category: "clinical", syncTarget: "chart.currentMedications", helpText: "Enter each medication on a new line" },
-  { key: "allergies", label: "Allergies", fieldType: "long_text", placeholder: "List any known allergies (medications, foods, environmental)", category: "clinical", syncTarget: "chart.allergies", helpText: "Include the type of reaction if known" },
-  { key: "medical_history", label: "Medical History", fieldType: "long_text", placeholder: "List any past or current medical conditions", category: "clinical", syncTarget: "chart.medicalHistory", helpText: "Include diagnoses, chronic conditions, and hospitalizations" },
-  { key: "surgical_history", label: "Surgical History", fieldType: "long_text", placeholder: "List any past surgeries with approximate dates", category: "clinical", syncTarget: "chart.surgicalHistory" },
-  { key: "family_history", label: "Family History", fieldType: "long_text", placeholder: "List significant family medical history", category: "clinical", syncTarget: "chart.familyHistory", helpText: "Include relationship and condition (e.g., Mother - Diabetes)" },
+  { key: "allergies", label: "Allergies", fieldType: "allergy_list", placeholder: "Allergy (include reaction type if known)", category: "clinical", syncTarget: "chart.allergies", helpText: "Add each allergy individually" },
+  { key: "medical_history", label: "Medical History", fieldType: "medical_history_list", placeholder: "Condition or diagnosis", category: "clinical", syncTarget: "chart.medicalHistory", helpText: "Add each condition individually" },
+  { key: "surgical_history", label: "Surgical History", fieldType: "surgical_history_list", placeholder: "Surgery name and approximate date", category: "clinical", syncTarget: "chart.surgicalHistory", helpText: "Add each surgery individually" },
+  { key: "family_history", label: "Family History", fieldType: "family_history_chart", placeholder: "Medical conditions by family member", category: "clinical", syncTarget: "chart.familyHistory", helpText: "Enter conditions for each family member" },
   { key: "social_history", label: "Social History", fieldType: "long_text", placeholder: "Tobacco, alcohol, exercise, occupation, etc.", category: "clinical", syncTarget: "chart.socialHistory" },
 ];
 
@@ -645,6 +649,43 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
           <div className="space-y-1.5">
             <div className="border rounded-md p-2 bg-muted/30 text-sm text-muted-foreground">{field.placeholder || "Medication name, dosage, frequency"}</div>
             <button type="button" className="text-xs text-primary font-medium">+ Add medication</button>
+          </div>
+        );
+      case "allergy_list":
+        return (
+          <div className="space-y-1.5">
+            <div className="border rounded-md p-2 bg-muted/30 text-sm text-muted-foreground">{field.placeholder || "Allergy (include reaction type)"}</div>
+            <button type="button" className="text-xs text-primary font-medium">+ Add allergy</button>
+          </div>
+        );
+      case "medical_history_list":
+        return (
+          <div className="space-y-1.5">
+            <div className="border rounded-md p-2 bg-muted/30 text-sm text-muted-foreground">{field.placeholder || "Condition or diagnosis"}</div>
+            <button type="button" className="text-xs text-primary font-medium">+ Add condition</button>
+          </div>
+        );
+      case "surgical_history_list":
+        return (
+          <div className="space-y-1.5">
+            <div className="border rounded-md p-2 bg-muted/30 text-sm text-muted-foreground">{field.placeholder || "Surgery name and date"}</div>
+            <button type="button" className="text-xs text-primary font-medium">+ Add surgery</button>
+          </div>
+        );
+      case "family_history_chart":
+        return (
+          <div className="border rounded-md overflow-hidden text-sm">
+            <div className="grid grid-cols-[120px_1fr] bg-muted/40 text-xs font-medium border-b">
+              <div className="px-2 py-1.5">Family Member</div>
+              <div className="px-2 py-1.5">Medical Conditions</div>
+            </div>
+            {["Mother", "Father", "Siblings"].map(m => (
+              <div key={m} className="grid grid-cols-[120px_1fr] border-b last:border-b-0">
+                <div className="px-2 py-1.5 bg-muted/20 text-xs font-medium">{m}</div>
+                <div className="px-2 py-1.5 text-xs text-muted-foreground">Conditions...</div>
+              </div>
+            ))}
+            <div className="px-2 py-1 text-xs text-muted-foreground">+ 5 more family members</div>
           </div>
         );
       case "symptom_checklist":
