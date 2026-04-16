@@ -7709,6 +7709,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       });
       res.json(form);
     } catch (err) {
+      console.error("[API] Failed to create intake form:", err);
       res.status(500).json({ message: "Failed to create form" });
     }
   });
