@@ -7691,22 +7691,22 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       const { name, description, category } = req.body;
       if (!name?.trim()) return res.status(400).json({ message: "Form name required" });
       const clinicId = getEffectiveClinicId(req);
-      const form = await storage.createIntakeForm({
-        clinicianId: getClinicianId(req),
-        clinicId: clinicId,
-        name: name.trim(),
-        description: description?.trim() ?? null,
-        category: category ?? "custom",
-        status: "draft",
-        version: 1,
-        allowLink: true,
-        allowEmbed: true,
-        allowTablet: true,
-        isPublic: false,
-        requiresPatientSignature: false,
-        requiresStaffSignature: false,
-        expirationType: "none",
-      });
+      const clinicianId = getClinicianId(req);
+      const trimmedName = name.trim();
+      const trimmedDesc = description?.trim() ?? null;
+      const cat = category ?? "custom";
+
+      // Use raw SQL to bypass Drizzle schema mismatches with production DB
+      const result = await storageDb.execute(sql`
+        INSERT INTO intake_forms (clinician_id, clinic_id, name, description, category, version, status,
+          allow_link, allow_embed, allow_tablet, is_public,
+          requires_patient_signature, requires_staff_signature, expiration_type)
+        VALUES (${clinicianId}, ${clinicId}, ${trimmedName}, ${trimmedDesc}, ${cat}, 1, 'draft',
+          true, true, true, false,
+          false, false, 'none')
+        RETURNING *
+      `);
+      const form = (result as any).rows?.[0] ?? (result as any)[0];
       res.json(form);
     } catch (err) {
       console.error("[API] Failed to create intake form:", err);
