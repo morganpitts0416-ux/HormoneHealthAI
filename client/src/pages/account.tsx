@@ -24,6 +24,7 @@ import {
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PreferencesPanel } from "@/components/preferences-panel";
+import { DiagnosisPresetsSection } from "@/components/diagnosis-presets-section";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -124,7 +125,7 @@ interface MessagingSettings {
   webhookUrl: string | null;
 }
 
-type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "forms" | "submissions" | "baa" | "billing";
+type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "baa" | "billing";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
@@ -133,6 +134,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "team", label: "Staff & Team", icon: Users, clinicianOnly: true, ownerOnly: true },
   { id: "messaging", label: "Messaging Settings", icon: MessageSquare, clinicianOnly: true, ownerOnly: true },
   { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, ownerOnly: true },
+  { id: "diagnoses", label: "Diagnosis Presets", icon: ClipboardList, clinicianOnly: true, providerVisible: true },
   { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true, ownerOnly: true },
   { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true, ownerOnly: true },
   { id: "baa", label: "BAA / HIPAA", icon: Shield, clinicianOnly: true, ownerOnly: true },
@@ -703,7 +705,7 @@ export default function Account() {
   const isSuiteProvider = !isStaff && !isOwnerOrAdmin && !!(user as any)?.defaultClinicId;
 
   useEffect(() => {
-    if (isSuiteProvider && activeSection !== "provider" && activeSection !== "branding") {
+    if (isSuiteProvider && activeSection !== "provider" && activeSection !== "branding" && activeSection !== "diagnoses") {
       setActiveSection("provider");
     }
     if (isAdmin && SECTIONS.find(s => s.id === activeSection)?.ownerOnly) {
@@ -1809,6 +1811,9 @@ export default function Account() {
             )}
           </div>
         );
+
+      case "diagnoses":
+        return <DiagnosisPresetsSection />;
 
       case "preferences":
         return (

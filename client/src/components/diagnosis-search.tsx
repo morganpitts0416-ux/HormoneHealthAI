@@ -1,11 +1,16 @@
 import { useState, useEffect, useRef, useCallback } from "react";
 import { useQuery } from "@tanstack/react-query";
-import { Search } from "lucide-react";
+import { Search, Sparkles } from "lucide-react";
 
 interface DiagnosisResult {
-  code: string;
-  name: string;
+  code?: string;
+  name?: string;
   aliases?: string[];
+  // Preset fields
+  isPreset?: boolean;
+  id?: number;
+  title?: string;
+  codes?: { code: string; name: string }[];
 }
 
 interface DiagnosisSearchProps {
@@ -43,7 +48,13 @@ export function useDiagnosisSearch({ textareaRef, value, onChange }: DiagnosisSe
   }, []);
 
   const insertDiagnosis = useCallback((dx: DiagnosisResult) => {
-    const insertText = `${dx.name} (${dx.code})`;
+    let insertText: string;
+    if (dx.isPreset && dx.title && Array.isArray(dx.codes) && dx.codes.length > 0) {
+      const codeList = dx.codes.map(c => c.code).join(", ");
+      insertText = `${dx.title} (${codeList})`;
+    } else {
+      insertText = `${dx.name} (${dx.code})`;
+    }
     const before = value.substring(0, slashDxStart);
     const after = value.substring(cursorPos);
     const newValue = before + insertText + after;
@@ -157,26 +168,42 @@ export function useDiagnosisSearch({ textareaRef, value, onChange }: DiagnosisSe
           No diagnoses found. Try a different term.
         </div>
       )}
-      {results.map((dx, i) => (
-        <button
-          key={`${dx.code}-${i}`}
-          data-index={i}
-          data-testid={`diagnosis-option-${dx.code}`}
-          className={`w-full text-left px-3 py-2 flex items-start gap-2 text-sm transition-colors cursor-pointer ${
-            i === selectedIndex ? "bg-accent" : "hover-elevate"
-          }`}
-          onMouseDown={(e) => {
-            e.preventDefault();
-            insertDiagnosis(dx);
-          }}
-          onMouseEnter={() => setSelectedIndex(i)}
-        >
-          <span className="font-mono text-xs font-semibold text-primary/80 mt-0.5 flex-shrink-0 min-w-[60px]">
-            {dx.code}
-          </span>
-          <span className="text-xs text-foreground leading-snug">{dx.name}</span>
-        </button>
-      ))}
+      {results.map((dx, i) => {
+        const isPreset = !!dx.isPreset;
+        const keyId = isPreset ? `preset-${dx.id}` : `${dx.code}-${i}`;
+        const codeLabel = isPreset
+          ? (dx.codes ?? []).map(c => c.code).join(", ")
+          : dx.code ?? "";
+        const nameLabel = isPreset ? (dx.title ?? "") : (dx.name ?? "");
+        return (
+          <button
+            key={keyId}
+            data-index={i}
+            data-testid={`diagnosis-option-${keyId}`}
+            className={`w-full text-left px-3 py-2 flex items-start gap-2 text-sm transition-colors cursor-pointer ${
+              i === selectedIndex ? "bg-accent" : "hover-elevate"
+            }`}
+            onMouseDown={(e) => {
+              e.preventDefault();
+              insertDiagnosis(dx);
+            }}
+            onMouseEnter={() => setSelectedIndex(i)}
+          >
+            <span className="font-mono text-[10px] font-semibold text-primary/80 mt-0.5 flex-shrink-0 min-w-[70px] max-w-[110px] break-words leading-tight">
+              {codeLabel}
+            </span>
+            <span className="text-xs text-foreground leading-snug flex-1 min-w-0">
+              {nameLabel}
+              {isPreset && (
+                <span className="ml-1.5 inline-flex items-center gap-0.5 align-middle text-[9px] font-semibold uppercase tracking-wide text-primary/80 bg-primary/10 rounded px-1 py-[1px]">
+                  <Sparkles className="w-2.5 h-2.5" />
+                  Custom
+                </span>
+              )}
+            </span>
+          </button>
+        );
+      })}
       <div className="sticky bottom-0 bg-popover border-t px-3 py-1.5">
         <p className="text-[10px] text-muted-foreground">
           <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">↑↓</kbd> navigate
