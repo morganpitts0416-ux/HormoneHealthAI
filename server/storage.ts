@@ -28,6 +28,23 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
+
+function snakeToCamel(key: string): string {
+  return key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());
+}
+
+function mapRow(row: Record<string, any>): Record<string, any> {
+  const result: Record<string, any> = {};
+  for (const [key, value] of Object.entries(row)) {
+    result[snakeToCamel(key)] = value;
+  }
+  return result;
+}
+
+function rawRows(result: any): Record<string, any>[] {
+  const rows = result.rows ?? result ?? [];
+  return Array.isArray(rows) ? rows.map(mapRow) : [];
+}
 export const db = drizzle(pool, { schema });
 
 export interface IStorage {
@@ -1444,87 +1461,119 @@ export class DbStorage implements IStorage {
     return true;
   }
 
-  // ─── Intake Forms ───────────────────────────────────────────────────────────
+  // ─── Intake Forms (raw SQL — production DB may lack clinic_id column) ───────
 
   async getIntakeForms(clinicianId: number): Promise<schema.IntakeForm[]> {
-    return db.select().from(schema.intakeForms)
-      .where(eq(schema.intakeForms.clinicianId, clinicianId))
-      .orderBy(desc(schema.intakeForms.updatedAt));
+    const result = await db.execute(sql`SELECT * FROM intake_forms WHERE clinician_id = ${clinicianId} ORDER BY updated_at DESC`);
+    return rawRows(result) as schema.IntakeForm[];
   }
 
   async getIntakeFormsByClinic(clinicId: number): Promise<schema.IntakeForm[]> {
-    return db.select().from(schema.intakeForms)
-      .where(eq(schema.intakeForms.clinicId, clinicId))
-      .orderBy(desc(schema.intakeForms.updatedAt));
+    try {
+      const result = await db.execute(sql`SELECT * FROM intake_forms WHERE clinic_id = ${clinicId} ORDER BY updated_at DESC`);
+      return rawRows(result) as schema.IntakeForm[];
+    } catch {
+      return [];
+    }
   }
 
   async getIntakeFormsByClinicOrClinician(clinicId: number | null, clinicianId: number): Promise<schema.IntakeForm[]> {
     if (clinicId) {
-      return db.select().from(schema.intakeForms)
-        .where(or(eq(schema.intakeForms.clinicId, clinicId), eq(schema.intakeForms.clinicianId, clinicianId)))
-        .orderBy(desc(schema.intakeForms.updatedAt));
+      try {
+        const result = await db.execute(sql`SELECT * FROM intake_forms WHERE clinic_id = ${clinicId} OR clinician_id = ${clinicianId} ORDER BY updated_at DESC`);
+        return rawRows(result) as schema.IntakeForm[];
+      } catch {
+        return this.getIntakeForms(clinicianId);
+      }
     }
     return this.getIntakeForms(clinicianId);
   }
 
   async getIntakeForm(id: number, clinicianId: number): Promise<schema.IntakeForm | undefined> {
-    const rows = await db.select().from(schema.intakeForms)
-      .where(and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId)))
-      .limit(1);
-    return rows[0];
+    const result = await db.execute(sql`SELECT * FROM intake_forms WHERE id = ${id} AND clinician_id = ${clinicianId} LIMIT 1`);
+    return rawRows(result)[0] as schema.IntakeForm | undefined;
   }
 
   async getIntakeFormByIdAndClinic(id: number, clinicId: number | null, clinicianId: number): Promise<schema.IntakeForm | undefined> {
     if (clinicId) {
-      const rows = await db.select().from(schema.intakeForms)
-        .where(and(eq(schema.intakeForms.id, id), or(eq(schema.intakeForms.clinicId, clinicId), eq(schema.intakeForms.clinicianId, clinicianId))))
-        .limit(1);
-      return rows[0];
+      try {
+        const result = await db.execute(sql`SELECT * FROM intake_forms WHERE id = ${id} AND (clinic_id = ${clinicId} OR clinician_id = ${clinicianId}) LIMIT 1`);
+        const row = rawRows(result)[0];
+        if (row) return row as schema.IntakeForm;
+      } catch { /* fall through to clinician-only */ }
     }
     return this.getIntakeForm(id, clinicianId);
   }
 
   async getIntakeFormById(id: number): Promise<schema.IntakeForm | undefined> {
-    const rows = await db.select().from(schema.intakeForms).where(eq(schema.intakeForms.id, id)).limit(1);
-    return rows[0];
+    const result = await db.execute(sql`SELECT * FROM intake_forms WHERE id = ${id} LIMIT 1`);
+    return rawRows(result)[0] as schema.IntakeForm | undefined;
   }
 
   async createIntakeForm(data: schema.InsertIntakeForm): Promise<schema.IntakeForm> {
-    const [row] = await db.insert(schema.intakeForms).values(data).returning();
-    return row;
+    try {
+      const result = await db.execute(sql`
+        INSERT INTO intake_forms (clinician_id, clinic_id, name, description, category, version, status,
+          allow_link, allow_embed, allow_tablet, is_public, requires_patient_signature, requires_staff_signature, expiration_type)
+        VALUES (${data.clinicianId}, ${data.clinicId ?? null}, ${data.name}, ${data.description ?? null}, ${data.category ?? 'custom'}, ${data.version ?? 1}, ${data.status ?? 'draft'},
+          ${data.allowLink ?? true}, ${data.allowEmbed ?? true}, ${data.allowTablet ?? true}, ${data.isPublic ?? false}, ${data.requiresPatientSignature ?? false}, ${data.requiresStaffSignature ?? false}, ${data.expirationType ?? 'none'})
+        RETURNING *`);
+      return rawRows(result)[0] as schema.IntakeForm;
+    } catch (err: any) {
+      if (err?.message?.includes('clinic_id')) {
+        const result = await db.execute(sql`
+          INSERT INTO intake_forms (clinician_id, name, description, category, version, status,
+            allow_link, allow_embed, allow_tablet, is_public, requires_patient_signature, requires_staff_signature, expiration_type)
+          VALUES (${data.clinicianId}, ${data.name}, ${data.description ?? null}, ${data.category ?? 'custom'}, ${data.version ?? 1}, ${data.status ?? 'draft'},
+            ${data.allowLink ?? true}, ${data.allowEmbed ?? true}, ${data.allowTablet ?? true}, ${data.isPublic ?? false}, ${data.requiresPatientSignature ?? false}, ${data.requiresStaffSignature ?? false}, ${data.expirationType ?? 'none'})
+          RETURNING *`);
+        return rawRows(result)[0] as schema.IntakeForm;
+      }
+      throw err;
+    }
   }
 
   async updateIntakeForm(id: number, clinicianId: number, data: Partial<schema.InsertIntakeForm>): Promise<schema.IntakeForm | undefined> {
-    const [row] = await db.update(schema.intakeForms)
-      .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId)))
-      .returning();
-    return row;
+    return this.updateIntakeFormByClinic(id, null, clinicianId, data);
   }
 
   async updateIntakeFormByClinic(id: number, clinicId: number | null, clinicianId: number, data: Partial<schema.InsertIntakeForm>): Promise<schema.IntakeForm | undefined> {
-    const condition = clinicId
-      ? and(eq(schema.intakeForms.id, id), or(eq(schema.intakeForms.clinicId, clinicId), eq(schema.intakeForms.clinicianId, clinicianId)))
-      : and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId));
-    const [row] = await db.update(schema.intakeForms)
-      .set({ ...data, updatedAt: new Date() })
-      .where(condition)
-      .returning();
-    return row;
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    const fieldMap: Record<string, string> = {
+      name: 'name', description: 'description', category: 'category', version: 'version',
+      status: 'status', brandingJson: 'branding_json', settingsJson: 'settings_json',
+      requiresPatientSignature: 'requires_patient_signature', requiresStaffSignature: 'requires_staff_signature',
+      allowLink: 'allow_link', allowEmbed: 'allow_embed', allowTablet: 'allow_tablet',
+      isPublic: 'is_public', expirationType: 'expiration_type', expirationIntervalDays: 'expiration_interval_days',
+      slug: 'slug',
+    };
+    for (const [key, col] of Object.entries(fieldMap)) {
+      if (key in data) {
+        let val = (data as any)[key];
+        if (typeof val === 'object' && val !== null && !Array.isArray(val) && !(val instanceof Date)) {
+          val = JSON.stringify(val);
+        }
+        setClauses.push(`${col} = $${values.length + 1}`);
+        values.push(val);
+      }
+    }
+    setClauses.push(`updated_at = NOW()`);
+    if (setClauses.length <= 1) return undefined;
+    const setStr = setClauses.join(', ');
+    values.push(id, clinicianId);
+    const queryStr = `UPDATE intake_forms SET ${setStr} WHERE id = $${values.length - 1} AND clinician_id = $${values.length} RETURNING *`;
+    const result = await pool.query(queryStr, values);
+    return result.rows.map(mapRow)[0] as schema.IntakeForm | undefined;
   }
 
   async deleteIntakeForm(id: number, clinicianId: number): Promise<boolean> {
-    const result = await db.delete(schema.intakeForms)
-      .where(and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId)));
-    return (result.rowCount ?? 0) > 0;
+    return this.deleteIntakeFormByClinic(id, null, clinicianId);
   }
 
   async deleteIntakeFormByClinic(id: number, clinicId: number | null, clinicianId: number): Promise<boolean> {
-    const condition = clinicId
-      ? and(eq(schema.intakeForms.id, id), or(eq(schema.intakeForms.clinicId, clinicId), eq(schema.intakeForms.clinicianId, clinicianId)))
-      : and(eq(schema.intakeForms.id, id), eq(schema.intakeForms.clinicianId, clinicianId));
-    const result = await db.delete(schema.intakeForms).where(condition);
-    return (result.rowCount ?? 0) > 0;
+    const result = await db.execute(sql`DELETE FROM intake_forms WHERE id = ${id} AND clinician_id = ${clinicianId}`);
+    return ((result as any).rowCount ?? 0) > 0;
   }
 
   // ─── Form Sections ──────────────────────────────────────────────────────────
@@ -1626,45 +1675,89 @@ export class DbStorage implements IStorage {
     return row;
   }
 
-  // ─── Form Submissions ───────────────────────────────────────────────────────
+  // ─── Form Submissions (raw SQL — production DB may lack clinic_id column) ──
 
   async getFormSubmissionsByPatient(patientId: number): Promise<schema.FormSubmission[]> {
-    return db.select().from(schema.formSubmissions)
-      .where(eq(schema.formSubmissions.patientId, patientId))
-      .orderBy(desc(schema.formSubmissions.submittedAt));
+    const result = await db.execute(sql`SELECT * FROM form_submissions WHERE patient_id = ${patientId} ORDER BY submitted_at DESC`);
+    return rawRows(result) as schema.FormSubmission[];
   }
 
   async getFormSubmissionsByClinician(clinicianId: number): Promise<schema.FormSubmission[]> {
-    return db.select().from(schema.formSubmissions)
-      .where(eq(schema.formSubmissions.clinicianId, clinicianId))
-      .orderBy(desc(schema.formSubmissions.submittedAt));
+    const result = await db.execute(sql`SELECT * FROM form_submissions WHERE clinician_id = ${clinicianId} ORDER BY submitted_at DESC`);
+    return rawRows(result) as schema.FormSubmission[];
   }
 
   async getFormSubmissionsByClinic(clinicId: number | null, clinicianId: number): Promise<schema.FormSubmission[]> {
     if (clinicId) {
-      return db.select().from(schema.formSubmissions)
-        .where(or(eq(schema.formSubmissions.clinicId, clinicId), eq(schema.formSubmissions.clinicianId, clinicianId)))
-        .orderBy(desc(schema.formSubmissions.submittedAt));
+      try {
+        const result = await db.execute(sql`SELECT * FROM form_submissions WHERE clinic_id = ${clinicId} OR clinician_id = ${clinicianId} ORDER BY submitted_at DESC`);
+        return rawRows(result) as schema.FormSubmission[];
+      } catch {
+        return this.getFormSubmissionsByClinician(clinicianId);
+      }
     }
     return this.getFormSubmissionsByClinician(clinicianId);
   }
 
   async getFormSubmission(id: number): Promise<schema.FormSubmission | undefined> {
-    const rows = await db.select().from(schema.formSubmissions).where(eq(schema.formSubmissions.id, id)).limit(1);
-    return rows[0];
+    const result = await db.execute(sql`SELECT * FROM form_submissions WHERE id = ${id} LIMIT 1`);
+    return rawRows(result)[0] as schema.FormSubmission | undefined;
   }
 
   async createFormSubmission(data: schema.InsertFormSubmission): Promise<schema.FormSubmission> {
-    const [row] = await db.insert(schema.formSubmissions).values(data).returning();
-    return row;
+    try {
+      const result = await db.execute(sql`
+        INSERT INTO form_submissions (form_id, form_version, clinician_id, clinic_id, patient_id, assignment_id,
+          submitted_by_patient, submitted_by_staff, submission_source, status, raw_submission_json,
+          normalized_submission_json, signature_json, review_status, sync_status, submitter_name, submitter_email)
+        VALUES (${data.formId}, ${data.formVersion ?? 1}, ${data.clinicianId ?? null}, ${data.clinicId ?? null}, ${data.patientId ?? null}, ${data.assignmentId ?? null},
+          ${data.submittedByPatient ?? false}, ${data.submittedByStaff ?? false}, ${data.submissionSource ?? 'link'}, ${data.status ?? 'submitted'}, ${JSON.stringify(data.rawSubmissionJson)},
+          ${data.normalizedSubmissionJson ? JSON.stringify(data.normalizedSubmissionJson) : null}, ${data.signatureJson ? JSON.stringify(data.signatureJson) : null}, ${data.reviewStatus ?? 'pending'}, ${data.syncStatus ?? 'not_synced'}, ${data.submitterName ?? null}, ${data.submitterEmail ?? null})
+        RETURNING *`);
+      return rawRows(result)[0] as schema.FormSubmission;
+    } catch (err: any) {
+      if (err?.message?.includes('clinic_id')) {
+        const result = await db.execute(sql`
+          INSERT INTO form_submissions (form_id, form_version, clinician_id, patient_id, assignment_id,
+            submitted_by_patient, submitted_by_staff, submission_source, status, raw_submission_json,
+            normalized_submission_json, signature_json, review_status, sync_status, submitter_name, submitter_email)
+          VALUES (${data.formId}, ${data.formVersion ?? 1}, ${data.clinicianId ?? null}, ${data.patientId ?? null}, ${data.assignmentId ?? null},
+            ${data.submittedByPatient ?? false}, ${data.submittedByStaff ?? false}, ${data.submissionSource ?? 'link'}, ${data.status ?? 'submitted'}, ${JSON.stringify(data.rawSubmissionJson)},
+            ${data.normalizedSubmissionJson ? JSON.stringify(data.normalizedSubmissionJson) : null}, ${data.signatureJson ? JSON.stringify(data.signatureJson) : null}, ${data.reviewStatus ?? 'pending'}, ${data.syncStatus ?? 'not_synced'}, ${data.submitterName ?? null}, ${data.submitterEmail ?? null})
+          RETURNING *`);
+        return rawRows(result)[0] as schema.FormSubmission;
+      }
+      throw err;
+    }
   }
 
   async updateFormSubmission(id: number, data: Partial<schema.InsertFormSubmission>): Promise<schema.FormSubmission | undefined> {
-    const [row] = await db.update(schema.formSubmissions)
-      .set({ ...data, updatedAt: new Date() })
-      .where(eq(schema.formSubmissions.id, id))
-      .returning();
-    return row;
+    const fieldMap: Record<string, string> = {
+      formId: 'form_id', formVersion: 'form_version', clinicianId: 'clinician_id',
+      patientId: 'patient_id', assignmentId: 'assignment_id', submittedByPatient: 'submitted_by_patient',
+      submittedByStaff: 'submitted_by_staff', submissionSource: 'submission_source', status: 'status',
+      rawSubmissionJson: 'raw_submission_json', normalizedSubmissionJson: 'normalized_submission_json',
+      signatureJson: 'signature_json', reviewStatus: 'review_status', syncStatus: 'sync_status',
+      syncSummaryJson: 'sync_summary_json', submitterName: 'submitter_name', submitterEmail: 'submitter_email',
+    };
+    const setClauses: string[] = [];
+    const values: any[] = [];
+    for (const [key, col] of Object.entries(fieldMap)) {
+      if (key in data) {
+        let val = (data as any)[key];
+        if (typeof val === 'object' && val !== null && !Array.isArray(val) && !(val instanceof Date)) {
+          val = JSON.stringify(val);
+        }
+        setClauses.push(`${col} = $${values.length + 1}`);
+        values.push(val);
+      }
+    }
+    setClauses.push('updated_at = NOW()');
+    if (setClauses.length <= 1) return undefined;
+    values.push(id);
+    const queryStr = `UPDATE form_submissions SET ${setClauses.join(', ')} WHERE id = $${values.length} RETURNING *`;
+    const result = await pool.query(queryStr, values);
+    return result.rows.map(mapRow)[0] as schema.FormSubmission | undefined;
   }
 
   // ─── Form Sync Events ───────────────────────────────────────────────────────
