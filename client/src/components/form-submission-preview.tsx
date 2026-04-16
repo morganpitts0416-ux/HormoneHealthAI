@@ -33,6 +33,7 @@ interface SubmissionField {
   sectionId: number | null;
   orderIndex: number;
   layoutJson?: { columnWidth?: string } | null;
+  optionsJson?: any;
 }
 
 interface SubmissionSection {
@@ -292,7 +293,26 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
       const field = row.fields[i];
       const value = data[field.fieldKey];
       let rawDisplay: string;
-      if (field.fieldType === "family_history_chart" && typeof value === "object" && !Array.isArray(value)) {
+      if (field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) {
+        const cfg = field.optionsJson as { rows: any[]; columns: any[] };
+        const rows = Array.isArray(cfg.rows) ? cfg.rows : [];
+        const cols = Array.isArray(cfg.columns) ? cfg.columns : [];
+        const mv = (typeof value === "object" && value !== null && !Array.isArray(value)) ? value as Record<string, any> : {};
+        const lines: string[] = [];
+        for (const r of rows) {
+          const parts: string[] = [];
+          for (const c of cols) {
+            const v = mv?.[r.id]?.[c.id];
+            if (c.fieldType === "checkbox" || c.fieldType === "radio") {
+              if (v) parts.push(c.header || "Yes");
+            } else if (v !== undefined && v !== null && String(v).trim()) {
+              parts.push(`${c.header}: ${v}`);
+            }
+          }
+          if (parts.length) lines.push(`${r.label}: ${parts.join(", ")}`);
+        }
+        rawDisplay = lines.length ? lines.join("\n") : "None reported";
+      } else if (field.fieldType === "family_history_chart" && typeof value === "object" && !Array.isArray(value)) {
         rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "None reported";
       } else if (Array.isArray(value)) {
         rawDisplay = value.filter(Boolean).join("\n");
@@ -397,6 +417,55 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
   doc.save(fileName);
 }
 
+function MatrixReadOnly({ field, value }: { field: SubmissionField; value: any }) {
+  const cfg = (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
+    ? field.optionsJson as { rows: any[]; columns: any[] }
+    : { rows: [], columns: [] };
+  const rows = Array.isArray(cfg.rows) ? cfg.rows : [];
+  const cols = Array.isArray(cfg.columns) ? cfg.columns : [];
+  const matrixVal = (typeof value === "object" && value !== null && !Array.isArray(value))
+    ? value as Record<string, Record<string, any>>
+    : {};
+  if (rows.length === 0 || cols.length === 0) {
+    return <p className="text-xs text-muted-foreground italic mt-1">No matrix configured</p>;
+  }
+  return (
+    <div className="border rounded-md overflow-x-auto mt-1" style={{ borderColor: "#e0dccf" }}>
+      <table className="w-full text-sm">
+        <thead>
+          <tr style={{ backgroundColor: "#f0ece0" }}>
+            <th className="px-2 py-1 text-left text-[11px] font-semibold border-b" style={{ color: "#2e3a20", borderColor: "#e0dccf" }}>{field.label}</th>
+            {cols.map((c: any) => (
+              <th key={c.id} className="px-2 py-1 text-center text-[11px] font-semibold border-b border-l" style={{ color: "#2e3a20", borderColor: "#e0dccf" }}>{c.header}</th>
+            ))}
+          </tr>
+        </thead>
+        <tbody>
+          {rows.map((r: any) => (
+            <tr key={r.id} className="border-b last:border-b-0" style={{ borderColor: "#eee8d8" }}>
+              <td className="px-2 py-1 text-xs font-medium" style={{ color: "#1c2414" }}>{r.label}</td>
+              {cols.map((c: any) => {
+                const cellVal = matrixVal?.[r.id]?.[c.id];
+                return (
+                  <td key={c.id} className="px-2 py-1 border-l text-center align-middle text-xs" style={{ color: "#1c2414", borderColor: "#eee8d8" }}>
+                    {c.fieldType === "checkbox" || c.fieldType === "radio" ? (
+                      <span className={`inline-flex items-center justify-center h-3.5 w-3.5 border ${c.fieldType === "radio" ? "rounded-full" : "rounded-sm"}`} style={{ borderColor: "#5a7040", backgroundColor: cellVal ? "#5a7040" : "transparent" }}>
+                        {cellVal && <span className="text-white text-[8px] leading-none">✓</span>}
+                      </span>
+                    ) : (
+                      <span className="break-words">{cellVal ? String(cellVal) : ""}</span>
+                    )}
+                  </td>
+                );
+              })}
+            </tr>
+          ))}
+        </tbody>
+      </table>
+    </div>
+  );
+}
+
 function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: Record<string, any> }) {
   const rows = buildFieldRows(fields, data);
 
@@ -411,7 +480,10 @@ function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: 
             const value = data[field.fieldKey];
             const isFamChart = field.fieldType === "family_history_chart" && typeof value === "object" && !Array.isArray(value);
             const isList = (field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && Array.isArray(value);
-            const displayValue = isFamChart
+            const isMatrix = field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson);
+            const displayValue = isMatrix
+              ? ""
+              : isFamChart
               ? Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ")
               : isList
                 ? value.filter(Boolean).join("; ")
@@ -432,7 +504,9 @@ function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: 
                 <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#5a7040" }}>
                   {field.label}
                 </p>
-                {isList ? (
+                {isMatrix ? (
+                  <MatrixReadOnly field={field} value={value} />
+                ) : isList ? (
                   <ul className="text-sm mt-0.5 space-y-0.5" style={{ color: "#1c2414" }}>
                     {(value as string[]).filter(Boolean).map((item: string, ii: number) => (
                       <li key={ii} className="flex items-start gap-1.5">

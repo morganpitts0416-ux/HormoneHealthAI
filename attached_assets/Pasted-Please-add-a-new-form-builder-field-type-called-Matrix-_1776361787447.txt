@@ -1,0 +1,220 @@
+Please add a new form-builder field type called **Matrix**.
+
+This should be a fully configurable, reusable matrix field for intake forms and medical questionnaires — not just a static table or repeatable group.
+
+---
+
+## ✅ Matrix Field — Core Functionality
+
+When a staff member builds a form, they should be able to add a field type called **Matrix**.
+
+Once selected, they should be able to configure:
+
+### 1. Matrix Title / Field Label
+
+* Example: `Family History`
+
+### 2. Number of Rows
+
+* Builder can dynamically add/remove rows
+
+### 3. Number of Columns
+
+* Builder can dynamically add/remove columns
+
+### 4. Column Headers
+
+* Builder can name each column
+* Example: `YES`, `NO`, `Relationship`
+
+### 5. Row Labels
+
+* Builder can name each row
+* Example:
+
+  * Bleeding Disorder
+  * Blood Clots
+  * Cancer - Breast
+  * Cancer - Cervical
+  * Cancer - Ovarian
+  * Diabetes
+  * Stroke
+
+### 6. Column Field Type (Critical Feature)
+
+Each column must allow the builder to select a field type:
+
+Supported types:
+
+* Checkbox
+* Radio (single select per row if needed)
+* Text input
+* Textarea
+* Number input
+* Dropdown
+* Date
+
+👉 Each column can have a **different field type**
+
+---
+
+## ✅ Structure Rules (Important)
+
+This is a true 2D input structure:
+
+* **Top row = column headers**
+* **First column = row labels**
+* **Remaining cells = user inputs**
+
+This is NOT:
+
+* a repeating section
+* a simple table
+* a grouped list
+
+---
+
+## ✅ Example Configuration (Family History)
+
+* Column 1: Row labels (conditions)
+* Column 2: `YES` → Checkbox
+* Column 3: `NO` → Checkbox
+* Column 4: `Relationship` → Text input
+
+Each row allows:
+
+* checkbox selection for YES/NO
+* free text for relationship
+
+---
+
+## ✅ Form Builder UI Requirements
+
+In the builder interface, user must be able to:
+
+* Set matrix title
+* Add/remove rows
+* Add/remove columns
+* Rename row labels
+* Rename column headers
+* Select field type per column
+* Set placeholders (optional)
+* Mark columns required (optional)
+* Reorder rows
+* Reorder columns
+
+---
+
+## ✅ Patient Input View
+
+When the patient fills out the form:
+
+* Matrix displays as a clean table/grid
+* Row labels on the left
+* Column headers on top
+* Each cell renders the correct input type
+* Easy to tap/select on mobile
+
+---
+
+## ✅ Completed Form / Chart View (CRITICAL)
+
+After submission, the Matrix must render as a **read-only chart-style table** that mirrors the original layout.
+
+### Must include:
+
+* Matrix title
+* Same row labels
+* Same column headers
+* Checked/unchecked boxes correctly displayed
+* Text inputs shown in correct cells
+
+### Checkbox behavior:
+
+* Checked = visible checked box
+* Unchecked = empty box
+
+### Text behavior:
+
+* Show entered text in correct row/column cell
+
+---
+
+## 🚫 Do NOT render completed data as:
+
+* raw JSON
+* paragraph summaries
+* separated fields
+* broken stacked mobile view
+
+👉 It must remain a **structured table for clinical review**
+
+---
+
+## ✅ Use Cases (Important)
+
+This should support:
+
+* Family history
+* Review of systems (ROS)
+* Past medical history (PMH)
+* Surgical history
+* Symptom tracking
+* Screening questionnaires
+* Consent acknowledgment tables
+
+---
+
+## ✅ Data Structure
+
+Store configuration separately from responses.
+
+### Example Field Definition:
+
+```json
+{
+  "fieldType": "matrix",
+  "label": "Family History",
+  "rows": [
+    {"id": "r1", "label": "Bleeding Disorder"},
+    {"id": "r2", "label": "Blood Clots"}
+  ],
+  "columns": [
+    {"id": "c1", "header": "YES", "fieldType": "checkbox"},
+    {"id": "c2", "header": "NO", "fieldType": "checkbox"},
+    {"id": "c3", "header": "Relationship", "fieldType": "text"}
+  ]
+}
+```
+
+### Example Response:
+
+```json
+{
+  "r1": {"c1": true, "c2": false, "c3": "Mother"},
+  "r2": {"c1": false, "c2": true, "c3": ""}
+}
+```
+
+---
+
+## ✅ Rendering Requirements
+
+Matrix must render properly in:
+
+* Form builder
+* Patient intake form
+* Completed chart view
+* PDF/export/print view
+
+---
+
+## 🎯 Final Requirement
+
+This must be implemented as a **first-class field type in the schema and UI**, not a one-off custom component.
+
+The goal is to allow clinics to build structured, clinical-grade intake tables that are:
+
+* easy to configure
+* easy for patients to complete
+* easy for providers to review in chart format

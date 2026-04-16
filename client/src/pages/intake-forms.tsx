@@ -21,7 +21,7 @@ import {
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
   Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft,
-  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal
+  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -107,7 +107,34 @@ const FIELD_TYPES = [
   { value: "surgical_history_list", label: "Surgical History List" },
   { value: "family_history_chart", label: "Family History Chart" },
   { value: "symptom_checklist", label: "Symptom Checklist" },
+  { value: "matrix", label: "Matrix / Grid Table" },
 ];
+
+const MATRIX_COLUMN_TYPES = [
+  { value: "checkbox", label: "Check Box" },
+  { value: "radio", label: "Radio (single per row)" },
+  { value: "text", label: "Text" },
+  { value: "textarea", label: "Long Text" },
+  { value: "number", label: "Number" },
+  { value: "date", label: "Date" },
+  { value: "dropdown", label: "Dropdown" },
+];
+
+function defaultMatrixConfig() {
+  const uid = () => Math.random().toString(36).slice(2, 8);
+  return {
+    rows: [
+      { id: uid(), label: "Row 1" },
+      { id: uid(), label: "Row 2" },
+      { id: uid(), label: "Row 3" },
+    ],
+    columns: [
+      { id: uid(), header: "YES", fieldType: "checkbox", placeholder: "" },
+      { id: uid(), header: "NO", fieldType: "checkbox", placeholder: "" },
+      { id: uid(), header: "Notes", fieldType: "text", placeholder: "" },
+    ],
+  };
+}
 
 const SYNC_DOMAINS = [
   { value: "none", label: "Do not sync" },
@@ -481,6 +508,7 @@ const FIELD_TYPE_ICONS: Record<string, React.ElementType> = {
   paragraph: AlignJustify,
   medication_list: Pill,
   symptom_checklist: Activity,
+  matrix: ListChecks,
 };
 
 function getFieldTypeIcon(type: string) {
@@ -702,6 +730,44 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
             )) : <span className="text-xs text-muted-foreground italic">No symptom items defined</span>}
           </div>
         );
+      case "matrix": {
+        const cfg = (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
+          ? field.optionsJson as { rows: any[]; columns: any[] }
+          : { rows: [], columns: [] };
+        const rows = Array.isArray(cfg.rows) ? cfg.rows : [];
+        const cols = Array.isArray(cfg.columns) ? cfg.columns : [];
+        if (rows.length === 0 || cols.length === 0) {
+          return <span className="text-xs text-muted-foreground italic">Matrix has no rows or columns</span>;
+        }
+        return (
+          <div className="border rounded-md overflow-x-auto text-sm">
+            <table className="w-full">
+              <thead>
+                <tr className="bg-muted/40 text-xs">
+                  <th className="px-2 py-1.5 text-left font-medium border-b w-[180px]">{field.label}</th>
+                  {cols.map(c => (
+                    <th key={c.id} className="px-2 py-1.5 text-center font-medium border-b border-l">{c.header || "Column"}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map(r => (
+                  <tr key={r.id} className="border-b last:border-b-0">
+                    <td className="px-2 py-1.5 text-xs font-medium bg-muted/20">{r.label}</td>
+                    {cols.map(c => (
+                      <td key={c.id} className="px-2 py-1.5 text-center border-l text-xs text-muted-foreground">
+                        {c.fieldType === "checkbox" || c.fieldType === "radio"
+                          ? <span className={`inline-block h-3.5 w-3.5 border border-border ${c.fieldType === "radio" ? "rounded-full" : "rounded-sm"}`} />
+                          : <span className="italic">{c.fieldType}</span>}
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        );
+      }
       default:
         return <Input disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" />;
     }
@@ -1165,10 +1231,15 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
                 <div className="p-3 space-y-3 mb-12 md:mb-0">
                   <FieldTypePalette
                     onAdd={(type) => {
-                      addFieldMutation.mutate({
+                      const payload: any = {
                         fieldType: type,
                         label: FIELD_TYPES.find(t => t.value === type)?.label ?? "New Field",
-                      });
+                      };
+                      if (type === "matrix") {
+                        payload.label = "Matrix";
+                        payload.optionsJson = defaultMatrixConfig();
+                      }
+                      addFieldMutation.mutate(payload);
                       setShowFieldPalette(false);
                       setMobilePanel("preview");
                     }}
@@ -1337,6 +1408,48 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
   const hasOptions = ["single_choice", "multi_choice", "dropdown", "symptom_checklist"].includes(local.fieldType);
   const isScale = local.fieldType === "scale";
   const isDecorative = ["heading", "paragraph"].includes(local.fieldType);
+  const isMatrix = local.fieldType === "matrix";
+
+  const initialMatrix = (field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
+    ? field.optionsJson as { rows: any[]; columns: any[] }
+    : defaultMatrixConfig();
+  const [matrixRows, setMatrixRows] = useState<{ id: string; label: string }[]>(
+    Array.isArray(initialMatrix.rows) ? initialMatrix.rows : []
+  );
+  const [matrixCols, setMatrixCols] = useState<{ id: string; header: string; fieldType: string; placeholder?: string }[]>(
+    Array.isArray(initialMatrix.columns) ? initialMatrix.columns : []
+  );
+
+  useEffect(() => {
+    if (field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) {
+      const cfg = field.optionsJson as any;
+      setMatrixRows(Array.isArray(cfg.rows) ? cfg.rows : []);
+      setMatrixCols(Array.isArray(cfg.columns) ? cfg.columns : []);
+    }
+  }, [field.id]);
+
+  const muid = () => Math.random().toString(36).slice(2, 8);
+  const addMatrixRow = () => setMatrixRows(prev => [...prev, { id: muid(), label: `Row ${prev.length + 1}` }]);
+  const removeMatrixRow = (id: string) => setMatrixRows(prev => prev.filter(r => r.id !== id));
+  const updateMatrixRow = (id: string, label: string) => setMatrixRows(prev => prev.map(r => r.id === id ? { ...r, label } : r));
+  const moveRow = (idx: number, dir: -1 | 1) => setMatrixRows(prev => {
+    const next = [...prev];
+    const ni = idx + dir;
+    if (ni < 0 || ni >= next.length) return prev;
+    [next[idx], next[ni]] = [next[ni], next[idx]];
+    return next;
+  });
+  const addMatrixCol = () => setMatrixCols(prev => [...prev, { id: muid(), header: `Column ${prev.length + 1}`, fieldType: "checkbox", placeholder: "" }]);
+  const removeMatrixCol = (id: string) => setMatrixCols(prev => prev.filter(c => c.id !== id));
+  const updateMatrixCol = (id: string, patch: Partial<{ header: string; fieldType: string; placeholder: string }>) =>
+    setMatrixCols(prev => prev.map(c => c.id === id ? { ...c, ...patch } : c));
+  const moveCol = (idx: number, dir: -1 | 1) => setMatrixCols(prev => {
+    const next = [...prev];
+    const ni = idx + dir;
+    if (ni < 0 || ni >= next.length) return prev;
+    [next[idx], next[ni]] = [next[ni], next[idx]];
+    return next;
+  });
 
   const handleSave = () => {
     const data: any = {
@@ -1359,6 +1472,9 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
         step: 1,
         labels: { low: scaleLowLabel || undefined, high: scaleHighLabel || undefined },
       };
+    }
+    if (isMatrix) {
+      data.optionsJson = { rows: matrixRows, columns: matrixCols };
     }
     if (!isSmart) {
       if (syncDomain && syncDomain !== "none") {
@@ -1493,6 +1609,98 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
               <div className="flex-1 space-y-0.5">
                 <span className="text-[10px] text-muted-foreground">High Label</span>
                 <Input value={scaleHighLabel} onChange={e => setScaleHighLabel(e.target.value)} className="text-xs" placeholder="e.g. Excellent" data-testid="input-scale-high" />
+              </div>
+            </div>
+          </div>
+        )}
+
+        {isMatrix && (
+          <div className="space-y-3 border-t pt-3">
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Columns</Label>
+                <Button type="button" size="sm" variant="outline" onClick={addMatrixCol} className="h-7 text-xs gap-1" data-testid="button-add-matrix-col">
+                  <Plus className="h-3 w-3" /> Column
+                </Button>
+              </div>
+              <div className="space-y-1.5">
+                {matrixCols.map((c, idx) => (
+                  <div key={c.id} className="border rounded-md p-2 space-y-1.5 bg-muted/20" data-testid={`matrix-col-${idx}`}>
+                    <div className="flex items-center gap-1">
+                      <Input
+                        value={c.header}
+                        onChange={e => updateMatrixCol(c.id, { header: e.target.value })}
+                        placeholder="Column header"
+                        className="text-xs h-7 flex-1"
+                        data-testid={`input-matrix-col-header-${idx}`}
+                      />
+                      <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => moveCol(idx, -1)} disabled={idx === 0}>
+                        <ChevronUp className="h-3 w-3" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => moveCol(idx, 1)} disabled={idx === matrixCols.length - 1}>
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                      <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeMatrixCol(c.id)} data-testid={`button-remove-matrix-col-${idx}`}>
+                        <Trash2 className="h-3 w-3" />
+                      </Button>
+                    </div>
+                    <div className="flex items-center gap-1">
+                      <Select value={c.fieldType} onValueChange={v => updateMatrixCol(c.id, { fieldType: v })}>
+                        <SelectTrigger className="text-xs h-7 flex-1" data-testid={`select-matrix-col-type-${idx}`}>
+                          <SelectValue />
+                        </SelectTrigger>
+                        <SelectContent>
+                          {MATRIX_COLUMN_TYPES.map(t => <SelectItem key={t.value} value={t.value}>{t.label}</SelectItem>)}
+                        </SelectContent>
+                      </Select>
+                    </div>
+                    {(c.fieldType === "text" || c.fieldType === "textarea" || c.fieldType === "number") && (
+                      <Input
+                        value={c.placeholder ?? ""}
+                        onChange={e => updateMatrixCol(c.id, { placeholder: e.target.value })}
+                        placeholder="Placeholder (optional)"
+                        className="text-xs h-7"
+                      />
+                    )}
+                  </div>
+                ))}
+                {matrixCols.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground italic">No columns defined.</p>
+                )}
+              </div>
+            </div>
+
+            <div className="space-y-2">
+              <div className="flex items-center justify-between">
+                <Label className="text-xs font-semibold">Rows</Label>
+                <Button type="button" size="sm" variant="outline" onClick={addMatrixRow} className="h-7 text-xs gap-1" data-testid="button-add-matrix-row">
+                  <Plus className="h-3 w-3" /> Row
+                </Button>
+              </div>
+              <div className="space-y-1">
+                {matrixRows.map((r, idx) => (
+                  <div key={r.id} className="flex items-center gap-1" data-testid={`matrix-row-${idx}`}>
+                    <Input
+                      value={r.label}
+                      onChange={e => updateMatrixRow(r.id, e.target.value)}
+                      placeholder="Row label"
+                      className="text-xs h-7 flex-1"
+                      data-testid={`input-matrix-row-${idx}`}
+                    />
+                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => moveRow(idx, -1)} disabled={idx === 0}>
+                      <ChevronUp className="h-3 w-3" />
+                    </Button>
+                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7" onClick={() => moveRow(idx, 1)} disabled={idx === matrixRows.length - 1}>
+                      <ChevronDown className="h-3 w-3" />
+                    </Button>
+                    <Button type="button" size="icon" variant="ghost" className="h-7 w-7 text-destructive" onClick={() => removeMatrixRow(r.id)} data-testid={`button-remove-matrix-row-${idx}`}>
+                      <Trash2 className="h-3 w-3" />
+                    </Button>
+                  </div>
+                ))}
+                {matrixRows.length === 0 && (
+                  <p className="text-[11px] text-muted-foreground italic">No rows defined.</p>
+                )}
               </div>
             </div>
           </div>

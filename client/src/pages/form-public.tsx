@@ -108,9 +108,14 @@ export default function FormPublicPage() {
       if (!field.isRequired) continue;
       if (["heading", "paragraph"].includes(field.fieldType)) continue;
       const val = responses[field.fieldKey];
+      const isMatrixEmpty = field.fieldType === "matrix" && (
+        !val || typeof val !== "object" || Array.isArray(val) ||
+        Object.values(val).every((row: any) => !row || typeof row !== "object" || Object.values(row).every((v: any) => v === undefined || v === null || v === false || (typeof v === "string" && !v.trim())))
+      );
       const isEmpty = val === undefined || val === null || val === "" ||
         (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) ||
-        (field.fieldType === "family_history_chart" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim()));
+        (field.fieldType === "family_history_chart" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim())) ||
+        isMatrixEmpty;
       if (isEmpty) {
         errors[field.fieldKey] = "This field is required";
       }
@@ -543,6 +548,74 @@ function FieldRenderer({ field, value, onChange, error }: {
             <Button size="sm" variant="outline" type="button" className="text-xs gap-1" onClick={() => onChange([...listItems, ""])}>
               <Plus className="h-3 w-3" /> {cfg.addLabel}
             </Button>
+          </div>
+        );
+      })()}
+
+      {field.fieldType === "matrix" && (() => {
+        const cfg = (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
+          ? field.optionsJson as { rows: any[]; columns: any[] }
+          : { rows: [], columns: [] };
+        const rows = Array.isArray(cfg.rows) ? cfg.rows : [];
+        const cols = Array.isArray(cfg.columns) ? cfg.columns : [];
+        const matrixVal = (typeof value === "object" && value !== null && !Array.isArray(value))
+          ? value as Record<string, Record<string, any>>
+          : {};
+        const setCell = (rid: string, cid: string, v: any) => {
+          onChange({ ...matrixVal, [rid]: { ...(matrixVal[rid] ?? {}), [cid]: v } });
+        };
+        const setRowCells = (rid: string, patch: Record<string, any>) => {
+          onChange({ ...matrixVal, [rid]: { ...(matrixVal[rid] ?? {}), ...patch } });
+        };
+        return (
+          <div className="border rounded-md overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-muted/40 border-b">
+                  <th className="px-3 py-2 text-left text-xs font-medium min-w-[160px]">{field.label}</th>
+                  {cols.map((c: any) => (
+                    <th key={c.id} className="px-3 py-2 text-center text-xs font-medium border-l">{c.header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r: any) => (
+                  <tr key={r.id} className="border-b last:border-b-0">
+                    <td className="px-3 py-1.5 text-sm font-medium bg-muted/20">{r.label}</td>
+                    {cols.map((c: any) => {
+                      const cellVal = matrixVal?.[r.id]?.[c.id];
+                      const testId = `matrix-${field.fieldKey}-${r.id}-${c.id}`;
+                      return (
+                        <td key={c.id} className="px-2 py-1 border-l text-center align-middle">
+                          {c.fieldType === "checkbox" ? (
+                            <input type="checkbox" className="h-4 w-4 cursor-pointer" checked={!!cellVal} onChange={e => setCell(r.id, c.id, e.target.checked)} data-testid={testId} />
+                          ) : c.fieldType === "radio" ? (
+                            (() => {
+                              const selectedColId = cols.find((cc: any) => cc.fieldType === "radio" && matrixVal?.[r.id]?.[cc.id] === true)?.id;
+                              return (
+                                <input type="radio" name={`matrix-${field.fieldKey}-${r.id}`} className="h-4 w-4 cursor-pointer" checked={selectedColId === c.id} onChange={() => {
+                                  const patch: Record<string, any> = {};
+                                  cols.forEach((cc: any) => { if (cc.fieldType === "radio") patch[cc.id] = cc.id === c.id; });
+                                  setRowCells(r.id, patch);
+                                }} data-testid={testId} />
+                              );
+                            })()
+                          ) : c.fieldType === "textarea" ? (
+                            <textarea value={cellVal ?? ""} rows={2} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value)} className="w-full text-sm border rounded px-1.5 py-1 resize-y" data-testid={testId} />
+                          ) : c.fieldType === "number" ? (
+                            <input type="number" value={cellVal ?? ""} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value)} className="w-full text-sm border rounded px-1.5 py-1" data-testid={testId} />
+                          ) : c.fieldType === "date" ? (
+                            <input type="date" value={cellVal ?? ""} onChange={e => setCell(r.id, c.id, e.target.value)} className="w-full text-sm border rounded px-1.5 py-1" data-testid={testId} />
+                          ) : (
+                            <input type="text" value={cellVal ?? ""} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value)} className="w-full text-sm border rounded px-1.5 py-1 text-left" data-testid={testId} />
+                          )}
+                        </td>
+                      );
+                    })}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
           </div>
         );
       })()}

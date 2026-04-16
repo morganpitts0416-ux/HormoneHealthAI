@@ -318,6 +318,59 @@ function PortalFormField({ field, value, onChange }: {
         </div>
       );
     }
+    case "matrix": {
+      const cfg = (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
+        ? field.optionsJson as { rows: any[]; columns: any[] }
+        : { rows: [], columns: [] };
+      const rows = Array.isArray(cfg.rows) ? cfg.rows : [];
+      const cols = Array.isArray(cfg.columns) ? cfg.columns : [];
+      const matrixVal = (typeof value === "object" && value !== null && !Array.isArray(value))
+        ? value as Record<string, Record<string, any>>
+        : {};
+      const setRowCells = (rid: string, patch: Record<string, any>) => {
+        onChange({ ...matrixVal, [rid]: { ...(matrixVal[rid] ?? {}), ...patch } });
+      };
+      return (
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
+            {field.label}{field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+          </label>
+          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          <div className="border border-gray-300 rounded-md overflow-x-auto">
+            <table className="w-full text-sm">
+              <thead>
+                <tr className="bg-gray-50 border-b border-gray-200">
+                  <th className="px-3 py-2 text-left text-xs font-medium min-w-[160px]" style={{ color: "#2e3a20" }}>{field.label}</th>
+                  {cols.map((c: any) => (
+                    <th key={c.id} className="px-3 py-2 text-center text-xs font-medium border-l border-gray-200" style={{ color: "#2e3a20" }}>{c.header}</th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {rows.map((r: any) => (
+                  <tr key={r.id} className="border-b border-gray-100 last:border-b-0">
+                    <td className="px-3 py-1.5 text-sm font-medium bg-gray-50/50" style={{ color: "#2e3a20" }}>{r.label}</td>
+                    {cols.map((c: any) => (
+                      <td key={c.id} className="px-2 py-1 border-l border-gray-100 text-center align-middle">
+                        <MatrixCellInput
+                          col={c}
+                          row={r}
+                          value={matrixVal?.[r.id]?.[c.id]}
+                          onChange={(v) => setRowCells(r.id, { [c.id]: v })}
+                          matrixVal={matrixVal}
+                          cols={cols}
+                          setRow={(patch) => setRowCells(r.id, patch)}
+                        />
+                      </td>
+                    ))}
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+          </div>
+        </div>
+      );
+    }
     case "family_history_chart": {
       const FAMILY_MEMBERS = [
         "Mother", "Father",
@@ -374,6 +427,97 @@ function PortalFormField({ field, value, onChange }: {
             data-testid={`portal-field-${field.id}`}
           />
         </div>
+      );
+  }
+}
+
+function MatrixCellInput({ col, row, value, onChange, matrixVal, cols, setRow }: {
+  col: { id: string; header: string; fieldType: string; placeholder?: string };
+  row: { id: string; label: string };
+  value: any;
+  onChange: (v: any) => void;
+  matrixVal: Record<string, Record<string, any>>;
+  cols: { id: string; header: string; fieldType: string }[];
+  setRow: (patch: Record<string, any>) => void;
+}) {
+  switch (col.fieldType) {
+    case "checkbox":
+      return (
+        <input
+          type="checkbox"
+          checked={!!value}
+          onChange={e => onChange(e.target.checked)}
+          className="h-4 w-4 cursor-pointer accent-[#2e3a20]"
+          data-testid={`portal-matrix-checkbox-${row.id}-${col.id}`}
+        />
+      );
+    case "radio": {
+      const selectedColId = cols.find(cc => cc.fieldType === "radio" && matrixVal?.[row.id]?.[cc.id] === true)?.id;
+      const isSelected = selectedColId === col.id;
+      return (
+        <input
+          type="radio"
+          name={`matrix-${row.id}`}
+          checked={isSelected}
+          onChange={() => {
+            const patch: Record<string, any> = {};
+            cols.forEach(cc => { if (cc.fieldType === "radio") patch[cc.id] = cc.id === col.id; });
+            setRow(patch);
+          }}
+          className="h-4 w-4 cursor-pointer accent-[#2e3a20]"
+          data-testid={`portal-matrix-radio-${row.id}-${col.id}`}
+        />
+      );
+    }
+    case "textarea":
+      return (
+        <textarea
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          placeholder={col.placeholder}
+          rows={2}
+          className="w-full text-sm border border-gray-200 rounded px-1.5 py-1 resize-y"
+        />
+      );
+    case "number":
+      return (
+        <input
+          type="number"
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          placeholder={col.placeholder}
+          className="w-full text-sm border border-gray-200 rounded px-1.5 py-1"
+        />
+      );
+    case "date":
+      return (
+        <input
+          type="date"
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          className="w-full text-sm border border-gray-200 rounded px-1.5 py-1"
+        />
+      );
+    case "dropdown":
+      return (
+        <input
+          type="text"
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          placeholder={col.placeholder}
+          className="w-full text-sm border border-gray-200 rounded px-1.5 py-1"
+        />
+      );
+    case "text":
+    default:
+      return (
+        <input
+          type="text"
+          value={value ?? ""}
+          onChange={e => onChange(e.target.value)}
+          placeholder={col.placeholder}
+          className="w-full text-sm border border-gray-200 rounded px-1.5 py-1 text-left"
+        />
       );
   }
 }
@@ -594,6 +738,7 @@ export default function PortalForms() {
       if (!val) return true;
       if (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) return true;
       if (f.fieldType === "family_history_chart" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim())) return true;
+      if (f.fieldType === "matrix" && (typeof val !== "object" || Array.isArray(val) || Object.values(val).every((row: any) => !row || typeof row !== "object" || Object.values(row).every((v: any) => v === undefined || v === null || v === false || (typeof v === "string" && !v.trim()))))) return true;
       return false;
     });
     if (missing.length > 0) {
