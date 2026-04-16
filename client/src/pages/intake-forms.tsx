@@ -589,9 +589,11 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
             )) : <span className="text-xs text-muted-foreground italic">No options defined</span>}
           </div>
         );
-      case "multi_choice":
+      case "multi_choice": {
+        const cols = (field.layoutJson as any)?.optionColumns ?? 1;
+        const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1";
         return (
-          <div className="space-y-2">
+          <div className={`grid gap-x-4 gap-y-2 ${colClass}`}>
             {options.length > 0 ? options.map((opt: string, i: number) => (
               <label key={i} className="flex items-center gap-2 text-sm">
                 <span className="h-4 w-4 rounded-md border border-border flex-shrink-0" />
@@ -600,6 +602,7 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
             )) : <span className="text-xs text-muted-foreground italic">No options defined</span>}
           </div>
         );
+      }
       case "dropdown":
         return (
           <div className="max-w-[280px]">
@@ -1296,6 +1299,9 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
   const [columnWidth, setColumnWidth] = useState<string>(
     (field.layoutJson as any)?.columnWidth ?? "full"
   );
+  const [optionColumns, setOptionColumns] = useState<number>(
+    (field.layoutJson as any)?.optionColumns ?? 1
+  );
   const [scaleMin, setScaleMin] = useState<number>(
     (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) ? (field.optionsJson as any).min ?? 1 : 1
   );
@@ -1314,6 +1320,7 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
     setOptionsText(Array.isArray(field.optionsJson) ? field.optionsJson.join("\n") : "");
     setSyncDomain((field.syncConfigJson as any)?.domain ?? "none");
     setColumnWidth((field.layoutJson as any)?.columnWidth ?? "full");
+    setOptionColumns((field.layoutJson as any)?.optionColumns ?? 1);
     const opts = field.optionsJson;
     if (opts && typeof opts === "object" && !Array.isArray(opts)) {
       setScaleMin((opts as any).min ?? 1);
@@ -1337,7 +1344,7 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
       helpText: local.helpText,
       placeholder: local.placeholder,
       isRequired: local.isRequired,
-      layoutJson: { columnWidth },
+      layoutJson: { columnWidth, optionColumns },
     };
     if (!isSmart) {
       data.fieldType = local.fieldType;
@@ -1526,6 +1533,30 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
             ))}
           </div>
         </div>
+
+        {["multi_choice", "single_choice", "symptom_checklist"].includes(local.fieldType) && (
+          <div className="space-y-1">
+            <Label className="text-xs">Layout Options in Columns</Label>
+            <div className="flex gap-1">
+              {[1, 2, 3, 4].map(n => (
+                <button
+                  key={n}
+                  type="button"
+                  onClick={() => setOptionColumns(n)}
+                  className={`flex-1 py-1 text-[11px] font-medium rounded-md border transition-colors ${
+                    optionColumns === n
+                      ? "bg-primary text-primary-foreground border-primary"
+                      : "bg-background text-muted-foreground border-border"
+                  }`}
+                  data-testid={`button-option-cols-${n}`}
+                >
+                  {n} {n === 1 ? "col" : "cols"}
+                </button>
+              ))}
+            </div>
+            <p className="text-[10px] text-muted-foreground">Patients can select all that apply.</p>
+          </div>
+        )}
 
         {!isSmart && (
           <>

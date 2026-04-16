@@ -42,6 +42,7 @@ interface SoapBlock {
   assessmentItems?: AssessmentItem[];
   assessmentSummary?: string;
   collapsed?: boolean;
+  listItems?: string[];
 }
 
 interface AssessmentItem {
@@ -470,6 +471,12 @@ function BlockEditor({
               onItemsChange={items => onUpdate({ assessmentItems: items })}
               onSummaryChange={s => onUpdate({ assessmentSummary: s })}
             />
+          ) : isListBlock(block.type) ? (
+            <ListItemsEditor
+              items={block.listItems ?? (block.content ? block.content.split("\n").map(s => s.trim()).filter(Boolean) : [])}
+              placeholder={getListItemPlaceholder(block.type)}
+              onChange={items => onUpdate({ listItems: items, content: items.join("\n") })}
+            />
           ) : supportsChart && block.mode === "chart" ? (
             <ChartModeEditor
               systems={block.type === "ros" ? ROS_SYSTEMS : PE_SYSTEMS}
@@ -496,6 +503,87 @@ function BlockEditor({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function isListBlock(type: BlockTypeId): boolean {
+  return type === "medical_history" || type === "surgical_history" || type === "current_medications" || type === "allergies";
+}
+
+function getListItemPlaceholder(type: BlockTypeId): string {
+  switch (type) {
+    case "medical_history": return "e.g., Hypertension";
+    case "surgical_history": return "e.g., Appendectomy 2018";
+    case "current_medications": return "e.g., Lisinopril 10mg daily";
+    case "allergies": return "e.g., Penicillin — rash";
+    default: return "Add item...";
+  }
+}
+
+function ListItemsEditor({ items, placeholder, onChange }: { items: string[]; placeholder: string; onChange: (items: string[]) => void }) {
+  const [draft, setDraft] = useState("");
+  const addItem = () => {
+    const v = draft.trim();
+    if (!v) return;
+    onChange([...items, v]);
+    setDraft("");
+  };
+  const updateItem = (i: number, v: string) => {
+    const next = [...items];
+    next[i] = v;
+    onChange(next);
+  };
+  const removeItem = (i: number) => onChange(items.filter((_, idx) => idx !== i));
+  return (
+    <div className="space-y-2">
+      {items.length > 0 && (
+        <div className="space-y-1.5">
+          {items.map((item, i) => (
+            <div key={i} className="flex items-center gap-2">
+              <Input
+                value={item}
+                onChange={e => updateItem(i, e.target.value)}
+                className="text-sm flex-1"
+                data-testid={`input-list-item-${i}`}
+              />
+              <Button
+                type="button"
+                size="icon"
+                variant="ghost"
+                onClick={() => removeItem(i)}
+                data-testid={`button-remove-list-item-${i}`}
+              >
+                <X className="w-4 h-4" />
+              </Button>
+            </div>
+          ))}
+        </div>
+      )}
+      <div className="flex items-center gap-2">
+        <Input
+          value={draft}
+          onChange={e => setDraft(e.target.value)}
+          onKeyDown={e => {
+            if (e.key === "Enter") {
+              e.preventDefault();
+              addItem();
+            }
+          }}
+          placeholder={placeholder}
+          className="text-sm flex-1"
+          data-testid="input-list-item-new"
+        />
+        <Button
+          type="button"
+          size="sm"
+          onClick={addItem}
+          disabled={!draft.trim()}
+          data-testid="button-add-list-item"
+        >
+          <Plus className="w-3.5 h-3.5 mr-1" /> Add
+        </Button>
+      </div>
     </div>
   );
 }
