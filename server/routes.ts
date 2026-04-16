@@ -8529,6 +8529,19 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // ── ICD-10 Diagnosis Search ──────────────────────────────────────────────
+  app.get("/api/diagnoses/search", requireAuth, async (req, res) => {
+    try {
+      const { searchDiagnoses } = await import("./icd10-diagnoses");
+      const q = (req.query.q as string) || "";
+      const results = searchDiagnoses(q, 15);
+      res.json(results);
+    } catch (err: any) {
+      console.error("[Diagnosis Search] Error:", err);
+      res.status(500).json({ message: "Failed to search diagnoses" });
+    }
+  });
+
   // ── Ask ClinIQ — AI Clinical Colleague Chat ─────────────────────────────
   app.post("/api/ai-chat", requireAuth, async (req, res) => {
     try {

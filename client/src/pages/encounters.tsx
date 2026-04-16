@@ -26,6 +26,7 @@ import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, Clinical
 import { useGlobalLoading } from "@/hooks/use-global-loading";
 import { exportSoapPdf } from "@/lib/soap-pdf-export";
 import { SoapNoteViewer, EvidenceCard } from "@/components/soap-note-viewer";
+import { useDiagnosisSearch } from "@/components/diagnosis-search";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -764,6 +765,7 @@ function EncounterEditor({
   // transcription updates can be prepended correctly without doubling text.
   const preRecordingTranscriptionRef = useRef<string>("");
   const isAutoSavingRef = useRef(false);
+  const soapTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [soap, setSoap] = useState<SoapNote>(initSoap(encounter?.soapNote));
   const [patientSummary, setPatientSummary] = useState<string>(encounter?.patientSummary ?? "");
   const [activeTab, setActiveTab] = useState<"details" | "transcript" | "soap" | "evidence" | "summary">(initialTranscription ? "transcript" : "details");
@@ -801,6 +803,13 @@ function EncounterEditor({
   const [soapSaved, setSoapSaved] = useState(() =>
     encRecsKey ? localStorage.getItem(encRecsKey) === "1" : false
   );
+
+  const soapNoteValue = soap.fullNote ?? legacySoapToText(soap);
+  const dxSearch = useDiagnosisSearch({
+    textareaRef: soapTextareaRef,
+    value: soapNoteValue,
+    onChange: (newValue: string) => setSoap({ fullNote: newValue }),
+  });
 
   // Signing state — reflects encounter.signedAt / signedBy from the DB, with local optimistic updates
   const [signedAtLocal, setSignedAtLocal] = useState<Date | string | null>(encounter?.signedAt ?? null);
@@ -3048,21 +3057,29 @@ function EncounterEditor({
                     )}
                   </div>
                 ) : (
-                  <Textarea
-                    value={soap.fullNote ?? legacySoapToText(soap)}
-                    onChange={e => setSoap({ fullNote: e.target.value })}
-                    rows={32}
-                    className="text-sm font-mono resize-y leading-relaxed"
-                    data-testid="soap-full-note"
-                    spellCheck
-                  />
+                  <div className="relative">
+                    <Textarea
+                      ref={soapTextareaRef}
+                      value={soapNoteValue}
+                      onChange={e => {
+                        setSoap({ fullNote: e.target.value });
+                        dxSearch.handleInput(e);
+                      }}
+                      onKeyDown={dxSearch.handleKeyDown}
+                      rows={32}
+                      className="text-sm font-mono resize-y leading-relaxed"
+                      data-testid="soap-full-note"
+                      spellCheck
+                    />
+                    {dxSearch.dropdown}
+                  </div>
                 )}
 
                 <p className="text-xs text-muted-foreground">
                   {isSigned
                     ? "This note is electronically signed and locked. Use Amend above to open it for editing."
                     : soapViewMode === "edit"
-                      ? "Editing raw note — save when ready. This is what will be copied and pasted into your EHR."
+                      ? "Editing raw note — save when ready. Type /dx to search and insert ICD-10 diagnoses."
                       : "Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline."}
                 </p>
               </div>
