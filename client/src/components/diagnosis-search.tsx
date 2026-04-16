@@ -61,8 +61,9 @@ export function useDiagnosisSearch({ textareaRef, value, onChange }: DiagnosisSe
   }, [value, slashDxStart, cursorPos, onChange, close, textareaRef]);
 
   const handleInput = useCallback((e: React.FormEvent<HTMLTextAreaElement> | React.ChangeEvent<HTMLTextAreaElement>) => {
-    const ta = e.currentTarget as HTMLTextAreaElement;
-    const pos = ta.selectionStart ?? 0;
+    const ta = (e.target || e.currentTarget) as HTMLTextAreaElement;
+    if (!ta || typeof ta.value !== "string") return;
+    const pos = ta.selectionStart ?? ta.value.length;
     const text = ta.value;
     setCursorPos(pos);
 

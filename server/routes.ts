@@ -4632,7 +4632,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
       // Build version snapshot for audit trail
       const existingVersions = (encounter.encounterVersions as any[] | null) ?? [];
-      const isAlreadySigned = !!encounter.signedAt;
+      const isAlreadySigned = !!encounter.signedAt || existingVersions.length > 0 || !!encounter.isAmended;
       const newVersion = {
         version: existingVersions.length + 1,
         soapNote: encounter.soapNote,

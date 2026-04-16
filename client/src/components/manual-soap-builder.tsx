@@ -650,23 +650,24 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   }, [showAddMenu]);
 
   const addBlock = (type: BlockTypeId) => {
-    const existing = blocks.find(b => b.type === type);
-    if (existing) {
-      toast({ title: "Block exists", description: `${BLOCK_TYPES.find(b => b.id === type)!.label} is already in the note.` });
-      setShowAddMenu(false);
-      return;
-    }
-    const newBlock: SoapBlock = {
-      uid: uid(),
-      type,
-      content: "",
-      mode: "freetext",
-    };
-    if (type === "assessment_plan") {
-      newBlock.assessmentItems = [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }];
-      newBlock.assessmentSummary = "";
-    }
-    setBlocks([...blocks, newBlock]);
+    setBlocks(prev => {
+      const existing = prev.find(b => b.type === type);
+      if (existing) {
+        toast({ title: "Block exists", description: `${BLOCK_TYPES.find(b => b.id === type)!.label} is already in the note.` });
+        return prev;
+      }
+      const newBlock: SoapBlock = {
+        uid: uid(),
+        type,
+        content: "",
+        mode: "freetext",
+      };
+      if (type === "assessment_plan") {
+        newBlock.assessmentItems = [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }];
+        newBlock.assessmentSummary = "";
+      }
+      return [...prev, newBlock];
+    });
     setShowAddMenu(false);
   };
 
@@ -830,7 +831,11 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
                           <button
                             key={bt.id}
                             className="w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs hover-elevate cursor-pointer"
-                            onClick={() => addBlock(bt.id)}
+                            onMouseDown={(e) => {
+                              e.preventDefault();
+                              e.stopPropagation();
+                              addBlock(bt.id);
+                            }}
                             data-testid={`add-block-${bt.id}`}
                           >
                             <BIcon className="w-3.5 h-3.5 text-muted-foreground" />
