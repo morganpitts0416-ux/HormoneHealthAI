@@ -1306,7 +1306,7 @@ CLINICAL RECOMMENDATIONS TO EXTRACT FROM:
 ${aiRecommendations}`;
 
       const completion = await client.chat.completions.create({
-        model: "gpt-5-mini",
+        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: "You are a clinical nutritionist. Extract and format dietary guidance from clinical recommendations into a clear, patient-friendly structure. Always respond with the exact format requested." },
           { role: "user", content: prompt },
@@ -2890,7 +2890,7 @@ Return ONLY valid JSON with this exact structure (no markdown, no extra text):
 Keep recipes simple enough for a home cook. Ingredients list should be 6-10 items. Instructions should be 4-6 clear steps.`;
 
       const completion = await client.chat.completions.create({
-        model: "gpt-5-mini",
+        model: "gpt-4o-mini",
         messages: [
           { role: "system", content: "You are a clinical nutritionist and creative home cook. You always respond with valid JSON only — no markdown, no extra text, no code fences." },
           { role: "user", content: prompt },
@@ -8657,7 +8657,7 @@ IMPORTANT:
       ];
 
       const completion = await openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: "gpt-4o-mini",
         messages: chatMessages,
         temperature: 0.4,
         max_tokens: 2000,
@@ -8671,7 +8671,7 @@ IMPORTANT:
       if (err.status === 429) {
         return res.status(429).json({ message: "AI rate limit reached. Please wait a moment and try again." });
       }
-      res.status(500).json({ message: "Failed to get AI response" });
+      res.status(500).json({ message: "Something went wrong reaching the AI service. Please try again in a moment." });
     }
   });
 

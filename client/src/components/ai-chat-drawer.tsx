@@ -87,17 +87,14 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         messages: newMessages,
         patientId: usePatient && patientContext ? patientContext.id : undefined,
       });
-      if (!res.ok) {
-        const data = await res.json();
-        throw new Error(data.message || "Failed to get response");
-      }
       return res.json();
     },
     onSuccess: (data: any) => {
       setMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
     },
     onError: (err: Error) => {
-      setMessages(prev => [...prev, { role: "assistant", content: `I apologize — I encountered an issue: ${err.message}. Please try again.` }]);
+      const cleanMsg = err.message?.includes("{") ? "Something went wrong reaching the AI service." : err.message;
+      setMessages(prev => [...prev, { role: "assistant", content: `I apologize — ${cleanMsg || "something went wrong"}. Please try again.` }]);
     },
   });
 
@@ -140,7 +137,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
               <Bot className="w-5 h-5 text-white flex-shrink-0" />
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-white truncate">Ask ClinIQ</h3>
-                <p className="text-xs text-white/70 truncate">Clinical AI Colleague</p>
+                <p className="text-xs text-white/70 truncate">Your Clinical Co-Pilot</p>
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -181,16 +178,34 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                 <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: "#f4f8f0" }}>
                   <Bot className="w-7 h-7" style={{ color: "#2e3a20" }} />
                 </div>
-                <div>
-                  <p className="text-sm font-medium text-foreground">Hey, colleague.</p>
+                <div className="space-y-2">
                   {patientContext && usePatient ? (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      I see you have <span className="font-medium text-foreground">{patientContext.name}</span> pulled up. I have their chart and labs loaded — ask me anything about their case, or we can discuss something else entirely.
-                    </p>
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Built on real-world protocols, optimized lab ranges, and clinical pattern recognition.
+                      </p>
+                      <p className="text-xs text-muted-foreground">
+                        I have <span className="font-medium text-foreground">{patientContext.name}</span>'s chart and labs loaded — ask me anything about their case, or we can discuss something else entirely.
+                      </p>
+                    </>
                   ) : (
-                    <p className="text-xs text-muted-foreground mt-1">
-                      I have the clinic protocols, optimized ranges, and clinical algorithms at the ready. Ask me about lab interpretation, clinical decision-making, protocols, or anything clinical.
-                    </p>
+                    <>
+                      <p className="text-sm text-muted-foreground">
+                        Built on real-world protocols, optimized lab ranges, and clinical pattern recognition.
+                      </p>
+                      <div className="text-left text-xs text-muted-foreground space-y-1">
+                        <p className="font-medium text-foreground text-xs">Use me to:</p>
+                        <ul className="space-y-0.5 ml-1">
+                          <li className="flex gap-1.5 items-start"><span className="text-muted-foreground/80">&#8226;</span> Interpret labs with context (not just "normal ranges")</li>
+                          <li className="flex gap-1.5 items-start"><span className="text-muted-foreground/80">&#8226;</span> Identify hormone & metabolic patterns</li>
+                          <li className="flex gap-1.5 items-start"><span className="text-muted-foreground/80">&#8226;</span> Pressure-test treatment plans</li>
+                          <li className="flex gap-1.5 items-start"><span className="text-muted-foreground/80">&#8226;</span> Think through complex patients</li>
+                        </ul>
+                      </div>
+                      <p className="text-xs text-muted-foreground italic">
+                        Ask anything — from quick confirmations to full case breakdowns.
+                      </p>
+                    </>
                   )}
                 </div>
                 <div className="flex flex-wrap justify-center gap-2">
