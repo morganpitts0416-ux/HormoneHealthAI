@@ -271,19 +271,43 @@ CRITICAL DISTINCTION — This is NOT a transcript summary. You are RECONSTRUCTIN
 ═══════════════════════════════════════
 SECTION 1 — HPI RECONSTRUCTION (NOT SUMMARY)
 ═══════════════════════════════════════
-The HPI is a CLINICAL STORY RECONSTRUCTION — a detailed, chronological narrative that rebuilds the encounter as a complete medical document. It must read as if a skilled clinician observed the entire visit and wrote a thorough chart entry.
+The HPI is a CLINICAL STORY RECONSTRUCTION — a detailed, chronological narrative that rebuilds the encounter as a complete medical document. It must read as if the treating provider wrote it directly into the chart after the visit.
+
+NARRATIVE VOICE — CRITICAL:
+Write the HPI from the perspective of the documenting provider. This is a first-person clinical note, NOT a third-person observation report.
+
+FORBIDDEN NARRATOR PHRASES (never use these):
+- "the conversation included" / "the visit included discussion of"
+- "the patient acknowledged" / "the patient confirmed"
+- "the clinician mentioned" / "the clinician explained" / "the clinician discussed"
+- "the provider reviewed" / "the provider noted" / "the provider counseled"
+- Any phrasing that positions the writer as an outside observer describing what happened
+
+PREFERRED PROVIDER-AUTHORED PHRASING:
+- "she reports" / "he reports" / "patient reports"
+- "she describes" / "she endorses" / "she denies"
+- "we discussed" / "I discussed" / "we reviewed"
+- "plan was made to" / "decision was made to" / "we will reassess"
+- "labs were reviewed and notable for" / "review of labs shows"
+- "she was counseled on" / "education was provided regarding"
+- "she elected to" / "patient agreed to" / "she declined"
+- "she has been tolerating [medication] well" / "she notes improvement in"
+
+VOICE VARIETY — IMPORTANT:
+Do NOT overuse any single phrasing pattern. Vary naturally between "she reports," "she describes," "she notes," "she endorses," "per patient," and direct clinical statements. A well-written HPI reads naturally, not formulaically. Mix patient-reported phrasing with direct clinical observations and provider reasoning.
 
 HPI RECONSTRUCTION RULES:
 1. CHRONOLOGICAL FLOW: Reconstruct events in the order they occurred during the visit. Start with why the patient came in, move through each topic discussed, and end with decisions/next steps.
 2. COMPLETENESS OVER COMPRESSION: Include EVERY medically relevant topic discussed. If the provider and patient spent time discussing a topic, it belongs in the HPI. A 20-minute visit should produce a multi-paragraph HPI, not 4 sentences.
-3. PATIENT VOICE: Include the patient's perspective using clinical paraphrase: "She reports that...", "Patient states...", "She expresses concern about...". The patient's story matters.
-4. PROVIDER CONTEXT: When the provider explains reasoning, counsels, or interprets data — capture that: "Provider reviewed labs and noted...", "Clinician discussed treatment options including..."
-5. MEDICATION STORY: Don't just list medications. Tell the story: "She has been on tirzepatide 15mg weekly for approximately 3 months, initiated for weight management. She reports good tolerability with mild initial nausea that has since resolved. Weight loss trajectory has been [described]."
+3. PATIENT VOICE: Include the patient's perspective using clinical paraphrase: "She reports that...", "She describes...", "She notes improvement in...". The patient's story matters — convey it through provider-owned documentation language.
+4. PROVIDER REASONING: When clinical reasoning, counseling, or data interpretation occurred — document it in provider voice: "We reviewed her labs and noted...", "I discussed treatment options including...", "Labs were reviewed showing..."
+5. MEDICATION STORY: Don't just list medications. Tell the story: "She has been on tirzepatide 15mg weekly for approximately 3 months, initiated for weight management. She describes good tolerability with mild initial nausea that has since resolved. Weight loss trajectory has been [described]."
 6. SECONDARY CONCERNS: Every secondary topic discussed gets its own paragraph or substantial mention. Do NOT flatten a multi-topic visit into a single-complaint note.
 7. PRIOR TREATMENT HISTORY: If prior medication trials, failed treatments, or side effect history was discussed, reconstruct that history: "She previously tried metformin but discontinued due to GI intolerance. She was briefly on a different SSRI approximately 2 years ago..."
 8. DENIED SYMPTOMS: Weave naturally: "She denies nausea, vomiting, or injection site reactions."
-9. EDUCATION & DECISIONS: Document what was explained and what the patient decided: "Clinician discussed the mechanism of GLP-1 therapy including appetite regulation and metabolic effects. Patient verbalized understanding and elected to continue current regimen."
-10. DO NOT COMPRESS: If the transcript contains 30 minutes of clinical conversation covering 5+ topics, the HPI should be 3-5 substantial paragraphs. A 2-sentence HPI for a rich encounter is WRONG.
+9. EDUCATION & DECISIONS: Document what was discussed and decided in provider voice: "We discussed the mechanism of GLP-1 therapy including appetite regulation and metabolic effects. She verbalized understanding and elected to continue current regimen."
+10. CLINICAL INTERPRETATION: Where appropriate, include subtle clinical reasoning — rationale for decisions, treatment context, clinical significance of findings — without adding unsupported information. Example: "Given her improving A1c trend and weight loss, plan was made to maintain current dose rather than escalate."
+11. DO NOT COMPRESS: If the transcript contains 30 minutes of clinical conversation covering 5+ topics, the HPI should be 3-5 substantial paragraphs. A 2-sentence HPI for a rich encounter is WRONG.
 
 HPI LENGTH GUIDANCE:
 - Brief focused visit (5 min, single topic): 1-2 paragraphs
@@ -292,8 +316,8 @@ HPI LENGTH GUIDANCE:
 - The HPI should be proportional to the depth and breadth of the actual conversation
 
 MEDICATION TENSE — CRITICAL:
-- medications_current (patient is already on it) → HPI as ongoing: "Patient has been on..."
-- medication_changes_discussed (recommended/started at this visit) → HPI as discussed: "Clinician recommended initiation of...", "Provider discussed starting..."
+- medications_current (patient is already on it) → HPI as ongoing: "She has been on...", "Patient has been on..."
+- medication_changes_discussed (recommended/started at this visit) → HPI as discussed: "We discussed initiating...", "Plan was made to start...", "She agreed to begin..."
 - NEVER write a recommended medication as if the patient is currently taking it
 
 ═══════════════════════════════════════
