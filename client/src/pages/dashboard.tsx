@@ -144,6 +144,16 @@ export default function Dashboard() {
     refetchInterval: 30 * 1000,
   });
 
+  const markReviewedMutation = useMutation({
+    mutationFn: async (submissionId: number) => {
+      const res = await apiRequest("PATCH", `/api/intake-forms/submissions/${submissionId}/review`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
+    },
+  });
+
   const unreadMessages = notifications?.unreadMessages ?? [];
   const pendingOrders = notifications?.pendingOrders ?? [];
   const totalNotifications = unreadMessages.length + pendingOrders.length + pendingSubmissions.length;
@@ -388,10 +398,10 @@ export default function Dashboard() {
               ) : (
                 <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
                   {pendingSubmissions.slice(0, 5).map((sub) => (
-                    <button
+                    <div
                       key={`sub-${sub.id}`}
                       data-testid={`notification-submission-${sub.id}`}
-                      className="w-full text-left px-4 py-3 flex items-center gap-3 transition-colors"
+                      className="w-full text-left px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer"
                       style={{ backgroundColor: "transparent" }}
                       onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f4f6ff")}
                       onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
@@ -413,10 +423,20 @@ export default function Dashboard() {
                       </div>
                       <div className="flex items-center gap-2 flex-shrink-0">
                         <span className="text-xs" style={{ color: "#a0a880" }}>{timeAgo(sub.submittedAt)}</span>
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: "#4a5568" }} />
-                        <ChevronRight className="w-4 h-4" style={{ color: "#c4b9a5" }} />
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7"
+                          data-testid={`button-dismiss-submission-${sub.id}`}
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            markReviewedMutation.mutate(sub.id);
+                          }}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
                       </div>
-                    </button>
+                    </div>
                   ))}
                 </div>
               )}

@@ -1118,6 +1118,10 @@ export default function PatientProfiles() {
   const [showEncounters, setShowEncounters] = useState(false);
   const [showForms, setShowForms] = useState(true);
   const [showAssignFormDialog, setShowAssignFormDialog] = useState(false);
+  const [showSendEmailDialog, setShowSendEmailDialog] = useState(false);
+  const [sendEmailFormId, setSendEmailFormId] = useState<number | null>(null);
+  const [sendEmailAddress, setSendEmailAddress] = useState("");
+  const [sendEmailName, setSendEmailName] = useState("");
   const [sendLinkFormId, setSendLinkFormId] = useState<number | null>(null);
   const [showManualSoap, setShowManualSoap] = useState(false);
   const [previewSubId, setPreviewSubId] = useState<number | null>(null);
@@ -1321,6 +1325,26 @@ export default function PatientProfiles() {
       toast({ title: "Form assigned to patient" });
     },
     onError: () => toast({ title: "Failed to assign form", variant: "destructive" }),
+  });
+
+  const sendFormToEmailMutation = useMutation({
+    mutationFn: async ({ formId, recipientEmail, recipientName }: { formId: number; recipientEmail: string; recipientName?: string }) => {
+      const res = await apiRequest("POST", "/api/forms/send-to-email", { formId, recipientEmail, recipientName });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      setShowSendEmailDialog(false);
+      setSendEmailAddress("");
+      setSendEmailName("");
+      setSendEmailFormId(null);
+      if (data.method === "email") {
+        toast({ title: "Form sent", description: `Email sent to ${data.formUrl ? "recipient" : "the provided address"}` });
+      } else if (data.formUrl) {
+        navigator.clipboard.writeText(data.formUrl);
+        toast({ title: "Link copied", description: data.note || "Form link copied to clipboard" });
+      }
+    },
+    onError: () => toast({ title: "Failed to send form", variant: "destructive" }),
   });
 
   const sendFormLinkMutation = useMutation({
@@ -2703,6 +2727,15 @@ export default function PatientProfiles() {
                       >
                         <Plus className="h-3 w-3" /> Assign Form
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs gap-1"
+                        onClick={() => setShowSendEmailDialog(true)}
+                        data-testid="button-send-form-email"
+                      >
+                        <Send className="h-3 w-3" /> Send to Email
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
@@ -2892,6 +2925,81 @@ export default function PatientProfiles() {
                       </div>
                     </ScrollArea>
                   </div>
+                </DialogContent>
+              </Dialog>
+
+              <Dialog open={showSendEmailDialog} onOpenChange={(v) => { if (!v) { setShowSendEmailDialog(false); setSendEmailFormId(null); setSendEmailAddress(""); setSendEmailName(""); } }}>
+                <DialogContent className="max-w-md" data-testid="dialog-send-form-email">
+                  <DialogHeader>
+                    <DialogTitle>Send Form to Email</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 py-2">
+                    <p className="text-sm text-muted-foreground">
+                      Send a form link to any email address. If the recipient is a new patient, their profile will be created automatically when they submit the form using smart fields.
+                    </p>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Form</label>
+                      <select
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        value={sendEmailFormId ?? ""}
+                        onChange={(e) => setSendEmailFormId(e.target.value ? parseInt(e.target.value) : null)}
+                        data-testid="select-send-email-form"
+                      >
+                        <option value="">Select a form...</option>
+                        {availableForms.filter((f: any) => f.status === "published").map((f: any) => (
+                          <option key={f.id} value={f.id}>{f.name}</option>
+                        ))}
+                      </select>
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Recipient Name (optional)</label>
+                      <input
+                        type="text"
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        placeholder="Jane Smith"
+                        value={sendEmailName}
+                        onChange={(e) => setSendEmailName(e.target.value)}
+                        data-testid="input-send-email-name"
+                      />
+                    </div>
+                    <div className="space-y-2">
+                      <label className="text-sm font-medium">Email Address</label>
+                      <input
+                        type="email"
+                        className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
+                        placeholder="patient@example.com"
+                        value={sendEmailAddress}
+                        onChange={(e) => setSendEmailAddress(e.target.value)}
+                        data-testid="input-send-email-address"
+                      />
+                    </div>
+                  </div>
+                  <DialogFooter>
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => { setShowSendEmailDialog(false); setSendEmailFormId(null); setSendEmailAddress(""); setSendEmailName(""); }}
+                    >
+                      Cancel
+                    </Button>
+                    <Button
+                      size="sm"
+                      disabled={!sendEmailFormId || !sendEmailAddress || sendFormToEmailMutation.isPending}
+                      onClick={() => {
+                        if (sendEmailFormId && sendEmailAddress) {
+                          sendFormToEmailMutation.mutate({
+                            formId: sendEmailFormId,
+                            recipientEmail: sendEmailAddress,
+                            recipientName: sendEmailName || undefined,
+                          });
+                        }
+                      }}
+                      style={{ backgroundColor: "#2e3a20", color: "#fff" }}
+                      data-testid="button-send-email-submit"
+                    >
+                      {sendFormToEmailMutation.isPending ? <><Loader2 className="h-3 w-3 mr-1 animate-spin" /> Sending...</> : <><Send className="h-3 w-3 mr-1" /> Send Form</>}
+                    </Button>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
 
