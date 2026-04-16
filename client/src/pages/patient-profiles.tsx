@@ -1131,6 +1131,7 @@ export default function PatientProfiles() {
   const [amendingEncounterId, setAmendingEncounterId] = useState<number | null>(null);
   const [amendText, setAmendText] = useState("");
   const [savingAmend, setSavingAmend] = useState(false);
+  const [signingEncounterId, setSigningEncounterId] = useState<number | null>(null);
   const [evidenceOpenId, setEvidenceOpenId] = useState<number | null>(null);
   const [summaryOpenId, setSummaryOpenId] = useState<number | null>(null);
   const [summaryTextMap, setSummaryTextMap] = useState<Record<number, string>>({});
@@ -2361,6 +2362,32 @@ export default function PatientProfiles() {
                                 )}
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
+                                {hasSoap && !isSigned && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-[10px] gap-1"
+                                    disabled={signingEncounterId === enc.id}
+                                    onClick={async (e) => {
+                                      e.stopPropagation();
+                                      if (!confirm("Sign and lock this chart note? You can amend it later if needed.")) return;
+                                      setSigningEncounterId(enc.id);
+                                      try {
+                                        await apiRequest("POST", `/api/encounters/${enc.id}/sign`);
+                                        await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
+                                        toast({ title: "Note signed and locked", description: "The chart note has been co-signed and locked for the record." });
+                                      } catch (err: any) {
+                                        toast({ variant: "destructive", title: "Sign failed", description: err?.message });
+                                      } finally {
+                                        setSigningEncounterId(null);
+                                      }
+                                    }}
+                                    data-testid={`button-sign-encounter-${enc.id}`}
+                                  >
+                                    {signingEncounterId === enc.id ? <Loader2 className="w-3 h-3 animate-spin" /> : <Lock className="w-3 h-3" />}
+                                    Sign
+                                  </Button>
+                                )}
                                 {hasSoap && (
                                   <>
                                     <Button
@@ -2373,13 +2400,14 @@ export default function PatientProfiles() {
                                           setAmendingEncounterId(null);
                                           setAmendText("");
                                         } else {
+                                          if (isSigned && !confirm("Open this note for amendment? A copy of the current signed version will be preserved in the audit trail.")) return;
                                           setAmendText(soapText);
                                           setAmendingEncounterId(enc.id);
                                           setExpandedEncounterId(enc.id);
                                         }
                                       }}
                                       data-testid={`button-amend-encounter-${enc.id}`}
-                                      title="Amend / Edit"
+                                      title={isSigned ? "Amend" : "Edit"}
                                     >
                                       <PenLine className={`w-3.5 h-3.5 ${isAmending ? "text-amber-600" : "text-muted-foreground"}`} />
                                     </Button>
@@ -2565,7 +2593,7 @@ export default function PatientProfiles() {
                               {/* SOAP note body — editable when amending, read-only otherwise */}
                               {isAmending ? (
                                 <div className="px-4 py-3 space-y-3">
-                                  <p className="text-[11px] text-amber-700 font-medium">Amendment in progress — edit the note below, then re-sign to lock.</p>
+                                  <p className="text-[11px] text-amber-700 font-medium">{isSigned ? "Amendment in progress — edit the note below, then re-sign to lock." : "Edit the note below, then sign to lock."}</p>
                                   <Textarea
                                     value={amendText}
                                     onChange={(e) => setAmendText(e.target.value)}
@@ -2588,13 +2616,18 @@ export default function PatientProfiles() {
                                         e.stopPropagation();
                                         setSavingAmend(true);
                                         try {
-                                          await apiRequest("POST", `/api/encounters/${enc.id}/amend`);
-                                          await apiRequest("PATCH", `/api/encounters/${enc.id}`, { soapNote: { fullNote: amendText } });
+                                          if (isSigned) {
+                                            await apiRequest("POST", `/api/encounters/${enc.id}/amend`);
+                                          }
+                                          await apiRequest("PUT", `/api/encounters/${enc.id}/soap`, { soapNote: { fullNote: amendText } });
                                           await apiRequest("POST", `/api/encounters/${enc.id}/sign`);
                                           await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
                                           setAmendingEncounterId(null);
                                           setAmendText("");
-                                          toast({ title: "Amendment saved", description: "The note has been re-signed and locked." });
+                                          toast({
+                                            title: isSigned ? "Amendment saved" : "Note signed and locked",
+                                            description: isSigned ? "The note has been re-signed and locked." : "The chart note has been co-signed and locked for the record.",
+                                          });
                                         } catch (err: any) {
                                           toast({ variant: "destructive", title: "Save failed", description: err?.message });
                                         } finally {
@@ -2603,7 +2636,7 @@ export default function PatientProfiles() {
                                       }}
                                       data-testid={`button-resignlock-amend-${enc.id}`}
                                     >
-                                      {savingAmend ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving...</> : <><Lock className="w-3 h-3 mr-1.5" />Re-sign and Lock</>}
+                                      {savingAmend ? <><Loader2 className="w-3 h-3 mr-1.5 animate-spin" />Saving...</> : <><Lock className="w-3 h-3 mr-1.5" />{isSigned ? "Re-sign and Lock" : "Save and Sign"}</>}
                                     </Button>
                                   </div>
                                 </div>
