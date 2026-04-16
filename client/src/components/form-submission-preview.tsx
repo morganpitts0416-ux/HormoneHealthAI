@@ -1,9 +1,11 @@
+import { useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
-import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { useToast } from "@/hooks/use-toast";
 import {
   FileText,
   Download,
@@ -11,6 +13,14 @@ import {
   Check,
   X,
   Loader2,
+  RefreshCw,
+  Pill,
+  Users,
+  Activity,
+  Shield,
+  Scissors,
+  UserCheck,
+  ArrowRight,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import jsPDF from "jspdf";
@@ -34,6 +44,7 @@ interface SubmissionSection {
 export interface SubmissionDetail {
   id: number;
   formId: number;
+  patientId: number | null;
   submitterName: string | null;
   submitterEmail: string | null;
   submittedAt: string;
@@ -44,7 +55,25 @@ export interface SubmissionDetail {
   fields: SubmissionField[];
   sections: SubmissionSection[];
   syncEvents: any[];
+  patient: { id: number; firstName: string; lastName: string; dateOfBirth: string | null } | null;
 }
+
+interface SyncPreviewData {
+  patientId: number;
+  patientName: string | null;
+  syncStatus: string;
+  domainLabels: Record<string, string>;
+  preview: Record<string, Array<{ item: string; duplicate: boolean }>>;
+}
+
+const DOMAIN_ICONS: Record<string, any> = {
+  medications: Pill,
+  allergies: Shield,
+  medical_history: FileText,
+  surgical_history: Scissors,
+  family_history: Users,
+  social_history: Activity,
+};
 
 export interface ClinicInfo {
   clinicName: string;
@@ -401,6 +430,151 @@ function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: 
   );
 }
 
+function SyncReviewDialog({
+  submissionId,
+  open,
+  onOpenChange,
+}: {
+  submissionId: number;
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const { data: preview, isLoading, isError } = useQuery<SyncPreviewData>({
+    queryKey: ["/api/form-submissions", submissionId, "sync-preview"],
+    queryFn: async () => {
+      const r = await fetch(`/api/form-submissions/${submissionId}/sync-preview`);
+      if (!r.ok) throw new Error("Failed to load sync preview");
+      return r.json();
+    },
+    enabled: open && !!submissionId,
+  });
+
+  const [checkedItems, setCheckedItems] = useState<Record<string, Record<number, boolean>>>({});
+
+  const hasSyncableItems = preview && Object.values(preview.preview).some(items => items.some(i => !i.duplicate));
+
+  const toggleItem = (domain: string, idx: number, checked: boolean) => {
+    setCheckedItems(prev => ({
+      ...prev,
+      [domain]: { ...prev[domain], [idx]: checked },
+    }));
+  };
+
+  const syncMutation = useMutation({
+    mutationFn: async () => {
+      if (!preview) return;
+      const approvedItems: Record<string, string[]> = {};
+      for (const [domain, items] of Object.entries(preview.preview)) {
+        const approved = items
+          .filter((item, idx) => !item.duplicate && checkedItems[domain]?.[idx] !== false)
+          .map(i => i.item);
+        if (approved.length > 0) approvedItems[domain] = approved;
+      }
+      const res = await apiRequest("POST", `/api/form-submissions/${submissionId}/sync`, { approvedItems });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      const added = data?.results?.filter((r: any) => r.action === "added").length ?? 0;
+      toast({ title: "Synced to Patient Chart", description: `${added} item${added !== 1 ? "s" : ""} added to the patient chart.` });
+      queryClient.invalidateQueries({ queryKey: ["/api/form-submissions", submissionId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/all"] });
+      onOpenChange(false);
+    },
+    onError: () => {
+      toast({ title: "Sync Failed", description: "Could not sync data to the patient chart.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent className="max-w-2xl max-h-[80vh] overflow-y-auto" data-testid="dialog-sync-review">
+        <DialogHeader>
+          <DialogTitle style={{ color: "#2e3a20" }}>Review & Sync to Patient Profile</DialogTitle>
+        </DialogHeader>
+        {preview?.patientName && (
+          <div className="flex items-center gap-2 rounded-md px-3 py-2" style={{ backgroundColor: "#f5f2ed", border: "1px solid #e0ddd6" }}>
+            <UserCheck className="h-4 w-4 flex-shrink-0" style={{ color: "#5a7040" }} />
+            <span className="text-sm">
+              Syncing to <strong style={{ color: "#2e3a20" }}>{preview.patientName}</strong>
+            </span>
+          </div>
+        )}
+        <p className="text-sm text-muted-foreground">
+          Check the items you'd like to add to the patient chart. Items already in the chart are shown as duplicates.
+        </p>
+        {isLoading ? (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-5 w-5 animate-spin" style={{ color: "#7a8a64" }} />
+          </div>
+        ) : isError ? (
+          <div className="py-8 text-center text-sm text-muted-foreground">
+            Could not load syncable data. The patient may not be linked to this submission.
+          </div>
+        ) : preview ? (
+          <div className="space-y-5">
+            {Object.entries(preview.preview).map(([domain, items]) => {
+              const Icon = DOMAIN_ICONS[domain] ?? FileText;
+              const label = preview.domainLabels[domain] ?? domain;
+              return (
+                <div key={domain}>
+                  <p className="text-xs font-semibold uppercase tracking-wide flex items-center gap-1.5 mb-2" style={{ color: "#5a7040" }}>
+                    <Icon className="w-3 h-3" />{label}
+                    <span className="font-normal normal-case tracking-normal text-muted-foreground">({items.length} extracted)</span>
+                  </p>
+                  {items.length === 0 ? (
+                    <p className="text-xs text-muted-foreground italic">None extracted</p>
+                  ) : (
+                    <div className="space-y-1.5">
+                      {items.map((entry, idx) => {
+                        const isChecked = checkedItems[domain]?.[idx] !== false;
+                        return (
+                          <label
+                            key={idx}
+                            className={`flex items-start gap-2.5 rounded-md px-3 py-2 cursor-pointer ${entry.duplicate ? "opacity-50 cursor-default" : "hover:bg-muted/40"}`}
+                            data-testid={`sync-item-${domain}-${idx}`}
+                          >
+                            <input
+                              type="checkbox"
+                              checked={isChecked && !entry.duplicate}
+                              disabled={entry.duplicate}
+                              onChange={e => toggleItem(domain, idx, e.target.checked)}
+                              className="mt-0.5 flex-shrink-0"
+                              data-testid={`checkbox-sync-${domain}-${idx}`}
+                            />
+                            <span className="text-sm">{entry.item}</span>
+                            {entry.duplicate && (
+                              <span className="text-xs text-muted-foreground ml-auto flex-shrink-0">already in chart</span>
+                            )}
+                          </label>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        ) : null}
+        <DialogFooter className="mt-6 gap-2 flex-wrap">
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-cancel-sync">Cancel</Button>
+          <Button
+            style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+            onClick={() => syncMutation.mutate()}
+            disabled={syncMutation.isPending || !hasSyncableItems}
+            data-testid="button-approve-sync"
+          >
+            {syncMutation.isPending
+              ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Syncing...</>
+              : <><ArrowRight className="w-3.5 h-3.5 mr-1.5" />Approve & Sync to Chart</>}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
 export function FormSubmissionPreviewDialog({
   submissionId,
   onClose,
@@ -410,6 +584,8 @@ export function FormSubmissionPreviewDialog({
   onClose: () => void;
   clinic: ClinicInfo;
 }) {
+  const [syncReviewOpen, setSyncReviewOpen] = useState(false);
+  const { toast } = useToast();
   const { data: detail, isLoading } = useQuery<SubmissionDetail>({
     queryKey: ["/api/form-submissions", submissionId],
     queryFn: () => fetch(`/api/form-submissions/${submissionId}`).then(r => r.json()),
@@ -435,136 +611,166 @@ export function FormSubmissionPreviewDialog({
   const data = detail?.rawSubmissionJson ?? {};
 
   return (
-    <Dialog open={!!submissionId} onOpenChange={(v) => { if (!v) onClose(); }}>
-      <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col" data-testid="dialog-submission-preview">
-        <DialogHeader className="flex-shrink-0">
-          <div className="flex items-center justify-between gap-3 flex-wrap">
-            <div className="flex items-center gap-2">
-              <FileText className="w-5 h-5" style={{ color: "#2e3a20" }} />
-              <DialogTitle className="text-lg" style={{ color: "#2e3a20" }}>
-                {detail?.form?.name ?? "Form Submission"}
-              </DialogTitle>
-            </div>
-            {detail && (
-              <div className="flex items-center gap-2 flex-wrap">
-                {detail.reviewStatus === "pending" && (
+    <>
+      <Dialog open={!!submissionId && !syncReviewOpen} onOpenChange={(v) => { if (!v) onClose(); }}>
+        <DialogContent className="max-w-2xl max-h-[90vh] flex flex-col" data-testid="dialog-submission-preview">
+          <DialogHeader className="flex-shrink-0">
+            <div className="flex items-center justify-between gap-3 flex-wrap">
+              <div className="flex items-center gap-2">
+                <FileText className="w-5 h-5" style={{ color: "#2e3a20" }} />
+                <DialogTitle className="text-lg" style={{ color: "#2e3a20" }}>
+                  {detail?.form?.name ?? "Form Submission"}
+                </DialogTitle>
+              </div>
+              {detail && (
+                <div className="flex items-center gap-2 flex-wrap">
+                  {detail.patientId && detail.syncStatus !== "synced" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => setSyncReviewOpen(true)}
+                      data-testid="button-sync-to-profile"
+                      style={{ borderColor: "#5a7040", color: "#2e3a20" }}
+                    >
+                      <ArrowRight className="h-3.5 w-3.5 mr-1.5" style={{ color: "#5a7040" }} /> Sync to Profile
+                    </Button>
+                  )}
+                  {detail.reviewStatus === "pending" && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => markReviewedMutation.mutate()}
+                      disabled={markReviewedMutation.isPending}
+                      data-testid="button-mark-reviewed"
+                    >
+                      <Check className="h-3.5 w-3.5 mr-1.5" /> Mark Reviewed
+                    </Button>
+                  )}
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => markReviewedMutation.mutate()}
-                    disabled={markReviewedMutation.isPending}
-                    data-testid="button-mark-reviewed"
+                    onClick={() => generateSubmissionPdf(detail, clinic)}
+                    data-testid="button-download-submission-pdf"
                   >
-                    <Check className="h-3.5 w-3.5 mr-1.5" /> Mark Reviewed
+                    <Download className="h-3.5 w-3.5 mr-1.5" /> Download PDF
                   </Button>
-                )}
-                <Button
-                  size="sm"
-                  variant="outline"
-                  onClick={() => generateSubmissionPdf(detail, clinic)}
-                  data-testid="button-download-submission-pdf"
-                >
-                  <Download className="h-3.5 w-3.5 mr-1.5" /> Download PDF
-                </Button>
-              </div>
-            )}
-          </div>
-        </DialogHeader>
-
-        {isLoading ? (
-          <div className="flex items-center justify-center py-16">
-            <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#7a8a64" }} />
-          </div>
-        ) : detail ? (
-          <ScrollArea className="flex-1 -mx-6 px-6">
-            <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#e0ddd6", backgroundColor: "#fff" }}>
-              <div className="px-5 py-4" style={{ backgroundColor: "#f5f2ed", borderBottom: "2px solid #5a7040" }}>
-                <div className="flex items-center gap-3 flex-wrap">
-                  {clinic.clinicLogo && (
-                    <img
-                      src={clinic.clinicLogo}
-                      alt="Clinic logo"
-                      className="h-10 w-auto object-contain"
-                      data-testid="img-clinic-logo"
-                    />
-                  )}
-                  <div className="flex-1 min-w-0">
-                    <h2 className="text-base font-bold" style={{ color: "#2e3a20" }}>
-                      {clinic.clinicName || "ClinIQ"}
-                    </h2>
-                    {(clinic.phone || clinic.address) && (
-                      <p className="text-[11px]" style={{ color: "#7a8a64" }}>
-                        {[clinic.phone, clinic.address].filter(Boolean).join("  |  ")}
-                      </p>
-                    )}
-                  </div>
-                </div>
-              </div>
-
-              <div className="px-5 py-3" style={{ backgroundColor: "#fafaf7", borderBottom: "1px solid #eee" }}>
-                <h3 className="text-sm font-bold" style={{ color: "#2e3a20" }}>
-                  {detail.form?.name ?? "Form Submission"}
-                </h3>
-                <div className="flex items-center gap-4 flex-wrap text-[11px] mt-0.5" style={{ color: "#888" }}>
-                  <span>Submitted: {new Date(detail.submittedAt).toLocaleString()}</span>
-                  {detail.submitterName && <span>Patient: <strong style={{ color: "#1c2414" }}>{detail.submitterName}</strong></span>}
-                  {detail.submitterEmail && <span>{detail.submitterEmail}</span>}
-                </div>
-                <div className="flex items-center gap-2 mt-1.5 flex-wrap">
-                  <Badge variant={detail.reviewStatus === "reviewed" ? "default" : "secondary"} data-testid="badge-review-status">
-                    {detail.reviewStatus}
-                  </Badge>
-                  <Badge variant={detail.syncStatus === "synced" ? "default" : "outline"} data-testid="badge-sync-status">
-                    {detail.syncStatus === "synced" ? "Synced" : "Not synced"}
-                  </Badge>
-                </div>
-              </div>
-
-              <div className="px-5 py-4 space-y-4">
-                {unsectionedFields.length > 0 && (
-                  <PreviewFieldGroup fields={unsectionedFields} data={data} />
-                )}
-
-                {sortedSections.map(section => {
-                  const sectionFields = sortedFields.filter(f => f.sectionId === section.id);
-                  const hasValues = sectionFields.some(f => hasFieldValue(data, f));
-                  if (!hasValues) return null;
-                  return (
-                    <div key={section.id}>
-                      <div className="flex items-center gap-2 mb-2">
-                        <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: "#2e3a20" }}>
-                          {section.title}
-                        </h4>
-                        <div className="flex-1 h-px" style={{ backgroundColor: "#e0ddd6" }} />
-                      </div>
-                      <PreviewFieldGroup fields={sectionFields} data={data} />
-                    </div>
-                  );
-                })}
-              </div>
-
-              {detail.syncEvents?.length > 0 && (
-                <div className="px-5 py-3" style={{ borderTop: "1px solid #eee", backgroundColor: "#fafaf7" }}>
-                  <h4 className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: "#2e3a20" }}>Sync Log</h4>
-                  <div className="space-y-1">
-                    {detail.syncEvents.map((e: any) => (
-                      <div key={e.id} className="text-xs flex items-center gap-2">
-                        {e.resultStatus === "success"
-                          ? <CheckCircle2 className="h-3 w-3 text-green-600" />
-                          : <X className="h-3 w-3 text-amber-500" />}
-                        <span style={{ color: "#888" }}>{e.targetDomain}:</span>
-                        <span>{(e.detailsJson as any)?.item}</span>
-                      </div>
-                    ))}
-                  </div>
                 </div>
               )}
             </div>
-          </ScrollArea>
-        ) : (
-          <div className="py-12 text-center text-sm" style={{ color: "#999" }}>Submission not found</div>
-        )}
-      </DialogContent>
-    </Dialog>
+          </DialogHeader>
+
+          {isLoading ? (
+            <div className="flex items-center justify-center py-16">
+              <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#7a8a64" }} />
+            </div>
+          ) : detail ? (
+            <ScrollArea className="flex-1 -mx-6 px-6">
+              <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#e0ddd6", backgroundColor: "#fff" }}>
+                <div className="px-5 py-4" style={{ backgroundColor: "#f5f2ed", borderBottom: "2px solid #5a7040" }}>
+                  <div className="flex items-center gap-3 flex-wrap">
+                    {clinic.clinicLogo && (
+                      <img
+                        src={clinic.clinicLogo}
+                        alt="Clinic logo"
+                        className="h-10 w-auto object-contain"
+                        data-testid="img-clinic-logo"
+                      />
+                    )}
+                    <div className="flex-1 min-w-0">
+                      <h2 className="text-base font-bold" style={{ color: "#2e3a20" }}>
+                        {clinic.clinicName || "ClinIQ"}
+                      </h2>
+                      {(clinic.phone || clinic.address) && (
+                        <p className="text-[11px]" style={{ color: "#7a8a64" }}>
+                          {[clinic.phone, clinic.address].filter(Boolean).join("  |  ")}
+                        </p>
+                      )}
+                    </div>
+                  </div>
+                </div>
+
+                <div className="px-5 py-3" style={{ backgroundColor: "#fafaf7", borderBottom: "1px solid #eee" }}>
+                  <h3 className="text-sm font-bold" style={{ color: "#2e3a20" }}>
+                    {detail.form?.name ?? "Form Submission"}
+                  </h3>
+                  <div className="flex items-center gap-4 flex-wrap text-[11px] mt-0.5" style={{ color: "#888" }}>
+                    <span>Submitted: {new Date(detail.submittedAt).toLocaleString()}</span>
+                    {detail.submitterName && <span>Patient: <strong style={{ color: "#1c2414" }}>{detail.submitterName}</strong></span>}
+                    {detail.submitterEmail && <span>{detail.submitterEmail}</span>}
+                  </div>
+                  {detail.patient && (
+                    <div className="flex items-center gap-1.5 mt-1 text-[11px]" style={{ color: "#5a7040" }}>
+                      <UserCheck className="h-3 w-3" />
+                      <span>
+                        Linked to <strong>{detail.patient.firstName} {detail.patient.lastName}</strong>
+                        {detail.patient.dateOfBirth && ` (DOB: ${new Date(detail.patient.dateOfBirth).toLocaleDateString()})`}
+                      </span>
+                    </div>
+                  )}
+                  <div className="flex items-center gap-2 mt-1.5 flex-wrap">
+                    <Badge variant={detail.reviewStatus === "reviewed" ? "default" : "secondary"} data-testid="badge-review-status">
+                      {detail.reviewStatus}
+                    </Badge>
+                    <Badge variant={detail.syncStatus === "synced" ? "default" : "outline"} data-testid="badge-sync-status">
+                      {detail.syncStatus === "synced" ? "Synced" : "Not synced"}
+                    </Badge>
+                  </div>
+                </div>
+
+                <div className="px-5 py-4 space-y-4">
+                  {unsectionedFields.length > 0 && (
+                    <PreviewFieldGroup fields={unsectionedFields} data={data} />
+                  )}
+
+                  {sortedSections.map(section => {
+                    const sectionFields = sortedFields.filter(f => f.sectionId === section.id);
+                    const hasValues = sectionFields.some(f => hasFieldValue(data, f));
+                    if (!hasValues) return null;
+                    return (
+                      <div key={section.id}>
+                        <div className="flex items-center gap-2 mb-2">
+                          <h4 className="text-xs font-bold uppercase tracking-wider" style={{ color: "#2e3a20" }}>
+                            {section.title}
+                          </h4>
+                          <div className="flex-1 h-px" style={{ backgroundColor: "#e0ddd6" }} />
+                        </div>
+                        <PreviewFieldGroup fields={sectionFields} data={data} />
+                      </div>
+                    );
+                  })}
+                </div>
+
+                {detail.syncEvents?.length > 0 && (
+                  <div className="px-5 py-3" style={{ borderTop: "1px solid #eee", backgroundColor: "#fafaf7" }}>
+                    <h4 className="text-xs font-bold uppercase tracking-wider mb-1.5" style={{ color: "#2e3a20" }}>Sync Log</h4>
+                    <div className="space-y-1">
+                      {detail.syncEvents.map((e: any) => (
+                        <div key={e.id} className="text-xs flex items-center gap-2">
+                          {e.resultStatus === "success"
+                            ? <CheckCircle2 className="h-3 w-3 text-green-600" />
+                            : <X className="h-3 w-3 text-amber-500" />}
+                          <span style={{ color: "#888" }}>{e.targetDomain}:</span>
+                          <span>{(e.detailsJson as any)?.item}</span>
+                        </div>
+                      ))}
+                    </div>
+                  </div>
+                )}
+              </div>
+            </ScrollArea>
+          ) : (
+            <div className="py-12 text-center text-sm" style={{ color: "#999" }}>Submission not found</div>
+          )}
+        </DialogContent>
+      </Dialog>
+
+      {submissionId && (
+        <SyncReviewDialog
+          submissionId={submissionId}
+          open={syncReviewOpen}
+          onOpenChange={setSyncReviewOpen}
+        />
+      )}
+    </>
   );
 }
