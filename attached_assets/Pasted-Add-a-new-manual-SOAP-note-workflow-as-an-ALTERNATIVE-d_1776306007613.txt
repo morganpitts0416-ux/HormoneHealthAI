@@ -1,0 +1,116 @@
+Add a new manual SOAP-note workflow as an ALTERNATIVE documentation path only.
+
+CRITICAL SCOPE RULE:
+This must NOT alter, replace, interrupt, or redesign the existing encounter flow used for transcription / recording / AI SOAP generation.
+
+The existing workflow must remain exactly as it is now:
+- record visit -> generate SOAP
+- type/paste narrative into transcription area -> generate SOAP
+- existing evidence-pill behavior
+- existing post-generation workflow
+- existing encounter save/sign/status flow
+- existing clinician experience for AI-generated notes
+
+Do NOT merge this request into the current AI/transcription encounter workflow.
+Do NOT change the current transcription-based note generation screen.
+Do NOT move or redesign the current AI SOAP generation entry points.
+Do NOT modify the current evidence-layer behavior.
+Do NOT change the current generated-note UI or post-SOAP flow.
+
+NEW FEATURE GOAL:
+Create a separate, alternative note-building flow initiated from the patient profile inside the encounters area / encounters bubble.
+
+ENTRY POINT:
+Inside the patient’s profile, within the encounters area, add a clearly separate action such as:
+- "+ SOAP"
+or
+- "New Manual SOAP"
+
+This action should launch a separate manual note builder workflow.
+
+This is a second documentation option, not a replacement for the current AI encounter flow.
+
+DESIRED PRODUCT BEHAVIOR:
+There should now be two distinct note-creation paths:
+
+1. Existing AI / transcription workflow
+   - unchanged
+   - recording or pasted/transcribed narrative
+   - AI-generated SOAP
+   - existing evidence pills and current downstream workflow remain exactly as they are
+
+2. New manual SOAP builder
+   - launched from patient profile / encounters bubble
+   - separate from AI transcription flow
+   - allows provider to manually build a SOAP note using blocks
+
+MANUAL SOAP BUILDER REQUIREMENTS:
+When the clinician clicks the new manual SOAP action from the patient’s profile / encounters area, open a manual note editor with:
+- Chief Complaint / Reason for Visit field at the top
+- note body below
+- Add Block / menu button at the top
+
+Required selectable blocks:
+- HPI
+- Medical History
+- Surgical History
+- Family History
+- Social History
+- Current Medications
+- Allergies
+- ROS
+- Physical Assessment / Physical Exam
+- Assessment / Plan
+- Care Plan
+- Follow-Up
+
+BLOCK BEHAVIOR:
+- narrative blocks should support free text
+- ROS should support either:
+  - free text
+  - chart-style mode with removable/hideable unused systems
+- Physical Exam should support either:
+  - free text
+  - chart-style mode with removable/hideable unused systems
+
+ASSESSMENT / PLAN REQUIREMENT:
+Support the preferred structure:
+- optional short summary at top
+- diagnosis with ICD-10
+- supporting factors under each diagnosis
+- bulleted plan under each diagnosis
+
+/ DX REQUIREMENT:
+Support inline diagnosis search in this manual note workflow.
+Typing /dx should open a diagnosis search dropdown that:
+- searches diagnosis names / common terms
+- shows diagnosis name + ICD-10
+- inserts diagnosis into the Assessment/Plan area in the proper format
+- remains provider-controlled only
+
+IMPORTANT BOUNDARY:
+This /dx functionality should be added for the new manual SOAP builder without disrupting the current AI SOAP workflow.
+
+SAVE / INTEGRATION REQUIREMENT:
+The manual SOAP note should save as an encounter/note within the patient’s chart and encounter history, but it must not require changes to the current AI-generated SOAP workflow.
+
+NON-GOALS / DO NOT CHANGE:
+- do NOT alter the current AI/transcription encounter flow
+- do NOT redesign the existing encounter page for AI-generated notes
+- do NOT change evidence generation or evidence-pill placement
+- do NOT change generated-note review/sign/save/status workflow
+- do NOT force manual SOAP builder into the transcription screen
+- do NOT remove or replace any current note-generation method
+
+FIRST VERSION PRIORITY:
+Build the manual SOAP builder as a clean alternative workflow with minimal disruption to the rest of the system.
+
+ACCEPTANCE CRITERIA:
+This is complete only if:
+- the current AI/transcription SOAP workflow behaves exactly as it does now
+- a separate manual SOAP workflow exists from the patient profile encounters area
+- providers can create a manual SOAP note with blocks
+- /dx works in the manual note
+- ROS and Physical can be documented in either free text or chart mode
+- the manual note saves into the patient encounter history
+- no regressions are introduced into the current AI SOAP, evidence, or post-SOAP workflow
