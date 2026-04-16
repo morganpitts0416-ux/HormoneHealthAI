@@ -1,4 +1,4 @@
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Separator } from "@/components/ui/separator";
@@ -8,9 +8,11 @@ import {
   FileText,
   Download,
   CheckCircle2,
+  Check,
   X,
   Loader2,
 } from "lucide-react";
+import { queryClient, apiRequest } from "@/lib/queryClient";
 import jsPDF from "jspdf";
 
 interface SubmissionField {
@@ -173,6 +175,18 @@ export function FormSubmissionPreviewDialog({
     enabled: !!submissionId,
   });
 
+  const markReviewedMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("PATCH", `/api/intake-forms/submissions/${submissionId}/review`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/form-submissions", submissionId] });
+      onClose();
+    },
+  });
+
   const sortedSections = [...(detail?.sections ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
   const sortedFields = [...(detail?.fields ?? [])].sort((a, b) => a.orderIndex - b.orderIndex);
   const unsectionedFields = sortedFields.filter(f => !f.sectionId);
@@ -205,14 +219,27 @@ export function FormSubmissionPreviewDialog({
               </DialogTitle>
             </div>
             {detail && (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => generateSubmissionPdf(detail, clinicName)}
-                data-testid="button-download-submission-pdf"
-              >
-                <Download className="h-3.5 w-3.5 mr-1.5" /> Download PDF
-              </Button>
+              <div className="flex items-center gap-2 flex-wrap">
+                {detail.reviewStatus === "pending" && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    onClick={() => markReviewedMutation.mutate()}
+                    disabled={markReviewedMutation.isPending}
+                    data-testid="button-mark-reviewed"
+                  >
+                    <Check className="h-3.5 w-3.5 mr-1.5" /> Mark Reviewed
+                  </Button>
+                )}
+                <Button
+                  size="sm"
+                  variant="outline"
+                  onClick={() => generateSubmissionPdf(detail, clinicName)}
+                  data-testid="button-download-submission-pdf"
+                >
+                  <Download className="h-3.5 w-3.5 mr-1.5" /> Download PDF
+                </Button>
+              </div>
             )}
           </div>
         </DialogHeader>

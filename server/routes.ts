@@ -3281,6 +3281,78 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // POST /api/forms/send-to-email — send a form to any email (no patient required)
+  app.post("/api/forms/send-to-email", requireAuth, async (req: any, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const { formId, recipientEmail, recipientName } = req.body;
+      if (!formId) return res.status(400).json({ message: "formId required" });
+      if (!recipientEmail) return res.status(400).json({ message: "recipientEmail required" });
+
+      const form = await storage.getIntakeFormByIdAndClinic(parseInt(formId), clinicId, clinicianId);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+
+      const publications = await storage.getFormPublications(parseInt(formId));
+      let pub = publications.find((p: any) => p.status === "active");
+      if (!pub) {
+        pub = await storage.createFormPublication({
+          formId: parseInt(formId),
+          mode: "link",
+          status: "active",
+          publicToken: crypto.randomBytes(16).toString("hex"),
+        });
+      }
+
+      const formUrl = `${req.protocol}://${req.get("host")}/f/${pub.publicToken}`;
+
+      const clinician = await storage.getUser(clinicianId);
+      const clinicName = clinician?.clinicName || "Your Healthcare Provider";
+      const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com";
+      const apiKey = process.env.RESEND_API_KEY;
+
+      const firstName = recipientName ? String(recipientName).split(/\s+/)[0] : "";
+      const emailHtml = `
+        <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+          <h2 style="color: #2e3a20;">New Form from ${clinicName}</h2>
+          ${firstName ? `<p>Hi ${firstName},</p>` : "<p>Hello,</p>"}
+          <p>You have been asked to complete the following form:</p>
+          <div style="background: #f9f6f0; border: 1px solid #d4c9b5; border-radius: 8px; padding: 16px; margin: 16px 0;">
+            <strong>${form.name}</strong>
+            ${form.description ? `<p style="color: #666; margin-top: 8px;">${form.description}</p>` : ""}
+          </div>
+          <a href="${formUrl}" style="display: inline-block; background: #2e3a20; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Complete Form</a>
+          <p style="margin-top: 24px; color: #888; font-size: 12px;">If the button doesn't work, copy this link: ${formUrl}</p>
+        </div>
+      `;
+
+      if (apiKey) {
+        const emailRes = await fetch("https://api.resend.com/emails", {
+          method: "POST",
+          headers: { Authorization: `Bearer ${apiKey}`, "Content-Type": "application/json" },
+          body: JSON.stringify({
+            from: `"${clinicName}" <${sendingDomain}>`,
+            to: [recipientEmail],
+            subject: `${clinicName}: Please complete your ${form.name}`,
+            html: emailHtml,
+          }),
+        });
+        if (!emailRes.ok) {
+          const errBody = await emailRes.text();
+          console.error("[Send Form Email] Resend error:", emailRes.status, errBody);
+          return res.json({ success: true, method: "email_failed", formUrl, note: "Email sending failed but link generated" });
+        }
+        res.json({ success: true, method: "email", formUrl });
+      } else {
+        console.log("[Send Form Email] No RESEND_API_KEY — link generated:", formUrl);
+        res.json({ success: true, method: "email_skipped", formUrl, note: "Email service not configured — link generated instead" });
+      }
+    } catch (err) {
+      console.error("[Send Form Email]", err);
+      res.status(500).json({ message: "Failed to send form" });
+    }
+  });
+
   // PATCH /api/supplement-orders/:id/status — clinician marks order fulfilled/cancelled
   app.patch("/api/supplement-orders/:id/status", requireAuth, async (req, res) => {
     try {
@@ -8172,11 +8244,59 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
             const pending = assignments.find(a => a.formId === pub.formId && a.status === "pending");
             if (pending) {
               await storage.updatePatientFormAssignment(pending.id, { status: "completed" });
+              await storage.updateFormSubmission(submission.id, { assignmentId: pending.id });
             }
           }
         } catch (assignErr) {
           console.error("[FormSubmit] assignment update error:", assignErr);
         }
+      }
+
+      // Fire-and-forget: sync smart-field chart domains into patient chart
+      if (resolvedPatientId && form.clinicianId) {
+        setImmediate(async () => {
+          try {
+            const fields = await storage.getFormFields(pub.formId);
+            const chart = await storage.getPatientChart(resolvedPatientId!, form.clinicianId!);
+            const toSync: Record<string, string[]> = {
+              medications: [], allergies: [], medical_history: [],
+              surgical_history: [], family_history: [], social_history: [],
+            };
+            for (const field of fields) {
+              if (!field.syncConfigJson) continue;
+              const sync = field.syncConfigJson as any;
+              if (!sync.domain || !sync.mode || sync.mode === "none") continue;
+              const value = (responses as Record<string, any>)[field.fieldKey];
+              if (value === undefined || value === null || value === "") continue;
+              const domain = sync.domain as string;
+              if (!toSync[domain]) continue;
+              if (Array.isArray(value)) {
+                toSync[domain].push(...value.filter(Boolean).map(String));
+              } else {
+                toSync[domain].push(String(value));
+              }
+            }
+            if (chart) {
+              const updates: Record<string, any> = {};
+              for (const [domain, values] of Object.entries(toSync)) {
+                if (values.length === 0) continue;
+                const key = domain === "medical_history" ? "medicalHistory"
+                  : domain === "surgical_history" ? "surgicalHistory"
+                  : domain === "family_history" ? "familyHistory"
+                  : domain === "social_history" ? "socialHistory"
+                  : domain;
+                const existing = ((chart as any)[key] as string[]) ?? [];
+                const merged = [...new Set([...existing, ...values])];
+                updates[key] = merged;
+              }
+              if (Object.keys(updates).length > 0) {
+                await storage.updatePatientChart(chart.id, updates);
+              }
+            }
+          } catch (syncErr) {
+            console.error("[FormSubmit] smart-field sync error:", syncErr);
+          }
+        });
       }
 
       res.json({ success: true, submissionId: submission.id, patientId: resolvedPatientId, autoCreated });
