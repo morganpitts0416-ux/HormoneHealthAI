@@ -39,6 +39,7 @@ import { SOAPNote } from "@/components/soap-note";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { SoapNoteViewer } from "@/components/soap-note-viewer";
 import { ManualSoapBuilder } from "@/components/manual-soap-builder";
+import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -1119,6 +1120,7 @@ export default function PatientProfiles() {
   const [showAssignFormDialog, setShowAssignFormDialog] = useState(false);
   const [sendLinkFormId, setSendLinkFormId] = useState<number | null>(null);
   const [showManualSoap, setShowManualSoap] = useState(false);
+  const [previewSubId, setPreviewSubId] = useState<number | null>(null);
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
   const [pdfExportingEncounterId, setPdfExportingEncounterId] = useState<number | null>(null);
   const [copiedEncounterId, setCopiedEncounterId] = useState<number | null>(null);
@@ -2776,6 +2778,16 @@ export default function PatientProfiles() {
                                 <p className="text-xs text-muted-foreground">{new Date(sub.submittedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}</p>
                               </div>
                               <div className="flex items-center gap-2 flex-wrap">
+                                <Button
+                                  size="sm"
+                                  variant="outline"
+                                  className="text-xs gap-1"
+                                  onClick={() => setPreviewSubId(sub.id)}
+                                  data-testid={`button-view-submission-${sub.id}`}
+                                >
+                                  <Eye className="h-3 w-3" />
+                                  View
+                                </Button>
                                 {sub.reviewStatus === "reviewed" ? (
                                   <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400">Reviewed</Badge>
                                 ) : (
@@ -2812,10 +2824,10 @@ export default function PatientProfiles() {
                     </p>
                     <ScrollArea className="h-72">
                       <div className="space-y-2 pr-2">
-                        {availableForms.length === 0 && (
-                          <p className="text-sm text-muted-foreground text-center py-6">No forms created yet. Create one from the Forms page.</p>
+                        {availableForms.filter((f: any) => f.status === "published").length === 0 && (
+                          <p className="text-sm text-muted-foreground text-center py-6">No published forms available. Create and publish a form from the Forms page.</p>
                         )}
-                        {availableForms.map((form: any) => {
+                        {availableForms.filter((f: any) => f.status === "published").map((form: any) => {
                           const alreadyPending = patientFormAssignments.some((a: any) => a.formId === form.id && a.status === "pending");
                           return (
                             <div key={form.id} className="rounded-md border p-3 space-y-2" data-testid={`assign-form-option-${form.id}`}>
@@ -2900,6 +2912,12 @@ export default function PatientProfiles() {
                   </DialogContent>
                 </Dialog>
               )}
+
+              <FormSubmissionPreviewDialog
+                submissionId={previewSubId}
+                onClose={() => setPreviewSubId(null)}
+                clinicName={(user as any)?.clinicName ?? "ClinIQ"}
+              />
 
             </div>
           )}
