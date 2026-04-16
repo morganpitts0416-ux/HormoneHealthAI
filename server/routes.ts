@@ -3142,6 +3142,20 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
             if (!toSync[domain]) continue;
             if (Array.isArray(value)) {
               toSync[domain].push(...value.filter(Boolean).map(String));
+            } else if (typeof value === "object" && value !== null) {
+              if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
+                for (const [member, conditions] of Object.entries(value)) {
+                  const cond = String(conditions || "").trim();
+                  if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
+                    toSync[domain].push(`${member}: ${cond}`);
+                  }
+                }
+              } else {
+                const rows = value.rows ?? value;
+                if (Array.isArray(rows)) {
+                  toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+                }
+              }
             } else {
               toSync[domain].push(String(value));
             }
@@ -8295,6 +8309,20 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
               if (!toSync[domain]) continue;
               if (Array.isArray(value)) {
                 toSync[domain].push(...value.filter(Boolean).map(String));
+              } else if (typeof value === "object" && value !== null) {
+                if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
+                  for (const [member, conditions] of Object.entries(value)) {
+                    const cond = String(conditions || "").trim();
+                    if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
+                      toSync[domain].push(`${member}: ${cond}`);
+                    }
+                  }
+                } else {
+                  const rows = value.rows ?? value;
+                  if (Array.isArray(rows)) {
+                    toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+                  }
+                }
               } else {
                 toSync[domain].push(String(value));
               }
@@ -8501,9 +8529,18 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         if (Array.isArray(value)) {
           extracted[domain].push(...value.filter(Boolean).map(String));
         } else if (typeof value === "object") {
-          const rows = value.rows ?? value;
-          if (Array.isArray(rows)) {
-            extracted[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+          if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
+            for (const [member, conditions] of Object.entries(value)) {
+              const cond = String(conditions || "").trim();
+              if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
+                extracted[domain].push(`${member}: ${cond}`);
+              }
+            }
+          } else {
+            const rows = value.rows ?? value;
+            if (Array.isArray(rows)) {
+              extracted[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+            }
           }
         } else {
           extracted[domain].push(String(value));
@@ -8590,9 +8627,18 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
           if (Array.isArray(value)) {
             toSync[domain].push(...value.filter(Boolean).map(String));
           } else if (typeof value === "object") {
-            const rows = value.rows ?? value;
-            if (Array.isArray(rows)) {
-              toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+            if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
+              for (const [member, conditions] of Object.entries(value)) {
+                const cond = String(conditions || "").trim();
+                if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
+                  toSync[domain].push(`${member}: ${cond}`);
+                }
+              }
+            } else {
+              const rows = value.rows ?? value;
+              if (Array.isArray(rows)) {
+                toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+              }
             }
           } else {
             toSync[domain].push(String(value));
