@@ -931,6 +931,21 @@ export default function Account() {
     },
   });
 
+  useEffect(() => {
+    if (user) {
+      form.reset({
+        firstName: user.firstName || "",
+        lastName: user.lastName || "",
+        title: user.title || "",
+        email: user.email || "",
+        npi: (user as any).npi || "",
+        clinicName: user.clinicName || "",
+        phone: (user as any).phone || "",
+        address: (user as any).address || "",
+      });
+    }
+  }, [user?.id, user?.firstName, user?.lastName, user?.clinicName]);
+
   const updateMutation = useMutation({
     mutationFn: async (data: ProfileForm) => {
       const res = await apiRequest("PATCH", "/api/auth/profile", data);
