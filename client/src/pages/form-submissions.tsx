@@ -275,7 +275,13 @@ export default function FormSubmissionsPage() {
       <FormSubmissionPreviewDialog
         submissionId={previewSubId}
         onClose={() => setPreviewSubId(null)}
-        clinicName={user?.clinicName ?? ""}
+        clinic={{
+          clinicName: user?.clinicName ?? "ClinIQ",
+          clinicLogo: user?.clinicLogo ?? null,
+          phone: user?.phone ?? null,
+          address: user?.address ?? null,
+          email: user?.email ?? null,
+        }}
       />
     </div>
   );
