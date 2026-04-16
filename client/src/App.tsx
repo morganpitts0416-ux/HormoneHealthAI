@@ -33,6 +33,7 @@ import AppointmentsPage from "@/pages/appointments";
 import Landing from "@/pages/landing";
 import BillingPage from "@/pages/billing";
 import IntakeFormsPage from "@/pages/intake-forms";
+import FormSubmissionsPage from "@/pages/form-submissions";
 import FormPublicPage from "@/pages/form-public";
 import PrivacyPolicy from "@/pages/privacy";
 import TermsOfService from "@/pages/terms";
@@ -241,6 +242,9 @@ function Router() {
       </Route>
       <Route path="/intake-forms">
         {() => <ProtectedRoute component={IntakeFormsPage} />}
+      </Route>
+      <Route path="/form-submissions">
+        {() => <ProtectedRoute component={FormSubmissionsPage} />}
       </Route>
       <Route path="/f/:token" component={FormPublicPage} />
       <Route path="/help">

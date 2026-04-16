@@ -379,7 +379,8 @@ export default function Dashboard() {
                 <button
                   className="text-xs font-medium flex items-center gap-1"
                   style={{ color: "#4a5568" }}
-                  onClick={() => setLocation("/intake-forms")}
+                  onClick={() => setLocation("/form-submissions")}
+                  data-testid="button-view-all-submissions"
                 >
                   View all <ArrowRight className="w-3 h-3" />
                 </button>
@@ -411,7 +412,7 @@ export default function Dashboard() {
                         className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
                         style={{ backgroundColor: "#e8e4f0", color: "#4a5568" }}
                       >
-                        {(sub.submitterName ?? "A")[0].toUpperCase()}
+                        {(sub.submitterName?.trim()?.[0] ?? "A").toUpperCase()}
                       </div>
                       <div className="flex-1 min-w-0">
                         <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
@@ -426,12 +427,12 @@ export default function Dashboard() {
                         <Button
                           size="icon"
                           variant="ghost"
-                          className="h-7 w-7"
                           data-testid={`button-dismiss-submission-${sub.id}`}
                           onClick={(e) => {
                             e.stopPropagation();
                             markReviewedMutation.mutate(sub.id);
                           }}
+                          disabled={markReviewedMutation.isPending}
                         >
                           <X className="h-3.5 w-3.5" />
                         </Button>
