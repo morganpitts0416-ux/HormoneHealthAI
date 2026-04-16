@@ -8401,7 +8401,11 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       const fields = await storage.getFormFields(submission.formId);
       const sections = await storage.getFormSections(submission.formId);
       const syncEvents = await storage.getFormSyncEvents(id);
-      res.json({ ...submission, form, fields, sections, syncEvents });
+      let patient: any = null;
+      if (submission.patientId) {
+        patient = await storage.getPatient(submission.patientId, clinicianId, clinicId);
+      }
+      res.json({ ...submission, form, fields, sections, syncEvents, patient: patient ? { id: patient.id, firstName: patient.firstName, lastName: patient.lastName, dateOfBirth: patient.dateOfBirth } : null });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch submission" });
     }
@@ -8426,6 +8430,91 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // GET /api/form-submissions/:id/sync-preview — preview what would be synced
+  app.get("/api/form-submissions/:id/sync-preview", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const submission = await storage.getFormSubmission(id);
+      if (!submission) return res.status(404).json({ message: "Submission not found" });
+      if (submission.clinicianId !== clinicianId && (!clinicId || (submission as any).clinicId !== clinicId)) {
+        return res.status(404).json({ message: "Submission not found" });
+      }
+      if (!submission.patientId) return res.status(400).json({ message: "No patient linked to this submission" });
+
+      const fields = await storage.getFormFields(submission.formId);
+      const responses = submission.rawSubmissionJson as Record<string, any>;
+      const patientId = submission.patientId;
+      const chart = await storage.getPatientChart(patientId, submission.clinicianId ?? req.user.id);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+
+      const domainLabels: Record<string, string> = {
+        medications: "Current Medications",
+        allergies: "Allergies & Sensitivities",
+        medical_history: "Medical History",
+        surgical_history: "Surgical History",
+        family_history: "Family History",
+        social_history: "Social History",
+      };
+
+      const extracted: Record<string, string[]> = {
+        medications: [], allergies: [], medical_history: [],
+        surgical_history: [], family_history: [], social_history: [],
+      };
+
+      for (const field of fields) {
+        if (!field.syncConfigJson) continue;
+        const sync = field.syncConfigJson as any;
+        if (!sync.domain || !sync.mode || sync.mode === "none") continue;
+        const value = responses[field.fieldKey];
+        if (value === undefined || value === null || value === "") continue;
+        const domain = sync.domain as string;
+        if (!extracted[domain]) continue;
+        if (Array.isArray(value)) {
+          extracted[domain].push(...value.filter(Boolean).map(String));
+        } else if (typeof value === "object") {
+          const rows = value.rows ?? value;
+          if (Array.isArray(rows)) {
+            extracted[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+          }
+        } else {
+          extracted[domain].push(String(value));
+        }
+      }
+
+      const existing: Record<string, string[]> = {
+        medications: (chart?.currentMedications as string[] ?? []),
+        allergies: (chart?.allergies as string[] ?? []),
+        medical_history: (chart?.medicalHistory as string[] ?? []),
+        surgical_history: (chart?.surgicalHistory as string[] ?? []),
+        family_history: (chart?.familyHistory as string[] ?? []),
+        social_history: (chart?.socialHistory as string[] ?? []),
+      };
+
+      const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
+
+      const preview: Record<string, Array<{ item: string; duplicate: boolean }>> = {};
+      for (const [domain, items] of Object.entries(extracted)) {
+        preview[domain] = items.map(item => ({
+          item,
+          duplicate: (existing[domain] ?? []).some(e => normalize(e) === normalize(item)),
+        }));
+      }
+
+      res.json({
+        patientId,
+        patientName: patient ? `${patient.firstName} ${patient.lastName}` : null,
+        syncStatus: submission.syncStatus,
+        domainLabels,
+        preview,
+      });
+    } catch (err: any) {
+      console.error("[FormSyncPreview]", err);
+      res.status(500).json({ message: "Sync preview failed", error: err.message });
+    }
+  });
+
   // POST /api/form-submissions/:id/sync — sync submission data into patient chart
   app.post("/api/form-submissions/:id/sync", requireAuth, async (req: any, res) => {
     try {
@@ -8442,12 +8531,11 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       const fields = await storage.getFormFields(submission.formId);
       const responses = submission.rawSubmissionJson as Record<string, any>;
       const patientId = submission.patientId;
+      const approvedItems = req.body?.approvedItems as Record<string, string[]> | undefined;
 
-      // Get existing patient chart
       const chart = await storage.getPatientChart(patientId, submission.clinicianId ?? req.user.id);
       const syncResults: Array<{ domain: string; item: string; action: string; duplicate: boolean }> = [];
 
-      // Collect items to sync by domain
       const toSync: Record<string, string[]> = {
         medications: [],
         allergies: [],
@@ -8457,30 +8545,34 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         social_history: [],
       };
 
-      for (const field of fields) {
-        if (!field.syncConfigJson) continue;
-        const sync = field.syncConfigJson as any;
-        if (!sync.domain || !sync.mode || sync.mode === "none") continue;
-        const value = responses[field.fieldKey];
-        if (value === undefined || value === null || value === "") continue;
-
-        const domain = sync.domain as string;
-        if (!toSync[domain]) continue;
-
-        if (Array.isArray(value)) {
-          toSync[domain].push(...value.filter(Boolean).map(String));
-        } else if (typeof value === "object") {
-          // Table/grid: try to extract rows
-          const rows = value.rows ?? value;
-          if (Array.isArray(rows)) {
-            toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+      if (approvedItems) {
+        for (const [domain, items] of Object.entries(approvedItems)) {
+          if (toSync[domain]) {
+            toSync[domain].push(...items.filter(Boolean));
           }
-        } else {
-          toSync[domain].push(String(value));
+        }
+      } else {
+        for (const field of fields) {
+          if (!field.syncConfigJson) continue;
+          const sync = field.syncConfigJson as any;
+          if (!sync.domain || !sync.mode || sync.mode === "none") continue;
+          const value = responses[field.fieldKey];
+          if (value === undefined || value === null || value === "") continue;
+          const domain = sync.domain as string;
+          if (!toSync[domain]) continue;
+          if (Array.isArray(value)) {
+            toSync[domain].push(...value.filter(Boolean).map(String));
+          } else if (typeof value === "object") {
+            const rows = value.rows ?? value;
+            if (Array.isArray(rows)) {
+              toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
+            }
+          } else {
+            toSync[domain].push(String(value));
+          }
         }
       }
 
-      // Now merge into chart, deduplicating
       const existing = {
         medications: (chart?.currentMedications as string[] ?? []),
         allergies: (chart?.allergies as string[] ?? []),
@@ -8492,29 +8584,43 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
 
       const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
 
-      const merged: typeof existing = { ...existing };
+      const merged: typeof existing = {
+        medications: [...existing.medications],
+        allergies: [...existing.allergies],
+        medical_history: [...existing.medical_history],
+        surgical_history: [...existing.surgical_history],
+        family_history: [...existing.family_history],
+        social_history: [...existing.social_history],
+      };
+      const seenNorms: Record<string, Set<string>> = {};
+      for (const domain of Object.keys(existing)) {
+        seenNorms[domain] = new Set((existing[domain as keyof typeof existing] as string[]).map(normalize));
+      }
       for (const [domain, items] of Object.entries(toSync)) {
         for (const item of items) {
           const itemNorm = normalize(item);
-          const isDuplicate = (existing[domain as keyof typeof existing] as string[]).some(e => normalize(e) === itemNorm);
+          const isDuplicate = seenNorms[domain]?.has(itemNorm) ?? false;
           syncResults.push({ domain, item, action: isDuplicate ? "skipped_duplicate" : "added", duplicate: isDuplicate });
           if (!isDuplicate) {
             (merged[domain as keyof typeof merged] as string[]).push(item);
+            seenNorms[domain]?.add(itemNorm);
           }
         }
       }
 
-      // Update the patient chart (upsert)
-      await storage.upsertPatientChart(patientId, submission.clinicianId ?? req.user.id, {
-        currentMedications: merged.medications,
-        allergies: merged.allergies,
-        medicalHistory: merged.medical_history,
-        surgicalHistory: merged.surgical_history,
-        familyHistory: merged.family_history,
-        socialHistory: merged.social_history,
-      });
+      const addedCount = syncResults.filter(r => r.action === "added").length;
 
-      // Record sync events
+      if (addedCount > 0) {
+        await storage.upsertPatientChart(patientId, submission.clinicianId ?? req.user.id, {
+          currentMedications: merged.medications,
+          allergies: merged.allergies,
+          medicalHistory: merged.medical_history,
+          surgicalHistory: merged.surgical_history,
+          familyHistory: merged.family_history,
+          socialHistory: merged.social_history,
+        });
+      }
+
       for (const r of syncResults) {
         await storage.createFormSyncEvent({
           submissionId: id,
@@ -8529,8 +8635,11 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         });
       }
 
-      // Mark submission as synced
-      await storage.updateFormSubmission(id, { syncStatus: "synced", syncSummaryJson: syncResults });
+      await storage.updateFormSubmission(id, {
+        syncStatus: addedCount > 0 ? "synced" : submission.syncStatus,
+        reviewStatus: "reviewed",
+        syncSummaryJson: syncResults,
+      });
 
       res.json({ success: true, results: syncResults });
     } catch (err: any) {
