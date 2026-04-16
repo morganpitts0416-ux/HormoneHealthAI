@@ -13,10 +13,12 @@ import {
   Check,
   Calendar,
   X,
+  Trash2,
   Loader2,
   FileText,
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 
 interface SubmissionRow {
@@ -55,6 +57,8 @@ export default function FormSubmissionsPage() {
     queryKey: ["/api/intake-forms/submissions/all"],
   });
 
+  const { toast } = useToast();
+
   const markReviewedMutation = useMutation({
     mutationFn: async (submissionId: number) => {
       const res = await apiRequest("PATCH", `/api/intake-forms/submissions/${submissionId}/review`);
@@ -64,6 +68,19 @@ export default function FormSubmissionsPage() {
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
     },
+  });
+
+  const deleteSubmissionMutation = useMutation({
+    mutationFn: async (submissionId: number) => {
+      const res = await apiRequest("DELETE", `/api/form-submissions/${submissionId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/all"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
+      toast({ title: "Form submission deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete submission", variant: "destructive" }),
   });
 
   const filtered = useMemo(() => {
@@ -262,6 +279,20 @@ export default function FormSubmissionsPage() {
                             <Check className="h-3.5 w-3.5" style={{ color: "#5a7040" }} />
                           </Button>
                         )}
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          onClick={(e) => {
+                            e.stopPropagation();
+                            if (window.confirm("Delete this form submission? This cannot be undone.")) {
+                              deleteSubmissionMutation.mutate(sub.id);
+                            }
+                          }}
+                          disabled={deleteSubmissionMutation.isPending}
+                          data-testid={`button-delete-${sub.id}`}
+                        >
+                          <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                        </Button>
                       </div>
                     </div>
                   ))}

@@ -1372,6 +1372,20 @@ export default function PatientProfiles() {
     onError: () => toast({ title: "Failed to send form link", variant: "destructive" }),
   });
 
+  const deleteSubmissionMutation = useMutation({
+    mutationFn: async (submissionId: number) => {
+      const res = await apiRequest("DELETE", `/api/form-submissions/${submissionId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'form-submissions'] });
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/all"] });
+      toast({ title: "Form submission deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete submission", variant: "destructive" }),
+  });
+
   const fulfillOrderMutation = useMutation({
     mutationFn: async (orderId: number) => {
       const res = await apiRequest("PATCH", `/api/supplement-orders/${orderId}/status`, { status: "fulfilled" });
@@ -2820,6 +2834,19 @@ export default function PatientProfiles() {
                                 >
                                   <Eye className="h-3 w-3" />
                                   View
+                                </Button>
+                                <Button
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => {
+                                    if (window.confirm("Delete this form submission? This cannot be undone.")) {
+                                      deleteSubmissionMutation.mutate(sub.id);
+                                    }
+                                  }}
+                                  disabled={deleteSubmissionMutation.isPending}
+                                  data-testid={`button-delete-submission-${sub.id}`}
+                                >
+                                  <Trash2 className="h-3.5 w-3.5 text-destructive" />
                                 </Button>
                                 {sub.reviewStatus === "reviewed" ? (
                                   <Badge variant="outline" className="text-xs text-green-600 dark:text-green-400">Reviewed</Badge>
