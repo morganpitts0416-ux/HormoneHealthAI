@@ -2739,18 +2739,81 @@ function EncounterEditor({
                     }
                   }
 
-                  // ── 2. Find insertion point — after last numbered item before Follow-up ──
-                  // Locate the Follow-up section header
+                  // ── 2. Find insertion point — match suggestion to its related diagnosis ──
+                  // Locate the Follow-up section header — suggestions should never go after it
                   const followUpIdx = note.search(/\n(?:FOLLOW[\s\-]?UP|FOLLOW-UP INSTRUCTIONS)[:\s]*/i);
                   const searchIn = followUpIdx > -1 ? note.slice(0, followUpIdx) : note;
 
-                  // Find every numbered plan item (e.g. "1. Something")
-                  const allNumbered = [...searchIn.matchAll(/^(\d+)\.\s+.+$/gm)];
+                  // Find every numbered diagnosis in the plan (e.g. "1. Vitamin D deficiency")
+                  const allNumbered = [...searchIn.matchAll(/^(\d+)\.\s+(.+)$/gm)];
 
+                  // Tokenize helper — strip filler/boilerplate words so we match on real clinical terms
+                  const STOPWORDS = new Set([
+                    "consider","initiation","initiate","start","add","begin","daily","twice","once","weekly","monthly",
+                    "mg","mcg","iu","units","unit","tablet","tablets","capsule","capsules","drops","gel",
+                    "to","for","the","a","an","of","and","or","in","on","with","at","as",
+                    "support","management","manage","function","treatment","treat","therapy","regimen",
+                    "patient","education","educate","educated","counsel","counseled","counseling",
+                    "low","high","elevated","decreased","increased","normal","optimal","borderline",
+                    "recommend","recommended","recommendation","consider","considered",
+                    "level","levels","value","values","lab","labs","result","results",
+                    "continue","discontinue","stop","hold","taper","titrate",
+                    "per","day","week","month","year","months","weeks","days","years",
+                    "this","that","these","those","which","some","any","all",
+                  ]);
+                  const tokenize = (s: string): string[] =>
+                    s.toLowerCase()
+                      .replace(/[^\w\s-]/g, " ")
+                      .split(/\s+/)
+                      .map(t => t.replace(/^-+|-+$/g, ""))
+                      .filter(t => t.length > 2 && !STOPWORDS.has(t) && !/^\d+$/.test(t));
+
+                  const suggestionTokens = new Set(tokenize(cleanText));
+
+                  // Score each diagnosis by keyword overlap with the suggestion. Include both the
+                  // diagnosis title line AND any body text up to the next numbered item, because a
+                  // diagnosis's body often names the treatment (e.g. "vitamin D") even when the
+                  // title doesn't.
+                  let best = { idx: -1, score: 0 };
+                  for (let i = 0; i < allNumbered.length; i++) {
+                    const startOfBlock = allNumbered[i].index!;
+                    const endOfBlock = i + 1 < allNumbered.length ? allNumbered[i + 1].index! : searchIn.length;
+                    const block = searchIn.slice(startOfBlock, endOfBlock);
+                    const blockTokens = tokenize(block);
+                    let score = 0;
+                    for (const tok of blockTokens) if (suggestionTokens.has(tok)) score++;
+                    // Title match is weighted heavier — token in the first line counts double
+                    const titleTokens = tokenize(allNumbered[i][2]);
+                    for (const tok of titleTokens) if (suggestionTokens.has(tok)) score++;
+                    if (score > best.score) best = { idx: i, score };
+                  }
+
+                  // If we found a confidently matching diagnosis, insert the suggestion as an
+                  // indented sub-bullet at the END of that diagnosis's block (after any existing
+                  // sub-items), preserving the diagnosis numbering.
+                  if (best.idx !== -1 && best.score >= 1 && allNumbered.length > 0) {
+                    const startOfBlock = allNumbered[best.idx].index!;
+                    const endOfBlock = best.idx + 1 < allNumbered.length
+                      ? allNumbered[best.idx + 1].index!
+                      : searchIn.length;
+                    // Walk back past trailing blank lines inside this diagnosis's block so the new
+                    // sub-bullet sits directly under the existing sub-items.
+                    let insertAt = endOfBlock;
+                    while (insertAt > startOfBlock && /\s/.test(note[insertAt - 1])) insertAt--;
+                    const newNote = note.slice(0, insertAt) + `\n   - ${cleanText}` + note.slice(insertAt);
+                    return { ...prev, fullNote: newNote };
+                  }
+
+                  // No clear diagnosis match — fall back to adding as a new numbered diagnosis
+                  // only if there are already numbered diagnoses; otherwise append cleanly.
                   if (allNumbered.length > 0) {
                     const last = allNumbered[allNumbered.length - 1];
                     const nextNum = parseInt(last[1]) + 1;
-                    const insertAt = last.index! + last[0].length;
+                    // Insert at the END of the last diagnosis's block (not immediately after its
+                    // header) so sub-bullets of the last diagnosis aren't orphaned.
+                    const lastBlockEnd = searchIn.length;
+                    let insertAt = lastBlockEnd;
+                    while (insertAt > last.index! && /\s/.test(note[insertAt - 1])) insertAt--;
                     const newNote = note.slice(0, insertAt) + `\n${nextNum}. ${cleanText}` + note.slice(insertAt);
                     return { ...prev, fullNote: newNote };
                   }
