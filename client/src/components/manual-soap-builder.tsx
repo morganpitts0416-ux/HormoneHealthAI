@@ -369,17 +369,32 @@ function BlockEditor({
   onUpdate,
   onRemove,
   onToggleCollapse,
+  isDragging,
+  isDragOver,
+  onDragStart,
+  onDragEnd,
+  onDragOver,
+  onDragLeave,
+  onDrop,
 }: {
   block: SoapBlock;
   onUpdate: (updates: Partial<SoapBlock>) => void;
   onRemove: () => void;
   onToggleCollapse: () => void;
+  isDragging?: boolean;
+  isDragOver?: boolean;
+  onDragStart?: () => void;
+  onDragEnd?: () => void;
+  onDragOver?: () => void;
+  onDragLeave?: () => void;
+  onDrop?: () => void;
 }) {
   const blockDef = BLOCK_TYPES.find(b => b.id === block.type)!;
   const Icon = blockDef.icon;
   const supportsChart = block.type === "ros" || block.type === "physical_exam";
   const isAssessment = block.type === "assessment_plan";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+  const [isDraggable, setIsDraggable] = useState(false);
 
   const dxSearch = useDiagnosisSearch({
     textareaRef,
@@ -388,9 +403,24 @@ function BlockEditor({
   });
 
   return (
-    <div className="border rounded-md bg-card" data-testid={`block-${block.type}-${block.uid}`}>
+    <div
+      className={`border rounded-md bg-card transition-all ${isDragOver ? "ring-2 ring-primary/40 border-primary/40" : ""} ${isDragging ? "opacity-40" : ""}`}
+      data-testid={`block-${block.type}-${block.uid}`}
+      data-block-uid={block.uid}
+      draggable={isDraggable}
+      onDragStart={(e) => { e.dataTransfer.effectAllowed = "move"; onDragStart?.(); }}
+      onDragEnd={() => onDragEnd?.()}
+      onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = "move"; onDragOver?.(); }}
+      onDragLeave={() => onDragLeave?.()}
+      onDrop={(e) => { e.preventDefault(); onDrop?.(); }}
+    >
       <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
-        <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 cursor-grab" />
+        <GripVertical
+          className="w-3.5 h-3.5 text-muted-foreground/60 flex-shrink-0 cursor-grab active:cursor-grabbing"
+          onMouseDown={() => setIsDraggable(true)}
+          onMouseUp={() => setIsDraggable(false)}
+          onMouseLeave={() => { if (!isDragging) setIsDraggable(false); }}
+        />
         <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
         <span className="text-xs font-semibold flex-1">{blockDef.label}</span>
         {supportsChart && (
@@ -649,15 +679,22 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     return () => document.removeEventListener("mousedown", handler);
   }, [showAddMenu]);
 
+  const scrollContainerRef = useRef<HTMLDivElement>(null);
+  const [dragUid, setDragUid] = useState<string | null>(null);
+  const [dragOverUid, setDragOverUid] = useState<string | null>(null);
+
   const addBlock = (type: BlockTypeId) => {
+    let newUid: string | null = null;
     setBlocks(prev => {
       const existing = prev.find(b => b.type === type);
       if (existing) {
         toast({ title: "Block exists", description: `${BLOCK_TYPES.find(b => b.id === type)!.label} is already in the note.` });
+        newUid = existing.uid;
         return prev;
       }
+      newUid = uid();
       const newBlock: SoapBlock = {
-        uid: uid(),
+        uid: newUid,
         type,
         content: "",
         mode: "freetext",
@@ -669,6 +706,25 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
       return [...prev, newBlock];
     });
     setShowAddMenu(false);
+    setTimeout(() => {
+      if (newUid) {
+        const el = document.querySelector(`[data-block-uid="${newUid}"]`);
+        el?.scrollIntoView({ behavior: "smooth", block: "center" });
+      }
+    }, 50);
+  };
+
+  const reorderBlocks = (sourceUid: string, targetUid: string) => {
+    if (sourceUid === targetUid) return;
+    setBlocks(prev => {
+      const sourceIdx = prev.findIndex(b => b.uid === sourceUid);
+      const targetIdx = prev.findIndex(b => b.uid === targetUid);
+      if (sourceIdx < 0 || targetIdx < 0) return prev;
+      const next = [...prev];
+      const [moved] = next.splice(sourceIdx, 1);
+      next.splice(targetIdx, 0, moved);
+      return next;
+    });
   };
 
   const updateBlock = (blockUid: string, updates: Partial<SoapBlock>) => {
@@ -854,7 +910,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
           </p>
         </div>
 
-        <div className="space-y-3">
+        <div className="space-y-3 pb-8">
           {blocks.map(block => (
             <BlockEditor
               key={block.uid}
@@ -862,6 +918,13 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
               onUpdate={updates => updateBlock(block.uid, updates)}
               onRemove={() => removeBlock(block.uid)}
               onToggleCollapse={() => toggleCollapse(block.uid)}
+              isDragging={dragUid === block.uid}
+              isDragOver={dragOverUid === block.uid && dragUid !== block.uid}
+              onDragStart={() => setDragUid(block.uid)}
+              onDragEnd={() => { setDragUid(null); setDragOverUid(null); }}
+              onDragOver={() => { if (dragUid && dragUid !== block.uid) setDragOverUid(block.uid); }}
+              onDragLeave={() => { if (dragOverUid === block.uid) setDragOverUid(null); }}
+              onDrop={() => { if (dragUid) reorderBlocks(dragUid, block.uid); setDragUid(null); setDragOverUid(null); }}
             />
           ))}
         </div>
