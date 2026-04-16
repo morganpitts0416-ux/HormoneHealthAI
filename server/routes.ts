@@ -8327,21 +8327,31 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
                 toSync[domain].push(String(value));
               }
             }
-            if (chart) {
-              const updates: Record<string, any> = {};
+            {
+              const chartData: Record<string, any> = {};
+              const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
               for (const [domain, values] of Object.entries(toSync)) {
                 if (values.length === 0) continue;
                 const key = domain === "medical_history" ? "medicalHistory"
                   : domain === "surgical_history" ? "surgicalHistory"
                   : domain === "family_history" ? "familyHistory"
                   : domain === "social_history" ? "socialHistory"
+                  : domain === "medications" ? "currentMedications"
                   : domain;
-                const existing = ((chart as any)[key] as string[]) ?? [];
-                const merged = [...new Set([...existing, ...values])];
-                updates[key] = merged;
+                const existing = (chart ? ((chart as any)[key] as string[]) ?? [] : []);
+                const seenNorms = new Set(existing.map(normalize));
+                const merged = [...existing];
+                for (const item of values) {
+                  const norm = normalize(item);
+                  if (!seenNorms.has(norm)) {
+                    merged.push(item);
+                    seenNorms.add(norm);
+                  }
+                }
+                chartData[key] = merged;
               }
-              if (Object.keys(updates).length > 0) {
-                await storage.updatePatientChart(chart.id, updates);
+              if (Object.keys(chartData).length > 0) {
+                await storage.upsertPatientChart(resolvedPatientId!, form.clinicianId!, chartData);
               }
             }
           } catch (syncErr) {
