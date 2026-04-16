@@ -182,6 +182,7 @@ export function FormSubmissionPreviewDialog({
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/pending"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms/submissions/all"] });
       queryClient.invalidateQueries({ queryKey: ["/api/form-submissions", submissionId] });
       onClose();
     },

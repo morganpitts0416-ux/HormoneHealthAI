@@ -7787,6 +7787,22 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // GET /api/intake-forms/submissions/all — all clinic submissions with form names (all staff + providers)
+  app.get("/api/intake-forms/submissions/all", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const clinicianId = getClinicianId(req);
+      const submissions = await storage.getFormSubmissionsByClinic(clinicId, clinicianId);
+      const enriched = await Promise.all(submissions.map(async (sub) => {
+        const form = await storage.getIntakeFormById(sub.formId);
+        return { ...sub, formName: form?.name ?? "Unknown Form" };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch submissions" });
+    }
+  });
+
   // GET /api/intake-forms/submissions/pending — all clinic submissions (all staff + providers)
   app.get("/api/intake-forms/submissions/pending", requireAuth, async (req: any, res) => {
     try {
@@ -7818,6 +7834,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       if (!clinicId && form.clinicianId !== getClinicianId(req)) return res.status(403).json({ message: "Not authorized" });
       const updated = await storage.updateFormSubmission(submissionId, {
         reviewStatus: "reviewed",
+        syncStatus: "synced",
       });
       res.json(updated);
     } catch (err) {
