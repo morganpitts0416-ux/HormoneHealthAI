@@ -697,14 +697,19 @@ export default function Account() {
 
   const isStaff = !!(user as any)?.isStaff;
   const adminRole = (user as any)?.adminRole as string | undefined;
-  const isOwnerOrAdmin = adminRole === "owner" || adminRole === "admin" || !(user as any)?.defaultClinicId;
+  const isOwner = adminRole === "owner" || !(user as any)?.defaultClinicId;
+  const isAdmin = adminRole === "admin";
+  const isOwnerOrAdmin = isOwner || isAdmin;
   const isSuiteProvider = !isStaff && !isOwnerOrAdmin && !!(user as any)?.defaultClinicId;
 
   useEffect(() => {
     if (isSuiteProvider && activeSection !== "provider" && activeSection !== "branding") {
       setActiveSection("provider");
     }
-  }, [isSuiteProvider]);
+    if (isAdmin && SECTIONS.find(s => s.id === activeSection)?.ownerOnly) {
+      setActiveSection("provider");
+    }
+  }, [isSuiteProvider, isAdmin]);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteFirstName, setInviteFirstName] = useState("");
@@ -1015,7 +1020,9 @@ export default function Account() {
     ? []
     : isSuiteProvider
       ? SECTIONS.filter(s => s.providerVisible)
-      : SECTIONS;
+      : isAdmin
+        ? SECTIONS.filter(s => !s.ownerOnly)
+        : SECTIONS;
   const filteredSections = visibleSections.filter(s => {
     if (!search) return true;
     return s.label.toLowerCase().includes(search.toLowerCase());
@@ -1167,17 +1174,17 @@ export default function Account() {
           <div className="space-y-4">
             <div>
               <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>
-                {isSuiteProvider ? "Your Provider Signature" : "Branding & Provider Signature"}
+                {isSuiteProvider || isAdmin ? "Your Provider Signature" : "Branding & Provider Signature"}
               </h3>
               <p className="text-sm text-muted-foreground mt-1">
-                {isSuiteProvider
+                {!isOwner
                   ? "Your personal electronic signature. It will appear at the bottom of SOAP note PDFs that you sign."
                   : "Your logo appears as letterhead on printed SOAP notes. Your signature is embedded when a note is electronically signed."}
               </p>
             </div>
             <Card>
               <CardContent className="pt-5 space-y-6">
-                {!isSuiteProvider && (
+                {isOwner && (
                   <>
                     <div>
                       <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-3">Clinic Logo</p>
@@ -1273,17 +1280,17 @@ export default function Account() {
                   <div className="h-5">
                     {brandingSaved && (
                       <span className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
-                        <CheckCircle className="w-4 h-4" />{isSuiteProvider ? "Signature saved" : "Branding saved"}
+                        <CheckCircle className="w-4 h-4" />{!isOwner ? "Signature saved" : "Branding saved"}
                       </span>
                     )}
                   </div>
                   <Button
                     data-testid="button-save-branding"
                     disabled={brandingMutation.isPending}
-                    onClick={() => brandingMutation.mutate(isSuiteProvider ? { signatureImage: signaturePreview } : { clinicLogo: clinicLogoPreview, signatureImage: signaturePreview })}
+                    onClick={() => brandingMutation.mutate(!isOwner ? { signatureImage: signaturePreview } : { clinicLogo: clinicLogoPreview, signatureImage: signaturePreview })}
                   >
                     <Save className="w-4 h-4 mr-2" />
-                    {brandingMutation.isPending ? "Saving..." : isSuiteProvider ? "Save Signature" : "Save Branding"}
+                    {brandingMutation.isPending ? "Saving..." : !isOwner ? "Save Signature" : "Save Branding"}
                   </Button>
                 </div>
               </CardContent>
