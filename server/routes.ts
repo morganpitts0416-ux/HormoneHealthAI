@@ -8417,6 +8417,27 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
     }
   });
 
+  // DELETE /api/form-submissions/:id — delete a submission and its sync events
+  app.delete("/api/form-submissions/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const submission = await storage.getFormSubmission(id);
+      if (!submission) return res.status(404).json({ message: "Submission not found" });
+      const isOwner = submission.clinicianId === clinicianId;
+      const isClinicMember = clinicId && (submission as any).clinicId === clinicId;
+      if (!isOwner && !isClinicMember) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      await storage.deleteFormSubmission(id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[DeleteFormSubmission]", err);
+      res.status(500).json({ message: "Failed to delete submission" });
+    }
+  });
+
   // PUT /api/form-submissions/:id/review
   app.put("/api/form-submissions/:id/review", requireAuth, async (req: any, res) => {
     try {

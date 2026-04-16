@@ -1760,6 +1760,11 @@ export class DbStorage implements IStorage {
     return result.rows.map(mapRow)[0] as schema.FormSubmission | undefined;
   }
 
+  async deleteFormSubmission(id: number): Promise<void> {
+    await pool.query(`DELETE FROM form_sync_events WHERE submission_id = $1`, [id]);
+    await pool.query(`DELETE FROM form_submissions WHERE id = $1`, [id]);
+  }
+
   // ─── Form Sync Events ───────────────────────────────────────────────────────
 
   async getFormSyncEvents(submissionId: number): Promise<schema.FormSyncEvent[]> {
