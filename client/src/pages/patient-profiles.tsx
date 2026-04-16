@@ -38,6 +38,7 @@ import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { SoapNoteViewer } from "@/components/soap-note-viewer";
+import { ManualSoapBuilder } from "@/components/manual-soap-builder";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -1117,6 +1118,7 @@ export default function PatientProfiles() {
   const [showForms, setShowForms] = useState(true);
   const [showAssignFormDialog, setShowAssignFormDialog] = useState(false);
   const [sendLinkFormId, setSendLinkFormId] = useState<number | null>(null);
+  const [showManualSoap, setShowManualSoap] = useState(false);
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
   const [pdfExportingEncounterId, setPdfExportingEncounterId] = useState<number | null>(null);
   const [copiedEncounterId, setCopiedEncounterId] = useState<number | null>(null);
@@ -2168,6 +2170,16 @@ export default function PatientProfiles() {
                       )}
                       <Button
                         size="sm"
+                        variant="outline"
+                        onClick={() => setShowManualSoap(true)}
+                        data-testid="button-manual-soap-from-profile"
+                        className="text-xs gap-1.5"
+                      >
+                        <FileText className="h-3 w-3" />
+                        + Manual SOAP
+                      </Button>
+                      <Button
+                        size="sm"
                         onClick={() => setLocation(`/encounters?patientId=${selectedPatient.id}`)}
                         data-testid="button-new-encounter-from-profile"
                         className="text-xs gap-1.5"
@@ -2870,6 +2882,24 @@ export default function PatientProfiles() {
                   </div>
                 </DialogContent>
               </Dialog>
+
+              {showManualSoap && selectedPatient && (
+                <Dialog open={showManualSoap} onOpenChange={setShowManualSoap}>
+                  <DialogContent className="max-w-3xl h-[85vh] p-0 overflow-hidden [&>button:last-child]:hidden" data-testid="dialog-manual-soap">
+                    <ManualSoapBuilder
+                      patientId={selectedPatient.id}
+                      patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                      clinicianId={(user as any)?.id ?? 0}
+                      onClose={() => setShowManualSoap(false)}
+                      onSaved={() => {
+                        queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                        setShowManualSoap(false);
+                        setShowEncounters(true);
+                      }}
+                    />
+                  </DialogContent>
+                </Dialog>
+              )}
 
             </div>
           )}

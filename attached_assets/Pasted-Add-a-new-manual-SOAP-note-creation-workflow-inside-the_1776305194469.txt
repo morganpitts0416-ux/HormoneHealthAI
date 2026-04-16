@@ -1,0 +1,176 @@
+Add a new manual SOAP-note creation workflow inside the patient profile / New Encounter flow.
+
+IMPORTANT:
+This is an additional note-building workflow. Do NOT remove or replace the current transcription-based SOAP generation workflow.
+The current workflows must remain intact:
+1. record visit -> generate SOAP
+2. type/paste narrative into transcription area -> generate SOAP
+
+This request is to add a second way to create a note manually using modular note blocks.
+
+PRIMARY GOAL:
+Within a patient’s profile, when the clinician starts a New Encounter, there should be a "+ SOAP" option that opens a manual SOAP note builder. This builder should allow the clinician to create a note from scratch using selectable blocks/sections, while preserving the current look/feel of the platform as much as possible.
+
+CORE UX REQUIREMENTS:
+
+1. NEW ENCOUNTER ENTRY POINT
+Inside the patient profile, within New Encounter, add a "+ SOAP" button / action.
+When clicked, it should open a new manual note editor.
+
+2. MANUAL SOAP NOTE LAYOUT
+The manual note should open as a free-text clinical note with:
+- a Chief Complaint / Reason for Visit field at the top
+- then the note body below
+
+The note body should support modular note blocks that can be inserted into the encounter.
+
+3. BLOCK MENU
+At the top of the note editor, add a menu button (or Add Block button) that allows the provider to insert note blocks into the note.
+
+Required block types:
+- HPI
+- Medical History
+- Surgical History
+- Family History
+- Social History
+- Current Medications
+- Allergies
+- Review of Systems (ROS)
+- Physical Assessment / Physical Exam
+- Assessment / Plan
+- Care Plan
+- Follow-Up
+
+The clinician should be able to choose which blocks to add.
+Blocks should be insertable in a logical note order, but the provider should still have control.
+
+4. BLOCK EDITING BEHAVIOR
+Each block should be editable directly within the note.
+
+For narrative blocks, support free text entry.
+
+For structured blocks, support a more chart-style option where appropriate.
+
+Specific requirements:
+- ROS block:
+  - clinician can choose free-text mode OR chart-style mode
+  - in chart-style mode, body systems should be listed in a structured format
+  - unused body systems should be removable / hideable
+  - provider should not be forced to display systems they are not documenting
+
+- Physical Assessment / Physical Exam block:
+  - same approach as ROS
+  - clinician can choose free-text mode OR chart-style mode
+  - chart-style mode should allow unused systems to be removed / hidden
+
+- Current Medications / Allergies / histories:
+  - can begin as structured fields but should still allow editable text content
+  - avoid making this rigid or overcomplicated
+
+5. SHORTCODE /DX SUPPORT
+The same inline diagnosis insertion behavior should work in these manual notes.
+
+Required behavior:
+- typing /dx should open an inline diagnosis search
+- the provider can search by diagnosis name / common term
+- display diagnosis name + ICD-10 code
+- when selected, insert diagnosis into the Assessment/Plan area in the correct formatting structure
+- this should work in manual notes the same way it will work in generated notes
+
+Important:
+- do NOT auto-add diagnoses without user action
+- this is a provider-controlled assistive feature
+
+6. ASSESSMENT / PLAN FORMAT
+Preserve the preferred assessment/plan style:
+- optional short summary at the top of Assessment
+- then diagnosis with ICD-10
+- supporting factors under each diagnosis
+- bulleted plan under each diagnosis
+
+This structure should also be supported when the note is created manually, not only when generated from transcript.
+
+7. SAVE / WORKFLOW REQUIREMENTS
+This manual SOAP note builder must integrate into the existing encounter workflow.
+
+Do NOT break:
+- existing encounter save behavior
+- existing signing flow
+- note status flow
+- clinician workflow after note creation
+- patient profile encounter history
+- evidence layer for generated notes
+
+Important:
+This new manual builder does NOT need to force evidence generation if evidence is currently only tied to generated notes, unless that is already supported. Do not break existing evidence behavior.
+
+8. NON-GOALS / DO NOT CHANGE
+- Do NOT remove the current transcription / recording SOAP generation flow
+- Do NOT redesign the entire encounter page unnecessarily
+- Do NOT change the current evidence-pill workflow for generated notes
+- Do NOT change the post-SOAP workflow for existing generated notes
+- Do NOT make this dependent on transcription
+- Do NOT over-engineer the first version
+
+9. RECOMMENDED IMPLEMENTATION APPROACH
+Implement this as a block-based manual note editor inside New Encounter.
+
+Suggested model:
+- encounter has a note made of ordered blocks
+- each block has:
+  - type
+  - mode (free-text or structured where applicable)
+  - content
+  - position/order
+
+Example block types:
+- chief_complaint
+- hpi
+- medical_history
+- surgical_history
+- family_history
+- social_history
+- medications
+- allergies
+- ros
+- physical_exam
+- assessment_plan
+- care_plan
+- follow_up
+
+Suggested ROS / Physical block model:
+- mode: "free_text" or "structured"
+- if structured, support per-system entries and hiding/removing unused systems
+
+10. FIRST VERSION PRIORITY
+Prioritize usability and speed over perfect complexity.
+
+Version 1 should allow:
+- adding/removing blocks
+- reordering blocks if feasible
+- editing block contents
+- choosing free-text vs structured mode for ROS and Physical
+- using /dx in the note
+- saving the note within the encounter
+
+11. ACCEPTANCE CRITERIA
+This feature is complete only if:
+- a provider can open New Encounter from a patient profile
+- click + SOAP
+- enter a chief complaint
+- add chosen blocks from a block menu
+- complete the note manually
+- use /dx to search and insert diagnoses with ICD-10
+- document ROS and Physical in either free-text or structured chart mode
+- remove/hide unused ROS and Physical systems
+- save the note into the encounter workflow
+- existing transcription-based SOAP generation still works unchanged
+
+12. FUTURE-FRIENDLY DESIGN
+Please build this in a way that can later support:
+- reusable note templates
+- provider-specific default block sets
+- nurse-note templates
+- auto-suggested blocks based on encounter type
+
+But do not try to build all of that in this same change unless it is very lightweight.

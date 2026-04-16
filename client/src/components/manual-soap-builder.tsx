@@ -1,0 +1,866 @@
+import { useState, useRef, useCallback, useEffect } from "react";
+import { useMutation } from "@tanstack/react-query";
+import { apiRequest, queryClient } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Badge } from "@/components/ui/badge";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Card, CardContent } from "@/components/ui/card";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import {
+  Plus, X, GripVertical, ChevronDown, ChevronUp, Save, FileText,
+  Stethoscope, Pill, Heart, Brain, ClipboardList, Activity, Users,
+  Scissors, AlertTriangle, ListChecks, CalendarCheck, ToggleLeft, ToggleRight,
+  Search, Loader2,
+} from "lucide-react";
+import { useDiagnosisSearch } from "@/components/diagnosis-search";
+
+const BLOCK_TYPES = [
+  { id: "hpi", label: "HPI", icon: FileText, category: "subjective" },
+  { id: "medical_history", label: "Medical History", icon: Heart, category: "subjective" },
+  { id: "surgical_history", label: "Surgical History", icon: Scissors, category: "subjective" },
+  { id: "family_history", label: "Family History", icon: Users, category: "subjective" },
+  { id: "social_history", label: "Social History", icon: Brain, category: "subjective" },
+  { id: "current_medications", label: "Current Medications", icon: Pill, category: "subjective" },
+  { id: "allergies", label: "Allergies", icon: AlertTriangle, category: "subjective" },
+  { id: "ros", label: "Review of Systems", icon: ClipboardList, category: "objective" },
+  { id: "physical_exam", label: "Physical Assessment / Exam", icon: Stethoscope, category: "objective" },
+  { id: "assessment_plan", label: "Assessment / Plan", icon: ListChecks, category: "assessment" },
+  { id: "care_plan", label: "Care Plan", icon: Activity, category: "plan" },
+  { id: "follow_up", label: "Follow-Up", icon: CalendarCheck, category: "plan" },
+] as const;
+
+type BlockTypeId = typeof BLOCK_TYPES[number]["id"];
+
+interface SoapBlock {
+  uid: string;
+  type: BlockTypeId;
+  content: string;
+  mode: "freetext" | "chart";
+  chartData?: Record<string, { status: string; notes: string; visible: boolean }>;
+  assessmentItems?: AssessmentItem[];
+  assessmentSummary?: string;
+  collapsed?: boolean;
+}
+
+interface AssessmentItem {
+  uid: string;
+  diagnosis: string;
+  icd10: string;
+  supportingFactors: string;
+  plan: string;
+}
+
+const ROS_SYSTEMS = [
+  "Constitutional", "Eyes", "ENT", "Cardiovascular", "Respiratory",
+  "Gastrointestinal", "Genitourinary", "Musculoskeletal", "Integumentary",
+  "Neurological", "Psychiatric", "Endocrine", "Hematologic/Lymphatic",
+  "Allergic/Immunologic",
+];
+
+const PE_SYSTEMS = [
+  "General Appearance", "Head", "Eyes", "ENT", "Neck", "Cardiovascular",
+  "Respiratory", "Abdomen", "Musculoskeletal", "Neurological", "Skin",
+  "Psychiatric", "Lymphatic",
+];
+
+function createChartData(systems: string[]): Record<string, { status: string; notes: string; visible: boolean }> {
+  const data: Record<string, { status: string; notes: string; visible: boolean }> = {};
+  systems.forEach(s => { data[s] = { status: "normal", notes: "", visible: true }; });
+  return data;
+}
+
+function uid(): string {
+  return Math.random().toString(36).substring(2, 10);
+}
+
+function ChartModeEditor({
+  systems,
+  chartData,
+  onChange,
+}: {
+  systems: string[];
+  chartData: Record<string, { status: string; notes: string; visible: boolean }>;
+  onChange: (data: Record<string, { status: string; notes: string; visible: boolean }>) => void;
+}) {
+  const update = (system: string, field: string, value: any) => {
+    const next = { ...chartData };
+    next[system] = { ...next[system], [field]: value };
+    onChange(next);
+  };
+
+  const visibleSystems = systems.filter(s => chartData[s]?.visible !== false);
+  const hiddenSystems = systems.filter(s => chartData[s]?.visible === false);
+
+  return (
+    <div className="space-y-1">
+      {visibleSystems.map(system => (
+        <div key={system} className="flex items-start gap-2 py-1.5 border-b border-border/40 last:border-0">
+          <div className="min-w-[140px] flex items-center gap-1.5 pt-1">
+            <span className="text-xs font-medium text-foreground">{system}</span>
+          </div>
+          <Select
+            value={chartData[system]?.status ?? "normal"}
+            onValueChange={v => update(system, "status", v)}
+          >
+            <SelectTrigger className="h-7 text-xs w-[110px] flex-shrink-0" data-testid={`select-ros-status-${system}`}>
+              <SelectValue />
+            </SelectTrigger>
+            <SelectContent>
+              <SelectItem value="normal">Normal</SelectItem>
+              <SelectItem value="abnormal">Abnormal</SelectItem>
+              <SelectItem value="not-examined">Not examined</SelectItem>
+            </SelectContent>
+          </Select>
+          <Input
+            value={chartData[system]?.notes ?? ""}
+            onChange={e => update(system, "notes", e.target.value)}
+            placeholder="Notes..."
+            className="h-7 text-xs flex-1"
+            data-testid={`input-ros-notes-${system}`}
+          />
+          <Button
+            size="icon"
+            variant="ghost"
+            className="h-7 w-7 flex-shrink-0 text-muted-foreground"
+            onClick={() => update(system, "visible", false)}
+            data-testid={`button-hide-system-${system}`}
+          >
+            <X className="w-3 h-3" />
+          </Button>
+        </div>
+      ))}
+      {hiddenSystems.length > 0 && (
+        <div className="pt-2 flex flex-wrap gap-1">
+          <span className="text-[10px] text-muted-foreground mr-1 pt-1">Hidden:</span>
+          {hiddenSystems.map(system => (
+            <Badge
+              key={system}
+              variant="outline"
+              className="text-[10px] cursor-pointer"
+              onClick={() => update(system, "visible", true)}
+              data-testid={`badge-restore-system-${system}`}
+            >
+              + {system}
+            </Badge>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function AssessmentPlanEditor({
+  items,
+  summary,
+  onItemsChange,
+  onSummaryChange,
+}: {
+  items: AssessmentItem[];
+  summary: string;
+  onItemsChange: (items: AssessmentItem[]) => void;
+  onSummaryChange: (s: string) => void;
+}) {
+  const addItem = () => {
+    onItemsChange([...items, { uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }]);
+  };
+
+  const updateItem = (idx: number, field: keyof AssessmentItem, value: string) => {
+    const next = [...items];
+    next[idx] = { ...next[idx], [field]: value };
+    onItemsChange(next);
+  };
+
+  const removeItem = (idx: number) => {
+    onItemsChange(items.filter((_, i) => i !== idx));
+  };
+
+  return (
+    <div className="space-y-3">
+      <div>
+        <label className="text-xs font-medium text-muted-foreground mb-1 block">Summary (optional)</label>
+        <Textarea
+          value={summary}
+          onChange={e => onSummaryChange(e.target.value)}
+          rows={2}
+          placeholder="Brief clinical summary..."
+          className="text-sm resize-y"
+          data-testid="textarea-assessment-summary"
+        />
+      </div>
+
+      {items.map((item, idx) => (
+        <Card key={item.uid} className="border-border/60">
+          <CardContent className="p-3 space-y-2">
+            <div className="flex items-center justify-between gap-2">
+              <span className="text-xs font-semibold text-muted-foreground">Dx #{idx + 1}</span>
+              <Button size="icon" variant="ghost" className="h-6 w-6" onClick={() => removeItem(idx)} data-testid={`button-remove-dx-${idx}`}>
+                <X className="w-3 h-3" />
+              </Button>
+            </div>
+            <div className="flex gap-2">
+              <DxSearchInput
+                value={item.diagnosis}
+                icd10={item.icd10}
+                onSelect={(name, code) => {
+                  const next = [...items];
+                  next[idx] = { ...next[idx], diagnosis: name, icd10: code };
+                  onItemsChange(next);
+                }}
+                onChange={(val) => updateItem(idx, "diagnosis", val)}
+                index={idx}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-muted-foreground mb-0.5 block">Supporting Factors</label>
+              <Textarea
+                value={item.supportingFactors}
+                onChange={e => updateItem(idx, "supportingFactors", e.target.value)}
+                rows={2}
+                placeholder="Clinical reasoning, lab findings, symptoms..."
+                className="text-xs resize-y"
+                data-testid={`textarea-supporting-${idx}`}
+              />
+            </div>
+            <div>
+              <label className="text-[10px] font-medium text-muted-foreground mb-0.5 block">Plan</label>
+              <Textarea
+                value={item.plan}
+                onChange={e => updateItem(idx, "plan", e.target.value)}
+                rows={2}
+                placeholder="- Treatment actions&#10;- Medications&#10;- Follow-up"
+                className="text-xs resize-y"
+                data-testid={`textarea-plan-${idx}`}
+              />
+            </div>
+          </CardContent>
+        </Card>
+      ))}
+
+      <Button variant="outline" size="sm" onClick={addItem} className="text-xs gap-1.5" data-testid="button-add-diagnosis">
+        <Plus className="w-3 h-3" />
+        Add Diagnosis
+      </Button>
+    </div>
+  );
+}
+
+function DxSearchInput({
+  value,
+  icd10,
+  onSelect,
+  onChange,
+  index,
+}: {
+  value: string;
+  icd10: string;
+  onSelect: (name: string, code: string) => void;
+  onChange: (val: string) => void;
+  index: number;
+}) {
+  const [query, setQuery] = useState("");
+  const [isOpen, setIsOpen] = useState(false);
+  const [results, setResults] = useState<{ code: string; name: string }[]>([]);
+  const [selectedIdx, setSelectedIdx] = useState(0);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const dropdownRef = useRef<HTMLDivElement>(null);
+
+  const search = useCallback(async (q: string) => {
+    if (!q.trim()) { setResults([]); return; }
+    try {
+      const res = await fetch(`/api/diagnoses/search?q=${encodeURIComponent(q)}`);
+      if (res.ok) {
+        const data = await res.json();
+        setResults(data);
+        setSelectedIdx(0);
+      }
+    } catch {}
+  }, []);
+
+  useEffect(() => {
+    if (!isOpen || !query) return;
+    const t = setTimeout(() => search(query), 200);
+    return () => clearTimeout(t);
+  }, [query, isOpen, search]);
+
+  useEffect(() => {
+    if (!isOpen) return;
+    const handler = (e: MouseEvent) => {
+      if (dropdownRef.current && !dropdownRef.current.contains(e.target as Node) &&
+          inputRef.current && !inputRef.current.contains(e.target as Node)) {
+        setIsOpen(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [isOpen]);
+
+  return (
+    <div className="flex-1 relative">
+      <div className="flex gap-2">
+        <div className="relative flex-1">
+          <Input
+            ref={inputRef}
+            value={value}
+            onChange={e => {
+              onChange(e.target.value);
+              setQuery(e.target.value);
+              if (e.target.value.length > 0) setIsOpen(true);
+            }}
+            onFocus={() => { if (value.length > 0) { setQuery(value); setIsOpen(true); } }}
+            placeholder="Search diagnosis or type name..."
+            className="text-xs h-8 pr-8"
+            data-testid={`input-diagnosis-${index}`}
+            onKeyDown={e => {
+              if (!isOpen || !results.length) return;
+              if (e.key === "ArrowDown") { e.preventDefault(); setSelectedIdx(i => Math.min(i + 1, results.length - 1)); }
+              else if (e.key === "ArrowUp") { e.preventDefault(); setSelectedIdx(i => Math.max(i - 1, 0)); }
+              else if (e.key === "Enter") {
+                if (results[selectedIdx]) {
+                  e.preventDefault();
+                  onSelect(results[selectedIdx].name, results[selectedIdx].code);
+                  setIsOpen(false);
+                }
+              } else if (e.key === "Escape") { setIsOpen(false); }
+            }}
+          />
+          <Search className="absolute right-2 top-1/2 -translate-y-1/2 w-3.5 h-3.5 text-muted-foreground pointer-events-none" />
+        </div>
+        <Input
+          value={icd10}
+          readOnly
+          placeholder="ICD-10"
+          className="text-xs h-8 w-[90px] font-mono bg-muted/50"
+          data-testid={`input-icd10-${index}`}
+        />
+      </div>
+      {isOpen && results.length > 0 && (
+        <div
+          ref={dropdownRef}
+          className="absolute z-50 top-full mt-1 left-0 w-full max-h-[200px] overflow-y-auto rounded-md border bg-popover shadow-lg"
+          data-testid={`dx-search-results-${index}`}
+        >
+          {results.map((dx, i) => (
+            <button
+              key={`${dx.code}-${i}`}
+              className={`w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs cursor-pointer ${
+                i === selectedIdx ? "bg-accent" : "hover-elevate"
+              }`}
+              onMouseDown={e => {
+                e.preventDefault();
+                onSelect(dx.name, dx.code);
+                setIsOpen(false);
+              }}
+              onMouseEnter={() => setSelectedIdx(i)}
+            >
+              <span className="font-mono font-semibold text-primary/80 flex-shrink-0 min-w-[55px]">{dx.code}</span>
+              <span className="text-foreground truncate">{dx.name}</span>
+            </button>
+          ))}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function BlockEditor({
+  block,
+  onUpdate,
+  onRemove,
+  onToggleCollapse,
+}: {
+  block: SoapBlock;
+  onUpdate: (updates: Partial<SoapBlock>) => void;
+  onRemove: () => void;
+  onToggleCollapse: () => void;
+}) {
+  const blockDef = BLOCK_TYPES.find(b => b.id === block.type)!;
+  const Icon = blockDef.icon;
+  const supportsChart = block.type === "ros" || block.type === "physical_exam";
+  const isAssessment = block.type === "assessment_plan";
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  const dxSearch = useDiagnosisSearch({
+    textareaRef,
+    value: block.content,
+    onChange: (newValue: string) => onUpdate({ content: newValue }),
+  });
+
+  return (
+    <div className="border rounded-md bg-card" data-testid={`block-${block.type}-${block.uid}`}>
+      <div className="flex items-center gap-2 px-3 py-2 border-b bg-muted/30">
+        <GripVertical className="w-3.5 h-3.5 text-muted-foreground/50 flex-shrink-0 cursor-grab" />
+        <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+        <span className="text-xs font-semibold flex-1">{blockDef.label}</span>
+        {supportsChart && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px] gap-1"
+            onClick={() => {
+              const systems = block.type === "ros" ? ROS_SYSTEMS : PE_SYSTEMS;
+              if (block.mode === "freetext") {
+                onUpdate({ mode: "chart", chartData: block.chartData ?? createChartData(systems) });
+              } else {
+                onUpdate({ mode: "freetext" });
+              }
+            }}
+            data-testid={`button-toggle-mode-${block.uid}`}
+          >
+            {block.mode === "chart" ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
+            {block.mode === "chart" ? "Chart" : "Free Text"}
+          </Button>
+        )}
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6"
+          onClick={onToggleCollapse}
+          data-testid={`button-collapse-${block.uid}`}
+        >
+          {block.collapsed ? <ChevronDown className="w-3 h-3" /> : <ChevronUp className="w-3 h-3" />}
+        </Button>
+        <Button
+          size="icon"
+          variant="ghost"
+          className="h-6 w-6 text-muted-foreground"
+          onClick={onRemove}
+          data-testid={`button-remove-block-${block.uid}`}
+        >
+          <X className="w-3 h-3" />
+        </Button>
+      </div>
+      {!block.collapsed && (
+        <div className="p-3">
+          {isAssessment ? (
+            <AssessmentPlanEditor
+              items={block.assessmentItems ?? []}
+              summary={block.assessmentSummary ?? ""}
+              onItemsChange={items => onUpdate({ assessmentItems: items })}
+              onSummaryChange={s => onUpdate({ assessmentSummary: s })}
+            />
+          ) : supportsChart && block.mode === "chart" ? (
+            <ChartModeEditor
+              systems={block.type === "ros" ? ROS_SYSTEMS : PE_SYSTEMS}
+              chartData={block.chartData ?? createChartData(block.type === "ros" ? ROS_SYSTEMS : PE_SYSTEMS)}
+              onChange={chartData => onUpdate({ chartData })}
+            />
+          ) : (
+            <div className="relative">
+              <Textarea
+                ref={textareaRef}
+                value={block.content}
+                onChange={e => {
+                  onUpdate({ content: e.target.value });
+                  dxSearch.handleInput(e);
+                }}
+                onKeyDown={dxSearch.handleKeyDown}
+                rows={block.type === "hpi" ? 6 : 3}
+                placeholder={getPlaceholder(block.type)}
+                className="text-sm resize-y"
+                data-testid={`textarea-block-${block.uid}`}
+              />
+              {dxSearch.dropdown}
+            </div>
+          )}
+        </div>
+      )}
+    </div>
+  );
+}
+
+function getPlaceholder(type: BlockTypeId): string {
+  switch (type) {
+    case "hpi": return "Document the history of present illness...";
+    case "medical_history": return "Past medical history...";
+    case "surgical_history": return "Past surgical history...";
+    case "family_history": return "Family history...";
+    case "social_history": return "Social history (smoking, alcohol, exercise, occupation)...";
+    case "current_medications": return "List current medications with doses...";
+    case "allergies": return "Known allergies and reactions...";
+    case "ros": return "Review of systems — document positive and pertinent negatives...";
+    case "physical_exam": return "Physical exam findings...";
+    case "assessment_plan": return "Assessment and plan...";
+    case "care_plan": return "Care plan details...";
+    case "follow_up": return "Follow-up instructions and timeline...";
+    default: return "Enter documentation...";
+  }
+}
+
+function chartDataToText(
+  label: string,
+  chartData: Record<string, { status: string; notes: string; visible: boolean }>,
+): string {
+  const lines: string[] = [`${label}:`];
+  Object.entries(chartData).forEach(([system, data]) => {
+    if (!data.visible) return;
+    const statusLabel = data.status === "normal" ? "Normal/Negative" : data.status === "abnormal" ? "Abnormal/Positive" : "Not examined";
+    const notePart = data.notes ? ` — ${data.notes}` : "";
+    lines.push(`  ${system}: ${statusLabel}${notePart}`);
+  });
+  return lines.join("\n");
+}
+
+function blocksToFullNote(
+  chiefComplaint: string,
+  blocks: SoapBlock[],
+  visitDate: string,
+  patientName: string,
+): string {
+  const lines: string[] = [];
+  lines.push("SUBJECTIVE");
+  lines.push("");
+  if (chiefComplaint.trim()) {
+    lines.push(`CC/Reason: ${chiefComplaint.trim()}`);
+    lines.push("");
+  }
+
+  const sectionOrder: BlockTypeId[] = [
+    "hpi", "medical_history", "surgical_history", "family_history",
+    "social_history", "current_medications", "allergies",
+  ];
+
+  const sectionLabels: Record<string, string> = {
+    hpi: "HPI",
+    medical_history: "Past Medical History",
+    surgical_history: "Past Surgical History",
+    family_history: "Family History",
+    social_history: "Social History",
+    current_medications: "Current Medications",
+    allergies: "Allergies",
+  };
+
+  for (const sectionId of sectionOrder) {
+    const block = blocks.find(b => b.type === sectionId);
+    if (!block) continue;
+    const content = block.content.trim();
+    if (!content) continue;
+    if (sectionId === "hpi") {
+      lines.push(content);
+    } else {
+      lines.push(`${sectionLabels[sectionId]}: ${content}`);
+    }
+    lines.push("");
+  }
+
+  lines.push("OBJECTIVE");
+  lines.push("");
+
+  const rosBlock = blocks.find(b => b.type === "ros");
+  if (rosBlock) {
+    if (rosBlock.mode === "chart" && rosBlock.chartData) {
+      lines.push(chartDataToText("Review of Systems", rosBlock.chartData));
+    } else if (rosBlock.content.trim()) {
+      lines.push(`Review of Systems: ${rosBlock.content.trim()}`);
+    }
+    lines.push("");
+  }
+
+  const peBlock = blocks.find(b => b.type === "physical_exam");
+  if (peBlock) {
+    if (peBlock.mode === "chart" && peBlock.chartData) {
+      lines.push(chartDataToText("Physical Examination", peBlock.chartData));
+    } else if (peBlock.content.trim()) {
+      lines.push(`Physical Examination: ${peBlock.content.trim()}`);
+    }
+    lines.push("");
+  }
+
+  const apBlock = blocks.find(b => b.type === "assessment_plan");
+  if (apBlock) {
+    lines.push("ASSESSMENT/PLAN");
+    lines.push("");
+    if (apBlock.assessmentSummary?.trim()) {
+      lines.push(apBlock.assessmentSummary.trim());
+      lines.push("");
+    }
+    if (apBlock.assessmentItems?.length) {
+      apBlock.assessmentItems.forEach((item, idx) => {
+        const dxLine = item.icd10
+          ? `${idx + 1}. ${item.diagnosis} (${item.icd10})`
+          : `${idx + 1}. ${item.diagnosis}`;
+        lines.push(dxLine);
+        if (item.supportingFactors.trim()) {
+          lines.push(item.supportingFactors.trim());
+        }
+        if (item.plan.trim()) {
+          lines.push("Plan:");
+          item.plan.trim().split("\n").forEach(l => {
+            const trimmedLine = l.trim();
+            if (trimmedLine) {
+              lines.push(trimmedLine.startsWith("-") ? trimmedLine : `- ${trimmedLine}`);
+            }
+          });
+        }
+        lines.push("");
+      });
+    }
+  }
+
+  const cpBlock = blocks.find(b => b.type === "care_plan");
+  if (cpBlock?.content.trim()) {
+    lines.push("CARE PLAN");
+    lines.push("");
+    lines.push(cpBlock.content.trim());
+    lines.push("");
+  }
+
+  const fuBlock = blocks.find(b => b.type === "follow_up");
+  if (fuBlock?.content.trim()) {
+    lines.push("FOLLOW-UP");
+    lines.push("");
+    lines.push(fuBlock.content.trim());
+    lines.push("");
+  }
+
+  return lines.join("\n").replace(/\n{3,}/g, "\n\n").trim();
+}
+
+interface ManualSoapBuilderProps {
+  patientId: number;
+  patientName: string;
+  clinicianId: number;
+  onClose: () => void;
+  onSaved: () => void;
+}
+
+export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose, onSaved }: ManualSoapBuilderProps) {
+  const { toast } = useToast();
+  const [chiefComplaint, setChiefComplaint] = useState("");
+  const [visitDate, setVisitDate] = useState(new Date().toISOString().slice(0, 10));
+  const [visitType, setVisitType] = useState("follow-up");
+  const [blocks, setBlocks] = useState<SoapBlock[]>([
+    { uid: uid(), type: "hpi", content: "", mode: "freetext" },
+    { uid: uid(), type: "assessment_plan", content: "", mode: "freetext", assessmentItems: [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }], assessmentSummary: "" },
+  ]);
+  const [showAddMenu, setShowAddMenu] = useState(false);
+  const [savedEncounterId, setSavedEncounterId] = useState<number | null>(null);
+  const addMenuRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    if (!showAddMenu) return;
+    const handler = (e: MouseEvent) => {
+      if (addMenuRef.current && !addMenuRef.current.contains(e.target as Node)) {
+        setShowAddMenu(false);
+      }
+    };
+    document.addEventListener("mousedown", handler);
+    return () => document.removeEventListener("mousedown", handler);
+  }, [showAddMenu]);
+
+  const addBlock = (type: BlockTypeId) => {
+    const existing = blocks.find(b => b.type === type);
+    if (existing) {
+      toast({ title: "Block exists", description: `${BLOCK_TYPES.find(b => b.id === type)!.label} is already in the note.` });
+      setShowAddMenu(false);
+      return;
+    }
+    const newBlock: SoapBlock = {
+      uid: uid(),
+      type,
+      content: "",
+      mode: "freetext",
+    };
+    if (type === "assessment_plan") {
+      newBlock.assessmentItems = [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }];
+      newBlock.assessmentSummary = "";
+    }
+    setBlocks([...blocks, newBlock]);
+    setShowAddMenu(false);
+  };
+
+  const updateBlock = (blockUid: string, updates: Partial<SoapBlock>) => {
+    setBlocks(prev => prev.map(b => b.uid === blockUid ? { ...b, ...updates } : b));
+  };
+
+  const removeBlock = (blockUid: string) => {
+    setBlocks(prev => prev.filter(b => b.uid !== blockUid));
+  };
+
+  const toggleCollapse = (blockUid: string) => {
+    setBlocks(prev => prev.map(b => b.uid === blockUid ? { ...b, collapsed: !b.collapsed } : b));
+  };
+
+  const saveMutation = useMutation({
+    mutationFn: async () => {
+      const fullNote = blocksToFullNote(chiefComplaint, blocks, visitDate, patientName);
+      if (!fullNote.trim()) throw new Error("Note is empty");
+
+      let encId = savedEncounterId;
+
+      if (!encId) {
+        const createRes = await apiRequest("POST", "/api/encounters", {
+          patientId,
+          visitDate,
+          visitType,
+          chiefComplaint: chiefComplaint || null,
+          transcription: null,
+          clinicianNotes: "Manual SOAP Note",
+        });
+        const encounter = await createRes.json();
+        encId = encounter.id;
+        setSavedEncounterId(encId);
+      } else {
+        await apiRequest("PUT", `/api/encounters/${encId}`, {
+          visitDate,
+          visitType,
+          chiefComplaint: chiefComplaint || null,
+        });
+      }
+
+      await apiRequest("PUT", `/api/encounters/${encId}/soap`, {
+        soapNote: { fullNote },
+      });
+
+      return encId;
+    },
+    onSuccess: () => {
+      toast({ title: "Note saved", description: "Manual SOAP note has been saved to the patient's encounter history." });
+      queryClient.invalidateQueries({ queryKey: ["/api/encounters"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/encounters", patientId] });
+      onSaved();
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Save failed", description: err.message });
+    },
+  });
+
+  const usedBlockTypes = new Set(blocks.map(b => b.type));
+  const availableBlocks = BLOCK_TYPES.filter(bt => !usedBlockTypes.has(bt.id));
+
+  return (
+    <div className="flex flex-col h-full" data-testid="manual-soap-builder">
+      <div className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-muted/30 flex-shrink-0">
+        <div className="flex items-center gap-2 min-w-0">
+          <FileText className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold truncate">Manual SOAP Note</h2>
+            <p className="text-[10px] text-muted-foreground truncate">{patientName}</p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button
+            size="sm"
+            onClick={() => saveMutation.mutate()}
+            disabled={saveMutation.isPending}
+            className="text-xs gap-1.5"
+            style={{ backgroundColor: "#2e3a20", color: "#fff" }}
+            data-testid="button-save-manual-soap"
+          >
+            {saveMutation.isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin" /> : <Save className="w-3.5 h-3.5" />}
+            {savedEncounterId ? "Update" : "Save Note"}
+          </Button>
+          <Button size="icon" variant="ghost" onClick={onClose} data-testid="button-close-manual-soap">
+            <X className="w-4 h-4" />
+          </Button>
+        </div>
+      </div>
+
+      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+        <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Visit Date</label>
+            <Input
+              type="date"
+              value={visitDate}
+              onChange={e => setVisitDate(e.target.value)}
+              className="text-sm h-8"
+              data-testid="input-manual-visit-date"
+            />
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Visit Type</label>
+            <Select value={visitType} onValueChange={setVisitType}>
+              <SelectTrigger className="h-8 text-xs" data-testid="select-manual-visit-type">
+                <SelectValue />
+              </SelectTrigger>
+              <SelectContent>
+                <SelectItem value="new-patient">New Patient</SelectItem>
+                <SelectItem value="follow-up">Follow-up</SelectItem>
+                <SelectItem value="acute">Acute Visit</SelectItem>
+                <SelectItem value="wellness">Wellness / Annual</SelectItem>
+                <SelectItem value="procedure">Procedure</SelectItem>
+                <SelectItem value="telemedicine">Telemedicine</SelectItem>
+                <SelectItem value="lab-review">Lab Review</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <label className="text-xs font-medium text-muted-foreground mb-1 block">Chief Complaint / Reason</label>
+            <Input
+              value={chiefComplaint}
+              onChange={e => setChiefComplaint(e.target.value)}
+              placeholder="Reason for visit..."
+              className="text-sm h-8"
+              data-testid="input-manual-chief-complaint"
+            />
+          </div>
+        </div>
+
+        <div className="flex items-center gap-2 flex-wrap">
+          <div className="relative" ref={addMenuRef}>
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={() => setShowAddMenu(!showAddMenu)}
+              className="text-xs gap-1.5"
+              disabled={availableBlocks.length === 0}
+              data-testid="button-add-block"
+            >
+              <Plus className="w-3 h-3" />
+              Add Block
+              <ChevronDown className="w-3 h-3" />
+            </Button>
+            {showAddMenu && availableBlocks.length > 0 && (
+              <div className="absolute top-full mt-1 left-0 z-50 w-[240px] rounded-md border bg-popover shadow-lg py-1" data-testid="add-block-menu">
+                {["subjective", "objective", "assessment", "plan"].map(cat => {
+                  const catBlocks = availableBlocks.filter(b => b.category === cat);
+                  if (catBlocks.length === 0) return null;
+                  return (
+                    <div key={cat}>
+                      <div className="px-3 py-1">
+                        <span className="text-[10px] font-semibold uppercase tracking-wide text-muted-foreground">
+                          {cat === "assessment" ? "Assessment" : cat === "plan" ? "Plan" : cat === "objective" ? "Objective" : "Subjective"}
+                        </span>
+                      </div>
+                      {catBlocks.map(bt => {
+                        const BIcon = bt.icon;
+                        return (
+                          <button
+                            key={bt.id}
+                            className="w-full text-left px-3 py-1.5 flex items-center gap-2 text-xs hover-elevate cursor-pointer"
+                            onClick={() => addBlock(bt.id)}
+                            data-testid={`add-block-${bt.id}`}
+                          >
+                            <BIcon className="w-3.5 h-3.5 text-muted-foreground" />
+                            {bt.label}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+          <p className="text-[10px] text-muted-foreground">
+            Type <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/dx</kbd> in any text field to search diagnoses
+          </p>
+        </div>
+
+        <div className="space-y-3">
+          {blocks.map(block => (
+            <BlockEditor
+              key={block.uid}
+              block={block}
+              onUpdate={updates => updateBlock(block.uid, updates)}
+              onRemove={() => removeBlock(block.uid)}
+              onToggleCollapse={() => toggleCollapse(block.uid)}
+            />
+          ))}
+        </div>
+      </div>
+    </div>
+  );
+}
