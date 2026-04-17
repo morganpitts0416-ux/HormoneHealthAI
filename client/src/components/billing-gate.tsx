@@ -97,7 +97,7 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
             </Button>
             <SignOutButton testId="button-signout-billing-error" />
             <p className="text-xs text-muted-foreground">
-              Need help? Contact support at support@realignhealth.com
+              Need help? Contact support at support@cliniqapp.ai
             </p>
           </div>
         </div>
@@ -151,7 +151,7 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
             </Button>
             <SignOutButton testId="button-signout-nonowner" />
             <p className="text-xs text-muted-foreground">
-              Need help? Contact support at support@realignhealth.com
+              Need help? Contact support at support@cliniqapp.ai
             </p>
           </div>
         </div>
@@ -193,7 +193,7 @@ export function BillingGate({ children }: { children: React.ReactNode }) {
           </Button>
           <SignOutButton testId="button-signout-billing-setup" />
           <p className="text-xs text-muted-foreground">
-            Need help? Contact support at support@realignhealth.com
+            Need help? Contact support at support@cliniqapp.ai
           </p>
         </div>
       </div>
