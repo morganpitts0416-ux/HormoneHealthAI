@@ -708,10 +708,11 @@ export class DbStorage implements IStorage {
   }
 
   async getPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined> {
+    const normalized = (email || "").trim().toLowerCase();
     const result = await db
       .select()
       .from(schema.patientPortalAccounts)
-      .where(eq(schema.patientPortalAccounts.email, email));
+      .where(sql`LOWER(${schema.patientPortalAccounts.email}) = ${normalized}`);
     return result[0];
   }
 
