@@ -3327,7 +3327,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         try {
           const clinician = await storage.getUser(clinicianId);
           const clinicName = clinician?.clinicName || "Your Healthcare Provider";
-          const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com";
+          const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@cliniqapp.ai";
           const apiKey = process.env.RESEND_API_KEY;
 
           const emailHtml = `
@@ -3402,7 +3402,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       const clinician = await storage.getUser(clinicianId);
       const clinicName = clinician?.clinicName || "Your Healthcare Provider";
-      const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com";
+      const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@cliniqapp.ai";
       const apiKey = process.env.RESEND_API_KEY;
 
       const firstName = recipientName ? String(recipientName).split(/\s+/)[0] : "";
@@ -8540,7 +8540,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
           if (patient.email && process.env.RESEND_API_KEY) {
             const clinician = await storage.getUser(clinicianId);
             const clinicName = clinician?.clinicName || "Your Healthcare Provider";
-            const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com";
+            const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@cliniqapp.ai";
             const portalUrl = `${req.protocol}://${req.get("host")}/portal/forms`;
             const html = `
               <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">

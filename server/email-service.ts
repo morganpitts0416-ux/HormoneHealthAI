@@ -11,7 +11,7 @@ interface EmailOptions {
 
 async function sendEmail(opts: EmailOptions): Promise<void> {
   const apiKey = process.env.RESEND_API_KEY;
-  const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com";
+  const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@cliniqapp.ai";
   // Build display-name "from" if a clinic name is provided
   const fromField = opts.fromName
     ? `"${opts.fromName}" <${sendingDomain}>`
