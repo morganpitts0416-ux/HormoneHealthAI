@@ -3065,7 +3065,7 @@ export default function PatientProfiles() {
 
               {showManualSoap && selectedPatient && (
                 <Dialog open={showManualSoap} onOpenChange={setShowManualSoap}>
-                  <DialogContent className="max-w-3xl h-[85vh] p-0 overflow-hidden [&>button:last-child]:hidden" data-testid="dialog-manual-soap">
+                  <DialogContent className="max-w-3xl h-[85vh] p-0 overflow-hidden !flex flex-col [&>button:last-child]:hidden" data-testid="dialog-manual-soap">
                     <ManualSoapBuilder
                       patientId={selectedPatient.id}
                       patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
