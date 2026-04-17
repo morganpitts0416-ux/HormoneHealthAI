@@ -2688,8 +2688,9 @@ Return ONLY this JSON structure:
   app.get("/api/portal/status/:patientId", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.patientId);
-      const patient = await storage.getPatient(patientId, clinicianId);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       const portalAccount = await storage.getPortalAccountByPatientId(patientId);
       const allProtocols = await storage.getAllPublishedProtocols(patientId);
