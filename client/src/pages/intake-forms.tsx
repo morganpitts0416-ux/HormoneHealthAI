@@ -601,7 +601,12 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
   const renderInput = () => {
     switch (field.fieldType) {
       case "heading":
-        return <h3 className="text-base font-semibold text-foreground">{field.label}</h3>;
+        return (
+          <div className="space-y-0.5">
+            <h3 className="text-base font-semibold text-foreground">{field.label}</h3>
+            {field.helpText && <p className="text-xs text-muted-foreground whitespace-pre-line">{field.helpText}</p>}
+          </div>
+        );
       case "paragraph":
         return (
           <div className="space-y-1">
