@@ -1,0 +1,192 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run services logs read hormonehealthai --region=us-central1 --limit=200
+2026-04-17 13:35:14 [startup] registering routes…
+2026-04-17 13:35:14 [startup] serving static files…
+2026-04-17 13:35:14 [startup] binding to 0.0.0.0:8080…
+2026-04-17 13:35:15 1:35:14 PM [express] serving on port 8080
+2026-04-17 13:45:24 [startup] registering routes…
+2026-04-17 13:45:24 [startup] serving static files…
+2026-04-17 13:45:24 [startup] binding to 0.0.0.0:8080…
+2026-04-17 13:45:24 1:45:24 PM [express] serving on port 8080
+2026-04-17 13:49:32 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-17 13:49:32 GET 304 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-17 13:49:32 1:49:32 PM [express] GET /api/intake-forms/submissions/pending 304 in 44ms :: []
+2026-04-17 13:49:32 1:49:32 PM [express] GET /api/clinician/notifications 304 in 84ms :: {"unreadMessages":[],"pendingOr…
+2026-04-17 13:49:34 GET 304 https://app.cliniqapp.ai/api/patients/search
+2026-04-17 13:49:34 GET 200 https://app.cliniqapp.ai/api/auth/me
+2026-04-17 13:49:34 GET 304 https://app.cliniqapp.ai/api/clinic/providers
+2026-04-17 13:49:34 [DEBUG] /api/patients/search — clinicianId=12, clinicId=10, q=""
+2026-04-17 13:49:34 [DEBUG] /api/patients/search — returned 16 patients for clinicId=10
+2026-04-17 13:49:34 [AUTH /api/auth/me] userId=12 clinicId=10 membership: {"adminRole":"owner","clinicalRole":"provider"}
+2026-04-17 13:49:34 1:49:34 PM [express] GET /api/auth/me 200 in 11ms :: {"id":12,"email":"morgan@womenswellnessms.com",…
+2026-04-17 13:49:34 1:49:34 PM [express] GET /api/clinic/providers 304 in 13ms :: [{"id":3,"displayName":"FNP-C Kimberly…
+2026-04-17 13:49:34 1:49:34 PM [express] GET /api/patients/search 304 in 62ms :: [{"id":61,"userId":12,"firstName":"Morg…
+2026-04-17 13:51:00 GET 304 https://app.cliniqapp.ai/api/patients/search
+2026-04-17 13:51:00 [DEBUG] /api/patients/search — clinicianId=12, clinicId=10, q=""
+2026-04-17 13:51:00 [DEBUG] /api/patients/search — returned 16 patients for clinicId=10
+2026-04-17 13:51:00 1:51:00 PM [express] GET /api/patients/search 304 in 9ms :: [{"id":61,"userId":12,"firstName":"Morga…
+2026-04-17 13:51:02 GET 304 https://app.cliniqapp.ai/api/encounter-drafts
+2026-04-17 13:51:02 GET 200 https://app.cliniqapp.ai/api/encounters
+2026-04-17 13:51:02 1:51:02 PM [express] GET /api/encounter-drafts 304 in 9ms :: []
+2026-04-17 13:51:02 1:51:02 PM [express] GET /api/encounters 200 in 33ms :: [{"id":25,"clinicianId":12,"patientId":73,"v…
+2026-04-17 13:51:36 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-17 13:51:36 1:51:36 PM [express] GET /api/clinician/notifications 304 in 24ms :: {"unreadMessages":[],"pendingOr…
+2026-04-17 13:51:46 GET 304 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-17 13:51:46 1:51:46 PM [express] GET /api/intake-forms/submissions/pending 304 in 11ms :: []
+2026-04-17 13:51:56 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-17 13:51:56 1:51:56 PM [express] GET /api/clinician/notifications 304 in 13ms :: {"unreadMessages":[],"pendingOr…
+2026-04-17 13:52:16 GET 304 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-17 13:52:16 1:52:16 PM [express] GET /api/intake-forms/submissions/pending 304 in 21ms :: []
+2026-04-17 13:52:16 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-17 13:52:16 1:52:16 PM [express] GET /api/clinician/notifications 304 in 13ms :: {"unreadMessages":[],"pendingOr…
+2026-04-17 13:52:36 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-17 13:52:36 1:52:36 PM [express] GET /api/clinician/notifications 304 in 13ms :: {"unreadMessages":[],"pendingOr…
+2026-04-17 13:52:46 GET 304 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-17 13:52:46 1:52:46 PM [express] GET /api/intake-forms/submissions/pending 304 in 12ms :: []
+2026-04-17 13:52:57 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-17 13:52:57 1:52:57 PM [express] GET /api/clinician/notifications 304 in 7ms :: {"unreadMessages":[],"pendingOrd…
+2026-04-17 13:53:16 GET 304 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-17 13:53:16 1:53:16 PM [express] GET /api/intake-forms/submissions/pending 304 in 6ms :: []
+2026-04-17 13:53:17 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-17 13:53:17 1:53:17 PM [express] GET /api/clinician/notifications 304 in 8ms :: {"unreadMessages":[],"pendingOrd…
+2026-04-17 13:56:16 GET 200 https://cliniqapp.ai/
+2026-04-17 13:58:47 POST 200 https://app.realignlabeval.com/api/auth/logout
+2026-04-17 13:58:47 1:58:47 PM [express] POST /api/auth/logout 200 in 27ms :: {"success":true}
+2026-04-17 13:58:47 GET 401 https://app.realignlabeval.com/api/auth/me
+2026-04-17 13:58:47 1:58:47 PM [express] GET /api/auth/me 401 in 4ms :: {"message":"Not authenticated"}
+2026-04-17 13:59:18 POST 200 https://app.realignlabeval.com/api/auth/login
+2026-04-17 13:59:19 1:59:19 PM [express] POST /api/auth/login 200 in 406ms :: {"id":12,"email":"morgan@womenswellnessms.…
+2026-04-17 13:59:19 GET 304 https://app.realignlabeval.com/api/billing/status
+2026-04-17 13:59:19 1:59:19 PM [express] GET /api/billing/status 304 in 10ms :: {"subscriptionStatus":"trial","freeAccou…
+2026-04-17 13:59:19 GET 304 https://app.realignlabeval.com/api/baa/status
+2026-04-17 13:59:19 1:59:19 PM [express] GET /api/baa/status 304 in 8ms :: {"signed":true,"signedAt":"2026-04-14T03:19:2…
+2026-04-17 13:59:19 GET 200 https://app.realignlabeval.com/api/patients/search
+2026-04-17 13:59:19 [DEBUG] /api/patients/search — clinicianId=12, clinicId=10, q=""
+2026-04-17 13:59:19 [DEBUG] /api/patients/search — returned 16 patients for clinicId=10
+2026-04-17 13:59:19 GET 304 https://app.realignlabeval.com/api/clinician/notifications
+2026-04-17 13:59:19 GET 304 https://app.realignlabeval.com/api/intake-forms/submissions/pending
+2026-04-17 13:59:19 1:59:19 PM [express] GET /api/patients/search 200 in 10ms :: [{"id":61,"userId":12,"firstName":"Morg…
+2026-04-17 13:59:19 1:59:19 PM [express] GET /api/clinician/notifications 304 in 9ms :: {"unreadMessages":[],"pendingOrd…
+2026-04-17 13:59:19 1:59:19 PM [express] GET /api/intake-forms/submissions/pending 304 in 8ms :: []
+2026-04-17 14:00:28 GET 304 https://app.realignlabeval.com/api/encounter-drafts
+2026-04-17 14:00:28 GET 200 https://app.realignlabeval.com/api/encounters
+2026-04-17 14:00:28 2:00:28 PM [express] GET /api/encounter-drafts 304 in 77ms :: []
+2026-04-17 14:00:28 2:00:28 PM [express] GET /api/encounters 200 in 93ms :: [{"id":25,"clinicianId":12,"patientId":73,"v…
+2026-04-17 14:01:21 POST 200 https://app.realignlabeval.com/api/patients
+2026-04-17 14:01:21 2:01:21 PM [express] POST /api/patients 200 in 12ms :: {"id":77,"userId":12,"firstName":"Amy","lastN…
+2026-04-17 14:01:21 GET 200 https://app.realignlabeval.com/api/patients/77/labs
+2026-04-17 14:01:21 GET 200 https://app.realignlabeval.com/api/patients/search
+2026-04-17 14:01:21 2:01:21 PM [express] GET /api/patients/77/labs 200 in 14ms :: []
+2026-04-17 14:01:21 [DEBUG] /api/patients/search — clinicianId=12, clinicId=10, q=""
+2026-04-17 14:01:21 [DEBUG] /api/patients/search — returned 17 patients for clinicId=10
+2026-04-17 14:01:21 2:01:21 PM [express] GET /api/patients/search 200 in 28ms :: [{"id":77,"userId":12,"firstName":"Amy"…
+2026-04-17 14:01:37 POST 200 https://app.realignlabeval.com/api/encounters
+2026-04-17 14:01:37 GET 200 https://app.realignlabeval.com/realign-emblem.png
+2026-04-17 14:01:37 2:01:37 PM [express] POST /api/encounters 200 in 10ms :: {"id":29,"clinicianId":12,"patientId":77,"v…
+2026-04-17 14:01:37 POST 200 https://app.realignlabeval.com/api/encounters/29/generate-soap
+2026-04-17 14:01:37 POST 200 https://app.realignlabeval.com/api/encounters/29/evidence
+2026-04-17 14:01:50 [SOAP Pipeline] Step 3c: Medical normalization + context inference...
+2026-04-17 14:01:56 [SOAP Pipeline] Normalization complete: 3 meds, 2 conditions, 1 preventative signals
+2026-04-17 14:01:56 [SOAP Pipeline] Plan classification: 1 decided, 0 discussed, 2 follow-up
+2026-04-17 14:01:56 [SOAP Pipeline] Step 4: Section-specific SOAP generation (HPI reconstruction)...
+2026-04-17 14:01:59 GET 200 https://app.realignlabeval.com/login
+2026-04-17 14:01:59 GET 200 https://app.realignlabeval.com/favicon.png
+2026-04-17 14:01:59 GET 200 https://app.realignlabeval.com/assets/index-CkIMii55.js
+2026-04-17 14:01:59 GET 200 https://app.realignlabeval.com/assets/index-BKn_7LGI.css
+2026-04-17 14:01:59 GET 200 https://app.realignlabeval.com/realign-health-logo.png
+2026-04-17 14:01:59 GET 200 https://app.realignlabeval.com/assets/index-hejUgAZc.css
+2026-04-17 14:01:59 POST 200 https://app.realignlabeval.com/api/auth/logout
+2026-04-17 14:01:59 GET 200 https://app.realignlabeval.com/assets/index-Dlt527o0.js
+2026-04-17 14:01:59 2:01:59 PM [express] POST /api/auth/logout 200 in 85ms :: {"success":true}
+2026-04-17 14:02:00 GET 401 https://app.realignlabeval.com/api/auth/me
+2026-04-17 14:02:00 2:02:00 PM [express] GET /api/auth/me 401 in 8ms :: {"message":"Not authenticated"}
+2026-04-17 14:02:00 GET 401 https://app.realignlabeval.com/api/auth/me
+2026-04-17 14:02:00 2:02:00 PM [express] GET /api/auth/me 401 in 10ms :: {"message":"Not authenticated"}
+2026-04-17 14:02:05 2:02:05 PM [express] POST /api/encounters/29/evidence 200 in 27007ms :: {"evidenceSuggestions":{"cli…
+2026-04-17 14:02:05 POST 401 https://app.realignlabeval.com/api/portal/login
+2026-04-17 14:02:05 2:02:05 PM [express] POST /api/portal/login 401 in 7ms :: {"message":"Invalid email or password"}
+2026-04-17 14:02:08 [SOAP Pipeline] Step 5: Omission/contradiction QA check...
+2026-04-17 14:02:09 [SOAP Pipeline] QA check failed, using unrevised SOAP: BadRequestError: 400 'messages' must contain the word 'json' in some form, to use 'response_format' of type 'json_object'.
+2026-04-17 14:02:09     at APIError.generate (file:///app/node_modules/openai/core/error.mjs:41:20)
+2026-04-17 14:02:09     at OpenAI.makeStatusError (file:///app/node_modules/openai/client.mjs:162:32)
+2026-04-17 14:02:09     at OpenAI.makeRequest (file:///app/node_modules/openai/client.mjs:330:30)
+2026-04-17 14:02:09     at process.processTicksAndRejections (node:internal/process/task_queues:95:5)
+2026-04-17 14:02:09     at async retryOnRateLimit (file:///app/dist/index.js:8963:14)
+2026-04-17 14:02:09 [SOAP Pipeline] Pipeline complete.
+2026-04-17 14:02:09     at async qaCheck (file:///app/dist/index.js:9426:22)
+2026-04-17 14:02:09     at async runEnhancedSoapPipeline (file:///app/dist/index.js:9523:18)
+2026-04-17 14:02:09     at async file:///app/dist/index.js:18966:24 {
+2026-04-17 14:02:09   status: 400,
+2026-04-17 14:02:09   headers: Headers {
+2026-04-17 14:02:09     date: 'Fri, 17 Apr 2026 14:02:09 GMT',
+2026-04-17 14:02:09     'content-type': 'application/json',
+2026-04-17 14:02:09     'content-length': '219',
+2026-04-17 14:02:09     connection: 'keep-alive',
+2026-04-17 14:02:09     'cf-ray': '9edbf7395c5bcd87-ORD',
+2026-04-17 14:02:09     'cf-cache-status': 'DYNAMIC',
+2026-04-17 14:02:09     server: 'cloudflare',
+2026-04-17 14:02:09     'strict-transport-security': 'max-age=31536000; includeSubDomains; preload',
+2026-04-17 14:02:09     'x-content-type-options': 'nosniff',
+2026-04-17 14:02:09     'access-control-expose-headers': 'X-Request-ID',
+2026-04-17 14:02:09     'openai-organization': 'user-huzwxkgwa9ugesr2wtefwsaw',
+2026-04-17 14:02:09     'openai-processing-ms': '12',
+2026-04-17 14:02:09     'openai-project': 'proj_80rmtpvCPZj6GblxJXLiFMSy',
+2026-04-17 14:02:09     'openai-version': '2020-10-01',
+2026-04-17 14:02:09     'x-openai-proxy-wasm': 'v0.1',
+2026-04-17 14:02:09     'x-ratelimit-limit-requests': '500',
+2026-04-17 14:02:09     'x-ratelimit-limit-tokens': '30000',
+2026-04-17 14:02:09     'x-ratelimit-remaining-requests': '499',
+2026-04-17 14:02:09     'x-ratelimit-remaining-tokens': '1975',
+2026-04-17 14:02:09     'x-ratelimit-reset-requests': '120ms',
+2026-04-17 14:02:09     'x-ratelimit-reset-tokens': '56.049s',
+2026-04-17 14:02:09     'x-request-id': 'req_4dadc5e7a59b4fe9ba8f2ee4d9357e0c',
+2026-04-17 14:02:09     'set-cookie': '__cf_bm=ZGqrpfz6rD4FGEvchDegd4iVIfhNOrcac45C93..d8I-1776434528.2171798-1.0.1.1-ZwlQ7Z12Y1tUufxbM3QRDqn9RPJtAqL75Izk.nu221PXKvsCgZ3Rgj4Mh0FsvDW2_EDXJsDiR9Wc0j5H.CvQbDv8y7V2EZqrOVGnNg01ZxT7A7jpuCbE3Gf5T6CNhO3_; HttpOnly; Secure; Path=/; Domain=api.openai.com; Expires=Fri, 17 Apr 2026 14:32:09 GMT',
+2026-04-17 14:02:09     'alt-svc': 'h3=":443"; ma=86400'
+2026-04-17 14:02:09   },
+2026-04-17 14:02:09   requestID: 'req_4dadc5e7a59b4fe9ba8f2ee4d9357e0c',
+2026-04-17 14:02:09   error: {
+2026-04-17 14:02:09     message: "'messages' must contain the word 'json' in some form, to use 'response_format' of type 'json_object'.",
+2026-04-17 14:02:09     type: 'invalid_request_error',
+2026-04-17 14:02:09     param: 'messages',
+2026-04-17 14:02:09     code: null
+2026-04-17 14:02:09   },
+2026-04-17 14:02:09   code: null,
+2026-04-17 14:02:09   param: 'messages',
+2026-04-17 14:02:09   type: 'invalid_request_error'
+2026-04-17 14:02:09 }
+2026-04-17 14:02:09 2:02:09 PM [express] POST /api/encounters/29/generate-soap 200 in 31390ms :: {"soapNote":{"fullNote"…
+2026-04-17 14:02:09 GET 200 https://app.realignlabeval.com/api/encounters
+2026-04-17 14:02:09 2:02:09 PM [express] GET /api/encounters 200 in 40ms :: [{"id":28,"clinicianId":12,"patientId":76,"v…
+2026-04-17 14:02:28 [SOAP Pipeline] Evidence auto-generated for encounter 29 (1 suggestions)
+2026-04-17 14:03:06 POST 401 https://app.realignlabeval.com/api/portal/login
+2026-04-17 14:03:06 2:03:06 PM [express] POST /api/portal/login 401 in 36ms :: {"message":"Invalid email or password"}
+2026-04-17 14:03:42 GET 200 https://hormonehealthai-384086867382.us-central1.run.app/
+2026-04-17 14:03:42 GET 200 https://hormonehealthai-384086867382.us-central1.run.app/assets/index-Dlt527o0.js
+2026-04-17 14:03:42 GET 200 https://hormonehealthai-384086867382.us-central1.run.app/assets/index-hejUgAZc.css
+2026-04-17 14:03:42 GET 200 https://hormonehealthai-384086867382.us-central1.run.app/favicon.png
+2026-04-17 14:03:42 GET 401 https://hormonehealthai-384086867382.us-central1.run.app/api/auth/me
+2026-04-17 14:03:42 2:03:42 PM [express] GET /api/auth/me 401 in 1ms :: {"message":"Not authenticated"}
+2026-04-17 14:03:42 GET 200 https://hormonehealthai-384086867382.us-central1.run.app/realign-health-logo.png
+2026-04-17 14:03:42 GET 200 https://hormonehealthai-384086867382.us-central1.run.app/cliniq-logo.png
+2026-04-17 14:03:42 GET 200 https://hormonehealthai-384086867382.us-central1.run.app/help-shots/portal-overview.png
+2026-04-17 14:03:42 GET 200 https://hormonehealthai-384086867382.us-central1.run.app/help-shots/lab-results.png
+2026-04-17 14:03:43 GET 304 https://hormonehealthai-384086867382.us-central1.run.app/favicon.png
+2026-04-17 14:03:43 GET 304 https://hormonehealthai-384086867382.us-central1.run.app/favicon.png
+2026-04-17 14:11:44 GET 304 https://app.cliniqapp.ai/api/clinician/notifications
+2026-04-17 14:11:44 GET 304 https://app.cliniqapp.ai/api/intake-forms/submissions/pending
+2026-04-17 14:11:44 2:11:44 PM [express] GET /api/intake-forms/submissions/pending 304 in 12ms :: []
+2026-04-17 14:11:44 2:11:44 PM [express] GET /api/clinician/notifications 304 in 69ms :: {"unreadMessages":[],"pendingOr…
+2026-04-17 14:11:49 GET 200 https://app.cliniqapp.ai/api/auth/me
+2026-04-17 14:11:49 GET 200 https://app.cliniqapp.ai/api/encounters
+2026-04-17 14:11:49 GET 304 https://app.cliniqapp.ai/api/encounter-drafts
+2026-04-17 14:11:49 [AUTH /api/auth/me] userId=12 clinicId=10 membership: {"adminRole":"owner","clinicalRole":"provider"}
+2026-04-17 14:11:49 2:11:49 PM [express] GET /api/encounter-drafts 304 in 82ms :: []
+2026-04-17 14:11:49 2:11:49 PM [express] GET /api/auth/me 200 in 88ms :: {"id":12,"email":"morgan@womenswellnessms.com",…
+2026-04-17 14:11:49 2:11:49 PM [express] GET /api/encounters 200 in 121ms :: [{"id":28,"clinicianId":12,"patientId":76,"…
+2026-04-17 14:11:57 GET 200 https://app.cliniqapp.ai/api/patients/77/labs
+2026-04-17 14:11:57 GET 200 https://app.cliniqapp.ai/api/encounters/29
+2026-04-17 14:11:57 2:11:57 PM [express] GET /api/encounters/29 200 in 9ms :: {"id":29,"clinicianId":12,"patientId":77,"…
+2026-04-17 14:11:57 2:11:57 PM [express] GET /api/patients/77/labs 200 in 12ms :: []
+2026-04-17 14:16:22 POST 401 https://app.realignlabeval.com/api/portal/login
+2026-04-17 14:16:22 2:16:22 PM [express] POST /api/portal/login 401 in 400ms :: {"message":"Invalid email or password"}
+2026-04-17 14:16:47 POST 401 https://app.realignlabeval.com/api/portal/login
+2026-04-17 14:16:47 2:16:47 PM [express] POST /api/portal/login 401 in 398ms :: {"message":"Invalid email or password"}
