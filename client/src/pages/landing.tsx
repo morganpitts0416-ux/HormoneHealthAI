@@ -8,6 +8,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { appUrl } from "@/lib/app-url";
 import { DemoModal } from "@/components/demo-modal";
+import copilotDemoVideo from "@assets/Screen_Recording_2026-04-17_172106_1776464513381.mp4";
 
 const CLINICIAN_FEATURES = [
   {
@@ -242,6 +243,44 @@ export default function Landing() {
               <p className="text-xs leading-relaxed" style={{ color: "#6a7a58" }}>{desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── Product Demo Video ───────────────────────────────────────────── */}
+      <section data-tour="copilot-demo" className="border-y" style={{ backgroundColor: "#f5f1e8", borderColor: "#e8ddd0" }}>
+        <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+          <div className="text-center mb-10">
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7a8a64" }}>See it in action</span>
+            <h2 className="text-2xl sm:text-3xl font-bold mt-2" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
+              Meet your new clinical co-pilot
+            </h2>
+            <p className="text-sm mt-3 max-w-2xl mx-auto" style={{ color: "#5a6a4a" }}>
+              Watch how ClinIQ surfaces the patterns hiding in plain sight — turning routine lab review into clear, defensible clinical decisions in seconds.
+            </p>
+          </div>
+          <div
+            className="rounded-2xl overflow-hidden mx-auto"
+            style={{
+              maxWidth: 960,
+              border: "1px solid #d4c9b5",
+              boxShadow: "0 24px 64px rgba(46,58,32,0.16), 0 4px 16px rgba(0,0,0,0.06)",
+              backgroundColor: "#1c2414",
+            }}
+            data-testid="video-copilot-demo-wrapper"
+          >
+            <video
+              src={copilotDemoVideo}
+              autoPlay
+              loop
+              muted
+              playsInline
+              controls
+              preload="metadata"
+              className="w-full block"
+              style={{ aspectRatio: "16 / 10", objectFit: "cover", backgroundColor: "#1c2414" }}
+              data-testid="video-copilot-demo"
+            />
+          </div>
         </div>
       </section>
 
