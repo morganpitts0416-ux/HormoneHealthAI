@@ -1,0 +1,490 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud builds describe eb38ec4e-835a-4c90-9416-af751c9902c3 --region=us-central1
+gcloud builds log eb38ec4e-835a-4c90-9416-af751c9902c3 --region=us-central1
+artifacts:
+  images:
+  - us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+createTime: '2026-04-17T22:45:02.098574583Z'
+failureInfo:
+  detail: 'Build step failure: build step 0 "gcr.io/cloud-builders/docker" failed:
+    step exited with non-zero status: 1'
+  type: USER_BUILD_STEP
+finishTime: '2026-04-17T22:46:26.607484Z'
+id: eb38ec4e-835a-4c90-9416-af751c9902c3
+images:
+- us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+logUrl: https://console.cloud.google.com/cloud-build/builds;region=us-central1/eb38ec4e-835a-4c90-9416-af751c9902c3?project=384086867382
+name: projects/384086867382/locations/us-central1/builds/eb38ec4e-835a-4c90-9416-af751c9902c3
+options:
+  logStreamingOption: STREAM_OFF
+  logging: CLOUD_LOGGING_ONLY
+  pool: {}
+projectId: realign-lab-app
+queueTtl: 360s
+results:
+  buildStepImages:
+  - sha256:26b8fc76be1fbbf478fff90fd3ea11557ee5016339bc8931180d8576cc365c5d
+  buildStepOutputs:
+  - ''
+serviceAccount: projects/realign-lab-app/serviceAccounts/384086867382-compute@developer.gserviceaccount.com
+source:
+  storageSource:
+    bucket: run-sources-realign-lab-app-us-central1
+    generation: '1776465901573386'
+    object: services/hormonehealthai/1776465886.981207-25d4f5bb318c42a8b3145fb9446b073a.zip
+sourceProvenance:
+  fileHashes:
+    ? gs://run-sources-realign-lab-app-us-central1/services/hormonehealthai/1776465886.981207-25d4f5bb318c42a8b3145fb9446b073a.zip#1776465901573386
+    : fileHash:
+      - type: MD5
+        value: xyQ2AjoMNKSw9vNa1sDLhw==
+      - type: SHA256
+        value: 0IBXKtb5wOvqlcwCkdMPnCrRk-s-bPxwY70BAkfVbJk=
+  resolvedStorageSource:
+    bucket: run-sources-realign-lab-app-us-central1
+    generation: '1776465901573386'
+    object: services/hormonehealthai/1776465886.981207-25d4f5bb318c42a8b3145fb9446b073a.zip
+startTime: '2026-04-17T22:45:02.615611325Z'
+status: FAILURE
+steps:
+- args:
+  - build
+  - --network
+  - cloudbuild
+  - --no-cache
+  - -t
+  - us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+  - .
+  - --label
+  - google.build_id=eb38ec4e-835a-4c90-9416-af751c9902c3
+  - --label
+  - google.source=gs://run-sources-realign-lab-app-us-central1/services/hormonehealthai/1776465886.981207-25d4f5bb318c42a8b3145fb9446b073a.zip#1776465901573386
+  exitCode: 1
+  id: run-docker-build
+  name: gcr.io/cloud-builders/docker
+  pullTiming:
+    endTime: '2026-04-17T22:45:08.797039466Z'
+    startTime: '2026-04-17T22:45:08.790797680Z'
+  status: FAILURE
+  timing:
+    endTime: '2026-04-17T22:46:15.420759452Z'
+    startTime: '2026-04-17T22:45:08.790797680Z'
+tags:
+- p-run
+- r-docker
+- bt-DOCKER
+- service_hormonehealthai
+timeout: 1800s
+timing:
+  BUILD:
+    endTime: '2026-04-17T22:46:15.421017220Z'
+    startTime: '2026-04-17T22:45:08.129211843Z'
+  FETCHSOURCE:
+    endTime: '2026-04-17T22:45:08.128207918Z'
+    startTime: '2026-04-17T22:45:04.586802109Z'
+  STORAGE_SOURCE:
+    endTime: '2026-04-17T22:45:08.128207918Z'
+    startTime: '2026-04-17T22:45:04.586802109Z'
+/usr/bin/../lib/google-cloud-sdk/lib/third_party/google/cloud/__init__.py:20: UserWarning: pkg_resources is deprecated as an API. See https://setuptools.pypa.io/en/latest/pkg_resources.html. The pkg_resources package is slated for removal as early as 2025-11-30. Refrain from using this package or pin to Setuptools<81.
+  import pkg_resources
+/usr/bin/../lib/google-cloud-sdk/lib/third_party/google/cloud/appengine_v1alpha/proto/version_pb2.py:1659: SyntaxWarning: invalid escape sequence '\ '
+  '__doc__': """\ `Cloud Endpoints <https://cloud.google.com/endpoints>`__
+/usr/bin/../lib/google-cloud-sdk/lib/third_party/google/cloud/appengine_v1alpha/proto/app_yaml_pb2.py:991: SyntaxWarning: invalid escape sequence '\ '
+  \ ``30x`` code to use when performing redirects for the
+------------------------------------------------------------------------------------- REMOTE BUILD OUTPUT -------------------------------------------------------------------------------------
+starting build "eb38ec4e-835a-4c90-9416-af751c9902c3"
+FETCHSOURCE
+Fetching storage object: gs://run-sources-realign-lab-app-us-central1/services/hormonehealthai/1776465886.981207-25d4f5bb318c42a8b3145fb9446b073a.zip#1776465901573386
+Copying gs://run-sources-realign-lab-app-us-central1/services/hormonehealthai/1776465886.981207-25d4f5bb318c42a8b3145fb9446b073a.zip#1776465901573386...
+/ [1 files][ 12.7 MiB/ 12.7 MiB]                                                
+Operation completed over 1 objects/12.7 MiB.
+Archive:  /tmp/source-archive.zip
+   creating: /workspace/server/
+   creating: /workspace/client/
+   creating: /workspace/shared/
+   creating: /workspace/scripts/
+   creating: /workspace/client/public/
+   creating: /workspace/client/src/
+   creating: /workspace/client/public/help-shots/
+   creating: /workspace/client/src/components/
+   creating: /workspace/client/src/pages/
+   creating: /workspace/client/src/lib/
+   creating: /workspace/client/src/hooks/
+   creating: /workspace/client/src/components/ui/
+   creating: /workspace/client/src/pages/portal/
+  inflating: /workspace/package.json
+  inflating: /workspace/drizzle.config.ts
+  inflating: /workspace/migration_production_full.sql
+  inflating: /workspace/postcss.config.js
+  inflating: /workspace/tailwind.config.ts
+  inflating: /workspace/ascvd_overview.png
+  inflating: /workspace/package-lock.json
+  inflating: /workspace/database_export.sql
+  inflating: /workspace/tsconfig.json
+  inflating: /workspace/pyproject.toml
+  inflating: /workspace/production-migration.sql
+  inflating: /workspace/production_export.sql
+  inflating: /workspace/Dockerfile
+  inflating: /workspace/migration_production_forms.sql
+  inflating: /workspace/vite.config.ts
+  inflating: /workspace/uv.lock
+  inflating: /workspace/generated-icon.png
+  inflating: /workspace/prod-migrate.sql
+  inflating: /workspace/.dockerignore
+  inflating: /workspace/stopbang_row.png
+  inflating: /workspace/replit.sql
+  inflating: /workspace/components.json
+  inflating: /workspace/.gitattributes
+  inflating: /workspace/main.py
+  inflating: /workspace/server/pdf-extraction.ts
+  inflating: /workspace/server/supplements-male.ts
+  inflating: /workspace/server/logger.ts
+  inflating: /workspace/server/stopbang-calculator.ts
+  inflating: /workspace/server/audit.ts
+  inflating: /workspace/server/static-serve.ts
+  inflating: /workspace/server/lab-marker-defaults.ts
+  inflating: /workspace/server/soap-pipeline.ts
+  inflating: /workspace/server/storage.ts
+  inflating: /workspace/server/index.ts
+  inflating: /workspace/server/external-messaging.ts
+  inflating: /workspace/server/email-service.ts
+  inflating: /workspace/server/icd10-diagnoses.ts
+  inflating: /workspace/server/supplements-female.ts
+  inflating: /workspace/server/prod-migrate.sql
+  inflating: /workspace/server/insulin-resistance.ts
+  inflating: /workspace/server/auth.ts
+  inflating: /workspace/server/clinical-logic.ts
+  inflating: /workspace/server/medication-normalizer.ts
+  inflating: /workspace/server/prevent-calculator.ts
+  inflating: /workspace/server/ai-service.ts
+  inflating: /workspace/server/medication-seed.ts
+  inflating: /workspace/server/ascvd-calculator.ts
+  inflating: /workspace/server/vite.ts
+  inflating: /workspace/server/routes.ts
+  inflating: /workspace/server/clinic-plan.ts
+  inflating: /workspace/server/clinical-lexicon.ts
+  inflating: /workspace/server/phenotype-detection-female.ts
+  inflating: /workspace/server/clinical-logic-female.ts
+  inflating: /workspace/client/index.html
+  inflating: /workspace/client/public/screenshot-clinical.jpeg
+  inflating: /workspace/client/public/screenshot-lab-dashboard.jpeg
+  inflating: /workspace/client/public/screenshot-patterns.jpeg
+  inflating: /workspace/client/public/realign-emblem.png
+  inflating: /workspace/client/public/demo.mp4
+  inflating: /workspace/client/public/realign-health-logo.png
+  inflating: /workspace/client/public/cliniq-logo.png
+  inflating: /workspace/client/public/favicon.png
+  inflating: /workspace/client/public/apple-touch-icon.png
+  inflating: /workspace/client/public/help-shots/account-add-supplement.png
+  inflating: /workspace/client/public/help-shots/soap-evidence-popup.png
+  inflating: /workspace/client/public/help-shots/encounter-processing.png
+  inflating: /workspace/client/public/help-shots/evidence-tab.png
+  inflating: /workspace/client/public/help-shots/portal-lab-values.png
+  inflating: /workspace/client/public/help-shots/account-pricing.png
+  inflating: /workspace/client/public/help-shots/account-messaging.png
+  inflating: /workspace/client/public/help-shots/soap-note-2.png
+  inflating: /workspace/client/public/help-shots/portal-overview.png
+  inflating: /workspace/client/public/help-shots/dashboard.png
+  inflating: /workspace/client/public/help-shots/portal-lab-modal.png
+  inflating: /workspace/client/public/help-shots/portal-protocol.png
+  inflating: /workspace/client/public/help-shots/portal-recipes.png
+  inflating: /workspace/client/public/help-shots/patient-profiles.png
+  inflating: /workspace/client/public/help-shots/portal-visit-summary.png
+  inflating: /workspace/client/public/help-shots/lab-results.png
+  inflating: /workspace/client/public/help-shots/encounter-transcript.png
+  inflating: /workspace/client/public/help-shots/patient-summary.png
+  inflating: /workspace/client/public/help-shots/account-lab-ranges.png
+  inflating: /workspace/client/public/help-shots/portal-supplements.png
+  inflating: /workspace/client/public/help-shots/encounter-details.png
+  inflating: /workspace/client/public/help-shots/account-supplement-library.png
+  inflating: /workspace/client/public/help-shots/female-lab-entry-2.png
+  inflating: /workspace/client/public/help-shots/soap-note-1.png
+  inflating: /workspace/client/public/help-shots/female-lab-entry-3.png
+  inflating: /workspace/client/public/help-shots/portal-overview-2.png
+  inflating: /workspace/client/public/help-shots/female-lab-entry-1.png
+  inflating: /workspace/client/public/help-shots/portal-dietary.png
+  inflating: /workspace/client/src/main.tsx
+  inflating: /workspace/client/src/App.tsx
+  inflating: /workspace/client/src/index.css
+  inflating: /workspace/client/src/components/diagnosis-presets-section.tsx
+  inflating: /workspace/client/src/components/form-submission-preview.tsx
+  inflating: /workspace/client/src/components/preferences-panel.tsx
+  inflating: /workspace/client/src/components/saved-interpretations.tsx
+  inflating: /workspace/client/src/components/ai-chat-drawer.tsx
+  inflating: /workspace/client/src/components/lab-input-form.tsx
+  inflating: /workspace/client/src/components/baa-gate.tsx
+  inflating: /workspace/client/src/components/diagnosis-search.tsx
+  inflating: /workspace/client/src/components/demo-modal.tsx
+  inflating: /workspace/client/src/components/password-strength-indicator.tsx
+  inflating: /workspace/client/src/components/rich-text-editor.tsx
+  inflating: /workspace/client/src/components/patient-trend-charts.tsx
+  inflating: /workspace/client/src/components/patient-selector.tsx
+  inflating: /workspace/client/src/components/soap-note-viewer.tsx
+  inflating: /workspace/client/src/components/soap-note.tsx
+  inflating: /workspace/client/src/components/app-header.tsx
+  inflating: /workspace/client/src/components/patient-history.tsx
+  inflating: /workspace/client/src/components/landing-tour.tsx
+  inflating: /workspace/client/src/components/manual-soap-builder.tsx
+  inflating: /workspace/client/src/components/supplement-selector.tsx
+  inflating: /workspace/client/src/components/product-tour.tsx
+  inflating: /workspace/client/src/components/results-display.tsx
+  inflating: /workspace/client/src/components/global-loading-overlay.tsx
+  inflating: /workspace/client/src/components/billing-gate.tsx
+  inflating: /workspace/client/src/components/female-lab-input-form.tsx
+  inflating: /workspace/client/src/components/session-timeout-modal.tsx
+  inflating: /workspace/client/src/components/red-flag-alert.tsx
+  inflating: /workspace/client/src/components/patient-summary.tsx
+  inflating: /workspace/client/src/components/ui/context-menu.tsx
+  inflating: /workspace/client/src/components/ui/dialog.tsx
+  inflating: /workspace/client/src/components/ui/alert.tsx
+  inflating: /workspace/client/src/components/ui/resizable.tsx
+  inflating: /workspace/client/src/components/ui/sheet.tsx
+  inflating: /workspace/client/src/components/ui/progress.tsx
+  inflating: /workspace/client/src/components/ui/card.tsx
+  inflating: /workspace/client/src/components/ui/tooltip.tsx
+  inflating: /workspace/client/src/components/ui/textarea.tsx
+  inflating: /workspace/client/src/components/ui/toast.tsx
+  inflating: /workspace/client/src/components/ui/toaster.tsx
+  inflating: /workspace/client/src/components/ui/collapsible.tsx
+  inflating: /workspace/client/src/components/ui/toggle.tsx
+  inflating: /workspace/client/src/components/ui/accordion.tsx
+  inflating: /workspace/client/src/components/ui/badge.tsx
+  inflating: /workspace/client/src/components/ui/sidebar.tsx
+  inflating: /workspace/client/src/components/ui/form.tsx
+  inflating: /workspace/client/src/components/ui/radio-group.tsx
+  inflating: /workspace/client/src/components/ui/carousel.tsx
+  inflating: /workspace/client/src/components/ui/tabs.tsx
+  inflating: /workspace/client/src/components/ui/navigation-menu.tsx
+  inflating: /workspace/client/src/components/ui/drawer.tsx
+  inflating: /workspace/client/src/components/ui/slider.tsx
+  inflating: /workspace/client/src/components/ui/pagination.tsx
+  inflating: /workspace/client/src/components/ui/table.tsx
+  inflating: /workspace/client/src/components/ui/input-otp.tsx
+  inflating: /workspace/client/src/components/ui/dropdown-menu.tsx
+  inflating: /workspace/client/src/components/ui/checkbox.tsx
+  inflating: /workspace/client/src/components/ui/calendar.tsx
+  inflating: /workspace/client/src/components/ui/label.tsx
+  inflating: /workspace/client/src/components/ui/alert-dialog.tsx
+  inflating: /workspace/client/src/components/ui/select.tsx
+  inflating: /workspace/client/src/components/ui/popover.tsx
+  inflating: /workspace/client/src/components/ui/input.tsx
+  inflating: /workspace/client/src/components/ui/separator.tsx
+  inflating: /workspace/client/src/components/ui/button.tsx
+  inflating: /workspace/client/src/components/ui/menubar.tsx
+  inflating: /workspace/client/src/components/ui/aspect-ratio.tsx
+  inflating: /workspace/client/src/components/ui/hover-card.tsx
+  inflating: /workspace/client/src/components/ui/scroll-area.tsx
+  inflating: /workspace/client/src/components/ui/command.tsx
+  inflating: /workspace/client/src/components/ui/avatar.tsx
+  inflating: /workspace/client/src/components/ui/chart.tsx
+  inflating: /workspace/client/src/components/ui/switch.tsx
+  inflating: /workspace/client/src/components/ui/skeleton.tsx
+  inflating: /workspace/client/src/components/ui/breadcrumb.tsx
+  inflating: /workspace/client/src/components/ui/toggle-group.tsx
+  inflating: /workspace/client/src/pages/intake-forms.tsx
+  inflating: /workspace/client/src/pages/patient-profiles.tsx
+  inflating: /workspace/client/src/pages/form-submissions.tsx
+  inflating: /workspace/client/src/pages/dashboard.tsx
+  inflating: /workspace/client/src/pages/medication-dictionary.tsx
+  inflating: /workspace/client/src/pages/baa.tsx
+  inflating: /workspace/client/src/pages/account.tsx
+  inflating: /workspace/client/src/pages/login.tsx
+  inflating: /workspace/client/src/pages/admin.tsx
+  inflating: /workspace/client/src/pages/appointments.tsx
+  inflating: /workspace/client/src/pages/not-found.tsx
+  inflating: /workspace/client/src/pages/join-clinic.tsx
+  inflating: /workspace/client/src/pages/privacy.tsx
+  inflating: /workspace/client/src/pages/register.tsx
+  inflating: /workspace/client/src/pages/terms.tsx
+  inflating: /workspace/client/src/pages/encounters.tsx
+  inflating: /workspace/client/src/pages/landing.tsx
+  inflating: /workspace/client/src/pages/billing.tsx
+  inflating: /workspace/client/src/pages/reset-password.tsx
+  inflating: /workspace/client/src/pages/set-password.tsx
+  inflating: /workspace/client/src/pages/help.tsx
+  inflating: /workspace/client/src/pages/forgot-password.tsx
+  inflating: /workspace/client/src/pages/lab-interpretation.tsx
+  inflating: /workspace/client/src/pages/staff-set-password.tsx
+  inflating: /workspace/client/src/pages/bootstrap.tsx
+  inflating: /workspace/client/src/pages/form-public.tsx
+  inflating: /workspace/client/src/pages/female-lab-interpretation.tsx
+  inflating: /workspace/client/src/pages/portal/dashboard.tsx
+  inflating: /workspace/client/src/pages/portal/login.tsx
+  inflating: /workspace/client/src/pages/portal/forms.tsx
+  inflating: /workspace/client/src/pages/portal/supplements.tsx
+  inflating: /workspace/client/src/pages/portal/reset-password.tsx
+  inflating: /workspace/client/src/pages/portal/set-password.tsx
+  inflating: /workspace/client/src/pages/portal/forgot-password.tsx
+  inflating: /workspace/client/src/pages/portal/messages.tsx
+  inflating: /workspace/client/src/lib/pdf-export.ts
+  inflating: /workspace/client/src/lib/patient-pdf-export.ts
+  inflating: /workspace/client/src/lib/queryClient.ts
+  inflating: /workspace/client/src/lib/pdf-trend-charts.ts
+  inflating: /workspace/client/src/lib/soap-pdf-export.ts
+  inflating: /workspace/client/src/lib/supplement-prices.ts
+  inflating: /workspace/client/src/lib/clinical-trend-insights.ts
+  inflating: /workspace/client/src/lib/patient-pdf-export-male.ts
+  inflating: /workspace/client/src/lib/app-url.ts
+  inflating: /workspace/client/src/lib/api.ts
+  inflating: /workspace/client/src/lib/utils.ts
+  inflating: /workspace/client/src/hooks/use-spinning-favicon.ts
+  inflating: /workspace/client/src/hooks/use-portal-unread.ts
+  inflating: /workspace/client/src/hooks/use-global-loading.tsx
+  inflating: /workspace/client/src/hooks/use-toast.ts
+  inflating: /workspace/client/src/hooks/use-auth.tsx
+  inflating: /workspace/client/src/hooks/use-patient-context.tsx
+  inflating: /workspace/client/src/hooks/use-mobile.tsx
+  inflating: /workspace/shared/schema.ts
+  inflating: /workspace/shared/password-policy.ts
+  inflating: /workspace/scripts/migrate-prod.js
+BUILD
+Already have image (with digest): gcr.io/cloud-builders/docker
+Sending build context to Docker daemon   22.3MB
+Step 1/14 : FROM node:20-alpine
+20-alpine: Pulling from library/node
+6a0ac1617861: Pulling fs layer
+4feea04c1543: Pulling fs layer
+b2cbbfe903b0: Pulling fs layer
+fff4e2c1b189: Pulling fs layer
+fff4e2c1b189: Download complete
+b2cbbfe903b0: Verifying Checksum
+b2cbbfe903b0: Download complete
+6a0ac1617861: Verifying Checksum
+6a0ac1617861: Download complete
+6a0ac1617861: Pull complete
+4feea04c1543: Verifying Checksum
+4feea04c1543: Download complete
+4feea04c1543: Pull complete
+b2cbbfe903b0: Pull complete
+fff4e2c1b189: Pull complete
+Digest: sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+Status: Downloaded newer image for node:20-alpine
+ 11cedc39e663
+Step 2/14 : RUN apk add --no-cache ffmpeg
+ Running in 0fd71b60b4cb
+(  1/102) Installing libSvtAv1Enc (3.1.2-r0)
+(  2/102) Installing aom-libs (3.13.1-r1)
+(  3/102) Installing libxau (1.0.12-r0)
+(  4/102) Installing libmd (1.1.0-r0)
+(  5/102) Installing libbsd (0.12.2-r0)
+(  6/102) Installing libxdmcp (1.1.5-r1)
+(  7/102) Installing libxcb (1.17.0-r1)
+(  8/102) Installing libx11 (1.8.12-r1)
+(  9/102) Installing hwdata-pci (0.401-r0)
+( 10/102) Installing libpciaccess (0.18.1-r1)
+( 11/102) Installing libdrm (2.4.131-r0)
+( 12/102) Installing libxext (1.3.6-r2)
+( 13/102) Installing libxfixes (6.0.2-r0)
+( 14/102) Installing libffi (3.5.2-r0)
+( 15/102) Installing wayland-libs-client (1.24.0-r0)
+( 16/102) Installing libva (2.22.0-r1)
+( 17/102) Installing libvdpau (1.5-r4)
+( 18/102) Installing libvpl (2.15.0-r1)
+( 19/102) Installing ffmpeg-libavutil (8.0.1-r1)
+( 20/102) Installing libdav1d (1.5.2-r0)
+( 21/102) Installing brotli-libs (1.2.0-r0)
+( 22/102) Installing libhwy (1.3.0-r0)
+( 23/102) Installing lcms2 (2.17-r0)
+( 24/102) Installing libjxl (0.11.1-r3)
+( 25/102) Installing lame-libs (3.100-r5)
+( 26/102) Installing opus (1.5.2-r1)
+( 27/102) Installing rav1e-libs (0.8.1-r0)
+( 28/102) Installing spirv-tools (1.4.321.0-r1)
+( 29/102) Installing glslang-libs (1.4.321.0-r0)
+( 30/102) Installing shaderc (2025.3-r0)
+( 31/102) Installing libgomp (15.2.0-r2)
+( 32/102) Installing soxr (0.1.3-r7)
+( 33/102) Installing ffmpeg-libswresample (8.0.1-r1)
+( 34/102) Installing libogg (1.3.6-r0)
+( 35/102) Installing libtheora (1.2.0-r0)
+( 36/102) Installing libvorbis (1.3.7-r2)
+( 37/102) Installing libvpx (1.15.2-r1)
+( 38/102) Installing libsharpyuv (1.6.0-r0)
+( 39/102) Installing libwebp (1.6.0-r0)
+( 40/102) Installing libwebpmux (1.6.0-r0)
+( 41/102) Installing x264-libs (0.164.3108-r1)
+( 42/102) Installing numactl (2.0.18-r0)
+( 43/102) Installing x265-libs (4.1-r0)
+( 44/102) Installing xvidcore (1.3.7-r2)
+( 45/102) Installing ffmpeg-libavcodec (8.0.1-r1)
+( 46/102) Installing alsa-lib (1.2.14-r2)
+( 47/102) Installing libexpat (2.7.5-r0)
+( 48/102) Installing libbz2 (1.0.8-r6)
+( 49/102) Installing libpng (1.6.57-r0)
+( 50/102) Installing freetype (2.14.1-r0)
+( 51/102) Installing fontconfig (2.17.1-r0)
+( 52/102) Installing fribidi (1.0.16-r2)
+( 53/102) Installing libintl (0.24.1-r1)
+( 54/102) Installing libeconf (0.8.3-r0)
+( 55/102) Installing libblkid (2.41.4-r0)
+( 56/102) Installing libmount (2.41.4-r0)
+( 57/102) Installing pcre2 (10.47-r0)
+( 58/102) Installing glib (2.86.3-r0)
+( 59/102) Installing graphite2 (1.3.14-r6)
+( 60/102) Installing harfbuzz (12.2.0-r0)
+( 61/102) Installing libunibreak (6.1-r0)
+( 62/102) Installing libass (0.17.4-r0)
+( 63/102) Installing libudfread (1.2.0-r0)
+( 64/102) Installing libbluray (1.4.0-r0)
+( 65/102) Installing mpg123-libs (1.33.3-r0)
+( 66/102) Installing libopenmpt (0.8.6-r0)
+( 67/102) Installing cjson (1.7.19-r1)
+( 68/102) Installing mbedtls (3.6.6-r0)
+( 69/102) Installing librist (0.2.10-r1)
+( 70/102) Installing libsrt (1.5.3-r1)
+( 71/102) Installing libssh (0.11.4-r0)
+( 72/102) Installing xz-libs (5.8.2-r0)
+( 73/102) Installing libxml2 (2.13.9-r0)
+( 74/102) Installing libsodium (1.0.20-r1)
+( 75/102) Installing libzmq (4.3.5-r2)
+( 76/102) Installing ffmpeg-libavformat (8.0.1-r1)
+( 77/102) Installing serd-libs (0.32.4-r0)
+( 78/102) Installing zix-libs (0.6.2-r0)
+( 79/102) Installing sord-libs (0.16.18-r0)
+( 80/102) Installing sratom (0.6.18-r0)
+( 81/102) Installing lilv-libs (0.24.26-r0)
+( 82/102) Installing libdovi (3.3.2-r0)
+( 83/102) Installing vulkan-loader (1.4.321.0-r0)
+( 84/102) Installing libplacebo (7.351.0-r0)
+( 85/102) Installing ffmpeg-libswscale (8.0.1-r1)
+( 86/102) Installing vidstab (1.1.1-r0)
+( 87/102) Installing zimg (3.0.6-r0)
+( 88/102) Installing ffmpeg-libavfilter (8.0.1-r1)
+( 89/102) Installing libasyncns (0.8-r4)
+( 90/102) Installing dbus-libs (1.16.2-r1)
+( 91/102) Installing libltdl (2.5.4-r2)
+( 92/102) Installing orc (0.4.41-r0)
+( 93/102) Installing libflac (1.4.3-r2)
+( 94/102) Installing libsndfile (1.2.2-r2)
+( 95/102) Installing speexdsp (1.2.1-r2)
+( 96/102) Installing tdb-libs (1.4.14-r0)
+( 97/102) Installing libpulse (17.0-r5)
+( 98/102) Installing libjpeg-turbo (3.1.2-r0)
+( 99/102) Installing json-c (0.18-r1)
+(100/102) Installing v4l-utils-libs (1.32.0-r0)
+(101/102) Installing ffmpeg-libavdevice (8.0.1-r1)
+(102/102) Installing ffmpeg (8.0.1-r1)
+Executing busybox-1.37.0-r30.trigger
+Executing glib-2.86.3-r0.trigger
+OK: 135.6 MiB in 120 packages
+Removing intermediate container 0fd71b60b4cb
+ 01d78aacb829
+Step 3/14 : WORKDIR /app
+ Running in 8e75abfe227f
+Removing intermediate container 8e75abfe227f
+ 87483fca5268
+Step 4/14 : COPY package*.json ./
+ adb2cfece5bd
+Step 5/14 : RUN npm ci
+ Running in 3e5b2bc5c104
+npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+
+added 525 packages, and audited 526 packages in 23s
+ERROR: gcloud crashed (TypeError): expected string or bytes-like object, got 'NoneType'
+
+If you would like to report this issue, please run the following command:
+  gcloud feedback
+
+To check gcloud for common problems, please run the following command:
+  gcloud info --run-diagnostics
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
