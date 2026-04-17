@@ -764,7 +764,7 @@ export default function PortalForms() {
     },
   });
 
-  const { data: formDetail, isLoading: loadingDetail } = useQuery<{ form: any; fields: FormField[]; sections: any[] }>({
+  const { data: formDetail, isLoading: loadingDetail } = useQuery<{ form: any; fields: FormField[]; sections: any[]; patient?: { firstName: string; lastName: string; dateOfBirth: string | null; email: string | null } | null }>({
     queryKey: ["/api/portal/forms", fillingAssignmentId],
     queryFn: async () => {
       const res = await fetch(`/api/portal/forms/${fillingAssignmentId}`, { credentials: "include" });
@@ -773,6 +773,31 @@ export default function PortalForms() {
     },
     enabled: !!fillingAssignmentId,
   });
+
+  // Auto-populate smart demographic fields from the assigned patient profile.
+  useEffect(() => {
+    if (!formDetail?.patient || !formDetail.fields?.length) return;
+    const p = formDetail.patient;
+    const prefillBySmartKey: Record<string, string | null> = {
+      patient_first_name: p.firstName ?? null,
+      patient_last_name: p.lastName ?? null,
+      patient_dob: p.dateOfBirth ?? null,
+      patient_email: p.email ?? null,
+    };
+    setResponses(prev => {
+      const next = { ...prev };
+      let changed = false;
+      for (const field of formDetail.fields) {
+        if (!field.smartFieldKey) continue;
+        const val = prefillBySmartKey[field.smartFieldKey];
+        if (val && (next[field.id] === undefined || next[field.id] === "" || next[field.id] === null)) {
+          next[field.id] = val;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [formDetail]);
 
   const submitMutation = useMutation({
     mutationFn: async () => {

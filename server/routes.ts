@@ -3159,7 +3159,15 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const sections = await storage.getFormSections(assignment.formId);
       const sortedFields = fields.sort((a, b) => a.orderIndex - b.orderIndex);
 
-      res.json({ assignment, form: { id: form.id, name: form.name, description: form.description, category: form.category, requiresPatientSignature: form.requiresPatientSignature }, fields: sortedFields, sections });
+      const patient = await storage.getPatient(patientId);
+      const portalAccount = await storage.getPortalAccountByPatientId(patientId).catch(() => null);
+      const patientPrefill = patient ? {
+        firstName: patient.firstName,
+        lastName: patient.lastName,
+        dateOfBirth: patient.dateOfBirth,
+        email: portalAccount?.email || (patient as any).email || null,
+      } : null;
+      res.json({ assignment, form: { id: form.id, name: form.name, description: form.description, category: form.category, requiresPatientSignature: form.requiresPatientSignature }, fields: sortedFields, sections, patient: patientPrefill });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch form" });
     }

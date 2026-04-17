@@ -105,6 +105,9 @@ export default function FormPublicPage() {
   const handleSubmit = () => {
     if (!data) return;
     const errors: Record<string, string> = {};
+    // Always require submitter name + email at the top of the form.
+    if (!submitterName.trim()) errors["__submitter_name"] = "Your name is required";
+    if (!submitterEmail.trim()) errors["__submitter_email"] = "Your email is required";
     for (const field of data.fields) {
       if (!field.isRequired) continue;
       if (["heading", "paragraph"].includes(field.fieldType)) continue;
@@ -134,7 +137,8 @@ export default function FormPublicPage() {
       if (firstNameField || lastNameField) {
         const fn = firstNameField ? (responses[firstNameField.fieldKey] || "") : "";
         const ln = lastNameField ? (responses[lastNameField.fieldKey] || "") : "";
-        effectiveName = `${fn} ${ln}`.trim() || effectiveName;
+        const smart = `${fn} ${ln}`.trim();
+        if (smart) effectiveName = smart;
       }
       if (emailField) {
         effectiveEmail = responses[emailField.fieldKey] || effectiveEmail;
@@ -192,9 +196,6 @@ export default function FormPublicPage() {
   const sortedFields = [...fields].sort((a, b) => a.orderIndex - b.orderIndex);
   const sortedSections = [...sections].sort((a, b) => a.orderIndex - b.orderIndex);
 
-  const hasSmartName = fields.some(f => f.smartFieldKey === "patient_first_name" || f.smartFieldKey === "patient_last_name");
-  const hasSmartEmail = fields.some(f => f.smartFieldKey === "patient_email");
-  const hideSubmitterBox = hasSmartName && hasSmartEmail;
 
   // Group fields by section (null = no section)
   const fieldsBySectionId: Record<string | "null", FormField[]> = { null: [] };
@@ -221,29 +222,45 @@ export default function FormPublicPage() {
         )}
       </div>
 
-      {!hideSubmitterBox && (
-        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 p-4 rounded-md border bg-muted/20">
-          <div className="space-y-1.5">
-            <Label>Your Full Name <span className="text-muted-foreground">(optional)</span></Label>
-            <Input
-              value={submitterName}
-              onChange={e => setSubmitterName(e.target.value)}
-              placeholder="Jane Doe"
-              data-testid="input-submitter-name"
-            />
-          </div>
-          <div className="space-y-1.5">
-            <Label>Your Email <span className="text-muted-foreground">(optional)</span></Label>
-            <Input
-              type="email"
-              value={submitterEmail}
-              onChange={e => setSubmitterEmail(e.target.value)}
-              placeholder="jane@example.com"
-              data-testid="input-submitter-email"
-            />
-          </div>
+      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-8 p-4 rounded-md border bg-muted/20">
+        <div className="space-y-1.5">
+          <Label>Your Full Name <span className="text-destructive">*</span></Label>
+          <Input
+            value={submitterName}
+            onChange={e => {
+              setSubmitterName(e.target.value);
+              if (validationErrors["__submitter_name"]) {
+                setValidationErrors(prev => { const n = { ...prev }; delete n["__submitter_name"]; return n; });
+              }
+            }}
+            placeholder="Jane Doe"
+            aria-invalid={!!validationErrors["__submitter_name"]}
+            data-testid="input-submitter-name"
+          />
+          {validationErrors["__submitter_name"] && (
+            <p className="text-xs text-destructive">{validationErrors["__submitter_name"]}</p>
+          )}
         </div>
-      )}
+        <div className="space-y-1.5">
+          <Label>Your Email <span className="text-destructive">*</span></Label>
+          <Input
+            type="email"
+            value={submitterEmail}
+            onChange={e => {
+              setSubmitterEmail(e.target.value);
+              if (validationErrors["__submitter_email"]) {
+                setValidationErrors(prev => { const n = { ...prev }; delete n["__submitter_email"]; return n; });
+              }
+            }}
+            placeholder="jane@example.com"
+            aria-invalid={!!validationErrors["__submitter_email"]}
+            data-testid="input-submitter-email"
+          />
+          {validationErrors["__submitter_email"] && (
+            <p className="text-xs text-destructive">{validationErrors["__submitter_email"]}</p>
+          )}
+        </div>
+      </div>
 
       {/* Fields without section */}
       {fieldsBySectionId["null"]?.length > 0 && (
