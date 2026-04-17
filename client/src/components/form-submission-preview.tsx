@@ -959,7 +959,7 @@ export function FormSubmissionPreviewDialog({
               <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#7a8a64" }} />
             </div>
           ) : detail ? (
-            <ScrollArea className="flex-1 -mx-6 px-6">
+            <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
               <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#e0ddd6", backgroundColor: "#fff" }}>
                 <div className="px-5 py-4" style={{ backgroundColor: "#f5f2ed", borderBottom: "2px solid #5a7040" }}>
                   <div className="flex items-center gap-3 flex-wrap">
