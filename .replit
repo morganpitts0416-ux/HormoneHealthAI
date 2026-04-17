@@ -63,4 +63,4 @@ STRIPE_SUITE_PRICE_ID = "price_1TKR6NKbgudErHaMQoNserm1"
 STRIPE_PROVIDER_SEAT_PRICE_ID = "price_1TKR6NKbgudErHaMgd2q3k1p"
 
 [userenv.production]
-APP_URL = "https://realignlabeval.com"
+APP_URL = "https://app.cliniqapp.ai"
