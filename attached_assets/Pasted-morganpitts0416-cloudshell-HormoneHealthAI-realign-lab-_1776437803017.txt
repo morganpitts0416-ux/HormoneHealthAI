@@ -1,0 +1,48 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ psql "postgresql://postgres:Knight1234Server@136.113.109.193:5432/realdata"
+psql (16.13 (Ubuntu 16.13-1.pgdg24.04+1), server 18.3)
+WARNING: psql major version 16, server major version 18.
+         Some psql features might not work.
+SSL connection (protocol: TLSv1.3, cipher: TLS_AES_256_GCM_SHA384, compression: off)
+Type "help" for help.
+
+realdata=> SELECT id, email, role, password_hash, is_active
+FROM users
+WHERE LOWER(email) = LOWER('patient@email.com');
+ERROR:  column "is_active" does not exist
+LINE 1: SELECT id, email, role, password_hash, is_active
+                                               ^
+realdata=> SELECT p.id AS patient_id, p.email, p.user_id, u.id AS user_id, u.email AS user_email, u.role
+FROM patients p
+LEFT JOIN users u ON u.id = p.user_id
+WHERE LOWER(p.email) = LOWER('patient@email.com');
+ patient_id | email | user_id | user_id | user_email | role 
+------------+-------+---------+---------+------------+------
+(0 rows)
+
+realdata=> SELECT id, email, role, password_hash, is_active
+FROM users
+WHERE LOWER(email) = LOWER('mcharleighdesigns@gmail.com');
+ERROR:  column "is_active" does not exist
+LINE 1: SELECT id, email, role, password_hash, is_active
+                                               ^
+realdata=> SELECT p.id AS patient_id, p.email, p.user_id, u.id AS user_id, u.email AS user_email, u.role
+FROM patients p
+LEFT JOIN users u ON u.id = p.user_id
+WHERE LOWER(p.email) = LOWER('mcharleighdesigns@gmail.com');
+ patient_id |            email            | user_id | user_id |         user_email          |   role    
+------------+-----------------------------+---------+---------+-----------------------------+-----------
+         61 | mcharleighdesigns@gmail.com |      12 |      12 | morgan@womenswellnessms.com | clinician
+(1 row)
+
+realdata=> SELECT id, email, role, password_hash, is_active
+FROM users
+WHERE LOWER(email) = LOWER('mcharleighdesigns@gmail.com');
+ERROR:  column "is_active" does not exist
+LINE 1: SELECT id, email, role, password_hash, is_active
+                                               ^
+realdata=> SELECT id, email, role, password_hash
+FROM users
+WHERE LOWER(email) = LOWER('mcharleighdesigns@gmail.com');
+ id | email | role | password_hash 
+----+-------+------+---------------
+(0 rows)
