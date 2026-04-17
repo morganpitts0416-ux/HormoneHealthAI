@@ -7,6 +7,7 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
+import { RichTextView } from "@/components/rich-text-editor";
 import { useToast } from "@/hooks/use-toast";
 import {
   Leaf, LogOut, CalendarDays, Clock, Package, MessageSquare, FileText,
@@ -62,7 +63,7 @@ function PortalFormField({ field, value, onChange }: {
     case "heading":
       return (
         <div className="pt-2 space-y-0.5">
-          <h3 className="text-base font-semibold" style={{ color: "#2e3a20" }}>{field.label}</h3>
+          <RichTextView html={field.label} className="text-base font-semibold" />
           {field.helpText && <p className="text-xs text-muted-foreground whitespace-pre-line">{field.helpText}</p>}
         </div>
       );
@@ -70,7 +71,9 @@ function PortalFormField({ field, value, onChange }: {
       return (
         <div className="rounded-md bg-muted/30 border p-3 space-y-1">
           {(field.label || field.placeholder) && (
-            <p className="text-sm text-foreground whitespace-pre-line">{field.label || field.placeholder}</p>
+            field.label
+              ? <RichTextView html={field.label} className="text-sm text-foreground" />
+              : <p className="text-sm text-foreground whitespace-pre-line">{field.placeholder}</p>
           )}
           {field.helpText && (
             <p className="text-xs text-muted-foreground whitespace-pre-line">{field.helpText}</p>

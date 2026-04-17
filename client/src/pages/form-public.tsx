@@ -8,6 +8,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { RichTextView } from "@/components/rich-text-editor";
 import { CheckCircle2, AlertCircle, RefreshCw, ClipboardList, Plus, X } from "lucide-react";
 
 interface FormField {
@@ -479,7 +480,7 @@ function FieldRenderer({ field, value, onChange, error }: {
   if (field.fieldType === "heading") {
     return (
       <div className="pt-2">
-        <h3 className="text-base font-semibold">{field.label}</h3>
+        <RichTextView html={field.label} className="text-base font-semibold" />
         {field.helpText && <p className="text-sm text-muted-foreground mt-0.5">{field.helpText}</p>}
       </div>
     );
@@ -488,7 +489,7 @@ function FieldRenderer({ field, value, onChange, error }: {
   if (field.fieldType === "paragraph") {
     return (
       <div className="rounded-md bg-muted/30 border p-3">
-        <p className="text-sm text-foreground">{field.label}</p>
+        <RichTextView html={field.label} className="text-sm text-foreground" />
         {field.helpText && <p className="text-xs text-muted-foreground mt-1">{field.helpText}</p>}
       </div>
     );
