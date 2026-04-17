@@ -8,7 +8,8 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { appUrl } from "@/lib/app-url";
 import { DemoModal } from "@/components/demo-modal";
-import copilotDemoVideo from "@assets/Screen_Recording_2026-04-17_172106_1776464513381.mp4";
+
+const COPILOT_DEMO_VIDEO_URL = "/marketing/clinical-copilot-demo.mp4";
 
 const CLINICIAN_FEATURES = [
   {
@@ -269,7 +270,7 @@ export default function Landing() {
             data-testid="video-copilot-demo-wrapper"
           >
             <video
-              src={copilotDemoVideo}
+              src={COPILOT_DEMO_VIDEO_URL}
               autoPlay
               loop
               muted
