@@ -740,17 +740,29 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
             <div className="px-2 py-1 text-xs text-muted-foreground">+ 5 more family members</div>
           </div>
         );
-      case "symptom_checklist":
-        return (
-          <div className="space-y-2">
-            {options.length > 0 ? options.map((opt: string, i: number) => (
-              <label key={i} className="flex items-center gap-2 text-sm">
-                <span className="h-4 w-4 rounded-md border border-border flex-shrink-0" />
-                {opt}
-              </label>
-            )) : <span className="text-xs text-muted-foreground italic">No symptom items defined</span>}
+      case "symptom_checklist": {
+        const ratings = ["None", "Mild", "Moderate", "Severe"];
+        return options.length > 0 ? (
+          <div className="border rounded-md overflow-hidden text-xs">
+            <div className="grid grid-cols-[1fr_auto] bg-muted/40 font-medium border-b">
+              <div className="px-3 py-1.5">Symptom</div>
+              <div className="px-3 py-1.5">Severity</div>
+            </div>
+            {options.map((opt: string, i: number) => (
+              <div key={i} className="grid grid-cols-[1fr_auto] border-b last:border-b-0">
+                <div className="px-3 py-1.5">{opt}</div>
+                <div className="px-3 py-1.5 flex items-center gap-1">
+                  {ratings.map(r => (
+                    <span key={r} className="px-1.5 py-0.5 rounded border border-border text-muted-foreground">{r}</span>
+                  ))}
+                </div>
+              </div>
+            ))}
           </div>
+        ) : (
+          <span className="text-xs text-muted-foreground italic">List symptoms in the Options panel — patients will rate each as None / Mild / Moderate / Severe</span>
         );
+      }
       case "matrix": {
         const cfg = (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
           ? field.optionsJson as { rows: any[]; columns: any[] }

@@ -171,8 +171,69 @@ function PortalFormField({ field, value, onChange }: {
           </div>
         </div>
       );
-    case "multi_choice":
     case "symptom_checklist": {
+      const symptoms: string[] = Array.isArray(field.optionsJson) ? field.optionsJson : [];
+      if (symptoms.length === 0) {
+        return (
+          <div className="space-y-1.5">
+            <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
+              {field.label}{field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+            </label>
+            {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+            <textarea
+              className="w-full rounded-md border px-3 py-2 text-sm"
+              style={{ borderColor: "#d4c9b5" }}
+              rows={4}
+              value={typeof value === "string" ? value : ""}
+              onChange={e => onChange(e.target.value)}
+              placeholder="List any symptoms you are experiencing"
+              data-testid={`portal-field-${field.id}-text`}
+            />
+          </div>
+        );
+      }
+      const ratings = ["None", "Mild", "Moderate", "Severe"];
+      const val: Record<string, string> = (typeof value === "object" && value !== null && !Array.isArray(value)) ? value : {};
+      return (
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
+            {field.label}{field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+          </label>
+          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          <div className="border rounded-md overflow-hidden" style={{ borderColor: "#d4c9b5" }}>
+            <div className="grid grid-cols-[1fr_auto] text-xs font-medium border-b" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5", color: "#2e3a20" }}>
+              <div className="px-3 py-2">Symptom</div>
+              <div className="px-3 py-2">Severity</div>
+            </div>
+            {symptoms.map((s, i) => (
+              <div key={i} className="grid grid-cols-[1fr_auto] border-b last:border-b-0 items-center" style={{ borderColor: "#e8ddd0" }}>
+                <div className="px-3 py-2 text-sm" style={{ color: "#2e3a20" }}>{s}</div>
+                <div className="px-3 py-2 flex items-center gap-1 flex-wrap">
+                  {ratings.map(r => {
+                    const active = val[s] === r;
+                    return (
+                      <button
+                        type="button"
+                        key={r}
+                        onClick={() => onChange({ ...val, [s]: r })}
+                        className="text-xs px-2.5 py-1 rounded-md border transition-colors"
+                        style={active
+                          ? { backgroundColor: "#2e3a20", color: "#f9f6f0", borderColor: "#2e3a20" }
+                          : { backgroundColor: "#fff", color: "#2e3a20", borderColor: "#d4c9b5" }}
+                        data-testid={`portal-field-${field.id}-symptom-${i}-${r.toLowerCase()}`}
+                      >
+                        {r}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        </div>
+      );
+    }
+    case "multi_choice": {
       const cols = (field.layoutJson as any)?.optionColumns ?? 1;
       const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1";
       return (
@@ -713,6 +774,18 @@ function renderReadOnlyValue(field: FormField, value: any): JSX.Element {
   if (typeof value === "object") {
     const entries = Object.entries(value).filter(([, v]) => v !== "" && v !== null && v !== undefined);
     if (entries.length === 0) return <p className="text-sm italic text-muted-foreground">No response</p>;
+    if (field.fieldType === "symptom_checklist") {
+      return (
+        <div className="border rounded-md overflow-hidden text-sm" style={{ borderColor: "#e8ddd0" }}>
+          {entries.map(([k, v]) => (
+            <div key={k} className="grid grid-cols-[1fr_auto] border-b last:border-b-0 px-3 py-1.5" style={{ borderColor: "#e8ddd0" }}>
+              <span style={{ color: "#2e3a20" }}>{k}</span>
+              <span className="font-medium" style={{ color: "#2e3a20" }}>{String(v)}</span>
+            </div>
+          ))}
+        </div>
+      );
+    }
     return (
       <div className="space-y-1">
         {entries.map(([k, v]) => (
@@ -829,6 +902,7 @@ export default function PortalForms() {
       if (!val) return true;
       if (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) return true;
       if (f.fieldType === "family_history_chart" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim())) return true;
+      if (f.fieldType === "symptom_checklist" && Array.isArray(f.optionsJson) && f.optionsJson.length > 0 && (typeof val !== "object" || Array.isArray(val) || Object.values(val).every((v: any) => !v || !String(v).trim()))) return true;
       if (f.fieldType === "matrix" && (typeof val !== "object" || Array.isArray(val) || Object.values(val).every((row: any) => !row || typeof row !== "object" || Object.values(row).every((v: any) => v === undefined || v === null || v === false || (typeof v === "string" && !v.trim()))))) return true;
       return false;
     });
