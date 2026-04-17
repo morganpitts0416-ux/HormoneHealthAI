@@ -3,6 +3,7 @@ import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
+import { RichTextEditor, RichTextView } from "@/components/rich-text-editor";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Badge } from "@/components/ui/badge";
@@ -603,14 +604,16 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
       case "heading":
         return (
           <div className="space-y-0.5">
-            <h3 className="text-base font-semibold text-foreground">{field.label}</h3>
+            <RichTextView html={field.label} className="text-base font-semibold text-foreground" />
             {field.helpText && <p className="text-xs text-muted-foreground whitespace-pre-line">{field.helpText}</p>}
           </div>
         );
       case "paragraph":
         return (
           <div className="space-y-1">
-            <p className="text-sm text-foreground whitespace-pre-line">{field.label || field.placeholder || "Instructions will appear here..."}</p>
+            {field.label
+              ? <RichTextView html={field.label} className="text-sm text-foreground" />
+              : <p className="text-sm text-muted-foreground italic">{field.placeholder || "Instructions will appear here..."}</p>}
             {field.helpText && <p className="text-xs text-muted-foreground whitespace-pre-line">{field.helpText}</p>}
           </div>
         );
@@ -1562,13 +1565,20 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
         <div className="space-y-1">
           <Label className="text-xs">{isDecorative ? "Text Content" : "Label / Question"}</Label>
           {local.fieldType === "paragraph" ? (
-            <Textarea
+            <RichTextEditor
               value={local.label}
-              onChange={e => setLocal(prev => ({ ...prev, label: e.target.value }))}
+              onChange={(html) => setLocal(prev => ({ ...prev, label: html }))}
               rows={5}
               placeholder="Enter the text or instructions to show patients..."
-              className="text-sm"
-              data-testid="textarea-field-label"
+              testId="textarea-field-label"
+            />
+          ) : local.fieldType === "heading" ? (
+            <RichTextEditor
+              value={local.label}
+              onChange={(html) => setLocal(prev => ({ ...prev, label: html }))}
+              rows={2}
+              placeholder="Section heading..."
+              testId="input-field-label"
             />
           ) : (
             <Input
