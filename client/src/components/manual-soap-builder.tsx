@@ -152,6 +152,47 @@ function ChartModeEditor({
   );
 }
 
+function DxAwareTextarea({
+  value,
+  onChange,
+  rows,
+  placeholder,
+  className,
+  testId,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  rows?: number;
+  placeholder?: string;
+  className?: string;
+  testId?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const dxSearch = useDiagnosisSearch({
+    textareaRef: ref,
+    value,
+    onChange,
+  });
+  return (
+    <div className="relative">
+      <Textarea
+        ref={ref}
+        value={value}
+        onChange={e => {
+          onChange(e.target.value);
+          dxSearch.handleInput(e);
+        }}
+        onKeyDown={dxSearch.handleKeyDown}
+        rows={rows}
+        placeholder={placeholder}
+        className={className}
+        data-testid={testId}
+      />
+      {dxSearch.dropdown}
+    </div>
+  );
+}
+
 function AssessmentPlanEditor({
   items,
   summary,
@@ -215,24 +256,24 @@ function AssessmentPlanEditor({
             </div>
             <div>
               <label className="text-[10px] font-medium text-muted-foreground mb-0.5 block">Supporting Factors</label>
-              <Textarea
+              <DxAwareTextarea
                 value={item.supportingFactors}
-                onChange={e => updateItem(idx, "supportingFactors", e.target.value)}
+                onChange={v => updateItem(idx, "supportingFactors", v)}
                 rows={2}
-                placeholder="Clinical reasoning, lab findings, symptoms..."
+                placeholder="Clinical reasoning, lab findings, symptoms... (type /dx to search)"
                 className="text-xs resize-y"
-                data-testid={`textarea-supporting-${idx}`}
+                testId={`textarea-supporting-${idx}`}
               />
             </div>
             <div>
               <label className="text-[10px] font-medium text-muted-foreground mb-0.5 block">Plan</label>
-              <Textarea
+              <DxAwareTextarea
                 value={item.plan}
-                onChange={e => updateItem(idx, "plan", e.target.value)}
+                onChange={v => updateItem(idx, "plan", v)}
                 rows={2}
-                placeholder="- Treatment actions&#10;- Medications&#10;- Follow-up"
+                placeholder="- Treatment actions&#10;- Medications&#10;- Follow-up&#10;(type /dx to search diagnoses)"
                 className="text-xs resize-y"
-                data-testid={`textarea-plan-${idx}`}
+                testId={`textarea-plan-${idx}`}
               />
             </div>
           </CardContent>
