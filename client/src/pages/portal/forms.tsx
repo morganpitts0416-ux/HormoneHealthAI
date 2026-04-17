@@ -678,13 +678,62 @@ function SignaturePad({ value, onChange, fieldId }: { value: any; onChange: (val
   );
 }
 
+function renderReadOnlyValue(field: FormField, value: any): JSX.Element {
+  if (value === null || value === undefined || value === "") {
+    return <p className="text-sm italic text-muted-foreground">No response</p>;
+  }
+  if (field.fieldType === "signature" && typeof value === "string" && value.startsWith("data:image")) {
+    return <img src={value} alt="Signature" className="border rounded bg-white max-h-32" />;
+  }
+  if (Array.isArray(value)) {
+    if (value.length === 0) return <p className="text-sm italic text-muted-foreground">No response</p>;
+    return (
+      <ul className="list-disc list-inside text-sm space-y-0.5" style={{ color: "#2e3a20" }}>
+        {value.map((v, i) => <li key={i}>{typeof v === "object" ? JSON.stringify(v) : String(v)}</li>)}
+      </ul>
+    );
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value).filter(([, v]) => v !== "" && v !== null && v !== undefined);
+    if (entries.length === 0) return <p className="text-sm italic text-muted-foreground">No response</p>;
+    return (
+      <div className="space-y-1">
+        {entries.map(([k, v]) => (
+          <div key={k} className="text-sm" style={{ color: "#2e3a20" }}>
+            <span className="font-medium">{k}:</span> {typeof v === "object" ? JSON.stringify(v) : String(v)}
+          </div>
+        ))}
+      </div>
+    );
+  }
+  if (typeof value === "boolean") {
+    return <p className="text-sm" style={{ color: "#2e3a20" }}>{value ? "Yes" : "No"}</p>;
+  }
+  return <p className="text-sm whitespace-pre-wrap" style={{ color: "#2e3a20" }}>{String(value)}</p>;
+}
+
 export default function PortalForms() {
   const [, navigate] = useLocation();
   const queryClient = useQueryClient();
   const { toast } = useToast();
   const { unreadCount } = usePortalUnreadCount();
   const [fillingAssignmentId, setFillingAssignmentId] = useState<number | null>(null);
+  const [viewingSubmissionId, setViewingSubmissionId] = useState<number | null>(null);
   const [responses, setResponses] = useState<Record<string, any>>({});
+
+  const { data: viewingDetail, isLoading: loadingView } = useQuery<{
+    submission: { id: number; submittedAt: string; responses: Record<string, any>; signature: any };
+    form: { id: number; name: string; description: string | null };
+    fields: FormField[];
+  }>({
+    queryKey: ["/api/portal/forms/submission", viewingSubmissionId],
+    queryFn: async () => {
+      const res = await fetch(`/api/portal/forms/submission/${viewingSubmissionId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load submission");
+      return res.json();
+    },
+    enabled: !!viewingSubmissionId,
+  });
 
   const { data: me } = useQuery<any>({ queryKey: ["/api/portal/me"] });
 
@@ -884,9 +933,22 @@ export default function PortalForms() {
                             Submitted {assignment.submission?.submittedAt ? formatDate(assignment.submission.submittedAt) : ""}
                           </p>
                         </div>
-                        <Badge variant="outline" className="text-xs flex-shrink-0" style={{ borderColor: "#5a7040", color: "#5a7040" }}>
-                          <CheckCircle2 className="w-3 h-3 mr-1" /> Completed
-                        </Badge>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Badge variant="outline" className="text-xs" style={{ borderColor: "#5a7040", color: "#5a7040" }}>
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> Completed
+                          </Badge>
+                          {assignment.submission?.id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => setViewingSubmissionId(assignment.submission!.id)}
+                              data-testid={`button-view-submission-${assignment.submission.id}`}
+                            >
+                              View
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -899,9 +961,22 @@ export default function PortalForms() {
                             Submitted {item.submission?.submittedAt ? formatDate(item.submission.submittedAt) : ""}
                           </p>
                         </div>
-                        <Badge variant="outline" className="text-xs flex-shrink-0" style={{ borderColor: "#5a7040", color: "#5a7040" }}>
-                          <CheckCircle2 className="w-3 h-3 mr-1" /> Completed
-                        </Badge>
+                        <div className="flex items-center gap-2 flex-shrink-0">
+                          <Badge variant="outline" className="text-xs" style={{ borderColor: "#5a7040", color: "#5a7040" }}>
+                            <CheckCircle2 className="w-3 h-3 mr-1" /> Completed
+                          </Badge>
+                          {item.submission?.id && (
+                            <Button
+                              size="sm"
+                              variant="outline"
+                              className="text-xs"
+                              onClick={() => setViewingSubmissionId(item.submission.id)}
+                              data-testid={`button-view-submission-${item.submission.id}`}
+                            >
+                              View
+                            </Button>
+                          )}
+                        </div>
                       </div>
                     </div>
                   ))}
@@ -911,6 +986,75 @@ export default function PortalForms() {
           </>
         )}
       </div>
+
+      {/* View completed submission modal */}
+      {viewingSubmissionId !== null && (
+        <div className="fixed inset-0 z-50 flex items-end sm:items-center justify-center p-0 sm:p-4" style={{ backgroundColor: "rgba(0,0,0,0.4)" }}>
+          <div className="w-full sm:max-w-2xl rounded-t-2xl sm:rounded-2xl overflow-hidden flex flex-col" style={{ backgroundColor: "#ffffff", maxHeight: "90vh" }}>
+            <div className="flex items-center justify-between px-5 py-4 border-b" style={{ borderColor: "#ede8df" }}>
+              <div className="min-w-0">
+                <h2 className="font-semibold text-sm truncate" style={{ color: "#1c2414" }}>
+                  {viewingDetail?.form?.name ?? "Loading…"}
+                </h2>
+                {viewingDetail?.submission?.submittedAt && (
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Submitted {formatDate(viewingDetail.submission.submittedAt)}
+                  </p>
+                )}
+              </div>
+              <button
+                onClick={() => setViewingSubmissionId(null)}
+                className="p-1 rounded text-muted-foreground"
+                data-testid="button-close-view-submission"
+              >
+                <X className="w-4 h-4" />
+              </button>
+            </div>
+            <div className="overflow-y-auto px-5 py-4 space-y-4 flex-1">
+              {loadingView ? (
+                <div className="flex items-center justify-center py-8">
+                  <Loader2 className="w-5 h-5 animate-spin" style={{ color: "#5a7040" }} />
+                </div>
+              ) : viewingDetail ? (
+                <>
+                  {viewingDetail.form.description && (
+                    <p className="text-sm text-muted-foreground">{viewingDetail.form.description}</p>
+                  )}
+                  {viewingDetail.fields
+                    .filter(f => !["heading", "paragraph"].includes(f.fieldType))
+                    .map(field => (
+                      <div key={field.id} className="space-y-1.5">
+                        <p className="text-sm font-medium" style={{ color: "#2e3a20" }}>{field.label}</p>
+                        {renderReadOnlyValue(field, viewingDetail.submission.responses?.[field.id])}
+                      </div>
+                    ))}
+                  {viewingDetail.submission.signature && typeof viewingDetail.submission.signature === "string" && viewingDetail.submission.signature.startsWith("data:image") && (
+                    <div className="space-y-1.5 pt-2 border-t" style={{ borderColor: "#ede8df" }}>
+                      <p className="text-sm font-medium" style={{ color: "#2e3a20" }}>Signature</p>
+                      <img src={viewingDetail.submission.signature} alt="Signature" className="border rounded bg-white max-h-32" />
+                    </div>
+                  )}
+                </>
+              ) : (
+                <div className="text-center py-8">
+                  <AlertCircle className="w-8 h-8 mx-auto mb-2 text-red-400" />
+                  <p className="text-sm text-muted-foreground">Failed to load submission.</p>
+                </div>
+              )}
+            </div>
+            <div className="px-5 py-3 border-t" style={{ borderColor: "#ede8df" }}>
+              <Button
+                className="w-full"
+                variant="outline"
+                onClick={() => setViewingSubmissionId(null)}
+                data-testid="button-close-view-footer"
+              >
+                Close
+              </Button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {/* Bottom navigation */}
       <nav className="fixed bottom-0 left-0 right-0 border-t z-40" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>

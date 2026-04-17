@@ -3071,6 +3071,66 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // GET /api/portal/clinic-discount — patient sees their clinic's supplement discount config
+  app.get("/api/portal/clinic-discount", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const patient = await storage.getPatientById(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const settings = await storage.getClinicianSupplementSettings(patient.userId);
+      res.json({
+        type: (settings?.discountType ?? "none") as "percent" | "flat" | "none",
+        percent: settings?.discountPercent ?? 0,
+        flatCents: settings?.discountFlat ?? 0,
+      });
+    } catch (err) {
+      console.error("[Portal Clinic Discount]", err);
+      res.status(500).json({ message: "Failed to fetch discount" });
+    }
+  });
+
+  // GET /api/portal/forms/submission/:id — read-only view of a previously submitted form
+  app.get("/api/portal/forms/submission/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const submissionId = parseInt(req.params.id);
+      if (isNaN(submissionId)) return res.status(400).json({ message: "Invalid id" });
+
+      const submission = await storage.getFormSubmission(submissionId);
+      if (!submission || submission.patientId !== patientId) {
+        return res.status(404).json({ message: "Submission not found" });
+      }
+
+      const form = await storage.getIntakeFormById(submission.formId);
+      if (!form) return res.status(404).json({ message: "Form not found" });
+
+      const fields = await storage.getFormFields(submission.formId);
+      const sections = await storage.getFormSections(submission.formId);
+      const sortedFields = fields.sort((a, b) => a.orderIndex - b.orderIndex);
+
+      res.json({
+        submission: {
+          id: submission.id,
+          submittedAt: submission.submittedAt,
+          responses: submission.rawSubmissionJson,
+          signature: submission.signatureJson,
+        },
+        form: {
+          id: form.id,
+          name: form.name,
+          description: form.description,
+          category: form.category,
+          requiresPatientSignature: form.requiresPatientSignature,
+        },
+        fields: sortedFields,
+        sections,
+      });
+    } catch (err) {
+      console.error("[Portal Form Submission View]", err);
+      res.status(500).json({ message: "Failed to fetch submission" });
+    }
+  });
+
   // GET /api/portal/forms/:assignmentId — get form fields for a specific assignment
   app.get("/api/portal/forms/:assignmentId", requirePortalAuth, async (req, res) => {
     try {
