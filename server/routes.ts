@@ -415,6 +415,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   app.get("/api/debug/session-info", requireAuth, async (req, res) => {
     const user = req.user as any;
     const clinicianId = getClinicianId(req);
+    const clinicId = getEffectiveClinicId(req);
     const patientCount = await storage.getPatientCountByUser(clinicianId);
     const allUsersCount = (await storage.getAllUsers()).length;
     res.json({
@@ -1418,6 +1419,7 @@ ${aiRecommendations}`;
   app.get("/api/clinician/notifications", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const [unreadMessages, pendingOrders] = await Promise.all([
         storage.getUnreadMessageSummaryForClinician(clinicianId),
         storage.getPendingOrdersForClinician(clinicianId),
@@ -1549,6 +1551,7 @@ ${aiRecommendations}`;
   app.get("/api/patients/:id/chart", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
       const chart = await storage.getPatientChart(patientId, clinicianId);
       res.json(chart ?? null);
@@ -1562,6 +1565,7 @@ ${aiRecommendations}`;
   app.put("/api/patients/:id/chart", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
       const {
         currentMedications, medicalHistory, familyHistory,
@@ -1590,12 +1594,13 @@ ${aiRecommendations}`;
   app.post("/api/patients/:id/chart/extract", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.id);
       const { encounterId } = req.body;
 
       if (!encounterId) return res.status(400).json({ message: "encounterId is required" });
 
-      const encounter = await storage.getEncounter(parseInt(encounterId), clinicianId);
+      const encounter = await storage.getEncounter(parseInt(encounterId), clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       // Build the richest context available: diarized transcript preferred, raw fallback
@@ -1801,6 +1806,7 @@ Return ONLY this JSON structure:
   app.get("/api/saved-interpretations", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const gender = req.query.gender as string | undefined;
       const interpretations = await storage.getAllSavedInterpretations(clinicianId, gender);
       res.json(interpretations);
@@ -1814,6 +1820,7 @@ Return ONLY this JSON structure:
   app.get("/api/saved-interpretations/search", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const searchTerm = req.query.q as string;
       const gender = req.query.gender as string | undefined;
       if (!searchTerm) {
@@ -1831,6 +1838,7 @@ Return ONLY this JSON structure:
   app.get("/api/saved-interpretations/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid interpretation ID' });
       const interpretation = await storage.getSavedInterpretation(id, clinicianId);
@@ -1902,6 +1910,7 @@ Return ONLY this JSON structure:
   app.delete("/api/saved-interpretations/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: 'Invalid interpretation ID' });
       const deleted = await storage.deleteSavedInterpretation(id, clinicianId);
@@ -3442,6 +3451,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.patch("/api/supplement-orders/:id/status", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const orderId = parseInt(req.params.id);
       const { status } = req.body;
       if (!status || !['pending', 'fulfilled', 'cancelled'].includes(status)) {
@@ -3597,6 +3607,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.get("/api/auth/messaging-settings", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const user = await storage.getUserById(clinicianId);
       if (!user) return res.status(404).json({ message: "User not found" });
       res.json({
@@ -4214,6 +4225,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.get("/api/preferences/discount", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const settings = await storage.getClinicianSupplementSettings(clinicianId);
       // Return defaults if not yet configured
       res.json(settings || { clinicianId, discountType: 'percent', discountPercent: 20, discountFlat: 0 });
@@ -4225,6 +4237,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.put("/api/preferences/discount", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const { discountType, discountPercent, discountFlat } = req.body;
       const updated = await storage.upsertClinicianSupplementSettings(clinicianId, {
         discountType: discountType || 'percent',
@@ -4241,6 +4254,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.get("/api/preferences/supplements", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const supplements = await storage.getClinicianSupplements(clinicianId);
       const rules = await storage.getAllClinicianSupplementRules(clinicianId);
       const supplementsWithRules = supplements.map(s => ({
@@ -4256,6 +4270,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.post("/api/preferences/supplements", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const { name, brand, dose, category, description, clinicalRationale, priceCents, gender, sortOrder } = req.body;
       if (!name || !dose) return res.status(400).json({ message: "Name and dose are required" });
       const supplement = await storage.createClinicianSupplement({
@@ -4280,6 +4295,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.put("/api/preferences/supplements/:id", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const { name, brand, dose, category, description, clinicalRationale, priceCents, isActive, gender, sortOrder } = req.body;
       const updated = await storage.updateClinicianSupplement(id, clinicianId, {
@@ -4295,6 +4311,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.delete("/api/preferences/supplements/:id", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteClinicianSupplement(id, clinicianId);
       if (!deleted) return res.status(404).json({ message: "Supplement not found" });
@@ -4308,6 +4325,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.get("/api/preferences/supplements/:id/rules", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const supplementId = parseInt(req.params.id);
       const rules = await storage.getClinicianSupplementRules(supplementId, clinicianId);
       res.json(rules);
@@ -4319,6 +4337,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.post("/api/preferences/supplements/:id/rules", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const supplementId = parseInt(req.params.id);
       // Verify supplement belongs to clinician
       const supplement = await storage.getClinicianSupplement(supplementId, clinicianId);
@@ -4345,6 +4364,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.put("/api/preferences/supplements/rules/:ruleId", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const ruleId = parseInt(req.params.ruleId);
       const { triggerType, labMarker, labMin, labMax, symptomKey, combinationLogic, priority, indicationText } = req.body;
       const updated = await storage.updateClinicianSupplementRule(ruleId, clinicianId, {
@@ -4360,6 +4380,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.delete("/api/preferences/supplements/rules/:ruleId", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const ruleId = parseInt(req.params.ruleId);
       const deleted = await storage.deleteClinicianSupplementRule(ruleId, clinicianId);
       if (!deleted) return res.status(404).json({ message: "Rule not found" });
@@ -4407,6 +4428,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.get("/api/preferences/lab-ranges", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const preferences = await storage.getClinicianLabPreferences(clinicianId);
       res.json({ preferences, defaults: LAB_MARKER_DEFAULTS });
     } catch (err) {
@@ -4417,6 +4439,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.put("/api/preferences/lab-ranges", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const { markerKey, gender, displayName, unit, optimalMin, optimalMax, normalMin, normalMax, notes } = req.body;
       if (!markerKey) return res.status(400).json({ message: "markerKey is required" });
       const pref = await storage.upsertClinicianLabPreference(clinicianId, {
@@ -4440,6 +4463,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.delete("/api/preferences/lab-ranges/:id", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteClinicianLabPreference(id, clinicianId);
       if (!deleted) return res.status(404).json({ message: "Preference not found" });
@@ -4611,8 +4635,9 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.get("/api/encounters", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const patientId = req.query.patientId ? parseInt(req.query.patientId as string) : undefined;
-      const encounters = await storage.getEncountersByClinicianId(clinicianId, patientId);
+      const encounters = await storage.getEncountersByClinicianId(clinicianId, patientId, clinicId);
       res.json(encounters);
     } catch (err) {
       res.status(500).json({ message: "Failed to load encounters" });
@@ -4623,6 +4648,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.post("/api/encounters", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const { patientId, visitDate, visitType, chiefComplaint, linkedLabResultId, clinicianNotes, transcription } = req.body;
       if (!patientId || !visitDate) return res.status(400).json({ message: "patientId and visitDate are required" });
       const encounter = await storage.createEncounter({
@@ -4650,7 +4676,8 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.get("/api/encounters/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const encounter = await storage.getEncounter(parseInt(req.params.id), clinicianId);
+      const clinicId = getEffectiveClinicId(req);
+      const encounter = await storage.getEncounter(parseInt(req.params.id), clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       res.json(encounter);
     } catch (err) {
@@ -4662,6 +4689,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.put("/api/encounters/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, diarizedTranscript, clinicalExtraction, evidenceSuggestions } = req.body;
       const updated = await storage.updateEncounter(id, clinicianId, {
@@ -4675,7 +4703,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         ...(diarizedTranscript !== undefined && { diarizedTranscript }),
         ...(clinicalExtraction !== undefined && { clinicalExtraction }),
         ...(evidenceSuggestions !== undefined && { evidenceSuggestions }),
-      });
+      }, clinicId);
       if (!updated) return res.status(404).json({ message: "Encounter not found" });
       res.json(updated);
     } catch (err) {
@@ -4687,9 +4715,10 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.put("/api/encounters/:id/soap", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const { soapNote } = req.body;
-      const updated = await storage.updateEncounter(id, clinicianId, { soapNote });
+      const updated = await storage.updateEncounter(id, clinicianId, { soapNote }, clinicId);
       if (!updated) return res.status(404).json({ message: "Encounter not found" });
       res.json(updated);
     } catch (err) {
@@ -4702,8 +4731,9 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.post("/api/encounters/:id/sign", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.soapNote) return res.status(400).json({ message: "No SOAP note to sign." });
 
@@ -4732,7 +4762,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         isAmended: isAlreadySigned,
         amendedAt: isAlreadySigned ? now : undefined,
         encounterVersions: [...existingVersions, newVersion],
-      } as any);
+      } as any, clinicId);
 
       res.json(updated);
     } catch (err) {
@@ -4747,14 +4777,15 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.post("/api/encounters/:id/amend", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       const updated = await storage.updateEncounter(id, clinicianId, {
         signedAt: null,
         signedBy: null,
-      } as any);
+      } as any, clinicId);
 
       res.json(updated);
     } catch (err) {
@@ -4769,8 +4800,9 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
   app.post("/api/encounters/:id/normalize", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       const rawUtterances: any[] | null = req.body.utterances ?? null;
@@ -4859,7 +4891,7 @@ Return ONLY the JSON array, no explanation.`;
         corrections: u.corrections ?? [],
       }));
 
-      await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized });
+      await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized }, clinicId);
 
       res.json({ diarizedTranscript: diarized });
     } catch (err) {
@@ -4874,8 +4906,9 @@ Return ONLY the JSON array, no explanation.`;
   app.post("/api/encounters/:id/extract", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       const diarized = encounter.diarizedTranscript as any[] | null;
@@ -5034,7 +5067,7 @@ Return this exact JSON structure (all arrays, even if empty):
         }
       }
 
-      await storage.updateEncounter(id, clinicianId, { clinicalExtraction: extraction });
+      await storage.updateEncounter(id, clinicianId, { clinicalExtraction: extraction }, clinicId);
 
       res.json({ clinicalExtraction: extraction });
     } catch (err) {
@@ -5049,8 +5082,9 @@ Return this exact JSON structure (all arrays, even if empty):
   app.post("/api/encounters/:id/evidence", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       const extraction = encounter.clinicalExtraction as any;
@@ -5166,7 +5200,7 @@ Return a JSON object: { "clinical_questions": ["question1", "question2", ...] }`
 
       if (clinicalQuestions.length === 0) {
         const overlay = { clinical_questions: [], suggestions: [], not_for_auto_insertion: true as const };
-        await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: overlay });
+        await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: overlay }, clinicId);
         return res.json({ evidenceSuggestions: overlay });
       }
 
@@ -5307,7 +5341,7 @@ Only return validations for guidelines that are directly and specifically applic
         not_for_auto_insertion: true as const,
       };
 
-      await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: overlay });
+      await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: overlay }, clinicId);
       res.json({ evidenceSuggestions: overlay });
     } catch (err) {
       console.error('[Evidence] Error:', err);
@@ -5322,8 +5356,9 @@ Only return validations for guidelines that are directly and specifically applic
   app.post("/api/encounters/:id/match-patterns", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       const extraction = encounter.clinicalExtraction as any;
@@ -5380,7 +5415,7 @@ Only return validations for guidelines that are directly and specifically applic
             ? `\n  Prior red flags: ${interp.redFlags.map((f: any) => f.title ?? f).join("; ")}`
             : "";
           // Gender from patient record (lab_results has no gender column)
-          const pmPatient = await storage.getPatient(labResult.patientId, clinicianId);
+          const pmPatient = await storage.getPatient(labResult.patientId, clinicianId, clinicId);
           const pmGender = pmPatient?.gender === "female" ? "Female" : "Male";
           const pmDrawDate = new Date(labResult.labDate as unknown as string);
           const pmDateLabel = !isNaN(pmDrawDate.getTime())
@@ -5521,7 +5556,7 @@ Analyze this encounter and identify clinical patterns. Remember: operate in ${mo
         generated_at: new Date().toISOString(),
       };
 
-      await storage.updateEncounter(id, clinicianId, { patternMatch: result });
+      await storage.updateEncounter(id, clinicianId, { patternMatch: result }, clinicId);
       res.json({ patternMatch: result });
     } catch (err) {
       console.error('[PatternMatch] Error:', err);
@@ -5534,8 +5569,9 @@ Analyze this encounter and identify clinical patterns. Remember: operate in ${mo
   app.post("/api/encounters/:id/validate", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
       const soapNote = encounter.soapNote as any;
@@ -5657,9 +5693,10 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
   app.put("/api/encounters/:id/summary", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const { patientSummary } = req.body;
-      const updated = await storage.updateEncounter(id, clinicianId, { patientSummary });
+      const updated = await storage.updateEncounter(id, clinicianId, { patientSummary }, clinicId);
       if (!updated) return res.status(404).json({ message: "Encounter not found" });
       res.json(updated);
     } catch (err) {
@@ -5671,14 +5708,15 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
   app.post("/api/encounters/:id/publish", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.patientSummary) return res.status(400).json({ message: "No patient summary to publish" });
       const updated = await storage.updateEncounter(id, clinicianId, {
         summaryPublished: true,
         summaryPublishedAt: new Date(),
-      });
+      }, clinicId);
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to publish encounter summary" });
@@ -5689,10 +5727,11 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
   app.post("/api/encounters/:id/unpublish", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const updated = await storage.updateEncounter(id, clinicianId, {
         summaryPublished: false,
-      });
+      }, clinicId);
       if (!updated) return res.status(404).json({ message: "Encounter not found" });
       res.json(updated);
     } catch (err) {
@@ -5704,7 +5743,8 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
   app.delete("/api/encounters/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const deleted = await storage.deleteEncounter(parseInt(req.params.id), clinicianId);
+      const clinicId = getEffectiveClinicId(req);
+      const deleted = await storage.deleteEncounter(parseInt(req.params.id), clinicianId, clinicId);
       if (!deleted) return res.status(404).json({ message: "Encounter not found" });
       res.json({ success: true });
     } catch (err) {
@@ -5717,8 +5757,9 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
   app.post("/api/encounters/:id/generate-soap", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.transcription && !encounter.diarizedTranscript) {
         return res.status(400).json({ message: "No transcription available. Please record or add session notes first." });
@@ -5795,7 +5836,7 @@ Return ONLY the JSON array, no explanation.`;
           normalizedText: u.normalizedText ?? u.text ?? "",
           corrections: u.corrections ?? [],
         }));
-        await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized });
+        await storage.updateEncounter(id, clinicianId, { diarizedTranscript: diarized }, clinicId);
       } catch (normErr) {
         console.warn("[SOAP Pipeline] Normalization failed, falling back:", normErr);
         diarized = (encounter.diarizedTranscript as any[]) ?? [];
@@ -5962,7 +6003,7 @@ Return this exact JSON structure (all arrays, even if empty):
           }
         }
 
-        await storage.updateEncounter(id, clinicianId, { clinicalExtraction: freshExtraction });
+        await storage.updateEncounter(id, clinicianId, { clinicalExtraction: freshExtraction }, clinicId);
         const exLines: string[] = [];
         if (freshExtraction.chief_concerns?.length)             exLines.push(`Chief concerns: ${freshExtraction.chief_concerns.join("; ")}`);
         if (freshExtraction.secondary_concerns?.length)         exLines.push(`Secondary concerns: ${freshExtraction.secondary_concerns.join("; ")}`);
@@ -6045,7 +6086,7 @@ Return this exact JSON structure (all arrays, even if empty):
             .join("\n");
 
           // Gender from patient record (lab_results has no gender column)
-          const labPatient = await storage.getPatient(labResult.patientId, clinicianId);
+          const labPatient = await storage.getPatient(labResult.patientId, clinicianId, clinicId);
           const genderLabel = labPatient?.gender === "female" ? "Female" : "Male";
 
           // Use actual lab draw date, not DB insertion timestamp
@@ -6152,7 +6193,7 @@ Return this exact JSON structure (all arrays, even if empty):
             const pmInterp = pmLabResult.interpretationResult as any;
             const pmPriorPatterns = pmInterp?.insulinResistance ? `\n  Prior IR screening: ${pmInterp.insulinResistance.likelihood ?? "assessed"}` : "";
             const pmPriorRedFlags = pmInterp?.redFlags?.length ? `\n  Prior red flags: ${pmInterp.redFlags.map((f: any) => f.title ?? f).join("; ")}` : "";
-            const pmPatient = await storage.getPatient(pmLabResult.patientId, clinicianId);
+            const pmPatient = await storage.getPatient(pmLabResult.patientId, clinicianId, clinicId);
             const pmGender = pmPatient?.gender === "female" ? "Female" : "Male";
             pmLabContext = `\n\nLINKED LAB RESULTS (${pmGender} panel):\n${pmLabLines}${pmPriorPatterns}${pmPriorRedFlags}`;
           }
@@ -6276,7 +6317,7 @@ Return a JSON object:
           lab_context_used: pmLabContextUsed,
           generated_at: new Date().toISOString(),
         };
-        await storage.updateEncounter(id, clinicianId, { patternMatch: pmResult });
+        await storage.updateEncounter(id, clinicianId, { patternMatch: pmResult }, clinicId);
         if (pmResult.matched_patterns.length) {
           const pmLabel = pmMode === "context_linked" ? "transcript + lab data" : "transcript symptoms only";
           const pmLines = pmResult.matched_patterns.map((p: any) =>
@@ -6359,7 +6400,7 @@ Return a JSON object:
       const updated = await storage.updateEncounter(id, clinicianId, {
         soapNote,
         soapGeneratedAt: new Date(),
-      });
+      }, clinicId);
 
       res.json({ soapNote, encounter: updated, medicationMatches: autoMedMatches, diarizedTranscript: diarized, clinicalExtraction: freshExtraction });
 
@@ -6367,7 +6408,7 @@ Return a JSON object:
       // Runs in background so the clinician gets SOAP immediately.
       setImmediate(async () => {
         try {
-          const freshEncounter = await storage.getEncounter(id, clinicianId);
+          const freshEncounter = await storage.getEncounter(id, clinicianId, clinicId);
           if (!freshEncounter) return;
 
           const diarizedForEvidence = freshEncounter.diarizedTranscript as any[] | null;
@@ -6445,7 +6486,7 @@ Return JSON matching EvidenceOverlay structure:
           const evidenceOverlay = JSON.parse(eCompletion.choices[0].message.content || "{}");
           evidenceOverlay.clinical_questions = clinicalQuestions;
           evidenceOverlay.not_for_auto_insertion = true;
-          await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: evidenceOverlay });
+          await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: evidenceOverlay }, clinicId);
           console.log(`[SOAP Pipeline] Evidence auto-generated for encounter ${id} (${(evidenceOverlay.suggestions ?? []).length} suggestions)`);
         } catch (evErr) {
           console.warn(`[SOAP Pipeline] Background evidence generation failed for encounter ${id}:`, evErr);
@@ -6461,8 +6502,9 @@ Return JSON matching EvidenceOverlay structure:
   app.post("/api/encounters/:id/generate-summary", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId);
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.soapNote) return res.status(400).json({ message: "Please generate the SOAP note first." });
 
@@ -6540,7 +6582,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       });
 
       const patientSummary = completion.choices[0].message.content || "";
-      const updated = await storage.updateEncounter(id, clinicianId, { patientSummary });
+      const updated = await storage.updateEncounter(id, clinicianId, { patientSummary }, clinicId);
 
       res.json({ patientSummary, encounter: updated });
     } catch (err) {
@@ -6569,6 +6611,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.get("/api/encounter-drafts", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const drafts = await storage.getEncounterDrafts(clinicianId);
       res.json(drafts);
     } catch (err) {
@@ -6580,6 +6623,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.post("/api/encounter-drafts", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const { transcription, visitDate, visitType } = req.body;
       if (!transcription || !visitDate) {
         return res.status(400).json({ message: "transcription and visitDate are required" });
@@ -6600,6 +6644,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   app.delete("/api/encounter-drafts/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       const deleted = await storage.deleteEncounterDraft(id, clinicianId);
       if (!deleted) return res.status(404).json({ message: "Draft not found" });
@@ -7763,6 +7808,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       } = req.body;
       if (!genericName?.trim()) return res.status(400).json({ message: "genericName is required" });
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const manualDict = await storage.getOrCreateManualDictionary(clinicianId);
       const entry = await storage.addSingleMedicationEntry({
         dictionaryId: manualDict.id,
@@ -8881,6 +8927,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       if (!submission) return res.status(404).json({ message: "Submission not found" });
 
       const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
       const form = await storage.getIntakeFormById(submission.formId);
       if (!form || form.clinicianId !== clinicianId) return res.status(403).json({ message: "Not authorized" });
 
@@ -8932,9 +8979,9 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       }
 
       // Transfer encounters
-      const discardEncounters = await storage.getEncountersByClinicianId(clinicianId, discardPatient.id);
+      const discardEncounters = await storage.getEncountersByClinicianId(clinicianId, discardPatient.id, clinicId);
       for (const enc of discardEncounters) {
-        await storage.updateEncounter(enc.id, clinicianId, { patientId: keepPatient.id });
+        await storage.updateEncounter(enc.id, clinicianId, { patientId: keepPatient.id }, clinicId);
       }
 
       // Transfer form submissions

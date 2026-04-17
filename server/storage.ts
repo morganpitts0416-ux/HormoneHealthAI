@@ -193,11 +193,11 @@ export interface IStorage {
   deleteClinicianLabPreference(id: number, clinicianId: number): Promise<boolean>;
 
   // Clinical Encounters
-  getEncountersByClinicianId(clinicianId: number, patientId?: number): Promise<(ClinicalEncounter & { patientName: string })[]>;
-  getEncounter(id: number, clinicianId: number): Promise<ClinicalEncounter | undefined>;
+  getEncountersByClinicianId(clinicianId: number, patientId?: number, clinicId?: number | null): Promise<(ClinicalEncounter & { patientName: string })[]>;
+  getEncounter(id: number, clinicianId: number, clinicId?: number | null): Promise<ClinicalEncounter | undefined>;
   createEncounter(data: InsertClinicalEncounter): Promise<ClinicalEncounter>;
-  updateEncounter(id: number, clinicianId: number, data: Partial<InsertClinicalEncounter> & { soapNote?: any; soapGeneratedAt?: Date; summaryPublished?: boolean; summaryPublishedAt?: Date; diarizedTranscript?: any; clinicalExtraction?: any; evidenceSuggestions?: import("@shared/schema").EvidenceOverlay | any; patternMatch?: import("@shared/schema").PatternMatchResult | any; updatedAt?: Date }): Promise<ClinicalEncounter | undefined>;
-  deleteEncounter(id: number, clinicianId: number): Promise<boolean>;
+  updateEncounter(id: number, clinicianId: number, data: Partial<InsertClinicalEncounter> & { soapNote?: any; soapGeneratedAt?: Date; summaryPublished?: boolean; summaryPublishedAt?: Date; diarizedTranscript?: any; clinicalExtraction?: any; evidenceSuggestions?: import("@shared/schema").EvidenceOverlay | any; patternMatch?: import("@shared/schema").PatternMatchResult | any; updatedAt?: Date }, clinicId?: number | null): Promise<ClinicalEncounter | undefined>;
+  deleteEncounter(id: number, clinicianId: number, clinicId?: number | null): Promise<boolean>;
   getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]>;
 
   // Appointments (Boulevard sync via Zapier)
@@ -1151,7 +1151,15 @@ export class DbStorage implements IStorage {
   }
 
   // ── Clinical Encounters ──────────────────────────────────────────────────────
-  async getEncountersByClinicianId(clinicianId: number, patientId?: number): Promise<(ClinicalEncounter & { patientName: string })[]> {
+  async getEncountersByClinicianId(clinicianId: number, patientId?: number, clinicId?: number | null): Promise<(ClinicalEncounter & { patientName: string })[]> {
+    // Clinic-scoped: any provider in the clinic sees all clinic encounters.
+    // Legacy fallback: if no clinicId, only the originating clinician sees them.
+    const scope = clinicId
+      ? or(
+          eq(schema.clinicalEncounters.clinicId, clinicId),
+          and(eq(schema.clinicalEncounters.clinicianId, clinicianId), isNull(schema.clinicalEncounters.clinicId))
+        )
+      : eq(schema.clinicalEncounters.clinicianId, clinicianId);
     const rows = await db
       .select({
         id: schema.clinicalEncounters.id,
@@ -1181,16 +1189,22 @@ export class DbStorage implements IStorage {
       .innerJoin(schema.patients, eq(schema.clinicalEncounters.patientId, schema.patients.id))
       .where(
         patientId
-          ? and(eq(schema.clinicalEncounters.clinicianId, clinicianId), eq(schema.clinicalEncounters.patientId, patientId))
-          : eq(schema.clinicalEncounters.clinicianId, clinicianId)
+          ? and(scope, eq(schema.clinicalEncounters.patientId, patientId))
+          : scope
       )
       .orderBy(desc(schema.clinicalEncounters.visitDate));
     return rows as (ClinicalEncounter & { patientName: string })[];
   }
 
-  async getEncounter(id: number, clinicianId: number): Promise<ClinicalEncounter | undefined> {
+  async getEncounter(id: number, clinicianId: number, clinicId?: number | null): Promise<ClinicalEncounter | undefined> {
+    const scope = clinicId
+      ? or(
+          eq(schema.clinicalEncounters.clinicId, clinicId),
+          and(eq(schema.clinicalEncounters.clinicianId, clinicianId), isNull(schema.clinicalEncounters.clinicId))
+        )
+      : eq(schema.clinicalEncounters.clinicianId, clinicianId);
     const result = await db.select().from(schema.clinicalEncounters)
-      .where(and(eq(schema.clinicalEncounters.id, id), eq(schema.clinicalEncounters.clinicianId, clinicianId)));
+      .where(and(eq(schema.clinicalEncounters.id, id), scope));
     return result[0];
   }
 
@@ -1199,7 +1213,9 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async updateEncounter(id: number, clinicianId: number, data: any): Promise<ClinicalEncounter | undefined> {
+  async updateEncounter(id: number, clinicianId: number, data: any, _clinicId?: number | null): Promise<ClinicalEncounter | undefined> {
+    // Edit/amend access is restricted to the encounter's original author, even
+    // for clinic-shared encounters. Other providers can view but not modify.
     const result = await db.update(schema.clinicalEncounters)
       .set({ ...data, updatedAt: new Date() })
       .where(and(eq(schema.clinicalEncounters.id, id), eq(schema.clinicalEncounters.clinicianId, clinicianId)))
@@ -1207,7 +1223,8 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
-  async deleteEncounter(id: number, clinicianId: number): Promise<boolean> {
+  async deleteEncounter(id: number, clinicianId: number, _clinicId?: number | null): Promise<boolean> {
+    // Deletion is restricted to the encounter's original author.
     const result = await db.delete(schema.clinicalEncounters)
       .where(and(eq(schema.clinicalEncounters.id, id), eq(schema.clinicalEncounters.clinicianId, clinicianId)))
       .returning();
