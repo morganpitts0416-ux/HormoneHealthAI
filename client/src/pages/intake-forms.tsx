@@ -21,7 +21,7 @@ import {
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
   Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft,
-  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks
+  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -507,6 +507,10 @@ const FIELD_TYPE_ICONS: Record<string, React.ElementType> = {
   heading: Heading,
   paragraph: AlignJustify,
   medication_list: Pill,
+  allergy_list: Pill,
+  medical_history_list: ListChecks,
+  surgical_history_list: ListChecks,
+  family_history_chart: Users,
   symptom_checklist: Activity,
   matrix: ListChecks,
 };
@@ -530,7 +534,11 @@ const FIELD_PALETTE_GROUPS = [
   },
   {
     label: "Clinical",
-    types: ["medication_list", "symptom_checklist"],
+    types: ["medication_list", "allergy_list", "medical_history_list", "surgical_history_list", "family_history_chart", "symptom_checklist"],
+  },
+  {
+    label: "Advanced",
+    types: ["matrix"],
   },
   {
     label: "Layout",
