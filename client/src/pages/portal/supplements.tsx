@@ -13,7 +13,30 @@ import { usePortalUnreadCount } from "@/hooks/use-portal-unread";
 import type { SupplementRecommendation, SupplementOrder, SupplementOrderItem } from "@shared/schema";
 import { getSupplementPrice, formatPrice } from "@/lib/supplement-prices";
 
-const MEMBER_DISCOUNT = 0.20;
+interface ClinicDiscount {
+  type: "percent" | "flat" | "none";
+  percent: number;
+  flatCents: number;
+}
+
+const NO_DISCOUNT: ClinicDiscount = { type: "none", percent: 0, flatCents: 0 };
+
+function discountedItemPrice(price: number, d: ClinicDiscount): number {
+  if (d.type === "percent" && d.percent > 0) return price * (1 - d.percent / 100);
+  return price;
+}
+
+function discountedCartTotalFn(subtotal: number, d: ClinicDiscount): number {
+  if (d.type === "percent" && d.percent > 0) return subtotal * (1 - d.percent / 100);
+  if (d.type === "flat" && d.flatCents > 0) return Math.max(0, subtotal - d.flatCents / 100);
+  return subtotal;
+}
+
+function discountLabel(d: ClinicDiscount): string {
+  if (d.type === "percent" && d.percent > 0) return `${d.percent}% off`;
+  if (d.type === "flat" && d.flatCents > 0) return `${formatPrice(d.flatCents / 100)} off`;
+  return "";
+}
 
 interface PortalPatient {
   patientId: number;
@@ -63,11 +86,12 @@ function daysSince(dateStr: string): number {
 }
 
 // ─── Protocol View Row ────────────────────────────────────────────────────────
-function ProtocolRow({ supplement, index }: { supplement: SupplementRecommendation; index: number }) {
+function ProtocolRow({ supplement, index, discount }: { supplement: SupplementRecommendation; index: number; discount: ClinicDiscount }) {
   const [expanded, setExpanded] = useState(false);
   const icon = CATEGORY_ICONS[supplement.category] || "○";
   const priority = PRIORITY_LABELS[supplement.priority] || PRIORITY_LABELS.low;
   const priceInfo = getSupplementPrice(supplement.name);
+  const showStrike = discount.type === "percent" && discount.percent > 0;
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #ede8df", backgroundColor: "#ffffff" }}>
@@ -91,8 +115,8 @@ function ProtocolRow({ supplement, index }: { supplement: SupplementRecommendati
         <div className="flex items-center gap-3 flex-shrink-0 ml-2">
           {priceInfo && (
             <div className="text-right">
-              <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>{formatPrice(priceInfo.price)}</p>
-              <p className="text-sm font-semibold" style={{ color: "#2e3a20" }}>{formatPrice(priceInfo.price * (1 - MEMBER_DISCOUNT))}</p>
+              {showStrike && <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>{formatPrice(priceInfo.price)}</p>}
+              <p className="text-sm font-semibold" style={{ color: "#2e3a20" }}>{formatPrice(discountedItemPrice(priceInfo.price, discount))}</p>
             </div>
           )}
           <span style={{ color: "#b0b8a0" }}>
@@ -127,17 +151,19 @@ function ProtocolRow({ supplement, index }: { supplement: SupplementRecommendati
 }
 
 // ─── Shop View Row ────────────────────────────────────────────────────────────
-function ShopRow({ supplement, cartItem, onQtyChange, index }: {
+function ShopRow({ supplement, cartItem, onQtyChange, index, discount }: {
   supplement: SupplementRecommendation;
   cartItem: CartItem | undefined;
   onQtyChange: (supplement: SupplementRecommendation, delta: number) => void;
   index: number;
+  discount: ClinicDiscount;
 }) {
   const [expanded, setExpanded] = useState(false);
   const icon = CATEGORY_ICONS[supplement.category] || "○";
   const priority = PRIORITY_LABELS[supplement.priority] || PRIORITY_LABELS.low;
   const priceInfo = getSupplementPrice(supplement.name);
   const qty = cartItem?.quantity ?? 0;
+  const showStrike = discount.type === "percent" && discount.percent > 0;
 
   return (
     <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #ede8df", backgroundColor: "#ffffff" }}>
@@ -157,8 +183,8 @@ function ShopRow({ supplement, cartItem, onQtyChange, index }: {
         <div className="flex items-center gap-3 flex-shrink-0">
           {priceInfo ? (
             <div className="text-right">
-              <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>{formatPrice(priceInfo.price)}</p>
-              <p className="text-sm font-bold" style={{ color: "#2e3a20" }}>{formatPrice(priceInfo.price * (1 - MEMBER_DISCOUNT))}</p>
+              {showStrike && <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>{formatPrice(priceInfo.price)}</p>}
+              <p className="text-sm font-bold" style={{ color: "#2e3a20" }}>{formatPrice(discountedItemPrice(priceInfo.price, discount))}</p>
               <p className="text-xs" style={{ color: "#a0a880" }}>{priceInfo.supplyDays}-day supply</p>
             </div>
           ) : (
@@ -227,9 +253,10 @@ function ShopRow({ supplement, cartItem, onQtyChange, index }: {
 }
 
 // ─── Order Confirmation Modal ─────────────────────────────────────────────────
-function OrderModal({ cart, subtotal, onClose, onSuccess }: {
+function OrderModal({ cart, subtotal, discount, onClose, onSuccess }: {
   cart: CartItem[];
   subtotal: number;
+  discount: ClinicDiscount;
   onClose: () => void;
   onSuccess: (orderId: number) => void;
 }) {
@@ -239,10 +266,12 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
   const [submitting, setSubmitting] = useState(false);
   const [error, setError] = useState("");
 
-  const discountAmount = subtotal * MEMBER_DISCOUNT;
-  const discountedSubtotal = subtotal - discountAmount;
+  const discountedSubtotal = discountedCartTotalFn(subtotal, discount);
+  const discountAmount = subtotal - discountedSubtotal;
+  const hasDiscount = discountAmount > 0.0001;
   const shipping = fulfillment === "delivery" ? SHIPPING_FEE : 0;
   const finalTotal = discountedSubtotal + shipping;
+  const showItemStrike = discount.type === "percent" && discount.percent > 0;
 
   async function handleSubmit() {
     setSubmitting(true);
@@ -258,7 +287,7 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
       }));
       const fullNotes = [
         `Fulfillment: ${fulfillment === "pickup" ? "In-clinic pickup (Free)" : `Ship to address on file (+$${SHIPPING_FEE} shipping)`}`,
-        `Member discount: 20% off (-${formatPrice(discountAmount)})`,
+        hasDiscount ? `Member discount: ${discountLabel(discount)} (-${formatPrice(discountAmount)})` : "",
         notes ? `Note: ${notes}` : "",
       ].filter(Boolean).join(" · ");
       const res = await fetch("/api/portal/supplement-orders", {
@@ -301,11 +330,13 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
                 </div>
                 <div className="text-right flex-shrink-0">
                   <p className="text-sm font-semibold" style={{ color: "#2e3a20" }}>
-                    {formatPrice(item.price * (1 - MEMBER_DISCOUNT) * item.quantity)}
+                    {formatPrice(discountedItemPrice(item.price, discount) * item.quantity)}
                   </p>
-                  <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>
-                    {formatPrice(item.price * item.quantity)}
-                  </p>
+                  {showItemStrike && (
+                    <p className="text-xs line-through" style={{ color: "#b0b8a0" }}>
+                      {formatPrice(item.price * item.quantity)}
+                    </p>
+                  )}
                 </div>
               </div>
             ))}
@@ -351,12 +382,14 @@ function OrderModal({ cart, subtotal, onClose, onSuccess }: {
           <div className="mx-5 my-3 rounded-xl px-4 py-3 space-y-1.5" style={{ backgroundColor: "#edf2e6" }}>
             <div className="flex items-center justify-between">
               <span className="text-xs" style={{ color: "#4a5e36" }}>Subtotal</span>
-              <span className="text-xs font-medium line-through" style={{ color: "#a0a880" }}>{formatPrice(subtotal)}</span>
+              <span className={`text-xs font-medium ${hasDiscount ? "line-through" : ""}`} style={{ color: hasDiscount ? "#a0a880" : "#4a5e36" }}>{formatPrice(subtotal)}</span>
             </div>
-            <div className="flex items-center justify-between">
-              <span className="text-xs font-medium" style={{ color: "#3a6e3a" }}>Member Discount (20%)</span>
-              <span className="text-xs font-semibold" style={{ color: "#3a6e3a" }}>-{formatPrice(discountAmount)}</span>
-            </div>
+            {hasDiscount && (
+              <div className="flex items-center justify-between">
+                <span className="text-xs font-medium" style={{ color: "#3a6e3a" }}>Member Discount ({discountLabel(discount)})</span>
+                <span className="text-xs font-semibold" style={{ color: "#3a6e3a" }}>-{formatPrice(discountAmount)}</span>
+              </div>
+            )}
             <div className="flex items-center justify-between">
               <span className="text-xs" style={{ color: "#4a5e36" }}>
                 {fulfillment === "delivery" ? "Shipping" : "In-Clinic Pickup"}
@@ -537,7 +570,7 @@ function ReorderBanner({ orders, onReorder }: { orders: SupplementOrder[]; onReo
 }
 
 // ─── Protocol Block ───────────────────────────────────────────────────────────
-function ProtocolBlock({ protocol, isLatest }: { protocol: PublishedProtocol; isLatest: boolean }) {
+function ProtocolBlock({ protocol, isLatest, discount }: { protocol: PublishedProtocol; isLatest: boolean; discount: ClinicDiscount }) {
   const highPriority = protocol.supplements.filter(s => s.priority === "high");
   const medium = protocol.supplements.filter(s => s.priority === "medium");
   const low = protocol.supplements.filter(s => s.priority === "low");
@@ -572,19 +605,19 @@ function ProtocolBlock({ protocol, isLatest }: { protocol: PublishedProtocol; is
       {highPriority.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#a0a880" }}>Priority</p>
-          {highPriority.map((s, i) => <ProtocolRow key={i} supplement={s} index={i} />)}
+          {highPriority.map((s, i) => <ProtocolRow key={i} supplement={s} index={i} discount={discount} />)}
         </div>
       )}
       {medium.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#a0a880" }}>Recommended</p>
-          {medium.map((s, i) => <ProtocolRow key={i} supplement={s} index={highPriority.length + i} />)}
+          {medium.map((s, i) => <ProtocolRow key={i} supplement={s} index={highPriority.length + i} discount={discount} />)}
         </div>
       )}
       {low.length > 0 && (
         <div className="space-y-2">
           <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#a0a880" }}>Optional</p>
-          {low.map((s, i) => <ProtocolRow key={i} supplement={s} index={highPriority.length + medium.length + i} />)}
+          {low.map((s, i) => <ProtocolRow key={i} supplement={s} index={highPriority.length + medium.length + i} discount={discount} />)}
         </div>
       )}
     </div>
@@ -612,6 +645,12 @@ export default function PortalSupplements() {
   const { data: orders = [], refetch: refetchOrders } = useQuery<SupplementOrder[]>({
     queryKey: ["/api/portal/supplement-orders"], enabled: !!patient, retry: false,
   });
+
+  const { data: discount = NO_DISCOUNT } = useQuery<ClinicDiscount>({
+    queryKey: ["/api/portal/clinic-discount"], enabled: !!patient, retry: false,
+  });
+  const hasDiscount = (discount.type === "percent" && discount.percent > 0)
+    || (discount.type === "flat" && discount.flatCents > 0);
 
   const logoutMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/portal/logout", {}),
@@ -660,7 +699,7 @@ export default function PortalSupplements() {
   const cartItems = Array.from(cart.values());
   const cartCount = cartItems.reduce((a, c) => a + c.quantity, 0);
   const subtotal = cartItems.reduce((a, c) => a + c.price * c.quantity, 0);
-  const discountedCartTotal = subtotal * (1 - MEMBER_DISCOUNT);
+  const discountedCartTotal = discountedCartTotalFn(subtotal, discount);
 
   const highPriority = allSupplements.filter(s => s.priority === "high");
   const medium = allSupplements.filter(s => s.priority === "medium");
@@ -714,13 +753,15 @@ export default function PortalSupplements() {
           <p className="text-sm" style={{ color: "#7a8a64" }}>
             Review your personalized protocol and order supplements directly from your care team.
           </p>
-          {/* Member discount notice */}
-          <div className="flex items-center gap-2 mt-3 rounded-lg px-3 py-2.5" style={{ backgroundColor: "#edf2e6", border: "1px solid #c8dbb8" }}>
-            <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#3a6e3a" }} />
-            <p className="text-xs font-medium" style={{ color: "#2e4a2e" }}>
-              As a member, you receive <span className="font-bold">20% off</span> all Metagenics supplement orders.
-            </p>
-          </div>
+          {/* Member discount notice — only shown when clinic has configured a discount */}
+          {hasDiscount && (
+            <div className="flex items-center gap-2 mt-3 rounded-lg px-3 py-2.5" style={{ backgroundColor: "#edf2e6", border: "1px solid #c8dbb8" }}>
+              <Sparkles className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#3a6e3a" }} />
+              <p className="text-xs font-medium" style={{ color: "#2e4a2e" }}>
+                As a member, you receive <span className="font-bold">{discountLabel(discount)}</span> on all supplement orders.
+              </p>
+            </div>
+          )}
         </div>
 
         {/* Mode toggle */}
@@ -781,7 +822,7 @@ export default function PortalSupplements() {
           <div className="space-y-12">
             {protocols.map((protocol, i) => (
               <div key={protocol.id}>
-                <ProtocolBlock protocol={protocol} isLatest={i === 0} />
+                <ProtocolBlock protocol={protocol} isLatest={i === 0} discount={discount} />
                 {i < protocols.length - 1 && <div className="mt-12 border-t" style={{ borderColor: "#e8ddd0" }} />}
               </div>
             ))}
@@ -804,7 +845,7 @@ export default function PortalSupplements() {
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#a0a880" }}>Priority</p>
                     {highPriority.map((s, i) => (
-                      <ShopRow key={i} supplement={s} index={i} cartItem={cart.get(s.name)} onQtyChange={handleQtyChange} />
+                      <ShopRow key={i} supplement={s} index={i} cartItem={cart.get(s.name)} onQtyChange={handleQtyChange} discount={discount} />
                     ))}
                   </div>
                 )}
@@ -812,7 +853,7 @@ export default function PortalSupplements() {
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#a0a880" }}>Recommended</p>
                     {medium.map((s, i) => (
-                      <ShopRow key={i} supplement={s} index={highPriority.length + i} cartItem={cart.get(s.name)} onQtyChange={handleQtyChange} />
+                      <ShopRow key={i} supplement={s} index={highPriority.length + i} cartItem={cart.get(s.name)} onQtyChange={handleQtyChange} discount={discount} />
                     ))}
                   </div>
                 )}
@@ -820,7 +861,7 @@ export default function PortalSupplements() {
                   <div className="space-y-2">
                     <p className="text-xs font-medium uppercase tracking-wider" style={{ color: "#a0a880" }}>Optional</p>
                     {low.map((s, i) => (
-                      <ShopRow key={i} supplement={s} index={highPriority.length + medium.length + i} cartItem={cart.get(s.name)} onQtyChange={handleQtyChange} />
+                      <ShopRow key={i} supplement={s} index={highPriority.length + medium.length + i} cartItem={cart.get(s.name)} onQtyChange={handleQtyChange} discount={discount} />
                     ))}
                   </div>
                 )}
@@ -907,6 +948,7 @@ export default function PortalSupplements() {
         <OrderModal
           cart={cartItems}
           subtotal={subtotal}
+          discount={discount}
           onClose={() => setShowOrderModal(false)}
           onSuccess={(id) => {
             setShowOrderModal(false);
