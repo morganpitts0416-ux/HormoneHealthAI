@@ -60,7 +60,12 @@ function PortalFormField({ field, value, onChange }: {
 
   switch (field.fieldType) {
     case "heading":
-      return <h3 className="text-base font-semibold pt-2" style={{ color: "#2e3a20" }}>{field.label}</h3>;
+      return (
+        <div className="pt-2 space-y-0.5">
+          <h3 className="text-base font-semibold" style={{ color: "#2e3a20" }}>{field.label}</h3>
+          {field.helpText && <p className="text-xs text-muted-foreground whitespace-pre-line">{field.helpText}</p>}
+        </div>
+      );
     case "paragraph":
       return (
         <div className="rounded-md bg-muted/30 border p-3 space-y-1">
