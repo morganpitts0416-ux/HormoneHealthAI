@@ -334,6 +334,8 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
         rawDisplay = lines.length ? lines.join("\n") : "None reported";
       } else if (field.fieldType === "family_history_chart" && typeof value === "object" && !Array.isArray(value)) {
         rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "None reported";
+      } else if (field.fieldType === "symptom_checklist" && typeof value === "object" && value !== null && !Array.isArray(value)) {
+        rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "None reported";
       } else if (Array.isArray(value)) {
         rawDisplay = value.filter(Boolean).join("\n");
       } else {
@@ -642,12 +644,15 @@ function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: 
             const gapTotal = (row.fields.length - 1) * 8;
             const widthCalc = `calc(${(frac * 100).toFixed(1)}% - ${Math.round(gapTotal * frac)}px)`;
             const value = data[field.fieldKey];
-            const isFamChart = field.fieldType === "family_history_chart" && typeof value === "object" && !Array.isArray(value);
+            const isFamChart = field.fieldType === "family_history_chart" && typeof value === "object" && value !== null && !Array.isArray(value);
+            const isSymptomChart = field.fieldType === "symptom_checklist" && typeof value === "object" && value !== null && !Array.isArray(value);
             const isList = (field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && Array.isArray(value);
             const isMatrix = field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson);
             const displayValue = isMatrix
               ? ""
               : isFamChart
+              ? Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ")
+              : isSymptomChart
               ? Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ")
               : isList
                 ? value.filter(Boolean).join("; ")

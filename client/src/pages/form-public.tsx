@@ -119,6 +119,7 @@ export default function FormPublicPage() {
       const isEmpty = val === undefined || val === null || val === "" ||
         (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) ||
         (field.fieldType === "family_history_chart" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim())) ||
+        (field.fieldType === "symptom_checklist" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim())) ||
         isMatrixEmpty;
       if (isEmpty) {
         errors[field.fieldKey] = "This field is required";
@@ -675,15 +676,52 @@ function FieldRenderer({ field, value, onChange, error }: {
         );
       })()}
 
-      {field.fieldType === "symptom_checklist" && (
-        <Textarea
-          value={value ?? ""}
-          onChange={e => onChange(e.target.value)}
-          placeholder={"List any symptoms you are experiencing (one per line)"}
-          rows={4}
-          data-testid={`textarea-${field.fieldKey}`}
-        />
-      )}
+      {field.fieldType === "symptom_checklist" && (() => {
+        const symptoms: string[] = Array.isArray(field.optionsJson) ? field.optionsJson : options;
+        // Backwards-compat: if no symptoms configured, fall back to the legacy free-text textarea.
+        if (symptoms.length === 0) {
+          return (
+            <Textarea
+              value={typeof value === "string" ? value : ""}
+              onChange={e => onChange(e.target.value)}
+              placeholder={"List any symptoms you are experiencing (one per line)"}
+              rows={4}
+              data-testid={`textarea-${field.fieldKey}`}
+            />
+          );
+        }
+        const ratings = ["None", "Mild", "Moderate", "Severe"];
+        const val: Record<string, string> = (typeof value === "object" && value !== null && !Array.isArray(value)) ? value : {};
+        return (
+          <div className="border rounded-md overflow-hidden text-sm" data-testid={`symptoms-${field.fieldKey}`}>
+            <div className="grid grid-cols-[1fr_auto] bg-muted/40 text-xs font-medium border-b">
+              <div className="px-3 py-2">Symptom</div>
+              <div className="px-3 py-2">Severity</div>
+            </div>
+            {symptoms.map((s, i) => (
+              <div key={i} className="grid grid-cols-[1fr_auto] border-b last:border-b-0 items-center">
+                <div className="px-3 py-2">{s}</div>
+                <div className="px-3 py-2 flex items-center gap-1 flex-wrap">
+                  {ratings.map(r => {
+                    const active = val[s] === r;
+                    return (
+                      <button
+                        type="button"
+                        key={r}
+                        onClick={() => onChange({ ...val, [s]: r })}
+                        className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${active ? "bg-primary text-primary-foreground border-primary" : "border-border bg-background hover-elevate"}`}
+                        data-testid={`symptom-${field.fieldKey}-${i}-${r.toLowerCase()}`}
+                      >
+                        {r}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+      })()}
 
       {(field.fieldType === "number") && (
         <Input
