@@ -239,7 +239,7 @@ function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab
                         Normal
                       </Badge>
                     )}
-                    {hasPortalAccount && onPublishLab && (interp?.supplements?.length ?? 0) > 0 && (() => {
+                    {hasPortalAccount && onPublishLab && (() => {
                       const alreadyPublished = publishedLabResultIds?.includes(lab.id) ?? false;
                       return alreadyPublished ? (
                         <div className="flex items-center gap-1.5">
