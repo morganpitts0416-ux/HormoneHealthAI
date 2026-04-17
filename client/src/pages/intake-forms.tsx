@@ -603,7 +603,7 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
       case "heading":
         return <h3 className="text-base font-semibold text-foreground">{field.label}</h3>;
       case "paragraph":
-        return <p className="text-sm text-muted-foreground">{field.helpText || field.placeholder || "Instructions will appear here..."}</p>;
+        return <p className="text-sm text-muted-foreground whitespace-pre-line">{field.label || field.helpText || field.placeholder || "Instructions will appear here..."}</p>;
       case "short_text":
       case "email":
       case "phone":
@@ -1551,11 +1551,22 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
 
         <div className="space-y-1">
           <Label className="text-xs">{isDecorative ? "Text Content" : "Label / Question"}</Label>
-          <Input
-            value={local.label}
-            onChange={e => setLocal(prev => ({ ...prev, label: e.target.value }))}
-            data-testid="input-field-label"
-          />
+          {local.fieldType === "paragraph" ? (
+            <Textarea
+              value={local.label}
+              onChange={e => setLocal(prev => ({ ...prev, label: e.target.value }))}
+              rows={5}
+              placeholder="Enter the text or instructions to show patients..."
+              className="text-sm"
+              data-testid="textarea-field-label"
+            />
+          ) : (
+            <Input
+              value={local.label}
+              onChange={e => setLocal(prev => ({ ...prev, label: e.target.value }))}
+              data-testid="input-field-label"
+            />
+          )}
         </div>
 
         <div className="space-y-1">
