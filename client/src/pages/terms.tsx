@@ -110,7 +110,7 @@ export default function TermsOfService() {
             <div className="rounded-lg px-4 py-3" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
               <p className="font-semibold" style={{ color: "#1c2414" }}>ReAlign Health</p>
               <p>ClinIQ Platform · Legal Inquiries</p>
-              <p>Email: legal@realignhealth.com</p>
+              <p>Email: legal@cliniqapp.ai</p>
             </div>
           </Section>
         </div>

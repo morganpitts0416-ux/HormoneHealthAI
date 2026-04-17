@@ -98,7 +98,7 @@ export default function PrivacyPolicy() {
             <div className="rounded-lg px-4 py-3 mt-2" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
               <p className="font-semibold" style={{ color: "#1c2414" }}>ReAlign Health</p>
               <p>ClinIQ Platform · Privacy Inquiries</p>
-              <p>Email: privacy@realignhealth.com</p>
+              <p>Email: privacy@cliniqapp.ai</p>
             </div>
           </Section>
         </div>
