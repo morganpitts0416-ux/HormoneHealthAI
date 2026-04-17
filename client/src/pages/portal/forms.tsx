@@ -62,7 +62,7 @@ function PortalFormField({ field, value, onChange }: {
     case "heading":
       return <h3 className="text-base font-semibold pt-2" style={{ color: "#2e3a20" }}>{field.label}</h3>;
     case "paragraph":
-      return <p className="text-sm text-muted-foreground">{field.helpText || field.placeholder || ""}</p>;
+      return <p className="text-sm text-muted-foreground whitespace-pre-line">{field.label || field.helpText || field.placeholder || ""}</p>;
     case "short_text":
     case "email":
     case "phone":
