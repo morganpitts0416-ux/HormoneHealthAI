@@ -24,6 +24,26 @@ import {
 } from "lucide-react";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import jsPDF from "jspdf";
+import { RichTextView } from "@/components/rich-text-editor";
+
+function htmlToPlainText(html: string): string {
+  if (!html) return "";
+  const withBreaks = html
+    .replace(/<\s*br\s*\/?>/gi, "\n")
+    .replace(/<\/(p|div|li|h[1-6])>/gi, "\n")
+    .replace(/<li[^>]*>/gi, "- ");
+  return withBreaks
+    .replace(/<[^>]+>/g, "")
+    .replace(/&nbsp;/g, " ")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'")
+    .replace(/[ \t]+\n/g, "\n")
+    .replace(/\n{3,}/g, "\n\n")
+    .trim();
+}
 
 interface SubmissionField {
   id: number;
@@ -356,19 +376,130 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     y += maxRowH + 2;
   }
 
-  function renderFieldGroup(fields: SubmissionField[]) {
-    const rows = buildFieldRows(fields, data);
-    for (const row of rows) {
-      renderFieldRow(row);
+  function renderHeading(text: string) {
+    if (!text.trim()) return;
+    const wrapped = doc.splitTextToSize(text, CW);
+    const h = wrapped.length * 5 + 2;
+    checkPage(h + 4);
+    y += 2;
+    doc.setFontSize(11);
+    doc.setTextColor(GREEN);
+    doc.setFont("helvetica", "bold");
+    for (const line of wrapped) {
+      doc.text(line, M, y + 4);
+      y += 5;
     }
+    y += 1;
+  }
+
+  function renderParagraph(text: string) {
+    if (!text.trim()) return;
+    const paragraphs = text.split(/\n{2,}/);
+    doc.setFontSize(9.5);
+    doc.setTextColor("#1c2414");
+    doc.setFont("helvetica", "normal");
+    for (const para of paragraphs) {
+      const lines = doc.splitTextToSize(para, CW);
+      const h = lines.length * 4.4 + 2;
+      checkPage(h + 2);
+      for (const line of lines) {
+        doc.text(line, M, y + 3.5);
+        y += 4.4;
+      }
+      y += 2;
+    }
+  }
+
+  function renderDivider() {
+    checkPage(4);
+    y += 1;
+    doc.setDrawColor("#cccccc");
+    doc.setLineWidth(0.2);
+    doc.line(M, y, PAGE_W - M, y);
+    y += 3;
+  }
+
+  function renderSignatureField(field: SubmissionField) {
+    const value = data[field.fieldKey];
+    checkPage(28);
+    y += 4;
+    doc.setFontSize(7);
+    doc.setTextColor(ACCENT);
+    doc.setFont("helvetica", "bold");
+    doc.text(sanitizeForPdf(field.label || "SIGNATURE").toUpperCase(), M, y + 2);
+    y += 4;
+    if (typeof value === "string" && value.startsWith("data:image")) {
+      try {
+        const fmt = /png/i.test(value.slice(0, 30)) ? "PNG" : "JPEG";
+        doc.addImage(value, fmt, M, y, 60, 22);
+        y += 24;
+      } catch {
+        doc.setFont("helvetica", "italic");
+        doc.setTextColor(GRAY);
+        doc.text("[Signature on file]", M, y + 4);
+        y += 8;
+      }
+    } else {
+      doc.setFont("helvetica", "italic");
+      doc.setTextColor(GRAY);
+      doc.text("No signature provided", M, y + 4);
+      y += 8;
+    }
+    doc.setDrawColor("#cccccc");
+    doc.line(M, y, M + 70, y);
+    y += 4;
+    doc.setFontSize(7);
+    doc.setFont("helvetica", "normal");
+    doc.setTextColor(GRAY);
+    doc.text(`Signed: ${new Date(detail.submittedAt).toLocaleString()}`, M, y);
+    y += 5;
+  }
+
+  function renderFieldGroup(fields: SubmissionField[]) {
+    let pending: SubmissionField[] = [];
+    const flushPending = () => {
+      if (pending.length === 0) return;
+      const rows = buildFieldRows(pending, data);
+      for (const row of rows) renderFieldRow(row);
+      pending = [];
+    };
+
+    for (const field of fields) {
+      if (field.fieldType === "heading") {
+        flushPending();
+        renderHeading(htmlToPlainText(field.label ?? ""));
+        continue;
+      }
+      if (field.fieldType === "paragraph") {
+        flushPending();
+        renderParagraph(htmlToPlainText(field.label ?? ""));
+        continue;
+      }
+      if (field.fieldType === "divider" || field.fieldType === "section_break") {
+        flushPending();
+        renderDivider();
+        continue;
+      }
+      if (field.fieldType === "spacer") {
+        flushPending();
+        y += 4;
+        continue;
+      }
+      if (field.fieldType === "signature") {
+        flushPending();
+        renderSignatureField(field);
+        continue;
+      }
+      if (hasFieldValue(data, field)) pending.push(field);
+    }
+    flushPending();
   }
 
   if (unsectionedFields.length > 0) renderFieldGroup(unsectionedFields);
 
   for (const section of sortedSections) {
     const sectionFields = sortedFields.filter(f => f.sectionId === section.id);
-    const hasAnswered = sectionFields.some(f => hasFieldValue(data, f));
-    if (!hasAnswered) continue;
+    if (sectionFields.length === 0) continue;
 
     checkPage(14);
     y += 3;
@@ -383,32 +514,6 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     y += 4;
 
     renderFieldGroup(sectionFields);
-  }
-
-  if (detail.rawSubmissionJson?.["signature_data"]) {
-    checkPage(30);
-    y += 6;
-    doc.setFontSize(8);
-    doc.setTextColor(GRAY);
-    doc.setFont("helvetica", "bold");
-    doc.text("SIGNATURE", M, y);
-    y += 3;
-    try {
-      doc.addImage(detail.rawSubmissionJson["signature_data"], "PNG", M, y, 50, 18);
-      y += 20;
-    } catch {
-      doc.setFont("helvetica", "italic");
-      doc.text("[Signature on file]", M, y + 5);
-      y += 8;
-    }
-    doc.setDrawColor("#cccccc");
-    doc.line(M, y, M + 60, y);
-    y += 4;
-    doc.setFontSize(7);
-    doc.setFont("helvetica", "normal");
-    doc.setTextColor(GRAY);
-    doc.text(`Signed: ${new Date(detail.submittedAt).toLocaleString()}`, M, y);
-    y += 5;
   }
 
   drawFooter();
@@ -466,13 +571,72 @@ function MatrixReadOnly({ field, value }: { field: SubmissionField; value: any }
   );
 }
 
-function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: Record<string, any> }) {
-  const rows = buildFieldRows(fields, data);
-
+function PreviewDecorativeBlock({ field }: { field: SubmissionField }) {
+  const html = field.label ?? "";
+  if (field.fieldType === "divider" || field.fieldType === "section_break") {
+    return <div className="my-2 h-px" style={{ backgroundColor: "#d6d2c4" }} />;
+  }
+  if (field.fieldType === "spacer") {
+    return <div className="h-3" />;
+  }
+  if (field.fieldType === "heading") {
+    return (
+      <div className="mt-3 mb-1" data-testid={`field-preview-${field.fieldKey}`}>
+        <RichTextView
+          html={html}
+          className="text-base font-bold leading-snug"
+        />
+      </div>
+    );
+  }
   return (
-    <>
-      {rows.map((row, rowIdx) => (
-        <div key={rowIdx} className="flex gap-2 mb-1.5" style={{ flexWrap: "wrap" }}>
+    <div className="mb-2" data-testid={`field-preview-${field.fieldKey}`}>
+      <RichTextView
+        html={html}
+        className="text-sm leading-relaxed"
+      />
+    </div>
+  );
+}
+
+function PreviewSignature({ field, value }: { field: SubmissionField; value: any }) {
+  const isImg = typeof value === "string" && value.startsWith("data:image");
+  return (
+    <div
+      className="rounded-md px-2.5 py-1.5 mb-1.5"
+      style={{ backgroundColor: "#f8f7f4", border: "1px solid #eee" }}
+      data-testid={`field-preview-${field.fieldKey}`}
+    >
+      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: "#5a7040" }}>
+        {field.label}
+      </p>
+      {isImg ? (
+        <img
+          src={value}
+          alt="Signature"
+          className="mt-1 max-h-24 w-auto bg-white rounded border"
+          style={{ borderColor: "#e0ddd6" }}
+          data-testid={`img-signature-${field.fieldKey}`}
+        />
+      ) : (
+        <p className="text-sm mt-0.5 italic text-muted-foreground">No signature provided</p>
+      )}
+    </div>
+  );
+}
+
+function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: Record<string, any> }) {
+  // Walk fields in order; collect runs of "value" data fields into rows, but flush
+  // those runs whenever a decorative or signature field appears so layout order is preserved.
+  const elements: React.ReactNode[] = [];
+  let pending: SubmissionField[] = [];
+
+  const flushPending = (keyPrefix: string) => {
+    if (pending.length === 0) return;
+    const rows = buildFieldRows(pending, data);
+    rows.forEach((row, rowIdx) => {
+      elements.push(
+        <div key={`${keyPrefix}-row-${rowIdx}`} className="flex gap-2 mb-1.5" style={{ flexWrap: "wrap" }}>
           {row.fields.map((field, fi) => {
             const frac = getColFraction(field);
             const gapTotal = (row.fields.length - 1) * 8;
@@ -536,9 +700,29 @@ function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: 
             );
           })}
         </div>
-      ))}
-    </>
-  );
+      );
+    });
+    pending = [];
+  };
+
+  fields.forEach((field, idx) => {
+    if (DECORATIVE_TYPES.has(field.fieldType)) {
+      flushPending(`pre-${idx}`);
+      elements.push(<PreviewDecorativeBlock key={`dec-${field.id}`} field={field} />);
+      return;
+    }
+    if (field.fieldType === "signature") {
+      flushPending(`pre-${idx}`);
+      elements.push(<PreviewSignature key={`sig-${field.id}`} field={field} value={data[field.fieldKey]} />);
+      return;
+    }
+    if (hasFieldValue(data, field)) {
+      pending.push(field);
+    }
+  });
+  flushPending("end");
+
+  return <>{elements}</>;
 }
 
 function SyncReviewDialog({
@@ -835,8 +1019,7 @@ export function FormSubmissionPreviewDialog({
 
                   {sortedSections.map(section => {
                     const sectionFields = sortedFields.filter(f => f.sectionId === section.id);
-                    const hasValues = sectionFields.some(f => hasFieldValue(data, f));
-                    if (!hasValues) return null;
+                    if (sectionFields.length === 0) return null;
                     return (
                       <div key={section.id}>
                         <div className="flex items-center gap-2 mb-2">
