@@ -1031,9 +1031,9 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
   };
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Header */}
-      <div className="border-b px-3 sm:px-4 py-2 sm:py-3 space-y-2" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
+      <div className="border-b px-3 sm:px-4 py-2 sm:py-3 space-y-2 flex-shrink-0" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
         <div className="flex items-center justify-between gap-2">
           <div className="flex items-center gap-1.5 sm:gap-2 min-w-0">
             <Button size="sm" variant="ghost" onClick={onBack} className="text-xs text-muted-foreground hidden sm:inline-flex" data-testid="button-back-to-forms">
