@@ -1433,6 +1433,8 @@ export const patientFormAssignments = pgTable("patient_form_assignments", {
   dueAt: timestamp("due_at"),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   completionRequired: boolean("completion_required").notNull().default(false),
+  // 'portal' = visible in patient portal + notification sent; 'in_clinic' = staff-only, must be filled in clinic (e.g. consent forms requiring witness signature)
+  deliveryMode: varchar("delivery_mode", { length: 20 }).notNull().default("portal"),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

@@ -1118,6 +1118,7 @@ export default function PatientProfiles() {
   const [showEncounters, setShowEncounters] = useState(false);
   const [showForms, setShowForms] = useState(true);
   const [showAssignFormDialog, setShowAssignFormDialog] = useState(false);
+  const [assignDeliveryMode, setAssignDeliveryMode] = useState<"portal" | "in_clinic">("portal");
   const [showSendEmailDialog, setShowSendEmailDialog] = useState(false);
   const [sendEmailFormId, setSendEmailFormId] = useState<number | null>(null);
   const [sendEmailAddress, setSendEmailAddress] = useState("");
@@ -1317,13 +1318,18 @@ export default function PatientProfiles() {
   });
 
   const assignFormMutation = useMutation({
-    mutationFn: async ({ patientId, formId, notes }: { patientId: number; formId: number; notes?: string }) => {
-      const res = await apiRequest("POST", `/api/patients/${patientId}/form-assignments`, { formId, notes });
+    mutationFn: async ({ patientId, formId, notes, deliveryMode }: { patientId: number; formId: number; notes?: string; deliveryMode?: "portal" | "in_clinic" }) => {
+      const res = await apiRequest("POST", `/api/patients/${patientId}/form-assignments`, { formId, notes, deliveryMode });
       return res.json();
     },
-    onSuccess: () => {
+    onSuccess: (_data, vars) => {
       queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'form-assignments'] });
-      toast({ title: "Form assigned to patient" });
+      toast({
+        title: vars.deliveryMode === "in_clinic" ? "Form assigned (in-clinic only)" : "Form pushed to patient portal",
+        description: vars.deliveryMode === "in_clinic"
+          ? "This form will not appear in the patient's portal. Use 'Fill In Clinic' to complete it."
+          : "The patient has been notified to complete it.",
+      });
     },
     onError: () => toast({ title: "Failed to assign form", variant: "destructive" }),
   });
@@ -2913,14 +2919,40 @@ export default function PatientProfiles() {
                   </DialogHeader>
                   <div className="space-y-3 py-2">
                     <p className="text-sm text-muted-foreground">
-                      Select a form to assign to {selectedPatient?.firstName} {selectedPatient?.lastName}. They will see it in their portal and can also receive it via email.
+                      Select a form to assign to {selectedPatient?.firstName} {selectedPatient?.lastName}.
                     </p>
-                    <ScrollArea className="h-72">
+
+                    {/* Delivery mode selector */}
+                    <div className="rounded-md border p-3 space-y-2 bg-muted/20">
+                      <p className="text-xs font-medium">Delivery mode</p>
+                      <div className="grid grid-cols-2 gap-2">
+                        <button
+                          type="button"
+                          onClick={() => setAssignDeliveryMode("portal")}
+                          className={`text-left rounded-md border p-2 text-xs hover-elevate ${assignDeliveryMode === "portal" ? "border-[#2e3a20] bg-background ring-1 ring-[#2e3a20]" : "bg-background/40"}`}
+                          data-testid="button-delivery-portal"
+                        >
+                          <div className="font-medium text-sm">Push to Patient Portal</div>
+                          <div className="text-muted-foreground mt-0.5">Patient can complete it ahead of their appointment. They will be notified by email + portal message.</div>
+                        </button>
+                        <button
+                          type="button"
+                          onClick={() => setAssignDeliveryMode("in_clinic")}
+                          className={`text-left rounded-md border p-2 text-xs hover-elevate ${assignDeliveryMode === "in_clinic" ? "border-[#2e3a20] bg-background ring-1 ring-[#2e3a20]" : "bg-background/40"}`}
+                          data-testid="button-delivery-in-clinic"
+                        >
+                          <div className="font-medium text-sm">In-Clinic Only</div>
+                          <div className="text-muted-foreground mt-0.5">Hidden from the portal. Use for consent forms or anything requiring a witness signature.</div>
+                        </button>
+                      </div>
+                    </div>
+
+                    <ScrollArea className="h-64">
                       <div className="space-y-2 pr-2">
-                        {availableForms.filter((f: any) => f.status === "published").length === 0 && (
+                        {availableForms.filter((f: any) => f.status === "active").length === 0 && (
                           <p className="text-sm text-muted-foreground text-center py-6">No published forms available. Create and publish a form from the Forms page.</p>
                         )}
-                        {availableForms.filter((f: any) => f.status === "published").map((form: any) => {
+                        {availableForms.filter((f: any) => f.status === "active").map((form: any) => {
                           const alreadyPending = patientFormAssignments.some((a: any) => a.formId === form.id && a.status === "pending");
                           return (
                             <div key={form.id} className="rounded-md border p-3 space-y-2" data-testid={`assign-form-option-${form.id}`}>
@@ -2938,15 +2970,15 @@ export default function PatientProfiles() {
                                   <Button size="sm" className="text-xs"
                                     onClick={() => {
                                       if (selectedPatient) {
-                                        assignFormMutation.mutate({ patientId: selectedPatient.id, formId: form.id });
+                                        assignFormMutation.mutate({ patientId: selectedPatient.id, formId: form.id, deliveryMode: assignDeliveryMode });
                                         setShowAssignFormDialog(false);
                                       }
                                     }}
                                     disabled={assignFormMutation.isPending}
                                     data-testid={`button-assign-form-${form.id}`}>
-                                    <Plus className="h-3 w-3 mr-1" /> Assign
+                                    <Plus className="h-3 w-3 mr-1" /> {assignDeliveryMode === "in_clinic" ? "Assign (in-clinic)" : "Assign & Notify"}
                                   </Button>
-                                  {selectedPatient?.email && (
+                                  {assignDeliveryMode === "portal" && selectedPatient?.email && (
                                     <Button size="sm" variant="outline" className="text-xs"
                                       onClick={() => {
                                         if (selectedPatient) {
@@ -2956,24 +2988,32 @@ export default function PatientProfiles() {
                                       }}
                                       disabled={sendFormLinkMutation.isPending}
                                       data-testid={`button-assign-send-email-${form.id}`}>
-                                      <Send className="h-3 w-3 mr-1" /> Send Email
+                                      <Send className="h-3 w-3 mr-1" /> Send Email Only
                                     </Button>
                                   )}
                                   <Button size="sm" variant="outline" className="text-xs"
                                     onClick={() => {
                                       if (selectedPatient) {
                                         const newTab = window.open("about:blank", "_blank");
-                                        sendFormLinkMutation.mutate({ patientId: selectedPatient.id, formId: form.id, method: "link" }, {
-                                          onSuccess: (data: any) => {
-                                            if (data.formUrl && newTab) { newTab.location.href = data.formUrl; }
-                                            else if (data.formUrl) { window.open(data.formUrl, "_blank"); }
-                                            setShowAssignFormDialog(false);
-                                          },
-                                          onError: () => { if (newTab) newTab.close(); }
-                                        });
+                                        // Always create the assignment in the chosen mode, then open the form to fill in clinic
+                                        assignFormMutation.mutate(
+                                          { patientId: selectedPatient.id, formId: form.id, deliveryMode: assignDeliveryMode },
+                                          {
+                                            onSettled: () => {
+                                              sendFormLinkMutation.mutate({ patientId: selectedPatient.id, formId: form.id, method: "link" }, {
+                                                onSuccess: (data: any) => {
+                                                  if (data.formUrl && newTab) { newTab.location.href = data.formUrl; }
+                                                  else if (data.formUrl) { window.open(data.formUrl, "_blank"); }
+                                                  setShowAssignFormDialog(false);
+                                                },
+                                                onError: () => { if (newTab) newTab.close(); }
+                                              });
+                                            },
+                                          }
+                                        );
                                       }
                                     }}
-                                    disabled={sendFormLinkMutation.isPending}
+                                    disabled={sendFormLinkMutation.isPending || assignFormMutation.isPending}
                                     data-testid={`button-assign-fill-clinic-${form.id}`}>
                                     <Eye className="h-3 w-3 mr-1" /> Fill In Clinic
                                   </Button>
@@ -3006,7 +3046,7 @@ export default function PatientProfiles() {
                         data-testid="select-send-email-form"
                       >
                         <option value="">Select a form...</option>
-                        {availableForms.filter((f: any) => f.status === "published").map((f: any) => (
+                        {availableForms.filter((f: any) => f.status === "active").map((f: any) => (
                           <option key={f.id} value={f.id}>{f.name}</option>
                         ))}
                       </select>

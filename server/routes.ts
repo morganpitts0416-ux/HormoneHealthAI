@@ -3033,7 +3033,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   app.get("/api/portal/forms", requirePortalAuth, async (req, res) => {
     try {
       const patientId = (req.session as any).portalPatientId as number;
-      const assignments = await storage.getPatientFormAssignments(patientId);
+      const allAssignments = await storage.getPatientFormAssignments(patientId);
+      // In-clinic-only assignments are hidden from the portal — they must be filled in clinic with a witness
+      const assignments = allAssignments.filter(a => (a as any).deliveryMode !== "in_clinic");
       const submissions = await storage.getFormSubmissionsByPatient(patientId);
 
       const enrichedAssignments = await Promise.all(assignments.map(async (a) => {
@@ -8460,10 +8462,11 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
       const clinicId = getEffectiveClinicId(req);
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
-      const { formId, dueAt, notes } = req.body;
+      const { formId, dueAt, notes, deliveryMode } = req.body;
       if (!formId) return res.status(400).json({ message: "formId required" });
       const form = await storage.getIntakeFormByIdAndClinic(parseInt(formId), clinicId, clinicianId);
       if (!form) return res.status(404).json({ message: "Form not found" });
+      const mode = deliveryMode === "in_clinic" ? "in_clinic" : "portal";
       const assignment = await storage.createPatientFormAssignment({
         patientId,
         formId: parseInt(formId),
@@ -8471,10 +8474,58 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         dueAt: dueAt ? new Date(dueAt) : null,
         status: "pending",
         completionRequired: false,
+        deliveryMode: mode,
         notes: notes ?? null,
       });
+
+      // Notify the patient if pushed to portal
+      if (mode === "portal") {
+        try {
+          // In-portal message
+          await storage.createPortalMessage({
+            patientId,
+            clinicianId,
+            senderType: "clinician",
+            content: `A new form has been assigned to you: "${form.name}". Please log in to your patient portal to complete it${dueAt ? ` by ${new Date(dueAt).toLocaleDateString()}` : ""}.`,
+          });
+
+          // Email notification (best-effort)
+          if (patient.email && process.env.RESEND_API_KEY) {
+            const clinician = await storage.getUser(clinicianId);
+            const clinicName = clinician?.clinicName || "Your Healthcare Provider";
+            const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@realignlabeval.com";
+            const portalUrl = `${req.protocol}://${req.get("host")}/portal/forms`;
+            const html = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2e3a20;">New Form from ${clinicName}</h2>
+                <p>Hi ${patient.firstName},</p>
+                <p>Your provider has assigned you a new form to complete${dueAt ? ` by <strong>${new Date(dueAt).toLocaleDateString()}</strong>` : ""}:</p>
+                <div style="background: #f9f6f0; border: 1px solid #d4c9b5; border-radius: 8px; padding: 16px; margin: 16px 0;">
+                  <strong>${form.name}</strong>
+                  ${form.description ? `<p style="color: #666; margin-top: 8px;">${form.description}</p>` : ""}
+                </div>
+                <a href="${portalUrl}" style="display: inline-block; background: #2e3a20; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold;">Open Patient Portal</a>
+                <p style="margin-top: 24px; color: #888; font-size: 12px;">Sign in to your patient portal to complete this form.</p>
+              </div>`;
+            await fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: `"${clinicName}" <${sendingDomain}>`,
+                to: [patient.email],
+                subject: `${clinicName}: New form to complete — ${form.name}`,
+                html,
+              }),
+            }).catch((e) => console.error("[Assign Form] Email send failed:", e));
+          }
+        } catch (notifyErr) {
+          console.error("[Assign Form] Notification error:", notifyErr);
+        }
+      }
+
       res.json(assignment);
     } catch (err) {
+      console.error("[Assign Form] Failed:", err);
       res.status(500).json({ message: "Failed to assign form" });
     }
   });
