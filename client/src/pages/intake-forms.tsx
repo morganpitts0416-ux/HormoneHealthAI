@@ -1107,7 +1107,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
 
       {/* Builder: Three-panel layout (responsive) */}
       {activeTab === "fields" && (
-        <div className="flex flex-1 overflow-hidden relative">
+        <div className="flex flex-1 overflow-hidden relative min-h-0">
           {/* Mobile bottom toolbar — hidden when overlay panels are active */}
           <div className={`md:hidden fixed bottom-0 left-0 right-0 z-40 border-t bg-background px-2 py-1.5 flex items-center gap-1.5 ${mobilePanel !== "preview" ? "hidden" : ""}`}>
             <Button
@@ -1277,7 +1277,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
           </div>
 
           {/* Center: Live form preview — always in flow on desktop, conditionally shown on mobile */}
-          <div className={`${mobilePanel === "preview" ? "flex" : "hidden"} md:flex flex-1 flex-col overflow-auto bg-muted/10 pb-14 md:pb-0`}>
+          <div className={`${mobilePanel === "preview" ? "flex" : "hidden"} md:flex flex-1 min-w-0 min-h-0 flex-col overflow-y-auto bg-muted/10 pb-14 md:pb-0`}>
             <div className="max-w-2xl mx-auto py-4 md:py-6 px-3 md:px-4 w-full">
               <div className="rounded-xl border bg-background shadow-sm">
                 <div className="px-4 md:px-6 py-4 md:py-5 border-b">
