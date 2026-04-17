@@ -1,0 +1,234 @@
+  --source . \6@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run deploy hormonehealthai \
+  --region=us-central1 \
+  --build-machine-type=e2-highcpu-8
+ERROR: (gcloud.run.deploy) unrecognized arguments: --build-machine-type=e2-highcpu-8 
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ # Step 1: Build with a bigger VM (8 vCPU / 8 GB RAM)
+gcloud builds submit \t of gcloud commands, run:
+  --region=us-central1 \TERMS
+  --machine-type=e2-highcpu-8 \rmoneHealthAI (realign-lab-app)$ # Step 1: Build with a bigger VM (8 vCPU / 8 GB RAM)
+  --tag=us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+  --region=us-central1 \
+  --machine-type=e2-highcpu-8 \
+  --tag=us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+# Step 2: Deploy that image to Cloud Run
+gcloud run deploy hormonehealthai \d Run
+  --region=us-central1 \ehealthai \
+  --image=us-central1-docker.pkg.dev/realign-lab-app/cloud-run-source-deploy/hormonehealthai:latest
+Creating temporary archive of 225 file(s) totalling 21.1 MiB before compression.monehealthai:latest
+Uploading tarball of [.] to [gs://realign-lab-app_cloudbuild/source/1776468387.539823-675cad8aa9cf4771924bd8a92802aba2.tgz]
+Created [https://cloudbuild.googleapis.com/v1/projects/realign-lab-app/locations/us-central1/builds/0900a9fd-ea00-4213-baee-d5cb708fae95].
+Logs are available at [ https://console.cloud.google.com/cloud-build/builds;region=us-central1/0900a9fd-ea00-4213-baee-d5cb708fae95?project=384086867382 ].
+Waiting for build to complete. Polling interval: 1 second(s).
+----------------------------- REMOTE BUILD OUTPUT ------------------------------
+starting build "0900a9fd-ea00-4213-baee-d5cb708fae95"
+
+FETCHSOURCE
+Fetching storage object: gs://realign-lab-app_cloudbuild/source/1776468387.539823-675cad8aa9cf4771924bd8a92802aba2.tgz#1776468400375237
+Copying gs://realign-lab-app_cloudbuild/source/1776468387.539823-675cad8aa9cf4771924bd8a92802aba2.tgz#1776468400375237...
+/ [1 files][ 12.7 MiB/ 12.7 MiB]                                                
+Operation completed over 1 objects/12.7 MiB.
+BUILD
+Already have image (with digest): gcr.io/cloud-builders/gcb-internal
+Sending build context to Docker daemon   22.3MB
+Step 1/12 : FROM node:20-alpine
+20-alpine: Pulling from library/node
+6a0ac1617861: Pulling fs layer
+4feea04c1543: Pulling fs layer
+b2cbbfe903b0: Pulling fs layer
+fff4e2c1b189: Pulling fs layer
+fff4e2c1b189: Download complete
+b2cbbfe903b0: Verifying Checksum
+b2cbbfe903b0: Download complete
+6a0ac1617861: Verifying Checksum
+6a0ac1617861: Download complete
+6a0ac1617861: Pull complete
+4feea04c1543: Verifying Checksum
+4feea04c1543: Download complete
+4feea04c1543: Pull complete
+b2cbbfe903b0: Pull complete
+fff4e2c1b189: Pull complete
+Digest: sha256:fb4cd12c85ee03686f6af5362a0b0d56d50c58a04632e6c0fb8363f609372293
+Status: Downloaded newer image for node:20-alpine
+ 11cedc39e663
+Step 2/12 : RUN apk add --no-cache ffmpeg
+ Running in 5d8e54170122
+(  1/102) Installing libSvtAv1Enc (3.1.2-r0)
+(  2/102) Installing aom-libs (3.13.1-r1)
+(  3/102) Installing libxau (1.0.12-r0)
+(  4/102) Installing libmd (1.1.0-r0)
+(  5/102) Installing libbsd (0.12.2-r0)
+(  6/102) Installing libxdmcp (1.1.5-r1)
+(  7/102) Installing libxcb (1.17.0-r1)
+(  8/102) Installing libx11 (1.8.12-r1)
+(  9/102) Installing hwdata-pci (0.401-r0)
+( 10/102) Installing libpciaccess (0.18.1-r1)
+( 11/102) Installing libdrm (2.4.131-r0)
+( 12/102) Installing libxext (1.3.6-r2)
+( 13/102) Installing libxfixes (6.0.2-r0)
+( 14/102) Installing libffi (3.5.2-r0)
+( 15/102) Installing wayland-libs-client (1.24.0-r0)
+( 16/102) Installing libva (2.22.0-r1)
+( 17/102) Installing libvdpau (1.5-r4)
+( 18/102) Installing libvpl (2.15.0-r1)
+( 19/102) Installing ffmpeg-libavutil (8.0.1-r1)
+( 20/102) Installing libdav1d (1.5.2-r0)
+( 21/102) Installing brotli-libs (1.2.0-r0)
+( 22/102) Installing libhwy (1.3.0-r0)
+( 23/102) Installing lcms2 (2.17-r0)
+( 24/102) Installing libjxl (0.11.1-r3)
+( 25/102) Installing lame-libs (3.100-r5)
+( 26/102) Installing opus (1.5.2-r1)
+( 27/102) Installing rav1e-libs (0.8.1-r0)
+( 28/102) Installing spirv-tools (1.4.321.0-r1)
+( 29/102) Installing glslang-libs (1.4.321.0-r0)
+( 30/102) Installing shaderc (2025.3-r0)
+( 31/102) Installing libgomp (15.2.0-r2)
+( 32/102) Installing soxr (0.1.3-r7)
+( 33/102) Installing ffmpeg-libswresample (8.0.1-r1)
+( 34/102) Installing libogg (1.3.6-r0)
+( 35/102) Installing libtheora (1.2.0-r0)
+( 36/102) Installing libvorbis (1.3.7-r2)
+( 37/102) Installing libvpx (1.15.2-r1)
+( 38/102) Installing libsharpyuv (1.6.0-r0)
+( 39/102) Installing libwebp (1.6.0-r0)
+( 40/102) Installing libwebpmux (1.6.0-r0)
+( 41/102) Installing x264-libs (0.164.3108-r1)
+( 42/102) Installing numactl (2.0.18-r0)
+( 43/102) Installing x265-libs (4.1-r0)
+( 44/102) Installing xvidcore (1.3.7-r2)
+( 45/102) Installing ffmpeg-libavcodec (8.0.1-r1)
+( 46/102) Installing alsa-lib (1.2.14-r2)
+( 47/102) Installing libexpat (2.7.5-r0)
+( 48/102) Installing libbz2 (1.0.8-r6)
+( 49/102) Installing libpng (1.6.57-r0)
+( 50/102) Installing freetype (2.14.1-r0)
+( 51/102) Installing fontconfig (2.17.1-r0)
+( 52/102) Installing fribidi (1.0.16-r2)
+( 53/102) Installing libintl (0.24.1-r1)
+( 54/102) Installing libeconf (0.8.3-r0)
+( 55/102) Installing libblkid (2.41.4-r0)
+( 56/102) Installing libmount (2.41.4-r0)
+( 57/102) Installing pcre2 (10.47-r0)
+( 58/102) Installing glib (2.86.3-r0)
+( 59/102) Installing graphite2 (1.3.14-r6)
+( 60/102) Installing harfbuzz (12.2.0-r0)
+( 61/102) Installing libunibreak (6.1-r0)
+( 62/102) Installing libass (0.17.4-r0)
+( 63/102) Installing libudfread (1.2.0-r0)
+( 64/102) Installing libbluray (1.4.0-r0)
+( 65/102) Installing mpg123-libs (1.33.3-r0)
+( 66/102) Installing libopenmpt (0.8.6-r0)
+( 67/102) Installing cjson (1.7.19-r1)
+( 68/102) Installing mbedtls (3.6.6-r0)
+( 69/102) Installing librist (0.2.10-r1)
+( 70/102) Installing libsrt (1.5.3-r1)
+( 71/102) Installing libssh (0.11.4-r0)
+( 72/102) Installing xz-libs (5.8.2-r0)
+( 73/102) Installing libxml2 (2.13.9-r0)
+( 74/102) Installing libsodium (1.0.20-r1)
+( 75/102) Installing libzmq (4.3.5-r2)
+( 76/102) Installing ffmpeg-libavformat (8.0.1-r1)
+( 77/102) Installing serd-libs (0.32.4-r0)
+( 78/102) Installing zix-libs (0.6.2-r0)
+( 79/102) Installing sord-libs (0.16.18-r0)
+( 80/102) Installing sratom (0.6.18-r0)
+( 81/102) Installing lilv-libs (0.24.26-r0)
+( 82/102) Installing libdovi (3.3.2-r0)
+( 83/102) Installing vulkan-loader (1.4.321.0-r0)
+( 84/102) Installing libplacebo (7.351.0-r0)
+( 85/102) Installing ffmpeg-libswscale (8.0.1-r1)
+( 86/102) Installing vidstab (1.1.1-r0)
+( 87/102) Installing zimg (3.0.6-r0)
+( 88/102) Installing ffmpeg-libavfilter (8.0.1-r1)
+( 89/102) Installing libasyncns (0.8-r4)
+( 90/102) Installing dbus-libs (1.16.2-r1)
+( 91/102) Installing libltdl (2.5.4-r2)
+( 92/102) Installing orc (0.4.41-r0)
+( 93/102) Installing libflac (1.4.3-r2)
+( 94/102) Installing libsndfile (1.2.2-r2)
+( 95/102) Installing speexdsp (1.2.1-r2)
+( 96/102) Installing tdb-libs (1.4.14-r0)
+( 97/102) Installing libpulse (17.0-r5)
+( 98/102) Installing libjpeg-turbo (3.1.2-r0)
+( 99/102) Installing json-c (0.18-r1)
+(100/102) Installing v4l-utils-libs (1.32.0-r0)
+(101/102) Installing ffmpeg-libavdevice (8.0.1-r1)
+(102/102) Installing ffmpeg (8.0.1-r1)
+Executing busybox-1.37.0-r30.trigger
+Executing glib-2.86.3-r0.trigger
+OK: 135.6 MiB in 120 packages
+Removing intermediate container 5d8e54170122
+ 113b1a8e3611
+Step 3/12 : WORKDIR /app
+ Running in ab540b77adbc
+Removing intermediate container ab540b77adbc
+ 7b0c5085ee02
+Step 4/12 : COPY package*.json ./
+ 2a7138a4df6f
+Step 5/12 : RUN npm ci
+ Running in 836ea462317d
+npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+
+added 525 packages, and audited 526 packages in 18s
+
+67 packages are looking for funding
+  run `npm fund` for details
+
+23 vulnerabilities (3 low, 9 moderate, 9 high, 2 critical)
+
+To address issues that do not require attention, run:
+  npm audit fix
+
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+
+Run `npm audit` for details.
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.12.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.12.1
+npm notice To update run: npm install -g npm@11.12.1
+npm notice
+Removing intermediate container 836ea462317d
+ 3bde704d4d11
+Step 6/12 : COPY . .
+ f16fe9b0b5c4
+Step 7/12 : RUN npm run build
+ Running in 9d9c32941e47
+
+> rest-express@1.0.0 build
+> vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+vite v5.4.20 building for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 18 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 142 modules transformed.
+x Build failed in 4.33s
+error during build:
+[vite:asset] Could not load /app/attached_assets/Screen_Recording_2026-04-17_172106_1776464513381.mp4 (imported by client/src/pages/landing.tsx): ENOENT: no such file or directory, open '/app/attached_assets/Screen_Recording_2026-04-17_172106_1776464513381.mp4'
+    at async open (node:internal/fs/promises:637:25)
+    at async Object.readFile (node:internal/fs/promises:1249:14)
+    at async fileToBuiltUrl (file:///app/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:20428:19)
+    at async Object.load (file:///app/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:20328:17)
+    at async PluginDriver.hookFirstAndGetPlugin (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:20689:28)
+    at async file:///app/node_modules/rollup/dist/es/shared/node-entry.js:19809:33
+    at async Queue.work (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:20899:32)
+The command '/bin/sh -c npm run build' returned a non-zero code: 1
+ERROR
+ERROR: build step 0 "gcr.io/cloud-builders/gcb-internal" failed: step exited with non-zero status: 1
+
+--------------------------------------------------------------------------------
+
+BUILD FAILURE: Build step failure: build step 0 "gcr.io/cloud-builders/gcb-internal" failed: step exited with non-zero status: 1
+ERROR: (gcloud.builds.submit) build 0900a9fd-ea00-4213-baee-d5cb708fae95 completed with status "FAILURE"
+Deploying container to Cloud Run service [hormonehealthai] in project [realign-lab-app] region [us-central1]
+Deploying...                                                                   
+  Creating Revision...done                                                     
+  Routing traffic...done                                                       
+Done.                                                                          
+Service [hormonehealthai] revision [hormonehealthai-00131-2dg] has been deployed and is serving 100 percent of traffic.
+Service URL: https://hormonehealthai-384086867382.us-central1.run.app
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
