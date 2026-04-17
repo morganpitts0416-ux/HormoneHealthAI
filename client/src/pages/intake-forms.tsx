@@ -603,7 +603,12 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
       case "heading":
         return <h3 className="text-base font-semibold text-foreground">{field.label}</h3>;
       case "paragraph":
-        return <p className="text-sm text-muted-foreground whitespace-pre-line">{field.label || field.helpText || field.placeholder || "Instructions will appear here..."}</p>;
+        return (
+          <div className="space-y-1">
+            <p className="text-sm text-foreground whitespace-pre-line">{field.label || field.placeholder || "Instructions will appear here..."}</p>
+            {field.helpText && <p className="text-xs text-muted-foreground whitespace-pre-line">{field.helpText}</p>}
+          </div>
+        );
       case "short_text":
       case "email":
       case "phone":
