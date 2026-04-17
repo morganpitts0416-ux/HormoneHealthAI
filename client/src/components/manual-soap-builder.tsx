@@ -875,7 +875,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   const availableBlocks = BLOCK_TYPES.filter(bt => !usedBlockTypes.has(bt.id));
 
   return (
-    <div className="flex flex-col h-full" data-testid="manual-soap-builder">
+    <div className="flex flex-col h-full min-h-0" data-testid="manual-soap-builder">
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-muted/30 flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <FileText className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
@@ -902,7 +902,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
         </div>
       </div>
 
-      <div className="flex-1 overflow-y-auto p-4 space-y-4">
+      <div className="flex-1 min-h-0 overflow-y-auto p-4 space-y-4">
         <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
           <div>
             <label className="text-xs font-medium text-muted-foreground mb-1 block">Visit Date</label>
