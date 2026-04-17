@@ -2359,14 +2359,16 @@ Return ONLY this JSON structure:
       const patientId = parseInt(req.params.patientId);
       const clinicianId = getClinicianId(req);
       const clinicianUser = await storage.getUserById(clinicianId);
-      const { email } = req.body;
+      const rawEmail = req.body?.email;
+      if (!rawEmail || typeof rawEmail !== "string") return res.status(400).json({ message: "Patient email is required" });
+      const email = rawEmail.trim().toLowerCase();
       if (!email) return res.status(400).json({ message: "Patient email is required" });
 
       const clinicId = getEffectiveClinicId(req);
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-      // Update patient email on record
+      // Update patient email on record (normalized)
       await storage.updatePatient(patientId, { email }, clinicianId, clinicId);
 
       // Check if portal account already exists
@@ -2433,8 +2435,12 @@ Return ONLY this JSON structure:
   // ── Portal: Patient login ──────────────────────────────────────────────────
   app.post("/api/portal/login", async (req, res) => {
     try {
-      const { email, password } = req.body;
-      if (!email || !password) return res.status(400).json({ message: "Email and password are required" });
+      const rawEmail = req.body?.email;
+      const password = req.body?.password;
+      if (!rawEmail || typeof rawEmail !== "string" || !password) {
+        return res.status(400).json({ message: "Email and password are required" });
+      }
+      const email = rawEmail.trim().toLowerCase();
 
       const account = await storage.getPortalAccountByEmail(email);
       if (!account || !account.passwordHash) {
@@ -2469,8 +2475,9 @@ Return ONLY this JSON structure:
   // ── Portal: Forgot password ────────────────────────────────────────────────
   app.post("/api/portal/forgot-password", async (req, res) => {
     try {
-      const { email } = req.body;
-      if (!email) return res.status(400).json({ message: "Email is required" });
+      const rawEmail = req.body?.email;
+      if (!rawEmail || typeof rawEmail !== "string") return res.status(400).json({ message: "Email is required" });
+      const email = rawEmail.trim().toLowerCase();
 
       const account = await storage.getPortalAccountByEmail(email);
       // Always return success so we don't reveal whether an email is registered
