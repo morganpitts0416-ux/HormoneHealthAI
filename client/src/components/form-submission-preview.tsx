@@ -681,6 +681,17 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
             const isSymptomChart = field.fieldType === "symptom_checklist" && typeof value === "object" && value !== null && !Array.isArray(value);
             const isList = (field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && Array.isArray(value);
             const isMatrix = field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson);
+            const isOptionList = (field.fieldType === "radio" || field.fieldType === "checkbox" || field.fieldType === "dropdown" || field.fieldType === "select") && Array.isArray(field.optionsJson) && field.optionsJson.length > 0;
+            const optionListIsMulti = field.fieldType === "checkbox";
+            const optionListSelected: Set<string> = isOptionList
+              ? new Set(
+                  Array.isArray(value)
+                    ? value.filter(v => v !== null && v !== undefined).map(v => String(v))
+                    : value !== null && value !== undefined && value !== ""
+                      ? [String(value)]
+                      : []
+                )
+              : new Set();
             const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
             const displayValue = isEmpty
               ? "—"
@@ -715,6 +726,53 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
                 </p>
                 {isMatrix ? (
                   <MatrixReadOnly field={field} value={value} />
+                ) : isOptionList ? (
+                  <ul className="text-sm mt-1 space-y-0.5" style={{ color: "#1c2414" }}>
+                    {(field.optionsJson as string[]).map((opt: string, oi: number) => {
+                      const isSel = optionListSelected.has(String(opt));
+                      return (
+                        <li
+                          key={oi}
+                          className="flex items-start gap-1.5"
+                          data-testid={`option-${field.fieldKey}-${oi}`}
+                          data-selected={isSel ? "true" : "false"}
+                        >
+                          <span
+                            className={`inline-flex items-center justify-center h-3.5 w-3.5 mt-0.5 border flex-shrink-0 ${optionListIsMulti ? "rounded-sm" : "rounded-full"}`}
+                            style={{
+                              borderColor: isSel ? "#2e3a20" : "#9ca08c",
+                              backgroundColor: isSel ? "#2e3a20" : "transparent",
+                            }}
+                          >
+                            {isSel && (
+                              optionListIsMulti
+                                ? <span className="text-white text-[8px] leading-none font-bold">✓</span>
+                                : <span className="block h-1.5 w-1.5 rounded-full bg-white" />
+                            )}
+                          </span>
+                          <span className={`break-words ${isSel ? "font-medium" : "text-muted-foreground"}`}>
+                            {String(opt)}
+                          </span>
+                        </li>
+                      );
+                    })}
+                    {/* Surface any selected free-text "Other" values not in the option list */}
+                    {Array.from(optionListSelected).filter(s => !(field.optionsJson as string[]).map(String).includes(s)).map((extra, ei) => (
+                      <li key={`extra-${ei}`} className="flex items-start gap-1.5" data-testid={`option-extra-${field.fieldKey}-${ei}`}>
+                        <span
+                          className={`inline-flex items-center justify-center h-3.5 w-3.5 mt-0.5 border flex-shrink-0 ${optionListIsMulti ? "rounded-sm" : "rounded-full"}`}
+                          style={{ borderColor: "#2e3a20", backgroundColor: "#2e3a20" }}
+                        >
+                          {optionListIsMulti
+                            ? <span className="text-white text-[8px] leading-none font-bold">✓</span>
+                            : <span className="block h-1.5 w-1.5 rounded-full bg-white" />}
+                        </span>
+                        <span className="break-words font-medium italic">
+                          {extra}
+                        </span>
+                      </li>
+                    ))}
+                  </ul>
                 ) : isList ? (
                   <ul className="text-sm mt-0.5 space-y-0.5" style={{ color: "#1c2414" }}>
                     {(value as string[]).filter(Boolean).map((item: string, ii: number) => (
