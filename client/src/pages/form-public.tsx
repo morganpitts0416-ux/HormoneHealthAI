@@ -777,22 +777,26 @@ function FieldRenderer({ field, value, onChange, error }: {
         </RadioGroup>
       )}
 
-      {field.fieldType === "single_choice" && options.length > 0 && (
-        <RadioGroup value={value ?? ""} onValueChange={onChange}>
-          <div className="space-y-2">
-            {options.map(opt => (
-              <div key={opt} className="flex items-center gap-2">
-                <RadioGroupItem value={opt} id={`${field.fieldKey}-${opt}`} />
-                <Label htmlFor={`${field.fieldKey}-${opt}`} className="font-normal cursor-pointer">{opt}</Label>
-              </div>
-            ))}
-          </div>
-        </RadioGroup>
-      )}
+      {field.fieldType === "single_choice" && options.length > 0 && (() => {
+        const cols = (field.layoutJson as any)?.optionColumns ?? 1;
+        const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1";
+        return (
+          <RadioGroup value={value ?? ""} onValueChange={onChange}>
+            <div className={`grid gap-x-4 gap-y-2 ${colClass}`}>
+              {options.map(opt => (
+                <div key={opt} className="flex items-center gap-2">
+                  <RadioGroupItem value={opt} id={`${field.fieldKey}-${opt}`} />
+                  <Label htmlFor={`${field.fieldKey}-${opt}`} className="font-normal cursor-pointer">{opt}</Label>
+                </div>
+              ))}
+            </div>
+          </RadioGroup>
+        );
+      })()}
 
       {field.fieldType === "multi_choice" && options.length > 0 && (() => {
         const cols = (field.layoutJson as any)?.optionColumns ?? 1;
-        const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1";
+        const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1";
         return (
           <div className={`grid gap-x-4 gap-y-2 ${colClass}`}>
             {options.map(opt => {
