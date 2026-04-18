@@ -2,7 +2,7 @@
  * One-time production database migration script.
  * Run from Cloud Shell:
  *   export DATABASE_URL="<your-cloud-run-database-url>"
- *   node scripts/migrate-prod.js
+ *   node scripts/migrate-prod.cjs
  */
 
 const { Pool } = require("pg");
