@@ -1159,7 +1159,8 @@ export default function PortalForms() {
                       return <div key={field.id} className="h-3" />;
                     }
                     if (field.fieldType === "signature") {
-                      const fromResp = viewingDetail.submission.responses?.[field.fieldKey];
+                      const responses = viewingDetail.submission.responses ?? {};
+                      const fromResp = responses[field.fieldKey] ?? responses[String(field.id)];
                       const fromSig = viewingDetail.submission.signature;
                       let sigVal: any = (typeof fromResp === "string" && fromResp.startsWith("data:image"))
                         ? fromResp
@@ -1186,7 +1187,7 @@ export default function PortalForms() {
                     return (
                       <div key={field.id} className="space-y-1.5">
                         <p className="text-sm font-medium" style={{ color: "#2e3a20" }}>{field.label}</p>
-                        {renderReadOnlyValue(field, viewingDetail.submission.responses?.[field.fieldKey])}
+                        {renderReadOnlyValue(field, viewingDetail.submission.responses?.[field.fieldKey] ?? viewingDetail.submission.responses?.[String(field.id)])}
                       </div>
                     );
                   })}
