@@ -1159,8 +1159,18 @@ export default function PortalForms() {
                       return <div key={field.id} className="h-3" />;
                     }
                     if (field.fieldType === "signature") {
-                      const sigVal = viewingDetail.submission.responses?.[field.fieldKey]
-                        ?? viewingDetail.submission.signature;
+                      const fromResp = viewingDetail.submission.responses?.[field.fieldKey];
+                      const fromSig = viewingDetail.submission.signature;
+                      let sigVal: any = (typeof fromResp === "string" && fromResp.startsWith("data:image"))
+                        ? fromResp
+                        : (typeof fromSig === "string" && fromSig.startsWith("data:image"))
+                          ? fromSig
+                          : null;
+                      if (!sigVal && viewingDetail.submission.responses && typeof viewingDetail.submission.responses === "object") {
+                        for (const v of Object.values(viewingDetail.submission.responses)) {
+                          if (typeof v === "string" && v.startsWith("data:image")) { sigVal = v; break; }
+                        }
+                      }
                       const isImg = typeof sigVal === "string" && sigVal.startsWith("data:image");
                       return (
                         <div key={field.id} className="space-y-1.5">
