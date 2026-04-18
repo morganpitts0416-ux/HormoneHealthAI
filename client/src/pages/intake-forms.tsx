@@ -582,7 +582,7 @@ function FieldTypePalette({ onAdd, isAdding }: { onAdd: (type: string) => void; 
 
 // ─── Live Form Preview ───────────────────────────────────────────────────────
 
-function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onDragStart, onDragOver, onDragEnd, onDrop, isDragging, isDropTarget }: {
+function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMoveUp, canMoveDown, onDuplicate, onDragStart, onDragOver, onDragEnd, onDrop, isDragging, isDropTarget }: {
   field: FormField;
   isSelected: boolean;
   onClick: () => void;
@@ -590,6 +590,7 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
   onMoveDown?: () => void;
   canMoveUp?: boolean;
   canMoveDown?: boolean;
+  onDuplicate?: () => void;
   onDragStart?: () => void;
   onDragOver?: (e: React.DragEvent) => void;
   onDragEnd?: () => void;
@@ -863,6 +864,16 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
                 <ArrowDown className="h-3 w-3" />
               </button>
             )}
+            {onDuplicate && (
+              <button
+                onClick={(e) => { e.stopPropagation(); onDuplicate(); }}
+                title="Duplicate field"
+                className="p-0.5 rounded text-muted-foreground hover:text-foreground transition-colors"
+                data-testid={`button-duplicate-field-${field.id}`}
+              >
+                <Copy className="h-3 w-3" />
+              </button>
+            )}
           </div>
           <div className="flex-1 min-w-0">
             {!isDecorative && (
@@ -1030,6 +1041,37 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
     }
     setDragIdx(null);
     setDragOverIdx(null);
+  };
+
+  const duplicateField = async (field: FormField) => {
+    const { id, formId: _fid, orderIndex: _oi, smartFieldKey, ...rest } = field as any;
+    const payload: any = {
+      ...rest,
+      label: field.label ? `${field.label} (Copy)` : "Copy",
+      smartFieldKey: null,
+    };
+    try {
+      const res = await apiRequest("POST", `/api/intake-forms/${formId}/fields`, payload);
+      if (!res.ok) {
+        const errBody = await res.json().catch(() => ({}));
+        throw new Error(errBody.detail ?? errBody.message ?? `HTTP ${res.status}`);
+      }
+      const newField = await res.json();
+      const ordered = [...sortedFields];
+      const srcIdx = ordered.findIndex(f => f.id === field.id);
+      if (srcIdx >= 0 && newField?.id) {
+        const reordered = ordered.map(f => f.id);
+        const filtered = reordered.filter(fid => fid !== newField.id);
+        filtered.splice(srcIdx + 1, 0, newField.id);
+        await apiRequest("PUT", `/api/intake-forms/${formId}/fields/reorder`, { fieldIds: filtered });
+      }
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] });
+      queryClient.invalidateQueries({ queryKey: ["/api/intake-forms"] });
+      if (newField?.id) setSelectedFieldId(newField.id);
+      toast({ title: "Field duplicated" });
+    } catch (err: any) {
+      toast({ title: "Failed to duplicate field", description: err?.message ?? "Unknown error", variant: "destructive" });
+    }
   };
 
   const addSmartField = (sf: SmartFieldDef) => {
@@ -1343,6 +1385,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
                               onMoveDown={() => moveField(idx, idx + 1)}
                               canMoveUp={idx > 0}
                               canMoveDown={idx < sortedFields.length - 1}
+                              onDuplicate={() => duplicateField(field)}
                               onDragStart={() => handlePreviewDragStart(idx)}
                               onDragOver={(e) => handlePreviewDragOver(e, idx)}
                               onDragEnd={handleDragEnd}
@@ -1376,6 +1419,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
                   allFields={sortedFields}
                   onUpdate={(data) => updateFieldMutation.mutate({ fieldId: selectedField.id, data })}
                   onDelete={() => { deleteFieldMutation.mutate(selectedField.id); setMobilePanel("preview"); }}
+                  onDuplicate={() => duplicateField(selectedField)}
                   isPending={updateFieldMutation.isPending}
                 />
               </div>
@@ -1401,11 +1445,12 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
 
 // ─── Field Editor ─────────────────────────────────────────────────────────────
 
-function FieldEditor({ field, allFields, onUpdate, onDelete, isPending }: {
+function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPending }: {
   field: FormField;
   allFields: FormField[];
   onUpdate: (data: any) => void;
   onDelete: () => void;
+  onDuplicate?: () => void;
   isPending: boolean;
 }) {
   const [local, setLocal] = useState({ ...field });
@@ -1594,11 +1639,21 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, isPending }: {
             </Badge>
           )}
         </div>
-        <Button size="sm" variant="ghost" className="text-destructive"
-          onClick={() => { if (confirm("Delete this field?")) onDelete(); }}
-          data-testid="button-delete-field">
-          <Trash2 className="h-3.5 w-3.5" />
-        </Button>
+        <div className="flex items-center gap-1">
+          {onDuplicate && (
+            <Button size="sm" variant="ghost"
+              onClick={onDuplicate}
+              title="Duplicate this field"
+              data-testid="button-duplicate-field">
+              <Copy className="h-3.5 w-3.5" />
+            </Button>
+          )}
+          <Button size="sm" variant="ghost" className="text-destructive"
+            onClick={() => { if (confirm("Delete this field?")) onDelete(); }}
+            data-testid="button-delete-field">
+            <Trash2 className="h-3.5 w-3.5" />
+          </Button>
+        </div>
       </div>
 
       {isSmart && (
