@@ -13,7 +13,7 @@ import { useToast } from "@/hooks/use-toast";
 import {
   Leaf, LogOut, CalendarDays, Clock, Package, MessageSquare, FileText,
   ChevronLeft, ChevronRight, CheckCircle2, AlertCircle, Loader2,
-  ArrowLeft, Plus, Minus, X,
+  ArrowLeft, Plus, Minus, X, Upload,
 } from "lucide-react";
 
 interface FormField {
@@ -361,6 +361,16 @@ function PortalFormField({ field, value, onChange }: {
           <SignaturePad value={value} onChange={onChange} fieldId={field.id} />
         </div>
       );
+    case "file_upload":
+      return (
+        <div className="space-y-1.5">
+          <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
+            {field.label}{field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
+          </label>
+          {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+          <FileUploadField value={value} onChange={onChange} fieldId={String(field.id)} />
+        </div>
+      );
     case "medication_list":
     case "allergy_list":
     case "medical_history_list":
@@ -605,6 +615,100 @@ function MatrixCellInput({ col, row, value, onChange, matrixVal, cols, setRow }:
   }
 }
 
+interface UploadedFile { name: string; type: string; size: number; dataUrl: string }
+const MAX_FILE_BYTES = 10 * 1024 * 1024;
+const MAX_FILES = 5;
+const ACCEPTED_FILES = "image/*,application/pdf";
+
+function FileUploadField({ value, onChange, fieldId }: { value: any; onChange: (val: any) => void; fieldId: string }) {
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const files: UploadedFile[] = Array.isArray(value) ? value : [];
+
+  const handleFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setError(null);
+    const incoming = Array.from(fileList);
+    if (files.length + incoming.length > MAX_FILES) {
+      setError(`You can upload up to ${MAX_FILES} files.`);
+      return;
+    }
+    const next: UploadedFile[] = [...files];
+    for (const f of incoming) {
+      if (f.size > MAX_FILE_BYTES) {
+        setError(`"${f.name}" is larger than 10 MB.`);
+        continue;
+      }
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error);
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(f);
+      });
+      next.push({ name: f.name, type: f.type || "application/octet-stream", size: f.size, dataUrl });
+    }
+    onChange(next);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  const removeFile = (idx: number) => {
+    const next = files.filter((_, i) => i !== idx);
+    onChange(next.length === 0 ? null : next);
+  };
+
+  return (
+    <div className="space-y-2">
+      <label
+        className="border-2 border-dashed border-gray-300 rounded-md px-4 py-6 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-gray-400 transition-colors bg-white"
+        data-testid={`portal-field-${fieldId}-upload`}
+      >
+        <Upload className="h-5 w-5 text-gray-500" />
+        <span className="text-sm font-medium" style={{ color: "#2e3a20" }}>Click to upload</span>
+        <span className="text-xs text-muted-foreground">Images or PDFs, up to 10 MB each (max {MAX_FILES})</span>
+        <input
+          ref={inputRef}
+          type="file"
+          accept={ACCEPTED_FILES}
+          multiple
+          className="hidden"
+          onChange={e => handleFiles(e.target.files)}
+          data-testid={`portal-field-${fieldId}-file-input`}
+        />
+      </label>
+      {error && <p className="text-xs text-red-600">{error}</p>}
+      {files.length > 0 && (
+        <ul className="space-y-1.5">
+          {files.map((f, i) => (
+            <li
+              key={i}
+              className="flex items-center gap-2 rounded border bg-gray-50 px-2 py-1.5"
+              data-testid={`portal-field-${fieldId}-file-${i}`}
+            >
+              {f.type.startsWith("image/") ? (
+                <img src={f.dataUrl} alt={f.name} className="h-8 w-8 rounded object-cover bg-white border" />
+              ) : (
+                <FileText className="h-5 w-5 text-gray-500 flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{f.name}</p>
+                <p className="text-[10px] text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => removeFile(i)}
+                className="text-xs text-red-600 hover:underline flex-shrink-0 px-1.5"
+                data-testid={`portal-field-${fieldId}-remove-${i}`}
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function SignaturePad({ value, onChange, fieldId }: { value: any; onChange: (val: string) => void; fieldId: number }) {
   const canvasRef = useRef<HTMLCanvasElement>(null);
   const typedCanvasRef = useRef<HTMLCanvasElement>(null);
@@ -767,6 +871,33 @@ function renderReadOnlyValue(field: FormField, value: any): JSX.Element {
   }
   if (field.fieldType === "signature" && typeof value === "string" && value.startsWith("data:image")) {
     return <img src={value} alt="Signature" className="border rounded bg-white max-h-32" />;
+  }
+  if (field.fieldType === "file_upload" && Array.isArray(value)) {
+    if (value.length === 0) return <p className="text-sm italic text-muted-foreground">No files uploaded</p>;
+    return (
+      <ul className="space-y-1.5">
+        {(value as Array<{ name: string; type: string; size: number; dataUrl: string }>).map((f, i) => (
+          <li key={i} className="flex items-center gap-2 rounded border bg-white px-2 py-1.5">
+            {f.type?.startsWith("image/") ? (
+              <a href={f.dataUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                <img src={f.dataUrl} alt={f.name} className="h-10 w-10 rounded object-cover border" />
+              </a>
+            ) : (
+              <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+            )}
+            <a
+              href={f.dataUrl}
+              download={f.name}
+              className="text-xs underline truncate flex-1 min-w-0"
+              style={{ color: "#2e3a20" }}
+            >
+              {f.name}
+            </a>
+            <span className="text-[10px] text-muted-foreground flex-shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
+          </li>
+        ))}
+      </ul>
+    );
   }
   if (Array.isArray(value)) {
     if (value.length === 0) return <p className="text-sm italic text-muted-foreground">No response</p>;

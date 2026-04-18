@@ -22,7 +22,7 @@ import {
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
   Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft,
-  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users
+  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users, Upload
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -110,6 +110,7 @@ const FIELD_TYPES = [
   { value: "family_history_chart", label: "Family History Chart" },
   { value: "symptom_checklist", label: "Symptom Checklist" },
   { value: "matrix", label: "Matrix / Grid Table" },
+  { value: "file_upload", label: "File Upload (Image / PDF)" },
 ];
 
 const MATRIX_COLUMN_TYPES = [
@@ -515,6 +516,7 @@ const FIELD_TYPE_ICONS: Record<string, React.ElementType> = {
   family_history_chart: Users,
   symptom_checklist: Activity,
   matrix: ListChecks,
+  file_upload: Upload,
 };
 
 function getFieldTypeIcon(type: string) {
@@ -540,7 +542,7 @@ const FIELD_PALETTE_GROUPS = [
   },
   {
     label: "Advanced",
-    types: ["matrix"],
+    types: ["matrix", "file_upload"],
   },
   {
     label: "Layout",
@@ -698,6 +700,13 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
         return (
           <div className="border-2 border-dashed border-border rounded-md h-20 flex items-center justify-center text-sm text-muted-foreground bg-muted/10">
             Sign here
+          </div>
+        );
+      case "file_upload":
+        return (
+          <div className="border-2 border-dashed border-border rounded-md h-20 flex flex-col items-center justify-center text-xs text-muted-foreground bg-muted/10 gap-1">
+            <Upload className="h-4 w-4" />
+            <span>Patient uploads images or PDFs here</span>
           </div>
         );
       case "medication_list":
