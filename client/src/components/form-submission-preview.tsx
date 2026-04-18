@@ -133,6 +133,17 @@ function findSignatureDataUrl(data: Record<string, any> | null | undefined): str
   return null;
 }
 
+// Responses may be keyed by either fieldKey (string slug) or field.id (numeric).
+// Different submission paths historically used different conventions, so try both.
+function getResponseValue(data: Record<string, any> | null | undefined, field: SubmissionField): any {
+  if (!data) return undefined;
+  const byKey = data[field.fieldKey];
+  if (byKey !== undefined) return byKey;
+  const byId = data[String(field.id)];
+  if (byId !== undefined) return byId;
+  return data[field.id as any];
+}
+
 function getColFraction(field: SubmissionField): number {
   const w = field.layoutJson?.columnWidth ?? "full";
   if (w === "half") return 0.5;
@@ -319,7 +330,7 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
 
     for (let i = 0; i < row.fields.length; i++) {
       const field = row.fields[i];
-      const value = data[field.fieldKey];
+      const value = getResponseValue(data, field);
       let rawDisplay: string;
       if (field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) {
         const cfg = field.optionsJson as { rows: any[]; columns: any[] };
@@ -430,7 +441,7 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
   }
 
   function renderSignatureField(field: SubmissionField) {
-    const fromResponses = data[field.fieldKey];
+    const fromResponses = getResponseValue(data, field);
     const fromSubmission = (detail as any)?.signatureJson;
     const value = (typeof fromResponses === "string" && fromResponses.startsWith("data:image"))
       ? fromResponses
@@ -657,7 +668,7 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
             const frac = getColFraction(field);
             const gapTotal = (row.fields.length - 1) * 8;
             const widthCalc = `calc(${(frac * 100).toFixed(1)}% - ${Math.round(gapTotal * frac)}px)`;
-            const value = data[field.fieldKey];
+            const value = getResponseValue(data, field);
             const isFamChart = field.fieldType === "family_history_chart" && typeof value === "object" && value !== null && !Array.isArray(value);
             const isSymptomChart = field.fieldType === "symptom_checklist" && typeof value === "object" && value !== null && !Array.isArray(value);
             const isList = (field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && Array.isArray(value);
@@ -739,7 +750,7 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
     }
     if (field.fieldType === "signature") {
       flushPending(`pre-${idx}`);
-      const fromResp = data[field.fieldKey];
+      const fromResp = getResponseValue(data, field);
       const sigVal = (typeof fromResp === "string" && fromResp.startsWith("data:image"))
         ? fromResp
         : (typeof signatureFallback === "string" && signatureFallback.startsWith("data:image"))
