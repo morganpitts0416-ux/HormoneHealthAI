@@ -319,57 +319,306 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
   const unsectionedFields = sortedFields.filter(f => !f.sectionId);
   const data = detail.rawSubmissionJson ?? {};
 
+  // Identify fields with option lists so we can render bullets for every option (selected or not)
+  function getOptionListInfo(field: SubmissionField): { isMulti: boolean; opts: string[] } | null {
+    const t = field.fieldType;
+    if (t === "yes_no") return { isMulti: false, opts: ["Yes", "No"] };
+    const isOptionType = t === "radio" || t === "checkbox" || t === "dropdown" || t === "select" || t === "single_choice" || t === "multi_choice";
+    if (!isOptionType) return null;
+    const opts = Array.isArray(field.optionsJson) ? field.optionsJson.map(String) : [];
+    if (opts.length === 0) return null;
+    const isMulti = t === "checkbox" || t === "multi_choice";
+    return { isMulti, opts };
+  }
+
+  function getSelectedSet(field: SubmissionField, value: any): Set<string> {
+    const set = new Set<string>();
+    if (value === null || value === undefined) return set;
+    if (Array.isArray(value)) {
+      for (const v of value) if (v !== null && v !== undefined && String(v) !== "") set.add(String(v));
+    } else if (typeof value === "boolean") {
+      set.add(value ? "Yes" : "No");
+    } else if (field.fieldType === "yes_no") {
+      const s = String(value).trim().toLowerCase();
+      if (s === "yes" || s === "true") set.add("Yes");
+      else if (s === "no" || s === "false") set.add("No");
+    } else {
+      const s = String(value).trim();
+      if (s) set.add(s);
+    }
+    return set;
+  }
+
+  // Draw a single option-list cell at (x, y) with width w. Returns total drawn height.
+  function drawOptionList(
+    field: SubmissionField,
+    info: { isMulti: boolean; opts: string[] },
+    selected: Set<string>,
+    extras: string[],
+    labelLines: string[],
+    x: number,
+    startY: number,
+    w: number,
+  ): number {
+    const padX = 2;
+    const padY = 3;
+    let cy = startY + padY;
+
+    doc.setFontSize(6.5);
+    doc.setTextColor(ACCENT);
+    doc.setFont("helvetica", "bold");
+    for (const ll of labelLines) {
+      doc.text(ll, x + padX, cy);
+      cy += 3;
+    }
+    cy += 1;
+
+    doc.setFontSize(8.5);
+    doc.setTextColor("#1c2414");
+    doc.setFont("helvetica", "normal");
+    const markerSize = 2.6;
+    const lineH = 4;
+    const items = [
+      ...info.opts.map(o => ({ label: o, sel: selected.has(o), italic: false })),
+      ...extras.map(o => ({ label: o, sel: true, italic: true })),
+    ];
+    for (const it of items) {
+      const wrapped = doc.splitTextToSize(sanitizeForPdf(it.label), w - padX * 2 - markerSize - 2);
+      const blockH = Math.max(lineH, wrapped.length * lineH);
+
+      const markerY = cy + 0.6;
+      doc.setDrawColor(it.sel ? GREEN : "#9ca08c");
+      doc.setLineWidth(0.25);
+      if (info.isMulti) {
+        if (it.sel) {
+          doc.setFillColor(GREEN);
+          doc.roundedRect(x + padX, markerY, markerSize, markerSize, 0.4, 0.4, "FD");
+          doc.setTextColor("#ffffff");
+          doc.setFontSize(6);
+          doc.setFont("helvetica", "bold");
+          doc.text("X", x + padX + markerSize / 2, markerY + markerSize - 0.6, { align: "center" });
+          doc.setFontSize(8.5);
+          doc.setFont("helvetica", "normal");
+          doc.setTextColor("#1c2414");
+        } else {
+          doc.roundedRect(x + padX, markerY, markerSize, markerSize, 0.4, 0.4, "S");
+        }
+      } else {
+        doc.circle(x + padX + markerSize / 2, markerY + markerSize / 2, markerSize / 2, it.sel ? "FD" : "S");
+        if (it.sel) {
+          doc.setFillColor(GREEN);
+          doc.circle(x + padX + markerSize / 2, markerY + markerSize / 2, markerSize / 2, "F");
+          doc.setFillColor("#ffffff");
+          doc.circle(x + padX + markerSize / 2, markerY + markerSize / 2, markerSize / 4, "F");
+        }
+      }
+
+      doc.setFont("helvetica", it.italic ? "italic" : (it.sel ? "bold" : "normal"));
+      doc.setTextColor("#1c2414");
+      let tY = cy + 3;
+      for (const ln of wrapped) {
+        doc.text(ln, x + padX + markerSize + 2, tY);
+        tY += lineH;
+      }
+      cy += blockH;
+    }
+    return cy - startY + padY;
+  }
+
+  // Compute (without drawing) the height an option list cell will take.
+  function measureOptionListHeight(
+    info: { isMulti: boolean; opts: string[] },
+    extras: string[],
+    labelLines: string[],
+    w: number,
+  ): number {
+    const padY = 3;
+    const padX = 2;
+    const markerSize = 2.6;
+    const lineH = 4;
+    let h = padY + labelLines.length * 3 + 1;
+    const items = [...info.opts, ...extras];
+    for (const it of items) {
+      doc.setFontSize(8.5);
+      doc.setFont("helvetica", "normal");
+      const wrapped = doc.splitTextToSize(sanitizeForPdf(it), w - padX * 2 - markerSize - 2);
+      h += Math.max(lineH, wrapped.length * lineH);
+    }
+    return h + padY;
+  }
+
+  // Render a matrix field as a proper full-width grid table.
+  function renderMatrixField(field: SubmissionField, value: any) {
+    const cfg = (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson))
+      ? field.optionsJson as { rows: any[]; columns: any[] }
+      : { rows: [], columns: [] };
+    const rows = Array.isArray(cfg.rows) ? cfg.rows : [];
+    const cols = Array.isArray(cfg.columns) ? cfg.columns : [];
+    const mv = (typeof value === "object" && value !== null && !Array.isArray(value)) ? value as Record<string, any> : {};
+
+    // Title
+    checkPage(8);
+    doc.setFontSize(8);
+    doc.setTextColor(ACCENT);
+    doc.setFont("helvetica", "bold");
+    doc.text(sanitizeForPdf((field.label || "").toUpperCase()), M, y + 3);
+    y += 5;
+
+    if (rows.length === 0 || cols.length === 0) {
+      doc.setFontSize(8.5);
+      doc.setTextColor(GRAY);
+      doc.setFont("helvetica", "italic");
+      doc.text("No matrix configured", M, y + 3);
+      y += 6;
+      return;
+    }
+
+    const labelColW = Math.min(60, Math.max(36, CW * 0.32));
+    const dataColW = (CW - labelColW) / cols.length;
+    const headerH = 7;
+    const rowH = 6.5;
+
+    checkPage(headerH + rows.length * rowH + 4);
+
+    // Header row
+    doc.setFillColor(FIELD_BG);
+    doc.rect(M, y, CW, headerH, "F");
+    doc.setDrawColor("#cccccc");
+    doc.setLineWidth(0.2);
+    doc.rect(M, y, CW, headerH, "S");
+    doc.setFontSize(7.5);
+    doc.setTextColor(GREEN);
+    doc.setFont("helvetica", "bold");
+    let hx = M + labelColW;
+    for (const c of cols) {
+      const headerLines = doc.splitTextToSize(sanitizeForPdf(String(c.header || "")), dataColW - 2);
+      const startY = y + headerH / 2 - ((headerLines.length - 1) * 2.5) / 2 + 1.5;
+      let hy = startY;
+      for (const hl of headerLines.slice(0, 2)) {
+        doc.text(hl, hx + dataColW / 2, hy, { align: "center" });
+        hy += 2.5;
+      }
+      doc.line(hx, y, hx, y + headerH);
+      hx += dataColW;
+    }
+    y += headerH;
+
+    // Body rows
+    doc.setFontSize(8);
+    doc.setTextColor("#1c2414");
+    doc.setFont("helvetica", "normal");
+    for (const r of rows) {
+      checkPage(rowH + 2);
+      doc.setDrawColor("#dddddd");
+      doc.line(M, y, M + CW, y + 0);
+      doc.rect(M, y, CW, rowH, "S");
+      // Row label
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(GREEN);
+      const labelWrapped = doc.splitTextToSize(sanitizeForPdf(String(r.label || "")), labelColW - 3);
+      doc.text(labelWrapped[0] ?? "", M + 2, y + rowH / 2 + 1);
+      doc.line(M + labelColW, y, M + labelColW, y + rowH);
+      // Data cells
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor("#1c2414");
+      let cx = M + labelColW;
+      for (const c of cols) {
+        const v = mv?.[r.id]?.[c.id];
+        const cellMidY = y + rowH / 2 + 1;
+        if (c.fieldType === "checkbox" || c.fieldType === "radio") {
+          const checked = v === true || v === "true" || v === c.id || v === c.header;
+          const sz = 2.6;
+          const bx = cx + dataColW / 2 - sz / 2;
+          const by = y + rowH / 2 - sz / 2;
+          doc.setDrawColor(checked ? GREEN : "#9ca08c");
+          doc.setLineWidth(0.3);
+          if (c.fieldType === "radio") {
+            doc.circle(bx + sz / 2, by + sz / 2, sz / 2, checked ? "FD" : "S");
+            if (checked) {
+              doc.setFillColor(GREEN);
+              doc.circle(bx + sz / 2, by + sz / 2, sz / 2, "F");
+              doc.setFillColor("#ffffff");
+              doc.circle(bx + sz / 2, by + sz / 2, sz / 4, "F");
+            }
+          } else {
+            if (checked) {
+              doc.setFillColor(GREEN);
+              doc.roundedRect(bx, by, sz, sz, 0.4, 0.4, "FD");
+              doc.setTextColor("#ffffff");
+              doc.setFontSize(6);
+              doc.setFont("helvetica", "bold");
+              doc.text("X", bx + sz / 2, by + sz - 0.6, { align: "center" });
+              doc.setFontSize(8);
+              doc.setFont("helvetica", "normal");
+              doc.setTextColor("#1c2414");
+            } else {
+              doc.roundedRect(bx, by, sz, sz, 0.4, 0.4, "S");
+            }
+          }
+        } else {
+          const txt = (v === undefined || v === null || String(v).trim() === "") ? "" : String(v);
+          const wrapped = doc.splitTextToSize(sanitizeForPdf(txt), dataColW - 3);
+          doc.text(wrapped[0] ?? "", cx + dataColW / 2, cellMidY, { align: "center" });
+        }
+        doc.line(cx, y, cx, y + rowH);
+        cx += dataColW;
+      }
+      y += rowH;
+    }
+    y += 3;
+  }
+
   function renderFieldRow(row: FieldRow) {
     const GAP = 3;
     const totalGap = GAP * (row.fields.length - 1);
     const usableWidth = CW - totalGap;
     const colWidths = row.fractions.map((f) => f * usableWidth);
 
+    type CellData =
+      | { kind: "text"; labelLines: string[]; lines: string[]; height: number }
+      | { kind: "options"; labelLines: string[]; info: { isMulti: boolean; opts: string[] }; selected: Set<string>; extras: string[]; height: number };
+
     let maxRowH = 0;
-    const fieldData: { labelLines: string[]; lines: string[]; height: number }[] = [];
+    const fieldData: CellData[] = [];
 
     for (let i = 0; i < row.fields.length; i++) {
       const field = row.fields[i];
       const value = getResponseValue(data, field);
+      const w = colWidths[i];
+
+      doc.setFontSize(6.5);
+      doc.setFont("helvetica", "bold");
+      const labelLines = doc.splitTextToSize(sanitizeForPdf(field.label.toUpperCase()), w - 4);
+
+      const optionInfo = getOptionListInfo(field);
+      if (optionInfo) {
+        const selected = getSelectedSet(field, value);
+        const optStrs = optionInfo.opts.map(String);
+        const extras: string[] = Array.from(selected).filter(s => !optStrs.includes(s));
+        const h = measureOptionListHeight(optionInfo, extras, labelLines, w);
+        maxRowH = Math.max(maxRowH, h);
+        fieldData.push({ kind: "options", labelLines, info: optionInfo, selected, extras, height: h });
+        continue;
+      }
+
       let rawDisplay: string;
-      if (field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) {
-        const cfg = field.optionsJson as { rows: any[]; columns: any[] };
-        const rows = Array.isArray(cfg.rows) ? cfg.rows : [];
-        const cols = Array.isArray(cfg.columns) ? cfg.columns : [];
-        const mv = (typeof value === "object" && value !== null && !Array.isArray(value)) ? value as Record<string, any> : {};
-        const lines: string[] = [];
-        for (const r of rows) {
-          const parts: string[] = [];
-          for (const c of cols) {
-            const v = mv?.[r.id]?.[c.id];
-            if (c.fieldType === "checkbox" || c.fieldType === "radio") {
-              if (v) parts.push(c.header || "Yes");
-            } else if (v !== undefined && v !== null && String(v).trim()) {
-              parts.push(`${c.header}: ${v}`);
-            }
-          }
-          if (parts.length) lines.push(`${r.label}: ${parts.join(", ")}`);
-        }
-        rawDisplay = lines.length ? lines.join("\n") : "None reported";
-      } else if (field.fieldType === "family_history_chart" && typeof value === "object" && !Array.isArray(value)) {
-        rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "None reported";
+      if (field.fieldType === "family_history_chart" && typeof value === "object" && value !== null && !Array.isArray(value)) {
+        rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "—";
       } else if (field.fieldType === "symptom_checklist" && typeof value === "object" && value !== null && !Array.isArray(value)) {
-        rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "None reported";
+        rawDisplay = Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("\n") || "—";
       } else if (Array.isArray(value)) {
-        rawDisplay = value.filter(Boolean).join("\n");
+        rawDisplay = value.filter(Boolean).map(v => typeof v === "object" ? JSON.stringify(v) : String(v)).join("\n") || "—";
+      } else if (value === null || value === undefined || String(value).trim() === "") {
+        rawDisplay = "—";
       } else {
         rawDisplay = String(value);
       }
       const displayValue = sanitizeForPdf(rawDisplay);
-
-      const lines = doc.splitTextToSize(displayValue, colWidths[i] - 4);
-      doc.setFontSize(6.5);
-      doc.setFont("helvetica", "bold");
-      const labelLines = doc.splitTextToSize(sanitizeForPdf(field.label.toUpperCase()), colWidths[i] - 4);
+      const lines = doc.splitTextToSize(displayValue, w - 4);
       const labelH = labelLines.length * 3;
       const h = 2.5 + labelH + 1.5 + lines.length * 4 + 3;
       maxRowH = Math.max(maxRowH, h);
-      fieldData.push({ labelLines, lines, height: h });
+      fieldData.push({ kind: "text", labelLines, lines, height: h });
     }
 
     checkPage(maxRowH + 2);
@@ -378,26 +627,31 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     for (let i = 0; i < row.fields.length; i++) {
       const w = colWidths[i];
       const fd = fieldData[i];
+      const field = row.fields[i];
 
       doc.setFillColor(FIELD_BG);
       doc.roundedRect(x, y, w, maxRowH, 1, 1, "F");
 
-      doc.setFontSize(6.5);
-      doc.setTextColor(ACCENT);
-      doc.setFont("helvetica", "bold");
-      let labelY = y + 3;
-      for (const ll of fd.labelLines) {
-        doc.text(ll, x + 2, labelY);
-        labelY += 3;
-      }
+      if (fd.kind === "options") {
+        drawOptionList(field, fd.info, fd.selected, fd.extras, fd.labelLines, x, y, w);
+      } else {
+        doc.setFontSize(6.5);
+        doc.setTextColor(ACCENT);
+        doc.setFont("helvetica", "bold");
+        let labelY = y + 3;
+        for (const ll of fd.labelLines) {
+          doc.text(ll, x + 2, labelY);
+          labelY += 3;
+        }
 
-      doc.setFontSize(9);
-      doc.setTextColor("#1c2414");
-      doc.setFont("helvetica", "normal");
-      let textY = labelY + 2.5;
-      for (const line of fd.lines) {
-        doc.text(line, x + 2, textY);
-        textY += 4;
+        doc.setFontSize(9);
+        doc.setTextColor("#1c2414");
+        doc.setFont("helvetica", "normal");
+        let textY = labelY + 2.5;
+        for (const line of fd.lines) {
+          doc.text(line, x + 2, textY);
+          textY += 4;
+        }
       }
 
       x += w + GAP;
@@ -523,6 +777,11 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
       if (field.fieldType === "signature") {
         flushPending();
         renderSignatureField(field);
+        continue;
+      }
+      if (field.fieldType === "matrix") {
+        flushPending();
+        renderMatrixField(field, getResponseValue(data, field));
         continue;
       }
       if (hasFieldValue(data, field)) pending.push(field);
