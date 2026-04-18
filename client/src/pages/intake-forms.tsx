@@ -74,6 +74,7 @@ interface FormField {
   validationJson: any;
   syncConfigJson: any;
   layoutJson: any;
+  conditionalLogicJson: any;
 }
 
 interface FormPublication {
@@ -1363,6 +1364,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
               <div className="flex-1 overflow-auto pb-14 md:pb-0">
                 <FieldEditor
                   field={selectedField}
+                  allFields={sortedFields}
                   onUpdate={(data) => updateFieldMutation.mutate({ fieldId: selectedField.id, data })}
                   onDelete={() => { deleteFieldMutation.mutate(selectedField.id); setMobilePanel("preview"); }}
                   isPending={updateFieldMutation.isPending}
@@ -1390,8 +1392,9 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
 
 // ─── Field Editor ─────────────────────────────────────────────────────────────
 
-function FieldEditor({ field, onUpdate, onDelete, isPending }: {
+function FieldEditor({ field, allFields, onUpdate, onDelete, isPending }: {
   field: FormField;
+  allFields: FormField[];
   onUpdate: (data: any) => void;
   onDelete: () => void;
   isPending: boolean;
@@ -1408,6 +1411,15 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
   );
   const [optionColumns, setOptionColumns] = useState<number>(
     (field.layoutJson as any)?.optionColumns ?? 1
+  );
+  const initialLogic = (field.conditionalLogicJson as any) ?? null;
+  const [condEnabled, setCondEnabled] = useState<boolean>(!!initialLogic?.enabled);
+  const [condAction, setCondAction] = useState<"show" | "hide">(initialLogic?.action ?? "show");
+  const [condMatch, setCondMatch] = useState<"all" | "any">(initialLogic?.match ?? "all");
+  const [condRules, setCondRules] = useState<Array<{ fieldId: number | null; operator: string; value: string }>>(
+    Array.isArray(initialLogic?.rules) && initialLogic.rules.length > 0
+      ? initialLogic.rules.map((r: any) => ({ fieldId: r.fieldId ?? null, operator: r.operator ?? "equals", value: r.value ?? "" }))
+      : []
   );
   const [scaleMin, setScaleMin] = useState<number>(
     (field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson)) ? (field.optionsJson as any).min ?? 1 : 1
@@ -1428,6 +1440,15 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
     setSyncDomain((field.syncConfigJson as any)?.domain ?? "none");
     setColumnWidth((field.layoutJson as any)?.columnWidth ?? "full");
     setOptionColumns((field.layoutJson as any)?.optionColumns ?? 1);
+    const lg = (field.conditionalLogicJson as any) ?? null;
+    setCondEnabled(!!lg?.enabled);
+    setCondAction(lg?.action ?? "show");
+    setCondMatch(lg?.match ?? "all");
+    setCondRules(
+      Array.isArray(lg?.rules) && lg.rules.length > 0
+        ? lg.rules.map((r: any) => ({ fieldId: r.fieldId ?? null, operator: r.operator ?? "equals", value: r.value ?? "" }))
+        : []
+    );
     const opts = field.optionsJson;
     if (opts && typeof opts === "object" && !Array.isArray(opts)) {
       setScaleMin((opts as any).min ?? 1);
@@ -1519,8 +1540,38 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
         data.syncConfigJson = null;
       }
     }
+    if (condEnabled && condRules.length > 0) {
+      data.conditionalLogicJson = {
+        enabled: true,
+        action: condAction,
+        match: condMatch,
+        rules: condRules
+          .filter(r => r.fieldId !== null)
+          .map(r => ({
+            fieldId: r.fieldId,
+            operator: r.operator,
+            ...(r.operator !== "is_answered" && r.operator !== "is_not_answered" ? { value: r.value } : {}),
+          })),
+      };
+    } else {
+      data.conditionalLogicJson = null;
+    }
     onUpdate(data);
   };
+
+  const eligibleSourceFields = allFields.filter(
+    f => f.id !== field.id && !["heading", "paragraph", "divider", "section_break", "spacer", "signature", "matrix", "family_history_chart"].includes(f.fieldType)
+  );
+  const getFieldOptions = (fId: number | null): string[] => {
+    if (fId == null) return [];
+    const f = allFields.find(x => x.id === fId);
+    if (!f) return [];
+    return Array.isArray(f.optionsJson) ? (f.optionsJson as string[]) : [];
+  };
+  const addCondRule = () => setCondRules(prev => [...prev, { fieldId: null, operator: "equals", value: "" }]);
+  const removeCondRule = (i: number) => setCondRules(prev => prev.filter((_, idx) => idx !== i));
+  const updateCondRule = (i: number, patch: Partial<{ fieldId: number | null; operator: string; value: string }>) =>
+    setCondRules(prev => prev.map((r, idx) => idx === i ? { ...r, ...patch } : r));
 
   return (
     <div className="p-4 space-y-4">
@@ -1837,6 +1888,129 @@ function FieldEditor({ field, onUpdate, onDelete, isPending }: {
           </>
         )}
       </div>
+
+      {!isDecorative && (
+        <>
+          <Separator />
+          <div className="space-y-2">
+            <div className="flex items-center justify-between">
+              <Label className="text-xs font-medium">Conditional Logic</Label>
+              <Switch
+                checked={condEnabled}
+                onCheckedChange={(v) => {
+                  setCondEnabled(v);
+                  if (v && condRules.length === 0) addCondRule();
+                }}
+                data-testid="switch-conditional-logic"
+              />
+            </div>
+            <p className="text-[11px] text-muted-foreground">
+              Show or hide this field based on other answers.
+            </p>
+            {condEnabled && (
+              <div className="space-y-2 rounded-md border p-2 bg-muted/30">
+                <div className="flex items-center gap-1.5 flex-wrap text-xs">
+                  <Select value={condAction} onValueChange={(v: any) => setCondAction(v)}>
+                    <SelectTrigger className="h-7 w-[110px] text-xs" data-testid="select-cond-action">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="show">Show field</SelectItem>
+                      <SelectItem value="hide">Hide field</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span>when</span>
+                  <Select value={condMatch} onValueChange={(v: any) => setCondMatch(v)}>
+                    <SelectTrigger className="h-7 w-[70px] text-xs" data-testid="select-cond-match">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="all">all</SelectItem>
+                      <SelectItem value="any">any</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <span>match:</span>
+                </div>
+                {condRules.map((rule, i) => {
+                  const sourceOptions = getFieldOptions(rule.fieldId);
+                  const needsValue = rule.operator !== "is_answered" && rule.operator !== "is_not_answered";
+                  return (
+                    <div key={i} className="space-y-1.5 rounded border bg-background p-1.5">
+                      <div className="flex items-center gap-1">
+                        <Select
+                          value={rule.fieldId != null ? String(rule.fieldId) : ""}
+                          onValueChange={(v) => updateCondRule(i, { fieldId: parseInt(v), value: "" })}
+                        >
+                          <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-cond-field-${i}`}>
+                            <SelectValue placeholder="Select question" />
+                          </SelectTrigger>
+                          <SelectContent>
+                            {eligibleSourceFields.length === 0 ? (
+                              <div className="px-2 py-1.5 text-xs text-muted-foreground">No other questions yet</div>
+                            ) : eligibleSourceFields.map(f => (
+                              <SelectItem key={f.id} value={String(f.id)}>
+                                {f.label || `(${f.fieldType})`}
+                              </SelectItem>
+                            ))}
+                          </SelectContent>
+                        </Select>
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          className="h-7 w-7 text-destructive flex-shrink-0"
+                          onClick={() => removeCondRule(i)}
+                          data-testid={`button-remove-cond-rule-${i}`}
+                        >
+                          <X className="h-3.5 w-3.5" />
+                        </Button>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Select value={rule.operator} onValueChange={(v) => updateCondRule(i, { operator: v })}>
+                          <SelectTrigger className="h-7 text-xs w-[130px]" data-testid={`select-cond-operator-${i}`}>
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="equals">equals</SelectItem>
+                            <SelectItem value="not_equals">does not equal</SelectItem>
+                            <SelectItem value="contains">contains</SelectItem>
+                            <SelectItem value="is_answered">is answered</SelectItem>
+                            <SelectItem value="is_not_answered">is not answered</SelectItem>
+                          </SelectContent>
+                        </Select>
+                        {needsValue && (
+                          sourceOptions.length > 0 ? (
+                            <Select value={rule.value} onValueChange={(v) => updateCondRule(i, { value: v })}>
+                              <SelectTrigger className="h-7 text-xs flex-1" data-testid={`select-cond-value-${i}`}>
+                                <SelectValue placeholder="Select value" />
+                              </SelectTrigger>
+                              <SelectContent>
+                                {sourceOptions.map(opt => (
+                                  <SelectItem key={opt} value={opt}>{opt}</SelectItem>
+                                ))}
+                              </SelectContent>
+                            </Select>
+                          ) : (
+                            <Input
+                              value={rule.value}
+                              onChange={(e) => updateCondRule(i, { value: e.target.value })}
+                              placeholder="Value"
+                              className="h-7 text-xs flex-1"
+                              data-testid={`input-cond-value-${i}`}
+                            />
+                          )
+                        )}
+                      </div>
+                    </div>
+                  );
+                })}
+                <Button size="sm" variant="outline" onClick={addCondRule} className="w-full text-xs" data-testid="button-add-cond-rule">
+                  <Plus className="h-3 w-3 mr-1" /> Add rule
+                </Button>
+              </div>
+            )}
+          </div>
+        </>
+      )}
 
       <div className="pt-2">
         <Button onClick={handleSave} disabled={isPending} className="w-full" data-testid="button-save-field">
