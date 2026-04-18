@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
+import { isFieldVisible } from "@/lib/form-conditions";
 import { usePortalUnreadCount } from "@/hooks/use-portal-unread";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -939,14 +940,18 @@ export default function PortalForms() {
               {formDetail.form.description && (
                 <p className="text-sm text-muted-foreground">{formDetail.form.description}</p>
               )}
-              {formDetail.fields.map((field: FormField) => (
-                <PortalFormField
-                  key={field.id}
-                  field={field}
-                  value={responses[field.id]}
-                  onChange={val => setResponses(prev => ({ ...prev, [field.id]: val }))}
-                />
-              ))}
+              {formDetail.fields.map((field: FormField) => {
+                const logic = (field as any).conditionalLogicJson;
+                if (!isFieldVisible(logic, (id) => responses[id])) return null;
+                return (
+                  <PortalFormField
+                    key={field.id}
+                    field={field}
+                    value={responses[field.id]}
+                    onChange={val => setResponses(prev => ({ ...prev, [field.id]: val }))}
+                  />
+                );
+              })}
               <div className="pt-4">
                 <Button
                   className="w-full text-white font-semibold"

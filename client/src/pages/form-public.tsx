@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { isFieldVisible } from "@/lib/form-conditions";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -381,18 +382,27 @@ function FieldGrid({ fields, responses, setResponse, validationErrors, className
     if (w === "half") return "col-span-6 sm:col-span-3";
     return "col-span-6";
   };
+  const getAnswerByFieldId = (id: number) => {
+    const f = fields.find(x => x.id === id);
+    if (!f) return undefined;
+    return responses[f.fieldKey];
+  };
   return (
     <div className={`grid grid-cols-6 gap-x-4 gap-y-6 ${className}`}>
-      {fields.map(field => (
-        <div key={field.id} className={colSpan(field)}>
-          <FieldRenderer
-            field={field}
-            value={responses[field.fieldKey]}
-            onChange={v => setResponse(field.fieldKey, v)}
-            error={validationErrors[field.fieldKey]}
-          />
-        </div>
-      ))}
+      {fields.map(field => {
+        const logic = (field as any).conditionalLogicJson;
+        if (!isFieldVisible(logic, getAnswerByFieldId)) return null;
+        return (
+          <div key={field.id} className={colSpan(field)}>
+            <FieldRenderer
+              field={field}
+              value={responses[field.fieldKey]}
+              onChange={v => setResponse(field.fieldKey, v)}
+              error={validationErrors[field.fieldKey]}
+            />
+          </div>
+        );
+      })}
     </div>
   );
 }
