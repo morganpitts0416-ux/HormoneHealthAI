@@ -3297,8 +3297,24 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (!formId) return res.status(400).json({ message: "formId required" });
 
       const clinicId = getEffectiveClinicId(req);
-      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
-      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      let patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) {
+        // Fallback: scoped lookup missed (e.g. patient created by a different
+        // provider in the same clinic, or user's defaultClinicId is null/stale).
+        // Verify by raw lookup and ensure the patient belongs to this clinic
+        // OR was created by this clinician.
+        const raw = await storage.getPatientById(patientId);
+        if (raw && (
+          (clinicId && raw.clinicId === clinicId) ||
+          raw.userId === clinicianId
+        )) {
+          patient = raw;
+        }
+      }
+      if (!patient) {
+        console.warn("[Send Form Link] Patient not found", { patientId, clinicianId, clinicId });
+        return res.status(404).json({ message: "Patient not found" });
+      }
 
       const form = await storage.getIntakeFormByIdAndClinic(parseInt(formId), clinicId, clinicianId);
       if (!form) return res.status(404).json({ message: "Form not found" });
