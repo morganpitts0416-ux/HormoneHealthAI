@@ -422,7 +422,10 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
   }
 
   function renderSignatureField(field: SubmissionField) {
-    const value = data[field.fieldKey];
+    const fromResponses = data[field.fieldKey];
+    const value = (typeof fromResponses === "string" && fromResponses.startsWith("data:image"))
+      ? fromResponses
+      : (detail as any)?.signatureJson;
     checkPage(28);
     y += 4;
     doc.setFontSize(7);
@@ -627,7 +630,7 @@ function PreviewSignature({ field, value }: { field: SubmissionField; value: any
   );
 }
 
-function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: Record<string, any> }) {
+function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: SubmissionField[]; data: Record<string, any>; signatureFallback?: string | null }) {
   // Walk fields in order; collect runs of "value" data fields into rows, but flush
   // those runs whenever a decorative or signature field appears so layout order is preserved.
   const elements: React.ReactNode[] = [];
@@ -718,7 +721,11 @@ function PreviewFieldGroup({ fields, data }: { fields: SubmissionField[]; data: 
     }
     if (field.fieldType === "signature") {
       flushPending(`pre-${idx}`);
-      elements.push(<PreviewSignature key={`sig-${field.id}`} field={field} value={data[field.fieldKey]} />);
+      const fromResp = data[field.fieldKey];
+      const sigVal = (typeof fromResp === "string" && fromResp.startsWith("data:image"))
+        ? fromResp
+        : (signatureFallback ?? null);
+      elements.push(<PreviewSignature key={`sig-${field.id}`} field={field} value={sigVal} />);
       return;
     }
     if (hasFieldValue(data, field)) {
@@ -964,7 +971,7 @@ export function FormSubmissionPreviewDialog({
               <Loader2 className="h-6 w-6 animate-spin" style={{ color: "#7a8a64" }} />
             </div>
           ) : detail ? (
-            <ScrollArea className="flex-1 min-h-0 -mx-6 px-6">
+            <div className="flex-1 min-h-0 overflow-y-auto -mx-6 px-6">
               <div className="rounded-lg border overflow-hidden" style={{ borderColor: "#e0ddd6", backgroundColor: "#fff" }}>
                 <div className="px-5 py-4" style={{ backgroundColor: "#f5f2ed", borderBottom: "2px solid #5a7040" }}>
                   <div className="flex items-center gap-3 flex-wrap">
@@ -1019,7 +1026,7 @@ export function FormSubmissionPreviewDialog({
 
                 <div className="px-5 py-4 space-y-4">
                   {unsectionedFields.length > 0 && (
-                    <PreviewFieldGroup fields={unsectionedFields} data={data} />
+                    <PreviewFieldGroup fields={unsectionedFields} data={data} signatureFallback={(detail as any).signatureJson} />
                   )}
 
                   {sortedSections.map(section => {
@@ -1033,7 +1040,7 @@ export function FormSubmissionPreviewDialog({
                           </h4>
                           <div className="flex-1 h-px" style={{ backgroundColor: "#e0ddd6" }} />
                         </div>
-                        <PreviewFieldGroup fields={sectionFields} data={data} />
+                        <PreviewFieldGroup fields={sectionFields} data={data} signatureFallback={(detail as any).signatureJson} />
                       </div>
                     );
                   })}
@@ -1056,7 +1063,7 @@ export function FormSubmissionPreviewDialog({
                   </div>
                 )}
               </div>
-            </ScrollArea>
+            </div>
           ) : (
             <div className="py-12 text-center text-sm" style={{ color: "#999" }}>Submission not found</div>
           )}
