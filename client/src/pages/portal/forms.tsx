@@ -17,6 +17,7 @@ import {
 
 interface FormField {
   id: number;
+  fieldKey: string;
   fieldType: string;
   label: string;
   placeholder?: string | null;
@@ -1136,20 +1137,49 @@ export default function PortalForms() {
                   {viewingDetail.form.description && (
                     <p className="text-sm text-muted-foreground">{viewingDetail.form.description}</p>
                   )}
-                  {viewingDetail.fields
-                    .filter(f => !["heading", "paragraph"].includes(f.fieldType))
-                    .map(field => (
+                  {viewingDetail.fields.map(field => {
+                    if (field.fieldType === "heading") {
+                      return (
+                        <div key={field.id} className="text-sm font-bold pt-1" style={{ color: "#2e3a20" }}>
+                          <RichTextView html={field.label || ""} />
+                        </div>
+                      );
+                    }
+                    if (field.fieldType === "paragraph") {
+                      return (
+                        <div key={field.id} className="text-sm" style={{ color: "#2e3a20" }}>
+                          <RichTextView html={field.label || ""} />
+                        </div>
+                      );
+                    }
+                    if (field.fieldType === "divider" || field.fieldType === "section_break") {
+                      return <hr key={field.id} className="my-1" style={{ borderColor: "#ede8df" }} />;
+                    }
+                    if (field.fieldType === "spacer") {
+                      return <div key={field.id} className="h-3" />;
+                    }
+                    if (field.fieldType === "signature") {
+                      const sigVal = viewingDetail.submission.responses?.[field.fieldKey]
+                        ?? viewingDetail.submission.signature;
+                      const isImg = typeof sigVal === "string" && sigVal.startsWith("data:image");
+                      return (
+                        <div key={field.id} className="space-y-1.5">
+                          <p className="text-sm font-medium" style={{ color: "#2e3a20" }}>{field.label}</p>
+                          {isImg ? (
+                            <img src={sigVal} alt="Signature" className="border rounded bg-white max-h-32" />
+                          ) : (
+                            <p className="text-sm italic text-muted-foreground">No signature provided</p>
+                          )}
+                        </div>
+                      );
+                    }
+                    return (
                       <div key={field.id} className="space-y-1.5">
                         <p className="text-sm font-medium" style={{ color: "#2e3a20" }}>{field.label}</p>
-                        {renderReadOnlyValue(field, viewingDetail.submission.responses?.[field.id])}
+                        {renderReadOnlyValue(field, viewingDetail.submission.responses?.[field.fieldKey])}
                       </div>
-                    ))}
-                  {viewingDetail.submission.signature && typeof viewingDetail.submission.signature === "string" && viewingDetail.submission.signature.startsWith("data:image") && (
-                    <div className="space-y-1.5 pt-2 border-t" style={{ borderColor: "#ede8df" }}>
-                      <p className="text-sm font-medium" style={{ color: "#2e3a20" }}>Signature</p>
-                      <img src={viewingDetail.submission.signature} alt="Signature" className="border rounded bg-white max-h-32" />
-                    </div>
-                  )}
+                    );
+                  })}
                 </>
               ) : (
                 <div className="text-center py-8">

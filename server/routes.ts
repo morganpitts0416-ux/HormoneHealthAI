@@ -8379,6 +8379,23 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         }
       }
 
+      // Auto-extract signature from responses if a signature field exists and no
+      // separate `signature` was sent. This keeps signatureJson populated even though
+      // the public form submits the data URL inside responses[fieldKey].
+      let resolvedSignature: string | null = (typeof signature === "string" && signature.startsWith("data:image")) ? signature : null;
+      if (!resolvedSignature) {
+        const allFields = await storage.getFormFields(pub.formId);
+        for (const f of allFields) {
+          if (f.fieldType === "signature") {
+            const v = responses?.[f.fieldKey];
+            if (typeof v === "string" && v.startsWith("data:image")) {
+              resolvedSignature = v;
+              break;
+            }
+          }
+        }
+      }
+
       const submission = await storage.createFormSubmission({
         formId: pub.formId,
         formVersion: form.version,
@@ -8391,7 +8408,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
         status: "submitted",
         rawSubmissionJson: responses,
         normalizedSubmissionJson: responses,
-        signatureJson: signature ?? null,
+        signatureJson: resolvedSignature,
         reviewStatus: "pending",
         syncStatus: "not_synced",
         submitterName: submitterName ?? null,
