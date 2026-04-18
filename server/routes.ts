@@ -7,8 +7,8 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments } from "@shared/schema";
-import { eq, and, sql } from "drizzle-orm";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable } from "@shared/schema";
+import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
@@ -4665,6 +4665,147 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       res.json(encounters);
     } catch (err) {
       res.status(500).json({ message: "Failed to load encounters" });
+    }
+  });
+
+  // GET /api/encounters/open?providerId=N — list unsigned encounters for a target provider in this clinic.
+  // Defaults to the requesting user. providerId must be an active member of the requester's clinic.
+  app.get("/api/encounters/open", requireAuth, async (req, res) => {
+    try {
+      const requesterId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+
+      let providerId = requesterId;
+      if (req.query.providerId !== undefined) {
+        const parsed = parseInt(req.query.providerId as string, 10);
+        if (!Number.isInteger(parsed) || parsed <= 0) {
+          return res.status(400).json({ message: "Invalid providerId" });
+        }
+        providerId = parsed;
+      }
+
+      // If the caller asks for someone else, verify that user is in the same clinic.
+      if (providerId !== requesterId) {
+        if (!clinicId) {
+          return res.status(403).json({ message: "Cross-provider access not permitted" });
+        }
+        const [membership] = await storageDb
+          .select({ userId: clinicMemberships.userId })
+          .from(clinicMemberships)
+          .where(
+            and(
+              eq(clinicMemberships.clinicId, clinicId),
+              eq(clinicMemberships.userId, providerId),
+              eq(clinicMemberships.isActive, true),
+            ),
+          )
+          .limit(1);
+        if (!membership) {
+          return res.status(403).json({ message: "Provider is not a member of your clinic" });
+        }
+      }
+
+      // Only allow the legacy `clinicId IS NULL` fallback for the user's *own* records.
+      const providerScope = clinicId
+        ? providerId === requesterId
+          ? and(
+              eq(clinicalEncounters.clinicianId, providerId),
+              or(
+                eq(clinicalEncounters.clinicId, clinicId),
+                isNull(clinicalEncounters.clinicId),
+              ),
+            )
+          : and(
+              eq(clinicalEncounters.clinicianId, providerId),
+              eq(clinicalEncounters.clinicId, clinicId),
+            )
+        : eq(clinicalEncounters.clinicianId, providerId);
+
+      const rows = await storageDb
+        .select({
+          id: clinicalEncounters.id,
+          clinicianId: clinicalEncounters.clinicianId,
+          patientId: clinicalEncounters.patientId,
+          visitDate: clinicalEncounters.visitDate,
+          visitType: clinicalEncounters.visitType,
+          chiefComplaint: clinicalEncounters.chiefComplaint,
+          soapGeneratedAt: clinicalEncounters.soapGeneratedAt,
+          updatedAt: clinicalEncounters.updatedAt,
+          patientFirstName: patientsTable.firstName,
+          patientLastName: patientsTable.lastName,
+        })
+        .from(clinicalEncounters)
+        .innerJoin(patientsTable, eq(clinicalEncounters.patientId, patientsTable.id))
+        .where(and(providerScope, isNull(clinicalEncounters.signedAt)))
+        .orderBy(desc(clinicalEncounters.updatedAt));
+
+      res.json(rows);
+    } catch (err) {
+      console.error("[Open Encounters]", err);
+      res.status(500).json({ message: "Failed to load open encounters" });
+    }
+  });
+
+  // GET /api/clinic/users — list provider members of the requester's clinic for use in
+  // the dashboard "view open notes by provider" selector. Available to any authed user.
+  // Note: clinician_staff rows have no users.id link and cannot own encounters, so they
+  // are intentionally excluded — only entries here are valid encounter clinicianId values.
+  app.get("/api/clinic/users", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const requesterId = getClinicianId(req);
+      const me = await storage.getUserById(requesterId);
+      const meEntry = me ? {
+        id: me.id,
+        firstName: me.firstName,
+        lastName: me.lastName,
+        title: me.title ?? null,
+        kind: "provider" as const,
+        displayName: `${me.title ? me.title + " " : ""}${me.firstName} ${me.lastName}`.trim(),
+      } : null;
+
+      if (!clinicId) {
+        return res.json(meEntry ? [meEntry] : []);
+      }
+
+      const memberRows = await storageDb
+        .select({
+          userId: clinicMemberships.userId,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+          title: usersTable.title,
+        })
+        .from(clinicMemberships)
+        .innerJoin(usersTable, eq(clinicMemberships.userId, usersTable.id))
+        .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.isActive, true)));
+
+      const seen = new Set<number>();
+      const out: Array<{ id: number; firstName: string; lastName: string; title: string | null; kind: "provider" | "staff"; displayName: string }> = [];
+
+      for (const m of memberRows) {
+        if (seen.has(m.userId)) continue;
+        seen.add(m.userId);
+        out.push({
+          id: m.userId,
+          firstName: m.firstName,
+          lastName: m.lastName,
+          title: m.title ?? null,
+          kind: "provider",
+          displayName: `${m.title ? m.title + " " : ""}${m.firstName} ${m.lastName}`.trim(),
+        });
+      }
+
+      // Always ensure the requester themselves is in the list (covers users without a
+      // membership row, e.g. legacy single-tenant accounts).
+      if (meEntry && !seen.has(meEntry.id)) {
+        out.unshift(meEntry);
+      }
+
+      out.sort((a, b) => a.displayName.localeCompare(b.displayName));
+      res.json(out);
+    } catch (err) {
+      console.error("[Clinic Users]", err);
+      res.status(500).json({ message: "Failed to load clinic users" });
     }
   });
 
