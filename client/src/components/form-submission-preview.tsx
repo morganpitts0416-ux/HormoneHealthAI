@@ -326,7 +326,7 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     const colWidths = row.fractions.map((f) => f * usableWidth);
 
     let maxRowH = 0;
-    const fieldData: { label: string; lines: string[]; height: number }[] = [];
+    const fieldData: { labelLines: string[]; lines: string[]; height: number }[] = [];
 
     for (let i = 0; i < row.fields.length; i++) {
       const field = row.fields[i];
@@ -363,9 +363,13 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
       const displayValue = sanitizeForPdf(rawDisplay);
 
       const lines = doc.splitTextToSize(displayValue, colWidths[i] - 4);
-      const h = 4 + lines.length * 4 + 3;
+      doc.setFontSize(6.5);
+      doc.setFont("helvetica", "bold");
+      const labelLines = doc.splitTextToSize(sanitizeForPdf(field.label.toUpperCase()), colWidths[i] - 4);
+      const labelH = labelLines.length * 3;
+      const h = 2.5 + labelH + 1.5 + lines.length * 4 + 3;
       maxRowH = Math.max(maxRowH, h);
-      fieldData.push({ label: field.label.toUpperCase(), lines, height: h });
+      fieldData.push({ labelLines, lines, height: h });
     }
 
     checkPage(maxRowH + 2);
@@ -381,12 +385,16 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
       doc.setFontSize(6.5);
       doc.setTextColor(ACCENT);
       doc.setFont("helvetica", "bold");
-      doc.text(sanitizeForPdf(fd.label), x + 2, y + 3.5);
+      let labelY = y + 3;
+      for (const ll of fd.labelLines) {
+        doc.text(ll, x + 2, labelY);
+        labelY += 3;
+      }
 
       doc.setFontSize(9);
       doc.setTextColor("#1c2414");
       doc.setFont("helvetica", "normal");
-      let textY = y + 7.5;
+      let textY = labelY + 2.5;
       for (const line of fd.lines) {
         doc.text(line, x + 2, textY);
         textY += 4;
