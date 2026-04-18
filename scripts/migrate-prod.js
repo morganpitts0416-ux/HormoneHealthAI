@@ -20,6 +20,7 @@ const migrations = [
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_current_period_end timestamp`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_cancel_at_period_end boolean NOT NULL DEFAULT false`,
   `ALTER TABLE users ADD COLUMN IF NOT EXISTS free_account boolean NOT NULL DEFAULT false`,
+  `ALTER TABLE patient_form_assignments ADD COLUMN IF NOT EXISTS delivery_mode varchar(20) NOT NULL DEFAULT 'portal'`,
 ];
 
 async function run() {
