@@ -568,6 +568,155 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     y += 3;
   }
 
+  function renderSymptomChecklist(field: SubmissionField, value: any) {
+    const symptoms: string[] = Array.isArray(field.optionsJson) ? field.optionsJson.map(String) : [];
+    const val: Record<string, string> = (typeof value === "object" && value !== null && !Array.isArray(value)) ? value as Record<string, string> : {};
+    const standard = ["None", "Mild", "Moderate", "Severe"];
+    // Include any custom rating values actually present in the responses (older forms used different rating sets).
+    const present = Array.from(new Set(Object.values(val).filter(v => v !== null && v !== undefined && String(v).trim() !== "").map(v => String(v))));
+    const extras = present.filter(p => !standard.includes(p));
+    const ratings = [...standard, ...extras];
+
+    checkPage(8);
+    doc.setFontSize(8);
+    doc.setTextColor(ACCENT);
+    doc.setFont("helvetica", "bold");
+    doc.text(sanitizeForPdf((field.label || "").toUpperCase()), M, y + 3);
+    y += 5;
+
+    if (symptoms.length === 0) {
+      doc.setFontSize(8.5);
+      doc.setTextColor(GRAY);
+      doc.setFont("helvetica", "italic");
+      doc.text("No symptoms configured", M, y + 3);
+      y += 6;
+      return;
+    }
+
+    const labelColW = Math.min(80, Math.max(50, CW * 0.42));
+    const dataColW = (CW - labelColW) / ratings.length;
+    const headerH = 7;
+    const rowH = 6.5;
+
+    checkPage(headerH + symptoms.length * rowH + 4);
+
+    // Header
+    doc.setFillColor(FIELD_BG);
+    doc.rect(M, y, CW, headerH, "F");
+    doc.setDrawColor("#cccccc");
+    doc.setLineWidth(0.2);
+    doc.rect(M, y, CW, headerH, "S");
+    doc.setFontSize(7.5);
+    doc.setTextColor(GREEN);
+    doc.setFont("helvetica", "bold");
+    doc.text("Symptom", M + 2, y + headerH / 2 + 1.5);
+    doc.line(M + labelColW, y, M + labelColW, y + headerH);
+    let hx = M + labelColW;
+    for (const r of ratings) {
+      const wrapped = doc.splitTextToSize(sanitizeForPdf(r), dataColW - 2);
+      doc.text(wrapped[0] ?? "", hx + dataColW / 2, y + headerH / 2 + 1.5, { align: "center" });
+      doc.line(hx, y, hx, y + headerH);
+      hx += dataColW;
+    }
+    y += headerH;
+
+    // Body
+    doc.setFontSize(8);
+    doc.setFont("helvetica", "normal");
+    for (const sym of symptoms) {
+      checkPage(rowH + 2);
+      doc.rect(M, y, CW, rowH, "S");
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(GREEN);
+      const lblWrapped = doc.splitTextToSize(sanitizeForPdf(sym), labelColW - 3);
+      doc.text(lblWrapped[0] ?? "", M + 2, y + rowH / 2 + 1);
+      doc.line(M + labelColW, y, M + labelColW, y + rowH);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor("#1c2414");
+      const selected = val?.[sym] ? String(val[sym]) : "";
+      let cx = M + labelColW;
+      for (const r of ratings) {
+        const isSel = selected === r;
+        const sz = 2.6;
+        const bx = cx + dataColW / 2 - sz / 2;
+        const by = y + rowH / 2 - sz / 2;
+        doc.setDrawColor(isSel ? GREEN : "#9ca08c");
+        doc.setLineWidth(0.3);
+        doc.circle(bx + sz / 2, by + sz / 2, sz / 2, isSel ? "FD" : "S");
+        if (isSel) {
+          doc.setFillColor(GREEN);
+          doc.circle(bx + sz / 2, by + sz / 2, sz / 2, "F");
+          doc.setFillColor("#ffffff");
+          doc.circle(bx + sz / 2, by + sz / 2, sz / 4, "F");
+        }
+        doc.line(cx, y, cx, y + rowH);
+        cx += dataColW;
+      }
+      y += rowH;
+    }
+    y += 3;
+  }
+
+  function renderFamilyHistoryChart(field: SubmissionField, value: any) {
+    const FAMILY_MEMBERS = [
+      "Mother", "Father",
+      "Maternal Grandmother", "Maternal Grandfather",
+      "Paternal Grandmother", "Paternal Grandfather",
+      "Siblings", "Children",
+    ];
+    const chart: Record<string, string> = (typeof value === "object" && value !== null && !Array.isArray(value)) ? value as Record<string, string> : {};
+
+    checkPage(8);
+    doc.setFontSize(8);
+    doc.setTextColor(ACCENT);
+    doc.setFont("helvetica", "bold");
+    doc.text(sanitizeForPdf((field.label || "").toUpperCase()), M, y + 3);
+    y += 5;
+
+    const labelColW = Math.min(60, Math.max(44, CW * 0.28));
+    const dataColW = CW - labelColW;
+    const headerH = 7;
+
+    checkPage(headerH + 4);
+
+    doc.setFillColor(FIELD_BG);
+    doc.rect(M, y, CW, headerH, "F");
+    doc.setDrawColor("#cccccc");
+    doc.setLineWidth(0.2);
+    doc.rect(M, y, CW, headerH, "S");
+    doc.setFontSize(7.5);
+    doc.setTextColor(GREEN);
+    doc.setFont("helvetica", "bold");
+    doc.text("Family Member", M + 2, y + headerH / 2 + 1.5);
+    doc.line(M + labelColW, y, M + labelColW, y + headerH);
+    doc.text("Medical Conditions", M + labelColW + 2, y + headerH / 2 + 1.5);
+    y += headerH;
+
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "normal");
+    for (const member of FAMILY_MEMBERS) {
+      const text = (chart[member] && String(chart[member]).trim()) ? String(chart[member]) : "—";
+      const wrapped = doc.splitTextToSize(sanitizeForPdf(text), dataColW - 4);
+      const rowH = Math.max(6.5, wrapped.length * 4 + 2.5);
+      checkPage(rowH + 2);
+      doc.setDrawColor("#cccccc");
+      doc.rect(M, y, CW, rowH, "S");
+      doc.setFont("helvetica", "bold");
+      doc.setTextColor(GREEN);
+      doc.text(member, M + 2, y + rowH / 2 + 1);
+      doc.line(M + labelColW, y, M + labelColW, y + rowH);
+      doc.setFont("helvetica", "normal");
+      doc.setTextColor(text === "—" ? GRAY : "#1c2414");
+      let ty = y + 4;
+      for (const ln of wrapped) {
+        doc.text(ln, M + labelColW + 2, ty);
+        ty += 4;
+      }
+      y += rowH;
+    }
+    y += 3;
+  }
+
   function renderFieldRow(row: FieldRow) {
     const GAP = 3;
     const totalGap = GAP * (row.fields.length - 1);
@@ -782,6 +931,16 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
       if (field.fieldType === "matrix") {
         flushPending();
         renderMatrixField(field, getResponseValue(data, field));
+        continue;
+      }
+      if (field.fieldType === "symptom_checklist" && Array.isArray(field.optionsJson) && field.optionsJson.length > 0) {
+        flushPending();
+        renderSymptomChecklist(field, getResponseValue(data, field));
+        continue;
+      }
+      if (field.fieldType === "family_history_chart") {
+        flushPending();
+        renderFamilyHistoryChart(field, getResponseValue(data, field));
         continue;
       }
       if (hasFieldValue(data, field)) pending.push(field);
