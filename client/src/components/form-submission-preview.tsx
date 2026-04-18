@@ -119,10 +119,18 @@ function isDataField(field: SubmissionField): boolean {
   return !DECORATIVE_TYPES.has(field.fieldType);
 }
 
-function hasFieldValue(data: Record<string, any>, field: SubmissionField): boolean {
-  if (!isDataField(field)) return false;
-  const v = data[field.fieldKey];
-  return v !== undefined && v !== null && v !== "";
+function hasFieldValue(_data: Record<string, any>, field: SubmissionField): boolean {
+  // Always render interactive fields so the provider sees every question on the form,
+  // even when the patient left it blank. Empty values render as a dash placeholder.
+  return isDataField(field);
+}
+
+function findSignatureDataUrl(data: Record<string, any> | null | undefined): string | null {
+  if (!data || typeof data !== "object") return null;
+  for (const v of Object.values(data)) {
+    if (typeof v === "string" && v.startsWith("data:image")) return v;
+  }
+  return null;
 }
 
 function getColFraction(field: SubmissionField): number {
@@ -423,9 +431,12 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
 
   function renderSignatureField(field: SubmissionField) {
     const fromResponses = data[field.fieldKey];
+    const fromSubmission = (detail as any)?.signatureJson;
     const value = (typeof fromResponses === "string" && fromResponses.startsWith("data:image"))
       ? fromResponses
-      : (detail as any)?.signatureJson;
+      : (typeof fromSubmission === "string" && fromSubmission.startsWith("data:image"))
+        ? fromSubmission
+        : findSignatureDataUrl(data);
     checkPage(28);
     y += 4;
     doc.setFontSize(7);
@@ -651,15 +662,22 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
             const isSymptomChart = field.fieldType === "symptom_checklist" && typeof value === "object" && value !== null && !Array.isArray(value);
             const isList = (field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && Array.isArray(value);
             const isMatrix = field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson);
-            const displayValue = isMatrix
+            const isEmpty = value === undefined || value === null || value === "" || (Array.isArray(value) && value.length === 0);
+            const displayValue = isEmpty
+              ? "—"
+              : isMatrix
               ? ""
               : isFamChart
-              ? Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ")
+              ? (Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ") || "—")
               : isSymptomChart
-              ? Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ")
+              ? (Object.entries(value).filter(([, v]) => v && String(v).trim()).map(([k, v]) => `${k}: ${v}`).join("; ") || "—")
               : isList
-                ? value.filter(Boolean).join("; ")
-                : Array.isArray(value) ? value.join(", ") : String(value);
+                ? (value.filter(Boolean).join("; ") || "—")
+                : Array.isArray(value)
+                  ? (value.filter(v => v !== undefined && v !== null && String(v).trim() !== "").join(", ") || "—")
+                  : typeof value === "boolean"
+                    ? (value ? "Yes" : "No")
+                    : String(value);
 
             return (
               <div
@@ -724,7 +742,9 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
       const fromResp = data[field.fieldKey];
       const sigVal = (typeof fromResp === "string" && fromResp.startsWith("data:image"))
         ? fromResp
-        : (signatureFallback ?? null);
+        : (typeof signatureFallback === "string" && signatureFallback.startsWith("data:image"))
+          ? signatureFallback
+          : findSignatureDataUrl(data);
       elements.push(<PreviewSignature key={`sig-${field.id}`} field={field} value={sigVal} />);
       return;
     }
