@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RichTextView } from "@/components/rich-text-editor";
-import { CheckCircle2, AlertCircle, RefreshCw, ClipboardList, Plus, X } from "lucide-react";
+import { CheckCircle2, AlertCircle, RefreshCw, ClipboardList, Plus, X, Upload, FileText } from "lucide-react";
 
 interface FormField {
   id: number;
@@ -407,6 +407,88 @@ function FieldGrid({ fields, responses, setResponse, validationErrors, className
   );
 }
 
+interface PublicUploadedFile { name: string; type: string; size: number; dataUrl: string }
+const PUBLIC_MAX_FILE_BYTES = 10 * 1024 * 1024;
+const PUBLIC_MAX_FILES = 5;
+
+function PublicFileUpload({ value, onChange, fieldKey }: { value: any; onChange: (v: any) => void; fieldKey: string }) {
+  const [error, setError] = useState<string | null>(null);
+  const inputRef = useRef<HTMLInputElement>(null);
+  const files: PublicUploadedFile[] = Array.isArray(value) ? value : [];
+
+  const handleFiles = async (fileList: FileList | null) => {
+    if (!fileList || fileList.length === 0) return;
+    setError(null);
+    const incoming = Array.from(fileList);
+    if (files.length + incoming.length > PUBLIC_MAX_FILES) {
+      setError(`You can upload up to ${PUBLIC_MAX_FILES} files.`);
+      return;
+    }
+    const next: PublicUploadedFile[] = [...files];
+    for (const f of incoming) {
+      if (f.size > PUBLIC_MAX_FILE_BYTES) {
+        setError(`"${f.name}" is larger than 10 MB.`);
+        continue;
+      }
+      const dataUrl: string = await new Promise((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onerror = () => reject(reader.error);
+        reader.onload = () => resolve(reader.result as string);
+        reader.readAsDataURL(f);
+      });
+      next.push({ name: f.name, type: f.type || "application/octet-stream", size: f.size, dataUrl });
+    }
+    onChange(next);
+    if (inputRef.current) inputRef.current.value = "";
+  };
+
+  return (
+    <div className="space-y-2">
+      <label
+        className="border-2 border-dashed border-input rounded-md px-4 py-6 flex flex-col items-center justify-center gap-1.5 cursor-pointer hover:border-foreground/40 transition-colors"
+        data-testid={`upload-${fieldKey}`}
+      >
+        <Upload className="h-5 w-5 text-muted-foreground" />
+        <span className="text-sm font-medium">Click to upload</span>
+        <span className="text-xs text-muted-foreground">Images or PDFs, up to 10 MB each (max {PUBLIC_MAX_FILES})</span>
+        <input
+          ref={inputRef}
+          type="file"
+          accept="image/*,application/pdf"
+          multiple
+          className="hidden"
+          onChange={e => handleFiles(e.target.files)}
+        />
+      </label>
+      {error && <p className="text-xs text-destructive">{error}</p>}
+      {files.length > 0 && (
+        <ul className="space-y-1.5">
+          {files.map((f, i) => (
+            <li key={i} className="flex items-center gap-2 rounded border bg-muted/30 px-2 py-1.5">
+              {f.type.startsWith("image/") ? (
+                <img src={f.dataUrl} alt={f.name} className="h-8 w-8 rounded object-cover bg-white border" />
+              ) : (
+                <FileText className="h-5 w-5 text-muted-foreground flex-shrink-0" />
+              )}
+              <div className="flex-1 min-w-0">
+                <p className="text-xs font-medium truncate">{f.name}</p>
+                <p className="text-[10px] text-muted-foreground">{(f.size / 1024).toFixed(0)} KB</p>
+              </div>
+              <button
+                type="button"
+                onClick={() => onChange(files.filter((_, idx) => idx !== i).length === 0 ? null : files.filter((_, idx) => idx !== i))}
+                className="text-xs text-destructive hover:underline flex-shrink-0 px-1.5"
+              >
+                Remove
+              </button>
+            </li>
+          ))}
+        </ul>
+      )}
+    </div>
+  );
+}
+
 function SignatureField({ value, onChange, fieldKey }: { value: string; onChange: (v: string) => void; fieldKey: string }) {
   const [tab, setTab] = useState<"draw" | "type">("type");
   const [typedName, setTypedName] = useState("");
@@ -785,6 +867,10 @@ function FieldRenderer({ field, value, onChange, error }: {
             </div>
           </div>
         </RadioGroup>
+      )}
+
+      {field.fieldType === "file_upload" && (
+        <PublicFileUpload value={value} onChange={onChange} fieldKey={field.fieldKey} />
       )}
 
       {field.fieldType === "single_choice" && options.length > 0 && (() => {

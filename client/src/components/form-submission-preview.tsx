@@ -681,6 +681,7 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
             const isSymptomChart = field.fieldType === "symptom_checklist" && typeof value === "object" && value !== null && !Array.isArray(value);
             const isList = (field.fieldType === "medication_list" || field.fieldType === "allergy_list" || field.fieldType === "medical_history_list" || field.fieldType === "surgical_history_list") && Array.isArray(value);
             const isMatrix = field.fieldType === "matrix" && field.optionsJson && typeof field.optionsJson === "object" && !Array.isArray(field.optionsJson);
+            const isFileUpload = field.fieldType === "file_upload" && Array.isArray(value);
             const isOptionList = (field.fieldType === "radio" || field.fieldType === "checkbox" || field.fieldType === "dropdown" || field.fieldType === "select") && Array.isArray(field.optionsJson) && field.optionsJson.length > 0;
             const optionListIsMulti = field.fieldType === "checkbox";
             const optionListSelected: Set<string> = isOptionList
@@ -726,6 +727,31 @@ function PreviewFieldGroup({ fields, data, signatureFallback }: { fields: Submis
                 </p>
                 {isMatrix ? (
                   <MatrixReadOnly field={field} value={value} />
+                ) : isFileUpload ? (
+                  <ul className="text-sm mt-1 space-y-1" style={{ color: "#1c2414" }}>
+                    {(value as Array<{ name: string; type: string; size: number; dataUrl: string }>).map((f, i) => (
+                      <li key={i} className="flex items-center gap-2" data-testid={`file-${field.fieldKey}-${i}`}>
+                        {f.type?.startsWith("image/") ? (
+                          <a href={f.dataUrl} target="_blank" rel="noopener noreferrer" className="flex-shrink-0">
+                            <img src={f.dataUrl} alt={f.name} className="h-12 w-12 rounded object-cover border bg-white" />
+                          </a>
+                        ) : (
+                          <span className="h-8 w-8 rounded border bg-white flex items-center justify-center flex-shrink-0 text-xs font-semibold" style={{ color: "#5a7040" }}>PDF</span>
+                        )}
+                        <a
+                          href={f.dataUrl}
+                          download={f.name}
+                          className="text-xs underline truncate flex-1 min-w-0"
+                          style={{ color: "#2e3a20" }}
+                          data-testid={`file-link-${field.fieldKey}-${i}`}
+                        >
+                          {f.name}
+                        </a>
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0">{(f.size / 1024).toFixed(0)} KB</span>
+                      </li>
+                    ))}
+                    {(value as any[]).length === 0 && <li className="text-muted-foreground italic">—</li>}
+                  </ul>
                 ) : isOptionList ? (
                   <ul className="text-sm mt-1 space-y-0.5" style={{ color: "#1c2414" }}>
                     {(field.optionsJson as string[]).map((opt: string, oi: number) => {
