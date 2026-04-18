@@ -349,6 +349,13 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     return set;
   }
 
+  function getOptionColumns(field: SubmissionField): number {
+    const raw = (field.layoutJson as any)?.optionColumns;
+    const n = typeof raw === "number" ? raw : parseInt(String(raw ?? ""), 10);
+    if (!isFinite(n) || n < 1) return 1;
+    return Math.min(4, Math.max(1, Math.round(n)));
+  }
+
   // Draw a single option-list cell at (x, y) with width w. Returns total drawn height.
   function drawOptionList(
     field: SubmissionField,
@@ -373,54 +380,64 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     }
     cy += 1;
 
-    doc.setFontSize(8.5);
-    doc.setTextColor("#1c2414");
-    doc.setFont("helvetica", "normal");
     const markerSize = 2.6;
     const lineH = 4;
+    const colGap = 3;
+    const cols = getOptionColumns(field);
+    const innerW = w - padX * 2;
+    const colW = (innerW - colGap * (cols - 1)) / cols;
+    const itemTextW = colW - markerSize - 2;
     const items = [
       ...info.opts.map(o => ({ label: o, sel: selected.has(o), italic: false })),
       ...extras.map(o => ({ label: o, sel: true, italic: true })),
     ];
-    for (const it of items) {
-      const wrapped = doc.splitTextToSize(sanitizeForPdf(it.label), w - padX * 2 - markerSize - 2);
-      const blockH = Math.max(lineH, wrapped.length * lineH);
 
-      const markerY = cy + 0.6;
-      doc.setDrawColor(it.sel ? GREEN : "#9ca08c");
-      doc.setLineWidth(0.25);
-      if (info.isMulti) {
-        if (it.sel) {
-          doc.setFillColor(GREEN);
-          doc.roundedRect(x + padX, markerY, markerSize, markerSize, 0.4, 0.4, "FD");
-          doc.setTextColor("#ffffff");
-          doc.setFontSize(6);
-          doc.setFont("helvetica", "bold");
-          doc.text("X", x + padX + markerSize / 2, markerY + markerSize - 0.6, { align: "center" });
-          doc.setFontSize(8.5);
-          doc.setFont("helvetica", "normal");
-          doc.setTextColor("#1c2414");
+    doc.setFontSize(8.5);
+    doc.setFont("helvetica", "normal");
+    for (let i = 0; i < items.length; i += cols) {
+      const rowItems = items.slice(i, i + cols);
+      const wrappedItems = rowItems.map(it => doc.splitTextToSize(sanitizeForPdf(it.label), itemTextW));
+      const rowH = Math.max(lineH, ...wrappedItems.map(w => w.length * lineH));
+      for (let c = 0; c < rowItems.length; c++) {
+        const it = rowItems[c];
+        const wrapped = wrappedItems[c];
+        const cellX = x + padX + c * (colW + colGap);
+        const markerY = cy + 0.6;
+        doc.setDrawColor(it.sel ? GREEN : "#9ca08c");
+        doc.setLineWidth(0.25);
+        if (info.isMulti) {
+          if (it.sel) {
+            doc.setFillColor(GREEN);
+            doc.roundedRect(cellX, markerY, markerSize, markerSize, 0.4, 0.4, "FD");
+            doc.setTextColor("#ffffff");
+            doc.setFontSize(6);
+            doc.setFont("helvetica", "bold");
+            doc.text("X", cellX + markerSize / 2, markerY + markerSize - 0.6, { align: "center" });
+            doc.setFontSize(8.5);
+            doc.setFont("helvetica", "normal");
+            doc.setTextColor("#1c2414");
+          } else {
+            doc.roundedRect(cellX, markerY, markerSize, markerSize, 0.4, 0.4, "S");
+          }
         } else {
-          doc.roundedRect(x + padX, markerY, markerSize, markerSize, 0.4, 0.4, "S");
+          doc.circle(cellX + markerSize / 2, markerY + markerSize / 2, markerSize / 2, it.sel ? "FD" : "S");
+          if (it.sel) {
+            doc.setFillColor(GREEN);
+            doc.circle(cellX + markerSize / 2, markerY + markerSize / 2, markerSize / 2, "F");
+            doc.setFillColor("#ffffff");
+            doc.circle(cellX + markerSize / 2, markerY + markerSize / 2, markerSize / 4, "F");
+          }
         }
-      } else {
-        doc.circle(x + padX + markerSize / 2, markerY + markerSize / 2, markerSize / 2, it.sel ? "FD" : "S");
-        if (it.sel) {
-          doc.setFillColor(GREEN);
-          doc.circle(x + padX + markerSize / 2, markerY + markerSize / 2, markerSize / 2, "F");
-          doc.setFillColor("#ffffff");
-          doc.circle(x + padX + markerSize / 2, markerY + markerSize / 2, markerSize / 4, "F");
-        }
-      }
 
-      doc.setFont("helvetica", it.italic ? "italic" : (it.sel ? "bold" : "normal"));
-      doc.setTextColor("#1c2414");
-      let tY = cy + 3;
-      for (const ln of wrapped) {
-        doc.text(ln, x + padX + markerSize + 2, tY);
-        tY += lineH;
+        doc.setFont("helvetica", it.italic ? "italic" : (it.sel ? "bold" : "normal"));
+        doc.setTextColor("#1c2414");
+        let tY = cy + 3;
+        for (const ln of wrapped) {
+          doc.text(ln, cellX + markerSize + 2, tY);
+          tY += lineH;
+        }
       }
-      cy += blockH;
+      cy += rowH;
     }
     return cy - startY + padY;
   }
@@ -431,18 +448,29 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
     extras: string[],
     labelLines: string[],
     w: number,
+    field: SubmissionField,
   ): number {
     const padY = 3;
     const padX = 2;
     const markerSize = 2.6;
     const lineH = 4;
+    const colGap = 3;
+    const cols = getOptionColumns(field);
+    const innerW = w - padX * 2;
+    const colW = (innerW - colGap * (cols - 1)) / cols;
+    const itemTextW = colW - markerSize - 2;
     let h = padY + labelLines.length * 3 + 1;
     const items = [...info.opts, ...extras];
-    for (const it of items) {
-      doc.setFontSize(8.5);
-      doc.setFont("helvetica", "normal");
-      const wrapped = doc.splitTextToSize(sanitizeForPdf(it), w - padX * 2 - markerSize - 2);
-      h += Math.max(lineH, wrapped.length * lineH);
+    for (let i = 0; i < items.length; i += cols) {
+      const rowItems = items.slice(i, i + cols);
+      let rowH = lineH;
+      for (const it of rowItems) {
+        doc.setFontSize(8.5);
+        doc.setFont("helvetica", "normal");
+        const wrapped = doc.splitTextToSize(sanitizeForPdf(it), itemTextW);
+        rowH = Math.max(rowH, wrapped.length * lineH);
+      }
+      h += rowH;
     }
     return h + padY;
   }
@@ -744,7 +772,7 @@ async function generateSubmissionPdf(detail: SubmissionDetail, clinic: ClinicInf
         const selected = getSelectedSet(field, value);
         const optStrs = optionInfo.opts.map(String);
         const extras: string[] = Array.from(selected).filter(s => !optStrs.includes(s));
-        const h = measureOptionListHeight(optionInfo, extras, labelLines, w);
+        const h = measureOptionListHeight(optionInfo, extras, labelLines, w, field);
         maxRowH = Math.max(maxRowH, h);
         fieldData.push({ kind: "options", labelLines, info: optionInfo, selected, extras, height: h });
         continue;
