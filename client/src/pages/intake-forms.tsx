@@ -627,9 +627,11 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
         return <Input disabled type="number" placeholder={field.placeholder ?? "0"} className="bg-muted/30 max-w-[200px]" />;
       case "date":
         return <Input disabled type="date" className="bg-muted/30 max-w-[220px]" />;
-      case "single_choice":
+      case "single_choice": {
+        const cols = (field.layoutJson as any)?.optionColumns ?? 1;
+        const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1";
         return (
-          <div className="space-y-2">
+          <div className={`grid gap-x-4 gap-y-2 ${colClass}`}>
             {options.length > 0 ? options.map((opt: string, i: number) => (
               <label key={i} className="flex items-center gap-2 text-sm">
                 <span className="h-4 w-4 rounded-full border border-border flex-shrink-0" />
@@ -638,9 +640,10 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
             )) : <span className="text-xs text-muted-foreground italic">No options defined</span>}
           </div>
         );
+      }
       case "multi_choice": {
         const cols = (field.layoutJson as any)?.optionColumns ?? 1;
-        const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1";
+        const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1";
         return (
           <div className={`grid gap-x-4 gap-y-2 ${colClass}`}>
             {options.length > 0 ? options.map((opt: string, i: number) => (

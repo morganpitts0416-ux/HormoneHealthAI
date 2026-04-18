@@ -150,14 +150,16 @@ function PortalFormField({ field, value, onChange }: {
           />
         </div>
       );
-    case "single_choice":
+    case "single_choice": {
+      const cols = (field.layoutJson as any)?.optionColumns ?? 1;
+      const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1";
       return (
         <div className="space-y-1.5">
           <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
             {field.label}{field.isRequired && <span className="text-red-500 ml-0.5">*</span>}
           </label>
           {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
-          <div className="space-y-2">
+          <div className={`grid gap-x-4 gap-y-2 ${colClass}`}>
             {options.map((opt: string, i: number) => (
               <label key={i} className="flex items-center gap-2.5 text-sm cursor-pointer" data-testid={`portal-field-${field.id}-option-${i}`}>
                 <span
@@ -172,6 +174,7 @@ function PortalFormField({ field, value, onChange }: {
           </div>
         </div>
       );
+    }
     case "symptom_checklist": {
       const symptoms: string[] = Array.isArray(field.optionsJson) ? field.optionsJson : [];
       if (symptoms.length === 0) {
@@ -236,7 +239,7 @@ function PortalFormField({ field, value, onChange }: {
     }
     case "multi_choice": {
       const cols = (field.layoutJson as any)?.optionColumns ?? 1;
-      const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-1 sm:grid-cols-2" : "grid-cols-1";
+      const colClass = cols === 4 ? "grid-cols-2 sm:grid-cols-4" : cols === 3 ? "grid-cols-2 sm:grid-cols-3" : cols === 2 ? "grid-cols-2" : "grid-cols-1";
       return (
         <div className="space-y-1.5">
           <label className="text-sm font-medium" style={{ color: "#2e3a20" }}>
