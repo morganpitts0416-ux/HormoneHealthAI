@@ -3,11 +3,13 @@ import {
   FlaskConical, Brain, Heart, Activity, FileText, Sparkles,
   Users, Shield, ChevronRight, CheckCircle2, Stethoscope,
   BarChart3, BookOpen, Leaf, ClipboardList, Zap, Lock,
+  MousePointerClick, Send, Link2, PenLine, ListChecks, Smartphone,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { appUrl } from "@/lib/app-url";
 import { DemoModal } from "@/components/demo-modal";
+import assignFormScreenshot from "@assets/Screenshot_2026-04-18_182517_1776556832993.png";
 
 const COPILOT_DEMO_VIDEO_URL = "/marketing/clinical-copilot-demo.mp4";
 
@@ -244,6 +246,73 @@ export default function Landing() {
               <p className="text-xs leading-relaxed" style={{ color: "#6a7a58" }}>{desc}</p>
             </div>
           ))}
+        </div>
+      </section>
+
+      {/* ── Smart Intake & Digital Forms ─────────────────────────────────── */}
+      <section data-tour="intake-forms" className="border-y" style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}>
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
+          <div className="text-center mb-12">
+            <span className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#7a8a64" }}>Smart Intake & Digital Forms</span>
+            <h2 className="text-2xl sm:text-3xl font-bold mt-2" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
+              Build any form your clinic needs — in minutes
+            </h2>
+            <p className="text-sm mt-3 max-w-2xl mx-auto" style={{ color: "#5a6a4a" }}>
+              Replace paper packets, generic PDFs, and clunky third-party form tools with a clinic-grade form builder
+              for new patient intake, medical history, consents, ROS, symptom checklists, and post-visit follow-ups —
+              all branded to your practice and wired directly into the patient chart.
+            </p>
+          </div>
+
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5 mb-10">
+            {[
+              { icon: MousePointerClick, title: "Drag-and-drop builder", desc: "20+ field types including symptom checklists, family history charts, matrix grids, file upload, e-signature, and conditional logic. Arrange in 1–4 column layouts to match the way your clinic actually documents." },
+              { icon: ListChecks, title: "Smart auto-link to charts", desc: "Tag fields to patient demographics, medications, allergies, and history. Submissions auto-match to the correct patient and merge cleanly into the chart with provider review." },
+              { icon: Send, title: "Push to patient portal", desc: "Assign any form to a patient with one click. They get an email + portal notification, complete it on their phone or laptop, and you see it the moment they hit submit." },
+              { icon: Link2, title: "Direct links & website embeds", desc: "Each form gets a public link you can text, email, QR-code, or embed on your website — perfect for prospective patients and lead capture." },
+              { icon: Smartphone, title: "Fill in-clinic on a tablet", desc: "Hand a tablet to the patient at check-in or use your front-desk device. In-Clinic Only mode keeps consents and witness-signature forms off the public portal." },
+              { icon: PenLine, title: "Consents, signatures & PDFs", desc: "Capture typed or drawn signatures for consents and HIPAA forms. Every submission is exported as a clean, branded PDF that mirrors the on-screen form for the chart." },
+            ].map(({ icon: Icon, title, desc }) => (
+              <div key={title} className="rounded-xl p-5" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
+                <div className="w-8 h-8 rounded-lg flex items-center justify-center mb-3" style={{ backgroundColor: "#edf2e6" }}>
+                  <Icon className="w-4 h-4" style={{ color: "#2e3a20" }} />
+                </div>
+                <h3 className="text-sm font-semibold mb-1.5" style={{ color: "#1c2414" }}>{title}</h3>
+                <p className="text-xs leading-relaxed" style={{ color: "#6a7a58" }}>{desc}</p>
+              </div>
+            ))}
+          </div>
+
+          <div className="rounded-2xl p-6 sm:p-8" style={{ backgroundColor: "#f5f1e8", border: "1px solid #e8ddd0" }}>
+            <div className="grid grid-cols-1 lg:grid-cols-[1fr_1.2fr] gap-8 items-center">
+              <div>
+                <h3 className="text-lg sm:text-xl font-bold mb-3" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>
+                  Four ways to deliver every form
+                </h3>
+                <ul className="space-y-2.5 text-sm" style={{ color: "#3a4a28" }}>
+                  {[
+                    "Push to the patient portal with email + in-app notification",
+                    "Email-only delivery for patients who don't use the portal",
+                    "In-clinic tablet mode for consents and witness signatures",
+                    "Public links + website embed codes for lead capture and pre-booking",
+                  ].map(line => (
+                    <li key={line} className="flex items-start gap-2">
+                      <CheckCircle2 className="w-4 h-4 mt-0.5 shrink-0" style={{ color: "#2e3a20" }} />
+                      <span>{line}</span>
+                    </li>
+                  ))}
+                </ul>
+              </div>
+              <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #d4c9b5", boxShadow: "0 12px 32px rgba(46,58,32,0.10)" }}>
+                <img
+                  src={assignFormScreenshot}
+                  alt="Assign Form to Patient — Push to Portal, Email Only, or Fill In Clinic"
+                  className="w-full block"
+                  style={{ backgroundColor: "#1c2414" }}
+                />
+              </div>
+            </div>
+          </div>
         </div>
       </section>
 
