@@ -2673,8 +2673,18 @@ Return ONLY this JSON structure:
         labDate: labDate ? new Date(labDate) : null,
       });
 
-      // Fire-and-forget: notify patient via email
+      // Notify the patient: in-portal message + best-effort email
       const clinician = await storage.getUserById(clinicianId);
+      try {
+        await storage.createPortalMessage({
+          patientId: parseInt(patientId),
+          clinicianId,
+          senderType: "clinician",
+          content: `Your care team has shared an updated lab interpretation and supplement protocol with you (${supplements.length} supplement${supplements.length !== 1 ? "s" : ""}). You can review it from your dashboard.`,
+        });
+      } catch (msgErr) {
+        console.error("[PORTAL] Error creating protocol portal message:", msgErr);
+      }
       if (portalAccount.email && clinician) {
         sendProtocolPublishedEmail(
           portalAccount.email,
@@ -5882,6 +5892,47 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
         summaryPublished: true,
         summaryPublishedAt: new Date(),
       }, clinicId);
+
+      // Notify the patient: in-portal message + best-effort email
+      try {
+        const patient = await storage.getPatient(encounter.patientId, clinicianId, clinicId);
+        if (patient) {
+          await storage.createPortalMessage({
+            patientId: encounter.patientId,
+            clinicianId,
+            senderType: "clinician",
+            content: `Your visit summary from ${new Date((encounter as any).visitDate || Date.now()).toLocaleDateString()} has been shared with you. You can view it from your Visit Summaries tab.`,
+          });
+          const portalAccount = await storage.getPortalAccountByPatientId(encounter.patientId);
+          if (portalAccount?.email && process.env.RESEND_API_KEY) {
+            const clinician = await storage.getUserById(clinicianId);
+            const clinicName = clinician?.clinicName || "Your Healthcare Provider";
+            const sendingDomain = process.env.RESEND_FROM_EMAIL || "noreply@cliniqapp.ai";
+            const portalUrl = `${req.protocol}://${req.get("host")}/portal/dashboard`;
+            const html = `
+              <div style="font-family: Arial, sans-serif; max-width: 600px; margin: 0 auto; padding: 20px;">
+                <h2 style="color: #2e3a20;">Your Visit Summary is Ready</h2>
+                <p>Hi ${patient.firstName},</p>
+                <p>Your care team at <strong>${clinicName}</strong> has shared your visit summary from ${new Date((encounter as any).visitDate || Date.now()).toLocaleDateString()}.</p>
+                <p>Sign in to your patient portal to read the full summary, recommendations, and next steps from your visit.</p>
+                <a href="${portalUrl}" style="display: inline-block; background: #2e3a20; color: white; padding: 12px 24px; border-radius: 6px; text-decoration: none; font-weight: bold; margin-top: 12px;">Open Patient Portal</a>
+              </div>`;
+            fetch("https://api.resend.com/emails", {
+              method: "POST",
+              headers: { Authorization: `Bearer ${process.env.RESEND_API_KEY}`, "Content-Type": "application/json" },
+              body: JSON.stringify({
+                from: `"${clinicName}" <${sendingDomain}>`,
+                to: [portalAccount.email],
+                subject: `${clinicName}: Your visit summary is ready`,
+                html,
+              }),
+            }).catch((e) => console.error("[Encounter Publish] Email send failed:", e));
+          }
+        }
+      } catch (notifyErr) {
+        console.error("[Encounter Publish] Notification error:", notifyErr);
+      }
+
       res.json(updated);
     } catch (err) {
       res.status(500).json({ message: "Failed to publish encounter summary" });
@@ -8715,7 +8766,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
             patientId,
             clinicianId,
             senderType: "clinician",
-            content: `A new form has been assigned to you: "${form.name}". Please log in to your patient portal to complete it${dueAt ? ` by ${new Date(dueAt).toLocaleDateString()}` : ""}.`,
+            content: `A new form has been assigned to you: "${form.name}". You can complete it from your Forms tab${dueAt ? ` by ${new Date(dueAt).toLocaleDateString()}` : ""}.`,
           });
 
           // Email notification (best-effort)
