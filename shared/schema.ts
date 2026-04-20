@@ -779,6 +779,14 @@ export const clinicianSupplementSettings = pgTable("clinician_supplement_setting
   discountType: varchar("discount_type", { length: 20 }).notNull().default("percent"), // 'percent' | 'flat' | 'none'
   discountPercent: integer("discount_percent").notNull().default(20), // e.g. 20 for 20%
   discountFlat: integer("discount_flat_cents").notNull().default(0),  // flat $ off in cents
+  // Controls how clinician's custom supplement library is combined with the built-in defaults
+  // 'defaults_plus_custom' = Metagenics defaults + clinician custom (default for backwards compat)
+  // 'custom_only'          = use ONLY the clinician's custom supplements; defaults are skipped entirely.
+  //   In 'custom_only' mode, all screening tools (insulin resistance, phenotypes, menstrual phase,
+  //   etc.) still run as normal so the provider sees the screening outcomes; if the clinician's
+  //   library has no supplement matching a triggered finding, no patient-facing recommendation is
+  //   produced for that finding and the provider manages it manually.
+  supplementMode: varchar("supplement_mode", { length: 30 }).notNull().default("defaults_plus_custom"),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
 export type ClinicianSupplementSettings = typeof clinicianSupplementSettings.$inferSelect;

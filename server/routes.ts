@@ -19,6 +19,8 @@ import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
+import { applyCustomRangesToInterpretations } from "./lab-range-overrides";
+import { evaluateClinicianSupplements, combineSupplementRecommendations } from "./clinician-supplements-engine";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { normalizeTranscript, parseCSV, parseArrayField } from "./medication-normalizer";
 import {
@@ -688,11 +690,48 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Load this clinician's customizations (lab range overrides + custom supplement
+      // library + supplement-mode toggle). Per-marker overrides apply only to markers
+      // the clinician has explicitly customized — defaults remain for everything else.
+      // Wrapped in try/catch so an unauthenticated request still works exactly as before.
+      let clinicianCustom: {
+        clinicianId: number;
+        labPrefs: any[];
+        customSupps: any[];
+        customRules: any[];
+        supplementMode: string;
+      } | null = null;
+      try {
+        if ((req as any).user || (req.session as any).staffClinicianId) {
+          const cid = getClinicianId(req);
+          const [labPrefs, customSupps, customRules, settings] = await Promise.all([
+            storage.getClinicianLabPreferences(cid),
+            storage.getClinicianSupplements(cid),
+            storage.getAllClinicianSupplementRules(cid),
+            storage.getClinicianSupplementSettings(cid),
+          ]);
+          clinicianCustom = {
+            clinicianId: cid,
+            labPrefs,
+            customSupps,
+            customRules,
+            supplementMode: (settings as any)?.supplementMode || 'defaults_plus_custom',
+          };
+        }
+      } catch (e) {
+        console.warn('[API] Clinician customization lookup failed (continuing with defaults):', e);
+      }
+
       // Step 1: Detect red flags
       const redFlags = ClinicalLogicEngine.detectRedFlags(labs);
 
       // Step 2: Generate detailed interpretations
-      const interpretations = ClinicalLogicEngine.interpretLabValues(labs);
+      let interpretations = ClinicalLogicEngine.interpretLabValues(labs);
+
+      // Step 2b: Apply per-marker clinician range overrides (no-op if none configured)
+      if (clinicianCustom?.labPrefs?.length) {
+        interpretations = applyCustomRangesToInterpretations(interpretations, clinicianCustom.labPrefs, 'male');
+      }
 
       // Step 3: Calculate PREVENT cardiovascular risk (replaces legacy ASCVD)
       // PREVENT uses sex-specific, race-free equations with eGFR and BMI
@@ -875,8 +914,23 @@ export async function registerRoutes(app: Express): Promise<Server> {
       );
 
       // Step 7: Evaluate supplement recommendations
-      const supplements = evaluateMaleSupplements(labs);
-      console.log('[API] Male supplement recommendations:', supplements.length);
+      // Defaults always run so screening logic remains unchanged. Then we layer in
+      // (or fully replace with) the clinician's custom library based on their
+      // supplementMode setting.
+      const defaultSupplements = evaluateMaleSupplements(labs);
+      let supplements = defaultSupplements;
+      if (clinicianCustom) {
+        const customMatches = evaluateClinicianSupplements({
+          labs,
+          supplements: clinicianCustom.customSupps,
+          rules: clinicianCustom.customRules,
+          gender: 'male',
+        });
+        supplements = combineSupplementRecommendations(defaultSupplements, customMatches, clinicianCustom.supplementMode);
+        console.log(`[API] Male supplement mode: ${clinicianCustom.supplementMode}; defaults=${defaultSupplements.length}, custom=${customMatches.length}, final=${supplements.length}`);
+      } else {
+        console.log('[API] Male supplement recommendations:', supplements.length);
+      }
 
       // Step 8: Insulin Resistance Screening
       const insulinResistance = screenInsulinResistance(labs, 'male') || undefined;
@@ -965,6 +1019,36 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
+      // Load this clinician's customizations (lab range overrides + custom supplement
+      // library + supplement-mode toggle). Wrapped in try/catch to preserve legacy behavior.
+      let clinicianCustom: {
+        clinicianId: number;
+        labPrefs: any[];
+        customSupps: any[];
+        customRules: any[];
+        supplementMode: string;
+      } | null = null;
+      try {
+        if ((req as any).user || (req.session as any).staffClinicianId) {
+          const cid = getClinicianId(req);
+          const [labPrefs, customSupps, customRules, settings] = await Promise.all([
+            storage.getClinicianLabPreferences(cid),
+            storage.getClinicianSupplements(cid),
+            storage.getAllClinicianSupplementRules(cid),
+            storage.getClinicianSupplementSettings(cid),
+          ]);
+          clinicianCustom = {
+            clinicianId: cid,
+            labPrefs,
+            customSupps,
+            customRules,
+            supplementMode: (settings as any)?.supplementMode || 'defaults_plus_custom',
+          };
+        }
+      } catch (e) {
+        console.warn('[API] Female clinician customization lookup failed (continuing with defaults):', e);
+      }
+
       // Debug: Log hormone values received
       console.log('[API] Female hormone values received:', {
         estradiol: labs.estradiol,
@@ -980,7 +1064,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const redFlags = FemaleClinicalLogicEngine.detectRedFlags(labs);
 
       // Step 2: Generate detailed interpretations with female reference ranges
-      const interpretations = FemaleClinicalLogicEngine.interpretLabValues(labs);
+      let interpretations = FemaleClinicalLogicEngine.interpretLabValues(labs);
+
+      // Apply per-marker clinician range overrides (no-op if none configured)
+      if (clinicianCustom?.labPrefs?.length) {
+        interpretations = applyCustomRangesToInterpretations(interpretations, clinicianCustom.labPrefs, 'female');
+      }
       
       // Debug: Log categories of all interpretations generated
       console.log('[API] Female interpretation categories:', interpretations.map(i => i.category));
@@ -1160,10 +1249,25 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Step 8: Evaluate supplement recommendations based on lab values, phenotypes, and IR screening
+      // The female engine (phenotypes, menstrual phase, IR-driven recommendations) ALWAYS runs
+      // unchanged so the screening logic is preserved. Then we layer in (or fully replace with)
+      // the clinician's custom supplement library based on their supplementMode setting.
       const supplementResult = evaluateSupplements(labs, insulinResistance);
-      const supplements = supplementResult.recommendations;
+      const defaultSupplements = supplementResult.recommendations;
       const clinicalPhenotypes = supplementResult.phenotypes;
-      console.log('[API] Supplement recommendations:', supplements.length);
+      let supplements = defaultSupplements;
+      if (clinicianCustom) {
+        const customMatches = evaluateClinicianSupplements({
+          labs,
+          supplements: clinicianCustom.customSupps,
+          rules: clinicianCustom.customRules,
+          gender: 'female',
+        });
+        supplements = combineSupplementRecommendations(defaultSupplements, customMatches, clinicianCustom.supplementMode);
+        console.log(`[API] Female supplement mode: ${clinicianCustom.supplementMode}; defaults=${defaultSupplements.length}, custom=${customMatches.length}, final=${supplements.length}`);
+      } else {
+        console.log('[API] Supplement recommendations:', supplements.length);
+      }
       console.log('[API] Clinical phenotypes detected:', clinicalPhenotypes.map(p => `${p.name} (${p.confidence})`).join(', ') || 'None');
 
       // Step 9: Compute cardiovascular risk stratification flags
@@ -4296,7 +4400,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const clinicId = getEffectiveClinicId(req);
       const settings = await storage.getClinicianSupplementSettings(clinicianId);
       // Return defaults if not yet configured
-      res.json(settings || { clinicianId, discountType: 'percent', discountPercent: 20, discountFlat: 0 });
+      res.json(settings || { clinicianId, discountType: 'percent', discountPercent: 20, discountFlat: 0, supplementMode: 'defaults_plus_custom' });
     } catch (err) {
       res.status(500).json({ message: "Failed to fetch discount settings" });
     }
@@ -4306,11 +4410,14 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const { discountType, discountPercent, discountFlat } = req.body;
+      const { discountType, discountPercent, discountFlat, supplementMode } = req.body;
+      const allowedModes = new Set(['defaults_plus_custom', 'custom_only']);
+      const safeMode = allowedModes.has(supplementMode) ? supplementMode : undefined;
       const updated = await storage.upsertClinicianSupplementSettings(clinicianId, {
         discountType: discountType || 'percent',
         discountPercent: discountPercent ?? 20,
         discountFlat: discountFlat ?? 0,
+        ...(safeMode ? { supplementMode: safeMode } : {}),
       } as any);
       res.json(updated);
     } catch (err) {

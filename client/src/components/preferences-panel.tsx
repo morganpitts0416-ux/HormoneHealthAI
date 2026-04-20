@@ -1051,18 +1051,40 @@ export function PreferencesPanel() {
   const [discountType, setDiscountType] = useState('percent');
   const [discountPercent, setDiscountPercent] = useState('20');
   const [discountSaved, setDiscountSaved] = useState(false);
+  const [supplementMode, setSupplementMode] = useState<'defaults_plus_custom' | 'custom_only'>('defaults_plus_custom');
 
   // Data fetching
   const { data: defaults } = useQuery<DefaultsData>({ queryKey: ["/api/preferences/defaults"] });
   const { data: supplements = [], isLoading: supplementsLoading } = useQuery<ClinicianSupplement[]>({ queryKey: ["/api/preferences/supplements"] });
   const { data: labRangeData } = useQuery<{ preferences: ClinicianLabPreference[]; defaults: LabMarkerDefault[] }>({ queryKey: ["/api/preferences/lab-ranges"] });
-  const { data: discountData } = useQuery<{ discountType: string; discountPercent: number; discountFlat: number }>({
+  const { data: discountData } = useQuery<{ discountType: string; discountPercent: number; discountFlat: number; supplementMode?: string }>({
     queryKey: ["/api/preferences/discount"],
     onSuccess: (d: any) => {
       setDiscountType(d.discountType || 'percent');
       setDiscountPercent(String(d.discountPercent ?? 20));
+      if (d.supplementMode === 'custom_only' || d.supplementMode === 'defaults_plus_custom') {
+        setSupplementMode(d.supplementMode);
+      }
     },
   } as any);
+
+  // Save supplement-mode toggle (auto-save on change)
+  const saveSupplementModeMutation = useMutation({
+    mutationFn: async (mode: 'defaults_plus_custom' | 'custom_only') => {
+      const res = await apiRequest("PUT", "/api/preferences/discount", {
+        discountType,
+        discountPercent: parseInt(discountPercent) || 0,
+        discountFlat: 0,
+        supplementMode: mode,
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/preferences/discount"] });
+      toast({ title: "Recommendation mode updated" });
+    },
+    onError: () => toast({ title: "Failed to update mode", variant: "destructive" }),
+  });
 
   // Supplement mutations
   const createSupplementMutation = useMutation({
@@ -1217,6 +1239,52 @@ export function PreferencesPanel() {
           {/* ── Supplement Library section ────────────────────────────────── */}
           {activeSection === 'supplements' && (
             <div className="space-y-4">
+              {/* ── Recommendation Mode Toggle ──────────────────────────────── */}
+              <div className="rounded-md border p-4 space-y-3" data-testid="card-supplement-mode">
+                <div>
+                  <p className="text-sm font-medium text-foreground">Recommendation Mode</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Choose how your custom supplements combine with the built-in default recommendations. Screening tools (insulin resistance, phenotypes, menstrual phase, red flags, etc.) always run regardless of this setting.
+                  </p>
+                </div>
+                <div className="space-y-2">
+                  <label className="flex items-start gap-3 cursor-pointer rounded-md border p-3 hover-elevate" data-testid="radio-mode-defaults-plus-custom">
+                    <input
+                      type="radio"
+                      name="supplement-mode"
+                      value="defaults_plus_custom"
+                      checked={supplementMode === 'defaults_plus_custom'}
+                      onChange={() => {
+                        setSupplementMode('defaults_plus_custom');
+                        saveSupplementModeMutation.mutate('defaults_plus_custom');
+                      }}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium">Use my supplements alongside the built-in defaults</p>
+                      <p className="text-xs text-muted-foreground">Patients see both the standard Metagenics recommendations and any of your custom supplements whose trigger rules match their labs or symptoms.</p>
+                    </div>
+                  </label>
+                  <label className="flex items-start gap-3 cursor-pointer rounded-md border p-3 hover-elevate" data-testid="radio-mode-custom-only">
+                    <input
+                      type="radio"
+                      name="supplement-mode"
+                      value="custom_only"
+                      checked={supplementMode === 'custom_only'}
+                      onChange={() => {
+                        setSupplementMode('custom_only');
+                        saveSupplementModeMutation.mutate('custom_only');
+                      }}
+                      className="mt-1"
+                    />
+                    <div className="space-y-0.5">
+                      <p className="text-sm font-medium">Use only my supplements (replace all defaults)</p>
+                      <p className="text-xs text-muted-foreground">Default recommendations are skipped. Screening tools still run, but if your library has no supplement matching a triggered finding, no patient-facing supplement is suggested for it and you can manage it manually.</p>
+                    </div>
+                  </label>
+                </div>
+              </div>
+
               <div className="flex items-center justify-between">
                 <div>
                   <p className="text-sm font-medium text-foreground">Your Custom Supplements</p>
