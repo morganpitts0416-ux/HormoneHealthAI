@@ -102,6 +102,15 @@ function canEditForms(adminRole: string | null): boolean {
   return adminRole === "owner" || adminRole === "admin" || adminRole === "limited_admin";
 }
 
+// Form-builder access: any provider/clinician (non-staff session) OR any staff with admin-level role.
+async function canManageForms(req: Request): Promise<boolean> {
+  const sess = req.session as any;
+  const isStaff = !!sess?.staffId;
+  if (!isStaff) return true; // Providers/clinicians always have form-builder access
+  const adminRole = await getSessionAdminRole(req);
+  return canEditForms(adminRole);
+}
+
 async function resolveClinicOwnerSubscription(clinicId: number): Promise<{
   stripeSubscriptionId: string | null;
   freeAccount: boolean;
@@ -8130,8 +8139,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // POST /api/intake-forms — create template (admin/limited_admin/owner only)
   app.post("/api/intake-forms", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "You do not have permission to create forms. Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "You do not have permission to create forms. Admin access required." });
       const { name, description, category } = req.body;
       if (!name?.trim()) return res.status(400).json({ message: "Form name required" });
       const clinicId = getEffectiveClinicId(req);
@@ -8239,8 +8247,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // PUT /api/intake-forms/:id — update form settings (admin+ only)
   app.put("/api/intake-forms/:id", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required to edit forms." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required to edit forms." });
       const id = parseInt(req.params.id);
       const clinicId = getEffectiveClinicId(req);
       const updated = await storage.updateIntakeFormByClinic(id, clinicId, getClinicianId(req), req.body);
@@ -8254,8 +8261,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // DELETE /api/intake-forms/:id — archive form (admin+ only)
   app.delete("/api/intake-forms/:id", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required to manage forms." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required to manage forms." });
       const id = parseInt(req.params.id);
       const clinicId = getEffectiveClinicId(req);
       const updated = await storage.updateIntakeFormByClinic(id, clinicId, getClinicianId(req), { status: "archived" });
@@ -8269,8 +8275,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // POST /api/intake-forms/:id/duplicate — duplicate template (admin+ only)
   app.post("/api/intake-forms/:id/duplicate", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const original = await resolveClinicForm(req);
       if (!original) return res.status(404).json({ message: "Form not found" });
       const { id: _id, createdAt, updatedAt, ...rest } = original;
@@ -8307,8 +8312,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // POST /api/intake-forms/:id/sections (admin+ only)
   app.post("/api/intake-forms/:id/sections", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const form = await resolveClinicForm(req);
       if (!form) return res.status(404).json({ message: "Form not found" });
       const sections = await storage.getFormSections(form.id);
@@ -8328,8 +8332,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // PUT /api/intake-forms/:id/sections/:sectionId (admin+ only)
   app.put("/api/intake-forms/:id/sections/:sectionId", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const sectionId = parseInt(req.params.sectionId);
       const updated = await storage.updateFormSection(sectionId, req.body);
       if (!updated) return res.status(404).json({ message: "Section not found" });
@@ -8342,8 +8345,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // DELETE /api/intake-forms/:id/sections/:sectionId (admin+ only)
   app.delete("/api/intake-forms/:id/sections/:sectionId", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const sectionId = parseInt(req.params.sectionId);
       await storage.deleteFormSection(sectionId);
       res.json({ success: true });
@@ -8355,8 +8357,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // POST /api/intake-forms/:id/fields (admin+ only)
   app.post("/api/intake-forms/:id/fields", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const form = await resolveClinicForm(req);
       if (!form) return res.status(404).json({ message: "Form not found" });
       const existing = await storage.getFormFields(form.id);
@@ -8383,8 +8384,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // PUT /api/intake-forms/:id/fields/reorder (admin+ only)
   app.put("/api/intake-forms/:id/fields/reorder", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const form = await resolveClinicForm(req);
       if (!form) return res.status(404).json({ message: "Form not found" });
       const { fieldIds } = req.body;
@@ -8408,8 +8408,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // PUT /api/intake-forms/:id/fields/:fieldId (admin+ only)
   app.put("/api/intake-forms/:id/fields/:fieldId", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const fieldId = parseInt(req.params.fieldId);
       const updated = await storage.updateFormField(fieldId, req.body);
       if (!updated) return res.status(404).json({ message: "Field not found" });
@@ -8422,8 +8421,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // DELETE /api/intake-forms/:id/fields/:fieldId (admin+ only)
   app.delete("/api/intake-forms/:id/fields/:fieldId", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const fieldId = parseInt(req.params.fieldId);
       await storage.deleteFormField(fieldId);
       res.json({ success: true });
@@ -8435,8 +8433,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // POST /api/intake-forms/:id/publish (admin+ only)
   app.post("/api/intake-forms/:id/publish", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required to publish forms." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required to publish forms." });
       const form = await resolveClinicForm(req);
       if (!form) return res.status(404).json({ message: "Form not found" });
       const { randomUUID } = await import("crypto");
@@ -8459,8 +8456,7 @@ Generate a warm, plain-language patient visit summary. The "Your Care Plan" sect
   // PUT /api/intake-forms/:id/publications/:pubId (admin+ only)
   app.put("/api/intake-forms/:id/publications/:pubId", requireAuth, async (req: any, res) => {
     try {
-      const adminRole = await getSessionAdminRole(req);
-      if (!canEditForms(adminRole)) return res.status(403).json({ message: "Admin access required." });
+      if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required." });
       const pubId = parseInt(req.params.pubId);
       const updated = await storage.updateFormPublication(pubId, req.body);
       res.json(updated);
