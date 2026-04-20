@@ -6792,20 +6792,55 @@ Return JSON matching EvidenceOverlay structure:
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
       });
 
+      // Include a trimmed transcript so counseling, expectation-setting, and shared
+      // decision-making conversations are preserved in the patient summary even when
+      // the SOAP plan compresses them.
+      const rawTranscript: string = (encounter.transcription || "").trim();
+      const transcriptSnippet = rawTranscript.length > 8000
+        ? rawTranscript.slice(0, 8000) + "\n…(transcript truncated)"
+        : rawTranscript;
+      const transcriptContext = transcriptSnippet
+        ? `\n\nVISIT TRANSCRIPT (for preserving counseling, expectation-setting, and patient preferences — translate into patient-friendly language, do NOT quote verbatim):\n${transcriptSnippet}`
+        : "";
+
       const completion = await openai.chat.completions.create({
         model: "gpt-4o-mini",
         messages: [
           {
             role: "system",
-            content: `You are a healthcare communication specialist writing a patient-facing visit summary. 
+            content: `You are a healthcare communication specialist writing a concierge-style, patient-facing visit summary that goes directly to the patient portal.
 
-CRITICAL REQUIREMENTS:
-1. Write in second person ("you", "your"). Warm, clear, and encouraging tone.
-2. Avoid medical jargon — if a medical term is necessary, explain it in plain language immediately after.
-3. The "Your Care Plan" section MUST be specific and actionable — list every item by name. If supplements were recommended, list each supplement by name with its dosage and a plain-language explanation of why it was recommended. If medications were discussed, list them specifically. Never write vague filler like "adjusting your current treatment" or "we may consider options."
-4. Every item in the care plan must be something the patient could go home and act on immediately.
-5. Structure: brief warm intro paragraph → "**What We Discussed**" → "**Your Care Plan**" → "**Next Steps**"
-6. The care plan should be a numbered or bulleted list — concrete, named items only. No vague or generic statements.`,
+VOICE & TONE
+- Write in second person ("you", "your"). Warm, supportive, confidence-building — like a high-touch follow-up message from the care team.
+- Clear and concise, but prioritize clarity and guidance over brevity. Never sacrifice important counseling to be short.
+- Translate clinical language into plain English. If a medical term is necessary, define it in the same sentence.
+
+FORMATTING (STRICT)
+- Plain text only. DO NOT use markdown. No asterisks (**), no underscores, no pound signs (#), no backticks.
+- Section headers are written on their own line in Title Case followed by a colon (for example: "What We Discussed:").
+- Use simple hyphen bullets ("- ") for lists. Never use "*" for bullets.
+- Keep paragraphs short (2–4 sentences).
+
+STRUCTURE
+1. Brief warm intro paragraph (2–3 sentences) acknowledging the visit and the patient's main concerns.
+2. What We Discussed: short narrative of the key topics covered, including any meaningful labs or findings explained in plain language.
+3. Your Care Plan: list every specific supplement, medication, lifestyle change, and lab/test follow-up by name. Never use vague filler like "adjusting your current treatment" or "we may consider options." Each item must be actionable today.
+4. New Medications & Therapies (only include this section if at least one new medication or therapy was started or changed): for EACH new medication/therapy, include the following sub-points as short bullet lines:
+   - Why we chose it (brief, patient-friendly reason — e.g., "to help your body respond better to insulin and reduce appetite signals")
+   - What to expect (how it works in simple terms; for titrated meds, mention the gradual dose-increase plan and reassurance about starting low)
+   - How to use it (route, frequency, timing, with/without food, injection day, etc. — only what the provider said)
+   - What to watch for (common side effects to expect, and red-flag symptoms that mean call us)
+   - When to reach out (specific situations that warrant a message or call to the clinic)
+5. What to Expect / Helpful Tips: include this whenever GLP-1 medications (tirzepatide, semaglutide, etc.), hormone therapy (testosterone, estradiol, progesterone, thyroid), or other lifestyle-sensitive therapies were discussed. Give 3–6 short, supportive, practical tips (hydration, protein, slow meals, injection technique, sleep, expected timeline for results, etc.).
+6. Your Preferences & Our Decisions Together: if the patient expressed a preference (for example compounded vs. brand-name, oral vs. injectable, dosing schedule, cost considerations) or if risks and benefits were discussed, reflect that in 1–3 plain-language sentences so the patient sees their voice in the plan.
+7. Next Steps: when to follow up, when to repeat labs, when to schedule the next visit, and how to contact the clinic.
+
+CONTENT RULES
+- Preserve the provider's education and counseling from the transcript and the SOAP plan — do not drop it. If the provider explained the "why" or set expectations, that belongs in the summary.
+- Do not invent medications, dosages, instructions, or warnings. Only include what is supported by the SOAP note, care plan, supplement list, or transcript.
+- Do not list lab values unless they were specifically explained to the patient.
+- Do not include billing, coding, or internal clinical documentation language.
+- Keep the overall length proportional to the visit — comprehensive when warranted, but never padded.`,
           },
           {
             role: "user",
@@ -6816,7 +6851,7 @@ Date: ${new Date(encounter.visitDate).toLocaleDateString()}
 SOAP Assessment:
 ${soap.assessment || ""}
 
-CARE PLAN (from SOAP note — include ALL items in patient summary):
+CARE PLAN (from SOAP note — include ALL items in patient summary, with the per-medication detail required by the system prompt):
 ${carePlanText}
 
 Follow-Up Plan:
@@ -6824,14 +6859,21 @@ ${followUpText}
 
 Subjective (what patient reported):
 ${soap.subjective || ""}
-${supplementContext}
+${supplementContext}${transcriptContext}
 
-Generate a warm, plain-language patient visit summary. The "Your Care Plan" section must list every specific supplement, medication, lifestyle change, and lab follow-up by name — never use vague or generic language. This summary will be published directly to the patient portal for the patient to read and follow.`,
+Generate the warm, plain-language patient visit summary now. Follow the formatting and structure rules exactly: plain text only (no markdown, no asterisks), section headers as "Title:" on their own line, hyphen bullets only. Make sure every new medication or therapy includes why we chose it, what to expect, how to use it, what to watch for, and when to reach out — translated into supportive patient-friendly language. This summary publishes directly to the patient portal.`,
           },
         ],
       });
 
-      const patientSummary = completion.choices[0].message.content || "";
+      // Strip any residual markdown emphasis the model may produce, just in case.
+      const rawSummary = completion.choices[0].message.content || "";
+      const patientSummary = rawSummary
+        .replace(/\*\*(.*?)\*\*/g, "$1")
+        .replace(/(^|[^*])\*(?!\s)([^*\n]+?)\*(?!\*)/g, "$1$2")
+        .replace(/^\s*\*\s+/gm, "- ")
+        .replace(/^#{1,6}\s+/gm, "")
+        .replace(/`([^`]+)`/g, "$1");
       const updated = await storage.updateEncounter(id, clinicianId, { patientSummary }, clinicId);
 
       res.json({ patientSummary, encounter: updated });
