@@ -78,9 +78,9 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
     <BillingGate>
       <BaaGate>
         <SessionTimeoutModal />
-        <div className="min-h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
+        <div className="h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
           <AppHeader />
-          <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
             <Component />
           </div>
         </div>

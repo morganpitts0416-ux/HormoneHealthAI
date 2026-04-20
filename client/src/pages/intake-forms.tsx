@@ -1044,10 +1044,19 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
   };
 
   const duplicateField = async (field: FormField) => {
-    const { id, formId: _fid, orderIndex: _oi, smartFieldKey, ...rest } = field as any;
+    const {
+      id,
+      formId: _fid,
+      orderIndex: _oi,
+      smartFieldKey,
+      createdAt: _ca,
+      updatedAt: _ua,
+      ...rest
+    } = field as any;
     const payload: any = {
       ...rest,
       label: field.label ? `${field.label} (Copy)` : "Copy",
+      fieldKey: undefined,
       smartFieldKey: null,
     };
     try {
