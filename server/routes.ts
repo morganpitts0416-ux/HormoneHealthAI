@@ -923,7 +923,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 8: Insulin Resistance Screening (must run before custom-supplement
       // evaluation so phenotype-keyed rules can fire on the IR phenotype)
       const insulinResistance = screenInsulinResistance(labs, 'male') || undefined;
-      const malePhenotypeKeys = detectedPhenotypeKeys(insulinResistance, null);
+
+      // Build the set of detected phenotype / risk-score keys from outputs
+      // already produced above (IR screen, PREVENT, STOP-BANG). Defaults stay
+      // unchanged — we only read these for matching custom rules.
+      const malePhenotypeKeys = detectedPhenotypeKeys({
+        irScreening: insulinResistance,
+        preventRisk,
+        stopBangRisk,
+      });
 
       let supplements = defaultSupplements;
       if (clinicianCustom) {
@@ -1261,7 +1269,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const supplementResult = evaluateSupplements(labs, insulinResistance);
       const defaultSupplements = supplementResult.recommendations;
       const clinicalPhenotypes = supplementResult.phenotypes;
-      const femalePhenotypeKeys = detectedPhenotypeKeys(insulinResistance, clinicalPhenotypes);
+      const femalePhenotypeKeys = detectedPhenotypeKeys({
+        irScreening: insulinResistance,
+        clinicalPhenotypes,
+        preventRisk,
+        stopBangRisk,
+      });
       let supplements = defaultSupplements;
       if (clinicianCustom) {
         const customMatches = evaluateClinicianSupplements({
