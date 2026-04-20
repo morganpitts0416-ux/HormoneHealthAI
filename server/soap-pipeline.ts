@@ -124,6 +124,192 @@ THYROID-SPECIFIC RULES (READ CAREFULLY — common error source):
 - If the transcript mentions Graves, hyperthyroid, thyrotoxicosis, low TSH, exophthalmos, heat intolerance, palpitations, weight loss, tremor, or thyroid eye disease — the working diagnosis is HYPERthyroidism, not hypothyroidism. Do not flip it.
 
 ═══════════════════════════════════════
+MEDICATION-IMPLIED CONDITION DICTIONARY
+═══════════════════════════════════════
+Use these mappings to infer underlying diagnoses when a medication is documented as currently taken (status = "current"). Always preserve nuance — a patient on a drug class may have ANY of the listed indications; pick the one that best fits the encounter context. Never invent a medication the patient is not actually on.
+
+ENDOCRINE / METABOLIC
+- Levothyroxine, Synthroid, Tirosint, Armour Thyroid, NP Thyroid, liothyronine, Cytomel → hypothyroidism (E03.9)
+- Methimazole (Tapazole), propylthiouracil (PTU), post-RAI, post-thyroidectomy → hyperthyroidism / Graves disease (E05.x)
+- Metformin → T2DM (E11.9) OR insulin resistance/prediabetes (R73.03 / E88.81) OR PCOS (E28.2) — pick by context
+- GLP-1 RAs: semaglutide (Ozempic/Wegovy/Rybelsus), tirzepatide (Mounjaro/Zepbound), liraglutide (Victoza/Saxenda), dulaglutide (Trulicity), exenatide → T2DM (E11.9) OR obesity (E66.x). Wegovy/Zepbound/Saxenda dosing → obesity. Ozempic/Mounjaro/Trulicity dosing → T2DM.
+- SGLT2 inhibitors: empagliflozin (Jardiance), dapagliflozin (Farxiga), canagliflozin (Invokana), ertugliflozin → T2DM, HFrEF, or CKD
+- DPP-4 inhibitors: sitagliptin (Januvia), linagliptin (Tradjenta) → T2DM
+- Sulfonylureas: glipizide, glimepiride, glyburide → T2DM
+- Insulin (any formulation: glargine/Lantus/Basaglar, aspart/Novolog, lispro/Humalog, NPH, detemir, degludec/Tresiba) → diabetes — specify T1DM (E10) if lean/autoimmune/lifelong, T2DM (E11.9) otherwise. Insulin from diagnosis with no oral agents trial → consider T1DM.
+- Pioglitazone (Actos) → T2DM / insulin resistance
+- Naltrexone-bupropion (Contrave), phentermine, phentermine-topiramate (Qsymia), orlistat → obesity (E66.x)
+- Hydrocortisone, fludrocortisone → adrenal insufficiency (E27.x); chronic prednisone → autoimmune disease, adrenal suppression, or asthma/COPD per context
+- Spironolactone (in women) → PCOS (E28.2), acne, hirsutism, or HFrEF; (in men) → HFrEF, resistant HTN, primary aldosteronism
+
+HORMONE THERAPY
+- Estradiol (oral, patch, gel, spray, vaginal, pellet), conjugated estrogens (Premarin), Estring, Vagifem → menopause (N95.1) or perimenopause (N95.0); GU symptoms only → GSM (N95.2)
+- Progesterone (Prometrium, micronized), medroxyprogesterone, norethindrone → menopause/HRT, AUB, or contraception per context
+- Testosterone in women (compounded cream, pellet, low-dose injection) → HSDD (R37) or female testosterone deficiency
+- Testosterone in men (cypionate/enanthate IM, gel/Androgel, pellet, Jatenzo) → male hypogonadism (E29.1) — specify primary (high LH/FSH) vs secondary (low/normal LH/FSH) when labs available
+- Anastrozole, letrozole (in men on TRT, low dose) → estrogen management on TRT; (in women, oncology dosing) → breast cancer / hormone-sensitive tumor
+- hCG, clomiphene, enclomiphene (Androxal), tamoxifen (in men) → secondary hypogonadism, fertility preservation on TRT
+- Finasteride, dutasteride → BPH (N40.x) or androgenetic alopecia
+- Tamsulosin (Flomax), alfuzosin, silodosin → BPH (N40.0)
+- Sildenafil (Viagra), tadalafil (Cialis) PRN → erectile dysfunction (N52.9); tadalafil daily 5 mg → BPH or ED
+- Combined OCPs, progestin-only pills, NuvaRing, hormonal IUD (Mirena/Kyleena/Skyla) → contraception (Z30.0) OR menstrual regulation, dysmenorrhea, endometriosis, PCOS, AUB per context
+
+CARDIOVASCULAR
+- Statins (atorvastatin/Lipitor, rosuvastatin/Crestor, simvastatin, pravastatin, lovastatin, pitavastatin) → hyperlipidemia (E78.x) ± ASCVD (I25.x); high-intensity post-MI/post-stent → secondary prevention
+- Ezetimibe (Zetia), bempedoic acid (Nexletol) → hyperlipidemia
+- PCSK9 inhibitors: evolocumab (Repatha), alirocumab (Praluent); inclisiran (Leqvio) → familial/refractory hyperlipidemia, ASCVD
+- Icosapent ethyl (Vascepa) → hypertriglyceridemia + elevated CV risk
+- Fibrates (fenofibrate, gemfibrozil) → hypertriglyceridemia
+- ACEi/ARBs (lisinopril, enalapril, losartan, valsartan, olmesartan), CCBs (amlodipine, diltiazem), thiazides (HCTZ, chlorthalidone, indapamide), beta-blockers (metoprolol, carvedilol, bisoprolol, atenolol) → hypertension (I10) ± HFrEF, post-MI, AFib rate control per context
+- Sacubitril-valsartan (Entresto) → HFrEF (I50.x)
+- Spironolactone, eplerenone → HFrEF, resistant HTN, primary aldosteronism
+- Warfarin → AFib (I48), VTE (I82.x), mechanical valve, hypercoagulable state
+- DOACs: apixaban (Eliquis), rivaroxaban (Xarelto), dabigatran (Pradaxa), edoxaban → AFib or VTE
+- Antiplatelets: aspirin 81 mg → primary or secondary CV prevention; clopidogrel (Plavix), prasugrel, ticagrelor → post-stent / ACS / secondary prevention
+- Nitrates (nitroglycerin SL, isosorbide) → CAD / angina
+
+PSYCHIATRIC / SLEEP
+- SSRIs (sertraline/Zoloft, escitalopram/Lexapro, fluoxetine/Prozac, paroxetine/Paxil, citalopram/Celexa, fluvoxamine) → MDD (F32.x/F33.x), GAD (F41.1), panic disorder, OCD, PTSD per context
+- SNRIs (duloxetine/Cymbalta, venlafaxine/Effexor, desvenlafaxine/Pristiq, levomilnacipran) → MDD, GAD, neuropathic pain (duloxetine), fibromyalgia
+- Bupropion (Wellbutrin) → MDD, SAD, smoking cessation, ADHD adjunct
+- Mirtazapine → MDD with insomnia/poor appetite
+- Trazodone → insomnia (low dose) or MDD (high dose)
+- TCAs (amitriptyline, nortriptyline) → neuropathic pain, migraine prophylaxis, MDD
+- Buspirone → GAD
+- Benzodiazepines (alprazolam/Xanax, lorazepam/Ativan, clonazepam/Klonopin, diazepam/Valium) → anxiety, panic, insomnia (short-term)
+- Mood stabilizers: lamotrigine, lithium, valproate, carbamazepine → bipolar disorder; lamotrigine/valproate also seizure
+- Antipsychotics: quetiapine/Seroquel, aripiprazole/Abilify, olanzapine, risperidone, lurasidone → bipolar, MDD augmentation, psychotic disorder
+- ADHD stimulants: methylphenidate (Ritalin/Concerta), amphetamine salts (Adderall), lisdexamfetamine (Vyvanse) → ADHD (F90.x)
+- ADHD non-stimulants: atomoxetine (Strattera), guanfacine ER (Intuniv), clonidine ER → ADHD
+- Sleep hypnotics: zolpidem (Ambien), eszopiclone (Lunesta), zaleplon, ramelteon, suvorexant (Belsomra), lemborexant (Dayvigo) → insomnia (G47.00); melatonin → circadian/sleep onset
+- Naltrexone (50 mg PO daily, Vivitrol IM) → AUD or OUD; low-dose naltrexone (1.5–4.5 mg) → autoimmune/chronic pain protocols
+- Buprenorphine (Suboxone, Subutex), methadone → OUD MAT (F11.20)
+
+GI
+- PPIs (omeprazole, pantoprazole, esomeprazole, lansoprazole, rabeprazole, dexlansoprazole) → GERD (K21.9) or PUD
+- H2 blockers (famotidine) → GERD or PUD
+- Sucralfate → PUD or stress ulcer prophylaxis
+- 5-ASA (mesalamine, sulfasalazine) → UC or Crohn's
+- Biologics for IBD (infliximab/Remicade, adalimumab/Humira, vedolizumab/Entyvio, ustekinumab/Stelara) → IBD (K50.x / K51.x) — context required to distinguish from rheum/derm indications
+- Linaclotide (Linzess), lubiprostone (Amitiza), plecanatide → IBS-C or chronic constipation
+- Rifaximin (Xifaxan) → IBS-D or hepatic encephalopathy or SIBO
+- Bile acid sequestrants (cholestyramine, colesevelam) → bile acid diarrhea, hyperlipidemia, or pruritus
+
+PULMONARY / ALLERGY
+- ICS/LABA inhalers (Advair, Symbicort, Breo, Trelegy, Wixela) → asthma or COPD
+- Albuterol PRN → asthma or COPD
+- LAMA (tiotropium/Spiriva, umeclidinium) → COPD primarily
+- Montelukast (Singulair) → asthma, allergic rhinitis
+- Biologics: omalizumab (Xolair) → severe allergic asthma, chronic urticaria; dupilumab (Dupixent) → atopic dermatitis, asthma, EoE; mepolizumab/benralizumab → eosinophilic asthma
+- Intranasal steroids (fluticasone, mometasone) → allergic rhinitis
+
+BONE / RHEUMATOLOGY
+- Bisphosphonates (alendronate/Fosamax, risedronate, ibandronate, zoledronic acid/Reclast) → osteoporosis (M81.0) or osteopenia (M85.8)
+- Denosumab (Prolia) → osteoporosis; (Xgeva at higher dose) → bone metastases
+- Romosozumab (Evenity), teriparatide (Forteo), abaloparatide (Tymlos) → severe osteoporosis with high fracture risk
+- Hydroxychloroquine (Plaquenil) → SLE, RA, Sjögren's
+- Methotrexate → RA, psoriasis, psoriatic arthritis (low-dose); ectopic / oncology at high dose
+- TNF inhibitors (etanercept/Enbrel, adalimumab/Humira, infliximab/Remicade, golimumab, certolizumab) → RA, AS, PsA, IBD, psoriasis (context required)
+- IL-17/IL-23 (secukinumab, ixekizumab, guselkumab, risankizumab) → psoriasis, PsA, AS
+- JAK inhibitors (tofacitinib, baricitinib, upadacitinib) → RA, PsA, atopic dermatitis, alopecia areata
+- Allopurinol, febuxostat → gout (M10.x) or hyperuricemia
+- Colchicine → gout (acute or prophylaxis), pericarditis, FMF
+
+NEUROLOGY
+- Anticonvulsants: gabapentin, pregabalin (Lyrica) → neuropathic pain, fibromyalgia, anxiety (gabapentinoids), restless legs
+- Topiramate → migraine prophylaxis, seizure, weight loss adjunct
+- Triptans (sumatriptan, rizatriptan, zolmitriptan, eletriptan) → migraine (G43.x)
+- CGRP mAbs (erenumab/Aimovig, fremanezumab/Ajovy, galcanezumab/Emgality), gepants (rimegepant/Nurtec, ubrogepant/Ubrelvy, atogepant/Qulipta) → chronic migraine
+- Carbidopa-levodopa, ropinirole, pramipexole → Parkinson's; ropinirole/pramipexole at low dose → restless legs
+- Donepezil, memantine, rivastigmine → Alzheimer's / dementia
+- MS DMTs (ocrelizumab, glatiramer, dimethyl fumarate, fingolimod) → multiple sclerosis
+
+PAIN / OPIOIDS
+- Chronic opioids (oxycodone, hydrocodone-acetaminophen, morphine ER, fentanyl patch, tramadol) → chronic pain syndrome — document indication
+- Buprenorphine (Belbuca, Butrans) for pain → chronic pain; (Suboxone) → OUD MAT
+- Naloxone (Narcan) prescription → opioid use / overdose risk
+
+HEMATOLOGY
+- Iron (ferrous sulfate/gluconate, IV iron — Venofer, Injectafer, Monoferric) → iron deficiency ± anemia (D50.9 / E61.1)
+- B12 IM/SL → B12 deficiency (E53.8) or pernicious anemia (D51.0)
+- Folic acid → folate deficiency, pregnancy, MTHFR support
+- Erythropoiesis stimulators (darbepoetin, epoetin) → CKD anemia, chemo-induced anemia
+
+DERMATOLOGY
+- Isotretinoin (Accutane) → severe nodulocystic acne
+- Tretinoin, adapalene topical → acne, photoaging
+- Topical calcineurin inhibitors (tacrolimus, pimecrolimus) → atopic dermatitis
+- Spironolactone (women) → hormonal acne, hirsutism, PCOS
+
+═══════════════════════════════════════
+DIAGNOSTIC SPECIFICITY RULES (commonly mis-coded)
+═══════════════════════════════════════
+Apply these rules whenever the relevant context is present. Default to MORE specific diagnoses; flag uncertainty in `assessment_candidates`.
+
+DIABETES TYPE
+- Adult-onset, on metformin/GLP-1 ± oral agents, insulin resistant, no DKA history → T2DM (E11.x).
+- Lean, autoimmune phenotype, insulin from diagnosis, possible DKA history, GAD/IA-2/ZnT8 antibody history → T1DM (E10.x).
+- LADA (latent autoimmune diabetes of adults) — adult onset that progresses to insulin dependence — flag explicitly when antibody positivity or rapid beta-cell failure is mentioned. Do not auto-collapse to T2DM.
+- Steroid-induced or pancreatogenic diabetes — capture if context (chronic prednisone, post-pancreatitis, post-pancreatectomy, CF) supports it.
+
+GLUCOSE DYSREGULATION SPECTRUM (distinct ICD-10 — do not conflate)
+- A1c ≥6.5% OR fasting glucose ≥126 OR random ≥200 with symptoms → diabetes (E10/E11)
+- A1c 5.7–6.4% → prediabetes (R73.03)
+- Elevated fasting insulin / HOMA-IR with normal A1c → insulin resistance (E88.81)
+- Reactive hypoglycemia → E16.1
+- Metabolic syndrome (3+ of: central adiposity, low HDL, high TG, elevated FBG, HTN) → E88.81 with metabolic syndrome documented
+
+MALE HYPOGONADISM — specify primary vs secondary
+- Low total/free T + ELEVATED LH/FSH → primary hypogonadism (E29.1)
+- Low total/free T + LOW or inappropriately normal LH/FSH → secondary hypogonadism / hypogonadotropic hypogonadism (E23.0)
+- If LH/FSH not yet drawn, capture as "hypogonadism, type to be determined" in assessment_candidates rather than picking one
+- Functional hypogonadism (obesity, OSA, opioids, chronic illness) — note when context supports reversible causes
+
+FEMALE REPRODUCTIVE LIFE STAGE — three distinct entities
+- <40 years + amenorrhea + elevated FSH + low estradiol → primary ovarian insufficiency / POI (E28.310), NOT menopause
+- 40–55 + cycle irregularity, vasomotor symptoms, FSH variable → perimenopause (N95.0)
+- ≥12 months amenorrhea (typically 45–55+) → menopause (N95.1)
+- Surgical menopause (post-bilateral oophorectomy) → N95.1 with surgical context
+- GU symptoms only (vaginal dryness, dyspareunia, recurrent UTI) → genitourinary syndrome of menopause / GSM (N95.2)
+- PCOS — irregular cycles + clinical/biochemical hyperandrogenism + polycystic morphology (Rotterdam) → E28.2. Common pitfall: do NOT call irregular cycles in a young woman "perimenopause" — PCOS first.
+
+THYROID — see thyroid-specific rules above. Do not default to hypothyroidism.
+
+HYPERLIPIDEMIA — use specific subtype codes
+- Pure hypercholesterolemia (high LDL only) → E78.0
+- Pure hypertriglyceridemia → E78.1
+- Mixed hyperlipidemia → E78.2
+- Low HDL → E78.6
+- Elevated Lp(a) → E78.41
+- Familial hypercholesterolemia (very high LDL, family history of premature ASCVD, tendon xanthomas) → E78.01
+
+HYPERTENSION
+- Default essential HTN → I10
+- If young (<30), refractory (≥3 drugs including diuretic), hypokalemia, episodic (pheo), bruits (RAS), sleep apnea — flag secondary HTN workup in needs_clinician_review
+
+LIVER (renamed in 2023 — use new nomenclature)
+- Hepatic steatosis on imaging + metabolic risk factors → MASLD / metabolic dysfunction-associated steatotic liver disease (formerly NAFLD) — K76.0
+- Steatohepatitis with fibrosis/inflammation → MASH (formerly NASH) — K75.81
+- Always pair with metabolic syndrome documentation
+
+SLEEP APNEA
+- Snoring + witnessed apneas + obesity + EDS → obstructive sleep apnea (G47.33). High STOP-BANG → strongly_implied.
+- Cheyne-Stokes pattern + HFrEF → consider central sleep apnea (G47.31)
+
+ANEMIA — distinguish workup
+- Microcytic + low ferritin → iron deficiency anemia (D50.9)
+- Microcytic + normal/high ferritin → anemia of chronic disease (D63.x) or thalassemia trait
+- Macrocytic + low B12 → B12 deficiency anemia (D51.x)
+- Macrocytic + low folate → folate deficiency anemia (D52.x)
+- Normocytic in CKD → CKD-related anemia (D63.1)
+
+MIGRAINE — specify subtype
+- With aura → G43.10x
+- Without aura → G43.00x
+- Chronic (≥15 headache days/month for 3 months) → G43.70x
+- Menstrual / catamenial → G43.829
+
+═══════════════════════════════════════
 PART 3 — PREVENTATIVE MEDICINE SIGNALS
 ═══════════════════════════════════════
 Identify "between the lines" clinical clues that a thoughtful clinician would notice:
