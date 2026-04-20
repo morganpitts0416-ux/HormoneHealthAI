@@ -818,13 +818,16 @@ export const clinicianSupplementRules = pgTable("clinician_supplement_rules", {
   id: serial("id").primaryKey(),
   supplementId: integer("supplement_id").notNull().references(() => clinicianSupplements.id, { onDelete: 'cascade' }),
   clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: 'cascade' }),
-  triggerType: varchar("trigger_type", { length: 20 }).notNull().default("lab"), // 'lab' | 'symptom' | 'both'
+  triggerType: varchar("trigger_type", { length: 20 }).notNull().default("lab"), // 'lab' | 'symptom' | 'phenotype' | 'both'
   // Lab trigger fields
   labMarker: varchar("lab_marker", { length: 50 }), // e.g. 'vitaminD', 'testosterone'
   labMin: real("lab_min"),   // lower bound of trigger range (null = no lower bound)
   labMax: real("lab_max"),   // upper bound of trigger range (null = no upper bound)
   // Symptom trigger fields
   symptomKey: varchar("symptom_key", { length: 50 }), // e.g. 'brainFog', 'fatigue', 'hairLoss'
+  // Phenotype / screening-outcome trigger field (e.g. 'ir_visceral_metabolic',
+  // 'fp_menopausal_transition'). See PHENOTYPE_KEYS in server/phenotype-registry.ts.
+  phenotypeKey: varchar("phenotype_key", { length: 60 }),
   // When triggerType='both': how to combine lab + symptom conditions
   combinationLogic: varchar("combination_logic", { length: 5 }).notNull().default("OR"), // 'AND' | 'OR'
   priority: varchar("priority", { length: 10 }).notNull().default("medium"), // 'high' | 'medium' | 'low'

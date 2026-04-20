@@ -84,6 +84,7 @@ interface DefaultsData {
   symptomKeys: { key: string; label: string }[];
   supplementCategories: { value: string; label: string }[];
   labMarkerKeys: { key: string; label: string; unit: string }[];
+  phenotypeKeys?: { key: string; label: string; gender: 'male' | 'female' | 'both'; description?: string }[];
 }
 
 // ── Helpers ──────────────────────────────────────────────────────────────────
@@ -103,6 +104,7 @@ const PRIORITY_OPTIONS = [
 const TRIGGER_OPTIONS = [
   { value: 'lab', label: 'Lab Value' },
   { value: 'symptom', label: 'Symptom' },
+  { value: 'phenotype', label: 'Phenotype / Screening Outcome' },
   { value: 'both', label: 'Lab + Symptom' },
 ];
 
@@ -359,6 +361,7 @@ function RuleFormDialog({
     labMin: initial?.labMin !== null && initial?.labMin !== undefined ? String(initial.labMin) : '',
     labMax: initial?.labMax !== null && initial?.labMax !== undefined ? String(initial.labMax) : '',
     symptomKey: initial?.symptomKey || '',
+    phenotypeKey: (initial as any)?.phenotypeKey || '',
     combinationLogic: initial?.combinationLogic || 'OR',
     priority: initial?.priority || 'medium',
     indicationText: initial?.indicationText || '',
@@ -374,6 +377,10 @@ function RuleFormDialog({
       toast({ title: "Please select a symptom", variant: "destructive" });
       return;
     }
+    if (form.triggerType === 'phenotype' && !form.phenotypeKey) {
+      toast({ title: "Please select a phenotype", variant: "destructive" });
+      return;
+    }
     setSaving(true);
     try {
       await onSave({
@@ -382,6 +389,7 @@ function RuleFormDialog({
         labMin: form.labMin !== '' ? parseFloat(form.labMin) : null,
         labMax: form.labMax !== '' ? parseFloat(form.labMax) : null,
         symptomKey: form.symptomKey || null,
+        phenotypeKey: form.phenotypeKey || null,
         combinationLogic: form.combinationLogic,
         priority: form.priority,
         indicationText: form.indicationText.trim() || null,
@@ -501,6 +509,33 @@ function RuleFormDialog({
             </div>
           )}
 
+          {form.triggerType === 'phenotype' && (
+            <div className="rounded-md border p-3 space-y-3 bg-muted/30">
+              <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Phenotype / Screening Outcome</p>
+              <div className="space-y-1">
+                <label className="text-xs font-medium text-muted-foreground">Detected Phenotype</label>
+                <Select value={form.phenotypeKey} onValueChange={v => setForm(f => ({ ...f, phenotypeKey: v }))}>
+                  <SelectTrigger data-testid="select-phenotype-key">
+                    <SelectValue placeholder="Select phenotype…" />
+                  </SelectTrigger>
+                  <SelectContent>
+                    {(defaults.phenotypeKeys ?? []).map(p => (
+                      <SelectItem key={p.key} value={p.key}>
+                        {p.label}
+                        {p.gender !== 'both' && (
+                          <span className="text-muted-foreground ml-1">({p.gender})</span>
+                        )}
+                      </SelectItem>
+                    ))}
+                  </SelectContent>
+                </Select>
+              </div>
+              <p className="text-xs text-muted-foreground">
+                Recommend this supplement when the platform detects this phenotype or screening outcome from the patient's labs.
+              </p>
+            </div>
+          )}
+
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
               <label className="text-xs font-medium text-muted-foreground">Priority</label>
@@ -573,6 +608,10 @@ function SupplementRow({
     if ((r.triggerType === 'symptom' || r.triggerType === 'both') && r.symptomKey) {
       const symLabel = defaults.symptomKeys.find(s => s.key === r.symptomKey)?.label || r.symptomKey;
       parts.push(symLabel);
+    }
+    if (r.triggerType === 'phenotype' && (r as any).phenotypeKey) {
+      const phLabel = (defaults.phenotypeKeys ?? []).find(p => p.key === (r as any).phenotypeKey)?.label || (r as any).phenotypeKey;
+      parts.push(phLabel);
     }
     return parts.join(' ') || '(no condition)';
   };

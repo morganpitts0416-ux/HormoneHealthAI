@@ -21,6 +21,7 @@ import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
 import { applyCustomRangesToInterpretations } from "./lab-range-overrides";
 import { evaluateClinicianSupplements, combineSupplementRecommendations } from "./clinician-supplements-engine";
+import { PHENOTYPE_KEYS, detectedPhenotypeKeys } from "./phenotype-registry";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { normalizeTranscript, parseCSV, parseArrayField } from "./medication-normalizer";
 import {
@@ -918,6 +919,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // (or fully replace with) the clinician's custom library based on their
       // supplementMode setting.
       const defaultSupplements = evaluateMaleSupplements(labs);
+
+      // Step 8: Insulin Resistance Screening (must run before custom-supplement
+      // evaluation so phenotype-keyed rules can fire on the IR phenotype)
+      const insulinResistance = screenInsulinResistance(labs, 'male') || undefined;
+      const malePhenotypeKeys = detectedPhenotypeKeys(insulinResistance, null);
+
       let supplements = defaultSupplements;
       if (clinicianCustom) {
         const customMatches = evaluateClinicianSupplements({
@@ -925,15 +932,14 @@ export async function registerRoutes(app: Express): Promise<Server> {
           supplements: clinicianCustom.customSupps,
           rules: clinicianCustom.customRules,
           gender: 'male',
+          phenotypes: malePhenotypeKeys,
         });
         supplements = combineSupplementRecommendations(defaultSupplements, customMatches, clinicianCustom.supplementMode);
-        console.log(`[API] Male supplement mode: ${clinicianCustom.supplementMode}; defaults=${defaultSupplements.length}, custom=${customMatches.length}, final=${supplements.length}`);
+        console.log(`[API] Male supplement mode: ${clinicianCustom.supplementMode}; defaults=${defaultSupplements.length}, custom=${customMatches.length}, final=${supplements.length}, phenotypes=[${Array.from(malePhenotypeKeys).join(',')}]`);
       } else {
         console.log('[API] Male supplement recommendations:', supplements.length);
       }
 
-      // Step 8: Insulin Resistance Screening
-      const insulinResistance = screenInsulinResistance(labs, 'male') || undefined;
       console.log('[API] Male IR Screening:', insulinResistance ? `${insulinResistance.positiveCount} positive markers, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
 
       if (insulinResistance && insulinResistance.likelihood !== 'none') {
@@ -1255,6 +1261,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const supplementResult = evaluateSupplements(labs, insulinResistance);
       const defaultSupplements = supplementResult.recommendations;
       const clinicalPhenotypes = supplementResult.phenotypes;
+      const femalePhenotypeKeys = detectedPhenotypeKeys(insulinResistance, clinicalPhenotypes);
       let supplements = defaultSupplements;
       if (clinicianCustom) {
         const customMatches = evaluateClinicianSupplements({
@@ -1262,9 +1269,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
           supplements: clinicianCustom.customSupps,
           rules: clinicianCustom.customRules,
           gender: 'female',
+          phenotypes: femalePhenotypeKeys,
         });
         supplements = combineSupplementRecommendations(defaultSupplements, customMatches, clinicianCustom.supplementMode);
-        console.log(`[API] Female supplement mode: ${clinicianCustom.supplementMode}; defaults=${defaultSupplements.length}, custom=${customMatches.length}, final=${supplements.length}`);
+        console.log(`[API] Female supplement mode: ${clinicianCustom.supplementMode}; defaults=${defaultSupplements.length}, custom=${customMatches.length}, final=${supplements.length}, phenotypes=[${Array.from(femalePhenotypeKeys).join(',')}]`);
       } else {
         console.log('[API] Supplement recommendations:', supplements.length);
       }
@@ -4390,6 +4398,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       symptomKeys: SYMPTOM_KEYS,
       supplementCategories: SUPPLEMENT_CATEGORIES,
       labMarkerKeys: LAB_MARKER_KEYS,
+      phenotypeKeys: PHENOTYPE_KEYS,
     });
   });
 

@@ -46,16 +46,27 @@ function ruleMatchesSymptom(
   return symptoms.has(rule.symptomKey);
 }
 
+function ruleMatchesPhenotype(
+  rule: ClinicianSupplementRule,
+  phenotypes: Set<string>,
+): boolean {
+  if (!rule.phenotypeKey) return false;
+  return phenotypes.has(rule.phenotypeKey);
+}
+
 function ruleMatches(
   rule: ClinicianSupplementRule,
   labs: AnyLabs,
   symptoms: Set<string>,
+  phenotypes: Set<string>,
 ): boolean {
   switch (rule.triggerType) {
     case "lab":
       return ruleMatchesLab(rule, labs);
     case "symptom":
       return ruleMatchesSymptom(rule, symptoms);
+    case "phenotype":
+      return ruleMatchesPhenotype(rule, phenotypes);
     case "both": {
       const lab = ruleMatchesLab(rule, labs);
       const sym = ruleMatchesSymptom(rule, symptoms);
@@ -107,6 +118,11 @@ export interface ClinicianSupplementEvalArgs {
    * rules). For pipelines that don't yet collect symptoms, pass undefined.
    */
   symptoms?: Iterable<string>;
+  /**
+   * Optional set of detected phenotype keys (matches `phenotypeKey` in rules).
+   * Built via detectedPhenotypeKeys() in server/phenotype-registry.ts.
+   */
+  phenotypes?: Iterable<string>;
 }
 
 /**
@@ -119,6 +135,7 @@ export function evaluateClinicianSupplements(
 ): SupplementRecommendation[] {
   const { labs, supplements, rules, gender } = args;
   const symptomSet = new Set<string>(args.symptoms ?? []);
+  const phenotypeSet = new Set<string>(args.phenotypes ?? []);
 
   if (!supplements.length || !rules.length) return [];
 
@@ -138,7 +155,7 @@ export function evaluateClinicianSupplements(
   for (const rule of rules) {
     const supp = supplementById.get(rule.supplementId);
     if (!supp) continue;
-    if (!ruleMatches(rule, labs as AnyLabs, symptomSet)) continue;
+    if (!ruleMatches(rule, labs as AnyLabs, symptomSet, phenotypeSet)) continue;
 
     const existing = matchedBySupplement.get(supp.id);
     if (
