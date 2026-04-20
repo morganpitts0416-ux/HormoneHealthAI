@@ -3355,7 +3355,7 @@ export default function EncountersPage() {
   });
 
   return (
-    <div className="flex-1 flex flex-col" style={{ background: "#f9f6f0" }}>
+    <div className="flex-1 flex flex-col min-h-0" style={{ background: "#f9f6f0" }}>
       <div className="border-b px-4 py-2 flex items-center gap-3" style={{ background: "#f5f2ed", borderColor: "#d4c9b5" }}>
         <div className="flex items-center gap-2">
           <Stethoscope className="w-4 h-4" style={{ color: "#2e3a20" }} />
