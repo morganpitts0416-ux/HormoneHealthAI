@@ -621,6 +621,7 @@ export default function LabInterpretation() {
                 />
 
                 {/* Supplement Protocol — Interactive Selector */}
+                <SupplementModeBadge />
                 <SupplementSelector
                   supplements={interpretationResult.supplements || []}
                   selectedNames={selectedSupplementNames}
@@ -710,5 +711,19 @@ export default function LabInterpretation() {
         )}
       </main>
     </div>
+  );
+}
+
+function SupplementModeBadge() {
+  const { data } = useQuery<{ supplementMode?: string }>({ queryKey: ["/api/preferences/discount"] });
+  if (data?.supplementMode !== 'custom_only') return null;
+  return (
+    <Alert data-testid="alert-supplement-mode-custom-only">
+      <AlertCircle className="h-4 w-4" />
+      <AlertTitle>Custom-only supplement mode is active</AlertTitle>
+      <AlertDescription>
+        Default Metagenics recommendations were intentionally skipped. Only supplements from your custom library are shown. You can switch back any time in Account &rarr; Supplements.
+      </AlertDescription>
+    </Alert>
   );
 }
