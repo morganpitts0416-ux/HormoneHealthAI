@@ -1,0 +1,30 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ git add client/src/pages/encounters.tsx
+git commit -m "Fix scroll on encounter dashboard tabs by constraining flex height"
+git push origin main
+gcloud run deploy hormonehealthai --source . --region us-central1 --platform managed --allow-unauthenticated
+On branch main
+Your branch is up to date with 'origin/main'.
+
+Untracked files:
+  (use "git add <file>..." to include in what will be committed)
+        server/prod-migrate.sql
+
+nothing added to commit but untracked files present (use "git add" to track)
+Username for 'https://github.com': git add client/src/pages/encounters.tsx
+git commit -m "Fix scroll on encounter dashboard tabs by constraining flex height"
+git push origin main
+gcloud run deploy hormonehealthai --source . --region us-central1 --platform managed --allow-unauthenticatedPassword for 'https://git%20add%20client%2Fsrc%2Fpages%2Fencounters.tsx@github.com': 
+remote: Invalid username or token. Password authentication is not supported for Git operations.
+fatal: Authentication failed for 'https://github.com/morganpitts0416-ux/HormoneHealthAI.git/'
+Building using Dockerfile and deploying container to Cloud Run service [hormonehealthai] in project [realign-lab-app] region [us-central1]
+Building and deploying...                                                                                                                                                                                                                      
+  Validating configuration...done                                                                                                                                                                                                              
+  Uploading sources...done                                                                                                                                                                                                                     
+  Building Container... Logs are available at [https://console.cloud.google.com/cloud-build/builds;region=us-central1/61b2b3a0-1196-4125-a7f9-bfd49b100b1c?project=384086867382]....done                                                       
+  Setting IAM Policy...done                                                                                                                                                                                                                    
+  Creating Revision...done                                                                                                                                                                                                                     
+  Routing traffic...done                                                                                                                                                                                                                       
+Done.                                                                                                                                                                                                                                          
+Service [hormonehealthai] revision [hormonehealthai-00143-b7q] has been deployed and is serving 100 percent of traffic.
+Service URL: https://hormonehealthai-384086867382.us-central1.run.app
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
