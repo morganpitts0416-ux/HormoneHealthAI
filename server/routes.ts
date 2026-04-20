@@ -1510,16 +1510,41 @@ ${aiRecommendations}`;
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid patient ID" });
-      const { firstName, lastName, email, dateOfBirth, phone } = req.body as {
+      const { firstName, lastName, email, dateOfBirth, phone, primaryProvider, preferredPharmacy } = req.body as {
         firstName?: string; lastName?: string; email?: string;
         dateOfBirth?: string; phone?: string;
+        primaryProvider?: string | null; preferredPharmacy?: string | null;
       };
       const updates: Record<string, unknown> = {};
-      if (firstName !== undefined) updates.firstName = firstName.trim();
-      if (lastName !== undefined) updates.lastName = lastName.trim();
-      if (email !== undefined) updates.email = email.trim().toLowerCase() || null;
+      if (firstName !== undefined) updates.firstName = (firstName ?? "").trim();
+      if (lastName !== undefined) updates.lastName = (lastName ?? "").trim();
+      if (email !== undefined) updates.email = (email ?? "").trim().toLowerCase() || null;
       if (dateOfBirth !== undefined) updates.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
-      if (phone !== undefined) updates.phone = phone.trim() || null;
+      if (phone !== undefined) updates.phone = (phone ?? "").trim() || null;
+      if (primaryProvider !== undefined) {
+        const providerName = typeof primaryProvider === "string" ? primaryProvider.trim() : "";
+        updates.primaryProvider = providerName || null;
+        // Best-effort: also resolve primaryProviderId from the clinic membership matching the display name.
+        if (providerName) {
+          try {
+            const members = await storage.getClinicMembers(clinicId);
+            const match = members.find((m: any) => {
+              const display = (m?.userName || "").toLowerCase();
+              return display === providerName.toLowerCase();
+            });
+            if (match) updates.primaryProviderId = (match as any).userId ?? null;
+          } catch (e) {
+            console.warn("[patients PATCH] could not resolve primaryProviderId:", e);
+          }
+        } else {
+          updates.primaryProviderId = null;
+        }
+      }
+      if (preferredPharmacy !== undefined) {
+        updates.preferredPharmacy = typeof preferredPharmacy === "string"
+          ? (preferredPharmacy.trim() || null)
+          : preferredPharmacy ?? null;
+      }
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No fields to update" });
       const updated = await storage.updatePatient(id, updates as any, clinicianId, clinicId);
       if (!updated) return res.status(404).json({ error: "Patient not found" });
