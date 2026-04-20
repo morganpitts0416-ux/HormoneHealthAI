@@ -526,6 +526,13 @@ CHECK FOR:
 12. RECOMMENDATION DUPLICATES: Does needs_clinician_review contain items that duplicate the explicit Plan?
 13. MISCLASSIFIED SUGGESTIONS: Does needs_clinician_review contain "SUGGESTED (awaiting clinician approval):" items for actions that were EXPLICITLY DISCUSSED AND DECIDED during the encounter? If the transcript and extraction show the provider and patient agreed to initiate/adjust/continue something, it must be in the Plan as a decided action, NOT in needs_clinician_review as a suggestion. Move it to the Plan and remove from needs_clinician_review.
 
+CRITICAL — DIAGNOSIS PRESERVATION:
+- Do NOT remove a diagnosis from the Assessment simply because you cannot find supporting dialogue in the transcript portion you can see. Long encounters discuss conditions throughout the visit; supporting evidence may appear anywhere in the conversation.
+- Only flag a diagnosis for removal if it directly contradicts something explicitly stated in the transcript or extraction (e.g., note says "diabetes" but extraction and transcript both deny diabetes).
+- If anything in the structured extraction (diagnoses_discussed, assessment_candidates, conditions_inferred, medications_current with their implied conditions, symptoms_reported, labs_reviewed) supports a diagnosis, that diagnosis is valid and must be kept.
+- Err on the side of KEEPING diagnoses. The provider can remove them if not relevant; missing diagnoses are far worse than extra ones.
+- The Assessment should reflect ALL clinically relevant problems discussed across the entire encounter. Do not impose any cap on the number of assessment items.
+
 RESPONSE FORMAT:
 {
   "issues_found": [
@@ -561,8 +568,8 @@ ${soapOutput.fullNote}
 NEEDS_CLINICIAN_REVIEW (check for duplicates of plan):
 ${JSON.stringify(soapOutput.needs_clinician_review)}
 
-TRANSCRIPT (for contradiction checking):
-${transcriptText.substring(0, 8000)}
+TRANSCRIPT (full conversation — review the entire encounter, including later sections, before flagging diagnoses or findings as unsupported):
+${transcriptText.substring(0, 60000)}
 
 Review the note for quality issues. If critical/important issues are found, provide a corrected version.`;
 
