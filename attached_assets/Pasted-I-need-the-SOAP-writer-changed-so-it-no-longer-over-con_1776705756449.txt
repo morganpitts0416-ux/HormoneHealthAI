@@ -1,0 +1,67 @@
+I need the SOAP writer changed so it no longer over-condenses important clinical counseling and shared decision-making.
+
+Right now, the note is readable, but it is dropping medically important content from the transcript — especially patient education, risk/benefit discussion, medication counseling, titration instructions, administration instructions, alternatives discussed, monitoring plans, and confirmation that the patient understood and agreed.
+
+I do NOT want the note to become theatrical, overly verbose, or padded.
+I DO want it to be more clinically complete and medico-legally defensible.
+
+Please update the SOAP generation logic with these rules:
+
+1. The writer should treat the transcript as a source for CLINICAL DETAIL EXTRACTION, not just summarization.
+
+2. It must preserve and document the following whenever discussed in the visit:
+- risks vs benefits of treatment
+- side effects reviewed
+- medication mechanism explained
+- titration schedule reviewed
+- administration/use instructions reviewed
+- alternatives discussed
+- rationale for choosing one treatment over another
+- follow-up and monitoring plan
+- return precautions / when to notify clinic
+- patient understanding, agreement, and consent
+
+3. These details should not be collapsed into vague phrases like:
+- “treatment discussed”
+- “options reviewed”
+- “patient interested”
+If the transcript contains the actual counseling points, preserve them in the note.
+
+4. In the Assessment/Plan, each problem should follow this structure:
+- Assessment
+- Plan
+- Counseling / Education
+- Monitoring / Follow-up
+
+5. Under Counseling / Education, include concise but specific documentation such as:
+- risk/benefit discussion
+- side effects reviewed
+- titration reviewed
+- administration instructions reviewed
+- patient verbalized understanding and agrees with plan
+
+6. The note should remain professional and concise, but completeness should be prioritized over aggressive compression.
+
+7. Do not invent details that were not discussed.
+Only preserve and organize what is actually present in the transcript.
+
+8. If counseling was substantial for a medication start (especially hormones, GLP-1s, controlled substances, injections, or chronic disease treatment), the writer should explicitly document that counseling instead of reducing it to one sentence.
+
+9. Shared decision-making should be visible in the final note:
+- what was discussed
+- why the selected option was chosen
+- what the patient preferred
+- what the follow-up plan is
+
+10. Add prompt logic so that medication initiation visits automatically look for and preserve:
+- contraindication review
+- side effect counseling
+- administration counseling
+- titration plan
+- safety precautions
+- patient consent/understanding
+
+For example, if a GLP-1 is started, the note should preserve documentation that the patient was educated on risks/benefits, titration schedule, administration, side effects, mood/appetite monitoring, and follow-up, if those were discussed in the transcript.
+
+Goal:
+Make the SOAP note more clinically complete and defensible without making it long, dramatic, or repetitive.
