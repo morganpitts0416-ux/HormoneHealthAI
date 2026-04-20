@@ -112,6 +112,9 @@ export default function FormPublicPage() {
     for (const field of data.fields) {
       if (!field.isRequired) continue;
       if (["heading", "paragraph"].includes(field.fieldType)) continue;
+      // Required only applies if conditional logic shows the field
+      const logic = (field as any).conditionalLogicJson;
+      if (!isFieldVisible(logic, getAnswerByFieldId)) continue;
       const val = responses[field.fieldKey];
       const isMatrixEmpty = field.fieldType === "matrix" && (
         !val || typeof val !== "object" || Array.isArray(val) ||

@@ -1034,6 +1034,9 @@ export default function PortalForms() {
     if (!formDetail) return;
     const missing = formDetail.fields.filter(f => {
       if (!f.isRequired || ["heading", "paragraph"].includes(f.fieldType)) return false;
+      // Required only applies if conditional logic shows the field
+      const logic = (f as any).conditionalLogicJson;
+      if (!isFieldVisible(logic, (id) => responses[id])) return false;
       const val = responses[f.id];
       if (!val) return true;
       if (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) return true;
