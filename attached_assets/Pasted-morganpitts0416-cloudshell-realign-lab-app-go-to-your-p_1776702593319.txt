@@ -1,0 +1,47 @@
+morganpitts0416@cloudshell:~ (realign-lab-app)$ # go to your project
+cd ~/HormoneHealthAI
+
+# make sure code is current
+git pull
+npm run db:push
+
+# deploy with clean rebuild
+gcloud run deploy hormonehealthai \
+  --source . \
+  --region us-central1 \
+  --platform managed \
+  --allow-unauthenticated \
+  --clear-base-image
+remote: Enumerating objects: 51, done.
+remote: Counting objects: 100% (51/51), done.
+remote: Compressing objects: 100% (2/2), done.
+remote: Total 38 (delta 36), reused 38 (delta 36), pack-reused 0 (from 0)
+Unpacking objects: 100% (38/38), 69.64 KiB | 186.00 KiB/s, done.
+From https://github.com/morganpitts0416-ux/HormoneHealthAI
+   9fe3366..5f09a76  main       -> origin/main
+Updating 9fe3366..5f09a76
+Fast-forward
+ attached_assets/Screenshot_2026-04-20_082438_1776691495145.png | Bin 0 -> 65165 bytes
+ client/src/App.tsx                                             |   4 ++--
+ client/src/pages/form-public.tsx                               |   3 +++
+ client/src/pages/intake-forms.tsx                              |  11 ++++++++-
+ client/src/pages/portal/forms.tsx                              |   3 +++
+ server/routes.ts                                               |  83 ++++++++++++++++++++++++++++++++++++++++++-------------------------
+ server/soap-pipeline.ts                                        | 211 ++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++++---
+ 7 files changed, 278 insertions(+), 37 deletions(-)
+ create mode 100644 attached_assets/Screenshot_2026-04-20_082438_1776691495145.png
+
+> rest-express@1.0.0 db:push
+> drizzle-kit push
+
+No config path provided, using default 'drizzle.config.ts'
+Reading config file '/home/morganpitts0416/HormoneHealthAI/drizzle.config.ts'
+DATABASE_URL, ensure the database is provisioned
+Building using Dockerfile and deploying container to Cloud Run service [hormonehealthai] in project [realign-lab-app] region [us-central1]
+Building and deploying...                                                                                                                                                                                                                      
+  Validating configuration...done                                                                                                                                                                                                              
+  Uploading sources...done                                                                                                                                                                                                                     
+  Building Container... Logs are available at [https://console.cloud.google.com/cloud-build/builds;region=us-central1/633cc242-9af9-495b-86f6-b271421cd2c7?project=384086867382]....failed                                                     
+Deployment failed                                                                                                                                                                                                                              
+ERROR: (gcloud.run.deploy) Build failed; check build logs for details
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
