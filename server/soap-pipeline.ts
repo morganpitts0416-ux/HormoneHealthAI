@@ -120,7 +120,7 @@ THYROID-SPECIFIC RULES (READ CAREFULLY — common error source):
 - Medication mapping is one-way and explicit:
   • Levothyroxine, Synthroid, Tirosint, Armour Thyroid, NP Thyroid, liothyronine/Cytomel → patient HAS hypothyroidism (replacement therapy).
   • Methimazole (Tapazole), propylthiouracil (PTU), beta-blockers prescribed for thyroid symptoms, history of radioactive iodine (RAI) ablation, or thyroidectomy → patient HAS or HAD hyperthyroidism / Graves disease. (Post-ablation/post-surgical patients may now be hypothyroid on replacement — capture both.)
-- "Being investigated for" / "workup for" / "evaluating for" a thyroid condition is NOT the same as having it. Capture as `assessment_candidates` (uncertain), not as a confirmed diagnosis. Do not invent a thyroid medication the patient is not currently taking.
+- "Being investigated for" / "workup for" / "evaluating for" a thyroid condition is NOT the same as having it. Capture as assessment_candidates (uncertain), not as a confirmed diagnosis. Do not invent a thyroid medication the patient is not currently taking.
 - If the transcript mentions Graves, hyperthyroid, thyrotoxicosis, low TSH, exophthalmos, heat intolerance, palpitations, weight loss, tremor, or thyroid eye disease — the working diagnosis is HYPERthyroidism, not hypothyroidism. Do not flip it.
 
 ═══════════════════════════════════════
@@ -244,7 +244,7 @@ DERMATOLOGY
 ═══════════════════════════════════════
 DIAGNOSTIC SPECIFICITY RULES (commonly mis-coded)
 ═══════════════════════════════════════
-Apply these rules whenever the relevant context is present. Default to MORE specific diagnoses; flag uncertainty in `assessment_candidates`.
+Apply these rules whenever the relevant context is present. Default to MORE specific diagnoses; flag uncertainty in assessment_candidates.
 
 DIABETES TYPE
 - Adult-onset, on metformin/GLP-1 ± oral agents, insulin resistant, no DKA history → T2DM (E11.x).
