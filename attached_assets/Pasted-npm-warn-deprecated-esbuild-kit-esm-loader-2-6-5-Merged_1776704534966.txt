@@ -1,0 +1,44 @@
+npm warn deprecated @esbuild-kit/esm-loader@2.6.5: Merged into tsx: https://tsx.is
+npm warn deprecated @esbuild-kit/core-utils@3.3.2: Merged into tsx: https://tsx.is
+added 525 packages, and audited 526 packages in 26s
+67 packages are looking for funding
+  run `npm fund` for details
+23 vulnerabilities (3 low, 9 moderate, 9 high, 2 critical)
+To address issues that do not require attention, run:
+  npm audit fix
+To address all issues (including breaking changes), run:
+  npm audit fix --force
+Run `npm audit` for details.
+npm notice
+npm notice New major version of npm available! 10.8.2 -> 11.12.1
+npm notice Changelog: https://github.com/npm/cli/releases/tag/v11.12.1
+npm notice To update run: npm install -g npm@11.12.1
+npm notice
+Removing intermediate container 44ea1c2da6ef
+ ---> 5640d9b915a4
+Step 6/14 : COPY . .
+ ---> d1214574d37f
+Step 7/14 : RUN npm run build
+ ---> Running in a1f885b58bfa
+> rest-express@1.0.0 build
+> vite build && esbuild server/index.ts --platform=node --packages=external --bundle --format=esm --outdir=dist
+vite v5.4.20 building for production...
+transforming...
+Browserslist: browsers data (caniuse-lite) is 18 months old. Please run:
+  npx update-browserslist-db@latest
+  Why you should do it regularly: https://github.com/browserslist/update-db#readme
+A PostCSS plugin did not pass the `from` option to `postcss.parse`. This may cause imported assets to be incorrectly transformed. If you've recently added a PostCSS plugin that raised this warning, please contact the package author to fix the issue.
+✓ 1689 modules transformed.
+x Build failed in 9.37s
+error during build:
+[vite:asset] Could not load /app/attached_assets/Screenshot_2026-04-18_182517_1776556832993.png (imported by client/src/pages/landing.tsx): ENOENT: no such file or directory, open '/app/attached_assets/Screenshot_2026-04-18_182517_1776556832993.png'
+    at async open (node:internal/fs/promises:637:25)
+    at async Object.readFile (node:internal/fs/promises:1249:14)
+    at async fileToBuiltUrl (file:///app/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:20428:19)
+    at async Object.load (file:///app/node_modules/vite/dist/node/chunks/dep-D_zLpgQd.js:20328:17)
+    at async PluginDriver.hookFirstAndGetPlugin (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:20689:28)
+    at async file:///app/node_modules/rollup/dist/es/shared/node-entry.js:19809:33
+    at async Queue.work (file:///app/node_modules/rollup/dist/es/shared/node-entry.js:20899:32)
+The command '/bin/sh -c npm run build' returned a non-zero code: 1
+ERROR
+ERROR: build step 0 "gcr.io/cloud-builders/docker" failed: step exited with non-zero status: 1
