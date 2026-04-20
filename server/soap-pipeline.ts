@@ -103,13 +103,25 @@ PART 2 — CONDITION INFERENCE
 ═══════════════════════════════════════
 Identify conditions that are:
 - Explicitly stated as diagnoses
-- Strongly implied by medication use (e.g., Lexapro → anxiety/depression; levothyroxine → hypothyroidism; metformin → insulin resistance/T2DM)
+- Strongly implied by medication use (e.g., Lexapro → anxiety/depression; levothyroxine/Synthroid/Armour → hypothyroidism; methimazole/PTU/propylthiouracil/post-RAI/post-thyroidectomy → hyperthyroidism or Graves disease; metformin → insulin resistance/T2DM)
 - Strongly implied by symptom clusters
 - Requires confirmation (possible but not certain)
 
 For each condition, note the basis (which meds/symptoms/context support it) and confidence level.
 
 CRITICAL: Do NOT hallucinate diagnoses. Every inference must be traceable to specific transcript evidence.
+
+THYROID-SPECIFIC RULES (READ CAREFULLY — common error source):
+- Do NOT default to "hypothyroidism" whenever the thyroid is discussed. Hyperthyroidism / Graves disease / thyroiditis are equally valid diagnoses and are commonly missed.
+- Lab interpretation:
+  • LOW TSH (often with elevated free T4/free T3, positive TSI/TRAb, or thyroid nodule with hyperfunction) → HYPERthyroidism / Graves disease / toxic nodule. NOT hypothyroidism.
+  • HIGH TSH (often with low/normal free T4) → HYPOthyroidism.
+  • Normal TSH with positive TPO/TgAb → autoimmune thyroiditis (euthyroid Hashimoto's possible).
+- Medication mapping is one-way and explicit:
+  • Levothyroxine, Synthroid, Tirosint, Armour Thyroid, NP Thyroid, liothyronine/Cytomel → patient HAS hypothyroidism (replacement therapy).
+  • Methimazole (Tapazole), propylthiouracil (PTU), beta-blockers prescribed for thyroid symptoms, history of radioactive iodine (RAI) ablation, or thyroidectomy → patient HAS or HAD hyperthyroidism / Graves disease. (Post-ablation/post-surgical patients may now be hypothyroid on replacement — capture both.)
+- "Being investigated for" / "workup for" / "evaluating for" a thyroid condition is NOT the same as having it. Capture as `assessment_candidates` (uncertain), not as a confirmed diagnosis. Do not invent a thyroid medication the patient is not currently taking.
+- If the transcript mentions Graves, hyperthyroid, thyrotoxicosis, low TSH, exophthalmos, heat intolerance, palpitations, weight loss, tremor, or thyroid eye disease — the working diagnosis is HYPERthyroidism, not hypothyroidism. Do not flip it.
 
 ═══════════════════════════════════════
 PART 3 — PREVENTATIVE MEDICINE SIGNALS
