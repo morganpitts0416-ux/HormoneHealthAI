@@ -9,7 +9,6 @@ import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { appUrl } from "@/lib/app-url";
 import { DemoModal } from "@/components/demo-modal";
-import assignFormScreenshot from "@assets/Screenshot_2026-04-18_182517_1776556832993.png";
 
 const COPILOT_DEMO_VIDEO_URL = "/marketing/clinical-copilot-demo.mp4";
 
@@ -303,13 +302,28 @@ export default function Landing() {
                   ))}
                 </ul>
               </div>
-              <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #d4c9b5", boxShadow: "0 12px 32px rgba(46,58,32,0.10)" }}>
-                <img
-                  src={assignFormScreenshot}
-                  alt="Assign Form to Patient — Push to Portal, Email Only, or Fill In Clinic"
-                  className="w-full block"
-                  style={{ backgroundColor: "#1c2414" }}
-                />
+              <div className="rounded-xl p-6" style={{ backgroundColor: "#1c2414", border: "1px solid #d4c9b5", boxShadow: "0 12px 32px rgba(46,58,32,0.10)" }}>
+                <div className="rounded-lg p-5" style={{ backgroundColor: "#f9f6f0" }}>
+                  <div className="text-xs font-semibold uppercase tracking-wider mb-3" style={{ color: "#7a8a64" }}>Assign Form to Patient</div>
+                  <div className="space-y-2.5">
+                    {[
+                      { icon: Send, label: "Push to portal", desc: "Email + in-app notification" },
+                      { icon: Link2, label: "Send share link", desc: "Text, email, or QR code" },
+                      { icon: Smartphone, label: "Fill in-clinic on tablet", desc: "Hand off at check-in" },
+                      { icon: PenLine, label: "Embed on your website", desc: "Lead capture + pre-booking" },
+                    ].map(({ icon: Icon, label, desc }) => (
+                      <div key={label} className="flex items-start gap-3 rounded-md p-3" style={{ backgroundColor: "#ffffff", border: "1px solid #e8ddd0" }}>
+                        <div className="w-8 h-8 rounded-md flex items-center justify-center shrink-0" style={{ backgroundColor: "#edf2e6" }}>
+                          <Icon className="w-4 h-4" style={{ color: "#2e3a20" }} />
+                        </div>
+                        <div className="min-w-0">
+                          <div className="text-sm font-semibold" style={{ color: "#1c2414" }}>{label}</div>
+                          <div className="text-xs mt-0.5" style={{ color: "#6a7a58" }}>{desc}</div>
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                </div>
               </div>
             </div>
           </div>
