@@ -53,6 +53,20 @@ export const PHENOTYPE_KEYS: PhenotypeKeyEntry[] = [
     gender: "both",
   },
 
+  // ── PREVENT cardiovascular risk (CVD composite) ─────────────────────────
+  { key: "risk_prevent_borderline", label: "PREVENT 10-yr CVD risk — Borderline (5–7.5%)", gender: "both" },
+  { key: "risk_prevent_intermediate", label: "PREVENT 10-yr CVD risk — Intermediate (7.5–20%)", gender: "both" },
+  { key: "risk_prevent_high", label: "PREVENT 10-yr CVD risk — High (≥20%)", gender: "both" },
+
+  // ── ASCVD-specific risk (heart attack / stroke) ─────────────────────────
+  { key: "risk_ascvd_borderline", label: "10-yr ASCVD risk — Borderline (5–7.5%)", gender: "both" },
+  { key: "risk_ascvd_intermediate", label: "10-yr ASCVD risk — Intermediate (7.5–20%)", gender: "both" },
+  { key: "risk_ascvd_high", label: "10-yr ASCVD risk — High (≥20%)", gender: "both" },
+
+  // ── STOP-BANG sleep apnea screening ─────────────────────────────────────
+  { key: "risk_stopbang_intermediate", label: "STOP-BANG — Intermediate risk for OSA", gender: "both" },
+  { key: "risk_stopbang_high", label: "STOP-BANG — High risk for OSA", gender: "both" },
+
   // ── Female clinical phenotypes ──────────────────────────────────────────
   { key: "fp_inflammatory_burden", label: "Female phenotype — Inflammatory Burden", gender: "female" },
   { key: "fp_iron_deficiency", label: "Female phenotype — Iron Deficiency", gender: "female" },
@@ -89,34 +103,89 @@ interface IRScreeningShape {
 interface ClinicalPhenotypeShape {
   name?: string;
 }
+interface PreventRiskShape {
+  riskCategory?: "low" | "borderline" | "intermediate" | "high";
+  /** ASCVD-only 10-year risk as a fraction (0.075 = 7.5%) */
+  tenYearASCVD?: number;
+}
+interface StopBangShape {
+  riskCategory?: "low" | "intermediate" | "high";
+}
+
+export interface DetectedPhenotypeInputs {
+  irScreening?: IRScreeningShape | null;
+  clinicalPhenotypes?: ClinicalPhenotypeShape[] | null;
+  preventRisk?: PreventRiskShape | null;
+  stopBangRisk?: StopBangShape | null;
+}
+
+function ascvdCategoryFromFraction(fraction: number): "low" | "borderline" | "intermediate" | "high" {
+  const pct = fraction * 100;
+  if (pct < 5) return "low";
+  if (pct < 7.5) return "borderline";
+  if (pct < 20) return "intermediate";
+  return "high";
+}
 
 /**
  * Collect the set of canonical phenotype keys that are currently "active" for
- * this patient based on the IR screening + female clinical phenotypes that
- * the engines have already produced.
+ * this patient based on the IR screening, female clinical phenotypes, and risk
+ * scores that the engines have already produced. None of those engines are
+ * mutated — we only read their output.
+ *
+ * Backwards-compatible signature: accepts either positional (irScreening,
+ * clinicalPhenotypes) or a single `DetectedPhenotypeInputs` object.
  */
 export function detectedPhenotypeKeys(
-  irScreening?: IRScreeningShape | null,
+  arg1?: IRScreeningShape | DetectedPhenotypeInputs | null,
   clinicalPhenotypes?: ClinicalPhenotypeShape[] | null,
 ): Set<string> {
+  const inputs: DetectedPhenotypeInputs =
+    arg1 && typeof arg1 === "object" && (
+      "preventRisk" in arg1 || "stopBangRisk" in arg1 || "irScreening" in arg1 || "clinicalPhenotypes" in arg1
+    )
+      ? (arg1 as DetectedPhenotypeInputs)
+      : { irScreening: arg1 as IRScreeningShape | null | undefined, clinicalPhenotypes };
+
   const keys = new Set<string>();
 
-  if (irScreening) {
-    if (irScreening.likelihood === "moderate" || irScreening.likelihood === "high") {
+  if (inputs.irScreening) {
+    if (inputs.irScreening.likelihood === "moderate" || inputs.irScreening.likelihood === "high") {
       keys.add("ir_likelihood_moderate");
     }
-    if (irScreening.likelihood === "high") {
+    if (inputs.irScreening.likelihood === "high") {
       keys.add("ir_likelihood_high");
     }
-    for (const p of irScreening.phenotypes ?? []) {
+    for (const p of inputs.irScreening.phenotypes ?? []) {
       if (p.key) keys.add(`ir_${p.key}`);
     }
   }
 
-  for (const p of clinicalPhenotypes ?? []) {
+  for (const p of inputs.clinicalPhenotypes ?? []) {
     const mapped = p.name ? FEMALE_PHENOTYPE_NAME_TO_KEY[p.name] : undefined;
     if (mapped) keys.add(mapped);
   }
+
+  // PREVENT composite-CVD bucket
+  const preventCat = inputs.preventRisk?.riskCategory;
+  if (preventCat === "borderline") keys.add("risk_prevent_borderline");
+  else if (preventCat === "intermediate") keys.add("risk_prevent_intermediate");
+  else if (preventCat === "high") keys.add("risk_prevent_high");
+
+  // ASCVD-only sub-bucket (computed from tenYearASCVD fraction so we get an
+  // ASCVD-specific threshold rather than the composite CVD bucket).
+  const ascvdFraction = inputs.preventRisk?.tenYearASCVD;
+  if (typeof ascvdFraction === "number" && Number.isFinite(ascvdFraction)) {
+    const ascvdCat = ascvdCategoryFromFraction(ascvdFraction);
+    if (ascvdCat === "borderline") keys.add("risk_ascvd_borderline");
+    else if (ascvdCat === "intermediate") keys.add("risk_ascvd_intermediate");
+    else if (ascvdCat === "high") keys.add("risk_ascvd_high");
+  }
+
+  // STOP-BANG OSA risk
+  const sbCat = inputs.stopBangRisk?.riskCategory;
+  if (sbCat === "intermediate") keys.add("risk_stopbang_intermediate");
+  else if (sbCat === "high") keys.add("risk_stopbang_high");
 
   return keys;
 }
