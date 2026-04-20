@@ -543,9 +543,9 @@ ASSESSMENT RULES:
 - Preventative medicine signals should be woven into relevant assessment items as clinical context, not presented as confirmed diagnoses
 
 ═══════════════════════════════════════
-SECTION 3 — PLAN REFLECTING ACTUAL DECISIONS
+SECTION 3 — PLAN REFLECTING ACTUAL DECISIONS + COUNSELING/SDM PRESERVATION
 ═══════════════════════════════════════
-The Plan must ONLY reflect what was actually decided during the visit.
+The Plan must ONLY reflect what was actually decided during the visit. AND it must preserve the clinical counseling and shared decision-making that actually occurred — not collapse it into vague summary phrases.
 
 CRITICAL PLAN RULE — DECISION CLASSIFICATION:
 - Items in "explicitly_decided_plan_items" → include in the Plan as definitive orders/decisions
@@ -557,8 +557,60 @@ Plan specifics:
 - Include monitoring parameters appropriate to medication class
 - Include specific follow-up interval with clinical rationale
 - Include labs ordered
-- Include patient education documented
 - "Continue treatment" is never acceptable — always specify which treatment
+
+═══════════════════════════════════════
+SECTION 3B — COUNSELING, EDUCATION, AND SHARED DECISION-MAKING (MANDATORY PRESERVATION)
+═══════════════════════════════════════
+Treat the transcript as a SOURCE FOR CLINICAL DETAIL EXTRACTION, not just summarization. When the visit contains real counseling content, that content MUST appear in the note.
+
+PRESERVE WHENEVER DISCUSSED (do NOT collapse into vague phrases):
+- Risks vs. benefits of the chosen treatment
+- Side effects reviewed (specific ones named in the conversation)
+- Medication mechanism explained to the patient
+- Titration schedule reviewed (starting dose → step-up plan → target)
+- Administration / use instructions reviewed (route, technique, timing, storage)
+- Alternatives discussed (what other options were considered)
+- Rationale for choosing one option over the alternatives
+- Follow-up and monitoring plan (labs, intervals, what we are watching for)
+- Return precautions / when to notify the clinic (red-flag symptoms)
+- Patient understanding, agreement, and consent
+
+FORBIDDEN VAGUE COMPRESSIONS — if the transcript contains the actual counseling points, do NOT replace them with these:
+- "treatment discussed" / "options reviewed" / "options were discussed"
+- "patient interested" / "patient is on board"
+- "risks and benefits discussed" (without saying which risks or which benefits — name them when they were named)
+- "medication counseled" / "education provided" (without saying what was actually taught)
+
+PER-PROBLEM SUB-STRUCTURE — every numbered Assessment/Plan item should follow this layout when counseling/monitoring content exists for it:
+
+  N. Diagnosis Name (ICD-10)
+  [Supporting evidence and clinical reasoning — keep the existing assessment paragraph]
+  Plan: [specific orders, medications, doses, labs, referrals]
+  Counseling / Education: [concise but specific — what risks, which side effects, the actual titration steps, administration instructions, alternatives discussed, rationale for the chosen option, and that the patient verbalized understanding and agrees]
+  Monitoring / Follow-up: [labs to recheck and when, symptoms/parameters being tracked, follow-up interval and what would prompt earlier return]
+
+Rules for the sub-structure:
+- Only include "Counseling / Education" or "Monitoring / Follow-up" when there is real content for them. If the transcript contains nothing for a given sub-line for a given problem, OMIT that sub-line for that problem (do NOT pad with filler).
+- Keep each sub-line concise — phrases and short clauses, not theatrical paragraphs. Completeness, not length.
+- Never invent counseling details that did not occur in the transcript.
+- Shared decision-making must be visible: what was discussed, why the chosen option was selected, what the patient preferred, what the follow-up is.
+
+═══════════════════════════════════════
+SECTION 3C — MEDICATION-INITIATION VISITS (HORMONES, GLP-1s, CONTROLLED SUBSTANCES, INJECTABLES, CHRONIC DISEASE STARTS)
+═══════════════════════════════════════
+When a medication is being INITIATED at this visit (especially testosterone, estrogen, progesterone, thyroid hormone, GLP-1s like semaglutide/tirzepatide/liraglutide, controlled substances, naltrexone/LDN, injectables, or any new chronic disease therapy), the note MUST explicitly preserve — when the transcript contains them — the following counseling elements for that medication:
+
+- Contraindication review (what was screened for / asked about)
+- Side effect counseling (the specific side effects named to the patient)
+- Administration counseling (injection technique, timing, storage, missed-dose handling)
+- Titration plan (starting dose → schedule of dose increases → target)
+- Safety precautions and return precautions (red-flag symptoms that should prompt a call)
+- Patient consent / verbalized understanding / agreement to start
+
+Example — if a GLP-1 is being initiated and the transcript contains the conversation: the Counseling / Education sub-line for that problem must document the risk/benefit discussion, the titration schedule, the injection technique and timing, the named side effects (nausea, GI effects, gallbladder, pancreatitis warning, mood/appetite monitoring), and that the patient verbalized understanding and agreed to start. Do NOT reduce this to one sentence when the transcript contains the actual content.
+
+If the transcript does NOT contain a given counseling element, do NOT invent it. Only document what is actually present.
 
 ═══════════════════════════════════════
 SECTION 4 — RECOMMENDATION DUPLICATE SUPPRESSION
@@ -647,11 +699,15 @@ ASSESSMENT/PLAN
 
 1. Diagnosis Name (ICD-10 code)
 [Supporting evidence and clinical reasoning — 2-3 sentences on their own lines]
-Plan: [specific medications, monitoring, referrals, education]
+Plan: [specific medications/doses, labs ordered, referrals]
+Counseling / Education: [include only if real counseling content exists for this problem — name the specific risks/benefits, side effects, titration, administration, alternatives, rationale, and patient understanding/agreement that were actually discussed]
+Monitoring / Follow-up: [include only if real monitoring content exists for this problem — labs to recheck and when, parameters being tracked, follow-up interval, return precautions]
 
 2. Diagnosis Name (ICD-10 code)
 [Supporting evidence and clinical reasoning]
 Plan: [...]
+Counseling / Education: [omit if not applicable]
+Monitoring / Follow-up: [omit if not applicable]
 
 [Continue for each diagnosis]
 
@@ -723,6 +779,9 @@ CHECK FOR:
 11. PREVENTATIVE SIGNALS LOST: Were clinically relevant "between the lines" clues identified in normalization but not reflected in the Assessment?
 12. RECOMMENDATION DUPLICATES: Does needs_clinician_review contain items that duplicate the explicit Plan?
 13. MISCLASSIFIED SUGGESTIONS: Does needs_clinician_review contain "SUGGESTED (awaiting clinician approval):" items for actions that were EXPLICITLY DISCUSSED AND DECIDED during the encounter? If the transcript and extraction show the provider and patient agreed to initiate/adjust/continue something, it must be in the Plan as a decided action, NOT in needs_clinician_review as a suggestion. Move it to the Plan and remove from needs_clinician_review.
+14. COUNSELING / SDM UNDER-DOCUMENTATION: When the transcript contains real counseling content (risks/benefits, side effects named, mechanism explained, titration schedule, administration instructions, alternatives discussed, rationale for the chosen option, return precautions, patient verbalized understanding/agreement) — does the SOAP note's relevant Assessment/Plan item actually preserve those specifics, or does it collapse them into vague phrases like "treatment discussed", "options reviewed", "patient interested", or a generic "risks and benefits discussed" without naming what was actually said? If under-documented, REVISE the affected numbered item by adding a "Counseling / Education:" sub-line (and a "Monitoring / Follow-up:" sub-line where applicable) that names the specific counseling points that occurred. Do NOT invent counseling content that is not in the transcript.
+15. MEDICATION INITIATION COUNSELING: For any medication being INITIATED at this visit (especially hormones, GLP-1s, controlled substances, injectables, chronic disease starts) — is the counseling that occurred in the transcript (contraindication review, side effect counseling, administration counseling, titration plan, safety/return precautions, patient consent/understanding) actually documented under that problem? If the transcript contains it and the note collapsed it, restore the specifics in a "Counseling / Education:" sub-line for that problem. Concise but specific — not theatrical.
+16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed alternatives or the patient stated a preference, the note must make the SDM visible: what was discussed, why the chosen option was selected, what the patient preferred, and the follow-up. If missing, add it concisely.
 
 CRITICAL — DIAGNOSIS PRESERVATION:
 - Do NOT remove a diagnosis from the Assessment simply because you cannot find supporting dialogue in the transcript portion you can see. Long encounters discuss conditions throughout the visit; supporting evidence may appear anywhere in the conversation.
