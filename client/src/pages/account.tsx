@@ -2193,7 +2193,7 @@ export default function Account() {
           </DialogHeader>
           <div className="space-y-3">
             <div className="rounded-md border bg-muted/30 p-3">
-              <Label className="text-xs text-muted-foreground">Invite link</Label>
+              <p className="text-xs text-muted-foreground">Invite link</p>
               <div className="flex items-center gap-2 mt-1">
                 <Input
                   readOnly
