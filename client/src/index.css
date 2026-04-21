@@ -414,3 +414,60 @@
 .realign-dot-pulse {
   animation: realign-dot-fade 1.6s ease-in-out infinite;
 }
+
+
+/* ─── FullCalendar — modern ClinIQ skin ─────────────────────────────────── */
+.cliniq-fc .fc {
+  --fc-border-color: hsl(var(--border));
+  --fc-page-bg-color: transparent;
+  --fc-neutral-bg-color: transparent;
+  --fc-list-event-hover-bg-color: transparent;
+  --fc-today-bg-color: hsl(var(--primary) / 0.04);
+  --fc-now-indicator-color: hsl(0 80% 55%);
+  font-family: inherit;
+}
+.cliniq-fc .fc-scrollgrid,
+.cliniq-fc .fc-scrollgrid td,
+.cliniq-fc .fc-scrollgrid th {
+  border-color: hsl(var(--border));
+}
+.cliniq-fc .fc-scrollgrid { border: 0; }
+.cliniq-fc .fc-col-header,
+.cliniq-fc .fc-col-header-cell {
+  background: hsl(var(--card));
+  border-color: hsl(var(--border));
+}
+.cliniq-fc .fc-col-header-cell-cushion {
+  padding: 8px 6px;
+  font-weight: 600;
+  font-size: 12px;
+  color: hsl(var(--foreground));
+  text-transform: none;
+}
+.cliniq-fc .fc-resource-timegrid-divider { display: none; }
+.cliniq-fc .fc-timegrid-slot {
+  height: 32px;
+  border-color: hsl(var(--border));
+}
+.cliniq-fc .fc-timegrid-slot-minor { border-top-style: dotted; opacity: 0.6; }
+.cliniq-fc .fc-timegrid-slot-label-cushion {
+  font-size: 11px;
+  color: hsl(var(--muted-foreground));
+  padding: 0 8px;
+}
+.cliniq-fc .fc-timegrid-axis-cushion { color: hsl(var(--muted-foreground)); font-size: 11px; }
+.cliniq-fc .fc-day-today { background: hsl(var(--primary) / 0.04) !important; }
+.cliniq-fc .fc-event {
+  border-radius: 4px;
+  border-width: 0;
+  box-shadow: 0 1px 2px rgba(0,0,0,0.06);
+  cursor: pointer;
+}
+.cliniq-fc .fc-event:hover { filter: brightness(1.05); }
+.cliniq-fc .fc-timegrid-now-indicator-line {
+  border-top-width: 2px;
+}
+.cliniq-fc .fc-timegrid-now-indicator-arrow {
+  border-top-width: 5px;
+  border-bottom-width: 5px;
+}
