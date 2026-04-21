@@ -46,6 +46,29 @@ interface ClinicBranding {
   clinicLogo?: string | null;
   phone?: string;
   address?: string;
+  primaryColor?: string | null;
+  accentColor?: string | null;
+  formBackgroundColor?: string | null;
+}
+
+// Historic ReAlign Health green form palette — used when a clinic hasn't set custom colors.
+const FORM_DEFAULT_PRIMARY = "#2e3a20";
+const FORM_DEFAULT_BG = "#f9f6f0";
+const FORM_DEFAULT_HEADER_BG = "#e8ddd0";
+const FORM_DEFAULT_BORDER = "#d4c9b5";
+const FORM_DEFAULT_MUTED = "#8a7e6b";
+const FORM_DEFAULT_SUBHEAD = "#5a7040";
+
+/** Resolves the public-form palette: clinic branding overrides → historic defaults. */
+function resolveFormPalette(clinic?: ClinicBranding) {
+  return {
+    primary: clinic?.primaryColor || FORM_DEFAULT_PRIMARY,
+    background: clinic?.formBackgroundColor || FORM_DEFAULT_BG,
+    headerBg: clinic?.accentColor || FORM_DEFAULT_HEADER_BG,
+    border: FORM_DEFAULT_BORDER,
+    muted: FORM_DEFAULT_MUTED,
+    subhead: clinic?.primaryColor || FORM_DEFAULT_SUBHEAD,
+  };
 }
 
 interface PublicFormData {
@@ -211,6 +234,8 @@ export default function FormPublicPage() {
     fieldsBySectionId[key].push(field);
   }
 
+  const palette = resolveFormPalette(data.clinic);
+
   return (
     <PageShell isEmbedded={isEmbedded} clinic={data.clinic}>
       {/* Form header */}
@@ -221,7 +246,7 @@ export default function FormPublicPage() {
             <span className="text-xs text-muted-foreground uppercase tracking-wide font-medium">Patient Form</span>
           </div>
         )}
-        <h1 className="text-2xl font-bold" style={{ color: "#2e3a20" }}>{form.name}</h1>
+        <h1 className="text-2xl font-bold" style={{ color: palette.primary }}>{form.name}</h1>
         {form.description && (
           <p className="mt-2 text-muted-foreground">{form.description}</p>
         )}
@@ -299,7 +324,7 @@ export default function FormPublicPage() {
           disabled={submitMutation.isPending}
           data-testid="button-submit-form"
           className="w-full sm:w-auto"
-          style={!isEmbedded ? { backgroundColor: "#2e3a20", color: "#f9f6f0" } : undefined}>
+          style={!isEmbedded ? { backgroundColor: palette.primary, color: palette.background } : undefined}>
           {submitMutation.isPending ? (
             <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Submitting...</>
           ) : "Submit Form"}
@@ -331,10 +356,12 @@ function PageShell({ children, clinic, isEmbedded }: {
     );
   }
 
+  const palette = resolveFormPalette(clinic);
+
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f9f6f0" }}>
+    <div className="min-h-screen" style={{ backgroundColor: palette.background }}>
       {clinic?.clinicName && (
-        <div style={{ backgroundColor: "#e8ddd0", borderBottom: "1px solid #d4c9b5" }}>
+        <div style={{ backgroundColor: palette.headerBg, borderBottom: `1px solid ${palette.border}` }}>
           <div className="max-w-2xl mx-auto px-4 py-4">
             <div className="flex items-center gap-4 flex-wrap">
               {clinic.clinicLogo && (
@@ -345,11 +372,11 @@ function PageShell({ children, clinic, isEmbedded }: {
                 />
               )}
               <div className="flex-1 min-w-0">
-                <p className="font-semibold text-sm" style={{ color: "#2e3a20" }}>
+                <p className="font-semibold text-sm" style={{ color: palette.primary }}>
                   {clinic.clinicName}
                 </p>
                 {(clinic.phone || clinic.address) && (
-                  <p className="text-xs mt-0.5" style={{ color: "#5a7040" }}>
+                  <p className="text-xs mt-0.5" style={{ color: palette.subhead }}>
                     {[clinic.phone, clinic.address].filter(Boolean).join(" \u00B7 ")}
                   </p>
                 )}
@@ -361,8 +388,8 @@ function PageShell({ children, clinic, isEmbedded }: {
       <div className="max-w-2xl mx-auto px-4 py-10">
         {children}
       </div>
-      <div className="border-t py-6 text-center" style={{ borderColor: "#d4c9b5" }}>
-        <p className="text-xs" style={{ color: "#8a7e6b" }}>
+      <div className="border-t py-6 text-center" style={{ borderColor: palette.border }}>
+        <p className="text-xs" style={{ color: palette.muted }}>
           Powered by ClinIQ by ReAlign Health
         </p>
       </div>

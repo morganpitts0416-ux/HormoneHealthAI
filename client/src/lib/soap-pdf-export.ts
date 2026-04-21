@@ -1,4 +1,5 @@
 import jsPDF from 'jspdf';
+import { resolveBranding, type PartialBranding } from "@/lib/branding";
 
 interface SoapPdfOptions {
   soapText: string;
@@ -15,12 +16,14 @@ interface SoapPdfOptions {
   signedBy?: string | null;
   signatureImage?: string | null;
   isAmended?: boolean;
+  /** Clinic-level brand colors. Falls back to historic ReAlign green if null. */
+  branding?: PartialBranding | null;
 }
 
 const PAGE_W = 215.9; // Letter width mm
 const MARGIN = 20;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const HEADER_GREEN = '#2e3a20';
+const SOAP_DEFAULT_PRIMARY = '#2e3a20'; // Historic ReAlign green letterhead
 
 function sanitizeForPdf(text: string): string {
   return text
@@ -63,6 +66,11 @@ function drawHRule(doc: jsPDF, y: number, color = '#cccccc'): void {
 export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
 
+  // Effective brand color: clinic primary if set, else historic ReAlign green.
+  const HEADER_PRIMARY = opts.branding?.primaryColor
+    ? resolveBranding(null, opts.branding).primaryColor
+    : SOAP_DEFAULT_PRIMARY;
+
   let y = MARGIN;
 
   // ── Letterhead ──────────────────────────────────────────────────────────────
@@ -82,7 +90,7 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   const textX = PAGE_W - MARGIN;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(13);
-  doc.setTextColor(HEADER_GREEN);
+  doc.setTextColor(HEADER_PRIMARY);
   doc.text(opts.clinicName, textX, y + 5, { align: 'right' });
 
   doc.setFont('helvetica', 'normal');
@@ -110,7 +118,7 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   doc.text(providerLine, logoEndX, y + 22);
 
   y += 28;
-  drawHRule(doc, y, HEADER_GREEN);
+  drawHRule(doc, y, HEADER_PRIMARY);
   y += 6;
 
   // ── Document title row ───────────────────────────────────────────────────────
@@ -166,7 +174,7 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
       if (line.trim() !== lines[0]?.trimEnd().trim()) y += 2;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
-      doc.setTextColor(HEADER_GREEN);
+      doc.setTextColor(HEADER_PRIMARY);
       doc.text(line.trim().toUpperCase(), MARGIN, y);
       y += LINE_H_MAJOR;
       // thin underline

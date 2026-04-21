@@ -25,6 +25,7 @@ import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult, PatternMatchResult, PatternMatch, EncounterDraft } from "@shared/schema";
 import { useGlobalLoading } from "@/hooks/use-global-loading";
 import { exportSoapPdf } from "@/lib/soap-pdf-export";
+import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
 import { SoapNoteViewer, EvidenceCard } from "@/components/soap-note-viewer";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 
@@ -736,6 +737,7 @@ function EncounterEditor({
 }) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const clinicBranding = useClinicBrandingPartial();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [isPdfExporting, setIsPdfExporting] = useState(false);
@@ -2589,6 +2591,7 @@ function EncounterEditor({
                             signedBy: signedByLocal,
                             signatureImage: (user as any)?.signatureImage ?? null,
                             isAmended: isAmendedLocal,
+                            branding: clinicBranding,
                           });
                         } catch (e: any) {
                           toast({ variant: "destructive", title: "PDF export failed", description: e?.message });
@@ -3068,6 +3071,7 @@ function EncounterEditor({
                             signedBy: null,
                             signatureImage: null,
                             isAmended: false,
+                            branding: clinicBranding,
                           });
                         } catch (e: any) {
                           toast({ variant: "destructive", title: "PDF export failed", description: e?.message });

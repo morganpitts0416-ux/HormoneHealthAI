@@ -19,6 +19,7 @@ import { SupplementSelector, type CustomSupplement } from "@/components/suppleme
 import { labsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generateMalePatientWellnessPDF } from "@/lib/patient-pdf-export-male";
+import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useGlobalLoading } from "@/hooks/use-global-loading";
@@ -59,6 +60,7 @@ export default function LabInterpretation() {
   const hasPrefilledBmiRef = useRef(false);
   const { toast } = useToast();
   const { user } = useAuth();
+  const clinicBranding = useClinicBrandingPartial();
   const { setLoading: setGlobalLoading, clearLoading: clearGlobalLoading } = useGlobalLoading();
 
   const { data: patientLabs } = useQuery<LabResult[]>({
@@ -230,7 +232,7 @@ export default function LabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs);
+      generateLabReportPDF(labValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding);
     }
   };
 

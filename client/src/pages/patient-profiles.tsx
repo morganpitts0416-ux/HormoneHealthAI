@@ -28,6 +28,7 @@ import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generateMalePatientWellnessPDF, type MaleWellnessPlan } from "@/lib/patient-pdf-export-male";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { exportSoapPdf } from "@/lib/soap-pdf-export";
+import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
 import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -312,6 +313,7 @@ function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab
 function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: LabResult; onClose: () => void; patient: Patient; allLabs: LabResult[]; onDelete: () => void }) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const clinicBranding = useClinicBrandingPartial();
   const interp = lab.interpretationResult as InterpretationResult | null;
   const vals = lab.labValues as any;
   const patientName = `${patient.firstName} ${patient.lastName}`.trim();
@@ -340,9 +342,9 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       if (interp) {
         const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
         if (isFemale) {
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, undefined, user?.clinicName);
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, undefined, user?.clinicName, clinicBranding);
         } else {
-          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, undefined, user?.clinicName);
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, undefined, user?.clinicName, clinicBranding);
         }
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }
@@ -355,7 +357,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const handleProviderPDF = () => {
     if (interp) {
       const historyForPdf = allLabs.length >= 2 ? allLabs : undefined;
-      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf);
+      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf, clinicBranding);
       toast({ title: "Provider Report Generated", description: "The provider report has been downloaded." });
     }
   };
@@ -1228,6 +1230,7 @@ export default function PatientProfiles() {
   });
 
   const { user } = useAuth();
+  const clinicBranding = useClinicBrandingPartial();
 
   interface PortalMessage {
     id: number;
@@ -2289,6 +2292,7 @@ export default function PatientProfiles() {
                             signedBy: enc.signedBy ?? null,
                             signatureImage: isSigned ? ((user as any)?.signatureImage ?? null) : null,
                             isAmended: !!enc.isAmended,
+                            branding: clinicBranding,
                           });
                         } catch { } finally {
                           setPdfExportingEncounterId(null);

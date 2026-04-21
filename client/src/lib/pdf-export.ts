@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { LabValues, InterpretationResult, LabResult } from '@shared/schema';
 import { generateTrendInsights } from '@/lib/clinical-trend-insights';
+import { hexToRgb, resolveBranding, type PartialBranding } from "@/lib/branding";
 
 // Sanitize text to replace Unicode characters that cause PDF spacing issues
 // Converts to ASCII-safe equivalents while preserving medical meaning
@@ -41,8 +42,14 @@ export async function generateLabReportPDF(
   interpretation: InterpretationResult,
   patientName?: string,
   clinicName: string = "Men's Hormone & Primary Care Clinic",
-  labHistory?: LabResult[]
+  labHistory?: LabResult[],
+  /** Clinic-level brand colors. Falls back to historic navy if null. */
+  branding?: PartialBranding | null,
 ): Promise<void> {
+  // Effective heading color: clinic primary if set, else historic navy.
+  const HEADING_RGB: [number, number, number] = branding?.primaryColor
+    ? hexToRgb(resolveBranding(null, branding).primaryColor)
+    : [31, 78, 121];
   // Load ReAlign logo for PDF branding — composite over white to avoid jsPDF alpha-channel corruption
   let logoData: string | null = null;
   try {
@@ -80,7 +87,7 @@ export async function generateLabReportPDF(
   }
   doc.setFontSize(16);
   doc.setFont('helvetica', 'bold');
-  doc.setTextColor(31, 78, 121);
+  doc.setTextColor(...HEADING_RGB);
   doc.text('Lab Interpretation Report', pageWidth - 14, 14, { align: 'right' });
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');

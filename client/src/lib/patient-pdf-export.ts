@@ -399,6 +399,8 @@ export interface PdfSupplement {
   indication: string;
 }
 
+import { hexToRgb, resolveBranding, type PartialBranding } from "@/lib/branding";
+
 export async function generatePatientWellnessPDF(
   labValues: FemaleLabValues,
   interpretation: InterpretationResult,
@@ -406,7 +408,9 @@ export async function generatePatientWellnessPDF(
   patientName?: string,
   patientLabs?: LabResult[],
   selectedSupplements?: PdfSupplement[],
-  clinicName?: string
+  clinicName?: string,
+  /** Clinic-level brand colors. Falls back to historic female-clinic tan if null. */
+  branding?: PartialBranding | null,
 ): Promise<void> {
   // Load ReAlign logo for PDF branding — composite over white to avoid jsPDF alpha-channel corruption
   let logoData: string | null = null;
@@ -442,9 +446,17 @@ export async function generatePatientWellnessPDF(
   const contentWidth = pageWidth - (margin * 2);
   let yPosition = 15;
 
-  const brandColor: [number, number, number] = [163, 136, 121];
+  // Effective brand colors: clinic override → female-clinic historic tan default.
+  const FEMALE_DEFAULT = { primaryColor: "#a38879", accentColor: "#a38879", formBackgroundColor: "#faf8f6" };
+  const effectiveBranding = resolveBranding(null, branding ?? null);
+  // Use clinic primary if set, else preserve historic female-clinic tan.
+  const brandColor: [number, number, number] = branding?.primaryColor
+    ? hexToRgb(effectiveBranding.primaryColor)
+    : hexToRgb(FEMALE_DEFAULT.primaryColor);
   const textColor: [number, number, number] = [51, 51, 51];
-  const lightBg: [number, number, number] = [250, 248, 246];
+  const lightBg: [number, number, number] = branding?.formBackgroundColor
+    ? hexToRgb(effectiveBranding.formBackgroundColor)
+    : hexToRgb(FEMALE_DEFAULT.formBackgroundColor);
   const displayClinic = clinicName || "Women's Hormone & Primary Care Clinic";
 
   const addHeader = () => {
