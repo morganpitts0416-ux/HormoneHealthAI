@@ -9,7 +9,9 @@ import type { EventInput, EventClickArg, DateSelectArg, DatesSetArg } from "@ful
 import { Card } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { CalendarDays, Plus, Settings, Users, ChevronLeft, ChevronRight } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Calendar } from "@/components/ui/calendar";
+import { CalendarDays, Plus, Settings, Users, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
 import { Link } from "wouter";
 import { AppointmentDialog } from "@/components/appointment-dialog";
 import type { Appointment, AppointmentType, Provider, CalendarBlock } from "@shared/schema";
@@ -50,6 +52,8 @@ export default function SchedulingPage() {
   const [defaultStart, setDefaultStart] = useState<Date | null>(null);
   const [defaultProviderId, setDefaultProviderId] = useState<number | null>(null);
   const [title, setTitle] = useState<string>("");
+  const [currentDate, setCurrentDate] = useState<Date>(new Date());
+  const [datePickerOpen, setDatePickerOpen] = useState(false);
   const [range, setRange] = useState<{ start: Date; end: Date }>(() => {
     const now = new Date();
     const start = new Date(now); start.setDate(now.getDate() - 7);
@@ -157,6 +161,12 @@ export default function SchedulingPage() {
   const handleDatesSet = (arg: DatesSetArg) => {
     setRange({ start: arg.start, end: arg.end });
     setTitle(arg.view.title);
+    setCurrentDate(arg.view.currentStart);
+  };
+  const goToDate = (d: Date | undefined) => {
+    if (!d) return;
+    api()?.gotoDate(d);
+    setDatePickerOpen(false);
   };
   const onNew = () => {
     setEditing(null);
@@ -235,7 +245,30 @@ export default function SchedulingPage() {
             <Button variant="outline" size="icon" onClick={goNext} data-testid="button-next"><ChevronRight className="h-4 w-4" /></Button>
             <Button variant="outline" size="default" onClick={goToday} className="ml-1" data-testid="button-today">Today</Button>
           </div>
-          <div className="text-base font-medium">{title}</div>
+          <Popover open={datePickerOpen} onOpenChange={setDatePickerOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                variant="ghost"
+                className="text-base font-medium gap-1.5 px-3"
+                data-testid="button-date-picker"
+              >
+                {title}
+                <ChevronDown className="h-4 w-4 opacity-60" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-auto p-0" align="center">
+              <Calendar
+                mode="single"
+                selected={currentDate}
+                onSelect={goToDate}
+                initialFocus
+                showOutsideDays
+                captionLayout="dropdown-buttons"
+                fromYear={new Date().getFullYear() - 2}
+                toYear={new Date().getFullYear() + 3}
+              />
+            </PopoverContent>
+          </Popover>
           <div className="w-[136px]" />
         </div>
 
