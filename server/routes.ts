@@ -8423,6 +8423,35 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // ── Last + next appointment for a patient (used by Schedule search) ───────
+  app.get("/api/patients/:id/appointments-summary", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      if (!patientId) return res.status(400).json({ message: "Invalid patient id" });
+      const clinicId = getEffectiveClinicId(req);
+
+      const patient = await storage.getPatient(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (clinicId && patient.clinicId && patient.clinicId !== clinicId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const all = await storage.getAppointmentsByPatientId(patientId);
+      const now = Date.now();
+      const past = all
+        .filter(a => new Date(a.appointmentStart).getTime() < now && a.status !== "cancelled")
+        .sort((a, b) => new Date(b.appointmentStart).getTime() - new Date(a.appointmentStart).getTime());
+      const upcoming = all
+        .filter(a => new Date(a.appointmentStart).getTime() >= now && a.status !== "cancelled")
+        .sort((a, b) => new Date(a.appointmentStart).getTime() - new Date(b.appointmentStart).getTime());
+
+      res.json({ last: past[0] ?? null, next: upcoming[0] ?? null });
+    } catch (err) {
+      console.error("[Scheduling] patient appt summary error:", err);
+      res.status(500).json({ message: "Failed to load patient appointments" });
+    }
+  });
+
   // ── Native appointment CRUD ───────────────────────────────────────────────
   app.post("/api/appointments", requireAuth, async (req: any, res) => {
     try {
