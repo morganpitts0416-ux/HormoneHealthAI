@@ -11,10 +11,11 @@ import { Button } from "@/components/ui/button";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { Calendar } from "@/components/ui/calendar";
-import { CalendarDays, Plus, Settings, Users, ChevronLeft, ChevronRight, ChevronDown } from "lucide-react";
+import { Input } from "@/components/ui/input";
+import { CalendarDays, Plus, Settings, Users, ChevronLeft, ChevronRight, ChevronDown, Search, X } from "lucide-react";
 import { Link } from "wouter";
 import { AppointmentDialog } from "@/components/appointment-dialog";
-import type { Appointment, AppointmentType, Provider, CalendarBlock } from "@shared/schema";
+import type { Appointment, AppointmentType, Provider, CalendarBlock, Patient } from "@shared/schema";
 
 const ALL_PROVIDERS = "__all__";
 
@@ -54,6 +55,8 @@ export default function SchedulingPage() {
   const [title, setTitle] = useState<string>("");
   const [currentDate, setCurrentDate] = useState<Date>(new Date());
   const [datePickerOpen, setDatePickerOpen] = useState(false);
+  const [patientSearchOpen, setPatientSearchOpen] = useState(false);
+  const [patientQuery, setPatientQuery] = useState("");
   const [range, setRange] = useState<{ start: Date; end: Date }>(() => {
     const now = new Date();
     const start = new Date(now); start.setDate(now.getDate() - 7);
@@ -182,6 +185,29 @@ export default function SchedulingPage() {
   // Re-sync FC when view changes (key swap below also helps).
   useEffect(() => { api()?.changeView(view); }, [view]);
 
+  // Patient search (debounced)
+  const [debouncedPq, setDebouncedPq] = useState("");
+  useEffect(() => {
+    const t = setTimeout(() => setDebouncedPq(patientQuery.trim()), 200);
+    return () => clearTimeout(t);
+  }, [patientQuery]);
+  const { data: patientResults = [], isFetching: searching } = useQuery<Patient[]>({
+    queryKey: ["/api/patients/search", debouncedPq],
+    queryFn: async () => {
+      const r = await fetch(`/api/patients/search?q=${encodeURIComponent(debouncedPq)}`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+    enabled: patientSearchOpen,
+  });
+
+  const goToAppointmentDate = (a: Appointment) => {
+    const d = new Date(a.appointmentStart);
+    api()?.gotoDate(d);
+    if (userView === "week") setUserView("day");
+    setPatientSearchOpen(false);
+  };
+
   return (
     <div className="flex-1 overflow-auto bg-background">
       <main className="max-w-[1400px] mx-auto px-4 sm:px-6 py-5 space-y-4">
@@ -192,6 +218,45 @@ export default function SchedulingPage() {
             <h1 className="text-base font-semibold">Schedule</h1>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
+            <Popover open={patientSearchOpen} onOpenChange={setPatientSearchOpen}>
+              <PopoverTrigger asChild>
+                <div className="relative">
+                  <Search className="absolute left-2.5 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground pointer-events-none" />
+                  <Input
+                    type="text"
+                    placeholder="Search patients…"
+                    value={patientQuery}
+                    onChange={(e) => { setPatientQuery(e.target.value); if (!patientSearchOpen) setPatientSearchOpen(true); }}
+                    onFocus={() => setPatientSearchOpen(true)}
+                    className="pl-8 pr-8 w-56 h-9"
+                    data-testid="input-patient-search"
+                  />
+                  {patientQuery && (
+                    <button
+                      type="button"
+                      onClick={(e) => { e.preventDefault(); setPatientQuery(""); }}
+                      className="absolute right-2 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground"
+                      aria-label="Clear"
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </button>
+                  )}
+                </div>
+              </PopoverTrigger>
+              <PopoverContent
+                className="w-80 p-0"
+                align="start"
+                onOpenAutoFocus={(e) => e.preventDefault()}
+              >
+                <PatientSearchResults
+                  results={patientResults}
+                  loading={searching}
+                  query={debouncedPq}
+                  onJump={goToAppointmentDate}
+                />
+              </PopoverContent>
+            </Popover>
+
             <Select value={providerFilter} onValueChange={setProviderFilter}>
               <SelectTrigger className="w-44" data-testid="select-provider-filter">
                 <SelectValue placeholder="Provider" />
@@ -341,6 +406,84 @@ export default function SchedulingPage() {
         defaultStart={defaultStart}
         defaultProviderId={defaultProviderId}
       />
+    </div>
+  );
+}
+
+// ─── Patient search results dropdown ────────────────────────────────────────
+function PatientSearchResults({
+  results, loading, query, onJump,
+}: {
+  results: Patient[];
+  loading: boolean;
+  query: string;
+  onJump: (a: Appointment) => void;
+}) {
+  const top = results.slice(0, 8);
+  if (loading && top.length === 0) {
+    return <div className="p-3 text-xs text-muted-foreground">Searching…</div>;
+  }
+  if (top.length === 0) {
+    return (
+      <div className="p-3 text-xs text-muted-foreground">
+        {query ? `No patients matching "${query}".` : "Start typing to search patients."}
+      </div>
+    );
+  }
+  return (
+    <div className="max-h-96 overflow-auto py-1">
+      {top.map(p => (
+        <PatientRow key={p.id} patient={p} onJump={onJump} />
+      ))}
+    </div>
+  );
+}
+
+function fmtShortDate(d: Date | string | null | undefined): string {
+  if (!d) return "—";
+  const date = new Date(d);
+  return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+}
+
+function PatientRow({ patient, onJump }: { patient: Patient; onJump: (a: Appointment) => void }) {
+  const { data, isLoading } = useQuery<{ last: Appointment | null; next: Appointment | null }>({
+    queryKey: ["/api/patients", patient.id, "appointments-summary"],
+    queryFn: async () => {
+      const r = await fetch(`/api/patients/${patient.id}/appointments-summary`, { credentials: "include" });
+      if (!r.ok) return { last: null, next: null };
+      return r.json();
+    },
+  });
+
+  const target = data?.next ?? data?.last ?? null;
+  const fullName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim() || `Patient #${patient.id}`;
+
+  return (
+    <div className="px-3 py-2 hover-elevate" data-testid={`row-patient-search-${patient.id}`}>
+      <button
+        type="button"
+        disabled={!target}
+        onClick={() => target && onJump(target)}
+        className="text-left w-full font-medium text-sm truncate disabled:cursor-default disabled:opacity-90"
+        data-testid={`button-jump-patient-${patient.id}`}
+      >
+        {fullName}
+      </button>
+      <div className="mt-0.5 grid grid-cols-2 gap-x-3 text-[11px] text-muted-foreground">
+        <div>
+          <span className="text-foreground/60">Last:</span>{" "}
+          <span className="font-medium text-foreground/80">{isLoading ? "…" : fmtShortDate(data?.last?.appointmentStart)}</span>
+        </div>
+        <div>
+          <span className="text-foreground/60">Next:</span>{" "}
+          <span className="font-medium text-foreground/80">{isLoading ? "…" : fmtShortDate(data?.next?.appointmentStart)}</span>
+        </div>
+      </div>
+      {target && (
+        <div className="text-[10px] text-muted-foreground mt-0.5">
+          Click name to jump to {data?.next ? "next" : "last"} appointment
+        </div>
+      )}
     </div>
   );
 }
