@@ -902,8 +902,6 @@ export default function Account() {
     },
   });
 
-  const [inviteLinkDialog, setInviteLinkDialog] = useState<{ open: boolean; link: string; recipient: string; emailSent: boolean; emailError: string | null }>({ open: false, link: "", recipient: "", emailSent: true, emailError: null });
-
   const handleResendResult = (data: any, refetch?: () => void) => {
     if (refetch) refetch();
     if (data?.emailSent) {
@@ -912,12 +910,13 @@ export default function Account() {
         description: `A fresh 72-hour invite link was emailed to ${data.recipientEmail}.`,
       });
     } else {
-      setInviteLinkDialog({
-        open: true,
-        link: data?.inviteLink || "",
-        recipient: data?.recipientEmail || "",
-        emailSent: false,
-        emailError: data?.emailError || null,
+      const link = data?.inviteLink || "";
+      try { navigator.clipboard.writeText(link); } catch {}
+      toast({
+        title: "Email failed — link copied to clipboard",
+        description: `Resend rejected the email${data?.emailError ? ` (${data.emailError})` : ""}. The 72-hour invite link for ${data?.recipientEmail} has been copied — paste it to the recipient via text or another channel.`,
+        variant: "destructive",
+        duration: 20000,
       });
     }
   };
@@ -2180,56 +2179,6 @@ export default function Account() {
         </main>
       </div>
 
-      <Dialog open={inviteLinkDialog.open} onOpenChange={(open) => setInviteLinkDialog((s) => ({ ...s, open }))}>
-        <DialogContent className="max-w-lg" data-testid="dialog-invite-link-fallback">
-          <DialogHeader>
-            <DialogTitle className="flex items-center gap-2">
-              <AlertTriangle className="w-5 h-5 text-amber-600" />
-              Email could not be delivered
-            </DialogTitle>
-            <DialogDescription>
-              The invite token for <strong>{inviteLinkDialog.recipient}</strong> has been refreshed (valid for 72 hours), but the email failed to send. Copy the link below and share it with them directly via text, Spruce, or another channel.
-            </DialogDescription>
-          </DialogHeader>
-          <div className="space-y-3">
-            <div className="rounded-md border bg-muted/30 p-3">
-              <p className="text-xs text-muted-foreground">Invite link</p>
-              <div className="flex items-center gap-2 mt-1">
-                <Input
-                  readOnly
-                  value={inviteLinkDialog.link}
-                  className="font-mono text-xs"
-                  data-testid="input-invite-link"
-                  onFocus={(e) => e.currentTarget.select()}
-                />
-                <Button
-                  size="icon"
-                  variant="outline"
-                  data-testid="button-copy-invite-link"
-                  onClick={() => {
-                    navigator.clipboard.writeText(inviteLinkDialog.link);
-                    toast({ title: "Copied", description: "Invite link copied to clipboard." });
-                  }}
-                >
-                  <Copy className="w-4 h-4" />
-                </Button>
-              </div>
-            </div>
-            {inviteLinkDialog.emailError && (
-              <div className="rounded-md border border-amber-200 bg-amber-50 p-3 text-xs text-amber-900">
-                <p className="font-medium mb-1">Email delivery error</p>
-                <p className="font-mono break-all">{inviteLinkDialog.emailError}</p>
-                <p className="mt-2 text-amber-800">
-                  This is usually caused by an unverified sending domain in Resend. Verify <code>cliniqapp.ai</code> (or set <code>RESEND_FROM_EMAIL</code> to a verified address) and try again.
-                </p>
-              </div>
-            )}
-          </div>
-          <DialogFooter>
-            <Button onClick={() => setInviteLinkDialog((s) => ({ ...s, open: false }))} data-testid="button-close-invite-link-dialog">Done</Button>
-          </DialogFooter>
-        </DialogContent>
-      </Dialog>
     </div>
   );
 }
