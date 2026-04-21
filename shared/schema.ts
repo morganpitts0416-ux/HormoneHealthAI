@@ -1189,6 +1189,12 @@ export const clinics = pgTable("clinics", {
   stripeCustomerId: varchar("stripe_customer_id", { length: 100 }),
   stripeSubscriptionId: varchar("stripe_subscription_id", { length: 100 }),
   trialEndsAt: timestamp("trial_ends_at"),
+  // ── Clinic-wide brand colors (apply to patient-facing artifacts: PDFs and
+  // public form pages). All optional — falls back to platform default when
+  // null. Stored as 6-digit hex strings, e.g. "#1f4e79".
+  primaryColor: varchar("primary_color", { length: 7 }),
+  accentColor: varchar("accent_color", { length: 7 }),
+  formBackgroundColor: varchar("form_background_color", { length: 7 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

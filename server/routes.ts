@@ -3971,6 +3971,85 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // ── Clinic Branding ──────────────────────────────────────────────────────
+  // Universal brand colors that apply to patient-facing artifacts (PDFs and
+  // public form pages). Layout is unchanged — only color tokens.
+
+  // GET /api/clinic/branding — any authenticated clinic member can read
+  app.get("/api/clinic/branding", requireClinicianOnly, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const clinicId = user.defaultClinicId;
+      if (!clinicId) {
+        return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null });
+      }
+      const rows = await storageDb
+        .select({
+          primaryColor: clinics.primaryColor,
+          accentColor: clinics.accentColor,
+          formBackgroundColor: clinics.formBackgroundColor,
+        })
+        .from(clinics)
+        .where(eq(clinics.id, clinicId))
+        .limit(1);
+      const c = rows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null };
+      res.json(c);
+    } catch (err) {
+      console.error('[API] Error fetching clinic branding:', err);
+      res.status(500).json({ message: "Failed to fetch branding" });
+    }
+  });
+
+  // PATCH /api/clinic/branding — owner / admin / limited_admin only
+  app.patch("/api/clinic/branding", requireClinicianOnly, async (req, res) => {
+    try {
+      const user = req.user as any;
+      const clinicId = user.defaultClinicId;
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const adminRole = await getSessionAdminRole(user);
+      if (adminRole !== "owner" && adminRole !== "admin" && adminRole !== "limited_admin") {
+        return res.status(403).json({ message: "Only clinic owners or admins can edit branding." });
+      }
+
+      const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
+      const normalize = (v: unknown): string | null => {
+        if (v === null || v === undefined || v === "") return null;
+        if (typeof v !== "string") return null;
+        return HEX_RE.test(v) ? v.toLowerCase() : null;
+      };
+      const incoming = req.body ?? {};
+      const updates: Record<string, string | null> = {};
+      if ("primaryColor" in incoming) updates.primaryColor = normalize(incoming.primaryColor);
+      if ("accentColor" in incoming) updates.accentColor = normalize(incoming.accentColor);
+      if ("formBackgroundColor" in incoming) updates.formBackgroundColor = normalize(incoming.formBackgroundColor);
+      // Reject any field that was provided but failed validation (we
+      // intentionally don't silently strip — clinicians need to know the
+      // value didn't take).
+      for (const k of Object.keys(updates)) {
+        if (incoming[k] && updates[k] === null && incoming[k] !== "") {
+          return res.status(400).json({ message: `${k} must be a 6-digit hex color (e.g. #1f4e79).` });
+        }
+      }
+      if (Object.keys(updates).length === 0) {
+        return res.status(400).json({ message: "No branding fields provided." });
+      }
+      await storageDb.update(clinics).set({ ...updates, updatedAt: new Date() }).where(eq(clinics.id, clinicId));
+      const rows = await storageDb
+        .select({
+          primaryColor: clinics.primaryColor,
+          accentColor: clinics.accentColor,
+          formBackgroundColor: clinics.formBackgroundColor,
+        })
+        .from(clinics)
+        .where(eq(clinics.id, clinicId))
+        .limit(1);
+      res.json(rows[0]);
+    } catch (err) {
+      console.error('[API] Error updating clinic branding:', err);
+      res.status(500).json({ message: "Failed to update branding" });
+    }
+  });
+
   // GET /api/clinic/invites — list pending provider invites for this clinic
   app.get("/api/clinic/invites", requireClinicianOnly, async (req, res) => {
     try {
@@ -8652,7 +8731,15 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         storage.getFormSections(pub.formId),
         storage.getFormFields(pub.formId),
       ]);
-      let clinic: { clinicName?: string; clinicLogo?: string | null; phone?: string; address?: string } = {};
+      let clinic: {
+        clinicName?: string;
+        clinicLogo?: string | null;
+        phone?: string;
+        address?: string;
+        primaryColor?: string | null;
+        accentColor?: string | null;
+        formBackgroundColor?: string | null;
+      } = {};
       try {
         const owner = await storage.getUserById(form.clinicianId);
         if (owner) {
@@ -8662,6 +8749,15 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             phone: owner.phone || undefined,
             address: owner.address || undefined,
           };
+          // Layer in clinic-level brand colors (multi-tenant branding).
+          try {
+            const ownerClinic = await storage.getClinicForUser(form.clinicianId);
+            if (ownerClinic) {
+              clinic.primaryColor = ownerClinic.primaryColor ?? null;
+              clinic.accentColor = ownerClinic.accentColor ?? null;
+              clinic.formBackgroundColor = ownerClinic.formBackgroundColor ?? null;
+            }
+          } catch {}
         }
       } catch {}
       res.json({ form, sections, fields, publication: pub, clinic });

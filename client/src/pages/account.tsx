@@ -25,6 +25,8 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PreferencesPanel } from "@/components/preferences-panel";
 import { DiagnosisPresetsSection } from "@/components/diagnosis-presets-section";
+import { useClinicBranding } from "@/hooks/use-clinic-branding";
+import { PLATFORM_DEFAULT_BRANDING, resolveBranding } from "@/lib/branding";
 import { useToast } from "@/hooks/use-toast";
 import { cn } from "@/lib/utils";
 
@@ -692,6 +694,39 @@ export default function Account() {
   const [search, setSearch] = useState("");
 
   const [clinicLogoPreview, setClinicLogoPreview] = useState<string | null>((user as any)?.clinicLogo ?? null);
+  // Clinic-wide brand colors (apply to patient-facing PDFs and form pages).
+  // Empty string === "use platform default" (clears the saved value).
+  const { data: clinicBrandingData } = useClinicBranding();
+  const [primaryColorInput, setPrimaryColorInput] = useState<string>("");
+  const [accentColorInput, setAccentColorInput] = useState<string>("");
+  const [formBgColorInput, setFormBgColorInput] = useState<string>("");
+  const [brandColorsSaved, setBrandColorsSaved] = useState(false);
+  useEffect(() => {
+    if (clinicBrandingData) {
+      setPrimaryColorInput(clinicBrandingData.primaryColor ?? "");
+      setAccentColorInput(clinicBrandingData.accentColor ?? "");
+      setFormBgColorInput(clinicBrandingData.formBackgroundColor ?? "");
+    }
+  }, [clinicBrandingData]);
+  const brandColorsMutation = useMutation({
+    mutationFn: async (payload: { primaryColor: string | null; accentColor: string | null; formBackgroundColor: string | null }) => {
+      return apiRequest("PATCH", "/api/clinic/branding", payload);
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinic/branding"] });
+      setBrandColorsSaved(true);
+      setTimeout(() => setBrandColorsSaved(false), 2500);
+      toast({ title: "Brand colors saved", description: "Patient-facing reports and forms will use the new colors." });
+    },
+    onError: (err: any) => {
+      toast({ title: "Could not save brand colors", description: err?.message ?? "Please try again.", variant: "destructive" });
+    },
+  });
+  const effectiveBrandPreview = resolveBranding(null, {
+    primaryColor: primaryColorInput || null,
+    accentColor: accentColorInput || null,
+    formBackgroundColor: formBgColorInput || null,
+  });
   const [signaturePreview, setSignaturePreview] = useState<string | null>((user as any)?.signatureImage ?? null);
   const [showSignaturePad, setShowSignaturePad] = useState(false);
   const [brandingSaved, setBrandingSaved] = useState(false);
@@ -1247,6 +1282,123 @@ export default function Account() {
                           e.target.value = "";
                         }}
                       />
+                    </div>
+                    <Separator />
+
+                    {/* ── Universal Brand Colors ─────────────────────────── */}
+                    <div data-testid="section-brand-colors">
+                      <p className="text-xs font-semibold text-slate-400 uppercase tracking-wide mb-1">Brand Colors</p>
+                      <p className="text-xs text-muted-foreground mb-4">
+                        Apply your clinic's colors to patient-facing reports (wellness PDFs, lab reports, SOAP notes) and patient portal forms.
+                        Layout, fonts, and clinical status colors (normal / borderline / abnormal / critical) are not affected.
+                        Leave a field blank to use the platform default.
+                      </p>
+                      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
+                        {[
+                          { key: "primary", label: "Primary", desc: "Section headers, header bars", value: primaryColorInput, setValue: setPrimaryColorInput, fallback: PLATFORM_DEFAULT_BRANDING.primaryColor, effective: effectiveBrandPreview.primaryColor },
+                          { key: "accent", label: "Accent", desc: "Highlights, dividers, pills", value: accentColorInput, setValue: setAccentColorInput, fallback: PLATFORM_DEFAULT_BRANDING.accentColor, effective: effectiveBrandPreview.accentColor },
+                          { key: "form_bg", label: "Form Background", desc: "Patient portal form pages", value: formBgColorInput, setValue: setFormBgColorInput, fallback: PLATFORM_DEFAULT_BRANDING.formBackgroundColor, effective: effectiveBrandPreview.formBackgroundColor },
+                        ].map((f) => (
+                          <div key={f.key} className="space-y-1.5">
+                            <label className="text-xs font-medium text-foreground">{f.label}</label>
+                            <div className="flex items-center gap-2">
+                              <input
+                                type="color"
+                                value={f.value || f.fallback}
+                                onChange={(e) => f.setValue(e.target.value.toLowerCase())}
+                                className="h-9 w-12 rounded-md border cursor-pointer p-0.5 bg-background"
+                                data-testid={`color-${f.key}`}
+                                aria-label={`${f.label} color picker`}
+                              />
+                              <Input
+                                value={f.value}
+                                onChange={(e) => f.setValue(e.target.value)}
+                                placeholder={f.fallback}
+                                className="font-mono text-sm uppercase"
+                                data-testid={`input-color-${f.key}`}
+                              />
+                              {f.value && (
+                                <Button
+                                  type="button"
+                                  size="icon"
+                                  variant="ghost"
+                                  onClick={() => f.setValue("")}
+                                  data-testid={`button-clear-${f.key}`}
+                                  title="Use platform default"
+                                >
+                                  <X className="w-4 h-4" />
+                                </Button>
+                              )}
+                            </div>
+                            <p className="text-xs text-muted-foreground">{f.desc}</p>
+                          </div>
+                        ))}
+                      </div>
+
+                      {/* Preview */}
+                      <div className="mt-5 rounded-md border overflow-hidden" data-testid="preview-branding">
+                        <div
+                          className="px-4 py-3 text-white text-sm font-semibold flex items-center justify-between"
+                          style={{ backgroundColor: effectiveBrandPreview.primaryColor }}
+                        >
+                          <span>Patient Wellness Report — Preview</span>
+                          <span
+                            className="text-xs font-medium px-2 py-0.5 rounded"
+                            style={{ backgroundColor: effectiveBrandPreview.accentColor, color: "#fff" }}
+                          >
+                            Sample Badge
+                          </span>
+                        </div>
+                        <div className="px-4 py-4 space-y-2" style={{ backgroundColor: effectiveBrandPreview.formBackgroundColor }}>
+                          <div className="text-xs uppercase tracking-wide font-semibold" style={{ color: effectiveBrandPreview.primaryColor }}>
+                            Section Heading
+                          </div>
+                          <div className="h-px" style={{ backgroundColor: effectiveBrandPreview.accentColor }} />
+                          <p className="text-sm text-slate-700">
+                            Patient body text appears here. Background tint shown is what patients see on portal form pages.
+                          </p>
+                        </div>
+                      </div>
+
+                      <div className="flex items-center justify-between pt-4 flex-wrap gap-3">
+                        <div className="h-5">
+                          {brandColorsSaved && (
+                            <span className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
+                              <CheckCircle className="w-4 h-4" />Brand colors saved
+                            </span>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button
+                            type="button"
+                            variant="ghost"
+                            size="sm"
+                            disabled={brandColorsMutation.isPending}
+                            onClick={() => {
+                              setPrimaryColorInput("");
+                              setAccentColorInput("");
+                              setFormBgColorInput("");
+                              brandColorsMutation.mutate({ primaryColor: null, accentColor: null, formBackgroundColor: null });
+                            }}
+                            data-testid="button-reset-brand-colors"
+                          >
+                            Reset to platform defaults
+                          </Button>
+                          <Button
+                            type="button"
+                            disabled={brandColorsMutation.isPending}
+                            onClick={() => brandColorsMutation.mutate({
+                              primaryColor: primaryColorInput.trim() || null,
+                              accentColor: accentColorInput.trim() || null,
+                              formBackgroundColor: formBgColorInput.trim() || null,
+                            })}
+                            data-testid="button-save-brand-colors"
+                          >
+                            <Save className="w-4 h-4 mr-2" />
+                            {brandColorsMutation.isPending ? "Saving..." : "Save Brand Colors"}
+                          </Button>
+                        </div>
+                      </div>
                     </div>
                     <Separator />
                   </>

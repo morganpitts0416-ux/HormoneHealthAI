@@ -292,6 +292,8 @@ export interface PdfSupplement {
   indication: string;
 }
 
+import { hexToRgb, resolveBranding, type PartialBranding } from "@/lib/branding";
+
 export async function generateMalePatientWellnessPDF(
   labValues: LabValues,
   interpretation: InterpretationResult,
@@ -299,7 +301,9 @@ export async function generateMalePatientWellnessPDF(
   patientName?: string,
   patientLabs?: LabResult[],
   selectedSupplements?: PdfSupplement[],
-  clinicName?: string
+  clinicName?: string,
+  /** Clinic-level brand colors. Falls back to historic male-clinic navy if null. */
+  branding?: PartialBranding | null,
 ): Promise<void> {
   // Load ReAlign logo for PDF branding — composite over white to avoid jsPDF alpha-channel corruption
   let logoData: string | null = null;
@@ -335,10 +339,19 @@ export async function generateMalePatientWellnessPDF(
   const contentWidth = pageWidth - (margin * 2);
   let yPosition = 15;
 
-  const brandColor: [number, number, number] = [31, 78, 121];
-  const accentColor: [number, number, number] = [70, 130, 180];
+  // Effective brand colors: clinic override → historic male-clinic navy default.
+  const MALE_DEFAULT = { primaryColor: "#1f4e79", accentColor: "#4682b4", formBackgroundColor: "#f0f8ff" };
+  const effectiveBranding = resolveBranding(null, branding ?? null);
+  const brandColor: [number, number, number] = branding?.primaryColor
+    ? hexToRgb(effectiveBranding.primaryColor)
+    : hexToRgb(MALE_DEFAULT.primaryColor);
+  const accentColor: [number, number, number] = branding?.accentColor
+    ? hexToRgb(effectiveBranding.accentColor)
+    : hexToRgb(MALE_DEFAULT.accentColor);
   const textColor: [number, number, number] = [51, 51, 51];
-  const lightBg: [number, number, number] = [240, 248, 255];
+  const lightBg: [number, number, number] = branding?.formBackgroundColor
+    ? hexToRgb(effectiveBranding.formBackgroundColor)
+    : hexToRgb(MALE_DEFAULT.formBackgroundColor);
   const displayClinic = clinicName || "Men's Hormone & Primary Care Clinic";
 
   const addHeader = () => {
