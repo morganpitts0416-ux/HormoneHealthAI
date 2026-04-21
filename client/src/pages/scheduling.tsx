@@ -13,7 +13,7 @@ import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover
 import { Calendar } from "@/components/ui/calendar";
 import { Input } from "@/components/ui/input";
 import { CalendarDays, Plus, Settings, Users, ChevronLeft, ChevronRight, ChevronDown, Search, X } from "lucide-react";
-import { Link } from "wouter";
+import { Link, useLocation } from "wouter";
 import { AppointmentDialog } from "@/components/appointment-dialog";
 import type { Appointment, AppointmentType, Provider, CalendarBlock, Patient } from "@shared/schema";
 
@@ -201,6 +201,11 @@ export default function SchedulingPage() {
     enabled: patientSearchOpen,
   });
 
+  const [, setLocation] = useLocation();
+  const goToPatientProfile = (patientId: number) => {
+    setPatientSearchOpen(false);
+    setLocation(`/patients?patient=${patientId}`);
+  };
   const goToAppointmentDate = (a: Appointment) => {
     const d = new Date(a.appointmentStart);
     api()?.gotoDate(d);
@@ -252,7 +257,8 @@ export default function SchedulingPage() {
                   results={patientResults}
                   loading={searching}
                   query={debouncedPq}
-                  onJump={goToAppointmentDate}
+                  onOpenProfile={goToPatientProfile}
+                  onJumpOnCalendar={goToAppointmentDate}
                 />
               </PopoverContent>
             </Popover>
@@ -412,12 +418,13 @@ export default function SchedulingPage() {
 
 // ─── Patient search results dropdown ────────────────────────────────────────
 function PatientSearchResults({
-  results, loading, query, onJump,
+  results, loading, query, onOpenProfile, onJumpOnCalendar,
 }: {
   results: Patient[];
   loading: boolean;
   query: string;
-  onJump: (a: Appointment) => void;
+  onOpenProfile: (patientId: number) => void;
+  onJumpOnCalendar: (a: Appointment) => void;
 }) {
   const top = results.slice(0, 8);
   if (loading && top.length === 0) {
@@ -433,7 +440,12 @@ function PatientSearchResults({
   return (
     <div className="max-h-96 overflow-auto py-1">
       {top.map(p => (
-        <PatientRow key={p.id} patient={p} onJump={onJump} />
+        <PatientRow
+          key={p.id}
+          patient={p}
+          onOpenProfile={onOpenProfile}
+          onJumpOnCalendar={onJumpOnCalendar}
+        />
       ))}
     </div>
   );
@@ -445,7 +457,13 @@ function fmtShortDate(d: Date | string | null | undefined): string {
   return date.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
 }
 
-function PatientRow({ patient, onJump }: { patient: Patient; onJump: (a: Appointment) => void }) {
+function PatientRow({
+  patient, onOpenProfile, onJumpOnCalendar,
+}: {
+  patient: Patient;
+  onOpenProfile: (patientId: number) => void;
+  onJumpOnCalendar: (a: Appointment) => void;
+}) {
   const { data, isLoading } = useQuery<{ last: Appointment | null; next: Appointment | null }>({
     queryKey: ["/api/patients", patient.id, "appointments-summary"],
     queryFn: async () => {
@@ -462,10 +480,9 @@ function PatientRow({ patient, onJump }: { patient: Patient; onJump: (a: Appoint
     <div className="px-3 py-2 hover-elevate" data-testid={`row-patient-search-${patient.id}`}>
       <button
         type="button"
-        disabled={!target}
-        onClick={() => target && onJump(target)}
-        className="text-left w-full font-medium text-sm truncate disabled:cursor-default disabled:opacity-90"
-        data-testid={`button-jump-patient-${patient.id}`}
+        onClick={() => onOpenProfile(patient.id)}
+        className="text-left w-full font-medium text-sm truncate hover:underline"
+        data-testid={`button-open-patient-${patient.id}`}
       >
         {fullName}
       </button>
@@ -476,14 +493,25 @@ function PatientRow({ patient, onJump }: { patient: Patient; onJump: (a: Appoint
         </div>
         <div>
           <span className="text-foreground/60">Next:</span>{" "}
-          <span className="font-medium text-foreground/80">{isLoading ? "…" : fmtShortDate(data?.next?.appointmentStart)}</span>
+          {isLoading ? (
+            <span className="font-medium text-foreground/80">…</span>
+          ) : data?.next ? (
+            <button
+              type="button"
+              onClick={(e) => { e.stopPropagation(); onJumpOnCalendar(data.next!); }}
+              className="font-medium underline decoration-dotted underline-offset-2 text-foreground/80 hover:text-foreground"
+              data-testid={`button-jump-next-${patient.id}`}
+            >
+              {fmtShortDate(data.next.appointmentStart)}
+            </button>
+          ) : (
+            <span className="font-medium text-foreground/80">—</span>
+          )}
         </div>
       </div>
-      {target && (
-        <div className="text-[10px] text-muted-foreground mt-0.5">
-          Click name to jump to {data?.next ? "next" : "last"} appointment
-        </div>
-      )}
+      <div className="text-[10px] text-muted-foreground mt-0.5">
+        Click name to open chart{data?.next ? " · click next date to jump on calendar" : ""}
+      </div>
     </div>
   );
 }

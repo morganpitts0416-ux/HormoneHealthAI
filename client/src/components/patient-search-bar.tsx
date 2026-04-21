@@ -45,7 +45,7 @@ export function PatientSearchBar({
   const goToPatient = (p: Patient) => {
     setSearchTerm("");
     setShowDropdown(false);
-    setLocation(`/patient-profiles?patient=${p.id}`);
+    setLocation(`/patients?patient=${p.id}`);
   };
 
   const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>) => {
