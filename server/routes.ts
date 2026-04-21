@@ -7,7 +7,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema } from "@shared/schema";
 import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -36,7 +36,7 @@ import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
 import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
-import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail, sendProviderInviteEmail } from "./email-service";
+import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail, sendProviderInviteEmail, sendEmail } from "./email-service";
 import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
 import Stripe from "stripe";
 import bcrypt from "bcrypt";
@@ -8187,6 +8187,468 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       res.json(appts);
     } catch (err: any) {
       res.status(500).json({ message: "Failed to load appointments" });
+    }
+  });
+
+  // ══════════════════════════════════════════════════════════════════════════
+  // SCHEDULING — native appointments, types, provider hours, time-off, slots
+  // ══════════════════════════════════════════════════════════════════════════
+
+  // --- Helper: parse Date safely ---
+  const parseDate = (v: any): Date | null => {
+    if (!v) return null;
+    const d = new Date(v);
+    return isNaN(d.getTime()) ? null : d;
+  };
+
+  // --- Middleware: require owner or admin role to manage scheduling settings ---
+  async function requireSchedulingAdmin(req: any, res: any, next: any) {
+    try {
+      const role = await getSessionAdminRole(req);
+      if (role === "owner" || role === "admin") return next();
+      return res.status(403).json({ message: "Owner or admin role required to manage scheduling settings." });
+    } catch {
+      return res.status(403).json({ message: "Permission check failed." });
+    }
+  }
+
+  // --- Helper: strip immutable/sensitive fields from PATCH bodies ---
+  function pickAppointmentUpdates(body: any) {
+    const allowed = [
+      "patientId", "providerId", "appointmentTypeId",
+      "patientName", "patientEmail", "patientPhone",
+      "serviceType", "staffName", "locationName",
+      "appointmentStart", "appointmentEnd", "durationMinutes",
+      "status", "notes",
+    ];
+    const out: any = {};
+    for (const k of allowed) if (body[k] !== undefined) out[k] = body[k];
+    return out;
+  }
+  function pickAppointmentTypeUpdates(body: any) {
+    const allowed = ["name", "description", "durationMinutes", "color", "isActive"];
+    const out: any = {};
+    for (const k of allowed) if (body[k] !== undefined) out[k] = body[k];
+    return out;
+  }
+  function pickProviderAvailabilityUpdates(body: any) {
+    const allowed = ["providerId", "dayOfWeek", "startTime", "endTime", "isActive"];
+    const out: any = {};
+    for (const k of allowed) if (body[k] !== undefined) out[k] = body[k];
+    return out;
+  }
+
+  // GET /api/scheduling/providers — providers table rows for current clinic
+  app.get("/api/scheduling/providers", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json([]);
+      const providers = await storage.getProvidersByClinic(clinicId);
+      res.json(providers);
+    } catch (err) {
+      console.error("[Scheduling] providers error:", err);
+      res.status(500).json({ message: "Failed to load providers" });
+    }
+  });
+
+  // ── Appointment Types ──────────────────────────────────────────────────────
+  app.get("/api/appointment-types", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json([]);
+      const includeInactive = req.query.includeInactive === "true";
+      const types = await storage.getAppointmentTypes(clinicId, includeInactive);
+      res.json(types);
+    } catch (err) {
+      console.error("[Scheduling] appointment-types GET error:", err);
+      res.status(500).json({ message: "Failed to load appointment types" });
+    }
+  });
+
+  app.post("/api/appointment-types", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const parsed = insertAppointmentTypeSchema.parse({ ...req.body, clinicId });
+      const row = await storage.createAppointmentType(parsed);
+      res.status(201).json(row);
+    } catch (err: any) {
+      console.error("[Scheduling] appointment-types POST error:", err);
+      res.status(400).json({ message: err.message || "Failed to create appointment type" });
+    }
+  });
+
+  app.patch("/api/appointment-types/:id", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const id = Number(req.params.id);
+      const row = await storage.updateAppointmentType(id, clinicId, pickAppointmentTypeUpdates(req.body));
+      if (!row) return res.status(404).json({ message: "Not found" });
+      res.json(row);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update" });
+    }
+  });
+
+  app.delete("/api/appointment-types/:id", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const ok = await storage.deleteAppointmentType(Number(req.params.id), clinicId);
+      if (!ok) return res.status(404).json({ message: "Not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to delete" });
+    }
+  });
+
+  // ── Provider Availability ──────────────────────────────────────────────────
+  app.get("/api/provider-availability", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json([]);
+      const providerId = req.query.providerId ? Number(req.query.providerId) : null;
+      const rows = await storage.getProviderAvailability(clinicId, providerId);
+      res.json(rows);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load availability" });
+    }
+  });
+
+  app.post("/api/provider-availability", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const parsed = insertProviderAvailabilitySchema.parse({ ...req.body, clinicId });
+      const row = await storage.createProviderAvailability(parsed);
+      res.status(201).json(row);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to create" });
+    }
+  });
+
+  app.patch("/api/provider-availability/:id", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const row = await storage.updateProviderAvailability(Number(req.params.id), clinicId, pickProviderAvailabilityUpdates(req.body));
+      if (!row) return res.status(404).json({ message: "Not found" });
+      res.json(row);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to update" });
+    }
+  });
+
+  app.delete("/api/provider-availability/:id", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const ok = await storage.deleteProviderAvailability(Number(req.params.id), clinicId);
+      if (!ok) return res.status(404).json({ message: "Not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to delete" });
+    }
+  });
+
+  // ── Calendar Blocks (time-off) ────────────────────────────────────────────
+  app.get("/api/calendar-blocks", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json([]);
+      const start = parseDate(req.query.start) ?? new Date(Date.now() - 30 * 86400000);
+      const end = parseDate(req.query.end) ?? new Date(Date.now() + 90 * 86400000);
+      const providerId = req.query.providerId ? Number(req.query.providerId) : null;
+      const rows = await storage.getCalendarBlocks(clinicId, start, end, providerId);
+      res.json(rows);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load blocks" });
+    }
+  });
+
+  app.post("/api/calendar-blocks", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const body = { ...req.body, clinicId };
+      if (body.startAt) body.startAt = new Date(body.startAt);
+      if (body.endAt) body.endAt = new Date(body.endAt);
+      const parsed = insertCalendarBlockSchema.parse(body);
+      const row = await storage.createCalendarBlock(parsed);
+      res.status(201).json(row);
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to create block" });
+    }
+  });
+
+  app.delete("/api/calendar-blocks/:id", requireAuth, requireSchedulingAdmin, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const ok = await storage.deleteCalendarBlock(Number(req.params.id), clinicId);
+      if (!ok) return res.status(404).json({ message: "Not found" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to delete" });
+    }
+  });
+
+  // ── Range query for native + Boulevard appointments together ──────────────
+  app.get("/api/appointments/range", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const userId = getClinicianId(req);
+      const start = parseDate(req.query.start) ?? new Date(Date.now() - 7 * 86400000);
+      const end = parseDate(req.query.end) ?? new Date(Date.now() + 30 * 86400000);
+      const providerId = req.query.providerId ? Number(req.query.providerId) : null;
+
+      let rows: any[] = [];
+      if (clinicId) {
+        rows = await storage.getAppointmentsByClinicAndRange(clinicId, start, end, providerId);
+        // Also include legacy Boulevard appts for this user that aren't yet linked to a clinicId
+        const legacy = (await storage.getAppointmentsByUserId(userId))
+          .filter(a => !a.clinicId
+            && new Date(a.appointmentStart) >= start
+            && new Date(a.appointmentStart) < end);
+        rows = [...rows, ...legacy];
+      } else {
+        rows = (await storage.getAppointmentsByUserId(userId))
+          .filter(a => new Date(a.appointmentStart) >= start && new Date(a.appointmentStart) < end);
+      }
+      res.json(rows);
+    } catch (err) {
+      console.error("[Scheduling] range error:", err);
+      res.status(500).json({ message: "Failed to load appointments" });
+    }
+  });
+
+  // ── Native appointment CRUD ───────────────────────────────────────────────
+  app.post("/api/appointments", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const userId = getClinicianId(req);
+
+      const start = parseDate(req.body.appointmentStart);
+      if (!start) return res.status(400).json({ message: "Invalid appointmentStart" });
+
+      let end = parseDate(req.body.appointmentEnd);
+      let durationMinutes = req.body.durationMinutes;
+      if (!end && req.body.appointmentTypeId) {
+        const type = await storage.getAppointmentTypeById(Number(req.body.appointmentTypeId), clinicId);
+        if (type) {
+          durationMinutes = durationMinutes ?? type.durationMinutes;
+          end = new Date(start.getTime() + (durationMinutes ?? 30) * 60000);
+        }
+      }
+      if (!end) end = new Date(start.getTime() + (durationMinutes ?? 30) * 60000);
+
+      // Conflict check (warn, do not block — clinics may double-book intentionally)
+      let conflictWarning: string | null = null;
+      if (req.body.providerId) {
+        const conflict = await storage.detectAppointmentConflict(Number(req.body.providerId), start, end);
+        if (conflict) conflictWarning = "Provider already has an overlapping appointment in this slot.";
+      }
+
+      // Resolve patient name from patientId if provided
+      let patientName: string | null = req.body.patientName ?? null;
+      let patientEmail: string | null = req.body.patientEmail ?? null;
+      let patientPhone: string | null = req.body.patientPhone ?? null;
+      if (req.body.patientId) {
+        const patient = await storage.getPatientById(Number(req.body.patientId));
+        if (patient) {
+          patientName = `${patient.firstName} ${patient.lastName}`.trim();
+          patientEmail = patientEmail ?? patient.email ?? null;
+          patientPhone = patientPhone ?? patient.phone ?? null;
+        }
+      }
+
+      const row = await storage.createNativeAppointment({
+        userId,
+        clinicId,
+        patientId: req.body.patientId ? Number(req.body.patientId) : null,
+        providerId: req.body.providerId ? Number(req.body.providerId) : null,
+        appointmentTypeId: req.body.appointmentTypeId ? Number(req.body.appointmentTypeId) : null,
+        source: "native",
+        boulevardAppointmentId: null,
+        patientName,
+        patientEmail,
+        patientPhone,
+        serviceType: req.body.serviceType ?? null,
+        staffName: req.body.staffName ?? null,
+        locationName: req.body.locationName ?? null,
+        appointmentStart: start,
+        appointmentEnd: end,
+        durationMinutes: durationMinutes ?? Math.round((end.getTime() - start.getTime()) / 60000),
+        status: req.body.status ?? "scheduled",
+        notes: req.body.notes ?? null,
+        rawPayload: null,
+        reminderSentAt: null,
+      } as any);
+
+      res.status(201).json({ appointment: row, conflictWarning });
+    } catch (err: any) {
+      console.error("[Scheduling] create native appt error:", err);
+      res.status(400).json({ message: err.message || "Failed to create appointment" });
+    }
+  });
+
+  app.patch("/api/appointments/:id", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const id = Number(req.params.id);
+      const existing = await storage.getAppointmentById(id);
+      if (!existing) return res.status(404).json({ message: "Not found" });
+      // Verify appointment belongs to this clinic before any further checks
+      if (existing.clinicId && existing.clinicId !== clinicId) {
+        return res.status(404).json({ message: "Not found" });
+      }
+      if (existing.source === "boulevard") {
+        return res.status(403).json({ message: "Boulevard appointments are read-only here. Edit in Boulevard." });
+      }
+      const updates: any = pickAppointmentUpdates(req.body);
+      if (updates.appointmentStart) updates.appointmentStart = new Date(updates.appointmentStart);
+      if (updates.appointmentEnd) updates.appointmentEnd = new Date(updates.appointmentEnd);
+      if (updates.patientId) updates.patientId = Number(updates.patientId);
+      if (updates.providerId) updates.providerId = Number(updates.providerId);
+      if (updates.appointmentTypeId) updates.appointmentTypeId = Number(updates.appointmentTypeId);
+      const row = await storage.updateNativeAppointment(id, clinicId, updates);
+      if (!row) return res.status(404).json({ message: "Not found" });
+      res.json(row);
+    } catch (err: any) {
+      console.error("[Scheduling] patch appt error:", err);
+      res.status(400).json({ message: err.message || "Failed to update" });
+    }
+  });
+
+  app.delete("/api/appointments/:id", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic" });
+      const ok = await storage.deleteNativeAppointment(Number(req.params.id), clinicId);
+      if (!ok) return res.status(404).json({ message: "Not found or read-only" });
+      res.json({ ok: true });
+    } catch (err: any) {
+      res.status(400).json({ message: err.message || "Failed to delete" });
+    }
+  });
+
+  // ── Slot availability ─────────────────────────────────────────────────────
+  // GET /api/availability/slots?providerId=&typeId=&date=YYYY-MM-DD
+  app.get("/api/availability/slots", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json([]);
+      const providerId = Number(req.query.providerId);
+      const typeId = req.query.typeId ? Number(req.query.typeId) : null;
+      const dateStr = String(req.query.date || "");
+      if (!providerId || !dateStr) return res.status(400).json({ message: "providerId and date required" });
+
+      const date = new Date(dateStr + "T00:00:00");
+      if (isNaN(date.getTime())) return res.status(400).json({ message: "Invalid date" });
+      const dayOfWeek = date.getDay();
+
+      const dayStart = new Date(date); dayStart.setHours(0, 0, 0, 0);
+      const dayEnd = new Date(date); dayEnd.setHours(23, 59, 59, 999);
+
+      const [availability, blocks, dayAppts, type] = await Promise.all([
+        storage.getProviderAvailability(clinicId, providerId),
+        storage.getCalendarBlocks(clinicId, dayStart, dayEnd, providerId),
+        storage.getAppointmentsByClinicAndRange(clinicId, dayStart, dayEnd, providerId),
+        typeId ? storage.getAppointmentTypeById(typeId, clinicId) : Promise.resolve(null),
+      ]);
+
+      const duration = type?.durationMinutes ?? 30;
+      const slots: { start: string; end: string }[] = [];
+      const todaysWindows = availability.filter(a => a.dayOfWeek === dayOfWeek);
+
+      for (const win of todaysWindows) {
+        const [sH, sM] = String(win.startTime).split(":").map(Number);
+        const [eH, eM] = String(win.endTime).split(":").map(Number);
+        const winStart = new Date(date); winStart.setHours(sH, sM, 0, 0);
+        const winEnd = new Date(date); winEnd.setHours(eH, eM, 0, 0);
+        let cursor = new Date(winStart);
+        while (cursor.getTime() + duration * 60000 <= winEnd.getTime()) {
+          const slotEnd = new Date(cursor.getTime() + duration * 60000);
+          // Skip if overlaps any existing appt
+          const conflicts = dayAppts.some(a => {
+            const aStart = new Date(a.appointmentStart);
+            const aEnd = a.appointmentEnd ? new Date(a.appointmentEnd) : new Date(aStart.getTime() + (a.durationMinutes ?? 30) * 60000);
+            return aStart < slotEnd && aEnd > cursor && a.status !== "cancelled" && a.status !== "no_show";
+          });
+          // Skip if overlaps any block
+          const blocked = blocks.some(b => new Date(b.startAt) < slotEnd && new Date(b.endAt) > cursor);
+          if (!conflicts && !blocked) {
+            slots.push({ start: cursor.toISOString(), end: slotEnd.toISOString() });
+          }
+          cursor = new Date(cursor.getTime() + duration * 60000);
+        }
+      }
+      res.json(slots);
+    } catch (err) {
+      console.error("[Scheduling] slots error:", err);
+      res.status(500).json({ message: "Failed to compute slots" });
+    }
+  });
+
+  // ── Reminder sweep — call every ~15 minutes from Cloud Scheduler ──────────
+  // Sends 24h-out email reminders for upcoming native appointments with patient email.
+  app.post("/api/jobs/send-appointment-reminders", async (req, res) => {
+    try {
+      // Shared-secret guard. Required in production; optional in dev.
+      const expected = process.env.REMINDER_JOB_SECRET;
+      if (!expected && process.env.NODE_ENV === "production") {
+        return res.status(503).json({ message: "REMINDER_JOB_SECRET not configured" });
+      }
+      if (expected) {
+        const provided = req.headers["x-job-secret"] || req.query.secret;
+        if (provided !== expected) return res.status(401).json({ message: "Unauthorized" });
+      }
+      const now = new Date();
+      const due = await storage.getAppointmentsNeedingReminder(now, 24);
+      let sent = 0, skipped = 0, failed = 0;
+      for (const appt of due) {
+        if (!appt.patientEmail) { skipped++; continue; }
+        try {
+          const clinic = appt.clinicId ? await storage.getClinicForUser(appt.userId) : null;
+          const fromName = clinic?.name ?? "Your clinic";
+          const startStr = new Date(appt.appointmentStart).toLocaleString("en-US", {
+            weekday: "long", month: "long", day: "numeric",
+            hour: "numeric", minute: "2-digit",
+          });
+          await sendEmail({
+            to: appt.patientEmail,
+            subject: `Reminder: Your appointment on ${new Date(appt.appointmentStart).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`,
+            fromName,
+            html: `
+              <div style="font-family:Inter,Arial,sans-serif;max-width:560px;margin:0 auto;padding:24px;color:#1c2414;">
+                <h2 style="margin:0 0 12px 0;">Appointment reminder</h2>
+                <p style="margin:0 0 8px 0;">Hi ${appt.patientName ?? "there"},</p>
+                <p style="margin:0 0 16px 0;">This is a friendly reminder of your upcoming appointment with <strong>${fromName}</strong>.</p>
+                <div style="background:#f5f2ed;border:1px solid #e8ddd0;border-radius:6px;padding:16px;margin:16px 0;">
+                  <div style="font-size:18px;font-weight:600;">${startStr}</div>
+                  ${appt.serviceType ? `<div style="margin-top:6px;color:#5a7040;">${appt.serviceType}</div>` : ""}
+                  ${appt.staffName ? `<div style="margin-top:4px;color:#7a8a64;">with ${appt.staffName}</div>` : ""}
+                  ${appt.locationName ? `<div style="margin-top:4px;color:#7a8a64;">${appt.locationName}</div>` : ""}
+                </div>
+                <p style="margin:16px 0 8px 0;">Need to reschedule? Please contact us right away.</p>
+                <p style="margin:24px 0 0 0;color:#7a8a64;font-size:12px;">Sent by ${fromName} via ClinIQ</p>
+              </div>
+            `,
+          });
+          await storage.markAppointmentReminderSent(appt.id);
+          sent++;
+        } catch (e) {
+          console.error("[Reminders] send failed for appt", appt.id, e);
+          failed++;
+        }
+      }
+      res.json({ sent, skipped, failed, considered: due.length });
+    } catch (err: any) {
+      console.error("[Reminders] sweep error:", err);
+      res.status(500).json({ message: err.message || "Sweep failed" });
     }
   });
 

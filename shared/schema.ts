@@ -1044,13 +1044,19 @@ export const insertClinicalEncounterSchema = createInsertSchema(clinicalEncounte
 });
 export type InsertClinicalEncounter = z.infer<typeof insertClinicalEncounterSchema>;
 
-// ─── Appointments (Boulevard sync via Zapier) ──────────────────────────────
+// ─── Appointments (native scheduling + Boulevard sync via Zapier) ──────────
+// `source` distinguishes native (created in ClinIQ) vs boulevard (mirrored from Zapier webhook).
+// Boulevard appointments remain read-only in our UI; native appointments fully editable.
 export const appointments = pgTable("appointments", {
   id: serial("id").primaryKey(),
   userId: integer("user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: "cascade" }),
   patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
-  boulevardAppointmentId: varchar("boulevard_appointment_id", { length: 255 }).notNull(),
-  patientName: varchar("patient_name", { length: 200 }).notNull(),
+  providerId: integer("provider_id").references(() => providers.id, { onDelete: "set null" }),
+  appointmentTypeId: integer("appointment_type_id").references(() => appointmentTypes.id, { onDelete: "set null" }),
+  source: varchar("source", { length: 20 }).notNull().default("native"), // 'native' | 'boulevard'
+  boulevardAppointmentId: varchar("boulevard_appointment_id", { length: 255 }),
+  patientName: varchar("patient_name", { length: 200 }),
   patientEmail: varchar("patient_email", { length: 255 }),
   patientPhone: varchar("patient_phone", { length: 50 }),
   serviceType: varchar("service_type", { length: 255 }),
@@ -1062,6 +1068,7 @@ export const appointments = pgTable("appointments", {
   status: varchar("status", { length: 50 }).notNull().default("scheduled"),
   notes: text("notes"),
   rawPayload: jsonb("raw_payload"),
+  reminderSentAt: timestamp("reminder_sent_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

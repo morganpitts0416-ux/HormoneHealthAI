@@ -200,13 +200,42 @@ export interface IStorage {
   deleteEncounter(id: number, clinicianId: number, clinicId?: number | null): Promise<boolean>;
   getPublishedEncountersByPatient(patientId: number): Promise<Pick<ClinicalEncounter, 'id' | 'visitDate' | 'visitType' | 'chiefComplaint' | 'patientSummary' | 'summaryPublishedAt'>[]>;
 
-  // Appointments (Boulevard sync via Zapier)
+  // Appointments (native + Boulevard sync via Zapier)
   upsertAppointment(userId: number, boulevardId: string, data: Omit<schema.InsertAppointment, 'userId' | 'boulevardAppointmentId'>): Promise<schema.Appointment>;
   cancelAppointment(userId: number, boulevardId: string): Promise<void>;
   getAppointmentsByUserId(userId: number): Promise<schema.Appointment[]>;
+  getAppointmentsByClinicAndRange(clinicId: number, start: Date, end: Date, providerId?: number | null): Promise<schema.Appointment[]>;
   getAppointmentsByPatientEmail(email: string, userId: number): Promise<schema.Appointment[]>;
   getAppointmentsByPatientId(patientId: number): Promise<schema.Appointment[]>;
   matchAppointmentToPatient(appointmentId: number, patientId: number): Promise<void>;
+  getAppointmentById(id: number): Promise<schema.Appointment | null>;
+  createNativeAppointment(data: schema.InsertAppointment): Promise<schema.Appointment>;
+  updateNativeAppointment(id: number, clinicId: number, data: Partial<schema.InsertAppointment>): Promise<schema.Appointment | null>;
+  deleteNativeAppointment(id: number, clinicId: number): Promise<boolean>;
+  markAppointmentReminderSent(id: number): Promise<void>;
+  getAppointmentsNeedingReminder(now: Date, hoursAhead: number): Promise<schema.Appointment[]>;
+  detectAppointmentConflict(providerId: number, start: Date, end: Date, excludeId?: number): Promise<boolean>;
+
+  // Appointment Types
+  getAppointmentTypes(clinicId: number, includeInactive?: boolean): Promise<schema.AppointmentType[]>;
+  getAppointmentTypeById(id: number, clinicId: number): Promise<schema.AppointmentType | null>;
+  createAppointmentType(data: schema.InsertAppointmentType): Promise<schema.AppointmentType>;
+  updateAppointmentType(id: number, clinicId: number, data: Partial<schema.InsertAppointmentType>): Promise<schema.AppointmentType | null>;
+  deleteAppointmentType(id: number, clinicId: number): Promise<boolean>;
+
+  // Provider Availability (recurring weekly)
+  getProviderAvailability(clinicId: number, providerId?: number | null): Promise<schema.ProviderAvailability[]>;
+  createProviderAvailability(data: schema.InsertProviderAvailability): Promise<schema.ProviderAvailability>;
+  updateProviderAvailability(id: number, clinicId: number, data: Partial<schema.InsertProviderAvailability>): Promise<schema.ProviderAvailability | null>;
+  deleteProviderAvailability(id: number, clinicId: number): Promise<boolean>;
+
+  // Calendar Blocks (one-off time-off, breaks)
+  getCalendarBlocks(clinicId: number, start: Date, end: Date, providerId?: number | null): Promise<schema.CalendarBlock[]>;
+  createCalendarBlock(data: schema.InsertCalendarBlock): Promise<schema.CalendarBlock>;
+  deleteCalendarBlock(id: number, clinicId: number): Promise<boolean>;
+
+  // Providers (clinic roster used by scheduler)
+  getProvidersByClinic(clinicId: number, includeInactive?: boolean): Promise<schema.Provider[]>;
 
   // Patient Chart
   getPatientChart(patientId: number, clinicianId: number): Promise<schema.PatientChart | null>;
@@ -1319,6 +1348,174 @@ export class DbStorage implements IStorage {
       .update(schema.appointments)
       .set({ patientId, updatedAt: new Date() })
       .where(eq(schema.appointments.id, appointmentId));
+  }
+
+  async getAppointmentsByClinicAndRange(clinicId: number, start: Date, end: Date, providerId?: number | null): Promise<schema.Appointment[]> {
+    const conds = [
+      eq(schema.appointments.clinicId, clinicId),
+      sql`${schema.appointments.appointmentStart} >= ${start}`,
+      sql`${schema.appointments.appointmentStart} < ${end}`,
+    ];
+    if (providerId) conds.push(eq(schema.appointments.providerId, providerId));
+    return db.select().from(schema.appointments).where(and(...conds)).orderBy(schema.appointments.appointmentStart);
+  }
+
+  async getAppointmentById(id: number): Promise<schema.Appointment | null> {
+    const [row] = await db.select().from(schema.appointments).where(eq(schema.appointments.id, id)).limit(1);
+    return row ?? null;
+  }
+
+  async createNativeAppointment(data: schema.InsertAppointment): Promise<schema.Appointment> {
+    const [row] = await db.insert(schema.appointments).values({ ...data, source: "native" }).returning();
+    return row;
+  }
+
+  async updateNativeAppointment(id: number, clinicId: number, data: Partial<schema.InsertAppointment>): Promise<schema.Appointment | null> {
+    const [row] = await db
+      .update(schema.appointments)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(
+        eq(schema.appointments.id, id),
+        eq(schema.appointments.clinicId, clinicId),
+        eq(schema.appointments.source, "native"),
+      ))
+      .returning();
+    return row ?? null;
+  }
+
+  async deleteNativeAppointment(id: number, clinicId: number): Promise<boolean> {
+    const result = await db
+      .delete(schema.appointments)
+      .where(and(
+        eq(schema.appointments.id, id),
+        eq(schema.appointments.clinicId, clinicId),
+        eq(schema.appointments.source, "native"),
+      ))
+      .returning();
+    return result.length > 0;
+  }
+
+  async markAppointmentReminderSent(id: number): Promise<void> {
+    await db
+      .update(schema.appointments)
+      .set({ reminderSentAt: new Date() })
+      .where(eq(schema.appointments.id, id));
+  }
+
+  async getAppointmentsNeedingReminder(now: Date, hoursAhead: number): Promise<schema.Appointment[]> {
+    const horizon = new Date(now.getTime() + hoursAhead * 60 * 60 * 1000);
+    return db
+      .select()
+      .from(schema.appointments)
+      .where(and(
+        isNull(schema.appointments.reminderSentAt),
+        sql`${schema.appointments.appointmentStart} >= ${now}`,
+        sql`${schema.appointments.appointmentStart} <= ${horizon}`,
+        sql`${schema.appointments.status} NOT IN ('cancelled','no_show')`,
+      ));
+  }
+
+  async detectAppointmentConflict(providerId: number, start: Date, end: Date, excludeId?: number): Promise<boolean> {
+    const conds = [
+      eq(schema.appointments.providerId, providerId),
+      sql`${schema.appointments.status} NOT IN ('cancelled','no_show')`,
+      sql`${schema.appointments.appointmentStart} < ${end}`,
+      sql`COALESCE(${schema.appointments.appointmentEnd}, ${schema.appointments.appointmentStart} + INTERVAL '30 minutes') > ${start}`,
+    ];
+    if (excludeId) conds.push(sql`${schema.appointments.id} <> ${excludeId}`);
+    const rows = await db.select({ id: schema.appointments.id }).from(schema.appointments).where(and(...conds)).limit(1);
+    return rows.length > 0;
+  }
+
+  // ── Appointment Types ─────────────────────────────────────────────────────────
+  async getAppointmentTypes(clinicId: number, includeInactive = false): Promise<schema.AppointmentType[]> {
+    const conds = [eq(schema.appointmentTypes.clinicId, clinicId)];
+    if (!includeInactive) conds.push(eq(schema.appointmentTypes.isActive, true));
+    return db.select().from(schema.appointmentTypes).where(and(...conds)).orderBy(schema.appointmentTypes.name);
+  }
+
+  async getAppointmentTypeById(id: number, clinicId: number): Promise<schema.AppointmentType | null> {
+    const [row] = await db.select().from(schema.appointmentTypes)
+      .where(and(eq(schema.appointmentTypes.id, id), eq(schema.appointmentTypes.clinicId, clinicId)))
+      .limit(1);
+    return row ?? null;
+  }
+
+  async createAppointmentType(data: schema.InsertAppointmentType): Promise<schema.AppointmentType> {
+    const [row] = await db.insert(schema.appointmentTypes).values(data).returning();
+    return row;
+  }
+
+  async updateAppointmentType(id: number, clinicId: number, data: Partial<schema.InsertAppointmentType>): Promise<schema.AppointmentType | null> {
+    const [row] = await db.update(schema.appointmentTypes)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(schema.appointmentTypes.id, id), eq(schema.appointmentTypes.clinicId, clinicId)))
+      .returning();
+    return row ?? null;
+  }
+
+  async deleteAppointmentType(id: number, clinicId: number): Promise<boolean> {
+    const result = await db.delete(schema.appointmentTypes)
+      .where(and(eq(schema.appointmentTypes.id, id), eq(schema.appointmentTypes.clinicId, clinicId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ── Provider Availability ─────────────────────────────────────────────────────
+  async getProviderAvailability(clinicId: number, providerId?: number | null): Promise<schema.ProviderAvailability[]> {
+    const conds = [eq(schema.providerAvailability.clinicId, clinicId), eq(schema.providerAvailability.isActive, true)];
+    if (providerId) conds.push(eq(schema.providerAvailability.providerId, providerId));
+    return db.select().from(schema.providerAvailability).where(and(...conds))
+      .orderBy(schema.providerAvailability.providerId, schema.providerAvailability.dayOfWeek, schema.providerAvailability.startTime);
+  }
+
+  async createProviderAvailability(data: schema.InsertProviderAvailability): Promise<schema.ProviderAvailability> {
+    const [row] = await db.insert(schema.providerAvailability).values(data).returning();
+    return row;
+  }
+
+  async updateProviderAvailability(id: number, clinicId: number, data: Partial<schema.InsertProviderAvailability>): Promise<schema.ProviderAvailability | null> {
+    const [row] = await db.update(schema.providerAvailability)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(schema.providerAvailability.id, id), eq(schema.providerAvailability.clinicId, clinicId)))
+      .returning();
+    return row ?? null;
+  }
+
+  async deleteProviderAvailability(id: number, clinicId: number): Promise<boolean> {
+    const result = await db.delete(schema.providerAvailability)
+      .where(and(eq(schema.providerAvailability.id, id), eq(schema.providerAvailability.clinicId, clinicId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ── Calendar Blocks (time-off, breaks) ────────────────────────────────────────
+  async getCalendarBlocks(clinicId: number, start: Date, end: Date, providerId?: number | null): Promise<schema.CalendarBlock[]> {
+    const conds = [
+      eq(schema.calendarBlocks.clinicId, clinicId),
+      sql`${schema.calendarBlocks.startAt} < ${end}`,
+      sql`${schema.calendarBlocks.endAt} > ${start}`,
+    ];
+    if (providerId) conds.push(eq(schema.calendarBlocks.providerId, providerId));
+    return db.select().from(schema.calendarBlocks).where(and(...conds)).orderBy(schema.calendarBlocks.startAt);
+  }
+
+  async createCalendarBlock(data: schema.InsertCalendarBlock): Promise<schema.CalendarBlock> {
+    const [row] = await db.insert(schema.calendarBlocks).values(data).returning();
+    return row;
+  }
+
+  async deleteCalendarBlock(id: number, clinicId: number): Promise<boolean> {
+    const result = await db.delete(schema.calendarBlocks)
+      .where(and(eq(schema.calendarBlocks.id, id), eq(schema.calendarBlocks.clinicId, clinicId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  async getProvidersByClinic(clinicId: number, includeInactive = false): Promise<schema.Provider[]> {
+    const conds = [eq(schema.providers.clinicId, clinicId)];
+    if (!includeInactive) conds.push(eq(schema.providers.isActive, true));
+    return db.select().from(schema.providers).where(and(...conds)).orderBy(schema.providers.displayName);
   }
 
   // ── Patient Chart ─────────────────────────────────────────────────────────────

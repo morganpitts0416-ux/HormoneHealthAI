@@ -30,6 +30,7 @@ import {
   FileText,
   X,
   Loader2,
+  Calendar,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
@@ -370,6 +371,9 @@ export default function Dashboard() {
               <span className="text-xs" style={{ color: "#a0a880" }}>All clear</span>
             )}
           </div>
+
+          {/* Today's Appointments widget */}
+          <TodaysAppointmentsWidget />
 
           {/* Three-column grid: Messages | Orders | Submissions */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
@@ -757,6 +761,76 @@ export default function Dashboard() {
           email: (user as any)?.email ?? null,
         }}
       />
+    </div>
+  );
+}
+
+function TodaysAppointmentsWidget() {
+  const [, setLocation] = useLocation();
+  const { start, end } = (() => {
+    const s = new Date(); s.setHours(0, 0, 0, 0);
+    const e = new Date(); e.setHours(23, 59, 59, 999);
+    return { start: s, end: e };
+  })();
+  const { data: appts = [], isLoading } = useQuery<any[]>({
+    queryKey: ["/api/appointments/range", "today", start.toDateString()],
+    queryFn: async () => {
+      const params = new URLSearchParams({ start: start.toISOString(), end: end.toISOString() });
+      const r = await fetch(`/api/appointments/range?${params}`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+
+  const sorted = [...appts]
+    .filter(a => a.status !== "cancelled" && a.status !== "no_show")
+    .sort((a, b) => +new Date(a.appointmentStart) - +new Date(b.appointmentStart));
+
+  return (
+    <div className="rounded-xl overflow-hidden border" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
+      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ede8df", backgroundColor: "#faf8f5" }}>
+        <div className="flex items-center gap-2">
+          <Calendar className="w-4 h-4" style={{ color: sorted.length > 0 ? "#2e3a20" : "#a0a880" }} />
+          <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Today's Appointments</span>
+          {sorted.length > 0 && (
+            <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
+              {sorted.length}
+            </span>
+          )}
+        </div>
+        <button
+          onClick={() => setLocation("/appointments")}
+          className="text-xs font-medium hover:underline"
+          style={{ color: "#5a7040" }}
+          data-testid="link-view-schedule"
+        >
+          View schedule →
+        </button>
+      </div>
+      <div className="p-3">
+        {isLoading && <div className="text-xs text-muted-foreground">Loading…</div>}
+        {!isLoading && sorted.length === 0 && (
+          <div className="text-sm text-muted-foreground py-4 text-center">No appointments today.</div>
+        )}
+        {sorted.length > 0 && (
+          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+            {sorted.slice(0, 9).map((a: any) => {
+              const t = new Date(a.appointmentStart).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+              return (
+                <div key={a.id} className="border rounded-md px-3 py-2 hover-elevate cursor-pointer" onClick={() => setLocation("/appointments")} data-testid={`row-today-appt-${a.id}`}>
+                  <div className="text-xs font-semibold" style={{ color: "#5a7040" }}>{t}</div>
+                  <div className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>
+                    {a.patientName || a.serviceType || "Appointment"}
+                  </div>
+                  {a.serviceType && a.patientName && (
+                    <div className="text-xs text-muted-foreground truncate">{a.serviceType}</div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+      </div>
     </div>
   );
 }
