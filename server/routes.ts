@@ -3906,16 +3906,38 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       await storage.updateClinicianStaff(staffId, { inviteToken: newToken, inviteExpires: newExpires });
 
       const clinician = await storage.getUserById(clinicianId);
-      sendStaffInviteEmail(
-        staffMember.email,
-        staffMember.firstName,
-        clinician?.clinicName || 'the clinic',
-        clinician ? `${clinician.firstName} ${clinician.lastName}` : 'Your clinician',
-        newToken,
-        req
-      ).catch(err => console.error('[EMAIL] Staff invite resend failed:', err));
+      const baseUrl = process.env.APP_URL
+        || (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(',')[0].trim()}` : null)
+        || `${req.protocol}://${req.get('host')}`;
+      const inviteLink = `${baseUrl}/staff-set-password?token=${newToken}`;
 
-      res.json({ success: true, message: "Invite resent" });
+      let emailSent = false;
+      let emailError: string | null = null;
+      try {
+        await sendStaffInviteEmail(
+          staffMember.email,
+          staffMember.firstName,
+          clinician?.clinicName || 'the clinic',
+          clinician ? `${clinician.firstName} ${clinician.lastName}` : 'Your clinician',
+          newToken,
+          req
+        );
+        emailSent = true;
+      } catch (err: any) {
+        emailError = err?.message || 'Email send failed';
+        console.error('[EMAIL] Staff invite resend failed:', err);
+      }
+
+      res.json({
+        success: true,
+        emailSent,
+        emailError,
+        inviteLink,
+        recipientEmail: staffMember.email,
+        message: emailSent
+          ? "Invite email sent"
+          : "Token refreshed, but the email could not be delivered. Use the link below to share manually.",
+      });
     } catch (error) {
       console.error('[API] Error resending staff invite:', error);
       res.status(500).json({ message: "Failed to resend invite" });
@@ -4236,10 +4258,32 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const clinic = await storageDb.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
       const clinicName = clinic[0]?.name || user.clinicName || "the clinic";
       const inviterName = `${user.firstName} ${user.lastName}`;
-      sendProviderInviteEmail(invite.email, invite.firstName, clinicName, inviterName, newToken, req)
-        .catch(err => console.error('[EMAIL] Provider invite resend failed:', err));
 
-      res.json({ success: true, message: "Invite resent" });
+      const baseUrl = process.env.APP_URL
+        || (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(',')[0].trim()}` : null)
+        || `${req.protocol}://${req.get('host')}`;
+      const inviteLink = `${baseUrl}/provider-set-password?token=${newToken}`;
+
+      let emailSent = false;
+      let emailError: string | null = null;
+      try {
+        await sendProviderInviteEmail(invite.email, invite.firstName, clinicName, inviterName, newToken, req);
+        emailSent = true;
+      } catch (err: any) {
+        emailError = err?.message || 'Email send failed';
+        console.error('[EMAIL] Provider invite resend failed:', err);
+      }
+
+      res.json({
+        success: true,
+        emailSent,
+        emailError,
+        inviteLink,
+        recipientEmail: invite.email,
+        message: emailSent
+          ? "Invite email sent"
+          : "Token refreshed, but the email could not be delivered. Use the link below to share manually.",
+      });
     } catch (err) {
       console.error('[API] Error resending provider invite:', err);
       res.status(500).json({ message: "Failed to resend invite" });
