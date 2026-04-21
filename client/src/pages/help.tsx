@@ -9,7 +9,11 @@ import {
   Heart, Moon, BarChart3, MessageSquare, Settings, ShieldCheck,
   Pill, BookOpen, Star, AlertTriangle, ZoomIn, X,
   HelpCircle, Video, SlidersHorizontal, Link2, CheckCircle2, Info,
+  Calendar, ClipboardList, Webhook,
 } from "lucide-react";
+import {
+  Accordion, AccordionContent, AccordionItem, AccordionTrigger,
+} from "@/components/ui/accordion";
 
 // ── Screenshot types & lightbox ────────────────────────────────────────────
 
@@ -586,6 +590,176 @@ const CONTENT: Record<string, React.ReactNode> = {
   "integrations": (
     <div className="space-y-6">
 
+      <div className="rounded-md p-4" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
+        <p className="text-sm font-semibold mb-1" style={{ color: "#1c2414" }}>What are you trying to set up?</p>
+        <p className="text-xs" style={{ color: "#5a6a4a" }}>Pick the integration below and the step-by-step instructions will expand. You can have more than one open at a time.</p>
+      </div>
+
+      <Accordion type="multiple" className="space-y-2">
+
+        {/* ── GoHighLevel: form submissions → workflow ── */}
+        <AccordionItem
+          value="ghl-forms"
+          className="rounded-md border px-4"
+          style={{ borderColor: "#d4c9b5", backgroundColor: "#fdfaf7" }}
+        >
+          <AccordionTrigger
+            className="hover:no-underline py-3"
+            data-testid="accordion-help-ghl-forms"
+          >
+            <div className="flex items-start gap-3 text-left">
+              <ClipboardList className="h-5 w-5 mt-0.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+              <div>
+                <div className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+                  Send patient intake form submissions into a GoHighLevel workflow
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>
+                  Trigger SMS, email, pipeline moves, or contact creation in GHL whenever a patient submits one of your intake forms.
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className="space-y-5 pt-2 pb-1">
+
+              <Guide title="What this does">
+                <p className="text-sm" style={{ color: "#5a6a4a" }}>
+                  When a patient submits one of your ClinIQ intake forms, ClinIQ instantly POSTs the submission as JSON to a GoHighLevel <strong>Inbound Webhook</strong>. From there, GHL can trigger any workflow you build — create or update a contact, send an SMS or email, move them along a pipeline, assign a task to a team member, and so on. The integration runs per-form, so you can route different forms to different workflows.
+                </p>
+              </Guide>
+
+              <Guide title="Step 1 — Create the Inbound Webhook in GoHighLevel">
+                <Steps steps={[
+                  "In GoHighLevel, open Automation in the left sidebar and click + Create Workflow.",
+                  "Choose Start from scratch and give the workflow a name (e.g. 'New Patient Intake — Welcome SMS').",
+                  "Click Add New Trigger and select Inbound Webhook.",
+                  "On the trigger panel, click Copy URL — this is the webhook URL you'll paste into ClinIQ. Save the trigger.",
+                  "Leave the rest of the workflow unconfigured for now — you'll come back after sending a test from ClinIQ.",
+                ]} />
+              </Guide>
+
+              <Guide title="Step 2 — Connect that webhook to a ClinIQ form">
+                <Steps steps={[
+                  "In ClinIQ, go to Account → Intake Forms and open the form you want to route to GHL.",
+                  "Click the Settings tab.",
+                  "Toggle Send to GoHighLevel on.",
+                  "Paste the Inbound Webhook URL you copied from GHL into the URL field. It must start with https://.",
+                  "Click Save Settings. The integration is now live for this form.",
+                ]} />
+                <div className="rounded-md p-3 mt-3 flex items-start gap-2" style={{ backgroundColor: "#f0f5ea", border: "1px solid #c8dbb8" }}>
+                  <Info className="w-4 h-4 mt-0.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+                  <p className="text-xs" style={{ color: "#3d5228" }}>
+                    Each form has its own toggle and URL, so you can send different forms (new patient, follow-up, hormone questionnaire, etc.) to entirely different GHL workflows.
+                  </p>
+                </div>
+              </Guide>
+
+              <Guide title="Step 3 — Send a test submission so GHL can read your fields">
+                <Steps steps={[
+                  "In ClinIQ, copy the public form link from the Form Settings page (or from the form's three-dot menu in the Intake Forms list).",
+                  "Open the link in an incognito/private browser window and submit a test entry — use a real-looking name, email, and phone number so GHL has data to map.",
+                  "Back in GHL, return to your workflow's Inbound Webhook trigger and click Check for new requests.",
+                  "Your ClinIQ test submission will appear. Click it — GHL now knows every field and value the webhook sends.",
+                  "You can now drag any of those fields into the rest of your workflow as Custom Data tokens (e.g. {{inboundWebhookData.firstName}}).",
+                ]} />
+              </Guide>
+
+              <Guide title="What's in the payload">
+                <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
+                  ClinIQ sends a flat JSON object so GHL can pick fields with one click. Top-level patient fields are pre-extracted from the form responses for easy mapping:
+                </p>
+                <div className="rounded-md overflow-hidden border" style={{ borderColor: "#d4c9b5" }}>
+                  <table className="w-full text-xs">
+                    <thead>
+                      <tr style={{ backgroundColor: "#e8ddd0" }}>
+                        <th className="text-left px-3 py-2 font-semibold" style={{ color: "#1c2414" }}>Field</th>
+                        <th className="text-left px-3 py-2 font-semibold" style={{ color: "#1c2414" }}>Description</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {[
+                        { f: "event", d: "Always 'form_submission'." },
+                        { f: "source", d: "Always 'ClinIQ'." },
+                        { f: "submissionId", d: "Unique ID for this submission." },
+                        { f: "submittedAt", d: "ISO timestamp of when the patient hit Submit." },
+                        { f: "form.id / form.name / form.slug / form.version", d: "Which form was filled out." },
+                        { f: "clinicId", d: "Your ClinIQ clinic ID." },
+                        { f: "patientId", d: "ID of the matched or auto-created patient profile (if any)." },
+                        { f: "firstName, lastName, fullName", d: "Patient's name, parsed from the form." },
+                        { f: "email", d: "Patient's email — best identifier for matching to a GHL contact." },
+                        { f: "phone", d: "Patient's phone in raw form (use as the SMS recipient)." },
+                        { f: "dateOfBirth", d: "Patient's DOB (if collected)." },
+                        { f: "gender", d: "Biological sex / gender (if collected)." },
+                        { f: "responses", d: "Object containing every form answer keyed by the field's key — use these for any custom field you collect." },
+                      ].map((row, i) => (
+                        <tr key={i} style={{ backgroundColor: i % 2 === 0 ? "#fdfaf7" : "#fff" }}>
+                          <td className="px-3 py-2 font-mono align-top" style={{ color: "#2e3a20", fontSize: 10 }}>{row.f}</td>
+                          <td className="px-3 py-2" style={{ color: "#5a6a4a" }}>{row.d}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                </div>
+              </Guide>
+
+              <Guide title="Common workflow ideas">
+                <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+                  <Bullet label="Welcome SMS" desc="Trigger an SMS to the patient's phone the moment they submit the new-patient intake — confirm receipt and outline next steps." />
+                  <Bullet label="Create or update a contact" desc="Use Find Contact (by email) → Create Contact (if missing) → Update Contact to keep your GHL CRM in sync with every patient ClinIQ creates." />
+                  <Bullet label="Move a pipeline stage" desc="Drop the patient into your 'New Lead' or 'Intake Complete' stage in a sales/onboarding pipeline so your team can work them next." />
+                  <Bullet label="Internal team alert" desc="Send your front desk a Slack/email/SMS when a high-priority form (e.g. hormone questionnaire) is submitted, so they can schedule the consult quickly." />
+                  <Bullet label="Tag by form" desc="Use the form.name field to apply a tag in GHL so you can segment patients by which intake they completed." />
+                </ul>
+              </Guide>
+
+              <Guide title="Behavior & safety notes">
+                <ul className="space-y-2 text-sm" style={{ color: "#5a6a4a" }}>
+                  <Bullet label="Non-blocking" desc="If GHL is slow or unreachable, the patient's submission still saves in ClinIQ normally — the webhook fires in the background." />
+                  <Bullet label="10-second timeout" desc="ClinIQ waits up to 10 seconds for GHL to respond, then moves on. Failures are logged server-side." />
+                  <Bullet label="Pause without losing the URL" desc="Toggle Send to GoHighLevel off to pause the integration. Your URL stays saved so you can re-enable instantly." />
+                  <Bullet label="One webhook per form" desc="If you need a single GHL workflow to handle several ClinIQ forms, paste the same URL into each form — GHL can branch on the form.name field." />
+                </ul>
+              </Guide>
+
+              <Guide title="Troubleshooting">
+                <Steps steps={[
+                  "Nothing arrives in GHL: In ClinIQ, confirm the toggle is on and the URL begins with https://. Re-copy the URL from GHL — it must include the full path Inbound Webhook generated.",
+                  "Test request not appearing in GHL's 'Check for new requests': Submit through the public form link in an incognito window (not a logged-in clinician preview). Then click Check again — there can be a 2–3 second delay.",
+                  "Patient name fields are blank in GHL: Make sure your form has a Name field (or First Name / Last Name fields). ClinIQ pulls firstName/lastName from those — without them you'll have to map from responses instead.",
+                  "Phone number formatted incorrectly: GHL's SMS step requires E.164 (+15555551234). Use a Format step in GHL or set your form's phone field to require country code, then map the cleaned value.",
+                  "Want to send only certain submissions: GHL has built-in If/Else branches — add one right after the trigger to filter by responses field values (e.g. only continue if responses.consent_to_text equals 'Yes').",
+                ]} />
+              </Guide>
+
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+        {/* ── Zapier: scheduling sync ── */}
+        <AccordionItem
+          value="zapier-scheduling"
+          className="rounded-md border px-4"
+          style={{ borderColor: "#d4c9b5", backgroundColor: "#fdfaf7" }}
+        >
+          <AccordionTrigger
+            className="hover:no-underline py-3"
+            data-testid="accordion-help-zapier-scheduling"
+          >
+            <div className="flex items-start gap-3 text-left">
+              <Calendar className="h-5 w-5 mt-0.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+              <div>
+                <div className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+                  Sync appointments from Boulevard, Jane, Acuity, Mindbody, etc. via Zapier
+                </div>
+                <div className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>
+                  Have new bookings, reschedules, and cancellations from your scheduling platform appear automatically in ClinIQ and the patient portal.
+                </div>
+              </div>
+            </div>
+          </AccordionTrigger>
+          <AccordionContent>
+            <div className="space-y-5 pt-2 pb-1">
+
       <Guide title="Zapier Appointment Sync — Overview">
         <p className="text-sm mb-3" style={{ color: "#5a6a4a" }}>
           ClinIQ connects to any scheduling platform that supports Zapier — including Boulevard, Jane App, Acuity Scheduling, Mindbody, and others. When a patient books, reschedules, or cancels an appointment, Zapier fires a webhook to your personal ClinIQ URL and the appointment appears instantly on your Appointments page and in the patient's portal.
@@ -758,6 +932,12 @@ const CONTENT: Record<string, React.ReactNode> = {
           "Cancelled appointments still showing: Confirm your Cancelled Zap includes the field event: appointment.cancelled exactly. Missing or misspelled event values cause ClinIQ to treat the record as a new booking.",
         ]} />
       </Guide>
+
+            </div>
+          </AccordionContent>
+        </AccordionItem>
+
+      </Accordion>
 
     </div>
   ),
