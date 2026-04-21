@@ -8,7 +8,7 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Tabs, TabsList, TabsTrigger, TabsContent } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
-import { Trash2, Plus, ArrowLeft, Loader2, Clock, Calendar, ListChecks } from "lucide-react";
+import { Trash2, Plus, ArrowLeft, Loader2, Clock, Calendar, ListChecks, Link2, Copy, Check, Info } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -48,11 +48,13 @@ export default function AccountSchedulingPage() {
             <TabsTrigger value="types" data-testid="tab-types"><ListChecks className="h-4 w-4 mr-1" /> Appointment Types</TabsTrigger>
             <TabsTrigger value="hours" data-testid="tab-hours"><Clock className="h-4 w-4 mr-1" /> Provider Hours</TabsTrigger>
             <TabsTrigger value="timeoff" data-testid="tab-timeoff"><Calendar className="h-4 w-4 mr-1" /> Time-Off</TabsTrigger>
+            <TabsTrigger value="sync" data-testid="tab-sync"><Link2 className="h-4 w-4 mr-1" /> Calendar Sync</TabsTrigger>
           </TabsList>
 
           <TabsContent value="types" className="mt-4"><AppointmentTypesTab /></TabsContent>
           <TabsContent value="hours" className="mt-4"><ProviderHoursTab /></TabsContent>
           <TabsContent value="timeoff" className="mt-4"><TimeOffTab /></TabsContent>
+          <TabsContent value="sync" className="mt-4"><CalendarSyncTab /></TabsContent>
         </Tabs>
       </main>
     </div>
@@ -385,6 +387,82 @@ function TimeOffTab() {
           </div>
         </>
       )}
+    </Card>
+  );
+}
+
+// ─── Calendar Sync (Zapier webhook URL) ──────────────────────────────────────
+function CalendarSyncTab() {
+  const { user } = useAuth();
+  const { toast } = useToast();
+  const [copied, setCopied] = useState(false);
+
+  const clinicianId = (user as any)?.id;
+  const origin = typeof window !== "undefined" ? window.location.origin : "";
+  const webhookUrl = clinicianId ? `${origin}/api/webhooks/boulevard/${clinicianId}` : "";
+
+  const copy = async () => {
+    if (!webhookUrl) return;
+    try {
+      await navigator.clipboard.writeText(webhookUrl);
+      setCopied(true);
+      toast({ title: "Webhook URL copied" });
+      setTimeout(() => setCopied(false), 2000);
+    } catch {
+      toast({ title: "Couldn't copy", description: "Select the URL and copy it manually.", variant: "destructive" });
+    }
+  };
+
+  return (
+    <Card className="p-5 space-y-5">
+      <div>
+        <h2 className="text-base font-semibold mb-1" style={{ color: "#1c2414" }}>Sync from your scheduling platform</h2>
+        <p className="text-sm text-muted-foreground">
+          Push appointments from Boulevard, Jane App, Acuity, Mindbody, or any Zapier-connected platform into ClinIQ. Bookings, reschedules, and cancellations appear automatically on your calendar and the patient's portal.
+        </p>
+      </div>
+
+      <div className="space-y-2">
+        <Label className="text-sm font-medium">Your personal webhook URL</Label>
+        <div className="flex gap-2">
+          <Input
+            readOnly
+            value={webhookUrl || "Loading…"}
+            className="font-mono text-xs bg-muted"
+            data-testid="input-scheduling-webhook-url"
+            onFocus={(e) => e.currentTarget.select()}
+          />
+          <Button
+            type="button"
+            variant="outline"
+            onClick={copy}
+            disabled={!webhookUrl}
+            data-testid="button-copy-scheduling-webhook"
+          >
+            {copied ? <><Check className="h-4 w-4 mr-1" /> Copied</> : <><Copy className="h-4 w-4 mr-1" /> Copy</>}
+          </Button>
+        </div>
+        <p className="text-xs text-muted-foreground">
+          This URL is unique to your account. Don't share it publicly.
+        </p>
+      </div>
+
+      <div className="rounded-md p-4 flex items-start gap-3" style={{ backgroundColor: "#edf2e6", border: "1px solid #c4d4a8" }}>
+        <Info className="h-4 w-4 mt-0.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+        <div className="text-xs space-y-1.5" style={{ color: "#3d5228" }}>
+          <p className="font-semibold" style={{ color: "#1c2414" }}>Quick setup</p>
+          <ol className="list-decimal pl-4 space-y-1">
+            <li>Copy the URL above.</li>
+            <li>In Zapier, create three Zaps — New Appointment, Updated/Rescheduled, and Cancelled — each using <span className="font-mono">Webhooks by Zapier → POST</span> with this URL.</li>
+            <li>For each Zap, add a Data field <span className="font-mono">event</span> set to <span className="font-mono">appointment.created</span>, <span className="font-mono">appointment.updated</span>, or <span className="font-mono">appointment.cancelled</span>.</li>
+            <li>Always include the patient's email — that's how ClinIQ matches the appointment to the right patient profile.</li>
+          </ol>
+          <p className="pt-1">
+            Full step-by-step instructions, payload reference, and troubleshooting are in the{" "}
+            <Link href="/help" className="underline font-semibold">Help Center → Integrations</Link>.
+          </p>
+        </div>
+      </div>
     </Card>
   );
 }
