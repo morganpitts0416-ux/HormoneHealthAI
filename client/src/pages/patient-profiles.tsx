@@ -18,8 +18,9 @@ import {
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
-  Link2, Clock, Building2, Eye,
+  Link2, Clock, Building2, Eye, CalendarDays,
 } from "lucide-react";
+import { AppointmentDialog } from "@/components/appointment-dialog";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
 import { PatientTrendCharts } from "@/components/patient-trend-charts";
@@ -1106,6 +1107,7 @@ export default function PatientProfiles() {
   const [searchTerm, setSearchTerm] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
+  const [showAppointmentDialog, setShowAppointmentDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteEmailSent, setInviteEmailSent] = useState<boolean | null>(null);
@@ -2034,6 +2036,17 @@ export default function PatientProfiles() {
                   >
                     <Pencil className="h-3 w-3" />
                     Edit
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowAppointmentDialog(true)}
+                    data-testid="button-book-appointment"
+                    className="text-xs gap-1.5"
+                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                  >
+                    <CalendarDays className="h-3 w-3" />
+                    Book Appointment
                   </Button>
                   <Button
                     variant="outline"
@@ -3151,6 +3164,13 @@ export default function PatientProfiles() {
           onDelete={() => handleDeleteLab(viewingLab)}
         />
       )}
+
+      {/* Book Appointment Dialog */}
+      <AppointmentDialog
+        open={showAppointmentDialog}
+        onOpenChange={setShowAppointmentDialog}
+        defaultPatientId={selectedPatient?.id ?? null}
+      />
 
       {/* Invite to Portal Modal */}
       {showInviteModal && selectedPatient && (
