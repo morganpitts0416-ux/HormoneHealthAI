@@ -33,6 +33,7 @@ import {
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
+import { PatientSearchBar } from "@/components/patient-search-bar";
 
 interface UnreadMessageRow {
   patientId: number;
@@ -214,14 +215,17 @@ export default function Dashboard() {
 
       <main className="max-w-6xl mx-auto px-4 sm:px-6 py-6 space-y-6">
 
-        {/* ── Greeting ────────────────────────────────────────────── */}
-        <div>
-          <h1 className="text-2xl font-semibold" style={{ color: "#1c2414" }}>
-            {getGreeting()}, {user?.title} {user?.lastName}
-          </h1>
-          <p className="text-sm mt-0.5" style={{ color: "#7a8a64" }}>
-            {patients.length} patient{patients.length !== 1 ? "s" : ""} · {user?.clinicName}
-          </p>
+        {/* ── Greeting + Patient Search ────────────────────────────── */}
+        <div className="flex items-start justify-between gap-4 flex-wrap">
+          <div>
+            <h1 className="text-2xl font-semibold" style={{ color: "#1c2414" }}>
+              {getGreeting()}, {user?.title} {user?.lastName}
+            </h1>
+            <p className="text-sm mt-0.5" style={{ color: "#7a8a64" }}>
+              {patients.length} patient{patients.length !== 1 ? "s" : ""} · {user?.clinicName}
+            </p>
+          </div>
+          <PatientSearchBar className="w-full sm:w-80" />
         </div>
 
         {/* ══════════════════════════════════════════════════════════
