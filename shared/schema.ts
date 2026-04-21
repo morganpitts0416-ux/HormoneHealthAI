@@ -1383,6 +1383,8 @@ export const intakeForms = pgTable("intake_forms", {
   isPublic: boolean("is_public").notNull().default(false),
   expirationType: varchar("expiration_type", { length: 20 }).notNull().default("none"),
   expirationIntervalDays: integer("expiration_interval_days"),
+  ghlWebhookUrl: text("ghl_webhook_url"),
+  ghlWebhookEnabled: boolean("ghl_webhook_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

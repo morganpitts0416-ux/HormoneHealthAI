@@ -2101,10 +2101,24 @@ function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (da
   const [description, setDescription] = useState(form.description ?? "");
   const [category, setCategory] = useState(form.category);
   const [requiresSig, setRequiresSig] = useState(form.requiresPatientSignature);
+  const [ghlEnabled, setGhlEnabled] = useState((form as any).ghlWebhookEnabled ?? false);
+  const [ghlUrl, setGhlUrl] = useState((form as any).ghlWebhookUrl ?? "");
   const { toast } = useToast();
 
   const handleSave = () => {
-    onUpdate({ name, description: description || null, category, requiresPatientSignature: requiresSig });
+    const trimmedUrl = ghlUrl.trim();
+    if (ghlEnabled && trimmedUrl && !/^https:\/\//i.test(trimmedUrl)) {
+      toast({ title: "Invalid webhook URL", description: "GoHighLevel webhook URL must start with https://", variant: "destructive" });
+      return;
+    }
+    onUpdate({
+      name,
+      description: description || null,
+      category,
+      requiresPatientSignature: requiresSig,
+      ghlWebhookUrl: trimmedUrl || null,
+      ghlWebhookEnabled: ghlEnabled && !!trimmedUrl,
+    });
     toast({ title: "Settings saved" });
   };
 
@@ -2150,6 +2164,34 @@ function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (da
           onCheckedChange={setRequiresSig}
           data-testid="switch-require-signature"
         />
+      </div>
+
+      <div className="space-y-3 py-3 border-t">
+        <div className="flex items-center justify-between">
+          <div>
+            <Label>Send to GoHighLevel</Label>
+            <p className="text-xs text-muted-foreground">Trigger a GHL workflow when this form is submitted</p>
+          </div>
+          <Switch
+            checked={ghlEnabled}
+            onCheckedChange={setGhlEnabled}
+            data-testid="switch-ghl-enabled"
+          />
+        </div>
+        {ghlEnabled && (
+          <div className="space-y-1.5">
+            <Label>GoHighLevel Inbound Webhook URL</Label>
+            <Input
+              value={ghlUrl}
+              onChange={e => setGhlUrl(e.target.value)}
+              placeholder="https://services.leadconnectorhq.com/hooks/..."
+              data-testid="input-ghl-webhook-url"
+            />
+            <p className="text-xs text-muted-foreground">
+              In GHL, create a workflow with an "Inbound Webhook" trigger and paste its URL here. Each submission posts patient name, email, phone, DOB, and all form responses as JSON.
+            </p>
+          </div>
+        )}
       </div>
 
       <Button onClick={handleSave} data-testid="button-save-settings">Save Settings</Button>

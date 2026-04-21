@@ -9389,6 +9389,46 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         }
       }
 
+      // Fire-and-forget: GoHighLevel inbound webhook
+      if (form.ghlWebhookEnabled && form.ghlWebhookUrl) {
+        const webhookUrl = form.ghlWebhookUrl;
+        setImmediate(async () => {
+          try {
+            const payload = {
+              event: "form_submission",
+              source: "ClinIQ",
+              submissionId: submission.id,
+              submittedAt: submission.submittedAt ?? new Date().toISOString(),
+              form: { id: form.id, name: form.name, slug: form.slug ?? null, version: form.version },
+              clinicId: form.clinicId ?? null,
+              patientId: resolvedPatientId ?? null,
+              firstName: firstName ?? null,
+              lastName: lastName ?? null,
+              email: email ?? submitterEmail ?? null,
+              phone: phone ?? null,
+              dateOfBirth: dobRaw ?? null,
+              gender: gender ?? null,
+              fullName: [firstName, lastName].filter(Boolean).join(" ") || submitterName || null,
+              responses,
+            };
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 10000);
+            const resp = await fetch(webhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            if (!resp.ok) {
+              console.error(`[GHL Webhook] form ${form.id} sub ${submission.id} -> ${resp.status} ${resp.statusText}`);
+            }
+          } catch (err: any) {
+            console.error(`[GHL Webhook] form ${form.id} sub ${submission.id} error:`, err?.message ?? err);
+          }
+        });
+      }
+
       // Fire-and-forget: sync smart-field chart domains into patient chart
       if (resolvedPatientId && form.clinicianId) {
         setImmediate(async () => {
