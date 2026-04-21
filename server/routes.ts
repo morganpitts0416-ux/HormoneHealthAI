@@ -8238,11 +8238,33 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     return out;
   }
 
-  // GET /api/scheduling/providers — providers table rows for current clinic
+  // GET /api/scheduling/providers — every clinic team member is schedulable
+  // (providers, nurses, MAs, aestheticians, etc.). Auto-provisions a providers
+  // row for any membership that doesn't yet have one so they show up on the calendar.
   app.get("/api/scheduling/providers", requireAuth, async (req: any, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.json([]);
+
+      const existing = await storage.getProvidersByClinic(clinicId);
+      const haveUserIds = new Set(existing.filter(p => p.userId).map(p => p.userId as number));
+
+      const members = await storage.getClinicMembers(clinicId);
+      for (const m of members) {
+        if (!m.isActive) continue;
+        if (haveUserIds.has(m.userId)) continue;
+        const display = (m.userName || m.userEmail || `Member #${m.userId}`).trim();
+        try {
+          await createProviderWithMembership({
+            clinicId,
+            userId: m.userId,
+            displayName: display,
+          });
+        } catch (e) {
+          console.warn("[Scheduling] auto-provision provider row failed for user", m.userId, e);
+        }
+      }
+
       const providers = await storage.getProvidersByClinic(clinicId);
       res.json(providers);
     } catch (err) {
