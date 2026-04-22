@@ -3402,6 +3402,44 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       await storage.updatePatientFormAssignment(assignmentId, { status: "completed" });
 
+      // Fire-and-forget: GoHighLevel inbound webhook (portal submissions)
+      if ((form as any).ghlWebhookEnabled && (form as any).ghlWebhookUrl) {
+        const webhookUrl = (form as any).ghlWebhookUrl as string;
+        setImmediate(async () => {
+          try {
+            const payload = {
+              event: "form_submission",
+              source: "ClinIQ",
+              submissionId: submission.id,
+              submittedAt: submission.submittedAt ?? new Date().toISOString(),
+              form: { id: form.id, name: form.name, slug: (form as any).slug ?? null, version: form.version },
+              clinicId: (form as any).clinicId ?? null,
+              patientId,
+              firstName: patient?.firstName ?? null,
+              lastName: patient?.lastName ?? null,
+              email: patient?.email ?? null,
+              phone: (patient as any)?.phone ?? null,
+              dateOfBirth: (patient as any)?.dateOfBirth ?? null,
+              gender: (patient as any)?.gender ?? null,
+              fullName: patient ? `${patient.firstName} ${patient.lastName}` : null,
+              responses,
+            };
+            const ctrl = new AbortController();
+            const timer = setTimeout(() => ctrl.abort(), 10000);
+            const resp = await fetch(webhookUrl, {
+              method: "POST",
+              headers: { "Content-Type": "application/json" },
+              body: JSON.stringify(payload),
+              signal: ctrl.signal,
+            });
+            clearTimeout(timer);
+            console.log(`[GHL Webhook] portal form ${form.id} sub ${submission.id} -> ${resp.status}`);
+          } catch (err: any) {
+            console.error(`[GHL Webhook] portal form ${form.id} sub ${submission.id} error:`, err?.message ?? err);
+          }
+        });
+      }
+
       // Fire-and-forget: sync smart-field chart domains into patient chart
       setImmediate(async () => {
         try {
