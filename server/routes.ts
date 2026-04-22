@@ -3766,16 +3766,18 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         return res.status(401).json({ ok: false, error: "Invalid signature or unrecognised payload" });
       }
 
-      // Filter by configured Spruce inbox/endpoint — if the clinician has chosen
-      // a specific inbox in their messaging settings, ignore messages from any
-      // other inbox in their Spruce organization.
-      if (
-        clinician.externalMessagingProvider === 'spruce' &&
-        clinician.externalMessagingChannelId &&
-        parsed.channelId &&
-        parsed.channelId !== clinician.externalMessagingChannelId
-      ) {
-        return res.json({ ok: true, skipped: true, reason: "Message from a different Spruce inbox" });
+      // Spruce inbox handling:
+      //   • If the clinician hasn't picked an inbox yet, auto-save the inbox ID
+      //     from the first inbound message — saves them looking it up manually.
+      //   • If they HAVE picked one, drop messages from any other inbox.
+      if (clinician.externalMessagingProvider === 'spruce' && parsed.channelId) {
+        if (!clinician.externalMessagingChannelId) {
+          await storage.updateUser(clinicianId, { externalMessagingChannelId: parsed.channelId });
+          clinician.externalMessagingChannelId = parsed.channelId;
+          console.log(`[Spruce] Auto-detected inbox ${parsed.channelId} for clinician ${clinicianId}`);
+        } else if (parsed.channelId !== clinician.externalMessagingChannelId) {
+          return res.json({ ok: true, skipped: true, reason: "Message from a different Spruce inbox" });
+        }
       }
 
       if (!parsed.isFromProvider) {
