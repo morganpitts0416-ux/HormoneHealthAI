@@ -7493,8 +7493,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
   // GET /api/baa/status — has the current clinician signed the BAA?
   app.get("/api/baa/status", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
-      const sig = await storage.getBaaSignature(user.id);
+      const sess = req.session as any;
+      // Staff users inherit their clinician's BAA signature — they never sign their own
+      const targetUserId = sess.staffClinicianId || (req.user as any)?.id;
+      if (!targetUserId) return res.json({ signed: false, signedAt: null, signatureName: null, baaVersion: null });
+      const sig = await storage.getBaaSignature(targetUserId);
       res.json({
         signed: !!sig,
         signedAt: sig?.signedAt ?? null,
@@ -7502,6 +7505,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         baaVersion: sig?.baaVersion ?? null,
       });
     } catch (err) {
+      console.error("[BAA] Status error:", err);
       res.status(500).json({ message: "Failed to load BAA status" });
     }
   });
@@ -7509,7 +7513,13 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
   // POST /api/baa/sign — record electronic signature
   app.post("/api/baa/sign", requireAuth, async (req, res) => {
     try {
+      const sess = req.session as any;
+      // Staff cannot sign — only the clinician/owner signs on behalf of the clinic
+      if (sess.staffId) {
+        return res.status(403).json({ message: "Only the clinic owner can sign the BAA. Please ask your clinic administrator to sign it." });
+      }
       const user = req.user as any;
+      if (!user) return res.status(401).json({ message: "Authentication required" });
       const billingOk = user.freeAccount || (user.stripeSubscriptionId && ["trial", "active", "trialing"].includes(user.subscriptionStatus));
       if (!billingOk) {
         return res.status(403).json({ message: "Active billing is required before signing the BAA" });
