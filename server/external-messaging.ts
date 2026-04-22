@@ -48,6 +48,8 @@ export interface ParsedInboundMessage {
   isFromProvider: boolean;
   /** Phone number of the patient/contact (for matching to a ClinIQ patient) */
   patientPhone?: string;
+  /** The Spruce/external inbox/endpoint ID this message belongs to (for inbox filtering) */
+  channelId?: string;
 }
 
 // ─── Provider adapters ────────────────────────────────────────────────────────
@@ -121,6 +123,16 @@ function parseSpruceWebhook(
     ((body.sender as any)?.phone as string) ||
     '';
 
+  // Spruce identifies the inbox/phone-line the message belongs to via various fields
+  const channelId =
+    (body.endpoint_id as string) ||
+    (body.inbox_id as string) ||
+    (body.channel_id as string) ||
+    ((body.thread as any)?.endpoint_id as string) ||
+    ((body.thread as any)?.organization_endpoint_id as string) ||
+    ((body.endpoint as any)?.id as string) ||
+    '';
+
   if (!messageId || !content) return null;
 
   return {
@@ -128,6 +140,7 @@ function parseSpruceWebhook(
     content,
     isFromProvider,
     patientPhone: phone || undefined,
+    channelId: channelId || undefined,
   };
 }
 

@@ -1045,6 +1045,27 @@ export default function Account() {
     },
   });
 
+  const [spruceInboxes, setSpruceInboxes] = useState<Array<{ id: string; label: string; phone: string | null }>>([]);
+  const loadSpruceInboxesMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("GET", "/api/auth/messaging/spruce-inboxes");
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.message || "Failed to load Spruce inboxes.");
+      return body as { inboxes: Array<{ id: string; label: string; phone: string | null }> };
+    },
+    onSuccess: (data) => {
+      setSpruceInboxes(data.inboxes || []);
+      if (!data.inboxes?.length) {
+        toast({ title: "No inboxes returned", description: "Spruce returned no inboxes for this API key.", variant: "destructive" });
+      } else {
+        toast({ title: `Loaded ${data.inboxes.length} Spruce inbox${data.inboxes.length === 1 ? "" : "es"}` });
+      }
+    },
+    onError: (e: Error) => {
+      toast({ title: "Could not load inboxes", description: e.message, variant: "destructive" });
+    },
+  });
+
   const registerSpruceWebhookMutation = useMutation({
     mutationFn: async () => {
       const res = await apiRequest("POST", "/api/auth/messaging/register-spruce-webhook", {});
@@ -1615,8 +1636,60 @@ export default function Account() {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium text-foreground">{channelMeta.label}</label>
-                      <Input placeholder={channelMeta.placeholder} value={externalChannelId} onChange={(e) => setExternalChannelId(e.target.value)} data-testid="input-external-channel-id" />
-                      <p className="text-xs text-muted-foreground">{channelMeta.hint}</p>
+                      {externalProvider === "spruce" ? (
+                        <>
+                          <div className="flex gap-2 items-start">
+                            <div className="flex-1 min-w-0">
+                              {spruceInboxes.length > 0 ? (
+                                <Select
+                                  value={externalChannelId || undefined}
+                                  onValueChange={(v) => setExternalChannelId(v)}
+                                >
+                                  <SelectTrigger data-testid="select-spruce-inbox">
+                                    <SelectValue placeholder="Choose a Spruce inbox" />
+                                  </SelectTrigger>
+                                  <SelectContent>
+                                    {spruceInboxes.map((inbox) => (
+                                      <SelectItem key={inbox.id} value={inbox.id}>
+                                        {inbox.label}
+                                        {inbox.phone ? ` — ${inbox.phone}` : ""}
+                                      </SelectItem>
+                                    ))}
+                                  </SelectContent>
+                                </Select>
+                              ) : (
+                                <Input
+                                  placeholder={channelMeta.placeholder}
+                                  value={externalChannelId}
+                                  onChange={(e) => setExternalChannelId(e.target.value)}
+                                  data-testid="input-external-channel-id"
+                                />
+                              )}
+                            </div>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="default"
+                              onClick={() => loadSpruceInboxesMutation.mutate()}
+                              disabled={
+                                !messagingSettings?.externalMessagingApiKeySet ||
+                                loadSpruceInboxesMutation.isPending
+                              }
+                              data-testid="button-load-spruce-inboxes"
+                            >
+                              {loadSpruceInboxesMutation.isPending ? "Loading…" : "Load my inboxes"}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            Click "Load my inboxes" to pull your Spruce phone lines using your saved API key, then pick the one ClinIQ should send and receive messages through.
+                          </p>
+                        </>
+                      ) : (
+                        <>
+                          <Input placeholder={channelMeta.placeholder} value={externalChannelId} onChange={(e) => setExternalChannelId(e.target.value)} data-testid="input-external-channel-id" />
+                          <p className="text-xs text-muted-foreground">{channelMeta.hint}</p>
+                        </>
+                      )}
                     </div>
                     <Separator />
                     <div className="space-y-3">

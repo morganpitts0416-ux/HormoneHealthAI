@@ -3766,6 +3766,18 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         return res.status(401).json({ ok: false, error: "Invalid signature or unrecognised payload" });
       }
 
+      // Filter by configured Spruce inbox/endpoint — if the clinician has chosen
+      // a specific inbox in their messaging settings, ignore messages from any
+      // other inbox in their Spruce organization.
+      if (
+        clinician.externalMessagingProvider === 'spruce' &&
+        clinician.externalMessagingChannelId &&
+        parsed.channelId &&
+        parsed.channelId !== clinician.externalMessagingChannelId
+      ) {
+        return res.json({ ok: true, skipped: true, reason: "Message from a different Spruce inbox" });
+      }
+
       if (!parsed.isFromProvider) {
         // Ignore messages not sent by the provider (e.g. patient-initiated copies)
         return res.json({ ok: true, skipped: true, reason: "Not a provider message" });
@@ -3840,6 +3852,58 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch messaging settings" });
+    }
+  });
+
+  // GET /api/auth/messaging/spruce-inboxes — list the org's Spruce inboxes/endpoints
+  app.get("/api/auth/messaging/spruce-inboxes", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const user = await storage.getUserById(clinicianId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.externalMessagingProvider !== "spruce") {
+        return res.status(400).json({ message: "Messaging provider must be set to Spruce." });
+      }
+      if (!user.externalMessagingApiKey) {
+        return res.status(400).json({ message: "Save your Spruce API key first." });
+      }
+
+      // Try the most likely Spruce paths in order. Different Spruce plans expose
+      // org phone lines under slightly different names; first 200 wins.
+      const candidatePaths = [
+        "/v1/endpoints",
+        "/v1/organization/endpoints",
+        "/v1/inboxes",
+      ];
+      let lastErr = "";
+      for (const path of candidatePaths) {
+        try {
+          const r = await fetch(`https://api.sprucehealth.com${path}`, {
+            headers: {
+              Authorization: `Bearer ${user.externalMessagingApiKey}`,
+              "Content-Type": "application/json",
+            },
+          });
+          if (!r.ok) {
+            lastErr = `${path} → HTTP ${r.status}`;
+            continue;
+          }
+          const body: any = await r.json();
+          const list: any[] =
+            body?.endpoints || body?.inboxes || body?.data || (Array.isArray(body) ? body : []);
+          const inboxes = list.map((e: any) => ({
+            id: String(e.id ?? e.endpoint_id ?? ""),
+            label: String(e.name ?? e.display_name ?? e.label ?? e.phone ?? e.id ?? "Inbox"),
+            phone: e.phone ?? e.phone_number ?? e.number ?? null,
+          })).filter(x => x.id);
+          return res.json({ ok: true, inboxes, source: path });
+        } catch (e: any) {
+          lastErr = `${path} → ${e?.message || e}`;
+        }
+      }
+      res.status(502).json({ message: `Could not list Spruce inboxes. ${lastErr}` });
+    } catch (error: any) {
+      res.status(500).json({ message: error?.message || "Failed to list Spruce inboxes." });
     }
   });
 
