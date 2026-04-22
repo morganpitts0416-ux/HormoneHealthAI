@@ -292,3 +292,57 @@ CREATE TABLE IF NOT EXISTS clinic_memberships (
   is_active BOOLEAN NOT NULL DEFAULT true,
   joined_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
+
+-- ── intake_forms (GHL webhook columns) ──────────────────────────────
+ALTER TABLE intake_forms ADD COLUMN IF NOT EXISTS ghl_webhook_url TEXT;
+ALTER TABLE intake_forms ADD COLUMN IF NOT EXISTS ghl_webhook_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ── appointments (native scheduling additions) ──────────────────────
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS clinic_id INTEGER;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS provider_id INTEGER;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS appointment_type_id INTEGER;
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'native';
+ALTER TABLE appointments ADD COLUMN IF NOT EXISTS reminder_sent_at TIMESTAMP;
+ALTER TABLE appointments ALTER COLUMN boulevard_appointment_id DROP NOT NULL;
+ALTER TABLE appointments ALTER COLUMN patient_name DROP NOT NULL;
+
+-- ── appointment_types ───────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS appointment_types (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  name VARCHAR(100) NOT NULL,
+  description TEXT,
+  duration_minutes INTEGER NOT NULL DEFAULT 30,
+  color VARCHAR(20),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- ── provider_availability ───────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS provider_availability (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  provider_id INTEGER NOT NULL,
+  day_of_week INTEGER NOT NULL,
+  start_time TIME NOT NULL,
+  end_time TIME NOT NULL,
+  timezone VARCHAR(50),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);
+
+-- ── calendar_blocks ─────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS calendar_blocks (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  provider_id INTEGER NOT NULL,
+  title VARCHAR(200) NOT NULL,
+  start_at TIMESTAMP NOT NULL,
+  end_at TIMESTAMP NOT NULL,
+  block_type VARCHAR(30) NOT NULL DEFAULT 'other',
+  notes TEXT,
+  created_at TIMESTAMP DEFAULT NOW() NOT NULL,
+  updated_at TIMESTAMP DEFAULT NOW() NOT NULL
+);

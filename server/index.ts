@@ -1,10 +1,36 @@
 import express, { type Request, Response, NextFunction } from "express";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
+import fs from "fs";
+import path from "path";
+import { Pool } from "pg";
 import { passport } from "./auth";
 import { registerRoutes } from "./routes";
 import { log } from "./logger";
 import { serveStatic } from "./static-serve";
+
+async function ensureSchema(): Promise<void> {
+  const candidates = [
+    path.resolve(import.meta.dirname ?? __dirname, "prod-migrate.sql"),
+    path.resolve(process.cwd(), "server/prod-migrate.sql"),
+    path.resolve(process.cwd(), "dist/prod-migrate.sql"),
+  ];
+  const sqlPath = candidates.find(p => { try { return fs.existsSync(p); } catch { return false; } });
+  if (!sqlPath) {
+    console.warn("[startup] prod-migrate.sql not found; skipping ensureSchema");
+    return;
+  }
+  const sql = fs.readFileSync(sqlPath, "utf8");
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    await pool.query(sql);
+    console.log(`[startup] ensureSchema OK (${sqlPath})`);
+  } catch (err: any) {
+    console.error("[startup] ensureSchema error:", err?.message ?? err);
+  } finally {
+    await pool.end().catch(() => {});
+  }
+}
 
 const PgSession = connectPgSimple(session);
 
@@ -83,6 +109,8 @@ app.use((req, res, next) => {
 
 (async () => {
   try {
+    console.log("[startup] running ensureSchema…");
+    await ensureSchema();
     console.log("[startup] registering routes…");
     const server = await registerRoutes(app);
 
