@@ -7288,7 +7288,22 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
   // Suite members inherit billing from the clinic owner's subscription.
   app.get("/api/billing/status", requireAuth, async (req, res) => {
     try {
-      const user = req.user as any;
+      const sess = req.session as any;
+      let user = req.user as any;
+
+      // Staff sessions: load the owning clinician so billing inherits from them
+      let isStaffSession = false;
+      if (!user && sess?.staffId && sess?.staffClinicianId) {
+        isStaffSession = true;
+        try {
+          user = await storage.getUserById(sess.staffClinicianId);
+        } catch {
+          user = null;
+        }
+        if (!user) {
+          return res.status(401).json({ message: "Not authenticated" });
+        }
+      }
 
       let clinicPlan: string = "solo";
       let clinicMaxProviders: number = 1;
@@ -7334,7 +7349,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           .where(eq(clinics.id, user.defaultClinicId))
           .limit(1);
 
-        isClinicOwner = myRole === "owner" || (clinicRecord?.ownerUserId === user.id);
+        isClinicOwner = !isStaffSession && (myRole === "owner" || (clinicRecord?.ownerUserId === user.id));
 
         if (!isClinicOwner) {
           let ownerUserId: number | null = null;
