@@ -71,6 +71,17 @@ function safeEqHex(a: string, b: string): boolean {
   }
 }
 
+function safeEqStr(a: string, b: string): boolean {
+  try {
+    const ba = Buffer.from(a);
+    const bb = Buffer.from(b);
+    if (ba.length === 0 || ba.length !== bb.length) return false;
+    return timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
 function verifySpruceSignature(
   secret: string,
   rawBody: Buffer | undefined,
@@ -100,28 +111,45 @@ function verifySpruceSignature(
   if (!candidates.length) return false;
 
   const bodyBuf = rawBody ?? Buffer.alloc(0);
-  const computedHex = createHmac('sha256', secret).update(bodyBuf).digest('hex');
+  const hmacHex = createHmac('sha256', secret).update(bodyBuf).digest('hex');
+  const hmacB64 = createHmac('sha256', secret).update(bodyBuf).digest('base64');
+  const hmacB64Url = hmacB64.replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
 
   for (const raw of candidates) {
     if (!raw) continue;
+    const trimmed = raw.trim();
+
     // 1) Plain shared-secret comparison (legacy)
-    if (raw === secret) return true;
+    if (safeEqStr(trimmed, secret)) return true;
 
-    // 2) Raw HMAC-SHA256 hex of body
-    if (safeEqHex(raw, computedHex)) return true;
-    // Strip a "sha256=" prefix if present
-    if (raw.startsWith('sha256=') && safeEqHex(raw.slice(7), computedHex)) return true;
+    // 2) Raw HMAC-SHA256 of body in hex / base64 / base64url
+    if (safeEqHex(trimmed, hmacHex)) return true;
+    if (safeEqStr(trimmed, hmacB64)) return true;
+    if (safeEqStr(trimmed, hmacB64Url)) return true;
 
-    // 3) Stripe / Spruce style: "t=<ts>,v1=<hex>" — HMAC over `${t}.${rawBody}`
-    if (raw.includes('t=') && raw.includes('v1=')) {
-      const parts = raw.split(',').map(s => s.trim());
+    // 3) "sha256=" / "sha1=" prefixes
+    const eq = trimmed.indexOf('=');
+    if (eq > 0 && eq < 12) {
+      const algo = trimmed.slice(0, eq).toLowerCase();
+      const sigPart = trimmed.slice(eq + 1);
+      if (algo === 'sha256') {
+        if (safeEqHex(sigPart, hmacHex)) return true;
+        if (safeEqStr(sigPart, hmacB64)) return true;
+        if (safeEqStr(sigPart, hmacB64Url)) return true;
+      }
+    }
+
+    // 4) Stripe / Convoy style: "t=<ts>,v1=<sig>" — HMAC over `${t}.${rawBody}`
+    if (trimmed.includes('t=') && trimmed.includes('v1=')) {
+      const parts = trimmed.split(',').map(s => s.trim());
       const t = parts.find(p => p.startsWith('t='))?.slice(2);
       const v1List = parts.filter(p => p.startsWith('v1=')).map(p => p.slice(3));
       if (t && v1List.length) {
         const signedPayload = Buffer.concat([Buffer.from(`${t}.`), bodyBuf]);
-        const expected = createHmac('sha256', secret).update(signedPayload).digest('hex');
+        const expectedHex = createHmac('sha256', secret).update(signedPayload).digest('hex');
+        const expectedB64 = createHmac('sha256', secret).update(signedPayload).digest('base64');
         for (const v1 of v1List) {
-          if (safeEqHex(v1, expected)) return true;
+          if (safeEqHex(v1, expectedHex) || safeEqStr(v1, expectedB64)) return true;
         }
       }
     }
@@ -187,10 +215,17 @@ function parseSpruceWebhook(
     allHeaders,
   );
   if (!verified) {
-    console.warn('[Spruce webhook] signature verification failed', {
-      headersSeen: allHeaders ? Object.keys(allHeaders) : [],
-      sigHeaderValue: signatureHeader?.slice(0, 80),
-      bodyLen: rawBodyBuffer?.length,
+    const buf = rawBodyBuffer ?? Buffer.alloc(0);
+    const expectedHex = createHmac('sha256', expectedSecret).update(buf).digest('hex');
+    const expectedB64 = createHmac('sha256', expectedSecret).update(buf).digest('base64');
+    console.warn('[Spruce webhook DEBUG] signature mismatch', {
+      sigHeader: signatureHeader,
+      bodyLen: buf.length,
+      bodyPreview: buf.toString('utf8').slice(0, 200),
+      expectedHex,
+      expectedB64,
+      secretPrefix: expectedSecret.slice(0, 6),
+      allHeaderNames: allHeaders ? Object.keys(allHeaders) : [],
     });
     return null;
   }
