@@ -384,6 +384,29 @@ export class DbStorage implements IStorage {
       .where(eq(schema.users.id, userId));
   }
 
+  // ── Staff password reset ─────────────────────────────────────────────────────
+  async saveStaffPasswordResetToken(staffId: number, token: string, expires: Date): Promise<void> {
+    await db
+      .update(schema.clinicianStaff)
+      .set({ passwordResetToken: token, passwordResetExpires: expires })
+      .where(eq(schema.clinicianStaff.id, staffId));
+  }
+
+  async getStaffByResetToken(token: string): Promise<schema.ClinicianStaff | undefined> {
+    const result = await db
+      .select()
+      .from(schema.clinicianStaff)
+      .where(eq(schema.clinicianStaff.passwordResetToken, token));
+    return result[0];
+  }
+
+  async updateStaffPassword(staffId: number, passwordHash: string): Promise<void> {
+    await db
+      .update(schema.clinicianStaff)
+      .set({ passwordHash, passwordResetToken: null, passwordResetExpires: null, loginAttempts: 0, lockedUntil: null })
+      .where(eq(schema.clinicianStaff.id, staffId));
+  }
+
   // ── Admin operations ─────────────────────────────────────────────────────────
   async getAllUsers(): Promise<User[]> {
     return await db.select().from(schema.users).orderBy(desc(schema.users.createdAt));
