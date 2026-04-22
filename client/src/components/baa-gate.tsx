@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -87,12 +88,15 @@ ReAlign Health maintains a permanent record of the date, time, IP address, and n
 export function BaaGate({ children }: { children: React.ReactNode }) {
   const { toast } = useToast();
   const qc = useQueryClient();
+  const { user } = useAuth();
+  const isStaff = !!(user as any)?.isStaff;
   const scrollRef = useRef<HTMLDivElement>(null);
   const [signatureName, setSignatureName] = useState("");
   const [hasScrolled, setHasScrolled] = useState(false);
 
   const { data: baaStatus, isLoading } = useQuery<BaaStatus>({
     queryKey: ["/api/baa/status"],
+    enabled: !isStaff,
   });
 
   const signMutation = useMutation({
@@ -148,6 +152,9 @@ export function BaaGate({ children }: { children: React.ReactNode }) {
     if (!signatureName.trim() || signatureName.trim().length < 2) return;
     signMutation.mutate(signatureName.trim());
   }
+
+  // Staff users inherit their clinician's BAA — no gate, no signing
+  if (isStaff) return <>{children}</>;
 
   // Still loading — render nothing to avoid flash
   if (isLoading) return null;
