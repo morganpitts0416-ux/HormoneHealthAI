@@ -9822,6 +9822,19 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         }
       }
 
+      // Forms always include a required Full Name + Email collected via
+      // submitterName / submitterEmail. Make sure those always populate the
+      // demographic vars used by the GHL webhook, even when the patient-match
+      // block above didn't run (e.g. orphan form, missing clinicianId).
+      if (!firstName && !lastName && submitterName) {
+        const parts = String(submitterName).trim().split(/\s+/);
+        firstName = parts[0] ?? "";
+        lastName = parts.slice(1).join(" ") || (parts[0] ?? "");
+      }
+      if (!email && submitterEmail) {
+        email = String(submitterEmail).trim();
+      }
+
       // Auto-extract signature from responses if a signature field exists and no
       // separate `signature` was sent. This keeps signatureJson populated even though
       // the public form submits the data URL inside responses[fieldKey].
