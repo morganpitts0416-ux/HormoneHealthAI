@@ -1,0 +1,234 @@
+List webhook destination endpoints
+
+# List webhook destination endpoints
+
+This operation lists the endpoints that an organization has registered for webhooks.
+
+# OpenAPI definition
+
+```json
+{
+  "components": {
+    "headers": {
+      "s-ratelimit-limit": {
+        "description": "Request limit per minute",
+        "example": 100,
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "s-ratelimit-remaining": {
+        "description": "Requests remaining this minute",
+        "example": 94,
+        "schema": {
+          "type": "integer"
+        }
+      },
+      "s-request-id": {
+        "description": "The ID of the request",
+        "example": "0E5QDGJC030000E5QDGJC03000",
+        "schema": {
+          "type": "string"
+        }
+      }
+    },
+    "schemas": {
+      "error": {
+        "properties": {
+          "message": {
+            "example": "Invalid Contact ID",
+            "type": "string"
+          },
+          "statusCode": {
+            "example": 400,
+            "type": "integer"
+          },
+          "type": {
+            "example": "BAD_PARAMETER",
+            "type": "string"
+          }
+        },
+        "required": [
+          "message",
+          "statusCode",
+          "type"
+        ],
+        "type": "object"
+      },
+      "objectType": {
+        "description": "String representing the object's type",
+        "type": "string"
+      },
+      "webhookDestinationEndpoint": {
+        "properties": {
+          "createdAt": {
+            "description": "The date the destination endpoint was created",
+            "example": "2020-04-01T00:00:00Z",
+            "format": "date-time",
+            "type": "string"
+          },
+          "id": {
+            "$ref": "#/components/schemas/webhookDestinationEndpoint_id"
+          },
+          "name": {
+            "$ref": "#/components/schemas/webhookDestinationEndpoint_name"
+          },
+          "object": {
+            "$ref": "#/components/schemas/objectType"
+          },
+          "signingSecrets": {
+            "items": {
+              "$ref": "#/components/schemas/webhookSigningSecret"
+            },
+            "type": "array"
+          },
+          "status": {
+            "description": "The status of the webhook destination endpoint",
+            "type": "string"
+          },
+          "url": {
+            "$ref": "#/components/schemas/webhookDestinationEndpoint_url"
+          }
+        },
+        "required": [
+          "createdAt",
+          "id",
+          "signingSecrets",
+          "status",
+          "url",
+          "object"
+        ],
+        "type": "object"
+      },
+      "webhookDestinationEndpoint_id": {
+        "description": "The id of a webhook destination endpoint",
+        "example": "wde_01HWDG5ADNBGJ3XXXXXFP8P1GH",
+        "type": "string"
+      },
+      "webhookDestinationEndpoint_name": {
+        "description": "The name of the webhook destination endpoint",
+        "example": "My Webhook Endpoint",
+        "type": "string"
+      },
+      "webhookDestinationEndpoint_url": {
+        "description": "The URL of the webhook destination endpoint",
+        "example": "https://example.com/webhook",
+        "format": "url",
+        "type": "string"
+      },
+      "webhookSigningSecret": {
+        "description": "The signing secret for the webhook endpoint. This is used to verify the authenticity of the webhook payload. This value is only populated when the webhook endpoint is created.",
+        "properties": {
+          "id": {
+            "description": "The ID of the signing secret",
+            "example": "wss_01HWDG5ADNBGXXXXXY07DP8",
+            "type": "string"
+          },
+          "value": {
+            "description": "The signing secret",
+            "type": "string"
+          }
+        },
+        "required": [
+          "id",
+          "value"
+        ],
+        "type": "object"
+      }
+    },
+    "securitySchemes": {
+      "spruceAPIToken": {
+        "description": "API token provided by Spruce should be passed in an \"Authorization\" header with the value \"Bearer <token>\"",
+        "scheme": "bearer",
+        "type": "http"
+      }
+    }
+  },
+  "info": {
+    "title": "Spruce Health API",
+    "version": "1.0.0"
+  },
+  "openapi": "3.0.0",
+  "paths": {
+    "/webhooks/endpoints": {
+      "get": {
+        "description": "This operation lists the endpoints that an organization has registered for webhooks.",
+        "operationId": "ListWebhookEndpoints",
+        "responses": {
+          "200": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "properties": {
+                    "endpoints": {
+                      "items": {
+                        "$ref": "#/components/schemas/webhookDestinationEndpoint"
+                      },
+                      "type": "array"
+                    }
+                  },
+                  "required": [
+                    "endpoints"
+                  ],
+                  "type": "object"
+                }
+              }
+            },
+            "description": "An array of webhook destination endpoints",
+            "headers": {
+              "s-ratelimit-limit": {
+                "$ref": "#/components/headers/s-ratelimit-limit"
+              },
+              "s-ratelimit-remaining": {
+                "$ref": "#/components/headers/s-ratelimit-remaining"
+              },
+              "s-request-id": {
+                "$ref": "#/components/headers/s-request-id"
+              }
+            }
+          },
+          "400": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            },
+            "description": "bad request"
+          },
+          "500": {
+            "content": {
+              "application/json": {
+                "schema": {
+                  "$ref": "#/components/schemas/error"
+                }
+              }
+            },
+            "description": "unexpected error"
+          }
+        },
+        "summary": "List webhook destination endpoints",
+        "tags": [
+          "Webhooks"
+        ]
+      }
+    }
+  },
+  "security": [
+    {
+      "spruceAPIToken": []
+    }
+  ],
+  "servers": [
+    {
+      "url": "https://api.sprucehealth.com/v1",
+      "variables": {
+        "domain": {
+          "default": "api.sprucehealth.com"
+        }
+      }
+    }
+  ]
+}
+```
