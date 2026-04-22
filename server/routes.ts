@@ -4042,6 +4042,71 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // POST /api/auth/messaging/resync-spruce-secret — pull current signing secret from Spruce
+  app.post("/api/auth/messaging/resync-spruce-secret", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const user = await storage.getUserById(clinicianId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+      if (user.externalMessagingProvider !== "spruce") {
+        return res.status(400).json({ message: "Messaging provider must be set to Spruce." });
+      }
+      if (!user.externalMessagingApiKey) {
+        return res.status(400).json({ message: "Save your Spruce API key first." });
+      }
+
+      const expectedUrl = `${req.protocol}://${req.get('host')}/api/webhooks/messaging/${clinicianId}`;
+
+      const listResp = await fetch("https://api.sprucehealth.com/v1/webhooks/endpoints", {
+        method: "GET",
+        headers: { "Authorization": `Bearer ${user.externalMessagingApiKey}` },
+      });
+      const listText = await listResp.text();
+      let listBody: any = null;
+      try { listBody = JSON.parse(listText); } catch {}
+
+      if (!listResp.ok) {
+        return res.status(listResp.status).json({ message: listBody?.message || "Spruce GET failed", sprucePayload: listBody || listText });
+      }
+
+      const endpoints: any[] = Array.isArray(listBody) ? listBody : (listBody?.endpoints || listBody?.data || []);
+      const match = endpoints.find((e: any) =>
+        e.url === expectedUrl ||
+        (typeof e.url === 'string' && e.url.endsWith(`/api/webhooks/messaging/${clinicianId}`))
+      );
+
+      if (!match) {
+        return res.status(404).json({
+          message: `No webhook endpoint in Spruce points to ${expectedUrl}. Click "Register webhook with Spruce" first.`,
+          urls: endpoints.map((e: any) => e.url),
+        });
+      }
+
+      const secrets: string[] = (match.signingSecrets || match.signing_secrets || [])
+        .map((s: any) => s?.value || s)
+        .filter((v: any) => typeof v === 'string' && v.length > 0);
+
+      if (!secrets.length) {
+        return res.status(404).json({ message: "Spruce did not return any signing secrets for that endpoint.", endpoint: match });
+      }
+
+      // Use the most recent (last) secret
+      const newSecret = secrets[secrets.length - 1];
+      await storage.updateUser(clinicianId, { externalMessagingWebhookSecret: newSecret });
+
+      res.json({
+        ok: true,
+        endpointId: match.id,
+        url: match.url,
+        secretCount: secrets.length,
+        secretPrefix: newSecret.slice(0, 6),
+      });
+    } catch (error: any) {
+      console.error("Spruce resync failed:", error);
+      res.status(500).json({ message: error?.message || "Failed to resync signing secret from Spruce." });
+    }
+  });
+
   // ── Staff Management Routes ────────────────────────────────────────────────
 
   // GET /api/staff — list all staff members for this clinician
