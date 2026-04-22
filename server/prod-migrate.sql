@@ -33,6 +33,8 @@ ALTER TABLE users ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
 -- ── clinician_staff ─────────────────────────────────────────
 ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS login_attempts INTEGER NOT NULL DEFAULT 0;
 ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP;
+ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR(255);
+ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS password_reset_expires TIMESTAMP;
 
 -- ── patients ────────────────────────────────────────────────
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS clinic_id INTEGER;

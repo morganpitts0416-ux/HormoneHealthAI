@@ -595,20 +595,32 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const { email } = req.body;
       if (!email) return res.status(400).json({ message: "Email is required" });
 
-      const user = await storage.getUserByEmail(email.trim().toLowerCase());
-      // Always return 200 to avoid email enumeration
-      if (!user) return res.json({ message: "If that email is registered, a reset link has been sent." });
-
+      const normalizedEmail = email.trim().toLowerCase();
+      const user = await storage.getUserByEmail(normalizedEmail);
       const token = crypto.randomBytes(32).toString("hex");
       const expires = new Date(Date.now() + 60 * 60 * 1000); // 1 hour
-      await storage.savePasswordResetToken(user.id, token, expires);
 
-      try {
-        await sendPasswordResetEmail(user.email, user.firstName, token, req);
-      } catch (emailErr) {
-        console.error("[EMAIL] Failed to send password reset email:", emailErr);
+      if (user) {
+        await storage.savePasswordResetToken(user.id, token, expires);
+        try {
+          await sendPasswordResetEmail(user.email, user.firstName, token, req);
+        } catch (emailErr) {
+          console.error("[EMAIL] Failed to send password reset email:", emailErr);
+        }
+      } else {
+        // Try staff (nurses/MAs/etc. live in a separate table)
+        const staff = await storage.getClinicianStaffByEmail(normalizedEmail);
+        if (staff) {
+          await storage.saveStaffPasswordResetToken(staff.id, token, expires);
+          try {
+            await sendPasswordResetEmail(staff.email, staff.firstName, token, req);
+          } catch (emailErr) {
+            console.error("[EMAIL] Failed to send staff password reset email:", emailErr);
+          }
+        }
       }
 
+      // Always return 200 to avoid email enumeration
       res.json({ message: "If that email is registered, a reset link has been sent." });
     } catch (error) {
       console.error("Error in forgot-password:", error);
@@ -621,13 +633,20 @@ export async function registerRoutes(app: Express): Promise<Server> {
     try {
       const { token } = req.params;
       const user = await storage.getUserByResetToken(token);
-      if (!user || !user.passwordResetExpires) {
-        return res.status(400).json({ valid: false, message: "Invalid or expired link" });
+      if (user && user.passwordResetExpires) {
+        if (new Date() > user.passwordResetExpires) {
+          return res.status(400).json({ valid: false, message: "This link has expired" });
+        }
+        return res.json({ valid: true, email: user.email, firstName: user.firstName });
       }
-      if (new Date() > user.passwordResetExpires) {
-        return res.status(400).json({ valid: false, message: "This link has expired" });
+      const staff = await storage.getStaffByResetToken(token);
+      if (staff && staff.passwordResetExpires) {
+        if (new Date() > staff.passwordResetExpires) {
+          return res.status(400).json({ valid: false, message: "This link has expired" });
+        }
+        return res.json({ valid: true, email: staff.email, firstName: staff.firstName });
       }
-      res.json({ valid: true, email: user.email, firstName: user.firstName });
+      return res.status(400).json({ valid: false, message: "Invalid or expired link" });
     } catch (error) {
       console.error("Error validating reset token:", error);
       res.status(500).json({ valid: false, message: "Failed to validate link" });
@@ -646,18 +665,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Password does not meet requirements: " + pwCheck.errors.join("; ") });
       }
 
-      const user = await storage.getUserByResetToken(token);
-      if (!user || !user.passwordResetExpires) {
-        return res.status(400).json({ message: "Invalid or expired link" });
-      }
-      if (new Date() > user.passwordResetExpires) {
-        return res.status(400).json({ message: "This link has expired. Please request a new one." });
-      }
-
       const passwordHash = await hashPassword(password);
-      await storage.updatePassword(user.id, passwordHash);
-
-      res.json({ message: "Password updated successfully. You can now log in." });
+      const user = await storage.getUserByResetToken(token);
+      if (user && user.passwordResetExpires) {
+        if (new Date() > user.passwordResetExpires) {
+          return res.status(400).json({ message: "This link has expired. Please request a new one." });
+        }
+        await storage.updatePassword(user.id, passwordHash);
+        return res.json({ message: "Password updated successfully. You can now log in." });
+      }
+      const staff = await storage.getStaffByResetToken(token);
+      if (staff && staff.passwordResetExpires) {
+        if (new Date() > staff.passwordResetExpires) {
+          return res.status(400).json({ message: "This link has expired. Please request a new one." });
+        }
+        await storage.updateStaffPassword(staff.id, passwordHash);
+        return res.json({ message: "Password updated successfully. You can now log in." });
+      }
+      return res.status(400).json({ message: "Invalid or expired link" });
     } catch (error) {
       console.error("Error in reset-password:", error);
       res.status(500).json({ message: "Failed to reset password" });
