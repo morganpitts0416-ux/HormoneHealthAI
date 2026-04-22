@@ -31,6 +31,7 @@ import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
 import AppointmentsPage from "@/pages/appointments";
 import AccountSchedulingPage from "@/pages/account-scheduling";
+import InboxPage from "@/pages/inbox";
 import Landing from "@/pages/landing";
 import BillingPage from "@/pages/billing";
 import IntakeFormsPage from "@/pages/intake-forms";
@@ -243,6 +244,9 @@ function Router() {
       </Route>
       <Route path="/account/scheduling">
         {() => <ProtectedRoute component={AccountSchedulingPage} />}
+      </Route>
+      <Route path="/inbox">
+        {() => <ProtectedRoute component={InboxPage} />}
       </Route>
       <Route path="/billing">
         {() => <BillingExemptRoute component={BillingPage} />}
