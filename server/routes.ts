@@ -3403,6 +3403,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       await storage.updatePatientFormAssignment(assignmentId, { status: "completed" });
 
       // Fire-and-forget: GoHighLevel inbound webhook (portal submissions)
+      console.log(`[GHL Webhook] portal form ${form.id} sub ${submission.id} — enabled=${(form as any).ghlWebhookEnabled} urlSet=${!!(form as any).ghlWebhookUrl}`);
       if ((form as any).ghlWebhookEnabled && (form as any).ghlWebhookUrl) {
         const webhookUrl = (form as any).ghlWebhookUrl as string;
         setImmediate(async () => {
@@ -9751,6 +9752,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       }
 
       // Fire-and-forget: GoHighLevel inbound webhook
+      console.log(`[GHL Webhook] public form ${form.id} sub ${submission.id} — enabled=${form.ghlWebhookEnabled} urlSet=${!!form.ghlWebhookUrl}`);
       if (form.ghlWebhookEnabled && form.ghlWebhookUrl) {
         const webhookUrl = form.ghlWebhookUrl;
         setImmediate(async () => {
