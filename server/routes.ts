@@ -9717,6 +9717,13 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       // ── Auto-match or auto-create patient from form demographics ─────────────
       let resolvedPatientId: number | null = null;
       let autoCreated = false;
+      // Hoisted so the GHL webhook payload can reference them after this block
+      let firstName = "";
+      let lastName = "";
+      let dobRaw = "";
+      let email = "";
+      let phone = "";
+      let gender = "male";
 
       if (!resolvedPatientId && form.clinicianId) {
         const fields = await storage.getFormFields(pub.formId);
@@ -9739,8 +9746,8 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         };
 
         // Extract demographics — smart keys take priority
-        let firstName = pick("patient_first_name", /^first_?name$/, /^fname$/, /^given_name$/);
-        let lastName = pick("patient_last_name", /^last_?name$/, /^lname$/, /^family_name$/, /^surname$/);
+        firstName = pick("patient_first_name", /^first_?name$/, /^fname$/, /^given_name$/);
+        lastName = pick("patient_last_name", /^last_?name$/, /^lname$/, /^family_name$/, /^surname$/);
 
         if ((!firstName || !lastName) && submitterName) {
           const parts = String(submitterName).trim().split(/\s+/);
@@ -9748,13 +9755,13 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           if (!lastName) lastName = parts.slice(1).join(" ") || (parts[0] ?? "");
         }
 
-        const dobRaw = pick("patient_dob", /^date_of_birth$/, /^dob$/, /^birth_?date$/, /^birthday$/);
-        const email = pick("patient_email", /^email$/, /^email_address$/) || (submitterEmail ? String(submitterEmail).trim() : "");
-        const phone = pick("patient_phone", /^phone$/, /^phone_?number$/, /^mobile$/, /^cell$/, /^telephone$/);
+        dobRaw = pick("patient_dob", /^date_of_birth$/, /^dob$/, /^birth_?date$/, /^birthday$/);
+        email = pick("patient_email", /^email$/, /^email_address$/) || (submitterEmail ? String(submitterEmail).trim() : "");
+        phone = pick("patient_phone", /^phone$/, /^phone_?number$/, /^mobile$/, /^cell$/, /^telephone$/);
         const address = smartValues["patient_address"] || "";
         const preferredPharmacy = smartValues["patient_preferred_pharmacy"] || "";
         const genderRaw = pick("patient_gender", /^gender$/, /^sex$/);
-        const gender = genderRaw
+        gender = genderRaw
           ? (genderRaw.toLowerCase().startsWith("f") ? "female" : "male")
           : "male";
 
