@@ -327,7 +327,7 @@ export default function FormPublicPage() {
 
       {/* Fields without section */}
       {fieldsBySectionId["null"]?.length > 0 && (
-        <FieldGrid fields={fieldsBySectionId["null"]} responses={responses} setResponse={setResponse} validationErrors={validationErrors} className="mb-8" />
+        <FieldGrid fields={fieldsBySectionId["null"]} allFields={data.fields} responses={responses} setResponse={setResponse} validationErrors={validationErrors} className="mb-8" />
       )}
 
       {/* Sections */}
@@ -337,7 +337,7 @@ export default function FormPublicPage() {
             <h2 className="text-base font-semibold">{section.title}</h2>
             {section.description && <p className="text-sm text-muted-foreground mt-0.5">{section.description}</p>}
           </div>
-          <FieldGrid fields={fieldsBySectionId[section.id] ?? []} responses={responses} setResponse={setResponse} validationErrors={validationErrors} />
+          <FieldGrid fields={fieldsBySectionId[section.id] ?? []} allFields={data.fields} responses={responses} setResponse={setResponse} validationErrors={validationErrors} />
         </div>
       ))}
 
@@ -432,8 +432,9 @@ function PageShell({ children, clinic, isEmbedded }: {
 
 // ─── Field Renderer ───────────────────────────────────────────────────────────
 
-function FieldGrid({ fields, responses, setResponse, validationErrors, className = "" }: {
+function FieldGrid({ fields, allFields, responses, setResponse, validationErrors, className = "" }: {
   fields: FormField[];
+  allFields: FormField[];
   responses: Record<string, any>;
   setResponse: (key: string, value: any) => void;
   validationErrors: Record<string, string>;
@@ -445,8 +446,10 @@ function FieldGrid({ fields, responses, setResponse, validationErrors, className
     if (w === "half") return "col-span-6 sm:col-span-3";
     return "col-span-6";
   };
+  // Look up across the FULL form, not just this section, so conditional logic
+  // can reference source fields that live in other sections.
   const getAnswerByFieldId = (id: number) => {
-    const f = fields.find(x => x.id === id);
+    const f = allFields.find(x => x.id === id);
     if (!f) return undefined;
     return responses[f.fieldKey];
   };
