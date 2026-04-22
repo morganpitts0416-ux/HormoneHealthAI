@@ -1802,7 +1802,22 @@ export class DbStorage implements IStorage {
     const setStr = setClauses.join(', ');
     values.push(id, clinicianId);
     const queryStr = `UPDATE intake_forms SET ${setStr} WHERE id = $${values.length - 1} AND clinician_id = $${values.length} RETURNING *`;
-    const result = await pool.query(queryStr, values);
+    let result;
+    try {
+      result = await pool.query(queryStr, values);
+    } catch (err: any) {
+      const msg = String(err?.message ?? '');
+      // Self-heal: if the GHL webhook columns are missing in prod, add them and retry once.
+      if (msg.includes('ghl_webhook_url') || msg.includes('ghl_webhook_enabled')) {
+        console.warn('[updateIntakeFormByClinic] adding missing ghl_webhook_* columns and retrying');
+        await pool.query(`ALTER TABLE intake_forms
+          ADD COLUMN IF NOT EXISTS ghl_webhook_url TEXT,
+          ADD COLUMN IF NOT EXISTS ghl_webhook_enabled BOOLEAN NOT NULL DEFAULT FALSE`);
+        result = await pool.query(queryStr, values);
+      } else {
+        throw err;
+      }
+    }
     return result.rows.map(mapRow)[0] as schema.IntakeForm | undefined;
   }
 
