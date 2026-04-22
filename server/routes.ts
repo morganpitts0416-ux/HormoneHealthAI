@@ -9424,10 +9424,19 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (!(await canManageForms(req))) return res.status(403).json({ message: "Admin access required to edit forms." });
       const id = parseInt(req.params.id);
       const clinicId = getEffectiveClinicId(req);
+      const incomingKeys = Object.keys(req.body || {});
+      const hasGhl = incomingKeys.includes("ghlWebhookUrl") || incomingKeys.includes("ghlWebhookEnabled");
+      if (hasGhl) {
+        console.log(`[Form Update] form ${id} keys=${incomingKeys.join(",")} ghlWebhookEnabled=${req.body.ghlWebhookEnabled} ghlWebhookUrlSet=${!!req.body.ghlWebhookUrl}`);
+      }
       const updated = await storage.updateIntakeFormByClinic(id, clinicId, getClinicianId(req), req.body);
       if (!updated) return res.status(404).json({ message: "Form not found" });
+      if (hasGhl) {
+        console.log(`[Form Update] form ${id} saved -> ghlWebhookEnabled=${(updated as any).ghlWebhookEnabled} ghlWebhookUrlSet=${!!(updated as any).ghlWebhookUrl}`);
+      }
       res.json(updated);
-    } catch (err) {
+    } catch (err: any) {
+      console.error(`[Form Update] form ${req.params.id} error:`, err?.message ?? err);
       res.status(500).json({ message: "Failed to update form" });
     }
   });
