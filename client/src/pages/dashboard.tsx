@@ -226,7 +226,18 @@ export default function Dashboard() {
               {patients.length} patient{patients.length !== 1 ? "s" : ""} · {user?.clinicName}
             </p>
           </div>
-          <PatientSearchBar className="w-full sm:w-80" />
+          <div className="flex items-center gap-2 w-full sm:w-auto">
+            <PatientSearchBar className="w-full sm:w-80" />
+            <Button
+              variant="outline"
+              onClick={() => setLocation("/patients")}
+              data-testid="button-all-patients-header"
+              className="flex-shrink-0"
+            >
+              <Users className="w-4 h-4 mr-2" />
+              All Patients
+            </Button>
+          </div>
         </div>
 
         {/* ══════════════════════════════════════════════════════════
@@ -618,32 +629,10 @@ export default function Dashboard() {
           </div>
         </div>
 
-        {/* ── Encounters quick link ─────────────────────────────────── */}
+        {/* ── Quick Actions ────────────────────────────────────────── */}
         <div>
-          <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#a0a880" }}>Clinical Documentation</p>
-          <button
-            data-testid="card-encounters"
-            className="w-full flex items-center gap-4 p-4 rounded-xl border text-left transition-all"
-            style={{ backgroundColor: "#ffffff", borderColor: "#d4c9b5" }}
-            onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2e3a20"; (e.currentTarget as HTMLElement).style.backgroundColor = "#f4f8ee"; }}
-            onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#d4c9b5"; (e.currentTarget as HTMLElement).style.backgroundColor = "#ffffff"; }}
-            onClick={() => setLocation("/encounters")}
-          >
-            <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#edf4e4" }}>
-              <Stethoscope className="w-6 h-6" style={{ color: "#2e3a20" }} />
-            </div>
-            <div className="flex-1 min-w-0">
-              <p className="font-semibold text-sm" style={{ color: "#1c2414" }}>Encounter Documentation</p>
-              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Audio transcription, AI SOAP notes, patient visit summaries</p>
-            </div>
-            <ArrowRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4b9a5" }} />
-          </button>
-        </div>
-
-        {/* ── Quick actions ────────────────────────────────────────── */}
-        <div>
-          <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#a0a880" }}>Lab Evaluations</p>
-          <div data-testid="quick-actions-grid" className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+          <p className="text-xs font-semibold uppercase tracking-wide mb-3" style={{ color: "#a0a880" }}>Quick Actions</p>
+          <div data-testid="quick-actions-grid" className="grid grid-cols-1 sm:grid-cols-3 gap-4">
             {/* Men's */}
             <button
               data-testid="card-male-eval"
@@ -658,9 +647,8 @@ export default function Dashboard() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm" style={{ color: "#1c2414" }}>Male Lab Evaluation</p>
-                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Testosterone, metabolic, cardiovascular, PSA, thyroid</p>
+                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Testosterone, metabolic, PSA, thyroid</p>
               </div>
-              <ArrowRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4b9a5" }} />
             </button>
 
             {/* Women's */}
@@ -677,75 +665,28 @@ export default function Dashboard() {
               </div>
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm" style={{ color: "#1c2414" }}>Female Lab Evaluation</p>
-                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Hormonal, SHBG, AMH, menstrual phase, thyroid, metabolic</p>
+                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Hormonal, AMH, thyroid, metabolic</p>
               </div>
-              <ArrowRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4b9a5" }} />
             </button>
-          </div>
-        </div>
 
-        {/* ── Recent patients strip ────────────────────────────────── */}
-        <div>
-          <div className="flex items-center justify-between mb-3">
-            <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#a0a880" }}>Recent Patients</p>
+            {/* New Encounter */}
             <button
-              className="text-xs font-medium flex items-center gap-1"
-              style={{ color: "#2e3a20" }}
-              onClick={() => setLocation("/patients")}
-              data-testid="button-all-patients"
+              data-testid="card-encounters"
+              className="flex items-center gap-4 p-4 rounded-xl border text-left transition-all"
+              style={{ backgroundColor: "#ffffff", borderColor: "#d4c9b5" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#2e3a20"; (e.currentTarget as HTMLElement).style.backgroundColor = "#f4f8ee"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#d4c9b5"; (e.currentTarget as HTMLElement).style.backgroundColor = "#ffffff"; }}
+              onClick={() => setLocation("/encounters")}
             >
-              <Users className="w-3 h-3" />
-              All {patients.length} patients
-              <ArrowRight className="w-3 h-3" />
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#edf4e4" }}>
+                <Stethoscope className="w-6 h-6" style={{ color: "#2e3a20" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm" style={{ color: "#1c2414" }}>New Encounter</p>
+                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Audio transcription & AI SOAP notes</p>
+              </div>
             </button>
           </div>
-
-          {patients.length === 0 ? (
-            <div className="rounded-xl border py-8 text-center" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
-              <Users className="w-8 h-8 mx-auto mb-2" style={{ color: "#c4b9a5" }} />
-              <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>No patients yet</p>
-              <p className="text-xs mt-1" style={{ color: "#a0a880" }}>Patient profiles are created automatically after a lab evaluation</p>
-            </div>
-          ) : (
-            <div className="rounded-xl border overflow-hidden" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
-              {patients.slice(0, 6).map((patient, idx) => (
-                <button
-                  key={patient.id}
-                  data-testid={`card-patient-${patient.id}`}
-                  className="w-full flex items-center gap-3 px-4 py-3 text-left transition-colors border-t first:border-t-0"
-                  style={{ borderColor: "#f0ece5", backgroundColor: "transparent" }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f9f6f2")}
-                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                  onClick={() => goToPatient(patient.id)}
-                >
-                  <div
-                    className="w-8 h-8 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                    style={{ backgroundColor: patient.gender === "female" ? "#9f4b5e" : "#2e3a20" }}
-                  >
-                    {patient.firstName[0]}{patient.lastName[0]}
-                  </div>
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>
-                      {patient.firstName} {patient.lastName}
-                    </p>
-                    <p className="text-xs" style={{ color: "#a0a880" }}>
-                      {patient.gender === "female" ? "Women's Clinic" : "Men's Clinic"}
-                    </p>
-                  </div>
-                  <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4b9a5" }} />
-                </button>
-              ))}
-              {patients.length > 6 && (
-                <button
-                  className="w-full text-center py-3 text-xs font-medium border-t"
-                  style={{ borderColor: "#f0ece5", color: "#7a8a64", backgroundColor: "#faf8f5" }}
-                  onClick={() => setLocation("/patients")}
-                >
-                  View all {patients.length} patients →
-                </button>
-              )}
-            </div>
-          )}
         </div>
 
       </main>
