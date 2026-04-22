@@ -34,7 +34,7 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft } from "@shared/schema";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
@@ -2061,6 +2061,12 @@ export default function PatientProfiles() {
                 </div>
               </div>
 
+              {/* ── Upcoming Appointments mini-card ────────────────────── */}
+              <UpcomingAppointmentsCard
+                patientId={selectedPatient.id}
+                onBook={() => setShowAppointmentDialog(true)}
+              />
+
               {/* ── Portal Engagement Panel (with inline messages) ────── */}
               {portalStatus && (
                 <div
@@ -3803,6 +3809,105 @@ export default function PatientProfiles() {
           </DialogFooter>
         </DialogContent>
       </Dialog>
+    </div>
+  );
+}
+
+// ── Upcoming Appointments Mini-Card ─────────────────────────────────────────
+function UpcomingAppointmentsCard({
+  patientId,
+  onBook,
+}: {
+  patientId: number;
+  onBook: () => void;
+}) {
+  const { data: upcoming = [], isLoading } = useQuery<Appointment[]>({
+    queryKey: ["/api/patients", patientId, "upcoming-appointments"],
+    queryFn: async () => {
+      const r = await fetch(`/api/patients/${patientId}/upcoming-appointments`, {
+        credentials: "include",
+      });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+
+  const fmt = (iso: string) => {
+    const d = new Date(iso);
+    const date = d.toLocaleDateString(undefined, {
+      weekday: "short",
+      month: "short",
+      day: "numeric",
+    });
+    const time = d.toLocaleTimeString(undefined, {
+      hour: "numeric",
+      minute: "2-digit",
+    });
+    return `${date} · ${time}`;
+  };
+
+  return (
+    <div
+      className="rounded-xl border"
+      style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
+      data-testid="card-upcoming-appointments"
+    >
+      <div className="flex items-center justify-between gap-2 px-4 pt-3 pb-2">
+        <div className="flex items-center gap-2">
+          <CalendarDays className="w-3.5 h-3.5" style={{ color: "#5a7040" }} />
+          <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#a0a880" }}>
+            Upcoming Appointments
+          </p>
+        </div>
+        <button
+          type="button"
+          onClick={onBook}
+          data-testid="button-book-appointment-card"
+          className="text-xs font-medium underline-offset-2 hover:underline"
+          style={{ color: "#2e3a20" }}
+        >
+          + Book new
+        </button>
+      </div>
+      <div className="px-4 pb-3">
+        {isLoading ? (
+          <div className="text-xs" style={{ color: "#7a8a64" }}>Loading…</div>
+        ) : upcoming.length === 0 ? (
+          <div className="text-xs" style={{ color: "#7a8a64" }}>
+            No upcoming appointments scheduled.
+          </div>
+        ) : (
+          <ul className="divide-y" style={{ borderColor: "#e8ddd0" }}>
+            {upcoming.slice(0, 5).map((a) => (
+              <li
+                key={a.id}
+                className="py-1.5 flex items-center justify-between gap-3"
+                data-testid={`row-upcoming-appt-${a.id}`}
+              >
+                <div className="min-w-0">
+                  <div className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>
+                    {fmt(a.appointmentStart as unknown as string)}
+                  </div>
+                  <div className="text-xs truncate" style={{ color: "#7a8a64" }}>
+                    {a.serviceType || "Appointment"}
+                    {a.staffName ? ` · ${a.staffName}` : ""}
+                    {a.source === "boulevard" ? " · Boulevard" : ""}
+                  </div>
+                </div>
+                <span
+                  className="text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded"
+                  style={{
+                    backgroundColor: a.status === "confirmed" ? "#dbe8c8" : "#e8ddd0",
+                    color: "#2e3a20",
+                  }}
+                >
+                  {a.status || "scheduled"}
+                </span>
+              </li>
+            ))}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }

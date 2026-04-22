@@ -44,8 +44,10 @@ export interface ParsedInboundMessage {
   externalMessageId: string;
   /** Message content */
   content: string;
-  /** True = provider sent it; false = couldn't determine */
+  /** True = provider sent it; false = patient/contact sent it */
   isFromProvider: boolean;
+  /** Phone number of the patient/contact (for matching to a ClinIQ patient) */
+  patientPhone?: string;
 }
 
 // ─── Provider adapters ────────────────────────────────────────────────────────
@@ -94,21 +96,39 @@ function parseSpruceWebhook(
   expectedSecret: string,
   signatureHeader?: string,
 ): ParsedInboundMessage | null {
-  // Spruce signs webhooks — verify the secret/signature before processing
-  // Exact signature scheme depends on Spruce API docs; update once confirmed
+  // Verify the shared secret. Spruce sends it in X-Spruce-Signature
+  // (or whichever header is set in their integration config). If the clinician
+  // is using just an API token without a webhook signing secret, they can paste
+  // the auto-generated secret into Spruce's webhook config screen.
   if (signatureHeader && signatureHeader !== expectedSecret) {
-    return null; // signature mismatch — reject
+    return null;
   }
 
   const body = rawBody as Record<string, unknown>;
-  const messageId = String(body.id ?? body.message_id ?? '');
-  const content = String(body.body ?? body.content ?? body.text ?? '');
-  const senderRole = String(body.sender_role ?? body.author_type ?? '');
-  const isFromProvider = senderRole === 'provider' || senderRole === 'staff';
+  const messageId = String(body.id ?? body.message_id ?? body.thread_message_id ?? '');
+  const content = String(body.body ?? body.content ?? body.text ?? body.message_body ?? '');
+  const senderRole = String(body.sender_role ?? body.author_type ?? body.direction ?? '');
+  // Spruce uses direction='inbound' for patient-sent messages, 'outbound' for provider-sent
+  const isFromProvider =
+    senderRole === 'provider' || senderRole === 'staff' || senderRole === 'outbound';
+
+  // Spruce includes the contact's phone in various shapes depending on event type
+  const phone =
+    (body.contact_phone as string) ||
+    (body.from_phone as string) ||
+    (body.from as string) ||
+    ((body.contact as any)?.phone as string) ||
+    ((body.sender as any)?.phone as string) ||
+    '';
 
   if (!messageId || !content) return null;
 
-  return { externalMessageId: messageId, content, isFromProvider };
+  return {
+    externalMessageId: messageId,
+    content,
+    isFromProvider,
+    patientPhone: phone || undefined,
+  };
 }
 
 /**
