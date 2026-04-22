@@ -19,6 +19,16 @@ export function AppHeader() {
   const { user, logoutMutation } = useAuth();
   const [location, setLocation] = useLocation();
 
+  const { data: notif } = useQuery<{ unreadMessages: Array<{ count: number }> }>({
+    queryKey: ["/api/notifications"],
+    enabled: !!user,
+    refetchInterval: 30_000,
+  });
+  const unreadTotal = (notif?.unreadMessages ?? []).reduce(
+    (sum, r) => sum + (Number(r.count) || 0),
+    0,
+  );
+
   if (!user) return null;
 
   const isStaff = (user as any)?.isStaff;
@@ -76,6 +86,24 @@ export function AppHeader() {
               active={location === "/scheduling" || location === "/appointments"}
               testId="nav-scheduling"
             />
+            <div className="relative">
+              <NavButton
+                icon={Inbox}
+                label="Inbox"
+                onClick={() => setLocation("/inbox")}
+                active={location === "/inbox"}
+                testId="nav-inbox"
+              />
+              {unreadTotal > 0 && (
+                <span
+                  className="absolute -top-1 -right-1 min-w-[18px] h-[18px] px-1 rounded-full text-[10px] font-bold text-white inline-flex items-center justify-center pointer-events-none"
+                  style={{ backgroundColor: "#c0392b" }}
+                  data-testid="badge-inbox-unread"
+                >
+                  {unreadTotal > 99 ? "99+" : unreadTotal}
+                </span>
+              )}
+            </div>
             <NavButton
               icon={HelpCircle}
               label="Help"
@@ -129,6 +157,7 @@ export function AppHeader() {
                     <MobileNavButton icon={ShieldCheck} label="Admin" onClick={() => setLocation("/admin")} active={location === "/admin"} />
                   )}
                   <MobileNavButton icon={CalendarDays} label="Schedule" onClick={() => setLocation("/scheduling")} active={location === "/scheduling" || location === "/appointments"} />
+                  <MobileNavButton icon={Inbox} label={unreadTotal > 0 ? `Inbox (${unreadTotal > 99 ? "99+" : unreadTotal})` : "Inbox"} onClick={() => setLocation("/inbox")} active={location === "/inbox"} />
                   <MobileNavButton icon={HelpCircle} label="Help" onClick={() => setLocation("/help")} active={location === "/help"} />
                   <MobileNavButton icon={CreditCard} label="Billing" onClick={() => setLocation("/billing")} active={location === "/billing"} />
                   <MobileNavButton icon={Settings} label="Account" onClick={() => setLocation("/account")} active={location === "/account"} />
