@@ -1,0 +1,99 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run services logs read hormonehealthai --region us-central1 --limit 200 | grep -A 12 "Spruce webhook DEBUG"
+2026-04-22 18:45:00 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 18:45:00   sigHeader: 'ROFxmbN1flTo3rkl1cXcHjKvW+XcCVXai5iMLwcRTdQ=',
+2026-04-22 18:45:00   bodyLen: 2039,
+2026-04-22 18:45:00   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE5PGDIG8002","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_2NE5PG7TGBO00/message/ti_2NE5P',
+2026-04-22 18:45:00   expectedHex: 'fe2946a29c80d0f6618af4fd77e90f8573133935a47e28e58b3f829d95a4b54c',
+2026-04-22 18:45:00   expectedB64: '/ilGopyA0PZhivT9d+kPhXMTOTWkfijliz+CnZWktUw=',
+2026-04-22 18:45:00   secretPrefix: '331b6e',
+2026-04-22 18:45:00   allHeaderNames: [
+2026-04-22 18:45:00     'host',
+2026-04-22 18:45:00     'user-agent',
+2026-04-22 18:45:00     'content-length',
+2026-04-22 18:45:00     'content-type',
+2026-04-22 18:45:00     'x-convoy-idempotency-key',
+--
+2026-04-22 18:45:04 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 18:45:04   sigHeader: 'GnGTmGk8NKEd/b4hsdHkwFmJ6r7vGW0tnJ0ryscEFPQ=',
+2026-04-22 18:45:04   bodyLen: 1135,
+2026-04-22 18:45:04   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversations/t_257GD5QC46000","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_257GD5QC46000","archived":false,"as',
+2026-04-22 18:45:04   expectedHex: 'd8952031f678d2774b921d1e6bbd0e9d87c36143137562e45ba1a5153af39908',
+2026-04-22 18:45:04   expectedB64: '2JUgMfZ40ndLkh0ea70OnYfDYUMTdWLkW6GlFTrzmQg=',
+2026-04-22 18:45:04   secretPrefix: '331b6e',
+2026-04-22 18:45:04   allHeaderNames: [
+2026-04-22 18:45:04     'host',
+2026-04-22 18:45:04     'user-agent',
+2026-04-22 18:45:04     'content-length',
+2026-04-22 18:45:04     'content-type',
+2026-04-22 18:45:04     'x-spruce-signature',
+--
+2026-04-22 18:45:04 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 18:45:04   sigHeader: '49rJ/91B8uSPfI20XlO4Les0YvL5wsCn6b4sArl2f8M=',
+2026-04-22 18:45:04   bodyLen: 1869,
+2026-04-22 18:45:04   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE5QHQR2EO00","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_257GD5QC46000/message/ti_2NE5Q',
+2026-04-22 18:45:04   expectedHex: '5570745850442a25fec5ee87394daec90a16e57aa172a9f951d8d3c8b7105743',
+2026-04-22 18:45:04   expectedB64: 'VXB0WFBEKiX+xe6HOU2uyQoW5Xqhcqn5UdjTyLcQV0M=',
+2026-04-22 18:45:04   secretPrefix: '331b6e',
+2026-04-22 18:45:04   allHeaderNames: [
+2026-04-22 18:45:04     'host',
+2026-04-22 18:45:04     'user-agent',
+2026-04-22 18:45:04     'content-length',
+2026-04-22 18:45:04     'content-type',
+2026-04-22 18:45:04     'x-convoy-idempotency-key',
+--
+2026-04-22 18:45:04 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 18:45:04   sigHeader: 'KCnsuNXy/X9qtSsbLEuNSCj6BP0I3fqUL7XsnDzUiGY=',
+2026-04-22 18:45:04   bodyLen: 1570,
+2026-04-22 18:45:04   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE5T9IIO8000","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_2NE5PG7TGBO00/message/ti_2NE5T',
+2026-04-22 18:45:04   expectedHex: 'aee5cf405bbfeea60924526bb34788e081fe40836e02d064d13f31acea0d3b18',
+2026-04-22 18:45:04   expectedB64: 'ruXPQFu/7qYJJFJrs0eI4IH+QINuAtBk0T8xrOoNOxg=',
+2026-04-22 18:45:04   secretPrefix: '331b6e',
+2026-04-22 18:45:04   allHeaderNames: [
+2026-04-22 18:45:04     'host',
+2026-04-22 18:45:04     'user-agent',
+2026-04-22 18:45:04     'content-length',
+2026-04-22 18:45:04     'content-type',
+2026-04-22 18:45:04     'x-convoy-idempotency-key',
+--
+2026-04-22 18:45:09 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 18:45:09   sigHeader: '65ftBN7NKE7OQE9o4nYnVP5MgTmp63F4GKv8b8v8Sa8=',
+2026-04-22 18:45:09   bodyLen: 1090,
+2026-04-22 18:45:09   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversations/t_257GD5QC46000","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_257GD5QC46000","archived":true,"ass',
+2026-04-22 18:45:09   expectedHex: '08774174b74d80b7a53aa0b76db124a79c1f63b740a07ba04021a0efd3a75c5e',
+2026-04-22 18:45:09   expectedB64: 'CHdBdLdNgLelOqC3bbEkp5wfY7dAoHugQCGg79OnXF4=',
+2026-04-22 18:45:09   secretPrefix: '331b6e',
+2026-04-22 18:45:09   allHeaderNames: [
+2026-04-22 18:45:09     'host',
+2026-04-22 18:45:09     'user-agent',
+2026-04-22 18:45:09     'content-length',
+2026-04-22 18:45:09     'content-type',
+2026-04-22 18:45:09     'x-spruce-signature',
+--
+2026-04-22 18:45:09 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 18:45:09   sigHeader: 'wOOWWFpdb1V8shlXyGNQ0bGfu+NtBkKMZZZWFNKmpto=',
+2026-04-22 18:45:09   bodyLen: 1674,
+2026-04-22 18:45:09   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE5QI6UHVO00","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_257GD5QC46000/message/ti_2NE5Q',
+2026-04-22 18:45:09   expectedHex: 'a4ba4520e7bff5afd1328985a885a05b63d6c143d9fb0d79ffc03a0d3d87ecc9',
+2026-04-22 18:45:09   expectedB64: 'pLpFIOe/9a/RMomFqIWgW2PWwUPZ+w15/8A6DT2H7Mk=',
+2026-04-22 18:45:09   secretPrefix: '331b6e',
+2026-04-22 18:45:09   allHeaderNames: [
+2026-04-22 18:45:09     'host',
+2026-04-22 18:45:09     'user-agent',
+2026-04-22 18:45:09     'content-length',
+2026-04-22 18:45:09     'content-type',
+2026-04-22 18:45:09     'x-convoy-idempotency-key',
+--
+2026-04-22 18:45:40 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 18:45:40   sigHeader: 'qqS1TVcVt0yJzfGijt/cq3cEyu+waqRzZVDSuUBzl4c=',
+2026-04-22 18:45:40   bodyLen: 3067,
+2026-04-22 18:45:40   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE5VCJQ4UG00","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_1ON291UNUQG00/message/ti_2NE5V',
+2026-04-22 18:45:40   expectedHex: '476615b4ec5aa25fbef29b3e21799950a9b3a93bbaf79404201fea577a81f7a0',
+2026-04-22 18:45:40   expectedB64: 'R2YVtOxaol++8ps+IXmZUKmzqTu695QEIB/qV3qB96A=',
+2026-04-22 18:45:40   secretPrefix: '331b6e',
+2026-04-22 18:45:40   allHeaderNames: [
+2026-04-22 18:45:40     'host',
+2026-04-22 18:45:40     'user-agent',
+2026-04-22 18:45:40     'content-length',
+2026-04-22 18:45:40     'content-type',
+2026-04-22 18:45:40     'x-convoy-idempotency-key',
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 

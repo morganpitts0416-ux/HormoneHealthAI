@@ -1087,6 +1087,25 @@ export default function Account() {
     },
   });
 
+  const resyncSpruceSecretMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/auth/messaging/resync-spruce-secret", {});
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.message || "Resync failed.");
+      return body;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/messaging-settings"] });
+      toast({
+        title: "Signing secret resynced from Spruce",
+        description: `Found ${data?.secretCount ?? 0} secret(s); now using one starting with ${data?.secretPrefix ?? "—"}.`,
+      });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Could not resync signing secret", description: e.message, variant: "destructive" });
+    },
+  });
+
   const onSubmit = (data: ProfileForm) => updateMutation.mutate(data);
 
   const onSubmitClinic = () => {
@@ -1739,21 +1758,42 @@ export default function Account() {
                               No terminal commands needed.
                             </p>
                           </div>
-                          <Button
-                            type="button"
-                            variant="default"
-                            size="sm"
-                            onClick={() => registerSpruceWebhookMutation.mutate()}
-                            disabled={
-                              !messagingSettings?.externalMessagingApiKeySet ||
-                              registerSpruceWebhookMutation.isPending
-                            }
-                            data-testid="button-register-spruce-webhook"
-                          >
-                            {registerSpruceWebhookMutation.isPending
-                              ? "Registering..."
-                              : "Register webhook with Spruce"}
-                          </Button>
+                          <div className="flex flex-wrap gap-2">
+                            <Button
+                              type="button"
+                              variant="default"
+                              size="sm"
+                              onClick={() => registerSpruceWebhookMutation.mutate()}
+                              disabled={
+                                !messagingSettings?.externalMessagingApiKeySet ||
+                                registerSpruceWebhookMutation.isPending
+                              }
+                              data-testid="button-register-spruce-webhook"
+                            >
+                              {registerSpruceWebhookMutation.isPending
+                                ? "Registering..."
+                                : "Register webhook with Spruce"}
+                            </Button>
+                            <Button
+                              type="button"
+                              variant="outline"
+                              size="sm"
+                              onClick={() => resyncSpruceSecretMutation.mutate()}
+                              disabled={
+                                !messagingSettings?.externalMessagingApiKeySet ||
+                                resyncSpruceSecretMutation.isPending
+                              }
+                              data-testid="button-resync-spruce-secret"
+                            >
+                              {resyncSpruceSecretMutation.isPending
+                                ? "Resyncing..."
+                                : "Resync signing secret from Spruce"}
+                            </Button>
+                          </div>
+                          <p className="text-xs text-muted-foreground">
+                            If inbound texts show "Invalid signature" errors, click Resync to pull
+                            the current signing secret directly from Spruce.
+                          </p>
                           {!messagingSettings?.externalMessagingApiKeySet && (
                             <p className="text-xs text-amber-700">
                               Save your Spruce API key first, then click this button.
