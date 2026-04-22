@@ -1785,6 +1785,7 @@ export class DbStorage implements IStorage {
       allowLink: 'allow_link', allowEmbed: 'allow_embed', allowTablet: 'allow_tablet',
       isPublic: 'is_public', expirationType: 'expiration_type', expirationIntervalDays: 'expiration_interval_days',
       slug: 'slug',
+      ghlWebhookUrl: 'ghl_webhook_url', ghlWebhookEnabled: 'ghl_webhook_enabled',
     };
     for (const [key, col] of Object.entries(fieldMap)) {
       if (key in data) {
