@@ -1175,7 +1175,20 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
       {/* Non-builder tabs */}
       {activeTab === "settings" && (
         <div className="flex-1 overflow-auto p-3 sm:p-6">
-          <FormSettingsPanel form={form} onUpdate={(data) => updateFormMutation.mutate(data)} />
+          <FormSettingsPanel
+            form={form}
+            onUpdate={(data) =>
+              updateFormMutation.mutate(data, {
+                onSuccess: () => toast({ title: "Settings saved" }),
+                onError: (err: any) =>
+                  toast({
+                    title: "Failed to save settings",
+                    description: err?.message ?? "Please try again",
+                    variant: "destructive",
+                  }),
+              })
+            }
+          />
         </div>
       )}
       {activeTab === "submissions" && (
