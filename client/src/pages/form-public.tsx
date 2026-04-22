@@ -154,6 +154,32 @@ export default function FormPublicPage() {
     }
     if (Object.keys(errors).length > 0) {
       setValidationErrors(errors);
+      // Find the first missing field's label so we can call it out by name
+      const firstKey = Object.keys(errors)[0];
+      let firstLabel = "Required field";
+      if (firstKey === "__submitter_name") firstLabel = "Your Full Name";
+      else if (firstKey === "__submitter_email") firstLabel = "Your Email";
+      else {
+        const f = data.fields.find(ff => ff.fieldKey === firstKey);
+        if (f) firstLabel = f.label || f.fieldKey;
+      }
+      // Scroll the first invalid field (or submitter section) into view
+      setTimeout(() => {
+        const el = document.querySelector<HTMLElement>(
+          firstKey.startsWith("__submitter_")
+            ? `[data-testid="input-submitter-${firstKey === "__submitter_name" ? "name" : "email"}"]`
+            : `[data-field-key="${firstKey}"]`
+        );
+        if (el) {
+          el.scrollIntoView({ behavior: "smooth", block: "center" });
+          (el as HTMLInputElement).focus?.();
+        } else {
+          // Fall back to the validation summary at the bottom
+          document.querySelector('[data-testid="form-validation-summary"]')?.scrollIntoView({ behavior: "smooth", block: "center" });
+        }
+      }, 50);
+      const count = Object.keys(errors).length;
+      alert(`Please complete ${count} required field${count === 1 ? "" : "s"} before submitting.\n\nFirst missing: "${firstLabel}"`);
       return;
     }
     let effectiveName = submitterName || null;
@@ -310,9 +336,9 @@ export default function FormPublicPage() {
 
       {/* Validation summary */}
       {Object.keys(validationErrors).length > 0 && (
-        <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/20 mb-4">
+        <div className="flex items-center gap-2 p-3 rounded-md bg-destructive/10 border border-destructive/20 mb-4" data-testid="form-validation-summary">
           <AlertCircle className="h-4 w-4 text-destructive flex-shrink-0" />
-          <p className="text-sm text-destructive">Please complete all required fields before submitting.</p>
+          <p className="text-sm text-destructive">Please complete {Object.keys(validationErrors).length} required field{Object.keys(validationErrors).length === 1 ? "" : "s"} before submitting.</p>
         </div>
       )}
 
@@ -423,7 +449,7 @@ function FieldGrid({ fields, responses, setResponse, validationErrors, className
         const logic = (field as any).conditionalLogicJson;
         if (!isFieldVisible(logic, getAnswerByFieldId)) return null;
         return (
-          <div key={field.id} className={colSpan(field)}>
+          <div key={field.id} className={colSpan(field)} data-field-key={field.fieldKey}>
             <FieldRenderer
               field={field}
               value={responses[field.fieldKey]}
