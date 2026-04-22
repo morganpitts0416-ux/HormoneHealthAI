@@ -126,6 +126,13 @@ export default function FormPublicPage() {
     }
   };
 
+  const getAnswerByFieldId = (id: number) => {
+    if (!data) return undefined;
+    const f = data.fields.find(x => x.id === id);
+    if (!f) return undefined;
+    return responses[f.fieldKey];
+  };
+
   const handleSubmit = () => {
     if (!data) return;
     const errors: Record<string, string> = {};
