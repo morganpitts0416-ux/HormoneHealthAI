@@ -1,0 +1,202 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run services logs read hormonehealthai --region us-central1 --limit 200
+2026-04-22 19:14:22 }
+2026-04-22 19:14:22 7:14:22 PM [express] POST /api/webhooks/messaging/12 401 in 3ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 19:14:27 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 19:14:27 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 19:14:27   sigHeader: 'UFk5NtyJkELliqoennLWvOJdgb1L/hgVt0httCty+Fs=',
+2026-04-22 19:14:27   bodyLen: 1758,
+2026-04-22 19:14:27   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE67UCECUG00","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_2K0U83G2AO800/message/ti_2NE67',
+2026-04-22 19:14:27   expectedHex: 'be5b6ef80ec4d798f91c5d5225b8f0a2ad92d64ef8b375b2322f7d7f424da3f6',
+2026-04-22 19:14:27   expectedB64: 'vltu+A7E15j5HF1SJbjwoq2S1k74s3WyMi99f0JNo/Y=',
+2026-04-22 19:14:27   secretPrefix: '331b6e',
+2026-04-22 19:14:27   allHeaderNames: [
+2026-04-22 19:14:27     'host',
+2026-04-22 19:14:27     'user-agent',
+2026-04-22 19:14:27     'content-length',
+2026-04-22 19:14:27     'content-type',
+2026-04-22 19:14:27     'x-convoy-idempotency-key',
+2026-04-22 19:14:27     'x-spruce-signature',
+2026-04-22 19:14:27     'x-convoy-message-type',
+2026-04-22 19:14:27     'x-cloud-trace-context',
+2026-04-22 19:14:27     'x-forwarded-proto',
+2026-04-22 19:14:27     'traceparent',
+2026-04-22 19:14:27     'x-forwarded-for',
+2026-04-22 19:14:27     'forwarded',
+2026-04-22 19:14:27     'accept-encoding'
+2026-04-22 19:14:27   ]
+2026-04-22 19:14:27 }
+2026-04-22 19:14:27 7:14:27 PM [express] POST /api/webhooks/messaging/12 401 in 5ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 19:14:33 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 19:14:33 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 19:14:33   sigHeader: '/UeCTGDFYlxPt4bSqbBCKPeqEmSX9lyMBhEDdNEeNCg=',
+2026-04-22 19:14:33   bodyLen: 2035,
+2026-04-22 19:14:33   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE6BLIK4UG00","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_1B5RL1PV0K800/message/ti_2NE6B',
+2026-04-22 19:14:33   expectedHex: '596aefe25f79d6a0e14be0111734418ae2d3711c26be03d30023aa0a190c40ed',
+2026-04-22 19:14:33   expectedB64: 'WWrv4l951qDhS+ARFzRBiuLTcRwmvgPTACOqChkMQO0=',
+2026-04-22 19:14:33   secretPrefix: '331b6e',
+2026-04-22 19:14:33   allHeaderNames: [
+2026-04-22 19:14:33     'host',
+2026-04-22 19:14:33     'user-agent',
+2026-04-22 19:14:33     'content-length',
+2026-04-22 19:14:33     'content-type',
+2026-04-22 19:14:33     'x-convoy-idempotency-key',
+2026-04-22 19:14:33     'x-spruce-signature',
+2026-04-22 19:14:33     'x-convoy-message-type',
+2026-04-22 19:14:33     'x-cloud-trace-context',
+2026-04-22 19:14:33     'x-forwarded-proto',
+2026-04-22 19:14:33     'traceparent',
+2026-04-22 19:14:33     'x-forwarded-for',
+2026-04-22 19:14:33     'forwarded',
+2026-04-22 19:14:33     'accept-encoding'
+2026-04-22 19:14:33   ]
+2026-04-22 19:14:33 }
+2026-04-22 19:14:33 7:14:33 PM [express] POST /api/webhooks/messaging/12 401 in 4ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 19:14:37 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 19:14:37 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 19:14:37 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 19:14:37   sigHeader: 'PZhQj1+3TPYNJgcUXdZ4A1SQz24cTLsH7+jHg4Cu4A0=',
+2026-04-22 19:14:37   bodyLen: 1659,
+2026-04-22 19:14:37   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE67435JK000","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_1ON291UNUQG00/message/ti_2NE67',
+2026-04-22 19:14:37   expectedHex: '4e6f4729def9e154c1db2d19a7001fd1745930aaeef90123640dc119051b3275',
+2026-04-22 19:14:37   expectedB64: 'Tm9HKd754VTB2y0ZpwAf0XRZMKru+QEjZA3BGQUbMnU=',
+2026-04-22 19:14:37   secretPrefix: '331b6e',
+2026-04-22 19:14:37   allHeaderNames: [
+2026-04-22 19:14:37     'host',
+2026-04-22 19:14:37     'user-agent',
+2026-04-22 19:14:37     'content-length',
+2026-04-22 19:14:37     'content-type',
+2026-04-22 19:14:37     'x-convoy-idempotency-key',
+2026-04-22 19:14:37     'x-spruce-signature',
+2026-04-22 19:14:37     'x-convoy-message-type',
+2026-04-22 19:14:37     'x-cloud-trace-context',
+2026-04-22 19:14:37     'x-forwarded-proto',
+2026-04-22 19:14:37     'traceparent',
+2026-04-22 19:14:37     'x-forwarded-for',
+2026-04-22 19:14:37     'forwarded',
+2026-04-22 19:14:37     'accept-encoding'
+2026-04-22 19:14:37   ]
+2026-04-22 19:14:37 }
+2026-04-22 19:14:37 7:14:37 PM [express] POST /api/webhooks/messaging/12 401 in 6ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 19:14:37 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 19:14:37   sigHeader: 'Lj0txOgWzoCYCd6dhQzF6O8gwMLOjPRpG0hmvXGDFkQ=',
+2026-04-22 19:14:37   bodyLen: 1082,
+2026-04-22 19:14:37   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversations/t_1ON291UNUQG00","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_1ON291UNUQG00","archived":true,"ass',
+2026-04-22 19:14:37   expectedHex: 'd1fae08791838e6c3ad124b5f57ae00b238d5554df00d6ce32b634233aa7332e',
+2026-04-22 19:14:37   expectedB64: '0frgh5GDjmw60SS19XrgCyONVVTfANbOMrY0IzqnMy4=',
+2026-04-22 19:14:37   secretPrefix: '331b6e',
+2026-04-22 19:14:37   allHeaderNames: [
+2026-04-22 19:14:37     'host',
+2026-04-22 19:14:37     'user-agent',
+2026-04-22 19:14:37     'content-length',
+2026-04-22 19:14:37     'content-type',
+2026-04-22 19:14:37     'x-spruce-signature',
+2026-04-22 19:14:37     'x-convoy-message-type',
+2026-04-22 19:14:37     'x-cloud-trace-context',
+2026-04-22 19:14:37     'x-forwarded-proto',
+2026-04-22 19:14:37     'traceparent',
+2026-04-22 19:14:37     'x-forwarded-for',
+2026-04-22 19:14:37     'forwarded',
+2026-04-22 19:14:37     'accept-encoding'
+2026-04-22 19:14:37   ]
+2026-04-22 19:14:37 }
+2026-04-22 19:14:37 7:14:37 PM [express] POST /api/webhooks/messaging/12 401 in 7ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 19:14:37 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 19:14:37 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 19:14:37 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 19:14:37   sigHeader: 'Pdxg9hnLuTJkhHeB4W10hxrpxOayljxLnrMD/9MVHD4=',
+2026-04-22 19:14:37   bodyLen: 1131,
+2026-04-22 19:14:37   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversations/t_2GTLVT8A9M000","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_2GTLVT8A9M000","archived":false,"as',
+2026-04-22 19:14:37   expectedHex: '8b78c4f456c1aa5bc512e132e6c9e93b2ec9e2890a424488c6527df72c354691',
+2026-04-22 19:14:37   expectedB64: 'i3jE9FbBqlvFEuEy5snpOy7J4okKQkSIxlJ99yw1RpE=',
+2026-04-22 19:14:37   secretPrefix: '331b6e',
+2026-04-22 19:14:37   allHeaderNames: [
+2026-04-22 19:14:37     'host',
+2026-04-22 19:14:37     'user-agent',
+2026-04-22 19:14:37     'content-length',
+2026-04-22 19:14:37     'content-type',
+2026-04-22 19:14:37     'x-spruce-signature',
+2026-04-22 19:14:37     'x-convoy-message-type',
+2026-04-22 19:14:37     'x-cloud-trace-context',
+2026-04-22 19:14:37     'x-forwarded-proto',
+2026-04-22 19:14:37     'traceparent',
+2026-04-22 19:14:37     'x-forwarded-for',
+2026-04-22 19:14:37     'forwarded',
+2026-04-22 19:14:37     'accept-encoding'
+2026-04-22 19:14:37   ]
+2026-04-22 19:14:37 }
+2026-04-22 19:14:37 7:14:37 PM [express] POST /api/webhooks/messaging/12 401 in 4ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 19:14:37 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 19:14:37 7:14:37 PM [express] POST /api/webhooks/messaging/12 401 in 6ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 19:14:37 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 19:14:37   sigHeader: 'voeqrmCE7LpsHcp7LKZm0Ohhe5uVZaAOL5kjkycEVzM=',
+2026-04-22 19:14:37   bodyLen: 1699,
+2026-04-22 19:14:37   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE681IVOBO00","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_2GTLVT8A9M000/message/ti_2NE68',
+2026-04-22 19:14:37   expectedHex: '701332a3fe32590e64f0e82991a15f4043995bdd33ae4e60d26c6b37ba6c49d9',
+2026-04-22 19:14:37   expectedB64: 'cBMyo/4yWQ5k8OgpkaFfQEOZW90zrk5g0mxrN7psSdk=',
+2026-04-22 19:14:37   secretPrefix: '331b6e',
+2026-04-22 19:14:37   allHeaderNames: [
+2026-04-22 19:14:37     'host',
+2026-04-22 19:14:37     'user-agent',
+2026-04-22 19:14:37     'content-length',
+2026-04-22 19:14:37     'content-type',
+2026-04-22 19:14:37     'x-convoy-idempotency-key',
+2026-04-22 19:14:37     'x-spruce-signature',
+2026-04-22 19:14:37     'x-convoy-message-type',
+2026-04-22 19:14:37     'x-cloud-trace-context',
+2026-04-22 19:14:37     'x-forwarded-proto',
+2026-04-22 19:14:37     'traceparent',
+2026-04-22 19:14:37     'x-forwarded-for',
+2026-04-22 19:14:37     'forwarded',
+2026-04-22 19:14:37     'accept-encoding'
+2026-04-22 19:14:37   ]
+2026-04-22 19:14:37 }
+2026-04-22 19:14:37 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 19:14:37   sigHeader: 'wIk++c+R9Ef8wweQU3LcP2chmstJJv0f5p2+m8f1RP8=',
+2026-04-22 19:14:37   bodyLen: 1743,
+2026-04-22 19:14:37   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE681QUPVG02","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_2GTLVT8A9M000/message/ti_2NE68',
+2026-04-22 19:14:37   expectedHex: '920a84215a270bf91ecaea2ee8de390449ef9cf311ccb434e642509fcf96791d',
+2026-04-22 19:14:37   expectedB64: 'kgqEIVonC/keyuou6N45BEnvnPMRzLQ05kJQn8+WeR0=',
+2026-04-22 19:14:37   secretPrefix: '331b6e',
+2026-04-22 19:14:37   allHeaderNames: [
+2026-04-22 19:14:37     'host',
+2026-04-22 19:14:37     'user-agent',
+2026-04-22 19:14:37     'content-length',
+2026-04-22 19:14:37     'content-type',
+2026-04-22 19:14:37     'x-convoy-idempotency-key',
+2026-04-22 19:14:37     'x-spruce-signature',
+2026-04-22 19:14:37     'x-convoy-message-type',
+2026-04-22 19:14:37     'x-cloud-trace-context',
+2026-04-22 19:14:37     'x-forwarded-proto',
+2026-04-22 19:14:37     'traceparent',
+2026-04-22 19:14:37     'x-forwarded-for',
+2026-04-22 19:14:37     'forwarded',
+2026-04-22 19:14:37     'accept-encoding'
+2026-04-22 19:14:37   ]
+2026-04-22 19:14:37 }
+2026-04-22 19:14:37 7:14:37 PM [express] POST /api/webhooks/messaging/12 401 in 4ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 19:14:39 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 19:14:39 [Spruce webhook DEBUG] signature mismatch {
+2026-04-22 19:14:39   sigHeader: 'rBXLgcVFNkNuHzlrE5DmWqGU91OGJUqNwzvbn8tL3eQ=',
+2026-04-22 19:14:39   bodyLen: 1919,
+2026-04-22 19:14:39   bodyPreview: '{"data":{"object":{"apiURL":"https://api.sprucehealth.com/v1/conversationItems/ti_2NE6EGFFAU000","appURL":"https://app.sprucehealth.com/org/entity_0GS68P8405000/thread/t_2K0U83G2AO800/message/ti_2NE6E',
+2026-04-22 19:14:39   expectedHex: '185d0402abe68648b5fe0c8ba399d88adfe7642d94b15edbc722f959e588dfc4',
+2026-04-22 19:14:39   expectedB64: 'GF0EAqvmhki1/gyLo5nYit/nZC2UsV7bxyL5WeWI38Q=',
+2026-04-22 19:14:39   secretPrefix: '331b6e',
+2026-04-22 19:14:39   allHeaderNames: [
+2026-04-22 19:14:39     'host',
+2026-04-22 19:14:39     'user-agent',
+2026-04-22 19:14:39     'content-length',
+2026-04-22 19:14:39     'content-type',
+2026-04-22 19:14:39     'x-convoy-idempotency-key',
+2026-04-22 19:14:39     'x-spruce-signature',
+2026-04-22 19:14:39     'x-convoy-message-type',
+2026-04-22 19:14:39     'x-cloud-trace-context',
+2026-04-22 19:14:39     'x-forwarded-proto',
+2026-04-22 19:14:39     'traceparent',
+2026-04-22 19:14:39     'x-forwarded-for',
+2026-04-22 19:14:39     'forwarded',
+2026-04-22 19:14:39     'accept-encoding'
+2026-04-22 19:14:39   ]
+2026-04-22 19:14:39 }
+2026-04-22 19:14:39 7:14:39 PM [express] POST /api/webhooks/messaging/12 401 in 3ms :: {"ok":false,"error":"Invalid sign…
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
