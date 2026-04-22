@@ -3034,6 +3034,28 @@ Return ONLY this JSON structure:
         ).catch((err) => console.error('[PORTAL] Error sending message email:', err));
       }
 
+      // Also forward to external messaging platform (e.g. Spruce) so patient gets a real SMS
+      if (
+        clinician?.messagingPreference === 'external_api' &&
+        clinician.externalMessagingApiKey &&
+        clinician.externalMessagingProvider
+      ) {
+        forwardMessageToExternalProvider(
+          clinician.externalMessagingProvider as ExternalProvider,
+          clinician.externalMessagingApiKey,
+          {
+            patientName: `${patient.firstName} ${patient.lastName}`,
+            content: content.trim(),
+            channelId: clinician.externalMessagingChannelId || '',
+            patientExternalId: patient.phone || undefined,
+          }
+        ).then((result) => {
+          if (!result.success) {
+            console.error('[Messaging] Outbound forward failed for clinician reply:', result.error);
+          }
+        }).catch((err) => console.error('[Messaging] Outbound forward error:', err));
+      }
+
       res.json(msg);
     } catch (error) {
       res.status(500).json({ message: "Failed to send message" });
@@ -3767,9 +3789,13 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           if (patient && patient.userId !== clinicianId) patient = null;
         }
       }
+      // Fallback: match by phone number from the parsed payload (Spruce sends contact phone)
+      if (!patient && parsed.patientPhone) {
+        patient = await storage.getPatientByPhoneForClinician(parsed.patientPhone, clinicianId);
+      }
 
       if (!patient) {
-        return res.status(404).json({ ok: false, error: "Could not identify patient from webhook payload. Include patient_id or patient_email." });
+        return res.status(404).json({ ok: false, error: "Could not identify patient. Include patient_id, patient_email, or a recognized phone number." });
       }
 
       // Deduplicate — if we already have this external message ID, skip it
@@ -8530,6 +8556,33 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     } catch (err) {
       console.error("[Scheduling] patient appt summary error:", err);
       res.status(500).json({ message: "Failed to load patient appointments" });
+    }
+  });
+
+  // GET /api/patients/:id/upcoming-appointments — all future appointments for a patient
+  app.get("/api/patients/:id/upcoming-appointments", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      if (!patientId) return res.status(400).json({ message: "Invalid patient id" });
+      const clinicId = getEffectiveClinicId(req);
+
+      const patient = await storage.getPatient(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (clinicId && patient.clinicId && patient.clinicId !== clinicId) {
+        return res.status(403).json({ message: "Forbidden" });
+      }
+
+      const all = await storage.getAppointmentsByPatientId(patientId);
+      const now = Date.now();
+      const upcoming = all
+        .filter(a => new Date(a.appointmentStart).getTime() >= now && a.status !== "cancelled")
+        .sort((a, b) => new Date(a.appointmentStart).getTime() - new Date(b.appointmentStart).getTime())
+        .slice(0, 10);
+
+      res.json(upcoming);
+    } catch (err) {
+      console.error("[Scheduling] patient upcoming appts error:", err);
+      res.status(500).json({ message: "Failed to load upcoming appointments" });
     }
   });
 

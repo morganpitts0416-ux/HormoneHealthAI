@@ -1,4 +1,5 @@
 import { useLocation } from "wouter";
+import { useQuery } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
@@ -11,6 +12,7 @@ import {
   CalendarDays,
   Menu,
   LayoutDashboard,
+  Inbox,
 } from "lucide-react";
 
 export function AppHeader() {
@@ -69,10 +71,10 @@ export function AppHeader() {
             />
             <NavButton
               icon={CalendarDays}
-              label="Appointments"
-              onClick={() => setLocation("/appointments")}
-              active={location === "/appointments"}
-              testId="nav-appointments"
+              label="Schedule"
+              onClick={() => setLocation("/scheduling")}
+              active={location === "/scheduling" || location === "/appointments"}
+              testId="nav-scheduling"
             />
             <NavButton
               icon={HelpCircle}
@@ -126,7 +128,7 @@ export function AppHeader() {
                   {(user as any)?.role === "admin" && (
                     <MobileNavButton icon={ShieldCheck} label="Admin" onClick={() => setLocation("/admin")} active={location === "/admin"} />
                   )}
-                  <MobileNavButton icon={CalendarDays} label="Appointments" onClick={() => setLocation("/appointments")} active={location === "/appointments"} />
+                  <MobileNavButton icon={CalendarDays} label="Schedule" onClick={() => setLocation("/scheduling")} active={location === "/scheduling" || location === "/appointments"} />
                   <MobileNavButton icon={HelpCircle} label="Help" onClick={() => setLocation("/help")} active={location === "/help"} />
                   <MobileNavButton icon={CreditCard} label="Billing" onClick={() => setLocation("/billing")} active={location === "/billing"} />
                   <MobileNavButton icon={Settings} label="Account" onClick={() => setLocation("/account")} active={location === "/account"} />

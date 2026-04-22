@@ -736,6 +736,22 @@ export class DbStorage implements IStorage {
     return result[0];
   }
 
+  async getPatientByPhoneForClinician(phone: string, clinicianId: number): Promise<Patient | undefined> {
+    // Normalize: strip non-digits so "+1 (555) 123-4567" matches "5551234567"
+    const digits = (phone || "").replace(/\D/g, "");
+    if (digits.length < 7) return undefined;
+    const last10 = digits.slice(-10);
+    const result = await db
+      .select()
+      .from(schema.patients)
+      .where(and(
+        eq(schema.patients.userId, clinicianId),
+        sql`regexp_replace(coalesce(${schema.patients.phone}, ''), '\\D', '', 'g') LIKE ${'%' + last10}`,
+      ))
+      .limit(1);
+    return result[0];
+  }
+
   async getPortalAccountByEmail(email: string): Promise<PatientPortalAccount | undefined> {
     const normalized = (email || "").trim().toLowerCase();
     const result = await db
