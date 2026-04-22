@@ -3433,6 +3433,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         const webhookUrl = (form as any).ghlWebhookUrl as string;
         setImmediate(async () => {
           try {
+            const fullName = patient ? `${patient.firstName} ${patient.lastName}` : null;
             const payload = {
               event: "form_submission",
               source: "ClinIQ",
@@ -3441,13 +3442,19 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
               form: { id: form.id, name: form.name, slug: (form as any).slug ?? null, version: form.version },
               clinicId: (form as any).clinicId ?? null,
               patientId,
+              // Send BOTH camelCase and snake_case so GoHighLevel auto-maps to a contact
               firstName: patient?.firstName ?? null,
               lastName: patient?.lastName ?? null,
+              fullName,
+              name: fullName,
               email: patient?.email ?? null,
               phone: (patient as any)?.phone ?? null,
               dateOfBirth: (patient as any)?.dateOfBirth ?? null,
               gender: (patient as any)?.gender ?? null,
-              fullName: patient ? `${patient.firstName} ${patient.lastName}` : null,
+              first_name: patient?.firstName ?? null,
+              last_name: patient?.lastName ?? null,
+              full_name: fullName,
+              date_of_birth: (patient as any)?.dateOfBirth ?? null,
               responses,
             };
             const ctrl = new AbortController();
@@ -9873,6 +9880,8 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         const webhookUrl = form.ghlWebhookUrl;
         setImmediate(async () => {
           try {
+            const fullName = [firstName, lastName].filter(Boolean).join(" ") || submitterName || null;
+            const emailVal = email || (submitterEmail ? String(submitterEmail).trim() : null);
             const payload = {
               event: "form_submission",
               source: "ClinIQ",
@@ -9881,13 +9890,21 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               form: { id: form.id, name: form.name, slug: form.slug ?? null, version: form.version },
               clinicId: form.clinicId ?? null,
               patientId: resolvedPatientId ?? null,
-              firstName: firstName ?? null,
-              lastName: lastName ?? null,
-              email: email ?? submitterEmail ?? null,
-              phone: phone ?? null,
-              dateOfBirth: dobRaw ?? null,
-              gender: gender ?? null,
-              fullName: [firstName, lastName].filter(Boolean).join(" ") || submitterName || null,
+              // GHL contact fields — send BOTH camelCase and snake_case so the
+              // GoHighLevel inbound webhook auto-maps to a contact regardless of
+              // how the user's workflow / custom-value mapping is configured.
+              firstName: firstName || null,
+              lastName: lastName || null,
+              fullName,
+              name: fullName,
+              email: emailVal,
+              phone: phone || null,
+              dateOfBirth: dobRaw || null,
+              gender: gender || null,
+              first_name: firstName || null,
+              last_name: lastName || null,
+              full_name: fullName,
+              date_of_birth: dobRaw || null,
               responses,
             };
             const ctrl = new AbortController();
