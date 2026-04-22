@@ -1045,6 +1045,27 @@ export default function Account() {
     },
   });
 
+  const registerSpruceWebhookMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/auth/messaging/register-spruce-webhook", {});
+      const body = await res.json();
+      if (!res.ok) throw new Error(body?.message || "Spruce rejected the request.");
+      return body;
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/messaging-settings"] });
+      toast({
+        title: "Webhook registered with Spruce",
+        description: data?.endpointId
+          ? `Endpoint ID: ${data.endpointId}`
+          : "Spruce will now forward incoming messages to ClinIQ.",
+      });
+    },
+    onError: (e: Error) => {
+      toast({ title: "Could not register webhook", description: e.message, variant: "destructive" });
+    },
+  });
+
   const onSubmit = (data: ProfileForm) => updateMutation.mutate(data);
 
   const onSubmitClinic = () => {
@@ -1635,6 +1656,38 @@ export default function Account() {
                           )}
                         </div>
                       </div>
+
+                      {messagingSettings?.externalMessagingProvider === "spruce" && (
+                        <div className="rounded-md border bg-muted/30 px-3 py-3 space-y-2">
+                          <div>
+                            <p className="text-xs font-semibold text-foreground">One-click Spruce setup</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">
+                              We'll register the webhook above with Spruce automatically using your saved API key.
+                              No terminal commands needed.
+                            </p>
+                          </div>
+                          <Button
+                            type="button"
+                            variant="default"
+                            size="sm"
+                            onClick={() => registerSpruceWebhookMutation.mutate()}
+                            disabled={
+                              !messagingSettings?.externalMessagingApiKeySet ||
+                              registerSpruceWebhookMutation.isPending
+                            }
+                            data-testid="button-register-spruce-webhook"
+                          >
+                            {registerSpruceWebhookMutation.isPending
+                              ? "Registering..."
+                              : "Register webhook with Spruce"}
+                          </Button>
+                          {!messagingSettings?.externalMessagingApiKeySet && (
+                            <p className="text-xs text-amber-700">
+                              Save your Spruce API key first, then click this button.
+                            </p>
+                          )}
+                        </div>
+                      )}
                     </div>
                   </div>
                 )}

@@ -3843,6 +3843,73 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // POST /api/auth/messaging/register-spruce-webhook — auto-register inbound webhook with Spruce
+  app.post("/api/auth/messaging/register-spruce-webhook", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const user = await storage.getUserById(clinicianId);
+      if (!user) return res.status(404).json({ message: "User not found" });
+
+      if (user.externalMessagingProvider !== "spruce") {
+        return res.status(400).json({ message: "Messaging provider must be set to Spruce." });
+      }
+      if (!user.externalMessagingApiKey) {
+        return res.status(400).json({ message: "Save your Spruce API key first." });
+      }
+
+      // Ensure we have a signing secret to share with Spruce
+      let signingSecret = user.externalMessagingWebhookSecret;
+      if (!signingSecret) {
+        signingSecret = generateWebhookSecret();
+        await storage.updateUser(clinicianId, { externalMessagingWebhookSecret: signingSecret });
+      }
+
+      const webhookUrl = `${req.protocol}://${req.get('host')}/api/webhooks/messaging/${clinicianId}`;
+      const clinicName = (user as any).clinicName || "ClinIQ";
+
+      const sprResp = await fetch("https://api.sprucehealth.com/v1/webhooks/endpoints", {
+        method: "POST",
+        headers: {
+          "Authorization": `Bearer ${user.externalMessagingApiKey}`,
+          "Content-Type": "application/json",
+        },
+        body: JSON.stringify({
+          url: webhookUrl,
+          name: `ClinIQ – ${clinicName}`,
+          signingSecret,
+        }),
+      });
+
+      const bodyText = await sprResp.text();
+      let body: any = null;
+      try { body = JSON.parse(bodyText); } catch { /* not JSON */ }
+
+      if (!sprResp.ok) {
+        return res.status(sprResp.status).json({
+          message: body?.message || "Spruce rejected the request.",
+          sprucePayload: body || bodyText,
+        });
+      }
+
+      // If Spruce generated its own signing secret, persist that instead
+      const sprSecret: string | undefined = body?.signingSecrets?.[0]?.value;
+      if (sprSecret && sprSecret !== signingSecret) {
+        await storage.updateUser(clinicianId, { externalMessagingWebhookSecret: sprSecret });
+        signingSecret = sprSecret;
+      }
+
+      res.json({
+        ok: true,
+        endpointId: body?.id,
+        url: body?.url || webhookUrl,
+        webhookSecret: signingSecret,
+      });
+    } catch (error: any) {
+      console.error("Spruce webhook registration failed:", error);
+      res.status(500).json({ message: error?.message || "Failed to register webhook with Spruce." });
+    }
+  });
+
   // ── Staff Management Routes ────────────────────────────────────────────────
 
   // GET /api/staff — list all staff members for this clinician
