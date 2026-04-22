@@ -33,10 +33,14 @@ export interface InboundWebhookPayload {
   provider: ExternalProvider;
   /** Raw body from the external system */
   rawBody: unknown;
+  /** Raw body bytes (required for HMAC verification of Spruce) */
+  rawBodyBuffer?: Buffer;
   /** The clinician's stored webhook secret (for verification) */
   expectedSecret: string;
   /** Header value that carries the signature / secret */
   signatureHeader?: string;
+  /** All request headers (for trying multiple signature schemes) */
+  allHeaders?: Record<string, string | string[] | undefined>;
 }
 
 export interface ParsedInboundMessage {
@@ -50,6 +54,79 @@ export interface ParsedInboundMessage {
   patientPhone?: string;
   /** The Spruce/external inbox/endpoint ID this message belongs to (for inbox filtering) */
   channelId?: string;
+}
+
+// ─── Signature verification helpers ──────────────────────────────────────────
+
+import { createHmac, timingSafeEqual } from 'crypto';
+
+function safeEqHex(a: string, b: string): boolean {
+  try {
+    const ba = Buffer.from(a, 'hex');
+    const bb = Buffer.from(b, 'hex');
+    if (ba.length === 0 || ba.length !== bb.length) return false;
+    return timingSafeEqual(ba, bb);
+  } catch {
+    return false;
+  }
+}
+
+function verifySpruceSignature(
+  secret: string,
+  rawBody: Buffer | undefined,
+  primarySig: string | undefined,
+  allHeaders: Record<string, string | string[] | undefined> | undefined,
+): boolean {
+  if (!secret) return false;
+  // Collect every header that might carry a signature so we don't have to know
+  // exactly which name Spruce uses on this org's plan.
+  const candidates: string[] = [];
+  if (primarySig) candidates.push(primarySig);
+  if (allHeaders) {
+    for (const [k, v] of Object.entries(allHeaders)) {
+      const key = k.toLowerCase();
+      if (
+        key.includes('signature') ||
+        key.includes('s-signature') ||
+        key.includes('spruce') ||
+        key === 'x-webhook-secret' ||
+        key === 'x-signature'
+      ) {
+        if (typeof v === 'string') candidates.push(v);
+        else if (Array.isArray(v)) candidates.push(...v.filter((x): x is string => typeof x === 'string'));
+      }
+    }
+  }
+  if (!candidates.length) return false;
+
+  const bodyBuf = rawBody ?? Buffer.alloc(0);
+  const computedHex = createHmac('sha256', secret).update(bodyBuf).digest('hex');
+
+  for (const raw of candidates) {
+    if (!raw) continue;
+    // 1) Plain shared-secret comparison (legacy)
+    if (raw === secret) return true;
+
+    // 2) Raw HMAC-SHA256 hex of body
+    if (safeEqHex(raw, computedHex)) return true;
+    // Strip a "sha256=" prefix if present
+    if (raw.startsWith('sha256=') && safeEqHex(raw.slice(7), computedHex)) return true;
+
+    // 3) Stripe / Spruce style: "t=<ts>,v1=<hex>" — HMAC over `${t}.${rawBody}`
+    if (raw.includes('t=') && raw.includes('v1=')) {
+      const parts = raw.split(',').map(s => s.trim());
+      const t = parts.find(p => p.startsWith('t='))?.slice(2);
+      const v1List = parts.filter(p => p.startsWith('v1=')).map(p => p.slice(3));
+      if (t && v1List.length) {
+        const signedPayload = Buffer.concat([Buffer.from(`${t}.`), bodyBuf]);
+        const expected = createHmac('sha256', secret).update(signedPayload).digest('hex');
+        for (const v1 of v1List) {
+          if (safeEqHex(v1, expected)) return true;
+        }
+      }
+    }
+  }
+  return false;
 }
 
 // ─── Provider adapters ────────────────────────────────────────────────────────
@@ -97,12 +174,24 @@ function parseSpruceWebhook(
   rawBody: unknown,
   expectedSecret: string,
   signatureHeader?: string,
+  rawBodyBuffer?: Buffer,
+  allHeaders?: Record<string, string | string[] | undefined>,
 ): ParsedInboundMessage | null {
-  // Verify the shared secret. Spruce sends it in X-Spruce-Signature
-  // (or whichever header is set in their integration config). If the clinician
-  // is using just an API token without a webhook signing secret, they can paste
-  // the auto-generated secret into Spruce's webhook config screen.
-  if (signatureHeader && signatureHeader !== expectedSecret) {
+  // Spruce signs webhook payloads with HMAC-SHA256 using the signing secret
+  // we shared at registration time. Try multiple verification schemes so we
+  // remain compatible with whatever signature format the API uses.
+  const verified = verifySpruceSignature(
+    expectedSecret,
+    rawBodyBuffer,
+    signatureHeader,
+    allHeaders,
+  );
+  if (!verified) {
+    console.warn('[Spruce webhook] signature verification failed', {
+      headersSeen: allHeaders ? Object.keys(allHeaders) : [],
+      sigHeaderValue: signatureHeader?.slice(0, 80),
+      bodyLen: rawBodyBuffer?.length,
+    });
     return null;
   }
 
@@ -241,7 +330,13 @@ export async function forwardMessageToExternalProvider(
 export function parseInboundWebhook(payload: InboundWebhookPayload): ParsedInboundMessage | null {
   switch (payload.provider) {
     case 'spruce':
-      return parseSpruceWebhook(payload.rawBody, payload.expectedSecret, payload.signatureHeader);
+      return parseSpruceWebhook(
+        payload.rawBody,
+        payload.expectedSecret,
+        payload.signatureHeader,
+        payload.rawBodyBuffer,
+        payload.allHeaders,
+      );
     case 'klara':
       return parseKlaraWebhook(payload.rawBody, payload.expectedSecret);
     case 'custom':

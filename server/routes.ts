@@ -3758,8 +3758,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const parsed = parseInboundWebhook({
         provider: (clinician.externalMessagingProvider || 'custom') as ExternalProvider,
         rawBody: req.body,
+        rawBodyBuffer: (req as any).rawBody,
         expectedSecret: clinician.externalMessagingWebhookSecret,
         signatureHeader,
+        allHeaders: req.headers,
       });
 
       if (!parsed) {
