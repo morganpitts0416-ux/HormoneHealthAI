@@ -1,0 +1,181 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run services logs read hormonehealthai --region us-central1 --limit 200 | grep -A 14 "Spruce webhook"
+2026-04-22 18:32:58 [Spruce webhook] signature verification failed {
+2026-04-22 18:32:58   headersSeen: [
+2026-04-22 18:32:58     'host',
+2026-04-22 18:32:58     'user-agent',
+2026-04-22 18:32:58     'content-length',
+2026-04-22 18:32:58     'content-type',
+2026-04-22 18:32:58     'x-convoy-idempotency-key',
+2026-04-22 18:32:58     'x-spruce-signature',
+2026-04-22 18:32:58     'x-convoy-message-type',
+2026-04-22 18:32:58     'x-cloud-trace-context',
+2026-04-22 18:32:58     'x-forwarded-proto',
+2026-04-22 18:32:58     'traceparent',
+2026-04-22 18:32:58     'x-forwarded-for',
+2026-04-22 18:32:58     'forwarded',
+2026-04-22 18:32:58     'accept-encoding'
+--
+2026-04-22 18:32:58 [Spruce webhook] signature verification failed {
+2026-04-22 18:32:58   headersSeen: [
+2026-04-22 18:32:58     'host',
+2026-04-22 18:32:58     'user-agent',
+2026-04-22 18:32:58     'content-length',
+2026-04-22 18:32:58     'content-type',
+2026-04-22 18:32:58     'x-convoy-idempotency-key',
+2026-04-22 18:32:58     'x-spruce-signature',
+2026-04-22 18:32:58     'x-convoy-message-type',
+2026-04-22 18:32:58     'x-cloud-trace-context',
+2026-04-22 18:32:58     'x-forwarded-proto',
+2026-04-22 18:32:58     'traceparent',
+2026-04-22 18:32:58     'x-forwarded-for',
+2026-04-22 18:32:58     'forwarded',
+2026-04-22 18:32:58     'accept-encoding'
+--
+2026-04-22 18:32:58 [Spruce webhook] signature verification failed {
+2026-04-22 18:32:58   headersSeen: [
+2026-04-22 18:32:58     'host',
+2026-04-22 18:32:58     'user-agent',
+2026-04-22 18:32:58     'content-length',
+2026-04-22 18:32:58     'content-type',
+2026-04-22 18:32:58     'x-spruce-signature',
+2026-04-22 18:32:58     'x-convoy-message-type',
+2026-04-22 18:32:58     'x-cloud-trace-context',
+2026-04-22 18:32:58     'x-forwarded-proto',
+2026-04-22 18:32:58     'traceparent',
+2026-04-22 18:32:58     'x-forwarded-for',
+2026-04-22 18:32:58     'forwarded',
+2026-04-22 18:32:58     'accept-encoding'
+2026-04-22 18:32:58   ],
+--
+2026-04-22 18:33:02 [Spruce webhook] signature verification failed {
+2026-04-22 18:33:02   headersSeen: [
+2026-04-22 18:33:02     'host',
+2026-04-22 18:33:02     'user-agent',
+2026-04-22 18:33:02     'content-length',
+2026-04-22 18:33:02     'content-type',
+2026-04-22 18:33:02     'x-spruce-signature',
+2026-04-22 18:33:02     'x-convoy-message-type',
+2026-04-22 18:33:02     'x-cloud-trace-context',
+2026-04-22 18:33:02     'x-forwarded-proto',
+2026-04-22 18:33:02     'traceparent',
+2026-04-22 18:33:02     'x-forwarded-for',
+2026-04-22 18:33:02     'forwarded',
+2026-04-22 18:33:02     'accept-encoding'
+2026-04-22 18:33:02   ],
+--
+2026-04-22 18:33:02 [Spruce webhook] signature verification failed {
+2026-04-22 18:33:02   headersSeen: [
+2026-04-22 18:33:02     'host',
+2026-04-22 18:33:02     'user-agent',
+2026-04-22 18:33:02     'content-length',
+2026-04-22 18:33:02     'content-type',
+2026-04-22 18:33:02     'x-convoy-idempotency-key',
+2026-04-22 18:33:02     'x-spruce-signature',
+2026-04-22 18:33:02     'x-convoy-message-type',
+2026-04-22 18:33:02     'x-cloud-trace-context',
+2026-04-22 18:33:02     'x-forwarded-proto',
+2026-04-22 18:33:02     'traceparent',
+2026-04-22 18:33:02     'x-forwarded-for',
+2026-04-22 18:33:02     'forwarded',
+2026-04-22 18:33:02     'accept-encoding'
+--
+2026-04-22 18:33:02 [Spruce webhook] signature verification failed {
+2026-04-22 18:33:02   headersSeen: [
+2026-04-22 18:33:02     'host',
+2026-04-22 18:33:02     'user-agent',
+2026-04-22 18:33:02     'content-length',
+2026-04-22 18:33:02     'content-type',
+2026-04-22 18:33:02     'x-convoy-idempotency-key',
+2026-04-22 18:33:02     'x-spruce-signature',
+2026-04-22 18:33:02     'x-convoy-message-type',
+2026-04-22 18:33:02     'x-cloud-trace-context',
+2026-04-22 18:33:02     'x-forwarded-proto',
+2026-04-22 18:33:02     'traceparent',
+2026-04-22 18:33:02     'x-forwarded-for',
+2026-04-22 18:33:02     'forwarded',
+2026-04-22 18:33:02     'accept-encoding'
+--
+2026-04-22 18:33:04 [Spruce webhook] signature verification failed {
+2026-04-22 18:33:04   headersSeen: [
+2026-04-22 18:33:04     'host',
+2026-04-22 18:33:04     'user-agent',
+2026-04-22 18:33:04     'content-length',
+2026-04-22 18:33:04     'content-type',
+2026-04-22 18:33:04     'x-convoy-idempotency-key',
+2026-04-22 18:33:04     'x-spruce-signature',
+2026-04-22 18:33:04     'x-convoy-message-type',
+2026-04-22 18:33:04     'x-cloud-trace-context',
+2026-04-22 18:33:04     'x-forwarded-proto',
+2026-04-22 18:33:04     'traceparent',
+2026-04-22 18:33:04     'x-forwarded-for',
+2026-04-22 18:33:04     'forwarded',
+2026-04-22 18:33:04     'accept-encoding'
+--
+2026-04-22 18:33:04 [Spruce webhook] signature verification failed {
+2026-04-22 18:33:04   headersSeen: [
+2026-04-22 18:33:04     'host',
+2026-04-22 18:33:04     'user-agent',
+2026-04-22 18:33:04     'content-length',
+2026-04-22 18:33:04     'content-type',
+2026-04-22 18:33:04     'x-spruce-signature',
+2026-04-22 18:33:04     'x-convoy-message-type',
+2026-04-22 18:33:04     'x-cloud-trace-context',
+2026-04-22 18:33:04     'x-forwarded-proto',
+2026-04-22 18:33:04     'traceparent',
+2026-04-22 18:33:04     'x-forwarded-for',
+2026-04-22 18:33:04     'forwarded',
+2026-04-22 18:33:04     'accept-encoding'
+2026-04-22 18:33:04   ],
+--
+2026-04-22 18:33:04 [Spruce webhook] signature verification failed {
+2026-04-22 18:33:04   headersSeen: [
+2026-04-22 18:33:04     'host',
+2026-04-22 18:33:04     'user-agent',
+2026-04-22 18:33:04     'content-length',
+2026-04-22 18:33:04     'content-type',
+2026-04-22 18:33:04     'x-spruce-signature',
+2026-04-22 18:33:04     'x-convoy-message-type',
+2026-04-22 18:33:04     'x-cloud-trace-context',
+2026-04-22 18:33:04     'x-forwarded-proto',
+2026-04-22 18:33:04     'traceparent',
+2026-04-22 18:33:04     'x-forwarded-for',
+2026-04-22 18:33:04     'forwarded',
+2026-04-22 18:33:04     'accept-encoding'
+2026-04-22 18:33:04   ],
+--
+2026-04-22 18:33:04 [Spruce webhook] signature verification failed {
+2026-04-22 18:33:04   headersSeen: [
+2026-04-22 18:33:04     'host',
+2026-04-22 18:33:04     'user-agent',
+2026-04-22 18:33:04     'content-length',
+2026-04-22 18:33:04     'content-type',
+2026-04-22 18:33:04     'x-convoy-idempotency-key',
+2026-04-22 18:33:04     'x-spruce-signature',
+2026-04-22 18:33:04     'x-convoy-message-type',
+2026-04-22 18:33:04     'x-cloud-trace-context',
+2026-04-22 18:33:04     'x-forwarded-proto',
+2026-04-22 18:33:04     'traceparent',
+2026-04-22 18:33:04     'x-forwarded-for',
+2026-04-22 18:33:04     'forwarded',
+2026-04-22 18:33:04     'accept-encoding'
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ gcloud run services logs read hormonehealthai --region us-central1 --limit 200 | grep "messaging/12"
+2026-04-22 18:33:04 6:33:04 PM [express] POST /api/webhooks/messaging/12 401 in 8ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:04 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:04 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:04 6:33:04 PM [express] POST /api/webhooks/messaging/12 401 in 7ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:04 6:33:04 PM [express] POST /api/webhooks/messaging/12 401 in 9ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:15 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:15 6:33:15 PM [express] POST /api/webhooks/messaging/12 401 in 6ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:18 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:18 6:33:18 PM [express] POST /api/webhooks/messaging/12 401 in 8ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:23 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:23 6:33:23 PM [express] POST /api/webhooks/messaging/12 401 in 8ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:29 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:29 6:33:29 PM [express] POST /api/webhooks/messaging/12 401 in 7ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:34 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:34 6:33:34 PM [express] POST /api/webhooks/messaging/12 401 in 6ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:44 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:44 6:33:44 PM [express] POST /api/webhooks/messaging/12 401 in 8ms :: {"ok":false,"error":"Invalid sign…
+2026-04-22 18:33:44 POST 401 https://app.cliniqapp.ai/api/webhooks/messaging/12
+2026-04-22 18:33:44 6:33:44 PM [express] POST /api/webhooks/messaging/12 401 in 6ms :: {"ok":false,"error":"Invalid sign…
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
