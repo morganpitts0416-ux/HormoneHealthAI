@@ -3873,9 +3873,16 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const candidatePaths = [
         "/v1/endpoints",
         "/v1/organization/endpoints",
+        "/v1/organizations/me/endpoints",
+        "/v1/conversation_endpoints",
+        "/v1/communication_endpoints",
+        "/v1/phone_numbers",
         "/v1/inboxes",
+        "/v1/organizations",
+        "/v1/organization",
+        "/v1/me",
       ];
-      let lastErr = "";
+      const attempts: Array<{ path: string; status: number | string; preview?: string }> = [];
       for (const path of candidatePaths) {
         try {
           const r = await fetch(`https://api.sprucehealth.com${path}`, {
@@ -3884,24 +3891,42 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
               "Content-Type": "application/json",
             },
           });
-          if (!r.ok) {
-            lastErr = `${path} → HTTP ${r.status}`;
-            continue;
-          }
-          const body: any = await r.json();
+          const text = await r.text();
+          attempts.push({ path, status: r.status, preview: text.slice(0, 200) });
+          if (!r.ok) continue;
+          let body: any = null;
+          try { body = JSON.parse(text); } catch { continue; }
+          // Try a wide variety of shapes the inbox/endpoint list might take
           const list: any[] =
-            body?.endpoints || body?.inboxes || body?.data || (Array.isArray(body) ? body : []);
-          const inboxes = list.map((e: any) => ({
-            id: String(e.id ?? e.endpoint_id ?? ""),
-            label: String(e.name ?? e.display_name ?? e.label ?? e.phone ?? e.id ?? "Inbox"),
-            phone: e.phone ?? e.phone_number ?? e.number ?? null,
-          })).filter(x => x.id);
-          return res.json({ ok: true, inboxes, source: path });
+            body?.endpoints ||
+            body?.inboxes ||
+            body?.phone_numbers ||
+            body?.conversation_endpoints ||
+            body?.communication_endpoints ||
+            body?.data ||
+            body?.organization?.endpoints ||
+            body?.organizations?.[0]?.endpoints ||
+            (Array.isArray(body) ? body : []);
+          const inboxes = list
+            .map((e: any) => ({
+              id: String(e.id ?? e.endpoint_id ?? ""),
+              label: String(
+                e.name ?? e.display_name ?? e.label ?? e.phone ?? e.phone_number ?? e.number ?? e.id ?? "Inbox",
+              ),
+              phone: e.phone ?? e.phone_number ?? e.number ?? null,
+            }))
+            .filter((x) => x.id);
+          if (inboxes.length > 0) {
+            return res.json({ ok: true, inboxes, source: path });
+          }
         } catch (e: any) {
-          lastErr = `${path} → ${e?.message || e}`;
+          attempts.push({ path, status: "fetch-error", preview: e?.message || String(e) });
         }
       }
-      res.status(502).json({ message: `Could not list Spruce inboxes. ${lastErr}` });
+      res.status(502).json({
+        message: "Could not list Spruce inboxes from any known API path. Paste the inbox ID manually below, or share these results with support.",
+        attempts,
+      });
     } catch (error: any) {
       res.status(500).json({ message: error?.message || "Failed to list Spruce inboxes." });
     }
