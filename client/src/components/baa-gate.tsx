@@ -1,4 +1,4 @@
-import { useState, useRef } from "react";
+import { useState, useRef, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -122,6 +122,26 @@ export function BaaGate({ children }: { children: React.ReactNode }) {
       setHasScrolled(true);
     }
   }
+
+  // If the agreement fits without scrolling (tall screens), or once it renders,
+  // auto-mark as scrolled so the Sign button isn't permanently disabled.
+  useEffect(() => {
+    if (baaStatus?.signed || isLoading) return;
+    const check = () => {
+      const el = scrollRef.current;
+      if (!el) return;
+      if (el.scrollHeight <= el.clientHeight + 40) {
+        setHasScrolled(true);
+      }
+    };
+    check();
+    const t = setTimeout(check, 150);
+    window.addEventListener("resize", check);
+    return () => {
+      clearTimeout(t);
+      window.removeEventListener("resize", check);
+    };
+  }, [baaStatus?.signed, isLoading]);
 
   function handleSign(e: React.FormEvent) {
     e.preventDefault();
