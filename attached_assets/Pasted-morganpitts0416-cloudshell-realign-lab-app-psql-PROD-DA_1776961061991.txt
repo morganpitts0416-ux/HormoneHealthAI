@@ -1,0 +1,140 @@
+morganpitts0416@cloudshell:~ (realign-lab-app)$ psql "$PROD_DATABASE_URL" -f ~/HormoneHealthAI/server/prod-migrate.sql
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:8: NOTICE:  column "npi" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:9: NOTICE:  column "phone" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:10: NOTICE:  column "address" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:11: NOTICE:  column "notes" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:12: NOTICE:  column "stripe_customer_id" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:13: NOTICE:  column "stripe_subscription_id" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:14: NOTICE:  column "stripe_current_period_end" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:15: NOTICE:  column "stripe_cancel_at_period_end" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:16: NOTICE:  column "free_account" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:17: NOTICE:  column "password_reset_token" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:18: NOTICE:  column "password_reset_expires" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:19: NOTICE:  column "login_attempts" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:20: NOTICE:  column "locked_until" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:21: NOTICE:  column "messaging_preference" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:22: NOTICE:  column "messaging_phone" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:23: NOTICE:  column "external_messaging_provider" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:24: NOTICE:  column "external_messaging_api_key" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:25: NOTICE:  column "external_messaging_channel_id" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:26: NOTICE:  column "external_messaging_webhook_secret" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:27: NOTICE:  column "default_clinic_id" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:28: NOTICE:  column "user_type" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:29: NOTICE:  column "clinic_logo" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:30: NOTICE:  column "signature_image" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:31: NOTICE:  column "updated_at" of relation "users" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:34: NOTICE:  column "login_attempts" of relation "clinician_staff" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:35: NOTICE:  column "locked_until" of relation "clinician_staff" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:36: NOTICE:  column "password_reset_token" of relation "clinician_staff" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:37: NOTICE:  column "password_reset_expires" of relation "clinician_staff" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:40: NOTICE:  column "clinic_id" of relation "patients" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:41: NOTICE:  column "primary_provider_id" of relation "patients" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:44: NOTICE:  column "diarized_transcript" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:45: NOTICE:  column "clinical_extraction" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:46: NOTICE:  column "evidence_suggestions" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:47: NOTICE:  column "pattern_match" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:48: NOTICE:  column "signed_at" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:49: NOTICE:  column "signed_by" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:50: NOTICE:  column "is_amended" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:51: NOTICE:  column "amended_at" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:52: NOTICE:  column "encounter_versions" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:53: NOTICE:  column "clinic_id" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:54: NOTICE:  column "provider_id" of relation "clinical_encounters" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:66: NOTICE:  relation "baa_signatures" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:80: NOTICE:  relation "patient_portal_accounts" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:93: NOTICE:  relation "published_protocols" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:104: NOTICE:  relation "portal_messages" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:113: NOTICE:  relation "saved_recipes" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:124: NOTICE:  relation "supplement_orders" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:133: NOTICE:  relation "clinician_supplement_settings" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:149: NOTICE:  relation "clinician_supplements" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:164: NOTICE:  relation "clinician_supplement_rules" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:179: NOTICE:  relation "clinician_lab_preferences" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:210: NOTICE:  relation "clinical_encounters" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:231: NOTICE:  relation "appointments" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:247: NOTICE:  relation "patient_charts" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:255: NOTICE:  relation "medication_dictionaries" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:269: NOTICE:  relation "medication_entries" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:287: NOTICE:  relation "clinics" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:296: NOTICE:  relation "clinic_memberships" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:299: NOTICE:  column "ghl_webhook_url" of relation "intake_forms" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:300: NOTICE:  column "ghl_webhook_enabled" of relation "intake_forms" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:303: NOTICE:  column "clinic_id" of relation "appointments" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:304: NOTICE:  column "provider_id" of relation "appointments" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:305: NOTICE:  column "appointment_type_id" of relation "appointments" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:306: NOTICE:  column "source" of relation "appointments" already exists, skipping
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:307: NOTICE:  column "reminder_sent_at" of relation "appointments" already exists, skipping
+ALTER TABLE
+ALTER TABLE
+ALTER TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:322: NOTICE:  relation "appointment_types" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:336: NOTICE:  relation "provider_availability" already exists, skipping
+CREATE TABLE
+psql:/home/morganpitts0416/HormoneHealthAI/server/prod-migrate.sql:350: NOTICE:  relation "calendar_blocks" already exists, skipping
+CREATE TABLE
+morganpitts0416@cloudshell:~ (realign-lab-app)$ 
