@@ -42,6 +42,8 @@ import { RedFlagAlert } from "@/components/red-flag-alert";
 import { SoapNoteViewer } from "@/components/soap-note-viewer";
 import { ManualSoapBuilder } from "@/components/manual-soap-builder";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
+import { VitalsDialog } from "@/components/vitals-dialog";
+import { PreventCalculatorDialog } from "@/components/prevent-calculator-dialog";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -1108,6 +1110,8 @@ export default function PatientProfiles() {
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAppointmentDialog, setShowAppointmentDialog] = useState(false);
+  const [showVitalsDialog, setShowVitalsDialog] = useState(false);
+  const [showPreventDialog, setShowPreventDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteEmailSent, setInviteEmailSent] = useState<boolean | null>(null);
@@ -2047,6 +2051,28 @@ export default function PatientProfiles() {
                   >
                     <CalendarDays className="h-3 w-3" />
                     Book Appointment
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowVitalsDialog(true)}
+                    data-testid="button-vitals"
+                    className="text-xs gap-1.5"
+                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                  >
+                    <Heart className="h-3 w-3" />
+                    Vitals
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowPreventDialog(true)}
+                    data-testid="button-prevent-calc"
+                    className="text-xs gap-1.5"
+                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                  >
+                    <Activity className="h-3 w-3" />
+                    PREVENT Calc
                   </Button>
                   <Button
                     variant="outline"
@@ -3176,6 +3202,23 @@ export default function PatientProfiles() {
         open={showAppointmentDialog}
         onOpenChange={setShowAppointmentDialog}
         defaultPatientId={selectedPatient?.id ?? null}
+      />
+
+      {/* Vitals Dialog */}
+      {selectedPatient && (
+        <VitalsDialog
+          open={showVitalsDialog}
+          onOpenChange={setShowVitalsDialog}
+          patientId={selectedPatient.id}
+          patientName={`${selectedPatient.firstName ?? ''} ${selectedPatient.lastName ?? ''}`.trim()}
+        />
+      )}
+
+      {/* PREVENT Calculator Dialog */}
+      <PreventCalculatorDialog
+        open={showPreventDialog}
+        onOpenChange={setShowPreventDialog}
+        patient={selectedPatient}
       />
 
       {/* Invite to Portal Modal */}
