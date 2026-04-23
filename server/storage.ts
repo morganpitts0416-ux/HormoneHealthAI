@@ -241,6 +241,11 @@ export interface IStorage {
   getPatientChart(patientId: number, clinicianId: number): Promise<schema.PatientChart | null>;
   upsertPatientChart(patientId: number, clinicianId: number, data: Partial<Omit<schema.PatientChart, 'id' | 'patientId' | 'clinicianId' | 'updatedAt'>>): Promise<schema.PatientChart>;
 
+  // Patient Vitals
+  getPatientVitals(patientId: number, clinicianId: number): Promise<schema.PatientVital[]>;
+  createPatientVital(data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null }): Promise<schema.PatientVital>;
+  deletePatientVital(id: number, clinicianId: number): Promise<boolean>;
+
   // Medication Dictionary
   getMedicationDictionaries(clinicianId: number): Promise<schema.MedicationDictionary[]>;
   createMedicationDictionary(data: schema.InsertMedicationDictionary): Promise<schema.MedicationDictionary>;
@@ -1591,6 +1596,51 @@ export class DbStorage implements IStorage {
         .returning();
       return created;
     }
+  }
+
+  // ── Patient Vitals ───────────────────────────────────────────────────────────
+  async getPatientVitals(patientId: number, clinicianId: number): Promise<schema.PatientVital[]> {
+    return db
+      .select()
+      .from(schema.patientVitals)
+      .where(and(
+        eq(schema.patientVitals.patientId, patientId),
+        eq(schema.patientVitals.clinicianId, clinicianId),
+      ))
+      .orderBy(desc(schema.patientVitals.recordedAt));
+  }
+
+  async createPatientVital(
+    data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null },
+  ): Promise<schema.PatientVital> {
+    const recordedAt = data.recordedAt ? new Date(data.recordedAt as any) : new Date();
+    const [row] = await db
+      .insert(schema.patientVitals)
+      .values({
+        patientId: data.patientId,
+        clinicianId: data.clinicianId,
+        recordedAt,
+        systolicBp: data.systolicBp ?? null,
+        diastolicBp: data.diastolicBp ?? null,
+        heartRate: data.heartRate ?? null,
+        weightLbs: data.weightLbs ?? null,
+        heightInches: data.heightInches ?? null,
+        bmi: data.bmi ?? null,
+        notes: data.notes ?? null,
+      })
+      .returning();
+    return row;
+  }
+
+  async deletePatientVital(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db
+      .delete(schema.patientVitals)
+      .where(and(
+        eq(schema.patientVitals.id, id),
+        eq(schema.patientVitals.clinicianId, clinicianId),
+      ))
+      .returning();
+    return result.length > 0;
   }
 
   // ── Medication Dictionary ────────────────────────────────────────────────────

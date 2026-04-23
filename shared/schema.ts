@@ -1122,6 +1122,29 @@ export type InsertPatientChart = z.infer<typeof insertPatientChartSchema>;
 export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 export type Appointment = typeof appointments.$inferSelect;
 
+// ─── Patient Vitals (BP, HR, Weight, Height, BMI) ─────────────────────────
+export const patientVitals = pgTable("patient_vitals", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  recordedAt: timestamp("recorded_at").defaultNow().notNull(),
+  systolicBp: integer("systolic_bp"),
+  diastolicBp: integer("diastolic_bp"),
+  heartRate: integer("heart_rate"),
+  weightLbs: real("weight_lbs"),
+  heightInches: real("height_inches"),
+  bmi: real("bmi"),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type PatientVital = typeof patientVitals.$inferSelect;
+export const insertPatientVitalSchema = createInsertSchema(patientVitals).omit({
+  id: true, createdAt: true, recordedAt: true, bmi: true, clinicianId: true, patientId: true,
+}).extend({
+  recordedAt: z.union([z.string(), z.date()]).optional(),
+});
+export type InsertPatientVital = z.infer<typeof insertPatientVitalSchema>;
+
 // ─── Medication Dictionary ─────────────────────────────────────────────────
 export const medicationDictionaries = pgTable("medication_dictionaries", {
   id: serial("id").primaryKey(),

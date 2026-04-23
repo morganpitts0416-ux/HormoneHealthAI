@@ -348,3 +348,19 @@ CREATE TABLE IF NOT EXISTS calendar_blocks (
   created_at TIMESTAMP DEFAULT NOW() NOT NULL,
   updated_at TIMESTAMP DEFAULT NOW() NOT NULL
 );
+
+-- ── patient_vitals ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS patient_vitals (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  clinician_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  recorded_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  systolic_bp INTEGER,
+  diastolic_bp INTEGER,
+  heart_rate INTEGER,
+  weight_lbs REAL,
+  height_inches REAL,
+  bmi REAL,
+  notes TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

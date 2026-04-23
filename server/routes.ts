@@ -7,7 +7,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema } from "@shared/schema";
 import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -9118,6 +9118,131 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     } catch (err: any) {
       console.error("[Reminders] sweep error:", err);
       res.status(500).json({ message: err.message || "Sweep failed" });
+    }
+  });
+
+  // ── Patient Vitals ─────────────────────────────────────────────────────────
+  function computeBmi(weightLbs?: number | null, heightInches?: number | null): number | null {
+    if (!weightLbs || !heightInches || heightInches <= 0) return null;
+    const bmi = (weightLbs / (heightInches * heightInches)) * 703;
+    return Math.round(bmi * 10) / 10;
+  }
+
+  // GET /api/patients/:id/vitals — list vitals for a patient
+  app.get("/api/patients/:id/vitals", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const vitals = await storage.getPatientVitals(patientId, clinicianId);
+      res.json(vitals);
+    } catch (err: any) {
+      console.error("[Vitals] list error:", err);
+      res.status(500).json({ message: err.message || "Failed to load vitals" });
+    }
+  });
+
+  // POST /api/patients/:id/vitals — record a new vital signs entry
+  app.post("/api/patients/:id/vitals", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      const parsed = insertPatientVitalSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid vitals data", errors: parsed.error.errors });
+      }
+      const data = parsed.data;
+      const bmi = computeBmi(data.weightLbs ?? null, data.heightInches ?? null);
+      const vital = await storage.createPatientVital({
+        patientId,
+        clinicianId,
+        ...data,
+        bmi,
+      });
+      res.status(201).json(vital);
+    } catch (err: any) {
+      console.error("[Vitals] create error:", err);
+      res.status(500).json({ message: err.message || "Failed to save vitals" });
+    }
+  });
+
+  // DELETE /api/vitals/:id — delete a vitals entry
+  app.delete("/api/vitals/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      const ok = await storage.deletePatientVital(id, clinicianId);
+      if (!ok) return res.status(404).json({ message: "Vital not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[Vitals] delete error:", err);
+      res.status(500).json({ message: err.message || "Failed to delete vitals" });
+    }
+  });
+
+  // POST /api/prevent-quick-calc — run the AHA PREVENT calculator without saving labs
+  app.post("/api/prevent-quick-calc", requireAuth, async (req, res) => {
+    try {
+      const inputSchema = z.object({
+        age: z.number().min(30).max(79),
+        sex: z.enum(["male", "female"]),
+        systolicBP: z.number().min(70).max(250),
+        totalCholesterol: z.number().min(50).max(500),
+        hdl: z.number().min(10).max(200),
+        ldl: z.number().min(10).max(400).optional(),
+        egfr: z.number().min(15).max(150),
+        bmi: z.number().min(15).max(60),
+        diabetic: z.boolean().default(false),
+        smoker: z.boolean().default(false),
+        onBPMeds: z.boolean().default(false),
+        onStatins: z.boolean().default(false),
+        apoB: z.number().optional(),
+        lpa: z.number().optional(),
+      });
+      const parsed = inputSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid inputs", errors: parsed.error.errors });
+      }
+      const i = parsed.data;
+      const labs: any = {
+        totalCholesterol: i.totalCholesterol,
+        hdl: i.hdl,
+        ldl: i.ldl,
+        egfr: i.egfr,
+        demographics: {
+          age: i.age,
+          sex: i.sex,
+          systolicBP: i.systolicBP,
+          onBPMeds: i.onBPMeds,
+          diabetic: i.diabetic,
+          smoker: i.smoker,
+          familyHistory: false,
+          bmi: i.bmi,
+          onStatins: i.onStatins,
+          snoring: false,
+          tiredness: false,
+          observed: false,
+          highBP: false,
+          neckOver40cm: false,
+          bmiOver35: false,
+        },
+      };
+      const result = PREVENTCalculator.calculateRisk(labs);
+      if (!result) return res.status(400).json({ message: "Could not calculate risk with provided inputs" });
+      let adjusted = null;
+      if (i.apoB !== undefined || i.lpa !== undefined) {
+        adjusted = PREVENTCalculator.calculateAdjustedRisk(result.tenYearASCVD, i.apoB, i.lpa);
+      }
+      res.json({ result, adjusted });
+    } catch (err: any) {
+      console.error("[PREVENT Quick Calc] error:", err);
+      res.status(500).json({ message: err.message || "Calculation failed" });
     }
   });
 
