@@ -246,6 +246,19 @@ export interface IStorage {
   createPatientVital(data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null }): Promise<schema.PatientVital>;
   deletePatientVital(id: number, clinicianId: number): Promise<boolean>;
 
+  // Note Templates
+  getNoteTemplates(clinicId: number, providerId: number, noteType?: string): Promise<schema.NoteTemplate[]>;
+  getNoteTemplate(id: number, clinicId: number): Promise<schema.NoteTemplate | null>;
+  createNoteTemplate(data: schema.InsertNoteTemplate): Promise<schema.NoteTemplate>;
+  updateNoteTemplate(id: number, clinicId: number, data: Partial<schema.InsertNoteTemplate>): Promise<schema.NoteTemplate | null>;
+  deleteNoteTemplate(id: number, clinicId: number, providerId: number): Promise<boolean>;
+
+  // Note Phrases
+  getNotePhrases(clinicId: number, providerId: number): Promise<schema.NotePhrase[]>;
+  createNotePhrase(data: schema.InsertNotePhrase): Promise<schema.NotePhrase>;
+  updateNotePhrase(id: number, clinicId: number, data: Partial<schema.InsertNotePhrase>): Promise<schema.NotePhrase | null>;
+  deleteNotePhrase(id: number, clinicId: number, providerId: number): Promise<boolean>;
+
   // Medication Dictionary
   getMedicationDictionaries(clinicianId: number): Promise<schema.MedicationDictionary[]>;
   createMedicationDictionary(data: schema.InsertMedicationDictionary): Promise<schema.MedicationDictionary>;
@@ -1639,6 +1652,73 @@ export class DbStorage implements IStorage {
         eq(schema.patientVitals.id, id),
         eq(schema.patientVitals.clinicianId, clinicianId),
       ))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ── Note Templates ───────────────────────────────────────────────────────────
+  async getNoteTemplates(clinicId: number, providerId: number, noteType?: string): Promise<schema.NoteTemplate[]> {
+    const conds: any[] = [
+      eq(schema.noteTemplates.clinicId, clinicId),
+      or(
+        eq(schema.noteTemplates.isShared, true),
+        eq(schema.noteTemplates.providerId, providerId),
+      )!,
+    ];
+    if (noteType) conds.push(eq(schema.noteTemplates.noteType, noteType));
+    return db.select().from(schema.noteTemplates).where(and(...conds)).orderBy(desc(schema.noteTemplates.updatedAt));
+  }
+  async getNoteTemplate(id: number, clinicId: number): Promise<schema.NoteTemplate | null> {
+    const [row] = await db.select().from(schema.noteTemplates)
+      .where(and(eq(schema.noteTemplates.id, id), eq(schema.noteTemplates.clinicId, clinicId)));
+    return row || null;
+  }
+  async createNoteTemplate(data: schema.InsertNoteTemplate): Promise<schema.NoteTemplate> {
+    const [row] = await db.insert(schema.noteTemplates).values(data).returning();
+    return row;
+  }
+  async updateNoteTemplate(id: number, clinicId: number, data: Partial<schema.InsertNoteTemplate>): Promise<schema.NoteTemplate | null> {
+    const [row] = await db.update(schema.noteTemplates).set({ ...data, updatedAt: new Date() })
+      .where(and(eq(schema.noteTemplates.id, id), eq(schema.noteTemplates.clinicId, clinicId)))
+      .returning();
+    return row || null;
+  }
+  async deleteNoteTemplate(id: number, clinicId: number, providerId: number): Promise<boolean> {
+    const tpl = await this.getNoteTemplate(id, clinicId);
+    if (!tpl) return false;
+    if (!tpl.isShared && tpl.providerId !== providerId) return false;
+    const result = await db.delete(schema.noteTemplates)
+      .where(and(eq(schema.noteTemplates.id, id), eq(schema.noteTemplates.clinicId, clinicId)))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ── Note Phrases ─────────────────────────────────────────────────────────────
+  async getNotePhrases(clinicId: number, providerId: number): Promise<schema.NotePhrase[]> {
+    return db.select().from(schema.notePhrases)
+      .where(and(
+        eq(schema.notePhrases.clinicId, clinicId),
+        or(eq(schema.notePhrases.isShared, true), eq(schema.notePhrases.providerId, providerId))!,
+      ))
+      .orderBy(desc(schema.notePhrases.updatedAt));
+  }
+  async createNotePhrase(data: schema.InsertNotePhrase): Promise<schema.NotePhrase> {
+    const [row] = await db.insert(schema.notePhrases).values(data).returning();
+    return row;
+  }
+  async updateNotePhrase(id: number, clinicId: number, data: Partial<schema.InsertNotePhrase>): Promise<schema.NotePhrase | null> {
+    const [row] = await db.update(schema.notePhrases).set({ ...data, updatedAt: new Date() })
+      .where(and(eq(schema.notePhrases.id, id), eq(schema.notePhrases.clinicId, clinicId)))
+      .returning();
+    return row || null;
+  }
+  async deleteNotePhrase(id: number, clinicId: number, providerId: number): Promise<boolean> {
+    const [tpl] = await db.select().from(schema.notePhrases)
+      .where(and(eq(schema.notePhrases.id, id), eq(schema.notePhrases.clinicId, clinicId)));
+    if (!tpl) return false;
+    if (!tpl.isShared && tpl.providerId !== providerId) return false;
+    const result = await db.delete(schema.notePhrases)
+      .where(and(eq(schema.notePhrases.id, id), eq(schema.notePhrases.clinicId, clinicId)))
       .returning();
     return result.length > 0;
   }

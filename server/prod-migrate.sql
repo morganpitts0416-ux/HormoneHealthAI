@@ -364,3 +364,34 @@ CREATE TABLE IF NOT EXISTS patient_vitals (
   notes TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- ── Note typing on clinical_encounters ──────────────────────────────
+ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS note_type VARCHAR(30) NOT NULL DEFAULT 'soap_provider';
+ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS phone_contact JSONB;
+
+-- ── note_templates ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS note_templates (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  provider_id INTEGER,
+  name VARCHAR(200) NOT NULL,
+  description TEXT,
+  note_type VARCHAR(30) NOT NULL,
+  blocks JSONB NOT NULL,
+  is_shared BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── note_phrases ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS note_phrases (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  provider_id INTEGER,
+  title VARCHAR(200) NOT NULL,
+  shortcut VARCHAR(50),
+  content TEXT NOT NULL,
+  is_shared BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

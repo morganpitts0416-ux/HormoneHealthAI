@@ -13,6 +13,7 @@ import {
   Menu,
   LayoutDashboard,
   Inbox,
+  FileText,
 } from "lucide-react";
 
 export function AppHeader() {
@@ -105,6 +106,13 @@ export function AppHeader() {
               )}
             </div>
             <NavButton
+              icon={FileText}
+              label="Templates"
+              onClick={() => setLocation("/note-templates")}
+              active={location === "/note-templates"}
+              testId="nav-templates"
+            />
+            <NavButton
               icon={HelpCircle}
               label="Help"
               onClick={() => setLocation("/help")}
@@ -158,6 +166,7 @@ export function AppHeader() {
                   )}
                   <MobileNavButton icon={CalendarDays} label="Schedule" onClick={() => setLocation("/scheduling")} active={location === "/scheduling" || location === "/appointments"} />
                   <MobileNavButton icon={Inbox} label={unreadTotal > 0 ? `Inbox (${unreadTotal > 99 ? "99+" : unreadTotal})` : "Inbox"} onClick={() => setLocation("/inbox")} active={location === "/inbox"} />
+                  <MobileNavButton icon={FileText} label="Templates" onClick={() => setLocation("/note-templates")} active={location === "/note-templates"} />
                   <MobileNavButton icon={HelpCircle} label="Help" onClick={() => setLocation("/help")} active={location === "/help"} />
                   <MobileNavButton icon={CreditCard} label="Billing" onClick={() => setLocation("/billing")} active={location === "/billing"} />
                   <MobileNavButton icon={Settings} label="Account" onClick={() => setLocation("/account")} active={location === "/account"} />
