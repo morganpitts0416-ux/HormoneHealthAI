@@ -125,6 +125,8 @@ export function AppointmentDialog({
       }
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/range"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "/api/patients" && q.queryKey[2] === "upcoming-appointments" });
+      queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "/api/patients" && q.queryKey[2] === "appointments-summary" });
       onSaved?.();
       onOpenChange(false);
     },
@@ -143,6 +145,8 @@ export function AppointmentDialog({
       toast({ title: "Appointment deleted" });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments/range"] });
       queryClient.invalidateQueries({ queryKey: ["/api/appointments"] });
+      queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "/api/patients" && q.queryKey[2] === "upcoming-appointments" });
+      queryClient.invalidateQueries({ predicate: (q) => Array.isArray(q.queryKey) && q.queryKey[0] === "/api/patients" && q.queryKey[2] === "appointments-summary" });
       onSaved?.();
       onOpenChange(false);
     },

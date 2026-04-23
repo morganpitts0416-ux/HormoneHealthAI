@@ -45,6 +45,7 @@ import { NurseNoteBuilder } from "@/components/nurse-note-builder";
 import { PhoneNoteDialog } from "@/components/phone-note-dialog";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 import { VitalsDialog } from "@/components/vitals-dialog";
+import { VitalTrendsDialog } from "@/components/vital-trends-dialog";
 import { PreventCalculatorDialog } from "@/components/prevent-calculator-dialog";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
@@ -1132,6 +1133,7 @@ export default function PatientProfiles() {
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAppointmentDialog, setShowAppointmentDialog] = useState(false);
   const [showVitalsDialog, setShowVitalsDialog] = useState(false);
+  const [showVitalTrendsDialog, setShowVitalTrendsDialog] = useState(false);
   const [showPreventDialog, setShowPreventDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
@@ -2085,6 +2087,17 @@ export default function PatientProfiles() {
                   >
                     <Heart className="h-3 w-3" />
                     Vitals
+                  </Button>
+                  <Button
+                    variant="outline"
+                    size="sm"
+                    onClick={() => setShowVitalTrendsDialog(true)}
+                    data-testid="button-vital-trends"
+                    className="text-xs gap-1.5"
+                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                  >
+                    <TrendingUp className="h-3 w-3" />
+                    Vital Trends
                   </Button>
                   <Button
                     variant="outline"
@@ -3286,6 +3299,15 @@ export default function PatientProfiles() {
         <VitalsDialog
           open={showVitalsDialog}
           onOpenChange={setShowVitalsDialog}
+          patientId={selectedPatient.id}
+          patientName={`${selectedPatient.firstName ?? ''} ${selectedPatient.lastName ?? ''}`.trim()}
+        />
+      )}
+
+      {selectedPatient && (
+        <VitalTrendsDialog
+          open={showVitalTrendsDialog}
+          onOpenChange={setShowVitalTrendsDialog}
           patientId={selectedPatient.id}
           patientName={`${selectedPatient.firstName ?? ''} ${selectedPatient.lastName ?? ''}`.trim()}
         />
