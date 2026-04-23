@@ -15,6 +15,7 @@ import {
   Search, Loader2,
 } from "lucide-react";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
+import { usePhraseSearch } from "@/components/phrase-search";
 
 const BLOCK_TYPES = [
   { id: "hpi", label: "HPI", icon: FileText, category: "subjective" },
@@ -173,6 +174,11 @@ function DxAwareTextarea({
     value,
     onChange,
   });
+  const phraseSearch = usePhraseSearch({
+    textareaRef: ref,
+    value,
+    onChange,
+  });
   return (
     <div className="relative">
       <Textarea
@@ -181,14 +187,16 @@ function DxAwareTextarea({
         onChange={e => {
           onChange(e.target.value);
           dxSearch.handleInput(e);
+          phraseSearch.handleInput(e);
         }}
-        onKeyDown={dxSearch.handleKeyDown}
+        onKeyDown={(e) => { phraseSearch.handleKeyDown(e); if (!e.defaultPrevented) dxSearch.handleKeyDown(e); }}
         rows={rows}
         placeholder={placeholder}
         className={className}
         data-testid={testId}
       />
       {dxSearch.dropdown}
+      {phraseSearch.dropdown}
     </div>
   );
 }
@@ -222,13 +230,13 @@ function AssessmentPlanEditor({
     <div className="space-y-3">
       <div>
         <label className="text-xs font-medium text-muted-foreground mb-1 block">Summary (optional)</label>
-        <Textarea
+        <DxAwareTextarea
           value={summary}
-          onChange={e => onSummaryChange(e.target.value)}
+          onChange={onSummaryChange}
           rows={2}
-          placeholder="Brief clinical summary..."
+          placeholder="Brief clinical summary... (type /dx for diagnoses, /phrase for snippets)"
           className="text-sm resize-y"
-          data-testid="textarea-assessment-summary"
+          testId="textarea-assessment-summary"
         />
       </div>
 
@@ -443,6 +451,11 @@ function BlockEditor({
     value: block.content,
     onChange: (newValue: string) => onUpdate({ content: newValue }),
   });
+  const phraseSearch = usePhraseSearch({
+    textareaRef,
+    value: block.content,
+    onChange: (newValue: string) => onUpdate({ content: newValue }),
+  });
 
   return (
     <div
@@ -532,14 +545,16 @@ function BlockEditor({
                 onChange={e => {
                   onUpdate({ content: e.target.value });
                   dxSearch.handleInput(e);
+                  phraseSearch.handleInput(e);
                 }}
-                onKeyDown={dxSearch.handleKeyDown}
+                onKeyDown={(e) => { phraseSearch.handleKeyDown(e); if (!e.defaultPrevented) dxSearch.handleKeyDown(e); }}
                 rows={block.type === "hpi" ? 6 : 3}
                 placeholder={getPlaceholder(block.type)}
                 className="text-sm resize-y"
                 data-testid={`textarea-block-${block.uid}`}
               />
               {dxSearch.dropdown}
+              {phraseSearch.dropdown}
             </div>
           )}
         </div>

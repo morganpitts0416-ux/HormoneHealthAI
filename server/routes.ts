@@ -5513,8 +5513,13 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
   // POST /api/encounters/:id/sign — Sign and lock a SOAP note (EMR-style)
   // Stores a version snapshot for audit trail. Sets signedAt + signedBy.
+  // Authorization: nurses/staff can only sign nurse and phone notes;
+  // provider SOAP notes require a logged-in provider (clinician).
   app.post("/api/encounters/:id/sign", requireAuth, async (req, res) => {
     try {
+      const sess = req.session as any;
+      const isStaff = !!sess?.staffId;
+      const staffRole: string = (sess?.staffClinicalRole ?? "").toLowerCase();
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
@@ -5522,11 +5527,31 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.soapNote) return res.status(400).json({ message: "No SOAP note to sign." });
 
+      const noteType = (encounter as any).noteType ?? "soap_provider";
+      if (noteType === "soap_provider" && isStaff) {
+        return res.status(403).json({
+          message: "Only providers can sign provider SOAP notes. Nurses and staff may sign nurse and phone notes.",
+        });
+      }
+
       const clinician = await storage.getUserById(clinicianId);
       if (!clinician) return res.status(404).json({ message: "Clinician not found" });
 
-      const nameParts = [clinician.title, clinician.firstName, clinician.lastName].filter(Boolean).join(" ");
-      const signedBy = clinician.npi ? `${nameParts} (NPI: ${clinician.npi})` : nameParts;
+      // Build display name — for staff sessions, prefer the staff member's name.
+      let nameParts: string;
+      let credential: string | null = null;
+      if (isStaff) {
+        const staffFirst = sess.staffFirstName ?? "";
+        const staffLast = sess.staffLastName ?? "";
+        nameParts = `${staffFirst} ${staffLast}`.trim();
+        if (staffRole === "rn") credential = "RN";
+        else if (staffRole) credential = staffRole.toUpperCase();
+      } else {
+        nameParts = [clinician.title, clinician.firstName, clinician.lastName].filter(Boolean).join(" ");
+      }
+      const signedBy = clinician.npi
+        ? `${nameParts}${credential ? `, ${credential}` : ""} (NPI: ${clinician.npi})`
+        : `${nameParts}${credential ? `, ${credential}` : ""}`;
 
       const now = new Date();
 
