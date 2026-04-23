@@ -35,6 +35,7 @@ import InboxPage from "@/pages/inbox";
 import Landing from "@/pages/landing";
 import BillingPage from "@/pages/billing";
 import IntakeFormsPage from "@/pages/intake-forms";
+import NoteTemplatesPage from "@/pages/note-templates";
 import FormSubmissionsPage from "@/pages/form-submissions";
 import FormPublicPage from "@/pages/form-public";
 import PrivacyPolicy from "@/pages/privacy";
@@ -235,6 +236,9 @@ function Router() {
       </Route>
       <Route path="/encounters">
         {() => <ProtectedRoute component={EncountersPage} />}
+      </Route>
+      <Route path="/note-templates">
+        {() => <ProtectedRoute component={NoteTemplatesPage} />}
       </Route>
       <Route path="/appointments">
         {() => <ProtectedRoute component={AppointmentsPage} />}

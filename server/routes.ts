@@ -5432,7 +5432,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const { patientId, visitDate, visitType, chiefComplaint, linkedLabResultId, clinicianNotes, transcription } = req.body;
+      const { patientId, visitDate, visitType, chiefComplaint, linkedLabResultId, clinicianNotes, transcription, noteType, phoneContact, soapNote } = req.body;
       if (!patientId || !visitDate) return res.status(400).json({ message: "patientId and visitDate are required" });
       const encounter = await storage.createEncounter({
         clinicianId,
@@ -5444,10 +5444,12 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         clinicianNotes: clinicianNotes || null,
         transcription: transcription || null,
         audioProcessed: false,
-        soapNote: null,
+        soapNote: soapNote || null,
         patientSummary: null,
         summaryPublished: false,
-      });
+        noteType: noteType || 'soap_provider',
+        phoneContact: phoneContact || null,
+      } as any);
       res.json(encounter);
     } catch (err) {
       console.error('[Encounters] Create error:', err);
@@ -9244,6 +9246,119 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       console.error("[PREVENT Quick Calc] error:", err);
       res.status(500).json({ message: err.message || "Calculation failed" });
     }
+  });
+
+  // ── Note Templates & Phrases ──────────────────────────────────────────────
+  app.get("/api/note-templates", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const noteType = req.query.noteType as string | undefined;
+      const list = await storage.getNoteTemplates(clinicId, req.user.id, noteType);
+      res.json(list);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/note-templates", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const body = z.object({
+        name: z.string().min(1),
+        description: z.string().optional(),
+        noteType: z.enum(["soap_provider", "nurse", "phone"]),
+        blocks: z.array(z.any()),
+        isShared: z.boolean().default(false),
+      }).parse(req.body);
+      const tpl = await storage.createNoteTemplate({
+        clinicId,
+        providerId: req.user.id,
+        name: body.name,
+        description: body.description ?? null,
+        noteType: body.noteType,
+        blocks: body.blocks,
+        isShared: body.isShared,
+      } as any);
+      res.status(201).json(tpl);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/note-templates/:id", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const id = parseInt(req.params.id);
+      const body = z.object({
+        name: z.string().optional(),
+        description: z.string().nullable().optional(),
+        blocks: z.array(z.any()).optional(),
+        isShared: z.boolean().optional(),
+      }).parse(req.body);
+      const updated = await storage.updateNoteTemplate(id, clinicId, body as any);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.delete("/api/note-templates/:id", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const ok = await storage.deleteNoteTemplate(parseInt(req.params.id), clinicId, req.user.id);
+      if (!ok) return res.status(404).json({ message: "Not found or not allowed" });
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+
+  app.get("/api/note-phrases", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const list = await storage.getNotePhrases(clinicId, req.user.id);
+      res.json(list);
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.post("/api/note-phrases", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const body = z.object({
+        title: z.string().min(1),
+        shortcut: z.string().optional(),
+        content: z.string().min(1),
+        isShared: z.boolean().default(false),
+      }).parse(req.body);
+      const ph = await storage.createNotePhrase({
+        clinicId,
+        providerId: req.user.id,
+        title: body.title,
+        shortcut: body.shortcut ?? null,
+        content: body.content,
+        isShared: body.isShared,
+      } as any);
+      res.status(201).json(ph);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.patch("/api/note-phrases/:id", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const body = z.object({
+        title: z.string().optional(),
+        shortcut: z.string().nullable().optional(),
+        content: z.string().optional(),
+        isShared: z.boolean().optional(),
+      }).parse(req.body);
+      const updated = await storage.updateNotePhrase(parseInt(req.params.id), clinicId, body as any);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+  app.delete("/api/note-phrases/:id", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const ok = await storage.deleteNotePhrase(parseInt(req.params.id), clinicId, req.user.id);
+      if (!ok) return res.status(404).json({ message: "Not found or not allowed" });
+      res.json({ success: true });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
 
   // ── Medication Dictionary ──────────────────────────────────────────────────

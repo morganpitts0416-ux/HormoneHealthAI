@@ -1036,6 +1036,9 @@ export const clinicalEncounters = pgTable("clinical_encounters", {
   // ── Multi-clinic foundation (nullable — populated by migration) ──────────
   clinicId: integer("clinic_id"),   // No FK constraint during initial rollout
   providerId: integer("provider_id"), // No FK constraint during initial rollout
+  // ── Note typing: provider SOAP, nurse note, or phone note ────────────────
+  noteType: varchar("note_type", { length: 30 }).notNull().default("soap_provider"),
+  phoneContact: jsonb("phone_contact").$type<{ contactedWith?: string; direction?: 'incoming' | 'outgoing'; durationMinutes?: number }>(),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -1144,6 +1147,43 @@ export const insertPatientVitalSchema = createInsertSchema(patientVitals).omit({
   recordedAt: z.union([z.string(), z.date()]).optional(),
 });
 export type InsertPatientVital = z.infer<typeof insertPatientVitalSchema>;
+
+// ─── Note Templates (for SOAP, Nurse, Phone) ──────────────────────────────
+export const noteTemplates = pgTable("note_templates", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  providerId: integer("provider_id"),                     // null = clinic-shared
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  noteType: varchar("note_type", { length: 30 }).notNull(),  // 'soap_provider' | 'nurse' | 'phone'
+  blocks: jsonb("blocks").$type<any[]>().notNull(),       // array of block definitions
+  isShared: boolean("is_shared").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type NoteTemplate = typeof noteTemplates.$inferSelect;
+export const insertNoteTemplateSchema = createInsertSchema(noteTemplates).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertNoteTemplate = z.infer<typeof insertNoteTemplateSchema>;
+
+// ─── Note Phrases (snippets / dot-phrases) ────────────────────────────────
+export const notePhrases = pgTable("note_phrases", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  providerId: integer("provider_id"),                     // null = clinic-shared
+  title: varchar("title", { length: 200 }).notNull(),
+  shortcut: varchar("shortcut", { length: 50 }),          // e.g. "htn", "uri"
+  content: text("content").notNull(),
+  isShared: boolean("is_shared").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type NotePhrase = typeof notePhrases.$inferSelect;
+export const insertNotePhraseSchema = createInsertSchema(notePhrases).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertNotePhrase = z.infer<typeof insertNotePhraseSchema>;
 
 // ─── Medication Dictionary ─────────────────────────────────────────────────
 export const medicationDictionaries = pgTable("medication_dictionaries", {

@@ -18,7 +18,7 @@ import {
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
-  Link2, Clock, Building2, Eye, CalendarDays,
+  Link2, Clock, Building2, Eye, CalendarDays, Phone,
 } from "lucide-react";
 import { AppointmentDialog } from "@/components/appointment-dialog";
 import { Link, useLocation, useSearch } from "wouter";
@@ -41,6 +41,8 @@ import { SOAPNote } from "@/components/soap-note";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { SoapNoteViewer } from "@/components/soap-note-viewer";
 import { ManualSoapBuilder } from "@/components/manual-soap-builder";
+import { NurseNoteBuilder } from "@/components/nurse-note-builder";
+import { PhoneNoteDialog } from "@/components/phone-note-dialog";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 import { VitalsDialog } from "@/components/vitals-dialog";
 import { PreventCalculatorDialog } from "@/components/prevent-calculator-dialog";
@@ -1133,6 +1135,8 @@ export default function PatientProfiles() {
   const [sendEmailName, setSendEmailName] = useState("");
   const [sendLinkFormId, setSendLinkFormId] = useState<number | null>(null);
   const [showManualSoap, setShowManualSoap] = useState(false);
+  const [showNurseNote, setShowNurseNote] = useState(false);
+  const [showPhoneNote, setShowPhoneNote] = useState(false);
   const [previewSubId, setPreviewSubId] = useState<number | null>(null);
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
   const [pdfExportingEncounterId, setPdfExportingEncounterId] = useState<number | null>(null);
@@ -2266,6 +2270,26 @@ export default function PatientProfiles() {
                       <Button
                         size="sm"
                         variant="outline"
+                        onClick={() => setShowPhoneNote(true)}
+                        data-testid="button-new-phone-note"
+                        className="text-xs gap-1.5"
+                      >
+                        <Phone className="h-3 w-3" />
+                        + Phone Note
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => setShowNurseNote(true)}
+                        data-testid="button-new-nurse-note"
+                        className="text-xs gap-1.5"
+                      >
+                        <Stethoscope className="h-3 w-3" />
+                        + Nurse Note
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant="outline"
                         onClick={() => setShowManualSoap(true)}
                         data-testid="button-manual-soap-from-profile"
                         className="text-xs gap-1.5"
@@ -2297,7 +2321,16 @@ export default function PatientProfiles() {
                       const VISIT_LABELS: Record<string, string> = {
                         "new-patient": "New Patient", "follow-up": "Follow-up", "acute": "Acute Visit",
                         "wellness": "Wellness / Annual", "procedure": "Procedure", "telemedicine": "Telemedicine", "lab-review": "Lab Review",
+                        "phone-call": "Phone Call", "nurse-visit": "Nurse Visit",
                       };
+                      const noteType = (enc as any).noteType ?? "soap_provider";
+                      const NOTE_STYLE: Record<string, { bg: string; fg: string; label: string; Icon: any }> = {
+                        soap_provider: { bg: "#e8eedf", fg: "#2e3a20", label: "SOAP", Icon: FileText },
+                        nurse:         { bg: "#fde9d3", fg: "#7a4a14", label: "Nurse", Icon: Stethoscope },
+                        phone:         { bg: "#dde7f5", fg: "#1d3a66", label: "Phone", Icon: Phone },
+                      };
+                      const ns = NOTE_STYLE[noteType] ?? NOTE_STYLE.soap_provider;
+                      const NoteIcon = ns.Icon;
                       const isSigned = !!enc.signedAt;
                       const hasSoap = !!enc.soapNote;
                       const isExpanded = expandedEncounterId === enc.id;
@@ -2392,7 +2425,7 @@ export default function PatientProfiles() {
                       };
 
                       return (
-                        <div key={enc.id} className="rounded-md border overflow-hidden">
+                        <div key={enc.id} className="rounded-md border overflow-hidden" style={{ borderLeft: `4px solid ${ns.fg}` }}>
                           {/* ── Encounter row header ── */}
                           <div
                             data-testid={`encounter-row-${enc.id}`}
@@ -2403,6 +2436,10 @@ export default function PatientProfiles() {
                               <div className="flex items-center gap-2 min-w-0">
                                 <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
                                 <span className="text-sm font-medium">{safeDate(enc.visitDate as unknown as string)}</span>
+                                <Badge className="text-[10px] py-0 h-4 gap-0.5 border-0" style={{ backgroundColor: ns.bg, color: ns.fg }}>
+                                  <NoteIcon className="w-2.5 h-2.5" />
+                                  {ns.label}
+                                </Badge>
                                 <Badge variant="outline" className="text-[10px] py-0 h-4">
                                   {VISIT_LABELS[enc.visitType] ?? enc.visitType}
                                 </Badge>
@@ -3151,6 +3188,28 @@ export default function PatientProfiles() {
                   </DialogFooter>
                 </DialogContent>
               </Dialog>
+
+              {showNurseNote && selectedPatient && (
+                <NurseNoteBuilder
+                  patientId={selectedPatient.id}
+                  onClose={() => {
+                    setShowNurseNote(false);
+                    queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                    setShowEncounters(true);
+                  }}
+                />
+              )}
+
+              {showPhoneNote && selectedPatient && (
+                <PhoneNoteDialog
+                  patientId={selectedPatient.id}
+                  onClose={() => {
+                    setShowPhoneNote(false);
+                    queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                    setShowEncounters(true);
+                  }}
+                />
+              )}
 
               {showManualSoap && selectedPatient && (
                 <Dialog open={showManualSoap} onOpenChange={setShowManualSoap}>
