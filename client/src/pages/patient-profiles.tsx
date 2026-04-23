@@ -50,6 +50,25 @@ import { PreventCalculatorDialog } from "@/components/prevent-calculator-dialog"
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
 // the off-by-one-day rendering bug in US timezones. Also guards against epoch dates.
+function AmendTextarea({ value, onChange, encounterId }: { value: string; onChange: (v: string) => void; encounterId: number }) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const phrase = usePhraseSearch({ textareaRef: ref, value, onChange });
+  return (
+    <div className="relative">
+      <Textarea
+        ref={ref}
+        value={value}
+        onChange={(e) => { onChange(e.target.value); phrase.handleInput(e); }}
+        onKeyDown={phrase.handleKeyDown}
+        className="text-xs font-sans min-h-[16rem] resize-y"
+        data-testid={`textarea-amend-${encounterId}`}
+        placeholder="Edit the note… (type /phrase to insert a saved snippet)"
+      />
+      {phrase.dropdown}
+    </div>
+  );
+}
+
 function safeDate(dateStr: string | Date, opts: Intl.DateTimeFormatOptions = { month: 'long', day: 'numeric', year: 'numeric' }) {
   const d = new Date(dateStr as string);
   if (isNaN(d.getTime()) || d.getFullYear() < 1910) return "Unknown date";
@@ -2686,11 +2705,10 @@ export default function PatientProfiles() {
                               {isAmending ? (
                                 <div className="px-4 py-3 space-y-3">
                                   <p className="text-[11px] text-amber-700 font-medium">{isSigned ? "Amendment in progress — edit the note below, then re-sign to lock." : "Edit the note below, then sign to lock."}</p>
-                                  <Textarea
+                                  <AmendTextarea
                                     value={amendText}
-                                    onChange={(e) => setAmendText(e.target.value)}
-                                    className="text-xs font-sans min-h-[16rem] resize-y"
-                                    data-testid={`textarea-amend-${enc.id}`}
+                                    onChange={setAmendText}
+                                    encounterId={enc.id}
                                   />
                                   <div className="flex gap-2 justify-end">
                                     <Button
