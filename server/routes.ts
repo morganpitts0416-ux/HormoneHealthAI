@@ -7361,13 +7361,49 @@ Return JSON matching EvidenceOverlay structure:
 
       const soap = encounter.soapNote as any;
 
-      // Pull the full CARE PLAN text from the SOAP note (stored in fullNote)
+      // ── Source of truth: edited fullNote ───────────────────────────────────
+      // When a clinician edits/amends the SOAP, only soap.fullNote is updated —
+      // the structured fields (assessment, subjective, plan) keep the original
+      // AI text. So we parse every section from fullNote first, and only fall
+      // back to the structured fields when fullNote is missing or a section
+      // header can't be found. This guarantees the patient summary reflects
+      // the FINAL edited note, not the stale original.
       const fullNote: string = soap.fullNote ?? "";
-      const carePlanMatch = fullNote.match(/CARE PLAN\s*([\s\S]*?)(?=\nFOLLOW-UP|\nSOAP NOTE END|$)/i);
-      const carePlanText = carePlanMatch ? carePlanMatch[1].trim() : (soap.plan ?? "");
 
-      const followUpMatch = fullNote.match(/FOLLOW-UP\s*([\s\S]*?)$/i);
-      const followUpText = followUpMatch ? followUpMatch[1].trim() : "";
+      const sliceSection = (label: RegExp, until: RegExp[]): string => {
+        if (!fullNote) return "";
+        const m = fullNote.match(label);
+        if (!m || m.index === undefined) return "";
+        const start = m.index + m[0].length;
+        const after = fullNote.slice(start);
+        let cutAt = after.length;
+        for (const stop of until) {
+          const sm = after.match(stop);
+          if (sm && sm.index !== undefined && sm.index < cutAt) cutAt = sm.index;
+        }
+        return after.slice(0, cutAt).trim();
+      };
+
+      const SECTION_STOPS = [
+        /\n\s*SUBJECTIVE\b/i,
+        /\n\s*OBJECTIVE\b/i,
+        /\n\s*ASSESSMENT\b/i,
+        /\n\s*PLAN\b/i,
+        /\n\s*CARE PLAN\b/i,
+        /\n\s*FOLLOW[- ]?UP\b/i,
+        /\n\s*SOAP NOTE END\b/i,
+      ];
+
+      const carePlanFromNote = sliceSection(/CARE PLAN[:\s]*\n?/i, SECTION_STOPS)
+        || sliceSection(/^\s*PLAN[:\s]*\n?/im, SECTION_STOPS);
+      const followUpFromNote = sliceSection(/FOLLOW[- ]?UP[:\s]*\n?/i, SECTION_STOPS);
+      const assessmentFromNote = sliceSection(/ASSESSMENT[:\s]*\n?/i, SECTION_STOPS);
+      const subjectiveFromNote = sliceSection(/SUBJECTIVE[:\s]*\n?/i, SECTION_STOPS);
+
+      const carePlanText = carePlanFromNote || (soap.plan ?? "");
+      const followUpText = followUpFromNote;
+      const assessmentText = assessmentFromNote || (soap.assessment ?? "");
+      const subjectiveText = subjectiveFromNote || (soap.subjective ?? "");
 
       // Pull supplement recommendations from linked lab result
       let supplementContext = "";
@@ -7449,17 +7485,17 @@ CONTENT RULES
 Chief Complaint: ${encounter.chiefComplaint || "General visit"}
 Date: ${new Date(encounter.visitDate).toLocaleDateString()}
 
-SOAP Assessment:
-${soap.assessment || ""}
+SOAP Assessment (use the FINAL edited assessment below):
+${assessmentText}
 
-CARE PLAN (from SOAP note — include ALL items in patient summary, with the per-medication detail required by the system prompt):
+CARE PLAN (use the FINAL edited care plan — include ALL items in patient summary, with the per-medication detail required by the system prompt):
 ${carePlanText}
 
-Follow-Up Plan:
+Follow-Up Plan (FINAL edited):
 ${followUpText}
 
-Subjective (what patient reported):
-${soap.subjective || ""}
+Subjective (what patient reported, FINAL edited):
+${subjectiveText}
 ${supplementContext}${transcriptContext}
 
 Generate the warm, plain-language patient visit summary now. Follow the formatting and structure rules exactly: plain text only (no markdown, no asterisks), section headers as "Title:" on their own line, hyphen bullets only. Make sure every new medication or therapy includes why we chose it, what to expect, how to use it, what to watch for, and when to reach out — translated into supportive patient-friendly language. This summary publishes directly to the patient portal.`,

@@ -18,8 +18,9 @@ import {
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
-  Link2, Clock, Building2, Eye, CalendarDays, Phone,
+  Link2, Clock, Building2, Eye, CalendarDays, Phone, Paperclip,
 } from "lucide-react";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
 import { Link, useLocation, useSearch } from "wouter";
 import { cn } from "@/lib/utils";
@@ -2483,6 +2484,46 @@ export default function PatientProfiles() {
                                 )}
                                 {enc.summaryPublished && (
                                   <Badge variant="outline" className="text-[10px] py-0 h-4 text-violet-600 border-violet-200">Published</Badge>
+                                )}
+                                {enc.summaryPublished && enc.patientSummary && (
+                                  <Popover>
+                                    <PopoverTrigger asChild onClick={(e) => e.stopPropagation()}>
+                                      <Button
+                                        size="icon"
+                                        variant="ghost"
+                                        className="h-5 w-5 text-violet-600 hover:text-violet-700"
+                                        data-testid={`button-pinned-summary-${enc.id}`}
+                                        title="View published patient summary"
+                                      >
+                                        <Paperclip className="w-3.5 h-3.5 -rotate-12" />
+                                      </Button>
+                                    </PopoverTrigger>
+                                    <PopoverContent
+                                      align="start"
+                                      className="w-80 p-0 border-0 shadow-lg"
+                                      onClick={(e) => e.stopPropagation()}
+                                    >
+                                      <div
+                                        className="rounded-md overflow-hidden"
+                                        style={{
+                                          backgroundColor: "#fffbe6",
+                                          backgroundImage: "repeating-linear-gradient(transparent, transparent 22px, #e8dca6 22px, #e8dca6 23px)",
+                                          boxShadow: "0 6px 16px rgba(0,0,0,0.18), 0 2px 4px rgba(0,0,0,0.06)",
+                                        }}
+                                      >
+                                        <div className="flex items-center gap-2 px-3 py-2 border-b" style={{ borderColor: "#e8dca6", backgroundColor: "#fff7d4" }}>
+                                          <Paperclip className="w-3.5 h-3.5 text-violet-600 -rotate-12" />
+                                          <p className="text-[11px] font-semibold uppercase tracking-wide text-violet-700">Published Summary</p>
+                                          <span className="text-[10px] text-amber-700 ml-auto">{safeDate(enc.visitDate as unknown as string)}</span>
+                                        </div>
+                                        <div className="px-3 py-2 max-h-72 overflow-y-auto">
+                                          <pre className="text-[11px] text-gray-800 whitespace-pre-wrap font-sans leading-[22px]">
+{enc.patientSummary}
+                                          </pre>
+                                        </div>
+                                      </div>
+                                    </PopoverContent>
+                                  </Popover>
                                 )}
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
