@@ -36,6 +36,12 @@ ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP;
 ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR(255);
 ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS password_reset_expires TIMESTAMP;
 
+-- ── providers ───────────────────────────────────────────────
+-- Allow staff (nurses, MAs, aestheticians) to appear on the scheduling
+-- calendar without requiring a row in the `users` table.
+ALTER TABLE providers ADD COLUMN IF NOT EXISTS staff_id INTEGER
+  REFERENCES clinician_staff(id) ON DELETE SET NULL;
+
 -- ── patients ────────────────────────────────────────────────
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS clinic_id INTEGER;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS primary_provider_id INTEGER;

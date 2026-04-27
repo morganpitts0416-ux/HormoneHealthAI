@@ -1311,6 +1311,9 @@ export const providers = pgTable("providers", {
   id: serial("id").primaryKey(),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
   userId: integer("user_id").references(() => users.id, { onDelete: "set null" }),
+  // Optional link to a non-clinician staff member (nurse, MA, aesthetician, etc.).
+  // Allows staff to be schedulable on the calendar without being a `users` row.
+  staffId: integer("staff_id").references(() => clinicianStaff.id, { onDelete: "set null" }),
   displayName: varchar("display_name", { length: 200 }).notNull(),
   credentials: varchar("credentials", { length: 100 }),
   specialty: varchar("specialty", { length: 100 }),
