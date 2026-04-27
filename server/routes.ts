@@ -8694,7 +8694,8 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   // GET /api/scheduling/providers — every clinic team member is schedulable
   // (providers, nurses, MAs, aestheticians, etc.). Auto-provisions a providers
-  // row for any membership that doesn't yet have one so they show up on the calendar.
+  // row for any membership OR active staff member that doesn't yet have one,
+  // so all team members show up on the calendar.
   app.get("/api/scheduling/providers", requireAuth, async (req: any, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);
@@ -8702,8 +8703,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
       const existing = await storage.getProvidersByClinic(clinicId);
       const haveUserIds = new Set(existing.filter(p => p.userId).map(p => p.userId as number));
+      const haveStaffIds = new Set(existing.filter(p => (p as any).staffId).map(p => (p as any).staffId as number));
 
       const members = await storage.getClinicMembers(clinicId);
+
+      // 1. Auto-provision provider rows for clinician members (account owners + co-clinicians)
       for (const m of members) {
         if (!m.isActive) continue;
         if (haveUserIds.has(m.userId)) continue;
@@ -8716,6 +8720,58 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           });
         } catch (e) {
           console.warn("[Scheduling] auto-provision provider row failed for user", m.userId, e);
+        }
+      }
+
+      // 2. Auto-provision provider rows for invited staff (nurses, MAs, etc.)
+      // Staff are owned by a clinician (clinicianId), so we walk every active
+      // clinician membership and pull their staff.
+      const ROLE_LABEL: Record<string, string> = {
+        nurse: "RN",
+        rn: "RN",
+        lpn: "LPN",
+        np: "NP",
+        pa: "PA",
+        ma: "MA",
+        assistant: "MA",
+        aesthetician: "Aesthetician",
+        provider: "Provider",
+        staff: "Staff",
+      };
+
+      for (const m of members) {
+        if (!m.isActive) continue;
+        try {
+          const staffList = await storage.getAllStaffForClinician(m.userId);
+          for (const s of staffList) {
+            if (!s.isActive) continue;
+            if (haveStaffIds.has(s.id)) continue;
+
+            const fullName = `${s.firstName ?? ""} ${s.lastName ?? ""}`.trim() || s.email;
+            const roleKey = (s.role ?? "staff").toLowerCase();
+            const credentials = ROLE_LABEL[roleKey] ?? null;
+            const display = credentials ? `${fullName}, ${credentials}` : fullName;
+
+            try {
+              const [row] = await storageDb
+                .insert(providersTable)
+                .values({
+                  clinicId,
+                  userId: null,
+                  staffId: s.id,
+                  displayName: display,
+                  credentials,
+                  isActive: true,
+                } as any)
+                .returning();
+              haveStaffIds.add(s.id);
+              if (row) console.log(`[Scheduling] auto-provisioned provider row for staff ${s.id} (${display})`);
+            } catch (insertErr) {
+              console.warn("[Scheduling] auto-provision provider row failed for staff", s.id, insertErr);
+            }
+          }
+        } catch (e) {
+          console.warn("[Scheduling] failed to fetch staff for clinician", m.userId, e);
         }
       }
 
