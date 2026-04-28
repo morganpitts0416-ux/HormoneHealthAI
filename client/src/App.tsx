@@ -238,7 +238,10 @@ function Router() {
         {() => <ProtectedRoute component={EncountersPage} />}
       </Route>
       <Route path="/note-templates">
-        {() => <ProtectedRoute component={NoteTemplatesPage} />}
+        {/* Legacy URL — the page itself just redirects to /account?section=notes.
+            Use BillingExemptRoute so old bookmarks always reach the redirect
+            even when the clinic's subscription is paused. */}
+        {() => <BillingExemptRoute component={NoteTemplatesPage} />}
       </Route>
       <Route path="/appointments">
         {() => <ProtectedRoute component={AppointmentsPage} />}

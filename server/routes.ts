@@ -5339,7 +5339,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
             )
         : eq(clinicalEncounters.clinicianId, providerId);
 
-      const rows = await storageDb
+      const encounterRows = await storageDb
         .select({
           id: clinicalEncounters.id,
           clinicianId: clinicalEncounters.clinicianId,
@@ -5357,7 +5357,31 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         .where(and(providerScope, isNull(clinicalEncounters.signedAt)))
         .orderBy(desc(clinicalEncounters.updatedAt));
 
-      res.json(rows);
+      const encounterItems = encounterRows.map((r) => ({ ...r, kind: "encounter" as const }));
+
+      // Transcription drafts (recordings without an attached patient yet) live in
+      // encounter_drafts and are owned by the requesting clinician only. We surface
+      // them at the top of the "open notes" list so they're not buried under "New
+      // Encounter".  We only show drafts when looking at our own queue.
+      let draftItems: Array<{
+        kind: "draft";
+        id: number;
+        clinicianId: number;
+        transcription: string;
+        visitDate: string;
+        visitType: string;
+        createdAt: Date;
+      }> = [];
+      if (providerId === requesterId) {
+        try {
+          const drafts = await storage.getEncounterDrafts(requesterId);
+          draftItems = drafts.map((d) => ({ ...d, kind: "draft" as const }));
+        } catch (e) {
+          console.warn("[Open Encounters] Failed to load drafts", e);
+        }
+      }
+
+      res.json([...draftItems, ...encounterItems]);
     } catch (err) {
       console.error("[Open Encounters]", err);
       res.status(500).json({ message: "Failed to load open encounters" });

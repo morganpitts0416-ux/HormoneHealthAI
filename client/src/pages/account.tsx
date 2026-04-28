@@ -2,7 +2,7 @@ import { useState, useRef, useEffect, useCallback } from "react";
 import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
-import { useLocation } from "wouter";
+import { useLocation, useSearch } from "wouter";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { apiRequest } from "@/lib/queryClient";
@@ -25,6 +25,7 @@ import {
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PreferencesPanel } from "@/components/preferences-panel";
 import { DiagnosisPresetsSection } from "@/components/diagnosis-presets-section";
+import { NoteTemplatesContent } from "@/pages/note-templates";
 import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { PLATFORM_DEFAULT_BRANDING, resolveBranding } from "@/lib/branding";
 import { useToast } from "@/hooks/use-toast";
@@ -127,7 +128,7 @@ interface MessagingSettings {
   webhookUrl: string | null;
 }
 
-type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "baa" | "billing";
+type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "baa" | "billing";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
@@ -137,6 +138,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "messaging", label: "Messaging Settings", icon: MessageSquare, clinicianOnly: true, ownerOnly: true },
   { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, ownerOnly: true },
   { id: "diagnoses", label: "Diagnosis Presets", icon: ClipboardList, clinicianOnly: true, providerVisible: true },
+  { id: "notes", label: "Note Templates", icon: FileText, clinicianOnly: true, providerVisible: true },
   { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true, ownerOnly: true },
   { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true, ownerOnly: true },
   { id: "baa", label: "BAA / HIPAA", icon: Shield, clinicianOnly: true, ownerOnly: true },
@@ -684,9 +686,34 @@ function FormSubmissionsSection() {
 export default function Account() {
   const { user, logoutMutation } = useAuth();
   const [, setLocation] = useLocation();
+  const searchStr = useSearch();
   const queryClient = useQueryClient();
   const { toast } = useToast();
-  const [activeSection, setActiveSection] = useState<SectionId>("clinic");
+
+  // Allow deep-linking to a specific section via `?section=...` (e.g. from the
+  // Settings dropdown's "Note Templates" entry). Falls back to "clinic".
+  const initialSection = (() => {
+    try {
+      const params = new URLSearchParams(searchStr);
+      const s = params.get("section");
+      if (s && SECTIONS.some(sec => sec.id === s)) return s as SectionId;
+    } catch {}
+    return "clinic" as SectionId;
+  })();
+  const [activeSection, setActiveSection] = useState<SectionId>(initialSection);
+
+  // React to ?section= changes after mount (e.g. user clicks Settings → Note
+  // Templates from the same page).
+  useEffect(() => {
+    try {
+      const params = new URLSearchParams(searchStr);
+      const s = params.get("section");
+      if (s && SECTIONS.some(sec => sec.id === s) && s !== activeSection) {
+        setActiveSection(s as SectionId);
+      }
+    } catch {}
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchStr]);
   const [saved, setSaved] = useState(false);
   const [messagingSaved, setMessagingSaved] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
@@ -740,13 +767,17 @@ export default function Account() {
   const isSuiteProvider = !isStaff && !isOwnerOrAdmin && !!(user as any)?.defaultClinicId;
 
   useEffect(() => {
-    if (isSuiteProvider && activeSection !== "provider" && activeSection !== "branding" && activeSection !== "diagnoses") {
+    // Suite providers (non-admin clinicians on a paid suite plan) can only see
+    // the provider-visible sections. Keep this list in sync with
+    // `providerVisible: true` entries in SECTIONS above.
+    const providerAllowed: SectionId[] = ["provider", "branding", "diagnoses", "notes"];
+    if (isSuiteProvider && !providerAllowed.includes(activeSection)) {
       setActiveSection("provider");
     }
     if (isAdmin && SECTIONS.find(s => s.id === activeSection)?.ownerOnly) {
       setActiveSection("provider");
     }
-  }, [isSuiteProvider, isAdmin]);
+  }, [isSuiteProvider, isAdmin, activeSection]);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteFirstName, setInviteFirstName] = useState("");
@@ -2149,6 +2180,19 @@ export default function Account() {
 
       case "diagnoses":
         return <DiagnosisPresetsSection />;
+
+      case "notes":
+        return (
+          <div className="space-y-4">
+            <div>
+              <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>Note Templates</h3>
+              <p className="text-sm text-muted-foreground mt-1">
+                Build reusable templates for SOAP notes, nurse notes, and phone notes. Templates can be private to you or shared with your clinic.
+              </p>
+            </div>
+            <NoteTemplatesContent embedded />
+          </div>
+        );
 
       case "preferences":
         return (
