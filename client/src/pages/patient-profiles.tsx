@@ -2098,10 +2098,21 @@ export default function PatientProfiles() {
                 </div>
               </div>
 
-              {/* ── Upcoming Appointments mini-card ────────────────────── */}
-              <UpcomingAppointmentsCard
+              {/* ── Patient Chart (always at top) ─────────────────────── */}
+              <PatientChartPanel
                 patientId={selectedPatient.id}
-                onBook={() => setShowAppointmentDialog(true)}
+                chart={patientChart ?? null}
+                encounters={patientEncounters as unknown as ClinicalEncounter[]}
+                onSaved={() => {
+                  queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient.id, 'chart'] });
+                  refetchChart();
+                }}
+              />
+
+              {/* ── Status tiles (Appointments · Vitals Monitoring · Check-Ins) ── */}
+              <StatusTilesRow
+                patientId={selectedPatient.id}
+                onBookAppointment={() => setShowAppointmentDialog(true)}
               />
 
               {/* ── Portal Engagement Panel (with inline messages) ────── */}
@@ -2236,23 +2247,6 @@ export default function PatientProfiles() {
                   )}
                 </div>
               )}
-
-              {/* ── Vitals Monitoring (Phase 2) ────────────────────────── */}
-              <VitalsMonitoringPanel patientId={selectedPatient.id} />
-
-              {/* ── Monitoring & Check-Ins (Phase 1: Daily Check-In) ──── */}
-              <MonitoringPanel patientId={selectedPatient.id} />
-
-              {/* ── Patient Chart ─────────────────────────────────────── */}
-              <PatientChartPanel
-                patientId={selectedPatient.id}
-                chart={patientChart ?? null}
-                encounters={patientEncounters as unknown as ClinicalEncounter[]}
-                onSaved={() => {
-                  queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient.id, 'chart'] });
-                  refetchChart();
-                }}
-              />
 
               {/* ── Clinical Snapshot (collapsible) ─────────────────────── */}
               <ClinicalSnapshot labs={labs} patient={selectedPatient} />
@@ -4091,6 +4085,237 @@ function UpcomingAppointmentsCard({
         )}
       </div>
     </div>
+  );
+}
+
+// ── Status Tile + Tiles Row (compact summary tiles that pop dialogs) ──────
+function StatusTile({
+  icon: Icon,
+  iconColor,
+  title,
+  status,
+  statusBg,
+  statusColor,
+  subtitle,
+  subtitleColor,
+  alertCount,
+  onClick,
+  testId,
+}: {
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  iconColor: string;
+  title: string;
+  status: string;
+  statusBg: string;
+  statusColor: string;
+  subtitle?: string | null;
+  subtitleColor?: string;
+  alertCount?: number;
+  onClick: () => void;
+  testId: string;
+}) {
+  return (
+    <button
+      type="button"
+      onClick={onClick}
+      className="flex flex-col items-start text-left rounded-xl border px-4 py-3 hover-elevate active-elevate-2 w-full"
+      style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
+      data-testid={testId}
+    >
+      <div className="flex items-center gap-2 w-full">
+        <Icon className="w-4 h-4 flex-shrink-0" style={{ color: iconColor }} />
+        <span className="text-sm font-semibold flex-1 truncate" style={{ color: "#1c2414" }}>
+          {title}
+        </span>
+        {alertCount !== undefined && alertCount > 0 && (
+          <span
+            className="inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 min-w-[18px] h-[18px]"
+            style={{ backgroundColor: "#c0392b", color: "#ffffff" }}
+            data-testid={`${testId}-alert-badge`}
+          >
+            {alertCount}
+          </span>
+        )}
+        <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
+      </div>
+      <span
+        className="inline-block mt-2 text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded"
+        style={{ backgroundColor: statusBg, color: statusColor }}
+      >
+        {status}
+      </span>
+      {subtitle && (
+        <span className="mt-1.5 text-xs truncate w-full" style={{ color: subtitleColor || "#7a8a64" }}>
+          {subtitle}
+        </span>
+      )}
+    </button>
+  );
+}
+
+function StatusTilesRow({
+  patientId,
+  onBookAppointment,
+}: {
+  patientId: number;
+  onBookAppointment: () => void;
+}) {
+  const [openAppointments, setOpenAppointments] = useState(false);
+  const [openVitals, setOpenVitals] = useState(false);
+  const [openCheckin, setOpenCheckin] = useState(false);
+
+  // Summary queries — react-query dedupes against the panels' own queries
+  const { data: upcomingAppts = [] } = useQuery<Appointment[]>({
+    queryKey: ["/api/patients", patientId, "upcoming-appointments"],
+    queryFn: async () => {
+      const r = await fetch(`/api/patients/${patientId}/upcoming-appointments`, { credentials: "include" });
+      if (!r.ok) return [];
+      return r.json();
+    },
+  });
+
+  const { data: vitalsData } = useQuery<_VitalsResp>({
+    queryKey: ["/api/patients", patientId, "vitals-monitoring"],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/vitals-monitoring`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
+  const { data: trackingData } = useQuery<_MonitoringSummary>({
+    queryKey: ["/api/patients", patientId, "tracking-summary"],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/tracking-summary`, { credentials: "include" });
+      if (!res.ok) throw new Error("failed");
+      return res.json();
+    },
+  });
+
+  // Appointments tile data
+  const apptCount = upcomingAppts.length;
+  const nextAppt = upcomingAppts[0];
+  const fmtAppt = (iso: string) => {
+    const d = new Date(iso);
+    return `${d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
+  };
+
+  // Vitals monitoring tile data
+  const activeVitals = (vitalsData?.episodes ?? []).filter((e) => e.status === "active");
+  const totalVitalsAlerts = Object.values(vitalsData?.alertsPerEpisode ?? {}).reduce((s, l) => s + l.length, 0);
+  const latestVitalLog = (() => {
+    const all = (vitalsData?.episodes ?? []).flatMap((e) => vitalsData?.logsPerEpisode?.[String(e.id)] ?? []);
+    return [...all].sort((a, b) => b.recordedAt.localeCompare(a.recordedAt))[0];
+  })();
+
+  // Check-Ins tile data
+  const trackingActive = !!(trackingData?.settings?.enabled && trackingData?.settings?.trackingMode !== "off");
+  const trackingMode = trackingData?.settings?.trackingMode ?? "off";
+  const unreviewedMedCount = (trackingData?.reportedMeds ?? []).filter(
+    (m) => !m.reviewedByProvider && m.status === "active"
+  ).length;
+  const lastCheckinDate = trackingData?.summary?.lastActivityAt;
+
+  return (
+    <>
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="status-tiles-row">
+        <StatusTile
+          icon={CalendarDays}
+          iconColor="#5a7040"
+          title="Appointments"
+          status={apptCount > 0 ? `${apptCount} upcoming` : "None scheduled"}
+          statusBg={apptCount > 0 ? "#dbe8c8" : "#e8ddd0"}
+          statusColor={apptCount > 0 ? "#2e3a20" : "#7a8a64"}
+          subtitle={nextAppt ? `Next: ${fmtAppt(nextAppt.appointmentStart as unknown as string)}` : null}
+          onClick={() => setOpenAppointments(true)}
+          testId="tile-appointments"
+        />
+        <StatusTile
+          icon={Heart}
+          iconColor="#8b5a10"
+          title="Vitals Monitoring"
+          status={activeVitals.length > 0 ? `${activeVitals.length} active` : "Not monitoring"}
+          statusBg={activeVitals.length > 0 ? "#fdf6e8" : "#e8ddd0"}
+          statusColor={activeVitals.length > 0 ? "#8b5a10" : "#7a8a64"}
+          subtitle={
+            latestVitalLog
+              ? `Last: ${new Date(latestVitalLog.recordedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}${
+                  latestVitalLog.systolicBp != null && latestVitalLog.diastolicBp != null
+                    ? ` · ${latestVitalLog.systolicBp}/${latestVitalLog.diastolicBp}`
+                    : ""
+                }`
+              : null
+          }
+          alertCount={totalVitalsAlerts}
+          onClick={() => setOpenVitals(true)}
+          testId="tile-vitals-monitoring"
+        />
+        <StatusTile
+          icon={Activity}
+          iconColor="#2e3a20"
+          title="Check-Ins"
+          status={trackingActive ? (trackingMode === "power" ? "Power Mode" : "Standard") : "Not enrolled"}
+          statusBg={trackingActive ? "#dbe8c8" : "#e8ddd0"}
+          statusColor={trackingActive ? "#2e3a20" : "#7a8a64"}
+          subtitle={
+            trackingActive && lastCheckinDate
+              ? `Last activity: ${new Date(lastCheckinDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
+              : trackingActive
+                ? "No check-ins yet"
+                : "Patient can opt in from portal"
+          }
+          alertCount={unreviewedMedCount}
+          onClick={() => setOpenCheckin(true)}
+          testId="tile-checkins"
+        />
+      </div>
+
+      {/* Appointments dialog */}
+      <Dialog open={openAppointments} onOpenChange={setOpenAppointments}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Upcoming Appointments</DialogTitle>
+          </DialogHeader>
+          <UpcomingAppointmentsCard
+            patientId={patientId}
+            onBook={() => {
+              setOpenAppointments(false);
+              onBookAppointment();
+            }}
+          />
+        </DialogContent>
+      </Dialog>
+
+      {/* Vitals Monitoring dialog */}
+      <Dialog open={openVitals} onOpenChange={setOpenVitals}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Vitals Monitoring</DialogTitle>
+          </DialogHeader>
+          <VitalsMonitoringPanel patientId={patientId} />
+        </DialogContent>
+      </Dialog>
+
+      {/* Check-Ins dialog */}
+      <Dialog open={openCheckin} onOpenChange={setOpenCheckin}>
+        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
+          <DialogHeader>
+            <DialogTitle>Monitoring & Check-Ins</DialogTitle>
+          </DialogHeader>
+          {trackingActive ? (
+            <MonitoringPanel patientId={patientId} />
+          ) : (
+            <div className="py-4 text-sm space-y-2" style={{ color: "#5a6048" }} data-testid="checkin-not-enrolled">
+              <p>This patient hasn't opted in to Daily Check-In tracking.</p>
+              <p className="text-xs" style={{ color: "#7a8a64" }}>
+                Once they enable it from their patient portal, you'll see their daily activity, mood,
+                sleep, exercise, and any patient-added medications here for review.
+              </p>
+            </div>
+          )}
+        </DialogContent>
+      </Dialog>
+    </>
   );
 }
 
