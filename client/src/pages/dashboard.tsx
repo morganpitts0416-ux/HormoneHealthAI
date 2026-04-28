@@ -428,7 +428,17 @@ export default function Dashboard() {
         </div>
 
         {/* ══════════════════════════════════════════════════════════
-            NOTIFICATION CENTER — always visible, full width
+            TODAY'S APPOINTMENTS — standalone block, NOT a notification.
+            Kept separate so the Notifications count badge below cannot
+            be mistaken for an alert on this widget.
+        ══════════════════════════════════════════════════════════ */}
+        <TodaysAppointmentsWidget />
+
+        {/* ══════════════════════════════════════════════════════════
+            NOTIFICATION CENTER — always visible, full width.
+            The header's total badge is intentionally a quiet summary;
+            each column below has its own count badge in its header so
+            the visual cue lands on the box that actually needs action.
         ══════════════════════════════════════════════════════════ */}
         <div id="notifications-anchor" data-testid="notifications-panel">
           {/* Section header */}
@@ -440,10 +450,11 @@ export default function Dashboard() {
               <span className="text-base font-semibold" style={{ color: "#1c2414" }}>Notifications</span>
               {totalNotifications > 0 && (
                 <span
-                  className="inline-flex items-center justify-center w-6 h-6 rounded-full text-xs font-bold text-white"
-                  style={{ backgroundColor: "#c0392b" }}
+                  className="inline-flex items-center justify-center min-w-6 h-5 px-1.5 rounded-full text-[11px] font-semibold"
+                  style={{ backgroundColor: "#e8ddd0", color: "#2e3a20" }}
+                  data-testid="badge-notifications-total"
                 >
-                  {totalNotifications}
+                  {totalNotifications} total
                 </span>
               )}
             </div>
@@ -452,10 +463,10 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Today's Appointments widget */}
-          <TodaysAppointmentsWidget />
-
-          {/* Three-column grid: Messages | Orders | Submissions */}
+          {/* Three-column grid: Messages | Orders | Submissions
+              Each column header carries its OWN count badge in brand-
+              specific colors (green / amber / blue). That is where the
+              attention should land — not on the section-level total. */}
           <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
 
             {/* ── Messages column ────────────────────────────────── */}
