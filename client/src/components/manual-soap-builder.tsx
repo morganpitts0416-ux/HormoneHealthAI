@@ -1,6 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
-import { useMutation } from "@tanstack/react-query";
+import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
+import type { NoteTemplate } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -810,7 +811,101 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   ]);
   const [showAddMenu, setShowAddMenu] = useState(false);
   const [savedEncounterId, setSavedEncounterId] = useState<number | null>(null);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const addMenuRef = useRef<HTMLDivElement>(null);
+
+  const { data: templates = [] } = useQuery<NoteTemplate[]>({
+    queryKey: ["/api/note-templates", { noteType: "soap_provider" }],
+    queryFn: async () => {
+      const res = await fetch("/api/note-templates?noteType=soap_provider");
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+
+  const applyTemplate = useCallback((templateId: string) => {
+    setSelectedTemplateId(templateId);
+    if (!templateId) return;
+    const tpl = templates.find(t => String(t.id) === templateId);
+    if (!tpl) return;
+
+    // Map template block labels → SOAP block ids by fuzzy match against BLOCK_TYPES.label
+    const mapLabelToType = (label: string): BlockTypeId | null => {
+      const norm = label.toLowerCase().trim();
+      for (const bt of BLOCK_TYPES) {
+        const btLabel = bt.label.toLowerCase();
+        if (norm === btLabel) return bt.id;
+        if (norm.includes(btLabel) || btLabel.includes(norm)) return bt.id;
+      }
+      // Common abbreviations
+      if (/^hpi\b/.test(norm)) return "hpi";
+      if (/^ros\b/.test(norm)) return "ros";
+      if (/^pe\b|^physical\b|^exam\b/.test(norm)) return "physical_exam";
+      if (/^a\/p\b|^assessment\b/.test(norm)) return "assessment_plan";
+      if (/^pmh\b|^medical hx\b/.test(norm)) return "medical_history";
+      if (/^psh\b|^surgical hx\b/.test(norm)) return "surgical_history";
+      if (/^fh\b|^family hx\b/.test(norm)) return "family_history";
+      if (/^sh\b|^social hx\b/.test(norm)) return "social_history";
+      if (/^meds?\b|^medications?\b/.test(norm)) return "current_medications";
+      if (/^allerg/.test(norm)) return "allergies";
+      if (/^plan\b/.test(norm)) return "care_plan";
+      if (/follow.?up/.test(norm)) return "follow_up";
+      return null;
+    };
+
+    const tplBlocks = (tpl.blocks ?? []) as Array<{ uid?: string; type: string; label?: string; defaultValue?: string }>;
+    const newSoapBlocks: SoapBlock[] = [];
+    const claimed = new Set<BlockTypeId>();
+    let unmappedHpiBuffer = "";
+
+    for (const tb of tplBlocks) {
+      if (tb.type === "section_header") continue; // headers are visual-only in templates
+      const mapped = mapLabelToType(tb.label ?? "");
+      const value = (tb.defaultValue ?? "").trim();
+
+      if (mapped && !claimed.has(mapped)) {
+        const block: SoapBlock = { uid: uid(), type: mapped, content: value, mode: "freetext" };
+        if (mapped === "assessment_plan") {
+          // Start with one empty diagnosis item so the provider can fill it in;
+          // any default text from the template lives in the summary so it doesn't
+          // render as a blank numbered diagnosis line.
+          block.assessmentItems = [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }];
+          block.assessmentSummary = value;
+          block.content = "";
+        }
+        newSoapBlocks.push(block);
+        claimed.add(mapped);
+      } else if (value || tb.label) {
+        // No mapping – append to HPI as labelled free-text
+        const labelLine = tb.label ? `[${tb.label}]\n` : "";
+        unmappedHpiBuffer += `${labelLine}${value}\n\n`;
+      }
+    }
+
+    // If HPI not in template and we have unmapped content, prepend an HPI block
+    if (unmappedHpiBuffer.trim() && !claimed.has("hpi")) {
+      newSoapBlocks.unshift({ uid: uid(), type: "hpi", content: unmappedHpiBuffer.trim(), mode: "freetext" });
+    } else if (unmappedHpiBuffer.trim()) {
+      // Append unmapped to existing HPI
+      const hpi = newSoapBlocks.find(b => b.type === "hpi");
+      if (hpi) hpi.content = (hpi.content ? hpi.content + "\n\n" : "") + unmappedHpiBuffer.trim();
+    }
+
+    // Always ensure assessment_plan exists at end
+    if (!claimed.has("assessment_plan")) {
+      newSoapBlocks.push({
+        uid: uid(),
+        type: "assessment_plan",
+        content: "",
+        mode: "freetext",
+        assessmentItems: [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }],
+        assessmentSummary: "",
+      });
+    }
+
+    setBlocks(newSoapBlocks);
+    toast({ title: `Template "${tpl.name}" applied`, description: `${newSoapBlocks.length} block${newSoapBlocks.length === 1 ? "" : "s"} loaded.` });
+  }, [templates, toast]);
 
   useEffect(() => {
     if (!showAddMenu) return;
@@ -998,6 +1093,37 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
             />
           </div>
         </div>
+
+        {templates.length > 0 && (
+          <div className="flex items-center gap-2 flex-wrap p-2 rounded-md border" style={{ borderColor: "#d4c9b5", backgroundColor: "#faf6ed" }}>
+            <FileText className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+            <span className="text-xs font-medium" style={{ color: "#2e3a20" }}>Apply template:</span>
+            <Select value={selectedTemplateId} onValueChange={applyTemplate}>
+              <SelectTrigger className="h-7 text-xs w-[260px]" data-testid="select-soap-template">
+                <SelectValue placeholder="Choose a SOAP template…" />
+              </SelectTrigger>
+              <SelectContent>
+                {templates.map(t => (
+                  <SelectItem key={t.id} value={String(t.id)} data-testid={`option-template-${t.id}`}>
+                    {t.name}{t.isShared ? " (clinic)" : ""}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            {selectedTemplateId && (
+              <Button
+                size="sm"
+                variant="ghost"
+                className="text-xs h-7 px-2"
+                onClick={() => setSelectedTemplateId("")}
+                data-testid="button-clear-template"
+              >
+                Clear
+              </Button>
+            )}
+            <span className="text-[10px] text-muted-foreground ml-auto">Replaces current blocks. Type <code>/phrase</code> in any field to insert a saved phrase.</span>
+          </div>
+        )}
 
         <div className="flex items-center gap-2 flex-wrap">
           <div className="relative" ref={addMenuRef}>
