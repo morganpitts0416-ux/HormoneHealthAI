@@ -1,0 +1,592 @@
+We need to build a new optional, modular patient-facing and provider-facing tool inside ClinIQ called “Daily Check-In” for now.
+
+This feature should be built as a contained tool, not something scattered throughout the app.
+
+Primary goal:
+Create an optional patient tracking/accountability tool that helps patients log health behaviors, vitals, medication/supplement adherence, symptoms, weight, sleep, food, exercise, and cycle-related information when appropriate. The tool should generate helpful insights for patients and provide clean, clinically useful summaries for staff/providers.
+
+This must NOT clutter the app.
+This must NOT be required for every patient.
+This must NOT disrupt the existing patient portal, lab workflow, encounter workflow, provider dashboard, or chart structure.
+
+Core concept:
+There are patient-selected modes and clinician-directed monitoring.
+
+Patient-selected modes:
+1. Off
+2. Standard Mode
+3. Power Mode
+
+Clinician-directed mode:
+4. Vitals Monitoring Mode
+
+Vitals Monitoring Mode can run at the same time as Standard or Power Mode.
+
+Patient Portal UX:
+Add a clean card on the patient dashboard called “Daily Check-In” or “Accountability Buddy.”
+
+If the patient has not opted in, show a simple opt-in screen:
+“Want a little accountability buddy?”
+“Track your weight, food, sleep, exercise, symptoms, medications, and progress so your care team can better understand your health.”
+
+Buttons:
+- Turn On
+- No Thanks
+
+Patients should also be able to turn this tool OFF later from patient settings.
+Patients should be able to opt back IN later from patient settings.
+
+If turned OFF:
+- Do not show tracking reminders.
+- Do not show daily check-in prompts.
+- Keep the portal clean.
+
+If turned ON:
+- Allow patient to choose Standard Mode or Power Mode.
+- Patient can switch between Standard and Power Mode later in settings.
+- Patient can turn the feature off later.
+
+Navigation requirement:
+When the patient is inside the Daily Check-In tool, they should always have a clear way to return to:
+- Main Dashboard
+- Other tools/sections inside the app
+
+User UI is extremely important. This tool should feel easy, clean, and contained — not like the patient is lost in a separate app.
+
+Patient tool layout:
+Use a clean two-column layout.
+
+Left side:
+A vertical icon rail that stays visible.
+
+Icons/categories:
+- Today
+- Weight
+- Food
+- Sleep
+- Exercise
+- Medications/Supplements
+- Mood/Symptoms
+- Cycle, only for female patients
+- Vitals, only if active or enabled
+- Insights/Reports
+
+Main content area:
+The selected section opens in the main content area.
+The left icon rail remains visible.
+Do not make this feel like separate pages.
+
+Add a “Back to Dashboard” button at the top of the tool.
+
+Standard Mode:
+Simple daily tracking:
+- Weight
+- Food
+- Sleep
+- Exercise
+- Mood/symptoms
+- Medication/supplement adherence
+- Menstrual/cycle tracking only for female patients when appropriate
+
+Food tracking in Standard Mode:
+Do NOT build MyFitnessPal in Standard Mode.
+
+Fields:
+- Protein: low / moderate / strong
+- Water: low / moderate / strong
+- Fiber/veggies: low / moderate / strong
+- Processed/sugary foods: none / some / high
+- Alcohol: yes/no
+- Optional notes
+
+Add patient guidance ranges:
+Protein:
+- Low: less than 60g/day
+- Moderate: 60–90g/day
+- Strong: 90g+/day
+
+Water:
+- Low: less than 40 oz/day
+- Moderate: 40–80 oz/day
+- Strong: 80+ oz/day
+
+Fiber/veggies:
+- Low: 0–1 servings
+- Moderate: 2–3 servings
+- Strong: 4+ servings
+
+Allow clinic admin/provider to customize these ranges later.
+
+Power Mode:
+Patient-selected optional advanced tracking.
+
+Includes everything in Standard Mode, plus more detailed fields:
+- Calories optional
+- Protein grams
+- Carbs optional
+- Fat optional
+- Fiber grams optional
+- Water ounces
+- Meal notes
+- More detailed exercise logging
+- More detailed AI insights
+
+Power Mode should feel like:
+“I want more accountability and more detailed feedback.”
+
+AI insights in Power Mode should be more detailed and data-driven, but still warm and non-shaming.
+
+Daily reminder bubble:
+If patient tracking mode is Standard or Power and there has been no activity for 3 days, show a friendly dismissible talk-bubble on the patient dashboard.
+
+Example:
+“Hey friend — it’s been a few days since your last check-in. A quick update helps your care team see the full picture.”
+
+Actions:
+- Check in now
+- Dismiss
+
+If dismissed, hide it for that session/day.
+
+Medications/Supplements section:
+Pull active medications and supplements from the patient’s profile.
+
+For each medication/supplement:
+- Show name
+- Dose
+- Frequency if available
+- Checkbox for “taken today”
+- For weekly injections, allow “taken this week”
+- Allow patient to backfill missed days
+- Include “I skipped this” with optional reason
+
+Important:
+Patients should also be able to add medications or supplements that are not already listed.
+
+When patient adds a medication or supplement:
+- Add it to the patient’s medication/supplement list in their profile.
+- Mark it as patient-reported.
+- Show it as patient-added/patient-reported for staff/providers.
+- Include it in future analysis and insights.
+- Starting the next day, it should appear as a checkbox item in the medication/supplement adherence section.
+
+This matters because patients often take extra medications/supplements without telling the clinic. The system should help identify these because they may be helping, interfering, duplicative, unsafe, or clinically relevant.
+
+Medication/supplement AI logic:
+The insight engine should evaluate patient-reported meds/supplements and flag possible concerns for provider review, such as:
+- duplicate supplements
+- potentially excessive doses
+- possible interactions
+- supplements that may affect BP, sleep, GI symptoms, bleeding, hormones, or labs
+- patient taking something that may explain symptoms or lab changes
+
+Do not alarm the patient.
+Do not tell the patient to stop prescription medication.
+Use patient-facing language like:
+“You added a new supplement. Your care team may want to review this to make sure it fits safely with your plan.”
+
+Mood/Symptoms section:
+Track:
+- Mood 1–5
+- Energy 1–5
+- Cravings 1–5
+- Hunger 1–5
+- Brain fog 1–5
+- Anxiety/irritability 1–5
+- GI symptoms: nausea, constipation, diarrhea, reflux, bloating
+- Other symptoms text box
+
+Cycle section:
+Only show cycle tracking for female patients.
+
+When the patient opts in to the tool, include setup questions:
+- Do you currently have menstrual cycles? yes/no
+- Are your cycles regular? yes/no/not sure
+- Are you using hormone therapy? yes/no/not sure
+- Have you had a hysterectomy? yes/no
+- Do you still have ovaries? yes/no/not sure
+
+If patient says they do not have cycles, do not show full cycle tracking by default.
+
+However, even if patient says they do not have cycles, there must still be a way to document:
+- breakthrough bleeding
+- spotting
+- unexpected bleeding
+- postmenopausal bleeding
+
+This can live inside Mood/Symptoms as a symptom option:
+“Unexpected bleeding / spotting”
+
+If selected, flag as clinically relevant for staff/provider review.
+
+Vitals Monitoring Mode:
+This is clinician-directed and can be turned on from the patient profile by staff/provider.
+
+This is different from optional wellness tracking.
+
+Vitals Monitoring Mode examples:
+- 7-day blood pressure log
+- 10-day blood pressure + heart rate log
+- 14-day weight monitoring
+- Custom monitoring period
+
+Clinician can configure:
+- Vital types to monitor:
+  - Blood pressure
+  - Heart rate
+  - Weight
+- Duration:
+  - 7 days
+  - 10 days
+  - 14 days
+  - custom
+- Frequency:
+  - daily
+  - twice daily
+  - custom
+- Start date
+- End date
+- Optional instructions
+
+Patient side:
+If Vitals Monitoring Mode is active, show a clear card:
+“Your provider is monitoring your blood pressure for 10 days.”
+
+Only show the requested vital fields.
+
+For BP:
+- systolic
+- diastolic
+- time of reading
+- heart rate if selected
+- notes
+- symptoms checkbox:
+  - headache
+  - chest pain
+  - shortness of breath
+  - dizziness
+  - vision changes
+  - weakness
+  - confusion
+  - none
+
+If patient has not logged the requested vital for that day, show reminder:
+“Hey! Your provider is waiting for your daily blood pressure reading. Don’t forget to log it today.”
+
+When the monitoring period ends:
+- Automatically mark monitoring episode completed.
+- Stop patient reminders for that episode.
+- Stop active vitals prompt.
+- Send provider inbox notification:
+“[Patient Name] has completed their 10-day blood pressure log. View results.”
+
+Clicking notification should open the patient profile and open the contained Monitoring/Daily Check-In tool inside that profile.
+
+Provider alerts:
+Create provider inbox notifications for concerning patterns.
+
+For blood pressure:
+Stage 2 definition:
+systolic >= 140 OR diastolic >= 90
+
+If patient logs more than 2 Stage 2 readings during the monitoring period, notify provider:
+“[Patient Name] has logged multiple Stage 2 blood pressure readings. Review vitals log.”
+
+Severe BP:
+systolic >= 180 OR diastolic >= 120
+
+Provider notification:
+“Urgent BP reading logged for [Patient Name]: [reading]. Review immediately.”
+
+Patient-facing message for severe BP:
+“This reading is very high. Please recheck after sitting quietly for 5 minutes. If it remains this high or you have chest pain, shortness of breath, severe headache, weakness, confusion, or vision changes, seek urgent/emergency care.”
+
+Do not tell patient to change medication.
+Do not diagnose.
+Do not replace provider judgment.
+
+Provider/staff UX:
+From provider/staff standpoint, this must also remain clean.
+
+Add a contained tool inside the patient profile called:
+“Monitoring & Check-Ins”
+
+This should open inside the patient profile, not as a separate page and not mixed throughout the chart.
+
+Provider/staff should be able to view:
+- Current patient-selected mode: Off / Standard / Power
+- Active clinician-directed vitals monitoring episodes
+- Recent daily logs
+- Weight trend
+- Food consistency summary
+- Sleep trend
+- Exercise trend
+- Mood/symptom trend
+- Medication/supplement adherence
+- Patient-added medications/supplements
+- Cycle data if applicable
+- Vitals trends
+- AI-generated summaries
+- Flags
+
+Provider inbox:
+Simple notifications should alert providers/staff when needed.
+
+Notification types:
+- vitals_monitoring_completed
+- stage_2_bp_pattern
+- severe_bp_reading
+- missed_required_vital_log
+- unexpected_bleeding_reported
+- patient_added_med_or_supplement
+- worsening_symptom_trend
+
+Missed vitals:
+If clinician-required vitals are active and patient misses 2 days, notify provider:
+“[Patient Name] has missed 2 required blood pressure logs.”
+
+Vitals integration:
+Any vitals logged by the patient should integrate with vitals taken in-clinic for trending purposes.
+
+However, patient-logged vitals must be clearly labeled and color-coded as patient-documented.
+
+In vitals trends:
+- In-clinic vitals should remain distinct.
+- Patient-documented vitals should be color-coded differently.
+- Tooltip/label should say “Patient-documented”
+- In-clinic vitals should say “Clinic-documented”
+
+Do not overwrite clinic vitals.
+Do not mix the source invisibly.
+Both should trend together visually, but source should be clear.
+
+Insights/Reports:
+Patient side should have:
+1. Daily Insight
+2. Weekly Summary
+3. Trends Over Time
+
+Daily Insight:
+Generate warm, encouraging, non-shaming feedback.
+
+Examples:
+“Your sleep was lower last night, which may increase cravings and lower energy today. Tonight, focus on a consistent bedtime and a protein-forward breakfast tomorrow.”
+
+“You logged your medication today — great consistency.”
+
+“You reported higher cravings and lower mood. This may relate to poor sleep, cycle timing, or lower protein intake.”
+
+Weekly Summary:
+Show:
+- Weight change
+- Average sleep
+- Exercise days
+- Medication adherence %
+- Mood trend
+- Food consistency
+- Symptoms
+- Suggested focus for next week
+
+Example:
+“This week your weight decreased 1.2 lb. Sleep averaged 5.8 hours and cravings were higher on lower-sleep days. Your biggest opportunity next week is improving sleep consistency and protein intake.”
+
+Long-term trends:
+Show charts/cards for:
+- Weight over time
+- Sleep average
+- Mood
+- Medication adherence
+- Exercise frequency
+- Symptoms
+- Vitals if available
+- Cycle-related patterns if applicable
+
+Clinical AI rules:
+AI should:
+- Be warm, supportive, and educational
+- Avoid shame
+- Avoid diagnosing
+- Avoid telling patient to change prescription medication without provider input
+- Encourage contacting clinic for concerning symptoms
+- Alert provider/staff when clinically relevant patterns appear
+- Help distinguish non-response from non-adherence
+
+Database/schema needs:
+Create or update tables to support:
+
+patient_tracking_settings:
+- id
+- patientId
+- trackingMode: off / standard / power
+- enabled boolean
+- setupCompleted boolean
+- stillHasCycle boolean nullable
+- cyclesRegular boolean nullable
+- onHormoneTherapy boolean nullable
+- hysterectomyStatus nullable
+- ovariesStatus nullable
+- lastActivityAt
+- lastReminderDismissedAt
+- reminderPreferences JSONB
+- createdAt
+- updatedAt
+
+patient_daily_checkins:
+- id
+- patientId
+- date
+- weight
+- foodProteinLevel
+- proteinGrams
+- calories
+- carbs
+- fat
+- fiberGrams
+- waterLevel
+- waterOunces
+- fiberVeggieLevel
+- processedFoodLevel
+- alcoholUse
+- foodNotes
+- sleepHours
+- sleepQuality
+- nightSweats
+- wokeDuringNight
+- exerciseDone
+- exerciseType
+- exerciseMinutes
+- exerciseIntensity
+- moodScore
+- energyScore
+- cravingsScore
+- hungerScore
+- brainFogScore
+- anxietyIrritabilityScore
+- giSymptoms JSONB
+- unexpectedBleeding boolean
+- otherSymptoms
+- cycleData JSONB
+- notes
+- createdAt
+- updatedAt
+
+patient_medication_adherence_logs:
+- id
+- patientId
+- medicationId
+- date
+- status: taken / skipped / missed / backfilled
+- reason
+- createdAt
+- updatedAt
+
+patient_reported_medications:
+- id
+- patientId
+- name
+- dose
+- frequency
+- type: medication / supplement
+- route
+- reason
+- startDate
+- source: patient_reported
+- status: active / inactive
+- reviewedByProvider boolean
+- reviewedAt
+- createdAt
+- updatedAt
+
+patient_vitals_monitoring_episodes:
+- id
+- patientId
+- orderedByProviderId
+- status: active / completed / cancelled
+- vitalTypes JSONB
+- frequency
+- startDate
+- endDate
+- durationDays
+- providerInstructions
+- completedAt
+- createdAt
+- updatedAt
+
+patient_vital_logs:
+- id
+- patientId
+- monitoringEpisodeId nullable
+- source: patient_documented / clinic_documented
+- date
+- time
+- systolic
+- diastolic
+- heartRate
+- weight
+- symptoms JSONB
+- notes
+- createdAt
+- updatedAt
+
+patient_checkin_insights:
+- id
+- patientId
+- periodType: daily / weekly / monthly
+- periodStart
+- periodEnd
+- summary
+- recommendations JSONB
+- flags JSONB
+- createdAt
+
+provider_inbox_notifications:
+- id
+- clinicId
+- patientId
+- providerId nullable
+- type
+- title
+- message
+- relatedEntityType
+- relatedEntityId
+- readAt
+- createdAt
+
+API routes:
+Patient-facing:
+- GET /api/patient/tracking/settings
+- POST /api/patient/tracking/settings
+- GET /api/patient/tracking/checkins
+- POST /api/patient/tracking/checkins
+- GET /api/patient/tracking/medications
+- POST /api/patient/tracking/med-adherence
+- POST /api/patient/tracking/patient-reported-medication
+- GET /api/patient/tracking/vitals-monitoring
+- POST /api/patient/tracking/vital-log
+- GET /api/patient/tracking/insights
+
+Provider/staff-facing:
+- GET /api/patients/:patientId/monitoring-summary
+- GET /api/patients/:patientId/checkins
+- GET /api/patients/:patientId/vital-logs
+- GET /api/patients/:patientId/vitals-trends
+- GET /api/patients/:patientId/checkin-flags
+- POST /api/patients/:patientId/vitals-monitoring
+- PATCH /api/patients/:patientId/vitals-monitoring/:episodeId
+- GET /api/provider/inbox-notifications
+- PATCH /api/provider/inbox-notifications/:notificationId/read
+
+Design principles:
+- Optional, not required
+- Clean and modular
+- Mobile-first
+- Easy to navigate back to dashboard
+- Left-side icon rail inside tool
+- No clutter on main dashboard
+- Patient-selected tracking stays separate from clinician-directed monitoring
+- Provider/staff view stays contained inside the patient profile
+- Vitals integrate with clinic vitals for trending but remain source-labeled
+- Patient-reported medications/supplements update the patient medication list and require provider visibility
+- Menstrual cycle tracking only appears for female patients
+- Unexpected bleeding should always be available as a symptom option when clinically relevant
+- Build this without disrupting existing workflows
