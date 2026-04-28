@@ -12,7 +12,7 @@ import {
   TrendingUp, TrendingDown, Minus, Package, MessageSquare, Smartphone,
   Heart, Activity, Utensils, X, ChevronDown, ChevronUp, Info,
   ChefHat, Clock, Users, Loader2, ArrowLeft, Bookmark, BookmarkCheck,
-  Download, Trash2, Stethoscope, FileText
+  Download, Trash2, Stethoscope, FileText, Sun, CheckCircle2
 } from "lucide-react";
 import type { SupplementRecommendation, Appointment } from "@shared/schema";
 import { generateTrendInsights } from "@/lib/clinical-trend-insights";
@@ -1091,6 +1091,9 @@ export default function PortalDashboard() {
           </Link>
         )}
 
+        {/* Daily Check-In opt-in card / today summary */}
+        <DailyCheckInCard />
+
         {/* Message Provider button */}
         {messagingConfig && messagingConfig.messagingPreference !== 'none' && (
           <div>
@@ -1407,5 +1410,82 @@ export default function PortalDashboard() {
       {/* Lab quick view dialog */}
       {selectedLab && <LabQuickViewDialog lab={selectedLab} dietaryGuidance={protocol?.dietaryGuidance} onClose={() => setSelectedLab(null)} />}
     </div>
+  );
+}
+
+// ── Daily Check-In Card ───────────────────────────────────────────────────
+function DailyCheckInCard() {
+  const { data: settings } = useQuery<{
+    trackingMode: "off" | "standard" | "power";
+    enabled: boolean;
+    setupCompleted: boolean;
+  }>({ queryKey: ["/api/portal/tracking/settings"], retry: false });
+  const { data: today } = useQuery<{
+    date?: string;
+    moodScore?: number | null;
+    energyScore?: number | null;
+    sleepHours?: string | null;
+    updatedAt?: string;
+  }>({
+    queryKey: ["/api/portal/tracking/checkins/today"],
+    enabled: !!settings && settings.trackingMode !== "off",
+    retry: false,
+  });
+
+  if (!settings) return null;
+
+  const tracking = settings.trackingMode !== "off";
+  const completedToday = !!(today?.moodScore || today?.energyScore || today?.sleepHours || today?.updatedAt);
+
+  if (!tracking) {
+    return (
+      <Link href="/portal/check-in">
+        <div
+          className="rounded-xl border-2 border-dashed p-4 cursor-pointer hover-elevate"
+          style={{ borderColor: "#c8dbb8", backgroundColor: "#f5fbef" }}
+          data-testid="card-checkin-optin"
+        >
+          <div className="flex items-center gap-3">
+            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#edf4e4" }}>
+              <Sun className="w-5 h-5" style={{ color: "#2e3a20" }} />
+            </div>
+            <div className="flex-1 min-w-0">
+              <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>Try Daily Check-In</p>
+              <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
+                60 seconds a day on food, sleep, mood, and meds. Helps your team connect the dots between visits.
+              </p>
+            </div>
+            <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
+          </div>
+        </div>
+      </Link>
+    );
+  }
+
+  return (
+    <Link href="/portal/check-in">
+      <div
+        className="rounded-xl border p-4 cursor-pointer hover-elevate"
+        style={{ borderColor: completedToday ? "#c8dbb8" : "#d4c9b5", backgroundColor: completedToday ? "#edf4e4" : "#ffffff" }}
+        data-testid="card-checkin-today"
+      >
+        <div className="flex items-center gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: completedToday ? "#2e3a20" : "#edf4e4" }}>
+            {completedToday
+              ? <CheckCircle2 className="w-5 h-5" style={{ color: "#ffffff" }} />
+              : <Sun className="w-5 h-5" style={{ color: "#2e3a20" }} />}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+              {completedToday ? "Today's check-in is in" : "Open today's check-in"}
+            </p>
+            <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
+              {completedToday ? "Tap to update or add details." : "Quick log on food, sleep, mood, and meds."}
+            </p>
+          </div>
+          <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
+        </div>
+      </div>
+    </Link>
   );
 }

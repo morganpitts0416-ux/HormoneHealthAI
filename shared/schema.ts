@@ -1637,3 +1637,177 @@ export const insertDiagnosisPresetSchema = createInsertSchema(diagnosisPresets).
   updatedAt: true,
 });
 export type InsertDiagnosisPreset = z.infer<typeof insertDiagnosisPresetSchema>;
+
+// ─── Daily Check-In (Phase 1) ──────────────────────────────────────────────
+// Optional, opt-in patient tracking + accountability tool. All tables are
+// new and additive — no existing table is altered. Default-off behavior:
+// absence of a row in patient_tracking_settings = "off" for that patient.
+
+// Patient's tracking preferences (mode, opt-in state, cycle setup answers).
+export const patientTrackingSettings = pgTable("patient_tracking_settings", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  // 'off' | 'standard' | 'power'
+  trackingMode: varchar("tracking_mode", { length: 20 }).notNull().default("off"),
+  enabled: boolean("enabled").notNull().default(false),
+  setupCompleted: boolean("setup_completed").notNull().default(false),
+  // Cycle setup answers — only populated for female patients
+  stillHasCycle: boolean("still_has_cycle"),
+  cyclesRegular: boolean("cycles_regular"),
+  onHormoneTherapy: boolean("on_hormone_therapy"),
+  hysterectomyStatus: boolean("hysterectomy_status"),
+  ovariesStatus: varchar("ovaries_status", { length: 20 }), // 'yes' | 'no' | 'unsure'
+  lastActivityAt: timestamp("last_activity_at"),
+  lastReminderDismissedAt: timestamp("last_reminder_dismissed_at"),
+  reminderPreferences: jsonb("reminder_preferences").$type<Record<string, unknown>>().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PatientTrackingSettings = typeof patientTrackingSettings.$inferSelect;
+export const insertPatientTrackingSettingsSchema = createInsertSchema(patientTrackingSettings).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertPatientTrackingSettings = z.infer<typeof insertPatientTrackingSettingsSchema>;
+
+// One row per patient per day. Standard Mode uses the qualitative *Level
+// fields (low/moderate/strong); Power Mode also fills the gram/oz/cal fields.
+export const patientDailyCheckins = pgTable("patient_daily_checkins", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  // YYYY-MM-DD in patient's local timezone (kept as varchar for simple uniqueness per day)
+  date: varchar("date", { length: 10 }).notNull(),
+  // Vitals / weight
+  weight: real("weight"),
+  // Food — Standard Mode qualitative
+  foodProteinLevel: varchar("food_protein_level", { length: 20 }),     // low | moderate | strong
+  waterLevel: varchar("water_level", { length: 20 }),                  // low | moderate | strong
+  fiberVeggieLevel: varchar("fiber_veggie_level", { length: 20 }),     // low | moderate | strong
+  processedFoodLevel: varchar("processed_food_level", { length: 20 }), // none | some | high
+  alcoholUse: boolean("alcohol_use"),
+  foodNotes: text("food_notes"),
+  // Food — Power Mode quantitative (optional)
+  proteinGrams: real("protein_grams"),
+  calories: real("calories"),
+  carbs: real("carbs"),
+  fat: real("fat"),
+  fiberGrams: real("fiber_grams"),
+  waterOunces: real("water_ounces"),
+  // Sleep
+  sleepHours: real("sleep_hours"),
+  sleepQuality: integer("sleep_quality"), // 1–5
+  nightSweats: boolean("night_sweats"),
+  wokeDuringNight: boolean("woke_during_night"),
+  // Exercise
+  exerciseDone: boolean("exercise_done"),
+  exerciseType: varchar("exercise_type", { length: 100 }),
+  exerciseMinutes: integer("exercise_minutes"),
+  exerciseIntensity: varchar("exercise_intensity", { length: 20 }), // light | moderate | vigorous
+  // Mood / Symptoms (1–5 scales)
+  moodScore: integer("mood_score"),
+  energyScore: integer("energy_score"),
+  cravingsScore: integer("cravings_score"),
+  hungerScore: integer("hunger_score"),
+  brainFogScore: integer("brain_fog_score"),
+  anxietyIrritabilityScore: integer("anxiety_irritability_score"),
+  giSymptoms: jsonb("gi_symptoms").$type<string[]>().default([]),
+  unexpectedBleeding: boolean("unexpected_bleeding"),
+  otherSymptoms: text("other_symptoms"),
+  // Cycle (female patients only)
+  cycleData: jsonb("cycle_data").$type<Record<string, unknown>>(),
+  notes: text("notes"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PatientDailyCheckin = typeof patientDailyCheckins.$inferSelect;
+export const insertPatientDailyCheckinSchema = createInsertSchema(patientDailyCheckins).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertPatientDailyCheckin = z.infer<typeof insertPatientDailyCheckinSchema>;
+
+// One row per (patient, medication, date) — patient ticks "taken today" or
+// records a skip with optional reason. Backfilling allowed.
+export const patientMedicationAdherenceLogs = pgTable("patient_medication_adherence_logs", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  // The medication name (free text — matches against patient_charts.currentMedications
+  // OR patient_reported_medications.name). Kept as text to avoid a hard FK because
+  // chart meds live in a JSONB array, not a referenceable table.
+  medicationName: varchar("medication_name", { length: 200 }).notNull(),
+  // 'patient_chart' | 'patient_reported'
+  source: varchar("source", { length: 30 }).notNull().default("patient_chart"),
+  patientReportedMedicationId: integer("patient_reported_medication_id"),
+  date: varchar("date", { length: 10 }).notNull(), // YYYY-MM-DD
+  // 'taken' | 'skipped' | 'missed' | 'backfilled'
+  status: varchar("status", { length: 20 }).notNull(),
+  reason: text("reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PatientMedicationAdherenceLog = typeof patientMedicationAdherenceLogs.$inferSelect;
+export const insertPatientMedicationAdherenceLogSchema = createInsertSchema(patientMedicationAdherenceLogs).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertPatientMedicationAdherenceLog = z.infer<typeof insertPatientMedicationAdherenceLogSchema>;
+
+// Medications/supplements added by the patient via the portal — separate from
+// the clinician-curated patient_charts.currentMedications. Surfaced to staff
+// with a "patient-reported" badge for safety review.
+export const patientReportedMedications = pgTable("patient_reported_medications", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 200 }).notNull(),
+  dose: varchar("dose", { length: 100 }),
+  frequency: varchar("frequency", { length: 100 }),
+  // 'medication' | 'supplement'
+  type: varchar("type", { length: 20 }).notNull().default("supplement"),
+  route: varchar("route", { length: 50 }),
+  reason: text("reason"),
+  startDate: varchar("start_date", { length: 10 }), // YYYY-MM-DD
+  source: varchar("source", { length: 30 }).notNull().default("patient_reported"),
+  // 'active' | 'inactive'
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  reviewedByProvider: boolean("reviewed_by_provider").notNull().default(false),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedByUserId: integer("reviewed_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type PatientReportedMedication = typeof patientReportedMedications.$inferSelect;
+export const insertPatientReportedMedicationSchema = createInsertSchema(patientReportedMedications).omit({
+  id: true, createdAt: true, updatedAt: true, reviewedAt: true, reviewedByUserId: true,
+});
+export type InsertPatientReportedMedication = z.infer<typeof insertPatientReportedMedicationSchema>;
+
+// Provider/staff inbox notification queue. Wired to the existing toolbar
+// Inbox icon — adds a count alongside unread patient messages.
+export const providerInboxNotifications = pgTable("provider_inbox_notifications", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "cascade" }),
+  // Optional — if set, the notification is targeted at one provider; if null,
+  // it's visible to everyone in the clinic.
+  providerId: integer("provider_id"),
+  // 'patient_added_med_or_supplement' | 'vitals_monitoring_completed'
+  // | 'stage_2_bp_pattern' | 'severe_bp_reading' | 'missed_required_vital_log'
+  // | 'unexpected_bleeding_reported' | 'worsening_symptom_trend'
+  type: varchar("type", { length: 60 }).notNull(),
+  title: varchar("title", { length: 200 }).notNull(),
+  message: text("message").notNull(),
+  // 'patient' | 'medication' | 'checkin' | 'vital_log' | 'monitoring_episode'
+  relatedEntityType: varchar("related_entity_type", { length: 50 }),
+  relatedEntityId: integer("related_entity_id"),
+  // 'low' | 'normal' | 'urgent'
+  severity: varchar("severity", { length: 20 }).notNull().default("normal"),
+  readAt: timestamp("read_at"),
+  readByUserId: integer("read_by_user_id"),
+  // Soft-delete: lets a provider clear an item from their inbox without
+  // hard-removing it from the audit trail.
+  dismissedAt: timestamp("dismissed_at"),
+  dismissedByUserId: integer("dismissed_by_user_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type ProviderInboxNotification = typeof providerInboxNotifications.$inferSelect;
+export const insertProviderInboxNotificationSchema = createInsertSchema(providerInboxNotifications).omit({
+  id: true, createdAt: true, readAt: true, readByUserId: true, dismissedAt: true, dismissedByUserId: true,
+});
+export type InsertProviderInboxNotification = z.infer<typeof insertProviderInboxNotificationSchema>;
