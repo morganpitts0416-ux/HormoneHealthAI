@@ -3321,13 +3321,34 @@ export default function EncountersPage() {
     },
   });
 
-  // Apply URL params — patientId opens a new encounter pre-filled; encounterId opens an existing one
+  // Apply URL params:
+  //   ?patientId=N     → open a New Encounter pre-filled with that patient
+  //   ?encounterId=N   → open the saved encounter for editing
+  //   ?draft=N         → load a transcription draft into a New Encounter (and remove the draft)
   useEffect(() => {
     if (urlParamApplied.current) return;
     const params = new URLSearchParams(searchStr);
     const encounterId = params.get("encounterId");
     const patientIdParam = params.get("patientId");
-    if (patientIdParam) {
+    const draftIdParam = params.get("draft");
+    if (draftIdParam) {
+      const did = Number(draftIdParam);
+      const draft = serverDrafts.find(d => d.id === did);
+      if (draft) {
+        setDraftTranscription(draft.transcription);
+        setIsNew(true);
+        setSelectedId(null);
+        urlParamApplied.current = true;
+        // Remove the draft so we don't re-load it next time.
+        (async () => {
+          try {
+            await apiRequest("DELETE", `/api/encounter-drafts/${did}`);
+            qc.invalidateQueries({ queryKey: ["/api/encounter-drafts"] });
+            qc.invalidateQueries({ queryKey: ["/api/encounters/open"] });
+          } catch {}
+        })();
+      }
+    } else if (patientIdParam) {
       setInitialPatientId(patientIdParam);
       setIsNew(true);
       setSelectedId(null);
@@ -3336,7 +3357,7 @@ export default function EncountersPage() {
       const enc = encounters.find(e => e.id === Number(encounterId));
       if (enc) { setSelectedId(enc.id); setIsNew(false); urlParamApplied.current = true; }
     }
-  }, [searchStr, encounters]);
+  }, [searchStr, encounters, serverDrafts]);
 
   // Merge list entry (has patientName) with detail fetch (has JSONB columns: evidenceSuggestions, etc.)
   const selectedEncounterBase = selectedId ? encounters.find(e => e.id === selectedId) ?? null : null;

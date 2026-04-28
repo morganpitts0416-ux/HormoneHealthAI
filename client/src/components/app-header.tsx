@@ -4,6 +4,14 @@ import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
 import { Sheet, SheetContent, SheetTrigger } from "@/components/ui/sheet";
 import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import {
   LogOut,
   Settings,
   ShieldCheck,
@@ -14,6 +22,8 @@ import {
   LayoutDashboard,
   Inbox,
   FileText,
+  ChevronDown,
+  User as UserIcon,
 } from "lucide-react";
 
 export function AppHeader() {
@@ -105,41 +115,67 @@ export function AppHeader() {
                 </span>
               )}
             </div>
-            <NavButton
-              icon={FileText}
-              label="Templates"
-              onClick={() => setLocation("/note-templates")}
-              active={location === "/note-templates"}
-              testId="nav-templates"
-            />
-            <NavButton
-              icon={HelpCircle}
-              label="Help"
-              onClick={() => setLocation("/help")}
-              active={location === "/help"}
-              testId="nav-help"
-            />
-            <NavButton
-              icon={CreditCard}
-              label="Billing"
-              onClick={() => setLocation("/billing")}
-              active={location === "/billing"}
-              testId="nav-billing"
-            />
-            <NavButton
-              icon={Settings}
-              label="Account"
-              onClick={() => setLocation("/account")}
-              active={location === "/account"}
-              testId="nav-account"
-            />
-            <NavButton
-              icon={LogOut}
-              label="Sign Out"
-              onClick={() => logoutMutation.mutateAsync()}
-              disabled={logoutMutation.isPending}
-              testId="nav-logout"
-            />
+            <DropdownMenu>
+              <DropdownMenuTrigger asChild>
+                <Button
+                  variant="ghost"
+                  size="sm"
+                  className={
+                    ["/account", "/billing", "/help", "/note-templates"].includes(location)
+                      ? "font-semibold"
+                      : ""
+                  }
+                  style={{ color: "#2e3a20" }}
+                  data-testid="nav-settings-menu"
+                >
+                  <Settings className="w-4 h-4 mr-1.5" />
+                  <span className="hidden md:inline">Settings</span>
+                  <ChevronDown className="w-3 h-3 ml-1 opacity-70" />
+                </Button>
+              </DropdownMenuTrigger>
+              <DropdownMenuContent align="end" className="w-56">
+                <DropdownMenuLabel>Settings</DropdownMenuLabel>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => setLocation("/account")}
+                  data-testid="menuitem-account"
+                >
+                  <UserIcon className="w-4 h-4 mr-2" />
+                  Account
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setLocation("/account?section=notes")}
+                  data-testid="menuitem-note-templates"
+                >
+                  <FileText className="w-4 h-4 mr-2" />
+                  Note Templates
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setLocation("/billing")}
+                  data-testid="menuitem-billing"
+                >
+                  <CreditCard className="w-4 h-4 mr-2" />
+                  Billing
+                </DropdownMenuItem>
+                <DropdownMenuItem
+                  onClick={() => setLocation("/help")}
+                  data-testid="menuitem-help"
+                >
+                  <HelpCircle className="w-4 h-4 mr-2" />
+                  Help
+                </DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem
+                  onClick={() => logoutMutation.mutateAsync()}
+                  disabled={logoutMutation.isPending}
+                  data-testid="menuitem-logout"
+                  className="text-destructive focus:text-destructive"
+                >
+                  <LogOut className="w-4 h-4 mr-2" />
+                  Sign Out
+                </DropdownMenuItem>
+              </DropdownMenuContent>
+            </DropdownMenu>
           </div>
 
           <Sheet>
@@ -166,10 +202,13 @@ export function AppHeader() {
                   )}
                   <MobileNavButton icon={CalendarDays} label="Schedule" onClick={() => setLocation("/scheduling")} active={location === "/scheduling" || location === "/appointments"} />
                   <MobileNavButton icon={Inbox} label={unreadTotal > 0 ? `Inbox (${unreadTotal > 99 ? "99+" : unreadTotal})` : "Inbox"} onClick={() => setLocation("/inbox")} active={location === "/inbox"} />
-                  <MobileNavButton icon={FileText} label="Templates" onClick={() => setLocation("/note-templates")} active={location === "/note-templates"} />
-                  <MobileNavButton icon={HelpCircle} label="Help" onClick={() => setLocation("/help")} active={location === "/help"} />
+                  <div className="pt-2 mt-1 border-t" style={{ borderColor: "#d4c9b5" }}>
+                    <p className="text-[10px] uppercase tracking-wider px-2 pb-1" style={{ color: "#7a8a64" }}>Settings</p>
+                  </div>
+                  <MobileNavButton icon={UserIcon} label="Account" onClick={() => setLocation("/account")} active={location === "/account"} />
+                  <MobileNavButton icon={FileText} label="Note Templates" onClick={() => setLocation("/account?section=notes")} active={false} />
                   <MobileNavButton icon={CreditCard} label="Billing" onClick={() => setLocation("/billing")} active={location === "/billing"} />
-                  <MobileNavButton icon={Settings} label="Account" onClick={() => setLocation("/account")} active={location === "/account"} />
+                  <MobileNavButton icon={HelpCircle} label="Help" onClick={() => setLocation("/help")} active={location === "/help"} />
                 </nav>
                 <div className="p-3 border-t" style={{ borderColor: "#d4c9b5" }}>
                   <Button variant="ghost" className="justify-start gap-3 w-full text-destructive" onClick={() => logoutMutation.mutateAsync()} disabled={logoutMutation.isPending}>

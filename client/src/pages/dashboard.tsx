@@ -73,6 +73,7 @@ interface NotificationsData {
 }
 
 interface OpenEncounterRow {
+  kind: "encounter";
   id: number;
   clinicianId: number;
   patientId: number;
@@ -84,6 +85,18 @@ interface OpenEncounterRow {
   patientFirstName: string;
   patientLastName: string;
 }
+
+interface OpenDraftRow {
+  kind: "draft";
+  id: number;
+  clinicianId: number;
+  transcription: string;
+  visitDate: string;
+  visitType: string;
+  createdAt: string;
+}
+
+type OpenNoteItem = OpenEncounterRow | OpenDraftRow;
 
 interface ClinicUser {
   id: number;
@@ -193,7 +206,7 @@ export default function Dashboard() {
     staleTime: 5 * 60 * 1000,
   });
 
-  const { data: openNotes = [], isLoading: openNotesLoading } = useQuery<OpenEncounterRow[]>({
+  const { data: openNotes = [], isLoading: openNotesLoading } = useQuery<OpenNoteItem[]>({
     queryKey: ["/api/encounters/open", effectiveOpenNotesProviderId],
     queryFn: async () => {
       const url = effectiveOpenNotesProviderId
@@ -269,6 +282,16 @@ export default function Dashboard() {
               )}
             </div>
             <div className="flex items-center gap-2">
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setLocation("/encounters")}
+                data-testid="button-recent-encounters"
+                style={{ borderColor: "#d4c9b5", color: "#2e3a20", backgroundColor: "#ffffff" }}
+              >
+                <Clock className="w-3.5 h-3.5 mr-1.5" />
+                Recent Encounters
+              </Button>
               <span className="text-xs" style={{ color: "#7a8a64" }}>Provider</span>
               <Select
                 value={String(effectiveOpenNotesProviderId ?? "")}
@@ -313,12 +336,54 @@ export default function Dashboard() {
               </div>
             ) : (
               <div className="max-h-80 overflow-y-auto divide-y" style={{ borderColor: "#f0ece5" }}>
-                {openNotes.map((enc) => {
+                {openNotes.map((item) => {
+                  if (item.kind === "draft") {
+                    const created = new Date(item.createdAt);
+                    const createdLabel = created.toLocaleString(undefined, {
+                      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+                    });
+                    const preview = item.transcription.replace(/\s+/g, " ").slice(0, 140);
+                    return (
+                      <button
+                        key={`draft-${item.id}`}
+                        type="button"
+                        onClick={() => setLocation(`/encounters?draft=${item.id}`)}
+                        className="w-full text-left px-4 py-3 flex items-center gap-3 hover-elevate active-elevate-2"
+                        style={{ backgroundColor: "#fffaed" }}
+                        data-testid={`item-open-draft-${item.id}`}
+                      >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#fef0c7" }}>
+                          <ClipboardList className="w-4 h-4" style={{ color: "#a06a08" }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold" style={{ color: "#7a5c20" }}>
+                              Transcription draft
+                            </span>
+                            <span className="text-xs" style={{ color: "#a08456" }}>·</span>
+                            <span className="text-xs" style={{ color: "#a08456" }}>{createdLabel}</span>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>
+                              {item.visitType}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20" }}>
+                              Needs patient
+                            </Badge>
+                          </div>
+                          <p className="text-xs mt-1 truncate" style={{ color: "#a08456" }}>
+                            {preview}{item.transcription.length > 140 ? "…" : ""}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4a75a" }} />
+                      </button>
+                    );
+                  }
+
+                  const enc = item;
                   const visit = new Date(enc.visitDate);
                   const visitLabel = visit.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
                   return (
                     <button
-                      key={enc.id}
+                      key={`enc-${enc.id}`}
                       type="button"
                       onClick={() => setLocation(`/encounters?encounterId=${enc.id}`)}
                       className="w-full text-left px-4 py-3 flex items-center gap-3 hover-elevate active-elevate-2"
@@ -337,9 +402,13 @@ export default function Dashboard() {
                           <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>
                             {enc.visitType}
                           </Badge>
-                          {enc.soapGeneratedAt && (
+                          {enc.soapGeneratedAt ? (
                             <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>
-                              SOAP drafted
+                              SOAP drafted · unsigned
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>
+                              Awaiting SOAP
                             </Badge>
                           )}
                         </div>

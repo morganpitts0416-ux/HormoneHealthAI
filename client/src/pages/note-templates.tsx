@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useEffect, useState } from "react";
+import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -41,11 +42,14 @@ interface TemplateBlock {
 
 function uid() { return Math.random().toString(36).substring(2, 10); }
 
-export default function NoteTemplatesPage() {
+// Reusable content (also rendered embedded inside the Account page).
+export function NoteTemplatesContent({ embedded = false }: { embedded?: boolean }) {
   return (
-    <div className="flex-1 overflow-auto p-6 max-w-6xl mx-auto w-full">
+    <div>
       <div className="mb-6">
-        <h1 className="text-2xl font-semibold" data-testid="text-page-title">Notes & Templates</h1>
+        <h1 className={embedded ? "text-xl font-semibold" : "text-2xl font-semibold"} data-testid="text-page-title">
+          Note Templates
+        </h1>
         <p className="text-sm text-muted-foreground mt-1">
           Build reusable note templates and quick phrases for SOAP, nurse, and phone notes.
         </p>
@@ -60,6 +64,17 @@ export default function NoteTemplatesPage() {
       </Tabs>
     </div>
   );
+}
+
+export default function NoteTemplatesPage() {
+  // Templates now live inside the Account → Note Templates section. Redirect
+  // legacy `/note-templates` URLs (bookmarks, old emails) to the new location
+  // so the sidebar/Settings menu stays consistent.
+  const [, setLocation] = useLocation();
+  useEffect(() => {
+    setLocation("/account?section=notes", { replace: true });
+  }, [setLocation]);
+  return null;
 }
 
 function TemplatesTab() {
