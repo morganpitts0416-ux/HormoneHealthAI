@@ -500,6 +500,15 @@ CRITICAL FORMATTING RULES:
       prompt += `CLINICAL CONTEXT: Patient is actively on TRT. Testosterone optimal target: 600–1200 ng/dL (trough). Interpret testosterone findings in context of TRT protocol management.\n\n`;
     }
 
+    // Add vital signs (BP, BMI) so cardiovascular and metabolic recommendations
+    // factor in hypertension and obesity context.
+    try {
+      // Lazy-require to avoid circular import at module-load time.
+      const { buildVitalsPromptBlock } = require("./vital-signs-analyzer") as typeof import("./vital-signs-analyzer");
+      const vitalsBlock = buildVitalsPromptBlock((labs as any).demographics);
+      if (vitalsBlock) prompt += vitalsBlock;
+    } catch { /* non-fatal */ }
+
     // Add red flags if any
     if (redFlags.length > 0) {
       prompt += "RED FLAGS (Physician Notification Required):\n";

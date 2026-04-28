@@ -12,6 +12,10 @@ import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
+import {
+  buildVitalInterpretations,
+  buildVitalRedFlags,
+} from "./vital-signs-analyzer";
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
 import { runEnhancedSoapPipeline } from "./soap-pipeline";
@@ -66,6 +70,61 @@ function getEffectiveClinicId(req: Request): number | null {
     return (sess.staffClinicianClinicId as number | undefined) ?? null;
   }
   return (req.user as any)?.defaultClinicId ?? null;
+}
+
+// ── Lab-eval → vital-trends bridge ──────────────────────────────────────
+// When a clinician runs a lab interpretation for a known patient AND has
+// supplied systolic blood pressure or BMI in the demographics block, persist
+// those values to patient_vitals so they show up in the patient's Vital
+// Trends. Fire-and-forget: never blocks the lab-eval response and silently
+// no-ops on missing patient/auth/values.
+function persistVitalsFromLabEval(
+  req: Request,
+  patientId: number | undefined,
+  demographics: { systolicBP?: number | null; bmi?: number | null } | null | undefined,
+): void {
+  if (!patientId) return;
+  const sess = req.session as any;
+  const isAuthed = !!(req.isAuthenticated && req.isAuthenticated()) || !!sess?.staffClinicianId;
+  if (!isAuthed) return;
+
+  const sbp = (demographics?.systolicBP ?? null) as number | null;
+  const bmi = (demographics?.bmi ?? null) as number | null;
+  // Nothing to record — skip the database round trip.
+  if ((sbp === null || !Number.isFinite(sbp)) && (bmi === null || !Number.isFinite(bmi))) return;
+
+  let clinicianId: number;
+  try {
+    clinicianId = getClinicianId(req);
+  } catch {
+    return;
+  }
+
+  // Verify the patient is actually owned by this clinician/clinic before
+  // writing — same scoping rule used by the rest of the patient APIs.
+  const clinicId = getEffectiveClinicId(req);
+  Promise.resolve()
+    .then(async () => {
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) {
+        console.warn('[lab-eval vitals] skipped persist — patient not in clinician scope', { patientId, clinicianId });
+        return;
+      }
+      await storage.createPatientVital({
+        patientId,
+        clinicianId,
+        systolicBp: sbp !== null && Number.isFinite(sbp) ? Math.round(sbp) : null,
+        diastolicBp: null,
+        heartRate: null,
+        weightLbs: null,
+        heightInches: null,
+        bmi: bmi !== null && Number.isFinite(bmi) ? bmi : null,
+        notes: 'Auto-recorded from lab evaluation',
+      } as any);
+    })
+    .catch((err) => {
+      console.warn('[lab-eval vitals] persist failed (non-fatal):', err?.message ?? err);
+    });
 }
 
 // Allows both clinicians (passport) and staff (session.staffId) through.
@@ -771,7 +830,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Step 1: Detect red flags
-      const redFlags = ClinicalLogicEngine.detectRedFlags(labs);
+      const redFlags = [
+        ...ClinicalLogicEngine.detectRedFlags(labs),
+        // Vitals-based red flags (hypertensive crisis, severe obesity).
+        // Only fires when the corresponding demographic field is provided.
+        ...buildVitalRedFlags(labs.demographics),
+      ];
 
       // Step 2: Generate detailed interpretations
       let interpretations = ClinicalLogicEngine.interpretLabValues(labs);
@@ -780,6 +844,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (clinicianCustom?.labPrefs?.length) {
         interpretations = applyCustomRangesToInterpretations(interpretations, clinicianCustom.labPrefs, 'male');
       }
+
+      // Step 2c: Append vital-sign interpretations (BP, BMI) so they show up in
+      // the same color-coded results table as the lab markers. No-op if
+      // demographics block is missing those fields.
+      interpretations = [...interpretations, ...buildVitalInterpretations(labs.demographics)];
 
       // Step 3: Calculate PREVENT cardiovascular risk (replaces legacy ASCVD)
       // PREVENT uses sex-specific, race-free equations with eGFR and BMI
@@ -1049,6 +1118,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - Supplements:', supplements.length);
       console.log('  - SOAP note length:', soapNote.length);
 
+      // Persist BP/BMI to patient_vitals so they appear in the patient's
+      // Vital Trends view alongside vitals captured outside lab evaluation.
+      // Fire-and-forget; never blocks the response or surfaces errors.
+      persistVitalsFromLabEval(req, patientId, labs.demographics);
+
       res.json(result);
     } catch (error) {
       console.error("Error interpreting labs:", error);
@@ -1141,7 +1215,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       });
 
       // Step 1: Detect red flags using female-specific logic
-      const redFlags = FemaleClinicalLogicEngine.detectRedFlags(labs);
+      const redFlags = [
+        ...FemaleClinicalLogicEngine.detectRedFlags(labs),
+        // Vitals-based red flags (hypertensive crisis, severe obesity).
+        ...buildVitalRedFlags(labs.demographics),
+      ];
 
       // Step 2: Generate detailed interpretations with female reference ranges
       let interpretations = FemaleClinicalLogicEngine.interpretLabValues(labs);
@@ -1150,6 +1228,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
       if (clinicianCustom?.labPrefs?.length) {
         interpretations = applyCustomRangesToInterpretations(interpretations, clinicianCustom.labPrefs, 'female');
       }
+
+      // Append vital-sign interpretations (BP, BMI) after lab markers.
+      interpretations = [...interpretations, ...buildVitalInterpretations(labs.demographics)];
       
       // Debug: Log categories of all interpretations generated
       console.log('[API] Female interpretation categories:', interpretations.map(i => i.category));
@@ -1415,6 +1496,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('  - CV Risk Flags computed');
       console.log('  - Insulin Resistance:', insulinResistance ? insulinResistance.likelihoodLabel : 'Not screened');
       console.log('  - SOAP note length:', soapNote.length);
+
+      // Persist BP/BMI to patient_vitals so they appear in the patient's
+      // Vital Trends view alongside vitals captured outside lab evaluation.
+      persistVitalsFromLabEval(req, patientId, labs.demographics);
 
       res.json(result);
     } catch (error) {
