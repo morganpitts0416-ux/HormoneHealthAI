@@ -2,7 +2,7 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import {
   Inbox as InboxIcon, MessageSquare, ArrowRight, Bell, AlertCircle,
-  Pill, Droplet, Trash2, CheckCheck, Check,
+  Pill, Droplet, Trash2, CheckCheck, Check, Heart, Activity, CheckCircle2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -56,6 +56,10 @@ function timeAgo(iso: string): string {
 function iconForType(type: string) {
   if (type === "patient_added_med_or_supplement") return Pill;
   if (type === "unexpected_bleeding_reported") return Droplet;
+  if (type === "severe_bp_reading") return AlertCircle;
+  if (type === "stage_2_bp_pattern") return Heart;
+  if (type === "missed_required_vital_log") return Activity;
+  if (type === "vitals_monitoring_completed") return CheckCircle2;
   return AlertCircle;
 }
 

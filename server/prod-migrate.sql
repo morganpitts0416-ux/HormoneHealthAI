@@ -536,3 +536,60 @@ CREATE TABLE IF NOT EXISTS provider_inbox_notifications (
 );
 CREATE INDEX IF NOT EXISTS provider_inbox_clinic_unread_idx
   ON provider_inbox_notifications (clinic_id, dismissed_at, read_at, created_at DESC);
+
+-- ─── Vitals Monitoring Mode ──────────────────────────────────────────────
+-- Add source-labeling + monitoring columns to patient_vitals (idempotent).
+ALTER TABLE patient_vitals
+  ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'clinic';
+ALTER TABLE patient_vitals
+  ADD COLUMN IF NOT EXISTS time_of_day VARCHAR(5);
+ALTER TABLE patient_vitals
+  ADD COLUMN IF NOT EXISTS symptoms TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE patient_vitals
+  ADD COLUMN IF NOT EXISTS monitoring_episode_id INTEGER;
+
+CREATE INDEX IF NOT EXISTS patient_vitals_source_idx
+  ON patient_vitals (patient_id, source, recorded_at DESC);
+CREATE INDEX IF NOT EXISTS patient_vitals_episode_idx
+  ON patient_vitals (monitoring_episode_id);
+
+-- Clinician-prescribed vital monitoring episodes.
+CREATE TABLE IF NOT EXISTS vitals_monitoring_episodes (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  clinic_id INTEGER NOT NULL,
+  created_by_user_id INTEGER NOT NULL,
+  vital_types TEXT[] NOT NULL,
+  start_date VARCHAR(10) NOT NULL,
+  end_date VARCHAR(10) NOT NULL,
+  frequency_per_day INTEGER NOT NULL DEFAULT 1,
+  instructions TEXT,
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  completed_at TIMESTAMP,
+  ended_early_by_user_id INTEGER,
+  ended_early_reason TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS vitals_monitoring_episodes_patient_idx
+  ON vitals_monitoring_episodes (patient_id, status, created_at DESC);
+CREATE INDEX IF NOT EXISTS vitals_monitoring_episodes_active_idx
+  ON vitals_monitoring_episodes (status, end_date);
+
+-- Audit + dedupe of fired alerts (urgent BP, missed-day, completion, etc).
+CREATE TABLE IF NOT EXISTS vitals_monitoring_alerts (
+  id SERIAL PRIMARY KEY,
+  episode_id INTEGER NOT NULL REFERENCES vitals_monitoring_episodes(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL,
+  clinic_id INTEGER NOT NULL,
+  alert_type VARCHAR(60) NOT NULL,
+  trigger_vital_id INTEGER,
+  alert_date VARCHAR(10),
+  inbox_notification_id INTEGER,
+  details JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS vitals_monitoring_alerts_episode_idx
+  ON vitals_monitoring_alerts (episode_id, alert_type);
+CREATE INDEX IF NOT EXISTS vitals_monitoring_alerts_dedupe_idx
+  ON vitals_monitoring_alerts (episode_id, alert_type, alert_date);

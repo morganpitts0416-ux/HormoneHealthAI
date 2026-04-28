@@ -7,7 +7,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema } from "@shared/schema";
 import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -11704,6 +11704,274 @@ IMPORTANT:
     } catch (err) {
       console.error("[tracking] mark-reviewed error:", err);
       res.status(500).json({ message: "Failed to mark reviewed" });
+    }
+  });
+
+  // ── Vitals Monitoring Mode: provider routes ─────────────────────────────
+  // Configure a new monitoring episode for a patient.
+  app.post("/api/patients/:id/vitals-monitoring", requireAuth, async (req, res) => {
+    try {
+      const patientId = Number(req.params.id);
+      if (!Number.isFinite(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      // Validate body via insert schema
+      const parsed = insertVitalsMonitoringEpisodeSchema.safeParse({
+        ...req.body,
+        patientId,
+        clinicId,
+        createdByUserId: clinicianId,
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid episode payload", errors: parsed.error.flatten() });
+      }
+      // Reject overlapping active episode (1 active per patient at a time keeps UX simple)
+      const existing = await (storage as any).getActiveVitalsMonitoringEpisodeForPatient(patientId);
+      if (existing) {
+        return res.status(409).json({
+          message: "An active vitals monitoring episode already exists for this patient. End it before starting a new one.",
+          activeEpisodeId: existing.id,
+        });
+      }
+      const episode = await (storage as any).createVitalsMonitoringEpisode({
+        ...parsed.data,
+        patientId,
+        clinicId,
+        createdByUserId: clinicianId,
+      });
+      res.status(201).json(episode);
+    } catch (err) {
+      console.error("[vitals-monitoring] create error:", err);
+      res.status(500).json({ message: "Failed to create monitoring episode" });
+    }
+  });
+
+  // List all monitoring episodes (active + history) for a patient.
+  app.get("/api/patients/:id/vitals-monitoring", requireAuth, async (req, res) => {
+    try {
+      const patientId = Number(req.params.id);
+      if (!Number.isFinite(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      const episodes = await (storage as any).listVitalsMonitoringEpisodesForPatient(patientId);
+      // Patient-logged vitals are returned per-episode below (avoids the
+      // existing getPatientVitals(clinicianId)-scoped lookup which would miss
+      // entries created by other clinicians in the same clinic).
+      const logsPerEpisode: Record<number, any[]> = {};
+      const alertsPerEpisode: Record<number, any[]> = {};
+      for (const ep of episodes) {
+        const [logs, alerts] = await Promise.all([
+          (storage as any).listPatientLoggedVitalsForEpisode(ep.id),
+          (storage as any).getVitalsMonitoringAlertsForEpisode(ep.id),
+        ]);
+        logsPerEpisode[ep.id] = logs;
+        alertsPerEpisode[ep.id] = alerts;
+      }
+      res.json({ episodes, logsPerEpisode, alertsPerEpisode });
+    } catch (err) {
+      console.error("[vitals-monitoring] list error:", err);
+      res.status(500).json({ message: "Failed to list monitoring episodes" });
+    }
+  });
+
+  // End an active episode early (provider-initiated).
+  app.patch("/api/vitals-monitoring/:id/end", requireAuth, async (req, res) => {
+    try {
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const episode = await (storage as any).getVitalsMonitoringEpisode(id);
+      if (!episode) return res.status(404).json({ message: "Episode not found" });
+      // Scope: must belong to a patient this clinician can access
+      const patient = await storage.getPatient(episode.patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Episode not found" });
+      if (episode.status !== "active") {
+        return res.status(409).json({ message: `Episode is already ${episode.status}` });
+      }
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.slice(0, 500) : undefined;
+      const updated = await (storage as any).endVitalsMonitoringEpisode(id, {
+        status: "ended_early",
+        endedByUserId: clinicianId,
+        reason,
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("[vitals-monitoring] end error:", err);
+      res.status(500).json({ message: "Failed to end monitoring episode" });
+    }
+  });
+
+  // ── Vitals Monitoring Mode: patient portal routes ───────────────────────
+  // What is the patient currently being asked to log?
+  app.get("/api/portal/vitals-monitoring/active", requirePortalAuth, async (req, res) => {
+    try {
+      const sess = req.session as any;
+      const patientId: number = sess.portalPatientId;
+      const episode = await (storage as any).getActiveVitalsMonitoringEpisodeForPatient(patientId);
+      if (!episode) return res.json({ episode: null });
+      // Today's progress
+      const today = (() => {
+        const d = new Date();
+        return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, "0")}-${String(d.getDate()).padStart(2, "0")}`;
+      })();
+      const todayCount = await (storage as any).countPatientLoggedReadingsByDate(episode.id, today);
+      const recent = await (storage as any).listPatientLoggedVitalsForEpisode(episode.id);
+      res.json({
+        episode,
+        todayCount,
+        todayRequired: episode.frequencyPerDay,
+        recent: recent.slice(0, 14),
+      });
+    } catch (err) {
+      console.error("[vitals-monitoring] portal active error:", err);
+      res.status(500).json({ message: "Failed to load active monitoring" });
+    }
+  });
+
+  // Patient submits a reading.
+  app.post("/api/portal/vitals-monitoring/:id/log", requirePortalAuth, async (req, res) => {
+    try {
+      const sess = req.session as any;
+      const patientId: number = sess.portalPatientId;
+      const episodeId = Number(req.params.id);
+      if (!Number.isFinite(episodeId)) return res.status(400).json({ message: "Invalid episode id" });
+
+      const episode = await (storage as any).getVitalsMonitoringEpisode(episodeId);
+      if (!episode || episode.patientId !== patientId) {
+        return res.status(404).json({ message: "Episode not found" });
+      }
+      if (episode.status !== "active") {
+        return res.status(409).json({ message: "This monitoring episode is no longer active." });
+      }
+
+      // Validate the reading with the patient-vitals insert schema
+      const parsed = insertPatientVitalSchema.safeParse({
+        ...req.body,
+        source: "patient_logged",
+        monitoringEpisodeId: episodeId,
+      });
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid reading", errors: parsed.error.flatten() });
+      }
+      // Server-side rule: BP must include both systolic and diastolic if requested
+      const types = (episode.vitalTypes as string[]) ?? [];
+      if (types.includes("blood_pressure")) {
+        if (!parsed.data.systolicBp || !parsed.data.diastolicBp) {
+          return res.status(400).json({ message: "Both systolic and diastolic readings are required." });
+        }
+      }
+      if (types.includes("heart_rate") && !parsed.data.heartRate) {
+        return res.status(400).json({ message: "Heart rate is required." });
+      }
+      if (types.includes("weight") && !parsed.data.weightLbs) {
+        return res.status(400).json({ message: "Weight is required." });
+      }
+
+      // Pre-count stage-2+ readings BEFORE this one for the alert engine
+      const priorLogs = await (storage as any).listPatientLoggedVitalsForEpisode(episodeId);
+      const priorStage2OrSevereCount = priorLogs.filter((r: any) => {
+        const sbp = Number(r.systolicBp ?? 0);
+        const dbp = Number(r.diastolicBp ?? 0);
+        return sbp >= 140 || dbp >= 90;
+      }).length;
+
+      // Persist the reading. clinicianId on the row = the prescribing provider
+      // (so a system-internal ownership exists; user is the patient via session).
+      const vital = await (storage as any).createPatientLoggedVital({
+        ...parsed.data,
+        patientId,
+        clinicianId: episode.createdByUserId,
+        monitoringEpisodeId: episodeId,
+      });
+
+      // Run alert engine for BP-only episodes
+      let severeFired = false;
+      let stage2PatternFired = false;
+      if (types.includes("blood_pressure")) {
+        const { evaluateBpReading } = await import("./vitals-monitoring-alerts");
+        const decision = evaluateBpReading(
+          { systolicBp: parsed.data.systolicBp ?? null, diastolicBp: parsed.data.diastolicBp ?? null },
+          priorStage2OrSevereCount,
+        );
+
+        // Best-effort patient name for notification copy
+        let pname = `Patient #${patientId}`;
+        try {
+          const p = await (storage as any).getPatientById?.(patientId);
+          if (p) {
+            const fn = (p.firstName ?? "").trim();
+            const ln = (p.lastName ?? "").trim();
+            const full = `${fn} ${ln}`.trim();
+            if (full) pname = full;
+          }
+        } catch { /* fall through */ }
+
+        if (decision.fireSevere) {
+          const reading = `${parsed.data.systolicBp}/${parsed.data.diastolicBp} mmHg`;
+          const notif = await (storage as any).createInboxNotification({
+            clinicId: episode.clinicId,
+            patientId,
+            providerId: episode.createdByUserId,
+            type: "severe_bp_reading",
+            title: `Urgent BP reading from ${pname}`,
+            message: `Urgent BP reading logged for ${pname}: ${reading}. Review immediately.`,
+            relatedEntityType: "vital_log",
+            relatedEntityId: vital.id,
+            severity: "urgent",
+          });
+          await (storage as any).recordVitalsMonitoringAlert({
+            episodeId,
+            patientId,
+            clinicId: episode.clinicId,
+            alertType: "severe_bp_reading",
+            triggerVitalId: vital.id,
+            inboxNotificationId: notif?.id ?? null,
+            details: { systolicBp: parsed.data.systolicBp, diastolicBp: parsed.data.diastolicBp },
+          });
+          severeFired = true;
+        }
+
+        if (decision.fireStage2Pattern) {
+          // Dedupe — only fire once per episode
+          const dup = await (storage as any).hasVitalsMonitoringAlert(episodeId, "stage_2_bp_pattern");
+          if (!dup) {
+            const notif = await (storage as any).createInboxNotification({
+              clinicId: episode.clinicId,
+              patientId,
+              providerId: episode.createdByUserId,
+              type: "stage_2_bp_pattern",
+              title: `${pname}: multiple Stage 2 BP readings`,
+              message: `${pname} has logged multiple Stage 2 blood pressure readings. Review vitals log.`,
+              relatedEntityType: "monitoring_episode",
+              relatedEntityId: episodeId,
+              severity: "urgent",
+            });
+            await (storage as any).recordVitalsMonitoringAlert({
+              episodeId,
+              patientId,
+              clinicId: episode.clinicId,
+              alertType: "stage_2_bp_pattern",
+              triggerVitalId: vital.id,
+              inboxNotificationId: notif?.id ?? null,
+              details: { count: priorStage2OrSevereCount + 1 },
+            });
+            stage2PatternFired = true;
+          }
+        }
+      }
+
+      res.status(201).json({ vital, severeFired, stage2PatternFired });
+    } catch (err) {
+      console.error("[vitals-monitoring] portal log error:", err);
+      res.status(500).json({ message: "Failed to log reading" });
     }
   });
 
