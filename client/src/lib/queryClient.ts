@@ -11,12 +11,20 @@ export async function apiRequest(
   method: string,
   url: string,
   data?: unknown | undefined,
+  // PATIENT-SAFETY: optional fetch options (signal, custom headers) so callers
+  // can wire AbortController for in-flight cancellation when a stale request
+  // would leak data across patients (e.g. AI chat, encounter writes).
+  options?: { signal?: AbortSignal; headers?: Record<string, string> },
 ): Promise<Response> {
   const res = await fetch(url, {
     method,
-    headers: data ? { "Content-Type": "application/json" } : {},
+    headers: {
+      ...(data ? { "Content-Type": "application/json" } : {}),
+      ...(options?.headers ?? {}),
+    },
     body: data ? JSON.stringify(data) : undefined,
     credentials: "include",
+    signal: options?.signal,
   });
 
   await throwIfResNotOk(res);

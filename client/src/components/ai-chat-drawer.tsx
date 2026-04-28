@@ -48,12 +48,35 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevPatientIdRef = useRef<number | null>(null);
+  // PATIENT-SAFETY: Tag every in-flight chat request with the patientId it
+  // was issued under. If the patient context changes while a request is in
+  // flight, its onSuccess handler will detect the mismatch and discard the
+  // late response instead of appending it to the new patient's conversation.
+  const requestPatientIdRef = useRef<number | null>(null);
+  // Allow aborting in-flight requests outright when the patient changes.
+  const abortControllerRef = useRef<AbortController | null>(null);
 
+  // PATIENT-SAFETY: Clear conversation history whenever the patient context
+  // changes (including set → null and patient → different patient). Without
+  // this, prior messages about a previous patient remain in the `messages`
+  // array and are sent back to the LLM on the next /api/ai-chat call,
+  // causing the model to fuse the new patient's chart with stale transcript
+  // about an unrelated patient. This was reproduced as a cross-patient leak
+  // in production and is now an explicit guard.
   useEffect(() => {
-    if (patientContext?.id && patientContext.id !== prevPatientIdRef.current) {
+    const nextId = patientContext?.id ?? null;
+    if (nextId !== prevPatientIdRef.current) {
+      // Abort any in-flight request bound to the previous patient so its
+      // late response cannot leak into the new conversation.
+      if (abortControllerRef.current) {
+        abortControllerRef.current.abort();
+        abortControllerRef.current = null;
+      }
+      setMessages([]);
+      setInput("");
       setUsePatient(true);
       setHasOfferedPatient(false);
-      prevPatientIdRef.current = patientContext.id;
+      prevPatientIdRef.current = nextId;
     }
   }, [patientContext?.id]);
 
@@ -83,16 +106,43 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       setMessages(newMessages);
       setInput("");
 
+      // PATIENT-SAFETY: Tag this request with the patient it was issued for.
+      // If the patient changes mid-flight, onSuccess/onError will detect the
+      // mismatch and discard the response instead of leaking it across patients.
+      const issuedForPatientId = usePatient && patientContext ? patientContext.id : null;
+      requestPatientIdRef.current = issuedForPatientId;
+      // Replace any prior in-flight controller (will be aborted on patient switch).
+      const controller = new AbortController();
+      abortControllerRef.current = controller;
+
       const res = await apiRequest("POST", "/api/ai-chat", {
         messages: newMessages,
-        patientId: usePatient && patientContext ? patientContext.id : undefined,
-      });
-      return res.json();
+        patientId: issuedForPatientId ?? undefined,
+      }, { signal: controller.signal });
+      const data = await res.json();
+      // Stamp the response with the patient it was issued for so downstream
+      // handlers can verify it still belongs to the active conversation.
+      return { data, issuedForPatientId };
     },
-    onSuccess: (data: any) => {
+    onSuccess: ({ data, issuedForPatientId }: { data: any; issuedForPatientId: number | null }) => {
+      // PATIENT-SAFETY: Discard the response if the active patient context
+      // has changed since this request was issued. The conversation history
+      // has already been cleared in the patient-change effect; appending now
+      // would re-introduce cross-patient contamination.
+      const currentPatientId = patientContext?.id ?? null;
+      if (issuedForPatientId !== currentPatientId) {
+        return;
+      }
       setMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
     },
     onError: (err: Error) => {
+      // Same guard for errors — don't surface a stale-patient error in the
+      // current patient's conversation.
+      const issuedForPatientId = requestPatientIdRef.current;
+      const currentPatientId = patientContext?.id ?? null;
+      if (issuedForPatientId !== currentPatientId) {
+        return;
+      }
       const cleanMsg = err.message?.includes("{") ? "Something went wrong reaching the AI service." : err.message;
       setMessages(prev => [...prev, { role: "assistant", content: `I apologize — ${cleanMsg || "something went wrong"}. Please try again.` }]);
     },
