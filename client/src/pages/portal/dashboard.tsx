@@ -16,6 +16,7 @@ import {
 } from "lucide-react";
 import type { SupplementRecommendation, Appointment } from "@shared/schema";
 import { generateTrendInsights } from "@/lib/clinical-trend-insights";
+import { ActiveVitalsMonitoringCard } from "@/components/portal/active-vitals-monitoring-card";
 
 // ── Dietary guidance parser ────────────────────────────────────────────────
 interface FoodItem { name: string; reason: string; }
@@ -1090,6 +1091,9 @@ export default function PortalDashboard() {
             </div>
           </Link>
         )}
+
+        {/* Active Vitals Monitoring (only renders when episode active) */}
+        <ActiveVitalsMonitoringCard />
 
         {/* Daily Check-In opt-in card / today summary */}
         <DailyCheckInCard />

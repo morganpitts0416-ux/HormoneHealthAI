@@ -144,6 +144,11 @@ app.use((req, res, next) => {
 
     server.listen(port, "0.0.0.0", () => {
       log(`serving on port ${port}`);
+      // Start the in-process Vitals Monitoring sweep (15-min interval).
+      // Idempotent — safe across restarts.
+      import("./vitals-monitoring-sweep")
+        .then(({ startVitalsMonitoringSweepLoop }) => startVitalsMonitoringSweepLoop())
+        .catch((err) => console.warn("[startup] failed to start vitals-monitoring sweep:", err));
     });
   } catch (err) {
     console.error("[startup] fatal error during startup:", err);

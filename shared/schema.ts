@@ -1,4 +1,5 @@
 import { z } from "zod";
+import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
 import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, time } from "drizzle-orm/pg-core";
 
@@ -1126,6 +1127,10 @@ export type InsertAppointment = z.infer<typeof insertAppointmentSchema>;
 export type Appointment = typeof appointments.$inferSelect;
 
 // ─── Patient Vitals (BP, HR, Weight, Height, BMI) ─────────────────────────
+// `source` distinguishes clinic-captured vitals (default) from patient-logged
+// vitals submitted via Vitals Monitoring Mode. Both render together in trends
+// but are clearly labeled — patient-logged values NEVER overwrite clinic data
+// and are NOT auto-fed into the lab interpretation auto-record path.
 export const patientVitals = pgTable("patient_vitals", {
   id: serial("id").primaryKey(),
   patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
@@ -1138,6 +1143,16 @@ export const patientVitals = pgTable("patient_vitals", {
   heightInches: real("height_inches"),
   bmi: real("bmi"),
   notes: text("notes"),
+  // 'clinic' | 'patient_logged' — defaults to 'clinic' so all existing rows are
+  // backfilled correctly. Patient-logged vitals are color-coded distinctly.
+  source: varchar("source", { length: 20 }).notNull().default("clinic"),
+  // HH:MM time-of-day captured for patient logs (e.g. "08:30"). Optional for clinic vitals.
+  timeOfDay: varchar("time_of_day", { length: 5 }),
+  // Symptom checkboxes selected during a patient log (BP only): headache, chest_pain,
+  // shortness_of_breath, dizziness, vision_changes, weakness, confusion, none.
+  symptoms: text("symptoms").array().default(sql`ARRAY[]::text[]`),
+  // Links a patient-logged reading to its driving monitoring episode (null for clinic vitals).
+  monitoringEpisodeId: integer("monitoring_episode_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type PatientVital = typeof patientVitals.$inferSelect;
@@ -1145,6 +1160,10 @@ export const insertPatientVitalSchema = createInsertSchema(patientVitals).omit({
   id: true, createdAt: true, recordedAt: true, bmi: true, clinicianId: true, patientId: true,
 }).extend({
   recordedAt: z.union([z.string(), z.date()]).optional(),
+  source: z.enum(["clinic", "patient_logged"]).optional(),
+  timeOfDay: z.string().regex(/^([01]\d|2[0-3]):[0-5]\d$/).optional().nullable(),
+  symptoms: z.array(z.string()).optional(),
+  monitoringEpisodeId: z.number().int().positive().optional().nullable(),
 });
 export type InsertPatientVital = z.infer<typeof insertPatientVitalSchema>;
 
@@ -1811,3 +1830,72 @@ export const insertProviderInboxNotificationSchema = createInsertSchema(provider
   id: true, createdAt: true, readAt: true, readByUserId: true, dismissedAt: true, dismissedByUserId: true,
 });
 export type InsertProviderInboxNotification = z.infer<typeof insertProviderInboxNotificationSchema>;
+
+// ─── Vitals Monitoring Episodes (clinician-directed BP/HR/weight monitoring) ──
+// Created by a clinician from the patient profile to "prescribe" a tracking
+// period for a defined set of vitals. Patient sees a daily ask in the portal,
+// values are stored as patient-logged rows in `patient_vitals`, and provider
+// receives inbox notifications on concerning patterns / completion / missed days.
+export const vitalsMonitoringEpisodes = pgTable("vitals_monitoring_episodes", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull(),
+  // The provider who configured the episode (target for inbox notifications;
+  // when null, alerts go clinic-wide).
+  createdByUserId: integer("created_by_user_id").notNull(),
+  // Vital types being requested. Subset of: 'blood_pressure' | 'heart_rate' | 'weight'.
+  // 'blood_pressure' implies systolic+diastolic and enables symptom checkboxes.
+  vitalTypes: text("vital_types").array().notNull(),
+  // Date range (inclusive). Stored as YYYY-MM-DD in clinic-local time.
+  startDate: varchar("start_date", { length: 10 }).notNull(),
+  endDate: varchar("end_date", { length: 10 }).notNull(),
+  // Required readings per day: 1, 2, or 3.
+  frequencyPerDay: integer("frequency_per_day").notNull().default(1),
+  // Optional plain-language instructions shown to the patient ("Measure after
+  // sitting quietly for 5 minutes, before morning medication").
+  instructions: text("instructions"),
+  // 'active' | 'completed' | 'ended_early' | 'cancelled'.
+  // Sweep transitions active → completed when end_date < today AND no end already set.
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  completedAt: timestamp("completed_at"),
+  endedEarlyByUserId: integer("ended_early_by_user_id"),
+  endedEarlyReason: text("ended_early_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type VitalsMonitoringEpisode = typeof vitalsMonitoringEpisodes.$inferSelect;
+export const insertVitalsMonitoringEpisodeSchema = createInsertSchema(vitalsMonitoringEpisodes).omit({
+  id: true, createdAt: true, updatedAt: true, completedAt: true, endedEarlyByUserId: true, endedEarlyReason: true, status: true,
+}).extend({
+  vitalTypes: z.array(z.enum(["blood_pressure", "heart_rate", "weight"])).min(1),
+  startDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  endDate: z.string().regex(/^\d{4}-\d{2}-\d{2}$/),
+  frequencyPerDay: z.number().int().min(1).max(3),
+  instructions: z.string().max(500).optional().nullable(),
+});
+export type InsertVitalsMonitoringEpisode = z.infer<typeof insertVitalsMonitoringEpisodeSchema>;
+
+// Audit log of fired alerts. Used both for (a) the audit trail and (b) idempotent
+// dedupe so the same alert type doesn't fire multiple times for one episode.
+export const vitalsMonitoringAlerts = pgTable("vitals_monitoring_alerts", {
+  id: serial("id").primaryKey(),
+  episodeId: integer("episode_id").notNull().references(() => vitalsMonitoringEpisodes.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull(),
+  clinicId: integer("clinic_id").notNull(),
+  // 'severe_bp_reading' | 'stage_2_bp_pattern' | 'missed_required_vital_log'
+  // | 'vitals_monitoring_completed'
+  alertType: varchar("alert_type", { length: 60 }).notNull(),
+  // Optional pointer to the triggering vital row (severe BP) or null (sweeps).
+  triggerVitalId: integer("trigger_vital_id"),
+  // Day the alert pertains to (YYYY-MM-DD) — used for missed-day dedupe.
+  alertDate: varchar("alert_date", { length: 10 }),
+  // FK to the inbox notification we created (so providers can navigate cleanly).
+  inboxNotificationId: integer("inbox_notification_id"),
+  details: jsonb("details"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type VitalsMonitoringAlert = typeof vitalsMonitoringAlerts.$inferSelect;
+export const insertVitalsMonitoringAlertSchema = createInsertSchema(vitalsMonitoringAlerts).omit({
+  id: true, createdAt: true,
+});
+export type InsertVitalsMonitoringAlert = z.infer<typeof insertVitalsMonitoringAlertSchema>;

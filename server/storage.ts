@@ -303,6 +303,22 @@ export interface IStorage {
   markPatientReportedMedReviewed(id: number, patientId: number, reviewedByUserId: number): Promise<schema.PatientReportedMedication | undefined>;
   deletePatientReportedMedication(id: number, patientId: number): Promise<boolean>;
 
+  // ── Vitals Monitoring Mode: clinician-directed episodes ──────────────────
+  createVitalsMonitoringEpisode(data: schema.InsertVitalsMonitoringEpisode & { clinicId: number; createdByUserId: number }): Promise<schema.VitalsMonitoringEpisode>;
+  getVitalsMonitoringEpisode(id: number): Promise<schema.VitalsMonitoringEpisode | undefined>;
+  listVitalsMonitoringEpisodesForPatient(patientId: number): Promise<schema.VitalsMonitoringEpisode[]>;
+  getActiveVitalsMonitoringEpisodes(): Promise<schema.VitalsMonitoringEpisode[]>;
+  getActiveVitalsMonitoringEpisodeForPatient(patientId: number): Promise<schema.VitalsMonitoringEpisode | undefined>;
+  endVitalsMonitoringEpisode(id: number, opts: { status: "completed" | "ended_early" | "cancelled"; endedByUserId?: number; reason?: string }): Promise<schema.VitalsMonitoringEpisode | undefined>;
+  // ── Vitals Monitoring Mode: patient-logged vitals ─────────────────────────
+  createPatientLoggedVital(data: schema.InsertPatientVital & { patientId: number; clinicianId: number }): Promise<schema.PatientVital>;
+  listPatientLoggedVitalsForEpisode(episodeId: number): Promise<schema.PatientVital[]>;
+  countPatientLoggedReadingsByDate(episodeId: number, date: string): Promise<number>;
+  // ── Vitals Monitoring Mode: alerts (audit + dedupe) ───────────────────────
+  recordVitalsMonitoringAlert(data: schema.InsertVitalsMonitoringAlert): Promise<schema.VitalsMonitoringAlert>;
+  getVitalsMonitoringAlertsForEpisode(episodeId: number): Promise<schema.VitalsMonitoringAlert[]>;
+  hasVitalsMonitoringAlert(episodeId: number, alertType: string, alertDate?: string): Promise<boolean>;
+
   // ── Daily Check-In: provider inbox notifications ──────────────────────────
   createInboxNotification(data: schema.InsertProviderInboxNotification): Promise<schema.ProviderInboxNotification>;
   listInboxNotifications(clinicId: number, opts?: { providerId?: number | null; includeDismissed?: boolean; limit?: number }): Promise<schema.ProviderInboxNotification[]>;
@@ -2780,4 +2796,173 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
     ))
     .returning({ id: schema.providerInboxNotifications.id });
   return result.length > 0;
+};
+
+// ─── Vitals Monitoring Mode ────────────────────────────────────────────────
+
+(DbStorage.prototype as any).createVitalsMonitoringEpisode = async function(
+  data: schema.InsertVitalsMonitoringEpisode & { clinicId: number; createdByUserId: number },
+): Promise<schema.VitalsMonitoringEpisode> {
+  const [row] = await db
+    .insert(schema.vitalsMonitoringEpisodes)
+    .values({
+      patientId: data.patientId,
+      clinicId: data.clinicId,
+      createdByUserId: data.createdByUserId,
+      vitalTypes: data.vitalTypes,
+      startDate: data.startDate,
+      endDate: data.endDate,
+      frequencyPerDay: data.frequencyPerDay ?? 1,
+      instructions: data.instructions ?? null,
+    })
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).getVitalsMonitoringEpisode = async function(
+  id: number,
+): Promise<schema.VitalsMonitoringEpisode | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.vitalsMonitoringEpisodes)
+    .where(eq(schema.vitalsMonitoringEpisodes.id, id));
+  return row;
+};
+
+(DbStorage.prototype as any).listVitalsMonitoringEpisodesForPatient = async function(
+  patientId: number,
+): Promise<schema.VitalsMonitoringEpisode[]> {
+  return await db
+    .select()
+    .from(schema.vitalsMonitoringEpisodes)
+    .where(eq(schema.vitalsMonitoringEpisodes.patientId, patientId))
+    .orderBy(desc(schema.vitalsMonitoringEpisodes.createdAt));
+};
+
+(DbStorage.prototype as any).getActiveVitalsMonitoringEpisodes = async function(): Promise<schema.VitalsMonitoringEpisode[]> {
+  return await db
+    .select()
+    .from(schema.vitalsMonitoringEpisodes)
+    .where(eq(schema.vitalsMonitoringEpisodes.status, "active"));
+};
+
+(DbStorage.prototype as any).getActiveVitalsMonitoringEpisodeForPatient = async function(
+  patientId: number,
+): Promise<schema.VitalsMonitoringEpisode | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.vitalsMonitoringEpisodes)
+    .where(and(
+      eq(schema.vitalsMonitoringEpisodes.patientId, patientId),
+      eq(schema.vitalsMonitoringEpisodes.status, "active"),
+    ))
+    .orderBy(desc(schema.vitalsMonitoringEpisodes.createdAt))
+    .limit(1);
+  return row;
+};
+
+(DbStorage.prototype as any).endVitalsMonitoringEpisode = async function(
+  id: number,
+  opts: { status: "completed" | "ended_early" | "cancelled"; endedByUserId?: number; reason?: string },
+): Promise<schema.VitalsMonitoringEpisode | undefined> {
+  const set: any = {
+    status: opts.status,
+    completedAt: new Date(),
+    updatedAt: new Date(),
+  };
+  if (opts.endedByUserId !== undefined) set.endedEarlyByUserId = opts.endedByUserId;
+  if (opts.reason !== undefined) set.endedEarlyReason = opts.reason;
+  const [row] = await db
+    .update(schema.vitalsMonitoringEpisodes)
+    .set(set)
+    .where(eq(schema.vitalsMonitoringEpisodes.id, id))
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).createPatientLoggedVital = async function(
+  data: schema.InsertPatientVital & { patientId: number; clinicianId: number },
+): Promise<schema.PatientVital> {
+  const insert: any = {
+    patientId: data.patientId,
+    clinicianId: data.clinicianId,
+    systolicBp: data.systolicBp ?? null,
+    diastolicBp: data.diastolicBp ?? null,
+    heartRate: data.heartRate ?? null,
+    weightLbs: data.weightLbs ?? null,
+    heightInches: data.heightInches ?? null,
+    notes: data.notes ?? null,
+    source: "patient_logged",
+    timeOfDay: data.timeOfDay ?? null,
+    symptoms: data.symptoms ?? [],
+    monitoringEpisodeId: data.monitoringEpisodeId ?? null,
+  };
+  if (data.recordedAt !== undefined) {
+    insert.recordedAt = typeof data.recordedAt === "string" ? new Date(data.recordedAt) : data.recordedAt;
+  }
+  // Auto-compute BMI if both weight and height present
+  if (data.weightLbs && data.heightInches) {
+    insert.bmi = (Number(data.weightLbs) * 703) / (Number(data.heightInches) * Number(data.heightInches));
+  }
+  const [row] = await db.insert(schema.patientVitals).values(insert).returning();
+  return row;
+};
+
+(DbStorage.prototype as any).listPatientLoggedVitalsForEpisode = async function(
+  episodeId: number,
+): Promise<schema.PatientVital[]> {
+  return await db
+    .select()
+    .from(schema.patientVitals)
+    .where(eq(schema.patientVitals.monitoringEpisodeId, episodeId))
+    .orderBy(desc(schema.patientVitals.recordedAt));
+};
+
+(DbStorage.prototype as any).countPatientLoggedReadingsByDate = async function(
+  episodeId: number,
+  date: string,
+): Promise<number> {
+  // YYYY-MM-DD comparison against recorded_at::date
+  const [{ value }] = await db
+    .select({ value: count() })
+    .from(schema.patientVitals)
+    .where(and(
+      eq(schema.patientVitals.monitoringEpisodeId, episodeId),
+      sql`(${schema.patientVitals.recordedAt})::date = ${date}::date`,
+    ));
+  return Number(value ?? 0);
+};
+
+(DbStorage.prototype as any).recordVitalsMonitoringAlert = async function(
+  data: schema.InsertVitalsMonitoringAlert,
+): Promise<schema.VitalsMonitoringAlert> {
+  const [row] = await db.insert(schema.vitalsMonitoringAlerts).values(data).returning();
+  return row;
+};
+
+(DbStorage.prototype as any).getVitalsMonitoringAlertsForEpisode = async function(
+  episodeId: number,
+): Promise<schema.VitalsMonitoringAlert[]> {
+  return await db
+    .select()
+    .from(schema.vitalsMonitoringAlerts)
+    .where(eq(schema.vitalsMonitoringAlerts.episodeId, episodeId))
+    .orderBy(desc(schema.vitalsMonitoringAlerts.createdAt));
+};
+
+(DbStorage.prototype as any).hasVitalsMonitoringAlert = async function(
+  episodeId: number,
+  alertType: string,
+  alertDate?: string,
+): Promise<boolean> {
+  const conds: any[] = [
+    eq(schema.vitalsMonitoringAlerts.episodeId, episodeId),
+    eq(schema.vitalsMonitoringAlerts.alertType, alertType),
+  ];
+  if (alertDate) conds.push(eq(schema.vitalsMonitoringAlerts.alertDate, alertDate));
+  const [{ value }] = await db
+    .select({ value: count() })
+    .from(schema.vitalsMonitoringAlerts)
+    .where(and(...conds));
+  return Number(value ?? 0) > 0;
 };

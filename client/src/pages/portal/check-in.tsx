@@ -12,6 +12,7 @@ import {
   ArrowLeft, Apple, Moon, Activity, Smile, AlertCircle, Pill, Droplets,
   CheckCircle2, Loader2, Plus, Trash2, ChevronRight,
 } from "lucide-react";
+import { ActiveVitalsMonitoringCard } from "@/components/portal/active-vitals-monitoring-card";
 
 type CheckIn = {
   date: string;
@@ -354,6 +355,8 @@ export default function PortalCheckIn() {
 
         {/* Main content */}
         <div className="flex-1 min-w-0 space-y-6 pb-32">
+          <ActiveVitalsMonitoringCard />
+
           <Section id="food" title="Food & drink">
             <div className="space-y-4">
               <div>
