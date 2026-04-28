@@ -3,6 +3,12 @@
 
 import OpenAI from "openai";
 import type { LabValues, FemaleLabValues, RedFlag, LabInterpretation, ASCVDRiskResult, PREVENTRiskResult, SupplementRecommendation, InsulinResistanceScreening } from "@shared/schema";
+import {
+  type TherapyContext,
+  buildTherapyPromptBlock,
+  annotateRecommendationMarkdown,
+  annotatePatientSummary,
+} from "./therapy-context";
 
 // Using gpt-5-mini for faster responses - smaller model but still capable
 const openai = new OpenAI({
@@ -19,11 +25,16 @@ export class AIService {
     redFlags: RedFlag[],
     interpretations: LabInterpretation[],
     gender: 'male' | 'female' = 'male',
-    trendContext?: string
+    trendContext?: string,
+    therapyContext?: TherapyContext | null,
   ): Promise<string> {
     let prompt = this.buildRecommendationPrompt(labs, redFlags, interpretations, gender);
     if (trendContext) {
       prompt += trendContext;
+    }
+    const therapyBlock = buildTherapyPromptBlock(therapyContext);
+    if (therapyBlock) {
+      prompt = `${therapyBlock}\n\n${prompt}`;
     }
     const clinicType = gender === 'female' ? "women's hormone and primary care clinic" : "men's hormone and primary care clinic";
 
@@ -70,8 +81,12 @@ ${gender === 'female' ? `- Consider menstrual cycle phase when interpreting horm
 
       const recommendations = response.choices[0]?.message?.content;
       console.log('[AI Service] AI recommendations generated, length:', recommendations?.length || 0);
-      
-      return recommendations || "Unable to generate recommendations. Please review lab findings manually.";
+
+      const annotated = annotateRecommendationMarkdown(
+        recommendations || "Unable to generate recommendations. Please review lab findings manually.",
+        therapyContext,
+      );
+      return annotated;
     } catch (error) {
       console.error("Error generating AI recommendations:", error);
       if (error instanceof Error) {
@@ -90,7 +105,8 @@ ${gender === 'female' ? `- Consider menstrual cycle phase when interpreting horm
     interpretations: LabInterpretation[],
     hasRedFlags: boolean,
     riskResult?: ASCVDRiskResult | PREVENTRiskResult | null,
-    gender: 'male' | 'female' = 'male'
+    gender: 'male' | 'female' = 'male',
+    therapyContext?: TherapyContext | null,
   ): Promise<string> {
     // Categorize findings
     const abnormalFindings = interpretations.filter(i => i.status === 'abnormal' || i.status === 'critical');
@@ -208,8 +224,11 @@ MANDATORY REQUIREMENTS:
 
 Write the summary now:`;
 
+    const therapyBlock = buildTherapyPromptBlock(therapyContext);
+    const finalPrompt = therapyBlock ? `${therapyBlock}\n\n${prompt}` : prompt;
+
     try {
-      console.log('[AI Service] Generating patient summary with prompt length:', prompt.length);
+      console.log('[AI Service] Generating patient summary with prompt length:', finalPrompt.length);
       console.log('[AI Service] Gender context:', gender);
       
       const clinicType = gender === 'female' ? "women's health clinic" : "men's health clinic";
@@ -236,8 +255,8 @@ Write the summary now:`;
       const summary = response.choices[0]?.message?.content;
       console.log('[AI Service] Patient summary generated, length:', summary?.length || 0);
       console.log('[AI Service] Patient summary content:', summary);
-      
-      return summary || this.getDefaultPatientSummary();
+
+      return annotatePatientSummary(summary || this.getDefaultPatientSummary(), therapyContext);
     } catch (error) {
       console.error("Error generating patient summary:", error);
       if (error instanceof Error) {
@@ -312,6 +331,7 @@ Write the summary now:`;
     supplements?: SupplementRecommendation[],
     insulinResistance?: InsulinResistanceScreening | null,
     trendContext?: string,
+    therapyContext?: TherapyContext | null,
   ): Promise<string> {
     const clinicType = gender === 'female' ? "Women's Hormone & Primary Care Clinic" : "Men's Hormone & Primary Care Clinic";
     const today = new Date().toLocaleDateString('en-US', { year: 'numeric', month: '2-digit', day: '2-digit' });
@@ -384,6 +404,8 @@ ${cvRiskSection}${irSection}${supplementSection}
 
 RECHECK WINDOW: ${recheckWindow}
 ${trendContext || ''}
+${buildTherapyPromptBlock(therapyContext)}
+
 AI CLINICAL RECOMMENDATIONS (already generated):
 ${aiRecommendations}
 
@@ -453,7 +475,7 @@ CRITICAL FORMATTING RULES:
 
       const soapNote = response.choices[0]?.message?.content;
       console.log('[AI Service] SOAP note generated, length:', soapNote?.length || 0);
-      return soapNote || this.getDefaultSOAPNote(today);
+      return annotateRecommendationMarkdown(soapNote || this.getDefaultSOAPNote(today), therapyContext);
     } catch (error) {
       console.error("Error generating SOAP note:", error);
       return this.getDefaultSOAPNote(today);

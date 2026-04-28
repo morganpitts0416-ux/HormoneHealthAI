@@ -21,6 +21,11 @@ import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
 import { applyCustomRangesToInterpretations } from "./lab-range-overrides";
 import { evaluateClinicianSupplements, combineSupplementRecommendations } from "./clinician-supplements-engine";
+import {
+  inferPatientTherapies,
+  annotateSupplementsWithContext,
+  type TherapyContext,
+} from "./therapy-context";
 import { PHENOTYPE_KEYS, detectedPhenotypeKeys } from "./phenotype-registry";
 import { screenInsulinResistance } from "./insulin-resistance";
 import { normalizeTranscript, parseCSV, parseArrayField } from "./medication-normalizer";
@@ -708,11 +713,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const patientId = req.body.patientId ? parseInt(req.body.patientId) : undefined;
 
       let trendContext = '';
+      let therapyContext: TherapyContext | null = null;
       if (patientId) {
         const priorLabs = await storage.getLabResultsByPatient(patientId);
         if (priorLabs.length > 0) {
           trendContext = AIService.buildTrendContext(labs, priorLabs.map(l => ({ labDate: l.labDate, labValues: l.labValues as LabValues })));
           console.log('[API] Trend context built from', priorLabs.length, 'prior labs');
+        }
+        // Therapy context — what's already on the patient's chart? Used to
+        // rewrite recommendations as adherence/dose-optimization rather than
+        // duplicate initiation. Wrapped in try/catch so an unauthenticated
+        // call still works exactly as before.
+        try {
+          if ((req as any).user || (req.session as any).staffClinicianId) {
+            const cid = getClinicianId(req);
+            const chart = await storage.getPatientChart(patientId, cid);
+            if (chart && Array.isArray(chart.currentMedications) && chart.currentMedications.length > 0) {
+              therapyContext = inferPatientTherapies(chart.currentMedications);
+              console.log('[API] Male therapy context: classes=', Array.from(therapyContext.classes.keys()).join(','));
+            }
+          }
+        } catch (e) {
+          console.warn('[API] Male therapy context lookup failed (continuing without):', e);
         }
       }
 
@@ -929,8 +951,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
       const [aiRecommendations, patientSummary] = await Promise.all([
-        AIService.generateRecommendations(labs, redFlags, interpretations, 'male', trendContext || undefined),
-        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk),
+        AIService.generateRecommendations(labs, redFlags, interpretations, 'male', trendContext || undefined, therapyContext),
+        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'male', therapyContext),
       ]);
 
       // Step 6: Determine recheck window
@@ -973,6 +995,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.log('[API] Male supplement recommendations:', supplements.length);
       }
 
+      // Context-aware annotation: if the patient is already on a therapy in
+      // the same class as a recommended supplement, mark it [Already on …]
+      // and rewrite the rationale to focus on adherence + dose optimization.
+      supplements = annotateSupplementsWithContext(supplements, therapyContext);
+
       console.log('[API] Male IR Screening:', insulinResistance ? `${insulinResistance.positiveCount} positive markers, ${insulinResistance.likelihoodLabel}` : 'Not calculated (insufficient markers)');
 
       if (insulinResistance && insulinResistance.likelihood !== 'none') {
@@ -996,7 +1023,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 9: Generate SOAP note
       const soapNote = await AIService.generateSOAPNote(
         labs, redFlags, interpretations, aiRecommendations, recheckWindow,
-        'male', preventRisk, supplements, insulinResistance, trendContext || undefined
+        'male', preventRisk, supplements, insulinResistance, trendContext || undefined,
+        therapyContext,
       );
 
       const result: InterpretationResult = {
@@ -1050,11 +1078,24 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const patientId = req.body.patientId ? parseInt(req.body.patientId) : undefined;
 
       let trendContext = '';
+      let therapyContext: TherapyContext | null = null;
       if (patientId) {
         const priorLabs = await storage.getLabResultsByPatient(patientId);
         if (priorLabs.length > 0) {
           trendContext = AIService.buildTrendContext(labs, priorLabs.map(l => ({ labDate: l.labDate, labValues: l.labValues as FemaleLabValues })));
           console.log('[API] Female trend context built from', priorLabs.length, 'prior labs');
+        }
+        try {
+          if ((req as any).user || (req.session as any).staffClinicianId) {
+            const cid = getClinicianId(req);
+            const chart = await storage.getPatientChart(patientId, cid);
+            if (chart && Array.isArray(chart.currentMedications) && chart.currentMedications.length > 0) {
+              therapyContext = inferPatientTherapies(chart.currentMedications);
+              console.log('[API] Female therapy context: classes=', Array.from(therapyContext.classes.keys()).join(','));
+            }
+          }
+        } catch (e) {
+          console.warn('[API] Female therapy context lookup failed (continuing without):', e);
         }
       }
 
@@ -1258,8 +1299,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
 
       // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
       const [aiRecommendations, patientSummary] = await Promise.all([
-        AIService.generateRecommendations(labs, redFlags, interpretations, 'female', trendContext || undefined),
-        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'female'),
+        AIService.generateRecommendations(labs, redFlags, interpretations, 'female', trendContext || undefined, therapyContext),
+        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'female', therapyContext),
       ]);
 
       // Step 6: Determine recheck window using female-specific logic
@@ -1314,6 +1355,10 @@ export async function registerRoutes(app: Express): Promise<Server> {
       } else {
         console.log('[API] Supplement recommendations:', supplements.length);
       }
+
+      // Context-aware annotation against patient's chart meds
+      supplements = annotateSupplementsWithContext(supplements, therapyContext);
+
       console.log('[API] Clinical phenotypes detected:', clinicalPhenotypes.map(p => `${p.name} (${p.confidence})`).join(', ') || 'None');
 
       // Step 9: Compute cardiovascular risk stratification flags
@@ -1340,7 +1385,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Step 10: Generate SOAP note
       const soapNote = await AIService.generateSOAPNote(
         labs, redFlags, interpretations, aiRecommendations, recheckWindow,
-        'female', preventRisk, supplements, insulinResistance, trendContext || undefined
+        'female', preventRisk, supplements, insulinResistance, trendContext || undefined,
+        therapyContext,
       );
 
       const result: InterpretationResult = {
@@ -11144,6 +11190,7 @@ CORE BEHAVIOR:
 - When referencing ranges, use the clinic's optimized functional ranges (listed below), not just conventional reference ranges. Explain when functional ranges differ from standard lab ranges and why.
 - If you're unsure about something, say so honestly. Never fabricate evidence or studies.
 - Format evidence citations clearly — use bold for guideline names or study titles.
+- CONTEXT-AWARE THERAPY RULE: Before recommending initiation of any medication or supplement for a suboptimal lab, cross-check the patient's Current Medications list (provided in patient context when available). If the indicated therapy class is already on board (e.g., patient on atorvastatin and you'd recommend a statin; patient on Vitamin D3 and you'd recommend vitamin D; patient on metformin and you'd recommend metformin; patient on lisinopril and you'd recommend an ACE inhibitor), do NOT recommend starting a duplicate. Instead, recommend (a) confirming adherence, (b) verifying the patient is taking the dose as prescribed, and (c) consider dose escalation or switching within the same class if the response is inadequate. Only suggest adding a different class once same-class optimization is exhausted. Always name the exact chart medication in your response so the clinician knows you saw it.
 
 CLINIC PROTOCOLS & RANGES:
 The clinic uses both conventional reference ranges AND functional/optimized ranges for clinical decision-making. Here are the key markers:
