@@ -413,3 +413,126 @@ FROM users u
 WHERE ce.clinic_id IS NULL
   AND ce.clinician_id = u.id
   AND u.default_clinic_id IS NOT NULL;
+
+-- ── Daily Check-In (Phase 1) ────────────────────────────────────────
+-- All tables are new + additive. Default-off: absence of a settings row
+-- means tracking is off for that patient. No existing tables are altered.
+CREATE TABLE IF NOT EXISTS patient_tracking_settings (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  tracking_mode VARCHAR(20) NOT NULL DEFAULT 'off',
+  enabled BOOLEAN NOT NULL DEFAULT false,
+  setup_completed BOOLEAN NOT NULL DEFAULT false,
+  still_has_cycle BOOLEAN,
+  cycles_regular BOOLEAN,
+  on_hormone_therapy BOOLEAN,
+  hysterectomy_status BOOLEAN,
+  ovaries_status VARCHAR(20),
+  last_activity_at TIMESTAMP,
+  last_reminder_dismissed_at TIMESTAMP,
+  reminder_preferences JSONB DEFAULT '{}'::jsonb,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_tracking_settings_patient_idx
+  ON patient_tracking_settings (patient_id);
+
+CREATE TABLE IF NOT EXISTS patient_daily_checkins (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  date VARCHAR(10) NOT NULL,
+  weight REAL,
+  food_protein_level VARCHAR(20),
+  water_level VARCHAR(20),
+  fiber_veggie_level VARCHAR(20),
+  processed_food_level VARCHAR(20),
+  alcohol_use BOOLEAN,
+  food_notes TEXT,
+  protein_grams REAL,
+  calories REAL,
+  carbs REAL,
+  fat REAL,
+  fiber_grams REAL,
+  water_ounces REAL,
+  sleep_hours REAL,
+  sleep_quality INTEGER,
+  night_sweats BOOLEAN,
+  woke_during_night BOOLEAN,
+  exercise_done BOOLEAN,
+  exercise_type VARCHAR(100),
+  exercise_minutes INTEGER,
+  exercise_intensity VARCHAR(20),
+  mood_score INTEGER,
+  energy_score INTEGER,
+  cravings_score INTEGER,
+  hunger_score INTEGER,
+  brain_fog_score INTEGER,
+  anxiety_irritability_score INTEGER,
+  gi_symptoms JSONB DEFAULT '[]'::jsonb,
+  unexpected_bleeding BOOLEAN,
+  other_symptoms TEXT,
+  cycle_data JSONB,
+  notes TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_daily_checkins_patient_date_idx
+  ON patient_daily_checkins (patient_id, date);
+CREATE INDEX IF NOT EXISTS patient_daily_checkins_patient_idx
+  ON patient_daily_checkins (patient_id, date DESC);
+
+CREATE TABLE IF NOT EXISTS patient_medication_adherence_logs (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  medication_name VARCHAR(200) NOT NULL,
+  source VARCHAR(30) NOT NULL DEFAULT 'patient_chart',
+  patient_reported_medication_id INTEGER,
+  date VARCHAR(10) NOT NULL,
+  status VARCHAR(20) NOT NULL,
+  reason TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_med_adherence_patient_date_idx
+  ON patient_medication_adherence_logs (patient_id, date DESC);
+
+CREATE TABLE IF NOT EXISTS patient_reported_medications (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  name VARCHAR(200) NOT NULL,
+  dose VARCHAR(100),
+  frequency VARCHAR(100),
+  type VARCHAR(20) NOT NULL DEFAULT 'supplement',
+  route VARCHAR(50),
+  reason TEXT,
+  start_date VARCHAR(10),
+  source VARCHAR(30) NOT NULL DEFAULT 'patient_reported',
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  reviewed_by_provider BOOLEAN NOT NULL DEFAULT false,
+  reviewed_at TIMESTAMP,
+  reviewed_by_user_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_reported_meds_patient_idx
+  ON patient_reported_medications (patient_id, status);
+
+CREATE TABLE IF NOT EXISTS provider_inbox_notifications (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE CASCADE,
+  provider_id INTEGER,
+  type VARCHAR(60) NOT NULL,
+  title VARCHAR(200) NOT NULL,
+  message TEXT NOT NULL,
+  related_entity_type VARCHAR(50),
+  related_entity_id INTEGER,
+  severity VARCHAR(20) NOT NULL DEFAULT 'normal',
+  read_at TIMESTAMP,
+  read_by_user_id INTEGER,
+  dismissed_at TIMESTAMP,
+  dismissed_by_user_id INTEGER,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS provider_inbox_clinic_unread_idx
+  ON provider_inbox_notifications (clinic_id, dismissed_at, read_at, created_at DESC);

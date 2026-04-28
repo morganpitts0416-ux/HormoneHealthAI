@@ -2237,6 +2237,9 @@ export default function PatientProfiles() {
                 </div>
               )}
 
+              {/* ── Monitoring & Check-Ins (Phase 1: Daily Check-In) ──── */}
+              <MonitoringPanel patientId={selectedPatient.id} />
+
               {/* ── Patient Chart ─────────────────────────────────────── */}
               <PatientChartPanel
                 patientId={selectedPatient.id}
@@ -4084,6 +4087,268 @@ function UpcomingAppointmentsCard({
           </ul>
         )}
       </div>
+    </div>
+  );
+}
+
+// ── Monitoring & Check-Ins panel (Daily Check-In Phase 1) ─────────────────
+type _MonitoringSummary = {
+  settings: {
+    trackingMode: "off" | "standard" | "power";
+    enabled: boolean;
+    setupCompleted: boolean;
+    lastActivityAt: string | null;
+  };
+  recentCheckins: Array<{
+    id: number;
+    date: string;
+    weight?: string | null;
+    moodScore?: number | null;
+    energyScore?: number | null;
+    sleepHours?: string | null;
+    sleepQuality?: number | null;
+    foodProteinLevel?: number | null;
+    waterLevel?: number | null;
+    exerciseDone?: boolean | null;
+    exerciseMinutes?: number | null;
+    unexpectedBleeding?: boolean | null;
+    otherSymptoms?: string | null;
+    notes?: string | null;
+    updatedAt: string;
+  }>;
+  reportedMeds: Array<{
+    id: number;
+    name: string;
+    dose?: string | null;
+    frequency?: string | null;
+    type: string;
+    status: string;
+    reviewedByProvider: boolean;
+    createdAt: string;
+  }>;
+  summary: {
+    windowDays: number;
+    adherencePct: number | null;
+    totalCheckins: number;
+    unreviewedReportedMedCount: number;
+    lastActivityAt: string | null;
+  };
+};
+
+function MonitoringPanel({ patientId }: { patientId: number }) {
+  const [open, setOpen] = useState(true);
+  const { data, isLoading } = useQuery<_MonitoringSummary>({
+    queryKey: ['/api/patients', patientId, 'tracking-summary'],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/tracking-summary`, { credentials: 'include' });
+      if (!res.ok) throw new Error('failed');
+      return res.json();
+    },
+  });
+
+  const markReviewedMutation = useMutation({
+    mutationFn: (medId: number) =>
+      fetch(`/api/patients/${patientId}/patient-reported-medications/${medId}/mark-reviewed`, {
+        method: 'POST', credentials: 'include',
+      }),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/patients', patientId, 'tracking-summary'] }),
+  });
+
+  // Default-off contract: render absolutely nothing until we confirm the patient
+  // has opted into tracking. No skeleton, no "Not enrolled" banner — clinicians
+  // see zero behavioral change for non-enrolled patients.
+  if (isLoading || !data) return null;
+  const trackingActive = data.settings.trackingMode !== "off" && data.settings.enabled;
+  if (!trackingActive) return null;
+
+  const recent = data.recentCheckins ?? [];
+  const reportedMeds = data.reportedMeds ?? [];
+  const unreviewedMeds = reportedMeds.filter((m) => !m.reviewedByProvider && m.status === "active");
+  const recentBleeding = recent.find((c) => c.unexpectedBleeding === true);
+
+  return (
+    <div
+      className="rounded-xl border"
+      style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
+      data-testid="monitoring-checkins-panel"
+    >
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-2 px-4 pt-3 pb-2.5 hover-elevate rounded-t-xl"
+        data-testid="button-toggle-monitoring"
+      >
+        <div className="flex items-center gap-2">
+          <Activity className="w-4 h-4" style={{ color: "#2e3a20" }} />
+          <h3 className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+            Monitoring & Check-Ins
+          </h3>
+          {trackingActive ? (
+            <Badge variant="outline" className="text-xs">
+              {data.settings.trackingMode === "power" ? "Power Mode" : "Standard"}
+            </Badge>
+          ) : (
+            <Badge variant="outline" className="text-xs" style={{ color: "#7a8a64" }}>
+              Not enrolled
+            </Badge>
+          )}
+          {unreviewedMeds.length > 0 && (
+            <Badge className="text-white text-xs" style={{ backgroundColor: "#c0392b" }}>
+              {unreviewedMeds.length} to review
+            </Badge>
+          )}
+        </div>
+        <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} style={{ color: "#7a8a64" }} />
+      </button>
+      {open && (
+        <div className="px-4 pb-4 space-y-4 border-t" style={{ borderColor: "#e8ddd0" }}>
+          {!trackingActive ? (
+            <div className="pt-4">
+              <p className="text-sm" style={{ color: "#5a6048" }}>
+                Patient hasn't opted into Daily Check-In. They can enable it from their portal at any time.
+              </p>
+            </div>
+          ) : (
+            <>
+              {/* Summary stats */}
+              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-4">
+                <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}>
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Last activity</p>
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
+                    {data.summary.lastActivityAt
+                      ? new Date(data.summary.lastActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                      : "—"}
+                  </p>
+                </div>
+                <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}>
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Check-ins (30d)</p>
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
+                    {data.summary.totalCheckins}
+                  </p>
+                </div>
+                <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}>
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Med adherence</p>
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
+                    {data.summary.adherencePct === null ? "—" : `${data.summary.adherencePct}%`}
+                  </p>
+                </div>
+                <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}>
+                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Patient-added</p>
+                  <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
+                    {reportedMeds.length}
+                  </p>
+                </div>
+              </div>
+
+              {recentBleeding && (
+                <div
+                  className="rounded-md border p-3 flex items-start gap-2"
+                  style={{ borderColor: "#e8c1ba", backgroundColor: "#fdf2f0" }}
+                  data-testid="alert-bleeding"
+                >
+                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#c0392b" }} />
+                  <div className="text-sm" style={{ color: "#1c2414" }}>
+                    <p className="font-semibold">Unexpected bleeding reported on {recentBleeding.date}</p>
+                    <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
+                      Notes: {recentBleeding.notes ?? recentBleeding.otherSymptoms ?? "no additional notes"}
+                    </p>
+                  </div>
+                </div>
+              )}
+
+              {/* Patient-reported medications */}
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#5a6048" }}>
+                  Patient-added medications & supplements
+                </h4>
+                {reportedMeds.length === 0 ? (
+                  <p className="text-sm" style={{ color: "#7a8a64" }}>None.</p>
+                ) : (
+                  <div className="space-y-1.5">
+                    {reportedMeds.map((m) => (
+                      <div
+                        key={m.id}
+                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border"
+                        style={{
+                          borderColor: m.reviewedByProvider ? "#e8ddd0" : "#e8c1ba",
+                          backgroundColor: m.reviewedByProvider ? "#ffffff" : "#fdf2f0",
+                        }}
+                        data-testid={`reported-med-${m.id}`}
+                      >
+                        <div className="min-w-0 flex-1">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <p className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>{m.name}</p>
+                            <Badge variant="outline" className="text-[10px] capitalize">{m.type}</Badge>
+                            {!m.reviewedByProvider && (
+                              <Badge className="text-[10px] text-white" style={{ backgroundColor: "#c0392b" }}>Needs review</Badge>
+                            )}
+                          </div>
+                          <p className="text-[11px] mt-0.5" style={{ color: "#7a8a64" }}>
+                            {[m.dose, m.frequency].filter(Boolean).join(" · ") || "no dose / frequency"}
+                            {" · added "}
+                            {new Date(m.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                          </p>
+                        </div>
+                        {!m.reviewedByProvider && (
+                          <Button
+                            size="sm"
+                            variant="outline"
+                            onClick={() => markReviewedMutation.mutate(m.id)}
+                            disabled={markReviewedMutation.isPending}
+                            data-testid={`button-mark-reviewed-${m.id}`}
+                          >
+                            <Check className="w-3.5 h-3.5 mr-1" /> Mark reviewed
+                          </Button>
+                        )}
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+
+              {/* Recent check-ins */}
+              <div>
+                <h4 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#5a6048" }}>
+                  Recent check-ins
+                </h4>
+                {recent.length === 0 ? (
+                  <p className="text-sm" style={{ color: "#7a8a64" }}>No check-ins yet.</p>
+                ) : (
+                  <div className="space-y-1">
+                    {recent.slice(0, 7).map((c) => (
+                      <div
+                        key={c.id}
+                        className="grid grid-cols-12 gap-2 px-3 py-2 rounded-md border text-xs"
+                        style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}
+                        data-testid={`checkin-row-${c.id}`}
+                      >
+                        <div className="col-span-3 sm:col-span-2 font-medium" style={{ color: "#1c2414" }}>
+                          {new Date(c.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                        </div>
+                        <div className="col-span-3 sm:col-span-2" style={{ color: "#5a6048" }}>
+                          {c.sleepHours ? `${c.sleepHours}h sleep` : "—"}
+                        </div>
+                        <div className="col-span-3 sm:col-span-2" style={{ color: "#5a6048" }}>
+                          {c.moodScore ? `Mood ${c.moodScore}/5` : "—"}
+                        </div>
+                        <div className="col-span-3 sm:col-span-2" style={{ color: "#5a6048" }}>
+                          {c.energyScore ? `Energy ${c.energyScore}/5` : "—"}
+                        </div>
+                        <div className="hidden sm:block sm:col-span-2" style={{ color: "#5a6048" }}>
+                          {c.exerciseDone ? `${c.exerciseMinutes ?? "?"} min exercise` : "no exercise"}
+                        </div>
+                        <div className="hidden sm:block sm:col-span-2" style={{ color: "#5a6048" }}>
+                          {c.weight ? `${c.weight} lb` : "—"}
+                        </div>
+                      </div>
+                    ))}
+                  </div>
+                )}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }

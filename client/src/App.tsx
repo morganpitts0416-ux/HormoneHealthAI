@@ -27,6 +27,7 @@ import PortalDashboard from "@/pages/portal/dashboard";
 import PortalSupplements from "@/pages/portal/supplements";
 import PortalMessages from "@/pages/portal/messages";
 import PortalForms from "@/pages/portal/forms";
+import PortalCheckIn from "@/pages/portal/check-in";
 import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
 import AppointmentsPage from "@/pages/appointments";
@@ -283,6 +284,7 @@ function Router() {
       <Route path="/portal/supplements" component={PortalSupplements} />
       <Route path="/portal/messages" component={PortalMessages} />
       <Route path="/portal/forms" component={PortalForms} />
+      <Route path="/portal/check-in" component={PortalCheckIn} />
       <Route path="/staff-set-password" component={StaffSetPassword} />
       <Route path="/join-clinic" component={JoinClinicPage} />
       <Route>

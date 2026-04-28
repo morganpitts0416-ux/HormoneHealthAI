@@ -11263,6 +11263,444 @@ IMPORTANT:
     }
   });
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // ─── Daily Check-In (Phase 1) ─────────────────────────────────────────
+  // Optional patient tracking + accountability tool. Patient-facing endpoints
+  // require portal auth; clinician-facing endpoints require clinician auth.
+  // Default-off: absence of a tracking_settings row means tracking is off.
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // --- helpers --------------------------------------------------------------
+  function todayStr(): string {
+    // YYYY-MM-DD in UTC; client sends explicit dates for non-UTC days.
+    return new Date().toISOString().slice(0, 10);
+  }
+
+  function defaultTrackingSettings(patientId: number) {
+    return {
+      patientId,
+      trackingMode: "off",
+      enabled: false,
+      setupCompleted: false,
+      stillHasCycle: null,
+      cyclesRegular: null,
+      onHormoneTherapy: null,
+      hysterectomyStatus: null,
+      ovariesStatus: null,
+      lastActivityAt: null,
+      lastReminderDismissedAt: null,
+      reminderPreferences: {},
+    };
+  }
+
+  // ── PATIENT PORTAL: tracking settings ─────────────────────────────────
+  app.get("/api/portal/tracking/settings", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const settings = await storage.getPatientTrackingSettings(patientId);
+      res.json(settings ?? defaultTrackingSettings(patientId));
+    } catch (err) {
+      console.error("[tracking] settings GET error:", err);
+      res.status(500).json({ message: "Failed to load tracking settings" });
+    }
+  });
+
+  app.post("/api/portal/tracking/settings", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const allowed = [
+        "trackingMode", "enabled", "setupCompleted",
+        "stillHasCycle", "cyclesRegular", "onHormoneTherapy",
+        "hysterectomyStatus", "ovariesStatus",
+        "lastReminderDismissedAt", "reminderPreferences",
+      ] as const;
+      const partial: Record<string, any> = {};
+      for (const key of allowed) {
+        if (key in req.body) partial[key] = (req.body as any)[key];
+      }
+      // Light validation
+      if (partial.trackingMode && !["off", "standard", "power"].includes(partial.trackingMode)) {
+        return res.status(400).json({ message: "Invalid tracking mode" });
+      }
+      // Mode "off" implies enabled = false
+      if (partial.trackingMode === "off") partial.enabled = false;
+      if (partial.trackingMode === "standard" || partial.trackingMode === "power") partial.enabled = true;
+      const updated = await storage.upsertPatientTrackingSettings(patientId, partial);
+      res.json(updated);
+    } catch (err) {
+      console.error("[tracking] settings POST error:", err);
+      res.status(500).json({ message: "Failed to save tracking settings" });
+    }
+  });
+
+  // ── PATIENT PORTAL: daily check-ins ───────────────────────────────────
+  app.get("/api/portal/tracking/checkins", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const from = (req.query.from as string | undefined)?.slice(0, 10);
+      const to = (req.query.to as string | undefined)?.slice(0, 10);
+      const limit = req.query.limit ? Math.min(Number(req.query.limit), 365) : 90;
+      const rows = await storage.getPatientDailyCheckins(patientId, { from, to, limit });
+      res.json(rows);
+    } catch (err) {
+      console.error("[tracking] checkins GET error:", err);
+      res.status(500).json({ message: "Failed to load check-ins" });
+    }
+  });
+
+  app.get("/api/portal/tracking/checkins/today", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const date = (req.query.date as string | undefined)?.slice(0, 10) || todayStr();
+      const row = await storage.getPatientDailyCheckin(patientId, date);
+      res.json(row ?? { patientId, date });
+    } catch (err) {
+      console.error("[tracking] checkins/today GET error:", err);
+      res.status(500).json({ message: "Failed to load today's check-in" });
+    }
+  });
+
+  app.post("/api/portal/tracking/checkins", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const date = (req.body.date as string | undefined)?.slice(0, 10) || todayStr();
+      // Whitelist accepted fields
+      const allowed = [
+        "weight", "foodProteinLevel", "waterLevel", "fiberVeggieLevel",
+        "processedFoodLevel", "alcoholUse", "foodNotes",
+        "proteinGrams", "calories", "carbs", "fat", "fiberGrams", "waterOunces",
+        "sleepHours", "sleepQuality", "nightSweats", "wokeDuringNight",
+        "exerciseDone", "exerciseType", "exerciseMinutes", "exerciseIntensity",
+        "moodScore", "energyScore", "cravingsScore", "hungerScore",
+        "brainFogScore", "anxietyIrritabilityScore",
+        "giSymptoms", "unexpectedBleeding", "otherSymptoms",
+        "cycleData", "notes",
+      ] as const;
+      const partial: Record<string, any> = {};
+      for (const key of allowed) {
+        if (key in req.body) partial[key] = (req.body as any)[key];
+      }
+      const row = await storage.upsertPatientDailyCheckin(patientId, date, partial);
+
+      // If patient reported unexpected bleeding, notify the clinic.
+      if (partial.unexpectedBleeding === true) {
+        const patient = await storage.getPatientById(patientId);
+        if (patient?.clinicId) {
+          await storage.createInboxNotification({
+            clinicId: patient.clinicId,
+            patientId,
+            providerId: patient.primaryProviderId ?? null,
+            type: "unexpected_bleeding_reported",
+            title: "Unexpected bleeding reported",
+            message: `${patient.firstName} ${patient.lastName} reported unexpected/breakthrough bleeding on ${date}.`,
+            relatedEntityType: "checkin",
+            relatedEntityId: row.id,
+            severity: "urgent",
+          } as any);
+        }
+      }
+      res.json(row);
+    } catch (err) {
+      console.error("[tracking] checkins POST error:", err);
+      res.status(500).json({ message: "Failed to save check-in" });
+    }
+  });
+
+  // ── PATIENT PORTAL: medications/supplements (chart + patient-reported) ──
+  app.get("/api/portal/tracking/medications", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const patient = await storage.getPatientById(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      // Pull active chart meds (jsonb array on patient_charts) for the patient's
+      // primary clinician, plus any patient-reported meds.
+      let chartMedications: string[] = [];
+      if (patient.userId) {
+        const chart = await storage.getPatientChart(patientId, patient.userId);
+        chartMedications = (chart?.currentMedications ?? []) as string[];
+      }
+      const reported = await storage.listPatientReportedMedications(patientId, { status: "active" });
+      res.json({
+        chartMedications: chartMedications.map((name, idx) => ({
+          id: `chart-${idx}`,
+          name,
+          source: "patient_chart",
+        })),
+        patientReported: reported.map((r) => ({
+          id: `reported-${r.id}`,
+          rowId: r.id,
+          name: r.name,
+          dose: r.dose,
+          frequency: r.frequency,
+          type: r.type,
+          source: "patient_reported",
+          reviewedByProvider: r.reviewedByProvider,
+        })),
+      });
+    } catch (err) {
+      console.error("[tracking] medications GET error:", err);
+      res.status(500).json({ message: "Failed to load medications" });
+    }
+  });
+
+  app.post("/api/portal/tracking/med-adherence", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const medicationName = String(req.body.medicationName ?? "").slice(0, 200);
+      if (!medicationName) return res.status(400).json({ message: "medicationName required" });
+      const date = (req.body.date as string | undefined)?.slice(0, 10) || todayStr();
+      const status = String(req.body.status ?? "taken");
+      if (!["taken", "skipped", "missed", "backfilled"].includes(status)) {
+        return res.status(400).json({ message: "Invalid status" });
+      }
+      const source = req.body.source === "patient_reported" ? "patient_reported" : "patient_chart";
+      const row = await storage.logMedicationAdherence({
+        patientId,
+        medicationName,
+        source,
+        patientReportedMedicationId: req.body.patientReportedMedicationId ?? null,
+        date,
+        status,
+        reason: req.body.reason ?? null,
+      } as any);
+      res.json(row);
+    } catch (err) {
+      console.error("[tracking] med-adherence POST error:", err);
+      res.status(500).json({ message: "Failed to log adherence" });
+    }
+  });
+
+  app.get("/api/portal/tracking/med-adherence", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const from = (req.query.from as string | undefined)?.slice(0, 10);
+      const to = (req.query.to as string | undefined)?.slice(0, 10);
+      const limit = req.query.limit ? Math.min(Number(req.query.limit), 1000) : 200;
+      const rows = await storage.getMedicationAdherence(patientId, { from, to, limit });
+      res.json(rows);
+    } catch (err) {
+      console.error("[tracking] med-adherence GET error:", err);
+      res.status(500).json({ message: "Failed to load adherence" });
+    }
+  });
+
+  app.post("/api/portal/tracking/patient-reported-medication", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const name = String(req.body.name ?? "").trim().slice(0, 200);
+      if (!name) return res.status(400).json({ message: "name required" });
+      const type = req.body.type === "medication" ? "medication" : "supplement";
+      const row = await storage.addPatientReportedMedication({
+        patientId,
+        name,
+        dose: req.body.dose ?? null,
+        frequency: req.body.frequency ?? null,
+        type,
+        route: req.body.route ?? null,
+        reason: req.body.reason ?? null,
+        startDate: req.body.startDate ?? null,
+        source: "patient_reported",
+        status: "active",
+        reviewedByProvider: false,
+      } as any);
+
+      // Notify the clinic for safety review
+      const patient = await storage.getPatientById(patientId);
+      if (patient?.clinicId) {
+        await storage.createInboxNotification({
+          clinicId: patient.clinicId,
+          patientId,
+          providerId: patient.primaryProviderId ?? null,
+          type: "patient_added_med_or_supplement",
+          title: `Patient-added ${type}: ${name}`,
+          message: `${patient.firstName} ${patient.lastName} added a new ${type} to their record: ${name}${row.dose ? ` (${row.dose})` : ""}. Please review for interactions or duplications.`,
+          relatedEntityType: "medication",
+          relatedEntityId: row.id,
+          severity: "normal",
+        } as any);
+      }
+      res.json(row);
+    } catch (err) {
+      console.error("[tracking] patient-reported-medication POST error:", err);
+      res.status(500).json({ message: "Failed to add medication" });
+    }
+  });
+
+  app.patch("/api/portal/tracking/patient-reported-medication/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const allowed = ["name", "dose", "frequency", "type", "route", "reason", "startDate", "status"];
+      const partial: Record<string, any> = {};
+      for (const k of allowed) if (k in req.body) partial[k] = (req.body as any)[k];
+      const updated = await storage.updatePatientReportedMedication(id, patientId, partial as any);
+      if (!updated) return res.status(404).json({ message: "Medication not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("[tracking] patient-reported-medication PATCH error:", err);
+      res.status(500).json({ message: "Failed to update medication" });
+    }
+  });
+
+  app.delete("/api/portal/tracking/patient-reported-medication/:id", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const ok = await storage.deletePatientReportedMedication(id, patientId);
+      res.json({ ok });
+    } catch (err) {
+      console.error("[tracking] patient-reported-medication DELETE error:", err);
+      res.status(500).json({ message: "Failed to delete medication" });
+    }
+  });
+
+  // ── CLINICIAN: per-patient tracking summary panel ─────────────────────
+  app.get("/api/patients/:id/tracking-summary", requireAuth, async (req, res) => {
+    try {
+      const patientId = Number(req.params.id);
+      if (!Number.isFinite(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      // Same scoped lookup as the rest of the app — refuses access if patient
+      // belongs to another clinic OR has no clinic and isn't owned by this user
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const [settings, recentCheckins, adherence, reportedMeds] = await Promise.all([
+        storage.getPatientTrackingSettings(patientId),
+        storage.getPatientDailyCheckins(patientId, { limit: 30 }),
+        storage.getMedicationAdherence(patientId, { limit: 200 }),
+        storage.listPatientReportedMedications(patientId),
+      ]);
+      // Summary stats
+      const adherenceWindow = recentCheckins.length;
+      const medsTakenCount = adherence.filter((a) => a.status === "taken").length;
+      const medsSkippedCount = adherence.filter((a) => a.status === "skipped" || a.status === "missed").length;
+      const adherencePct = (medsTakenCount + medsSkippedCount) > 0
+        ? Math.round((medsTakenCount / (medsTakenCount + medsSkippedCount)) * 100)
+        : null;
+      const lastActivityAt = settings?.lastActivityAt ?? recentCheckins[0]?.updatedAt ?? null;
+      res.json({
+        settings: settings ?? defaultTrackingSettings(patientId),
+        recentCheckins,
+        adherence,
+        reportedMeds,
+        summary: {
+          windowDays: adherenceWindow,
+          adherencePct,
+          totalCheckins: recentCheckins.length,
+          unreviewedReportedMedCount: reportedMeds.filter((m) => !m.reviewedByProvider && m.status === "active").length,
+          lastActivityAt,
+        },
+      });
+    } catch (err) {
+      console.error("[tracking] tracking-summary GET error:", err);
+      res.status(500).json({ message: "Failed to load tracking summary" });
+    }
+  });
+
+  app.post("/api/patients/:id/patient-reported-medications/:medId/mark-reviewed", requireAuth, async (req, res) => {
+    try {
+      const patientId = Number(req.params.id);
+      const medId = Number(req.params.medId);
+      if (!Number.isFinite(patientId) || !Number.isFinite(medId)) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      // Storage method also enforces patientId match in the WHERE clause, so a
+      // medId belonging to a different patient cannot be modified.
+      const updated = await storage.markPatientReportedMedReviewed(medId, patientId, clinicianId);
+      if (!updated) return res.status(404).json({ message: "Medication not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("[tracking] mark-reviewed error:", err);
+      res.status(500).json({ message: "Failed to mark reviewed" });
+    }
+  });
+
+  // ── CLINICIAN: provider inbox notifications ───────────────────────────
+  app.get("/api/clinician/inbox-notifications", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json({ notifications: [], unreadCount: 0 });
+      const includeDismissed = req.query.includeDismissed === "true";
+      const limit = req.query.limit ? Math.min(Number(req.query.limit), 200) : 50;
+      const providerId = getClinicianId(req);
+      const [notifications, unreadCount] = await Promise.all([
+        storage.listInboxNotifications(clinicId, { providerId, includeDismissed, limit }),
+        storage.countUnreadInboxNotifications(clinicId, providerId),
+      ]);
+      res.json({ notifications, unreadCount });
+    } catch (err) {
+      console.error("[inbox] list error:", err);
+      res.status(500).json({ message: "Failed to load notifications" });
+    }
+  });
+
+  app.get("/api/clinician/inbox-notifications/unread-count", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json({ unreadCount: 0 });
+      const providerId = getClinicianId(req);
+      const unreadCount = await storage.countUnreadInboxNotifications(clinicId, providerId);
+      res.json({ unreadCount });
+    } catch (err) {
+      console.error("[inbox] unread-count error:", err);
+      res.json({ unreadCount: 0 });
+    }
+  });
+
+  app.patch("/api/clinician/inbox-notifications/:id/read", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const userId = getClinicianId(req);
+      const row = await storage.markInboxNotificationRead(id, clinicId, userId);
+      if (!row) return res.status(404).json({ message: "Notification not found" });
+      res.json(row);
+    } catch (err) {
+      console.error("[inbox] mark-read error:", err);
+      res.status(500).json({ message: "Failed to mark notification read" });
+    }
+  });
+
+  app.post("/api/clinician/inbox-notifications/mark-all-read", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json({ updated: 0 });
+      const userId = getClinicianId(req);
+      const providerId = getClinicianId(req);
+      const updated = await storage.markAllInboxNotificationsRead(clinicId, providerId, userId);
+      res.json({ updated });
+    } catch (err) {
+      console.error("[inbox] mark-all-read error:", err);
+      res.status(500).json({ message: "Failed to mark notifications read" });
+    }
+  });
+
+  app.delete("/api/clinician/inbox-notifications/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const userId = getClinicianId(req);
+      const ok = await storage.dismissInboxNotification(id, clinicId, userId);
+      res.json({ ok });
+    } catch (err) {
+      console.error("[inbox] dismiss error:", err);
+      res.status(500).json({ message: "Failed to dismiss notification" });
+    }
+  });
+
+  // ─── End Daily Check-In (Phase 1) ─────────────────────────────────────
+
   const httpServer = createServer(app);
   return httpServer;
 }

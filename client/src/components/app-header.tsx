@@ -31,14 +31,20 @@ export function AppHeader() {
   const [location, setLocation] = useLocation();
 
   const { data: notif } = useQuery<{ unreadMessages: Array<{ count: number }> }>({
-    queryKey: ["/api/notifications"],
+    queryKey: ["/api/clinician/notifications"],
     enabled: !!user,
     refetchInterval: 30_000,
   });
-  const unreadTotal = (notif?.unreadMessages ?? []).reduce(
+  const { data: inboxCounts } = useQuery<{ unreadCount: number }>({
+    queryKey: ["/api/clinician/inbox-notifications/unread-count"],
+    enabled: !!user,
+    refetchInterval: 30_000,
+  });
+  const unreadMessagesTotal = (notif?.unreadMessages ?? []).reduce(
     (sum, r) => sum + (Number(r.count) || 0),
     0,
   );
+  const unreadTotal = unreadMessagesTotal + (inboxCounts?.unreadCount ?? 0);
 
   if (!user) return null;
 

@@ -281,6 +281,35 @@ export interface IStorage {
   createDiagnosisPreset(data: schema.InsertDiagnosisPreset): Promise<schema.DiagnosisPreset>;
   updateDiagnosisPreset(id: number, clinicId: number, data: Partial<schema.InsertDiagnosisPreset>): Promise<schema.DiagnosisPreset | undefined>;
   deleteDiagnosisPreset(id: number, clinicId: number): Promise<boolean>;
+
+  // ── Daily Check-In: tracking settings (one row per patient) ───────────────
+  getPatientTrackingSettings(patientId: number): Promise<schema.PatientTrackingSettings | null>;
+  upsertPatientTrackingSettings(patientId: number, partial: Partial<schema.InsertPatientTrackingSettings>): Promise<schema.PatientTrackingSettings>;
+
+  // ── Daily Check-In: daily logs (one row per patient per day) ──────────────
+  getPatientDailyCheckin(patientId: number, date: string): Promise<schema.PatientDailyCheckin | null>;
+  getPatientDailyCheckins(patientId: number, opts?: { from?: string; to?: string; limit?: number }): Promise<schema.PatientDailyCheckin[]>;
+  upsertPatientDailyCheckin(patientId: number, date: string, partial: Partial<schema.InsertPatientDailyCheckin>): Promise<schema.PatientDailyCheckin>;
+
+  // ── Daily Check-In: medication adherence ──────────────────────────────────
+  logMedicationAdherence(data: schema.InsertPatientMedicationAdherenceLog): Promise<schema.PatientMedicationAdherenceLog>;
+  getMedicationAdherence(patientId: number, opts?: { from?: string; to?: string; limit?: number }): Promise<schema.PatientMedicationAdherenceLog[]>;
+
+  // ── Daily Check-In: patient-reported medications/supplements ──────────────
+  addPatientReportedMedication(data: schema.InsertPatientReportedMedication): Promise<schema.PatientReportedMedication>;
+  listPatientReportedMedications(patientId: number, opts?: { status?: string }): Promise<schema.PatientReportedMedication[]>;
+  getPatientReportedMedication(id: number, patientId: number): Promise<schema.PatientReportedMedication | undefined>;
+  updatePatientReportedMedication(id: number, patientId: number, partial: Partial<schema.InsertPatientReportedMedication>): Promise<schema.PatientReportedMedication | undefined>;
+  markPatientReportedMedReviewed(id: number, patientId: number, reviewedByUserId: number): Promise<schema.PatientReportedMedication | undefined>;
+  deletePatientReportedMedication(id: number, patientId: number): Promise<boolean>;
+
+  // ── Daily Check-In: provider inbox notifications ──────────────────────────
+  createInboxNotification(data: schema.InsertProviderInboxNotification): Promise<schema.ProviderInboxNotification>;
+  listInboxNotifications(clinicId: number, opts?: { providerId?: number | null; includeDismissed?: boolean; limit?: number }): Promise<schema.ProviderInboxNotification[]>;
+  countUnreadInboxNotifications(clinicId: number, providerId?: number | null): Promise<number>;
+  markInboxNotificationRead(id: number, clinicId: number, userId: number): Promise<schema.ProviderInboxNotification | undefined>;
+  markAllInboxNotificationsRead(clinicId: number, providerId: number | null, userId: number): Promise<number>;
+  dismissInboxNotification(id: number, clinicId: number, userId: number): Promise<boolean>;
 }
 
 // ─── Patient scope helper ────────────────────────────────────────────────────
@@ -2425,5 +2454,330 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
     .delete(schema.diagnosisPresets)
     .where(and(eq(schema.diagnosisPresets.id, id), eq(schema.diagnosisPresets.clinicId, clinicId)))
     .returning({ id: schema.diagnosisPresets.id });
+  return result.length > 0;
+};
+
+// ═══════════════════════════════════════════════════════════════════════════
+// ─── Daily Check-In (Phase 1) ──────────────────────────────────────────────
+// All implementations attached to DbStorage.prototype to keep the main class
+// block stable. Tracking settings are upserted; daily check-ins are upserted
+// per (patient, date); medication adherence and patient-reported meds are
+// inserted; provider inbox notifications support unread/read/dismissed states.
+// ═══════════════════════════════════════════════════════════════════════════
+
+(DbStorage.prototype as any).getPatientTrackingSettings = async function(
+  patientId: number,
+): Promise<schema.PatientTrackingSettings | null> {
+  const [row] = await db
+    .select()
+    .from(schema.patientTrackingSettings)
+    .where(eq(schema.patientTrackingSettings.patientId, patientId))
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).upsertPatientTrackingSettings = async function(
+  patientId: number,
+  partial: Partial<schema.InsertPatientTrackingSettings>,
+): Promise<schema.PatientTrackingSettings> {
+  const existing = await (this as any).getPatientTrackingSettings(patientId);
+  if (existing) {
+    const [row] = await db
+      .update(schema.patientTrackingSettings)
+      .set({ ...partial, updatedAt: new Date() })
+      .where(eq(schema.patientTrackingSettings.id, existing.id))
+      .returning();
+    return row;
+  }
+  const [row] = await db
+    .insert(schema.patientTrackingSettings)
+    .values({ patientId, ...partial } as schema.InsertPatientTrackingSettings)
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).getPatientDailyCheckin = async function(
+  patientId: number,
+  date: string,
+): Promise<schema.PatientDailyCheckin | null> {
+  const [row] = await db
+    .select()
+    .from(schema.patientDailyCheckins)
+    .where(and(
+      eq(schema.patientDailyCheckins.patientId, patientId),
+      eq(schema.patientDailyCheckins.date, date),
+    ))
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).getPatientDailyCheckins = async function(
+  patientId: number,
+  opts: { from?: string; to?: string; limit?: number } = {},
+): Promise<schema.PatientDailyCheckin[]> {
+  const conditions: any[] = [eq(schema.patientDailyCheckins.patientId, patientId)];
+  if (opts.from) conditions.push(sql`${schema.patientDailyCheckins.date} >= ${opts.from}`);
+  if (opts.to) conditions.push(sql`${schema.patientDailyCheckins.date} <= ${opts.to}`);
+  let query: any = db
+    .select()
+    .from(schema.patientDailyCheckins)
+    .where(and(...conditions))
+    .orderBy(desc(schema.patientDailyCheckins.date));
+  if (opts.limit) query = query.limit(opts.limit);
+  return await query;
+};
+
+(DbStorage.prototype as any).upsertPatientDailyCheckin = async function(
+  patientId: number,
+  date: string,
+  partial: Partial<schema.InsertPatientDailyCheckin>,
+): Promise<schema.PatientDailyCheckin> {
+  const existing = await (this as any).getPatientDailyCheckin(patientId, date);
+  if (existing) {
+    const [row] = await db
+      .update(schema.patientDailyCheckins)
+      .set({ ...partial, updatedAt: new Date() })
+      .where(eq(schema.patientDailyCheckins.id, existing.id))
+      .returning();
+    return row;
+  }
+  const [row] = await db
+    .insert(schema.patientDailyCheckins)
+    .values({ patientId, date, ...partial } as schema.InsertPatientDailyCheckin)
+    .returning();
+  // Touch tracking settings.lastActivityAt so we know they're active.
+  await db
+    .update(schema.patientTrackingSettings)
+    .set({ lastActivityAt: new Date(), updatedAt: new Date() })
+    .where(eq(schema.patientTrackingSettings.patientId, patientId));
+  return row;
+};
+
+(DbStorage.prototype as any).logMedicationAdherence = async function(
+  data: schema.InsertPatientMedicationAdherenceLog,
+): Promise<schema.PatientMedicationAdherenceLog> {
+  const [row] = await db
+    .insert(schema.patientMedicationAdherenceLogs)
+    .values(data)
+    .returning();
+  await db
+    .update(schema.patientTrackingSettings)
+    .set({ lastActivityAt: new Date(), updatedAt: new Date() })
+    .where(eq(schema.patientTrackingSettings.patientId, data.patientId));
+  return row;
+};
+
+(DbStorage.prototype as any).getMedicationAdherence = async function(
+  patientId: number,
+  opts: { from?: string; to?: string; limit?: number } = {},
+): Promise<schema.PatientMedicationAdherenceLog[]> {
+  const conditions: any[] = [eq(schema.patientMedicationAdherenceLogs.patientId, patientId)];
+  if (opts.from) conditions.push(sql`${schema.patientMedicationAdherenceLogs.date} >= ${opts.from}`);
+  if (opts.to) conditions.push(sql`${schema.patientMedicationAdherenceLogs.date} <= ${opts.to}`);
+  let query: any = db
+    .select()
+    .from(schema.patientMedicationAdherenceLogs)
+    .where(and(...conditions))
+    .orderBy(desc(schema.patientMedicationAdherenceLogs.date), desc(schema.patientMedicationAdherenceLogs.createdAt));
+  if (opts.limit) query = query.limit(opts.limit);
+  return await query;
+};
+
+(DbStorage.prototype as any).addPatientReportedMedication = async function(
+  data: schema.InsertPatientReportedMedication,
+): Promise<schema.PatientReportedMedication> {
+  const [row] = await db
+    .insert(schema.patientReportedMedications)
+    .values(data)
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).listPatientReportedMedications = async function(
+  patientId: number,
+  opts: { status?: string } = {},
+): Promise<schema.PatientReportedMedication[]> {
+  const conditions: any[] = [eq(schema.patientReportedMedications.patientId, patientId)];
+  if (opts.status) conditions.push(eq(schema.patientReportedMedications.status, opts.status));
+  return await db
+    .select()
+    .from(schema.patientReportedMedications)
+    .where(and(...conditions))
+    .orderBy(desc(schema.patientReportedMedications.createdAt));
+};
+
+(DbStorage.prototype as any).getPatientReportedMedication = async function(
+  id: number,
+  patientId: number,
+): Promise<schema.PatientReportedMedication | undefined> {
+  const [row] = await db
+    .select()
+    .from(schema.patientReportedMedications)
+    .where(and(
+      eq(schema.patientReportedMedications.id, id),
+      eq(schema.patientReportedMedications.patientId, patientId),
+    ))
+    .limit(1);
+  return row;
+};
+
+(DbStorage.prototype as any).updatePatientReportedMedication = async function(
+  id: number,
+  patientId: number,
+  partial: Partial<schema.InsertPatientReportedMedication>,
+): Promise<schema.PatientReportedMedication | undefined> {
+  const [row] = await db
+    .update(schema.patientReportedMedications)
+    .set({ ...partial, updatedAt: new Date() })
+    .where(and(
+      eq(schema.patientReportedMedications.id, id),
+      eq(schema.patientReportedMedications.patientId, patientId),
+    ))
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).markPatientReportedMedReviewed = async function(
+  id: number,
+  patientId: number,
+  reviewedByUserId: number,
+): Promise<schema.PatientReportedMedication | undefined> {
+  const [row] = await db
+    .update(schema.patientReportedMedications)
+    .set({ reviewedByProvider: true, reviewedAt: new Date(), reviewedByUserId, updatedAt: new Date() })
+    .where(and(
+      eq(schema.patientReportedMedications.id, id),
+      eq(schema.patientReportedMedications.patientId, patientId),
+    ))
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).deletePatientReportedMedication = async function(
+  id: number,
+  patientId: number,
+): Promise<boolean> {
+  const result = await db
+    .delete(schema.patientReportedMedications)
+    .where(and(
+      eq(schema.patientReportedMedications.id, id),
+      eq(schema.patientReportedMedications.patientId, patientId),
+    ))
+    .returning({ id: schema.patientReportedMedications.id });
+  return result.length > 0;
+};
+
+// ─── Provider inbox notifications ──────────────────────────────────────────
+
+(DbStorage.prototype as any).createInboxNotification = async function(
+  data: schema.InsertProviderInboxNotification,
+): Promise<schema.ProviderInboxNotification> {
+  const [row] = await db
+    .insert(schema.providerInboxNotifications)
+    .values(data)
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).listInboxNotifications = async function(
+  clinicId: number,
+  opts: { providerId?: number | null; includeDismissed?: boolean; limit?: number } = {},
+): Promise<schema.ProviderInboxNotification[]> {
+  const conditions: any[] = [eq(schema.providerInboxNotifications.clinicId, clinicId)];
+  // If providerId given, include notifications targeted at that provider OR
+  // clinic-wide notifications (providerId IS NULL).
+  if (opts.providerId !== undefined && opts.providerId !== null) {
+    conditions.push(or(
+      eq(schema.providerInboxNotifications.providerId, opts.providerId),
+      isNull(schema.providerInboxNotifications.providerId),
+    ));
+  }
+  if (!opts.includeDismissed) {
+    conditions.push(isNull(schema.providerInboxNotifications.dismissedAt));
+  }
+  let query: any = db
+    .select()
+    .from(schema.providerInboxNotifications)
+    .where(and(...conditions))
+    .orderBy(desc(schema.providerInboxNotifications.createdAt));
+  query = query.limit(opts.limit ?? 100);
+  return await query;
+};
+
+(DbStorage.prototype as any).countUnreadInboxNotifications = async function(
+  clinicId: number,
+  providerId?: number | null,
+): Promise<number> {
+  const conditions: any[] = [
+    eq(schema.providerInboxNotifications.clinicId, clinicId),
+    isNull(schema.providerInboxNotifications.readAt),
+    isNull(schema.providerInboxNotifications.dismissedAt),
+  ];
+  if (providerId !== undefined && providerId !== null) {
+    conditions.push(or(
+      eq(schema.providerInboxNotifications.providerId, providerId),
+      isNull(schema.providerInboxNotifications.providerId),
+    ));
+  }
+  const [{ value }] = await db
+    .select({ value: count() })
+    .from(schema.providerInboxNotifications)
+    .where(and(...conditions));
+  return Number(value ?? 0);
+};
+
+(DbStorage.prototype as any).markInboxNotificationRead = async function(
+  id: number,
+  clinicId: number,
+  userId: number,
+): Promise<schema.ProviderInboxNotification | undefined> {
+  const [row] = await db
+    .update(schema.providerInboxNotifications)
+    .set({ readAt: new Date(), readByUserId: userId })
+    .where(and(
+      eq(schema.providerInboxNotifications.id, id),
+      eq(schema.providerInboxNotifications.clinicId, clinicId),
+    ))
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).markAllInboxNotificationsRead = async function(
+  clinicId: number,
+  providerId: number | null,
+  userId: number,
+): Promise<number> {
+  const conditions: any[] = [
+    eq(schema.providerInboxNotifications.clinicId, clinicId),
+    isNull(schema.providerInboxNotifications.readAt),
+    isNull(schema.providerInboxNotifications.dismissedAt),
+  ];
+  if (providerId !== null && providerId !== undefined) {
+    conditions.push(or(
+      eq(schema.providerInboxNotifications.providerId, providerId),
+      isNull(schema.providerInboxNotifications.providerId),
+    ));
+  }
+  const result = await db
+    .update(schema.providerInboxNotifications)
+    .set({ readAt: new Date(), readByUserId: userId })
+    .where(and(...conditions))
+    .returning({ id: schema.providerInboxNotifications.id });
+  return result.length;
+};
+
+(DbStorage.prototype as any).dismissInboxNotification = async function(
+  id: number,
+  clinicId: number,
+  userId: number,
+): Promise<boolean> {
+  const result = await db
+    .update(schema.providerInboxNotifications)
+    .set({ dismissedAt: new Date(), dismissedByUserId: userId })
+    .where(and(
+      eq(schema.providerInboxNotifications.id, id),
+      eq(schema.providerInboxNotifications.clinicId, clinicId),
+    ))
+    .returning({ id: schema.providerInboxNotifications.id });
   return result.length > 0;
 };
