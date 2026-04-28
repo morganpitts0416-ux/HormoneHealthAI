@@ -1,0 +1,140 @@
+Vitals Monitoring Mode:
+This is clinician-directed and can be turned on from the patient profile by staff/provider.
+
+This is different from optional wellness tracking.
+
+Vitals Monitoring Mode examples:
+- 7-day blood pressure log
+- 10-day blood pressure + heart rate log
+- 14-day weight monitoring
+- Custom monitoring period
+
+Clinician can configure:
+- Vital types to monitor:
+  - Blood pressure
+  - Heart rate
+  - Weight
+- Duration:
+  - 7 days
+  - 10 days
+  - 14 days
+  - custom
+- Frequency:
+  - daily
+  - twice daily
+  - custom
+- Start date
+- End date
+- Optional instructions
+
+Patient side:
+If Vitals Monitoring Mode is active, show a clear card:
+“Your provider is monitoring your blood pressure for 10 days.”
+
+Only show the requested vital fields.
+
+For BP:
+- systolic
+- diastolic
+- time of reading
+- heart rate if selected
+- notes
+- symptoms checkbox:
+  - headache
+  - chest pain
+  - shortness of breath
+  - dizziness
+  - vision changes
+  - weakness
+  - confusion
+  - none
+
+If patient has not logged the requested vital for that day, show reminder:
+“Hey! Your provider is waiting for your daily blood pressure reading. Don’t forget to log it today.”
+
+When the monitoring period ends:
+- Automatically mark monitoring episode completed.
+- Stop patient reminders for that episode.
+- Stop active vitals prompt.
+- Send provider inbox notification:
+“[Patient Name] has completed their 10-day blood pressure log. View results.”
+
+Clicking notification should open the patient profile and open the contained Monitoring/Daily Check-In tool inside that profile.
+
+Provider alerts:
+Create provider inbox notifications for concerning patterns.
+
+For blood pressure:
+Stage 2 definition:
+systolic >= 140 OR diastolic >= 90
+
+If patient logs more than 2 Stage 2 readings during the monitoring period, notify provider:
+“[Patient Name] has logged multiple Stage 2 blood pressure readings. Review vitals log.”
+
+Severe BP:
+systolic >= 180 OR diastolic >= 120
+
+Provider notification:
+“Urgent BP reading logged for [Patient Name]: [reading]. Review immediately.”
+
+Patient-facing message for severe BP:
+“This reading is very high. Please recheck after sitting quietly for 5 minutes. If it remains this high or you have chest pain, shortness of breath, severe headache, weakness, confusion, or vision changes, seek urgent/emergency care.”
+
+Do not tell patient to change medication.
+Do not diagnose.
+Do not replace provider judgment.
+
+Provider/staff UX:
+From provider/staff standpoint, this must also remain clean.
+
+Add a contained tool inside the patient profile called:
+“Monitoring & Check-Ins”
+
+This should open inside the patient profile, not as a separate page and not mixed throughout the chart.
+
+Provider/staff should be able to view:
+- Current patient-selected mode: Off / Standard / Power
+- Active clinician-directed vitals monitoring episodes
+- Recent daily logs
+- Weight trend
+- Food consistency summary
+- Sleep trend
+- Exercise trend
+- Mood/symptom trend
+- Medication/supplement adherence
+- Patient-added medications/supplements
+- Cycle data if applicable
+- Vitals trends
+- AI-generated summaries
+- Flags
+
+Provider inbox:
+Simple notifications should alert providers/staff when needed.
+
+Notification types:
+- vitals_monitoring_completed
+- stage_2_bp_pattern
+- severe_bp_reading
+- missed_required_vital_log
+- unexpected_bleeding_reported
+- patient_added_med_or_supplement
+- worsening_symptom_trend
+
+Missed vitals:
+If clinician-required vitals are active and patient misses 2 days, notify provider:
+“[Patient Name] has missed 2 required blood pressure logs.”
+
+Vitals integration:
+Any vitals logged by the patient should integrate with vitals taken in-clinic for trending purposes.
+
+However, patient-logged vitals must be clearly labeled and color-coded as patient-documented.
+
+In vitals trends:
+- In-clinic vitals should remain distinct.
+- Patient-documented vitals should be color-coded differently.
+- Tooltip/label should say “Patient-documented”
+- In-clinic vitals should say “Clinic-documented”
+
+Do not overwrite clinic vitals.
+Do not mix the source invisibly.
+Both should trend together visually, but source should be clear.
