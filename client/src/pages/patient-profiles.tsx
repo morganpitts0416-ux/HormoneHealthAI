@@ -1933,11 +1933,28 @@ export default function PatientProfiles() {
               <div className="pb-2 space-y-3">
                 {/* Name + avatar row */}
                 <div className="flex items-start gap-3">
-                  <PatientAvatar patient={selectedPatient} size="md" />
+                  <button
+                    type="button"
+                    onClick={handleEditPatientOpen}
+                    className="flex-shrink-0 rounded-full hover-elevate active-elevate-2"
+                    title="Edit patient details"
+                    data-testid="button-edit-patient-avatar"
+                  >
+                    <PatientAvatar patient={selectedPatient} size="md" />
+                  </button>
                   <div className="flex-1 min-w-0">
-                    <h2 className="text-lg font-semibold leading-tight">
-                      {selectedPatient.firstName} {selectedPatient.lastName}
-                    </h2>
+                    <button
+                      type="button"
+                      onClick={handleEditPatientOpen}
+                      className="group inline-flex items-center gap-1.5 text-left -ml-1 px-1 py-0.5 rounded hover-elevate active-elevate-2"
+                      title="Edit patient details"
+                      data-testid="button-edit-patient-name"
+                    >
+                      <h2 className="text-lg font-semibold leading-tight">
+                        {selectedPatient.firstName} {selectedPatient.lastName}
+                      </h2>
+                      <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-70 transition-opacity" />
+                    </button>
 
                     {/* Always-visible: clinic type badge + DOB + phone + provider */}
                     <div className="flex items-center gap-2 flex-wrap mt-1">
@@ -2059,28 +2076,6 @@ export default function PatientProfiles() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={handleEditPatientOpen}
-                    data-testid="button-edit-patient"
-                    className="text-xs gap-1.5"
-                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
-                  >
-                    <Pencil className="h-3 w-3" />
-                    Edit
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setShowAppointmentDialog(true)}
-                    data-testid="button-book-appointment"
-                    className="text-xs gap-1.5"
-                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
-                  >
-                    <CalendarDays className="h-3 w-3" />
-                    Book Appointment
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
                     onClick={() => setShowVitalsDialog(true)}
                     data-testid="button-vitals"
                     className="text-xs gap-1.5"
@@ -2092,17 +2087,6 @@ export default function PatientProfiles() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setShowVitalTrendsDialog(true)}
-                    data-testid="button-vital-trends"
-                    className="text-xs gap-1.5"
-                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
-                  >
-                    <TrendingUp className="h-3 w-3" />
-                    Vital Trends
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
                     onClick={() => setShowPreventDialog(true)}
                     data-testid="button-prevent-calc"
                     className="text-xs gap-1.5"
@@ -2110,16 +2094,6 @@ export default function PatientProfiles() {
                   >
                     <Activity className="h-3 w-3" />
                     PREVENT Calc
-                  </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setConfirmDeletePatient(true)}
-                    data-testid="button-delete-patient"
-                    className="text-xs gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
-                  >
-                    <Trash2 className="h-3 w-3" />
-                    Delete Patient
                   </Button>
                 </div>
               </div>
@@ -3342,6 +3316,10 @@ export default function PatientProfiles() {
           onOpenChange={setShowVitalsDialog}
           patientId={selectedPatient.id}
           patientName={`${selectedPatient.firstName ?? ''} ${selectedPatient.lastName ?? ''}`.trim()}
+          onShowTrends={() => {
+            setShowVitalsDialog(false);
+            setShowVitalTrendsDialog(true);
+          }}
         />
       )}
 
@@ -3714,22 +3692,37 @@ export default function PatientProfiles() {
               />
             </div>
           </div>
-          <DialogFooter className="gap-2">
-            <Button variant="outline" size="sm" onClick={() => setShowEditPatient(false)}>
-              Cancel
-            </Button>
+          <DialogFooter className="gap-2 sm:justify-between">
             <Button
+              variant="outline"
               size="sm"
-              disabled={!editPatientForm.firstName.trim() || !editPatientForm.lastName.trim() || updatePatientMutation.isPending}
               onClick={() => {
-                if (!selectedPatient) return;
-                updatePatientMutation.mutate({ id: selectedPatient.id, ...editPatientForm });
+                setShowEditPatient(false);
+                setConfirmDeletePatient(true);
               }}
-              data-testid="button-save-edit-patient"
-              style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+              data-testid="button-delete-patient"
+              className="gap-1.5 text-destructive border-destructive/30 hover:bg-destructive/10"
             >
-              {updatePatientMutation.isPending ? "Saving..." : "Save Changes"}
+              <Trash2 className="h-3.5 w-3.5" />
+              Delete Patient
             </Button>
+            <div className="flex items-center gap-2">
+              <Button variant="outline" size="sm" onClick={() => setShowEditPatient(false)}>
+                Cancel
+              </Button>
+              <Button
+                size="sm"
+                disabled={!editPatientForm.firstName.trim() || !editPatientForm.lastName.trim() || updatePatientMutation.isPending}
+                onClick={() => {
+                  if (!selectedPatient) return;
+                  updatePatientMutation.mutate({ id: selectedPatient.id, ...editPatientForm });
+                }}
+                data-testid="button-save-edit-patient"
+                style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+              >
+                {updatePatientMutation.isPending ? "Saving..." : "Save Changes"}
+              </Button>
+            </div>
           </DialogFooter>
         </DialogContent>
       </Dialog>
