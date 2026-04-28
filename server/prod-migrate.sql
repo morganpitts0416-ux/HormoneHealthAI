@@ -401,3 +401,15 @@ CREATE TABLE IF NOT EXISTS note_phrases (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- ── Backfill clinical_encounters.clinic_id from owning clinician's
+--    default_clinic_id. Older encounters were created without a clinic
+--    stamp, which made them invisible to other providers/staff in the
+--    same clinic. This is a one-shot, idempotent fix — the API now
+--    always stamps clinic_id on creation.
+UPDATE clinical_encounters ce
+SET clinic_id = u.default_clinic_id
+FROM users u
+WHERE ce.clinic_id IS NULL
+  AND ce.clinician_id = u.id
+  AND u.default_clinic_id IS NOT NULL;
