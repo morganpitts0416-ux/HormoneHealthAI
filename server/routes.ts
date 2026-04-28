@@ -5589,10 +5589,23 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicId = getEffectiveClinicId(req);
       const { patientId, visitDate, visitType, chiefComplaint, linkedLabResultId, clinicianNotes, transcription, noteType, phoneContact, soapNote } = req.body;
       if (!patientId || !visitDate) return res.status(400).json({ message: "patientId and visitDate are required" });
+
+      // PATIENT-SAFETY: Verify the patient belongs to this clinician's clinic
+      // before creating an encounter against them. Without this check the
+      // server would happily attach any encounter (and subsequent SOAP, AI
+      // chat context, etc.) to any patient ID the client sends, which is
+      // both an authorization gap and a vector for cross-patient data leaks
+      // (e.g. a stale-closure client bug sending the wrong patientId).
+      const parsedPatientId = parseInt(patientId);
+      const patient = await storage.getPatient(parsedPatientId, clinicianId, clinicId);
+      if (!patient) {
+        return res.status(403).json({ message: "Patient not found or not in your scope" });
+      }
+
       const encounter = await storage.createEncounter({
         clinicianId,
         clinicId,
-        patientId: parseInt(patientId),
+        patientId: parsedPatientId,
         visitDate: new Date(visitDate),
         visitType: visitType || 'follow-up',
         chiefComplaint: chiefComplaint || null,
@@ -5632,7 +5645,27 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, diarizedTranscript, clinicalExtraction, evidenceSuggestions } = req.body;
+      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, diarizedTranscript, clinicalExtraction, evidenceSuggestions, expectedPatientId } = req.body;
+
+      // PATIENT-SAFETY: stale-context tripwire. If the client tells us which
+      // patient the UI thinks this encounter belongs to and it doesn't match,
+      // refuse to write. Protects against stale-closure/cached-state bugs.
+      if (expectedPatientId !== undefined && expectedPatientId !== null) {
+        const exp = parseInt(String(expectedPatientId));
+        if (!Number.isFinite(exp)) {
+          return res.status(400).json({ message: "Invalid expectedPatientId" });
+        }
+        const existing = await storage.getEncounter(id, clinicianId, clinicId);
+        if (!existing) return res.status(404).json({ message: "Encounter not found" });
+        if (existing.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: this encounter belongs to a different patient than the one currently shown. Refresh and verify.",
+            encounterPatientId: existing.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
+
       const updated = await storage.updateEncounter(id, clinicianId, {
         ...(visitDate !== undefined && { visitDate: new Date(visitDate) }),
         ...(visitType !== undefined && { visitType }),
@@ -5658,7 +5691,25 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const { soapNote } = req.body;
+      const { soapNote, expectedPatientId } = req.body;
+
+      // PATIENT-SAFETY: stale-context tripwire (see PUT /api/encounters/:id).
+      if (expectedPatientId !== undefined && expectedPatientId !== null) {
+        const exp = parseInt(String(expectedPatientId));
+        if (!Number.isFinite(exp)) {
+          return res.status(400).json({ message: "Invalid expectedPatientId" });
+        }
+        const existing = await storage.getEncounter(id, clinicianId, clinicId);
+        if (!existing) return res.status(404).json({ message: "Encounter not found" });
+        if (existing.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: this encounter belongs to a different patient than the one currently shown. Refresh and verify before saving the SOAP.",
+            encounterPatientId: existing.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
+
       const updated = await storage.updateEncounter(id, clinicianId, { soapNote }, clinicId);
       if (!updated) return res.status(404).json({ message: "Encounter not found" });
       res.json(updated);
@@ -5682,6 +5733,20 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.soapNote) return res.status(400).json({ message: "No SOAP note to sign." });
+
+      // PATIENT-SAFETY: stale-context tripwire — never sign+lock a chart that
+      // belongs to a different patient than the UI is showing.
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to sign — this encounter belongs to a different patient than the one currently shown.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
 
       const noteType = (encounter as any).noteType ?? "soap_provider";
       if (noteType === "soap_provider" && isStaff) {
@@ -5748,6 +5813,20 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
+      // PATIENT-SAFETY: stale-context tripwire — refuse to unlock the wrong
+      // patient's signed chart (see PUT /api/encounters/:id).
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to amend — this encounter belongs to a different patient than the one currently shown.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
+
       const updated = await storage.updateEncounter(id, clinicianId, {
         signedAt: null,
         signedBy: null,
@@ -5770,6 +5849,19 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const id = parseInt(req.params.id);
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      // PATIENT-SAFETY: stale-context tripwire (see PUT /api/encounters/:id).
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to normalize — this encounter belongs to a different patient.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
 
       const rawUtterances: any[] | null = req.body.utterances ?? null;
       const rawText: string = req.body.transcription ?? encounter.transcription ?? "";
@@ -5876,6 +5968,19 @@ Return ONLY the JSON array, no explanation.`;
       const id = parseInt(req.params.id);
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      // PATIENT-SAFETY: stale-context tripwire (see PUT /api/encounters/:id).
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to extract — this encounter belongs to a different patient.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
 
       const diarized = encounter.diarizedTranscript as any[] | null;
       const rawText = encounter.transcription ?? "";
@@ -6052,6 +6157,19 @@ Return this exact JSON structure (all arrays, even if empty):
       const id = parseInt(req.params.id);
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+
+      // PATIENT-SAFETY: stale-context tripwire (see PUT /api/encounters/:id).
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to generate evidence — this encounter belongs to a different patient.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
 
       const extraction = encounter.clinicalExtraction as any;
       // No hard guard — evidence falls back to raw transcription if extraction hasn't been run yet
@@ -6327,6 +6445,19 @@ Only return validations for guidelines that are directly and specifically applic
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
+      // PATIENT-SAFETY: stale-context tripwire (see PUT /api/encounters/:id).
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to match patterns — this encounter belongs to a different patient.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
+
       const extraction = encounter.clinicalExtraction as any;
       if (!extraction && !encounter.transcription && !encounter.diarizedTranscript) {
         return res.status(400).json({ message: "Run at least Stage 2 (Normalize) before pattern matching" });
@@ -6540,6 +6671,19 @@ Analyze this encounter and identify clinical patterns. Remember: operate in ${mo
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
 
+      // PATIENT-SAFETY: stale-context tripwire (see PUT /api/encounters/:id).
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to validate — this encounter belongs to a different patient.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
+
       const soapNote = encounter.soapNote as any;
       const extraction = encounter.clinicalExtraction as any;
       const overlay = encounter.evidenceSuggestions as any;
@@ -6661,7 +6805,24 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const { patientSummary } = req.body;
+      const { patientSummary, expectedPatientId } = req.body;
+
+      // PATIENT-SAFETY: stale-context tripwire — never write a patient
+      // summary against the wrong patient's encounter.
+      if (expectedPatientId !== undefined && expectedPatientId !== null) {
+        const exp = parseInt(String(expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        const existing = await storage.getEncounter(id, clinicianId, clinicId);
+        if (!existing) return res.status(404).json({ message: "Encounter not found" });
+        if (existing.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to save summary — this encounter belongs to a different patient.",
+            encounterPatientId: existing.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
+
       const updated = await storage.updateEncounter(id, clinicianId, { patientSummary }, clinicId);
       if (!updated) return res.status(404).json({ message: "Encounter not found" });
       res.json(updated);
@@ -6679,6 +6840,20 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.patientSummary) return res.status(400).json({ message: "No patient summary to publish" });
+
+      // PATIENT-SAFETY: stale-context tripwire — refusing to publish a
+      // patient-facing summary to the wrong patient's portal is critical.
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to publish — this encounter belongs to a different patient than the one currently shown.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
       const updated = await storage.updateEncounter(id, clinicianId, {
         summaryPublished: true,
         summaryPublishedAt: new Date(),
@@ -6736,6 +6911,22 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
+
+      // PATIENT-SAFETY: stale-context tripwire (see POST /publish).
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        const existing = await storage.getEncounter(id, clinicianId, clinicId);
+        if (!existing) return res.status(404).json({ message: "Encounter not found" });
+        if (existing.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to unpublish — this encounter belongs to a different patient.",
+            encounterPatientId: existing.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
+
       const updated = await storage.updateEncounter(id, clinicianId, {
         summaryPublished: false,
       }, clinicId);
@@ -6770,6 +6961,24 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.transcription && !encounter.diarizedTranscript) {
         return res.status(400).json({ message: "No transcription available. Please record or add session notes first." });
+      }
+
+      // PATIENT-SAFETY: Optional client-supplied expectedPatientId acts as a
+      // tripwire. The client sends the patientId it currently believes the
+      // encounter belongs to; if it doesn't match the server's record, we
+      // refuse to generate the SOAP so a stale-closure client bug can't
+      // generate a SOAP for the wrong patient. Invalid (non-numeric) input
+      // is rejected with 400 — never silently bypass the tripwire.
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: this encounter is associated with a different patient than the one currently shown. Refresh the page and verify before generating the SOAP.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
       }
 
       // ── Init AI client (shared across all pipeline steps) ─────────────────
@@ -7514,6 +7723,19 @@ Return JSON matching EvidenceOverlay structure:
       const encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
       if (!encounter.soapNote) return res.status(400).json({ message: "Please generate the SOAP note first." });
+
+      // PATIENT-SAFETY: stale-context tripwire (see PUT /api/encounters/:id).
+      if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
+        const exp = parseInt(String(req.body.expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({
+            message: "Patient mismatch: refusing to generate patient summary — this encounter belongs to a different patient.",
+            encounterPatientId: encounter.patientId,
+            expectedPatientId: exp,
+          });
+        }
+      }
 
       const soap = encounter.soapNote as any;
 

@@ -329,6 +329,23 @@ function AudioCapture({
   const wakeLockRef = useRef<WakeLockSentinel | null>(null);
   const { toast } = useToast();
 
+  // PATIENT-SAFETY: Always invoke the LATEST callback props, not the ones
+  // captured when the MediaRecorder was created. The MediaRecorder's onstop
+  // handler is bound exactly once when a segment recorder starts, so without
+  // these refs the entire transcribe → finalize → onTranscribed chain holds
+  // a closure over the parent's render at recording-start time — including
+  // the parent's `patientId` value at that instant. If the provider switches
+  // the patient dropdown mid-recording, the autosave then writes the new
+  // encounter against the ORIGINAL patient, causing a cross-patient leak.
+  // Reading via refs ensures the latest parent closure (with the latest
+  // patientId) is used at the moment transcription completes.
+  const onTranscribedRef = useRef(onTranscribed);
+  const onPartialTranscriptionRef = useRef(onPartialTranscription);
+  const onStateChangeRef = useRef(onStateChange);
+  useEffect(() => { onTranscribedRef.current = onTranscribed; }, [onTranscribed]);
+  useEffect(() => { onPartialTranscriptionRef.current = onPartialTranscription; }, [onPartialTranscription]);
+  useEffect(() => { onStateChangeRef.current = onStateChange; }, [onStateChange]);
+
   // Request screen wake lock so the phone doesn't suspend the mic during recording
   const acquireWakeLock = async () => {
     if (!("wakeLock" in navigator)) return;
@@ -367,11 +384,11 @@ function AudioCapture({
     };
   }, []);
 
-  // Keep parent in sync with recorder state
+  // Keep parent in sync with recorder state (read latest callback via ref)
   useEffect(() => {
-    if (isTranscribing) { onStateChange("transcribing"); return; }
-    if (recState === "recording") { onStateChange("recording"); return; }
-    onStateChange("idle");
+    if (isTranscribing) { onStateChangeRef.current("transcribing"); return; }
+    if (recState === "recording") { onStateChangeRef.current("recording"); return; }
+    onStateChangeRef.current("idle");
   }, [recState, isTranscribing]);
 
   // Called when ALL segments have been transcribed and recording has stopped
@@ -394,7 +411,9 @@ function AudioCapture({
     }
     const fullText = allText.join(" ").trim();
     const utterances = allUtterances.length > 0 ? allUtterances : null;
-    onTranscribed(fullText, utterances);
+    // Read latest callback via ref so a mid-recording prop change (e.g. the
+    // provider switching the patient dropdown) is honored at finalize time.
+    onTranscribedRef.current(fullText, utterances);
     setIsTranscribing(false);
     setRecState("idle");
     setElapsed(0);
@@ -426,10 +445,10 @@ function AudioCapture({
       transcribedUtterancesRef.current.set(segIdx, data.utterances ?? null);
       setSegmentsDone(d => d + 1);
       // If recording is still live, surface accumulated text so far
-      if (!recordingStoppedRef.current && onPartialTranscription) {
+      if (!recordingStoppedRef.current && onPartialTranscriptionRef.current) {
         const partialIndices = Array.from(transcribedSegmentsRef.current.keys()).sort((a, b) => a - b);
         const partialText = partialIndices.map(i => transcribedSegmentsRef.current.get(i) ?? "").filter(Boolean).join(" ").trim();
-        if (partialText) onPartialTranscription(partialText);
+        if (partialText) onPartialTranscriptionRef.current(partialText);
       }
     } catch (err: any) {
       // Store empty string so segment doesn't block finalization
@@ -508,7 +527,8 @@ function AudioCapture({
       });
       if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Transcription failed"); }
       const data = await res.json();
-      onTranscribed(data.transcription, data.utterances ?? null);
+      // Read latest callback via ref so prop changes are honored.
+      onTranscribedRef.current(data.transcription, data.utterances ?? null);
       setUploadFile(null);
     } catch (err: any) {
       toast({ variant: "destructive", title: "Transcription failed", description: err.message || "Please try again or paste notes manually." });
@@ -767,6 +787,14 @@ function EncounterEditor({
   // transcription updates can be prepended correctly without doubling text.
   const preRecordingTranscriptionRef = useRef<string>("");
   const isAutoSavingRef = useRef(false);
+  // PATIENT-SAFETY: Snapshot the patient at recording start. If the dropdown
+  // is changed mid-recording we surface a clear toast + persistent banner so
+  // the provider can verify the autosave is going to the intended patient.
+  const recordingStartPatientIdRef = useRef<string>("");
+  const [patientChangedDuringRecording, setPatientChangedDuringRecording] = useState<{
+    fromId: string;
+    toId: string;
+  } | null>(null);
   const soapTextareaRef = useRef<HTMLTextAreaElement>(null);
   const [soap, setSoap] = useState<SoapNote>(initSoap(encounter?.soapNote));
   const [patientSummary, setPatientSummary] = useState<string>(encounter?.patientSummary ?? "");
@@ -909,7 +937,7 @@ function EncounterEditor({
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!patientId) throw new Error("Please select a patient");
-      const body = {
+      const body: any = {
         patientId: parseInt(patientId),
         visitDate,
         visitType,
@@ -919,7 +947,8 @@ function EncounterEditor({
         transcription: transcription || null,
       };
       if (savedId) {
-        const res = await apiRequest("PUT", `/api/encounters/${savedId}`, body);
+        // PATIENT-SAFETY: tripwire — server returns 409 on patient mismatch.
+        const res = await apiRequest("PUT", `/api/encounters/${savedId}`, { ...body, expectedPatientId: parseInt(patientId) });
         return res.json();
       } else {
         const res = await apiRequest("POST", "/api/encounters", body);
@@ -957,12 +986,19 @@ function EncounterEditor({
         encounterId = saved.id;
       }
 
+      // PATIENT-SAFETY: Send the patientId currently shown in the UI as
+      // expectedPatientId on every encounter write. The server compares it to
+      // the encounter's stored patientId and returns 409 on mismatch — a hard
+      // tripwire against stale-closure/stale-state bugs writing to the wrong
+      // patient's chart.
+      const expectedPatientId = parseInt(patientId);
+
       // Always persist the current transcription to the encounter before generating SOAP.
       // This ensures the server reads the latest text even if the encounter was created
       // without it (e.g. save → record → generate) or diarizedTranscript was set instead.
-      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null });
+      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, expectedPatientId });
 
-      const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, {});
+      const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, { expectedPatientId });
       return res.json();
     },
     onSuccess: (data) => {
@@ -1009,15 +1045,18 @@ function EncounterEditor({
         setSavedId(saved.id);
         encounterId = saved.id;
       } else {
-        await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null });
+        await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, expectedPatientId: parseInt(patientId) });
       }
 
       // Step 2: Fire SOAP and evidence simultaneously
       toast({ title: "Generating…", description: "SOAP note and evidence running in parallel." });
 
+      // PATIENT-SAFETY: tripwire — server returns 409 if encounter.patientId
+      // doesn't match the patient currently shown in the UI.
+      const expectedPatientId = parseInt(patientId);
       const [soapResult, evidenceResult] = await Promise.allSettled([
-        apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, {}).then(r => r.json()),
-        apiRequest("POST", `/api/encounters/${encounterId}/evidence`, {}).then(r => r.json()),
+        apiRequest("POST", `/api/encounters/${encounterId}/generate-soap`, { expectedPatientId }).then(r => r.json()),
+        apiRequest("POST", `/api/encounters/${encounterId}/evidence`, { expectedPatientId }).then(r => r.json()),
       ]);
 
       if (soapResult.status === "fulfilled") {
@@ -1059,7 +1098,11 @@ function EncounterEditor({
   const saveSoapMutation = useMutation({
     mutationFn: async () => {
       if (!savedId) throw new Error("Save the encounter first");
-      const res = await apiRequest("PUT", `/api/encounters/${savedId}/soap`, { soapNote: soap });
+      // PATIENT-SAFETY: tripwire (see soapMutation above for rationale).
+      const res = await apiRequest("PUT", `/api/encounters/${savedId}/soap`, {
+        soapNote: soap,
+        expectedPatientId: patientId ? parseInt(patientId) : undefined,
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -1075,7 +1118,11 @@ function EncounterEditor({
   const summaryMutation = useMutation({
     mutationFn: async () => {
       if (!savedId) throw new Error("Save the encounter first");
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/generate-summary`, {});
+      // PATIENT-SAFETY: tripwire — never generate a patient-facing summary
+      // if the encounter doesn't belong to the patient the UI is showing.
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/generate-summary`, {
+        expectedPatientId: patientId ? parseInt(patientId) : undefined,
+      });
       return res.json();
     },
     onSuccess: (data) => {
@@ -1133,7 +1180,11 @@ function EncounterEditor({
   const saveSummaryMutation = useMutation({
     mutationFn: async () => {
       if (!savedId) throw new Error("Save the encounter first");
-      const res = await apiRequest("PUT", `/api/encounters/${savedId}/summary`, { patientSummary });
+      // PATIENT-SAFETY: tripwire — server returns 409 on patient mismatch.
+      const res = await apiRequest("PUT", `/api/encounters/${savedId}/summary`, {
+        patientSummary,
+        expectedPatientId: patientId ? parseInt(patientId) : undefined,
+      });
       return res.json();
     },
     onSuccess: () => { invalidate(); toast({ title: "Summary saved" }); },
@@ -1144,9 +1195,12 @@ function EncounterEditor({
   const publishMutation = useMutation({
     mutationFn: async (publish: boolean) => {
       if (!savedId) throw new Error("Save the encounter first");
+      // PATIENT-SAFETY: tripwire on every step — never publish or save the
+      // summary to the wrong patient's portal.
+      const expectedPatientId = patientId ? parseInt(patientId) : undefined;
       // Save current summary text first
-      if (publish) await apiRequest("PUT", `/api/encounters/${savedId}/summary`, { patientSummary });
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/${publish ? "publish" : "unpublish"}`, {});
+      if (publish) await apiRequest("PUT", `/api/encounters/${savedId}/summary`, { patientSummary, expectedPatientId });
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/${publish ? "publish" : "unpublish"}`, { expectedPatientId });
       return res.json();
     },
     onSuccess: (data) => {
@@ -1166,7 +1220,8 @@ function EncounterEditor({
     if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save the encounter before running normalization." }); return; }
     setPipelineLoading("normalizing");
     try {
-      const body: any = {};
+      // PATIENT-SAFETY: tripwire on every pipeline write.
+      const body: any = { expectedPatientId: patientId ? parseInt(patientId) : undefined };
       if (rawUtterances?.length) body.utterances = rawUtterances;
       else body.transcription = transcription;
       const res = await apiRequest("POST", `/api/encounters/${savedId}/normalize`, body);
@@ -1186,7 +1241,7 @@ function EncounterEditor({
     if (!savedId) { toast({ variant: "destructive", title: "Save first", description: "Save before running extraction." }); return; }
     setPipelineLoading("extracting");
     try {
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/extract`, {});
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/extract`, { expectedPatientId: patientId ? parseInt(patientId) : undefined });
       const data = await res.json();
       setClinicalExtraction(data.clinicalExtraction);
       invalidate();
@@ -1205,7 +1260,7 @@ function EncounterEditor({
     }
     setPipelineLoading("matching");
     try {
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/match-patterns`, {});
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/match-patterns`, { expectedPatientId: patientId ? parseInt(patientId) : undefined });
       const data = await res.json();
       setPatternMatch(data.patternMatch);
       invalidate();
@@ -1227,7 +1282,7 @@ function EncounterEditor({
     if (!transcription.trim() && !diarizedTranscript?.length) { toast({ variant: "destructive", title: "No transcript", description: "Add a transcript before running evidence lookup." }); return; }
     setPipelineLoading("evidence");
     try {
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/evidence`, {});
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/evidence`, { expectedPatientId: patientId ? parseInt(patientId) : undefined });
       const data = await res.json();
       setEvidenceOverlay(data.evidenceSuggestions);
       invalidate();
@@ -1245,7 +1300,7 @@ function EncounterEditor({
     if (!hasSoap) { toast({ variant: "destructive", title: "No SOAP note", description: "Generate a SOAP note before running validation." }); return; }
     setPipelineLoading("validating");
     try {
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/validate`, {});
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/validate`, { expectedPatientId: patientId ? parseInt(patientId) : undefined });
       const data = await res.json();
       setValidationResult(data.validation);
       invalidate();
@@ -1277,7 +1332,11 @@ function EncounterEditor({
     mutationFn: async () => {
       if (!savedId) throw new Error("Save the encounter before signing.");
       if (!hasSoap) throw new Error("Generate a SOAP note before signing.");
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/sign`, {});
+      // PATIENT-SAFETY: tripwire — refuse to sign+lock a chart that doesn't
+      // match the patient currently shown in the UI.
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/sign`, {
+        expectedPatientId: patientId ? parseInt(patientId) : undefined,
+      });
       return res.json();
     },
     onSuccess: (data: any) => {
@@ -1296,7 +1355,10 @@ function EncounterEditor({
   const amendMutation = useMutation({
     mutationFn: async () => {
       if (!savedId) throw new Error("No encounter to amend.");
-      const res = await apiRequest("POST", `/api/encounters/${savedId}/amend`, {});
+      // PATIENT-SAFETY: tripwire — refuse to unlock the wrong patient's chart.
+      const res = await apiRequest("POST", `/api/encounters/${savedId}/amend`, {
+        expectedPatientId: patientId ? parseInt(patientId) : undefined,
+      });
       return res.json();
     },
     onSuccess: () => {
@@ -1531,7 +1593,27 @@ function EncounterEditor({
                 ) : (
                   <Select
                     value={patientId || "none"}
-                    onValueChange={(v) => setPatientId(v === "none" ? "" : v)}
+                    onValueChange={(v) => {
+                      const next = v === "none" ? "" : v;
+                      // PATIENT-SAFETY: If the dropdown is changed during an
+                      // active recording, record the swap so the UI shows a
+                      // warning and the provider can verify before generating
+                      // SOAP. The encounter row itself is not yet saved at
+                      // this point — the autosave will use the *new* patient
+                      // when transcription completes (see ref-based callbacks
+                      // in AudioCapture).
+                      if (recorderState === "recording" && patientId && next && patientId !== next) {
+                        setPatientChangedDuringRecording({ fromId: patientId, toId: next });
+                        const fromName = patients.find(p => p.id.toString() === patientId);
+                        const toName = patients.find(p => p.id.toString() === next);
+                        toast({
+                          variant: "destructive",
+                          title: "Patient changed during active recording",
+                          description: `Recording will be saved against ${toName ? `${toName.firstName} ${toName.lastName}` : "the new patient"} (was ${fromName ? `${fromName.firstName} ${fromName.lastName}` : "previous patient"}). Please verify before generating the SOAP note.`,
+                        });
+                      }
+                      setPatientId(next);
+                    }}
                   >
                     <SelectTrigger data-testid="select-patient" id="patient-select">
                       <SelectValue placeholder="Select patient..." />
@@ -1648,6 +1730,49 @@ function EncounterEditor({
                 )}
               </div>
 
+              {/* PATIENT-SAFETY: Persistent banner shown when the patient was
+                  changed during an active recording. Stays visible until the
+                  encounter is saved with a confirmed patient or the user
+                  dismisses it. Clears automatically when a new recording
+                  starts. */}
+              {patientChangedDuringRecording && (() => {
+                const fromName = patients.find(p => p.id.toString() === patientChangedDuringRecording.fromId);
+                const toName = patients.find(p => p.id.toString() === patientChangedDuringRecording.toId);
+                const currentMatchesNew = patientId === patientChangedDuringRecording.toId;
+                return (
+                  <div
+                    role="alert"
+                    data-testid="alert-patient-changed-during-recording"
+                    className="rounded-md border border-red-300 bg-red-50 dark:bg-red-950/30 dark:border-red-800 px-3 py-2 flex items-start gap-2"
+                  >
+                    <TriangleAlert className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
+                    <div className="flex-1 min-w-0 text-sm">
+                      <div className="font-semibold text-red-700 dark:text-red-300">
+                        Patient was changed during this recording
+                      </div>
+                      <div className="text-red-700/90 dark:text-red-300/90 mt-0.5">
+                        Recording started for {fromName ? `${fromName.firstName} ${fromName.lastName}` : "an earlier patient"} and was switched to {toName ? `${toName.firstName} ${toName.lastName}` : "another patient"}.
+                        {" "}This encounter will be saved against{" "}
+                        <span className="font-semibold">
+                          {currentMatchesNew && toName
+                            ? `${toName.firstName} ${toName.lastName}`
+                            : (() => { const p = patients.find(pp => pp.id.toString() === patientId); return p ? `${p.firstName} ${p.lastName}` : "the currently selected patient"; })()}
+                        </span>. Verify the transcript belongs to this patient before generating the SOAP note.
+                      </div>
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => setPatientChangedDuringRecording(null)}
+                      className="text-red-600 dark:text-red-400 hover:text-red-700 flex-shrink-0"
+                      aria-label="Dismiss"
+                      data-testid="button-dismiss-patient-changed-warning"
+                    >
+                      <X className="w-4 h-4" />
+                    </button>
+                  </div>
+                );
+              })()}
+
               <AudioCapture
                 visitType={visitType}
                 onTranscribed={async (text, utterances) => {
@@ -1660,7 +1785,13 @@ function EncounterEditor({
                     setDiarizedTranscript(utterances);
                   }
                   if (savedId) {
-                    apiRequest("PUT", `/api/encounters/${savedId}`, { transcription: updated })
+                    // PATIENT-SAFETY: stamp expectedPatientId on the autosave so
+                    // the server's 409 tripwire prevents writing transcription
+                    // into another patient's encounter if patient context drifted.
+                    apiRequest("PUT", `/api/encounters/${savedId}`, {
+                      transcription: updated,
+                      expectedPatientId: patientId ? parseInt(patientId) : undefined,
+                    })
                       .catch(() => {
                         toast({ variant: "destructive", title: "Auto-save failed", description: "Transcription update could not be saved. Please save manually." });
                       });
@@ -1707,6 +1838,11 @@ function EncounterEditor({
                   if (state === "recording") {
                     // Snapshot whatever is already in the box before this recording session
                     preRecordingTranscriptionRef.current = transcription;
+                    // PATIENT-SAFETY: Snapshot the patient at recording start
+                    // and clear any prior change-warning. If the provider
+                    // switches the dropdown later, we'll flag it.
+                    recordingStartPatientIdRef.current = patientId;
+                    setPatientChangedDuringRecording(null);
                   }
                   setRecorderState(state);
                 }}
@@ -1751,13 +1887,32 @@ function EncounterEditor({
             </div>
 
             {/* Generate SOAP + Evidence in parallel */}
+            {/* PATIENT-SAFETY: Disable SOAP generation while a recording or
+                transcription is still in progress (the autosave hasn't yet
+                committed the encounter to the chosen patient) and while a
+                patient-change-during-recording warning is active until the
+                provider has explicitly confirmed by dismissing it. */}
             <div className="flex items-center justify-end gap-2 pt-1 flex-wrap">
               {/* Secondary: SOAP only */}
               <Button
                 variant="outline"
                 size="sm"
                 onClick={() => soapMutation.mutate()}
-                disabled={soapMutation.isPending || autoGenerating !== null || !hasTranscription}
+                disabled={
+                  soapMutation.isPending
+                  || autoGenerating !== null
+                  || !hasTranscription
+                  || recorderState === "recording"
+                  || recorderState === "transcribing"
+                  || patientChangedDuringRecording !== null
+                }
+                title={
+                  recorderState === "recording" || recorderState === "transcribing"
+                    ? "Stop recording and wait for transcription to finish before generating SOAP"
+                    : patientChangedDuringRecording !== null
+                      ? "Verify the patient change warning above before generating SOAP"
+                      : undefined
+                }
                 data-testid="button-generate-soap"
               >
                 {soapMutation.isPending
@@ -1767,7 +1922,21 @@ function EncounterEditor({
               {/* Primary: SOAP + Evidence in parallel */}
               <Button
                 onClick={autoGenerateAll}
-                disabled={autoGenerating !== null || soapMutation.isPending || !hasTranscription}
+                disabled={
+                  autoGenerating !== null
+                  || soapMutation.isPending
+                  || !hasTranscription
+                  || recorderState === "recording"
+                  || recorderState === "transcribing"
+                  || patientChangedDuringRecording !== null
+                }
+                title={
+                  recorderState === "recording" || recorderState === "transcribing"
+                    ? "Stop recording and wait for transcription to finish before generating SOAP"
+                    : patientChangedDuringRecording !== null
+                      ? "Verify the patient change warning above before generating SOAP"
+                      : undefined
+                }
                 data-testid="button-auto-generate-all"
                 size="default"
               >
@@ -1827,7 +1996,20 @@ function EncounterEditor({
                   size="sm"
                   variant="outline"
                   onClick={() => { soapMutation.mutate(); setActiveTab("soap"); }}
-                  disabled={!hasTranscription || soapMutation.isPending}
+                  disabled={
+                    !hasTranscription
+                    || soapMutation.isPending
+                    || recorderState === "recording"
+                    || recorderState === "transcribing"
+                    || patientChangedDuringRecording !== null
+                  }
+                  title={
+                    recorderState === "recording" || recorderState === "transcribing"
+                      ? "Stop recording and wait for transcription to finish before generating SOAP"
+                      : patientChangedDuringRecording !== null
+                        ? "Verify the patient change warning above before generating SOAP"
+                        : undefined
+                  }
                   data-testid="button-generate-soap-pipeline"
                 >
                   {soapMutation.isPending
