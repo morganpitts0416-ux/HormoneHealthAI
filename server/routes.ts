@@ -5506,6 +5506,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       if (!patientId || !visitDate) return res.status(400).json({ message: "patientId and visitDate are required" });
       const encounter = await storage.createEncounter({
         clinicianId,
+        clinicId,
         patientId: parseInt(patientId),
         visitDate: new Date(visitDate),
         visitType: visitType || 'follow-up',
