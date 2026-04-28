@@ -18,6 +18,12 @@ interface VitalsDialogProps {
   onOpenChange: (open: boolean) => void;
   patientId: number;
   patientName: string;
+  /**
+   * Optional callback that, when provided, renders a "View Trends" button in
+   * the dialog footer. The parent is responsible for closing this dialog and
+   * opening the Vital Trends dialog.
+   */
+  onShowTrends?: () => void;
 }
 
 function bpCategory(sys?: number | null, dia?: number | null): { label: string; color: string } | null {
@@ -48,7 +54,7 @@ function trend(curr: number | null | undefined, prev: number | null | undefined)
   return { icon: TrendingDown, label: diff.toFixed(1), color: "#16a34a" };
 }
 
-export function VitalsDialog({ open, onOpenChange, patientId, patientName }: VitalsDialogProps) {
+export function VitalsDialog({ open, onOpenChange, patientId, patientName, onShowTrends }: VitalsDialogProps) {
   const { toast } = useToast();
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({
@@ -265,8 +271,21 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName }: Vit
           </div>
         </ScrollArea>
 
-        <DialogFooter>
-          <Button variant="outline" onClick={() => onOpenChange(false)}>Close</Button>
+        <DialogFooter className="gap-2 sm:justify-between">
+          {onShowTrends ? (
+            <Button
+              variant="outline"
+              onClick={onShowTrends}
+              data-testid="button-view-vital-trends"
+              className="gap-1.5"
+            >
+              <TrendingUp className="h-4 w-4" />
+              View Trends
+            </Button>
+          ) : <span />}
+          <Button variant="outline" onClick={() => onOpenChange(false)} data-testid="button-close-vitals">
+            Close
+          </Button>
         </DialogFooter>
       </DialogContent>
     </Dialog>
