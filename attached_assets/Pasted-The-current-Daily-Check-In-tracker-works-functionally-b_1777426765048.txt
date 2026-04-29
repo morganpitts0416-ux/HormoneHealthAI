@@ -1,0 +1,304 @@
+The current Daily Check-In tracker works functionally, but the UX does not feel elevated enough for ClinIQ. It currently feels like a long DIY health form. We need to redesign it into a premium, guided, boutique patient experience.
+
+Core design goal:
+This should feel like a high-touch clinical companion, not a generic self-tracking app.
+
+The patient should feel:
+- guided
+- supported
+- cared for
+- not overwhelmed
+- like their provider is using this information to personalize care
+
+This should NOT feel like:
+- MyFitnessPal
+- a spreadsheet
+- a long intake form
+- a DIY wellness app
+- a generic habit tracker
+
+Main UX change:
+Replace the long scrolling form with a guided step-by-step check-in experience.
+
+The check-in should be broken into short “moments” instead of one long page.
+
+Recommended flow:
+1. Welcome / Today overview
+2. How are you feeling?
+3. Body & sleep
+4. Fuel & hydration
+5. Movement
+6. Medications & supplements
+7. Vitals, only if active
+8. Final reflection
+9. Completion screen with insight preview
+
+Each step should have:
+- one clear heading
+- one short supportive sentence
+- minimal inputs
+- large tappable buttons
+- soft visual spacing
+- a progress indicator
+- Back and Continue buttons
+- Save/Finish only at the end
+
+Do not show every section on one long page.
+
+Example tone:
+Instead of “Food & drink”
+Use:
+“Fuel & hydration”
+Subtitle:
+“What you eat and drink can affect energy, cravings, sleep, and progress.”
+
+Instead of “Mood/Symptoms”
+Use:
+“How are you feeling today?”
+Subtitle:
+“A quick check helps your care team see patterns over time.”
+
+Instead of “Medications & supplements”
+Use:
+“Today’s medications & supplements”
+Subtitle:
+“Consistency helps us understand what’s working — and what may need adjusting.”
+
+Replace numeric-only 1–5 buttons with labeled choices.
+
+Protein:
+- Skipped
+- Light
+- Moderate
+- Strong
+- On point
+
+Water:
+- Barely any
+- Some
+- Moderate
+- Good
+- Plenty
+
+Fiber/vegetables:
+- None
+- Light
+- Moderate
+- Strong
+- Lots
+
+Sleep quality:
+- Poor
+- Restless
+- Okay
+- Good
+- Restorative
+
+Mood:
+- Low
+- Off
+- Okay
+- Good
+- Great
+
+Energy:
+- Drained
+- Low
+- Okay
+- Steady
+- Energized
+
+Use numbers internally if needed, but show patient-friendly labels.
+
+Visual redesign:
+Use premium card styling:
+- warm off-white background
+- soft rounded cards
+- fewer borders
+- more whitespace
+- subtle dividers
+- larger headings
+- calming iconography
+- no cramped fields
+- no dense stacked sections
+
+The current 1–5 square buttons feel too harsh. Replace with pill buttons, segmented controls, sliders, or soft tappable chips.
+
+Make every interaction feel easy on mobile.
+
+Navigation:
+Inside the tool, patients must always have:
+- Back to Dashboard
+- progress indicator
+- clear Continue button
+- ability to save and exit
+
+The patient should never feel trapped inside the tracker.
+
+Dashboard card:
+Make the dashboard card feel inviting, not task-like.
+
+Example:
+“Today’s Check-In”
+“Take 60 seconds to help your care team understand your day.”
+
+CTA:
+“Start check-in”
+
+If vitals monitoring is active:
+Show a separate provider-requested card:
+“Provider-requested BP log”
+“Your care team is monitoring this for 10 days.”
+
+Do not mix optional wellness check-in with required vitals monitoring visually.
+
+Completion screen:
+After the patient finishes, show a warm completion screen.
+
+Example:
+“You’re all set for today.”
+“Your check-in was saved and will help your care team see the full picture.”
+
+Then show a small “Today’s insight” preview:
+“Sleep was lower last night, which may affect cravings and energy today. Focus on hydration, protein, and an earlier bedtime tonight.”
+
+Buttons:
+- View insights
+- Back to dashboard
+
+Patient-added medications/supplements:
+Keep this section clean.
+Instead of showing the add-med form expanded all the time, collapse it behind:
+“+ Add something not listed”
+
+When clicked, open a simple modal or slide-up sheet:
+- Medication or supplement
+- Name
+- Dose
+- Frequency
+- Why are you taking it? optional
+- Save
+
+After save:
+Show:
+“Added. We’ll let your care team know so they can review it.”
+
+Do not clutter the main med section with the full add form by default.
+
+Medication cards:
+Medication cards should show:
+- med/supplement name
+- dose/frequency if available
+- source badge: “From chart” or “Added by you”
+- buttons: Taken / Skipped
+
+Use clean cards with badges, not cramped rows.
+
+Food section:
+Standard Mode should stay simple.
+Do not ask patients to calculate macros unless they are in Power Mode.
+
+Add expandable helper text:
+“What counts as strong protein?”
+When tapped:
+“Most patients do best with protein at each meal. Strong usually means you included a meaningful protein source at most meals.”
+
+Power Mode:
+If patient is in Power Mode, allow detailed tracking, but keep it visually contained behind expandable areas:
+- Add macros
+- Add meal details
+- Add water ounces
+
+Do not overwhelm Standard Mode users.
+
+Vitals Mode:
+Vitals Monitoring Mode should feel clinically requested and more structured.
+
+Use language:
+“Requested by your care team”
+“Due today”
+“Monitoring ends in X days”
+
+Vitals entry should be simple:
+For BP:
+- systolic
+- diastolic
+- heart rate if selected
+- time
+- symptoms
+- notes
+
+Show a small trend preview after logging:
+“Today’s reading was saved.”
+“3 of 10 days completed.”
+
+Provider/staff UX:
+Provider/staff view should also stay clean and premium.
+
+Inside the patient profile, create a contained panel called:
+“Monitoring & Check-Ins”
+
+Do not scatter this information throughout the chart.
+
+The panel should have tabs:
+- Overview
+- Check-ins
+- Vitals
+- Meds/Supplements
+- Insights
+- Flags
+
+Overview should show clean summary cards:
+- Current mode
+- Last check-in
+- Active vitals monitoring
+- Adherence %
+- Recent flags
+- Latest weekly insight
+
+Vitals should integrate patient-documented vitals with clinic-documented vitals for trending, but source must be clearly labeled and color-coded:
+- Clinic-documented
+- Patient-documented
+
+Do not overwrite clinic vitals.
+Do not make patient vitals look identical to clinic vitals.
+
+Provider inbox:
+Notifications should be simple and actionable.
+Do not flood the inbox.
+
+Examples:
+- “[Patient] completed their 10-day BP log”
+- “[Patient] logged multiple Stage 2 BP readings”
+- “[Patient] added a new supplement”
+- “[Patient] reported unexpected bleeding”
+
+Clicking the notification should open the patient profile and open the Monitoring & Check-Ins panel directly.
+
+Premium UX details:
+Add small encouragement moments:
+- “Nice — that helps us see the pattern.”
+- “Logged. Consistency gives your care team better insight.”
+- “No perfection needed. Just a quick snapshot.”
+
+Avoid guilt/shame language.
+Do not use:
+- failed
+- noncompliant
+- bad
+- off track
+- poor choices
+
+Use:
+- missed
+- not logged
+- opportunity
+- pattern
+- support
+- next best step
+
+Important:
+The goal is not to create another DIY wellness tracker.
+The goal is to create a guided clinical companion that helps patients communicate better with their care team and helps providers make better decisions.
+
+Please redesign the current Daily Check-In UI around this elevated guided experience while preserving the existing functionality and database logic.

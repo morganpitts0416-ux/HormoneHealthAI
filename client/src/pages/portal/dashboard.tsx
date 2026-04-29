@@ -1445,21 +1445,23 @@ function DailyCheckInCard() {
     return (
       <Link href="/portal/check-in">
         <div
-          className="rounded-xl border-2 border-dashed p-4 cursor-pointer hover-elevate"
+          className="rounded-2xl border p-5 cursor-pointer hover-elevate"
           style={{ borderColor: "#c8dbb8", backgroundColor: "#f5fbef" }}
           data-testid="card-checkin-optin"
         >
-          <div className="flex items-center gap-3">
-            <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#edf4e4" }}>
+          <div className="flex items-start gap-3.5">
+            <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#edf4e4" }}>
               <Sun className="w-5 h-5" style={{ color: "#2e3a20" }} />
             </div>
             <div className="flex-1 min-w-0">
-              <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>Try Daily Check-In</p>
-              <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
-                60 seconds a day on food, sleep, mood, and meds. Helps your team connect the dots between visits.
+              <p className="text-base font-semibold" style={{ color: "#1c2414" }}>Today's Check-In</p>
+              <p className="text-xs mt-1 leading-relaxed" style={{ color: "#5a6048" }}>
+                Take 60 seconds to help your care team understand your day.
               </p>
+              <div className="flex items-center gap-1.5 mt-3 text-xs font-medium" style={{ color: "#2e3a20" }}>
+                Start check-in <ChevronRight className="w-3.5 h-3.5" />
+              </div>
             </div>
-            <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
           </div>
         </div>
       </Link>
@@ -1469,25 +1471,29 @@ function DailyCheckInCard() {
   return (
     <Link href="/portal/check-in">
       <div
-        className="rounded-xl border p-4 cursor-pointer hover-elevate"
-        style={{ borderColor: completedToday ? "#c8dbb8" : "#d4c9b5", backgroundColor: completedToday ? "#edf4e4" : "#ffffff" }}
+        className="rounded-2xl border p-5 cursor-pointer hover-elevate"
+        style={{ borderColor: completedToday ? "#c8dbb8" : "#ede8df", backgroundColor: completedToday ? "#edf4e4" : "#ffffff" }}
         data-testid="card-checkin-today"
       >
-        <div className="flex items-center gap-3">
-          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: completedToday ? "#2e3a20" : "#edf4e4" }}>
+        <div className="flex items-start gap-3.5">
+          <div className="w-11 h-11 rounded-2xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: completedToday ? "#2e3a20" : "#edf4e4" }}>
             {completedToday
               ? <CheckCircle2 className="w-5 h-5" style={{ color: "#ffffff" }} />
               : <Sun className="w-5 h-5" style={{ color: "#2e3a20" }} />}
           </div>
           <div className="flex-1 min-w-0">
-            <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>
-              {completedToday ? "Today's check-in is in" : "Open today's check-in"}
+            <p className="text-base font-semibold" style={{ color: "#1c2414" }}>
+              {completedToday ? "Today's check-in is in" : "Today's Check-In"}
             </p>
-            <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
-              {completedToday ? "Tap to update or add details." : "Quick log on food, sleep, mood, and meds."}
+            <p className="text-xs mt-1 leading-relaxed" style={{ color: "#5a6048" }}>
+              {completedToday
+                ? "Thanks — your care team will see today's snapshot. Tap to add or update."
+                : "Take 60 seconds to help your care team understand your day."}
             </p>
+            <div className="flex items-center gap-1.5 mt-3 text-xs font-medium" style={{ color: "#2e3a20" }}>
+              {completedToday ? "Review or update" : "Start check-in"} <ChevronRight className="w-3.5 h-3.5" />
+            </div>
           </div>
-          <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
         </div>
       </div>
     </Link>
