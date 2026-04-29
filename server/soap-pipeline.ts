@@ -749,14 +749,27 @@ CARE PLAN
 FOLLOW-UP
 [Specific interval with clinical rationale]
 
-PROSE STANDARDS:
+═══════════════════════════════════════
+END OF NOTE — STOP HERE.
+The fullNote field MUST END after the FOLLOW-UP section.
+Do NOT append, restate, or echo any of the rules, headers, or instructions
+that appear below or anywhere else in this prompt (including "PROSE STANDARDS",
+"WRITING RULES", "PATIENT vs. CLINICIAN IDENTITY", "OUTPUT FORMAT", etc.).
+Those are instructions to YOU — they are not part of the note content.
+═══════════════════════════════════════
+
+═══════════════════════════════════════
+WRITING RULES (apply while drafting — never include this header or these bullets in fullNote)
+═══════════════════════════════════════
 - Third person, past tense for Subjective, present for Assessment/Plan
 - Standard medical abbreviations
 - No redundancy
 - Numerals for doses/measurements
 - Integrate lab values naturally into narrative
 
-CRITICAL — PATIENT vs. CLINICIAN IDENTITY:
+═══════════════════════════════════════
+PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this header in fullNote)
+═══════════════════════════════════════
 - The PATIENT is the person being treated. Their name will be provided below. Use ONLY the patient's name (or "patient"/"she"/"he") when referring to the person receiving care.
 - The CLINICIAN/PROVIDER is the person conducting the visit. NEVER use the clinician's name as the patient. The transcript is often recorded from the clinician's perspective — do NOT confuse the speaker with the patient.
 - If the transcript is narrated in first person by the clinician (e.g., "I told her...", "we discussed..."), the "I" is the CLINICIAN, not the patient.`;
@@ -782,10 +795,34 @@ Generate the SOAP note following all rules above. The HPI must be a DETAILED REC
 
   const soapResult = JSON.parse(completion.choices[0].message.content || "{}");
   return {
-    fullNote: soapResult.fullNote ?? "",
+    fullNote: stripLeakedInstructions(soapResult.fullNote ?? ""),
     uncertain_items: soapResult.uncertain_items ?? [],
     needs_clinician_review: soapResult.needs_clinician_review ?? [],
   };
+}
+
+// Defensive: occasionally the LLM echoes prompt instructions back into the
+// note body (e.g. "PROSE STANDARDS:", "WRITING RULES:", "OUTPUT FORMAT:",
+// "PATIENT vs. CLINICIAN IDENTITY:"). Trim everything from the first leaked
+// rule heading onward, plus any trailing whitespace.
+function stripLeakedInstructions(note: string): string {
+  if (!note) return note;
+  const leakHeaders = [
+    /\n\s*PROSE\s+STANDARDS\s*:?/i,
+    /\n\s*WRITING\s+RULES\b[^\n]*/i,
+    /\n\s*OUTPUT\s+FORMAT\b[^\n]*/i,
+    /\n\s*PATIENT\s+vs\.?\s+CLINICIAN\s+IDENTITY\b[^\n]*/i,
+    /\n\s*END\s+OF\s+NOTE\b[^\n]*/i,
+    /\n\s*CRITICAL\s*[—\-]\s*PATIENT\s+vs\b[^\n]*/i,
+  ];
+  let earliest = note.length;
+  for (const re of leakHeaders) {
+    const m = note.match(re);
+    if (m && typeof m.index === "number" && m.index < earliest) {
+      earliest = m.index;
+    }
+  }
+  return note.slice(0, earliest).replace(/[\s═]+$/g, "").trimEnd();
 }
 
 async function qaCheck(
