@@ -4481,7 +4481,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const user = req.user as any;
       const clinicId = user.defaultClinicId;
       if (!clinicId) return res.status(400).json({ message: "No clinic" });
-      const adminRole = await getSessionAdminRole(user);
+      const adminRole = await getSessionAdminRole(req);
       if (adminRole !== "owner" && adminRole !== "admin" && adminRole !== "limited_admin") {
         return res.status(403).json({ message: "Only clinic owners or admins can edit branding." });
       }
@@ -4546,7 +4546,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const user = req.user as any;
       const clinicId = user.defaultClinicId;
       if (!clinicId) return res.status(400).json({ message: "No clinic" });
-      const adminRole = await getSessionAdminRole(user);
+      const adminRole = await getSessionAdminRole(req);
       if (adminRole !== "owner" && adminRole !== "admin") {
         return res.status(403).json({ message: "Only clinic owners or admins can check seat availability." });
       }
@@ -4583,7 +4583,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const user = req.user as any;
       const clinicId = user.defaultClinicId;
       if (!clinicId) return res.status(400).json({ message: "No clinic associated with your account" });
-      const callerAdminRole = await getSessionAdminRole(user);
+      const callerAdminRole = await getSessionAdminRole(req);
       if (callerAdminRole !== "owner" && callerAdminRole !== "admin") {
         return res.status(403).json({ message: "Only clinic owners or admins can invite providers." });
       }
@@ -4687,7 +4687,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const clinicId = user.defaultClinicId;
       if (!clinicId) return res.status(400).json({ message: "No clinic associated with your account" });
 
-      const callerAdminRole = await getSessionAdminRole(user);
+      const callerAdminRole = await getSessionAdminRole(req);
       if (callerAdminRole !== "owner" && callerAdminRole !== "admin") {
         return res.status(403).json({ message: "Only clinic owners or admins can resend provider invites." });
       }

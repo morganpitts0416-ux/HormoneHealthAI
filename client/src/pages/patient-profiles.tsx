@@ -19,6 +19,7 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, CalendarDays, Phone, Paperclip,
+  LayoutDashboard, FolderOpen, FlaskConical, Home,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
@@ -1174,7 +1175,21 @@ export default function PatientProfiles() {
   const [generatingSummaryId, setGeneratingSummaryId] = useState<number | null>(null);
   const [savingSummaryId, setSavingSummaryId] = useState<number | null>(null);
   const [publishingSummaryId, setPublishingSummaryId] = useState<number | null>(null);
-  const [listCollapsed, setListCollapsed] = useState(false);
+  // Default the patient list to COLLAPSED so a selected patient gets the full
+  // canvas. The rail with an obvious expand affordance lets clinicians jump to
+  // another patient in one click.
+  const [listCollapsed, setListCollapsed] = useState(true);
+  // Sub-section navigation (account-style left rail) for everything below the
+  // Patient Chart panel.
+  type ProfileSection =
+    | "overview"
+    | "portal"
+    | "monitoring"
+    | "encounters"
+    | "labs"
+    | "vitals"
+    | "documents";
+  const [profileSection, setProfileSection] = useState<ProfileSection>("overview");
   const [showMergeDialog, setShowMergeDialog] = useState(false);
   const [mergeKeepId, setMergeKeepId] = useState<number | null>(null);
   const [mergeDiscardId, setMergeDiscardId] = useState<number | null>(null);
@@ -1736,22 +1751,50 @@ export default function PatientProfiles() {
           "flex-shrink-0 border-r bg-background transition-all duration-200",
           selectedPatient
             ? listCollapsed
-              ? "hidden md:flex md:flex-col md:w-10"
+              ? "hidden md:flex md:flex-col md:w-12"
               : "hidden md:flex md:flex-col md:w-72"
             : "flex flex-col w-full md:w-72"
         )}>
-          {/* Collapsed state — just a toggle strip */}
+          {/* Collapsed state — wider rail with an obvious expand affordance:
+              chevron + vertical "PATIENTS" label + count badge so clinicians
+              know they can switch patients in one click. */}
           {listCollapsed && selectedPatient && (
-            <div className="flex flex-col items-center pt-3 flex-1">
-              <button
-                onClick={() => setListCollapsed(false)}
-                className="p-1.5 rounded-md hover:bg-muted/60 text-muted-foreground"
-                title="Expand patient list"
-                data-testid="button-expand-patient-list"
+            <button
+              onClick={() => setListCollapsed(false)}
+              className="flex flex-col items-center justify-start pt-3 pb-3 gap-3 flex-1 hover-elevate active-elevate-2 group"
+              title="Expand patient list — search & switch patients"
+              aria-label="Expand patient list to search and switch patients"
+              aria-expanded={false}
+              aria-controls="patient-list-panel"
+              data-testid="button-expand-patient-list"
+            >
+              <div
+                className="flex items-center justify-center w-8 h-8 rounded-md transition-colors"
+                style={{ backgroundColor: "#edf4e4", color: "#2e3a20" }}
               >
-                <ChevronRight className="w-4 h-4" />
-              </button>
-            </div>
+                <ChevronRight className="w-4 h-4" strokeWidth={2.5} />
+              </div>
+              {!patientsLoading && allPatients.length > 0 && (
+                <span
+                  className="inline-flex items-center justify-center rounded-full px-1.5 min-w-[22px] h-5 text-[10px] font-bold"
+                  style={{ backgroundColor: "#2e3a20", color: "#f5f2ed" }}
+                >
+                  {allPatients.length}
+                </span>
+              )}
+              <div
+                className="flex items-center justify-center"
+                style={{ writingMode: "vertical-rl", transform: "rotate(180deg)" }}
+              >
+                <span
+                  className="text-[10px] font-semibold uppercase tracking-[0.18em]"
+                  style={{ color: "#5a6048" }}
+                >
+                  Patients
+                </span>
+              </div>
+              <Search className="w-3.5 h-3.5 mt-1" style={{ color: "#7a8a64" }} />
+            </button>
           )}
 
           {/* Full panel — search + filter controls + list */}
@@ -1849,7 +1892,7 @@ export default function PatientProfiles() {
                   return (
                     <button
                       key={patient.id}
-                      onClick={() => { setSelectedPatient(patient); setViewingLab(null); setShowMessages(false); setMessageDraft(""); }}
+                      onClick={() => { setSelectedPatient(patient); setViewingLab(null); setShowMessages(false); setMessageDraft(""); setProfileSection("overview"); setListCollapsed(true); }}
                       className={cn(
                         "w-full px-3 py-2.5 flex items-center gap-3 text-left transition-colors",
                         isSelected
@@ -2110,30 +2153,83 @@ export default function PatientProfiles() {
                 }}
               />
 
-              {/* ── Status tiles (Appointments · Portal & Messages · Check-Ins) ── */}
-              <StatusTilesRow
-                patientId={selectedPatient.id}
-                onBookAppointment={() => setShowAppointmentDialog(true)}
-                portalStatus={portalStatus ?? null}
-                unreadCount={unreadData?.count ?? 0}
-                portalOpen={showPortalSection}
-                onTogglePortal={() => {
-                  const next = !showPortalSection;
-                  setShowPortalSection(next);
-                  // Honor the "one-click messages" promise: opening the portal tile
-                  // for an account-active patient also expands the message thread
-                  // immediately. Closing the section also collapses messages so
-                  // the next open starts in the same predictable state.
-                  if (next && portalStatus?.hasPortalAccount) {
-                    setShowMessages(true);
-                  } else if (!next) {
-                    setShowMessages(false);
-                  }
-                }}
-              />
+              {/* ── Sub-section navigation (account-style) + content area ──
+                  Below the always-visible Patient Chart, everything is
+                  organized into a left-rail nav + right content pane, just
+                  like the Account page. The nav controls `profileSection`. */}
+              <div className="flex flex-col md:flex-row gap-4 md:gap-6">
+                <aside className="md:w-52 md:flex-shrink-0">
+                  <nav
+                    className="rounded-lg border bg-background overflow-hidden md:sticky md:top-4"
+                    style={{ borderColor: "#d4c9b5" }}
+                    data-testid="nav-profile-sections"
+                  >
+                    {([
+                      { id: "overview" as ProfileSection, label: "Overview", Icon: LayoutDashboard, badge: null as number | null },
+                      { id: "portal" as ProfileSection, label: "Portal & Messages", Icon: MessageSquare,
+                        badge: ((unreadData?.count ?? 0) > 0 ? (unreadData?.count ?? 0) : null) as number | null },
+                      { id: "monitoring" as ProfileSection, label: "Active Monitoring", Icon: TrendingUp, badge: null as number | null },
+                      { id: "encounters" as ProfileSection, label: "Encounters", Icon: Stethoscope,
+                        badge: (patientEncounters.length > 0 ? patientEncounters.length : null) as number | null },
+                      { id: "labs" as ProfileSection, label: "Labs", Icon: FlaskConical,
+                        badge: (labs.length > 0 ? labs.length : null) as number | null },
+                      { id: "vitals" as ProfileSection, label: "Vitals", Icon: Heart, badge: null as number | null },
+                      { id: "documents" as ProfileSection, label: "Documents", Icon: FolderOpen,
+                        badge: ((
+                          patientFormAssignments.filter((a: any) => a.status === "pending").length +
+                          patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length +
+                          patientOrders.filter(o => o.status === 'pending').length
+                        ) || null) as number | null },
+                    ]).map(({ id, label, Icon, badge }) => {
+                      const active = profileSection === id;
+                      return (
+                        <button
+                          key={id}
+                          type="button"
+                          onClick={() => {
+                            setProfileSection(id as ProfileSection);
+                            // Portal section auto-expands the inline portal panel +
+                            // message thread (preserving the legacy one-click promise).
+                            if (id === "portal") {
+                              setShowPortalSection(true);
+                              if (portalStatus?.hasPortalAccount) setShowMessages(true);
+                            }
+                          }}
+                          className={cn(
+                            "w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover-elevate active-elevate-2",
+                            active ? "font-semibold" : "text-foreground/80"
+                          )}
+                          style={
+                            active
+                              ? { backgroundColor: "#edf4e4", color: "#2e3a20", borderLeft: "3px solid #2e3a20", paddingLeft: "calc(0.75rem - 3px)" }
+                              : undefined
+                          }
+                          data-testid={`nav-section-${id}`}
+                        >
+                          <Icon className="w-4 h-4 flex-shrink-0" />
+                          <span className="flex-1 truncate">{label}</span>
+                          {badge != null && (
+                            <span
+                              className="inline-flex items-center justify-center rounded-full px-1.5 min-w-[18px] h-[18px] text-[10px] font-bold"
+                              style={
+                                active
+                                  ? { backgroundColor: "#2e3a20", color: "#f5f2ed" }
+                                  : { backgroundColor: "#7a5c20", color: "#fdf8ee" }
+                              }
+                            >
+                              {badge}
+                            </span>
+                          )}
+                        </button>
+                      );
+                    })}
+                  </nav>
+                </aside>
 
-              {/* ── Portal & Messages inline panel (toggled by Portal tile) ─── */}
-              {showPortalSection && portalStatus && (
+                <div className="flex-1 min-w-0 space-y-6">
+
+              {/* ── Portal & Messages inline panel (sub-section) ─── */}
+              {profileSection === "portal" && showPortalSection && portalStatus && (
                 <div
                   className="rounded-xl border"
                   style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
@@ -2265,10 +2361,65 @@ export default function PatientProfiles() {
                 </div>
               )}
 
-              {/* ── Clinical Snapshot (collapsible) ─────────────────────── */}
-              <ClinicalSnapshot labs={labs} patient={selectedPatient} />
+              {/* ── Overview: status tiles + clinical snapshot ──────────── */}
+              {profileSection === "overview" && (
+                <>
+                  <StatusTilesRow
+                    patientId={selectedPatient.id}
+                    onBookAppointment={() => setShowAppointmentDialog(true)}
+                    portalStatus={portalStatus ?? null}
+                    unreadCount={unreadData?.count ?? 0}
+                    portalOpen={false}
+                    onTogglePortal={() => {
+                      // Tile click jumps to the dedicated Portal & Messages
+                      // sub-section (the inline panel now lives there).
+                      setProfileSection("portal");
+                      setShowPortalSection(true);
+                      if (portalStatus?.hasPortalAccount) setShowMessages(true);
+                    }}
+                  />
+                  <ClinicalSnapshot labs={labs} patient={selectedPatient} />
+                </>
+              )}
+
+              {/* ── Active Monitoring (vitals episodes + alerts) ───────── */}
+              {profileSection === "monitoring" && (
+                <MonitoringPanel patientId={selectedPatient.id} />
+              )}
+
+              {/* ── Vitals (inline access to the dialog) ───────────────── */}
+              {profileSection === "vitals" && (
+                <Card data-testid="card-vitals-section">
+                  <CardHeader className="pb-3">
+                    <div className="flex items-center justify-between gap-2 flex-wrap">
+                      <CardTitle className="text-sm flex items-center gap-2">
+                        <Heart className="w-4 h-4 text-muted-foreground" />
+                        Vital Signs
+                      </CardTitle>
+                      <Button
+                        size="sm"
+                        onClick={() => setShowVitalsDialog(true)}
+                        className="text-xs gap-1.5"
+                        style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                        data-testid="button-open-vitals-dialog"
+                      >
+                        <Heart className="h-3 w-3" />
+                        Open Vitals
+                      </Button>
+                    </div>
+                  </CardHeader>
+                  <CardContent>
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      Open the Vitals workspace to record new readings, configure
+                      at-home monitoring, view trends, and review every clinic and
+                      patient-logged measurement.
+                    </p>
+                  </CardContent>
+                </Card>
+              )}
 
               {/* ── Clinical Encounters ─────────────────────────────────── */}
+              {profileSection === "encounters" && (
               <Card data-testid="card-encounters">
                 <CardHeader className="pb-3">
                   <div className="flex items-center justify-between gap-2 flex-wrap">
@@ -2812,28 +2963,36 @@ export default function PatientProfiles() {
                   </CardContent>
                 )}
               </Card>
+              )}
 
               {/* ── Lab History ──────────────────────────────────────────── */}
-              <LabHistoryList
-                labs={labs}
-                onViewLab={setViewingLab}
-                onDeleteLab={handleDeleteLab}
-                deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null}
-                onPublishLab={handlePublishLab}
-                hasPortalAccount={portalStatus?.hasPortalAccount}
-                publishingId={publishingLabId}
-                publishedLabResultIds={portalStatus?.publishedLabResultIds}
-              />
-              {labs.length >= 2 && (
-                <PatientTrendCharts
-                  labs={labs}
-                  patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
-                  patientId={selectedPatient.id}
-                  gender={selectedPatient.gender === 'female' ? 'female' : 'male'}
-                />
+              {profileSection === "labs" && (
+                <>
+                  <LabHistoryList
+                    labs={labs}
+                    onViewLab={setViewingLab}
+                    onDeleteLab={handleDeleteLab}
+                    deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null}
+                    onPublishLab={handlePublishLab}
+                    hasPortalAccount={portalStatus?.hasPortalAccount}
+                    publishingId={publishingLabId}
+                    publishedLabResultIds={portalStatus?.publishedLabResultIds}
+                  />
+                  {labs.length >= 2 && (
+                    <PatientTrendCharts
+                      labs={labs}
+                      patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                      patientId={selectedPatient.id}
+                      gender={selectedPatient.gender === 'female' ? 'female' : 'male'}
+                    />
+                  )}
+                  {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
+                </>
               )}
-              {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
 
+              {/* ── Documents: supplement orders + forms & consents ────── */}
+              {profileSection === "documents" && (
+                <>
               {/* ── Supplement Orders ─────────────────────────────────────── */}
               {patientOrders.length > 0 && (
                 <Card data-testid="card-supplement-orders">
@@ -3059,6 +3218,11 @@ export default function PatientProfiles() {
                   </CardContent>
                 )}
               </Card>
+                </>
+              )}
+
+                </div>{/* /section content area */}
+              </div>{/* /sub-section nav + content wrapper */}
 
               {/* Assign Form Dialog */}
               <Dialog open={showAssignFormDialog} onOpenChange={setShowAssignFormDialog}>
