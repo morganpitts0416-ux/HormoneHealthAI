@@ -24,6 +24,7 @@ import { StopBangCalculator } from "./stopbang-calculator";
 import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
 import { applyCustomRangesToInterpretations } from "./lab-range-overrides";
+import { appendPassthroughInterpretations, orderInterpretationsByPanel } from "./lab-passthrough";
 import { evaluateClinicianSupplements, combineSupplementRecommendations } from "./clinician-supplements-engine";
 import {
   inferPatientTherapies,
@@ -1018,13 +1019,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'Not calculated');
       }
 
-      // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
-      const [aiRecommendations, patientSummary] = await Promise.all([
-        AIService.generateRecommendations(labs, redFlags, interpretations, 'male', trendContext || undefined, therapyContext),
-        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'male', therapyContext),
-      ]);
-
-      // Step 6: Determine recheck window
+      // Step 6: Determine recheck window (does not depend on AI output)
       const recheckWindow = ClinicalLogicEngine.determineRecheckWindow(
         redFlags,
         interpretations
@@ -1088,6 +1083,28 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
         interpretations.push(irInterpretation);
       }
+
+      // Step 8b: Surface every extracted lab value — even those without a
+      // hard-coded protocol — so the report behaves like a real EHR. Honors
+      // clinician range overrides, then sorts the full array into EHR panel
+      // order. All previously emitted entries are preserved exactly as-is.
+      // Runs BEFORE the AI recommendation/patient-summary calls so those
+      // narratives ingest the fully enriched array.
+      interpretations = appendPassthroughInterpretations(
+        labs as unknown as Record<string, unknown>,
+        interpretations,
+        'male',
+        clinicianCustom?.labPrefs ?? [],
+      );
+      interpretations = orderInterpretationsByPanel(interpretations);
+
+      // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
+      // (deferred until here so the AI sees the fully enriched, ordered array
+      // — including IR Screening and any passthrough markers).
+      const [aiRecommendations, patientSummary] = await Promise.all([
+        AIService.generateRecommendations(labs, redFlags, interpretations, 'male', trendContext || undefined, therapyContext),
+        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'male', therapyContext),
+      ]);
 
       // Step 9: Generate SOAP note
       const soapNote = await AIService.generateSOAPNote(
@@ -1378,12 +1395,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         }
       }
 
-      // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
-      const [aiRecommendations, patientSummary] = await Promise.all([
-        AIService.generateRecommendations(labs, redFlags, interpretations, 'female', trendContext || undefined, therapyContext),
-        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'female', therapyContext),
-      ]);
-
       // Step 6: Determine recheck window using female-specific logic
       const recheckWindow = FemaleClinicalLogicEngine.determineRecheckWindow(labs, redFlags);
 
@@ -1408,6 +1419,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         };
         interpretations.push(irInterpretation);
       }
+
+      // Step 7b: Surface every extracted lab value — even those without a
+      // hard-coded protocol — so the report behaves like a real EHR. Honors
+      // clinician range overrides, then sorts the full array into EHR panel
+      // order. All previously emitted entries are preserved exactly as-is.
+      interpretations = appendPassthroughInterpretations(
+        labs as unknown as Record<string, unknown>,
+        interpretations,
+        'female',
+        clinicianCustom?.labPrefs ?? [],
+      );
+      interpretations = orderInterpretationsByPanel(interpretations);
 
       // Step 8: Evaluate supplement recommendations based on lab values, phenotypes, and IR screening
       // The female engine (phenotypes, menstrual phase, IR-driven recommendations) ALWAYS runs
@@ -1463,7 +1486,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
           'Not calculated');
       }
 
-      // Step 10: Generate SOAP note
+      // Steps 4 & 5: Generate AI recommendations and patient summary in parallel
+      // (deferred until here so the AI sees the fully enriched, ordered array
+      // — including IR Screening and any passthrough markers).
+      const [aiRecommendations, patientSummary] = await Promise.all([
+        AIService.generateRecommendations(labs, redFlags, interpretations, 'female', trendContext || undefined, therapyContext),
+        AIService.generatePatientSummary(labs, interpretations, redFlags.length > 0, preventRisk, 'female', therapyContext),
+      ]);
+
+      // Step 12: Generate SOAP note
       const soapNote = await AIService.generateSOAPNote(
         labs, redFlags, interpretations, aiRecommendations, recheckWindow,
         'female', preventRisk, supplements, insulinResistance, trendContext || undefined,
