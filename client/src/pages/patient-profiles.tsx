@@ -4709,12 +4709,12 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
                 <ChevronRight className="w-4 h-4" />
               </Button>
             </div>
-            <div className="grid grid-cols-7 gap-px px-2 pt-2 text-[10px] uppercase tracking-wider text-center" style={{ color: "#7a8a64" }}>
+            <div className="grid grid-cols-7 gap-px px-1.5 pt-1.5 text-[10px] uppercase tracking-wider text-center" style={{ color: "#7a8a64" }}>
               {_DOW_LABELS.map((d, i) => (
-                <div key={i} className="py-1">{d}</div>
+                <div key={i} className="py-0.5">{d}</div>
               ))}
             </div>
-            <div className="grid grid-cols-7 gap-1 p-2">
+            <div className="grid grid-cols-7 gap-px p-1.5">
               {days.map((d, idx) => {
                 const key = _formatDateYmd(d);
                 const inMonth = d.getMonth() === viewMonth.getMonth();
@@ -4732,7 +4732,7 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
                     type="button"
                     disabled={!clickable}
                     onClick={() => clickable && setOpenDayKey(key)}
-                    className={`relative aspect-square rounded-md border text-xs flex flex-col items-center justify-start p-1 ${clickable ? "hover-elevate cursor-pointer" : "cursor-default"}`}
+                    className={`relative min-h-[40px] rounded-sm border text-[11px] flex items-center justify-between px-1.5 py-1 ${clickable ? "hover-elevate cursor-pointer" : "cursor-default"}`}
                     style={{
                       borderColor: isToday ? "#2e3a20" : "#eadfd0",
                       backgroundColor: !inMonth ? "#fbf7f0" : (sev ? sevColors!.ring : "#ffffff"),
@@ -4746,7 +4746,7 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
                     >
                       {d.getDate()}
                     </span>
-                    <div className="flex items-center gap-1 mt-auto">
+                    <div className="flex items-center gap-0.5">
                       {sev && (
                         <span
                           className="w-1.5 h-1.5 rounded-full"
