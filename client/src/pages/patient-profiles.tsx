@@ -4679,10 +4679,51 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
     },
   });
 
-  // Default-off contract: render nothing until we know the patient is enrolled.
-  if (isLoading || !data) return null;
+  if (isLoading || !data) {
+    return (
+      <div
+        className="rounded-xl border p-6"
+        style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
+        data-testid="monitoring-loading"
+      >
+        <div className="h-4 w-40 rounded bg-muted/40 animate-pulse mb-3" />
+        <div className="h-3 w-56 rounded bg-muted/30 animate-pulse" />
+      </div>
+    );
+  }
   const trackingActive = data.settings.trackingMode !== "off" && data.settings.enabled;
-  if (!trackingActive) return null;
+  if (!trackingActive) {
+    return (
+      <div
+        className="rounded-xl border p-6"
+        style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
+        data-testid="monitoring-empty"
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="rounded-md p-2 flex-shrink-0"
+            style={{ backgroundColor: "#eef0e6", color: "#2e3a20" }}
+          >
+            <Activity className="w-5 h-5" />
+          </div>
+          <div className="flex-1 min-w-0">
+            <h3 className="font-semibold text-base" style={{ color: "#1c2414" }}>
+              Active Monitoring is not enabled for this patient
+            </h3>
+            <p className="text-sm mt-1" style={{ color: "#5a6048" }}>
+              When you enable Daily Check-In tracking from the patient portal settings, this view will show their
+              calendar of check-ins, patient-logged vitals, medication adherence, and an alert feed for
+              concerning patterns.
+            </p>
+            <p className="text-xs mt-3" style={{ color: "#7a8a64" }}>
+              Tracking is opt-in by default. Ask the patient to enable it from their portal, or enable it for
+              them under Portal &amp; Messages → Tracking settings.
+            </p>
+          </div>
+        </div>
+      </div>
+    );
+  }
 
   const recent = data.recentCheckins ?? [];
   const adherence = data.adherence ?? [];
