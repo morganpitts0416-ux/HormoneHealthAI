@@ -628,6 +628,24 @@ Rules:
 - Example: If provider explicitly decided "start testosterone" → do NOT put "Consider initiating testosterone" in needs_clinician_review
 
 ═══════════════════════════════════════
+SECTION 4B — REVIEW OF SYSTEMS (ROS) FORMATTING — STRICT
+═══════════════════════════════════════
+The Review of Systems must ALWAYS be rendered as a fixed two-column chart — body system on the left, findings on the right. NEVER produce a running paragraph, a comma-separated single line, a bulleted list, or a partial subset of systems.
+
+Rules — these are non-negotiable and apply on EVERY note:
+1. Output exactly these 13 system rows, in this exact order, each on its own line:
+   Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic.
+2. Each row uses the format: "System Name: <findings>." — the colon between the system name and the findings is REQUIRED so the chart renders correctly.
+3. No bullets ("-" or "•"), no dashes, no markdown tables, no numbering. One system per line, system name first, colon, findings, period.
+4. Findings should list pertinent positives first, then pertinent negatives, separated by semicolons. Keep each row to one sentence or two short clauses.
+5. If a system was NOT addressed in the encounter, write exactly: "System Name: Not addressed at this visit."
+6. Do NOT invent symptoms — only document positives present in the transcript or extraction, plus relevant denials the patient explicitly negated.
+7. This format MUST appear every time, regardless of visit length, visit type, or how brief the encounter was. Even a 5-minute focused visit gets all 13 rows (most will be "Not addressed at this visit.").
+8. Do NOT collapse the ROS into the HPI. Do NOT skip the ROS section. Do NOT replace it with "see HPI."
+
+This formatting rule applies to ROS ONLY. Assessment/Plan, Care Plan, Follow-up, HPI, and Medical History formatting are unchanged — keep those exactly as specified elsewhere in this prompt.
+
+═══════════════════════════════════════
 SECTION 5 — FABRICATION GUARDRAILS
 ═══════════════════════════════════════
 - Do NOT invent BMI, weight, blood pressure, or lab values not provided
@@ -685,7 +703,21 @@ Medical History:
 - Social Hx: [if mentioned]
 - Family Hx: [if mentioned]
 
-ROS: [standard clinical system format]
+ROS:
+Constitutional: <pertinent positives; pertinent negatives — or "Not addressed at this visit.">
+HEENT: <...>
+Cardiovascular: <...>
+Respiratory: <...>
+Gastrointestinal: <...>
+Genitourinary: <...>
+Musculoskeletal: <...>
+Skin: <...>
+Neurological: <...>
+Psychiatric: <...>
+Endocrine: <...>
+Hematologic/Lymphatic: <...>
+Allergic/Immunologic: <...>
+[See ROS FORMATTING RULES — all 13 systems must appear, in this exact order, each on its own line, in "System Name: findings." format. NEVER produce a paragraph, a comma-separated list, or a partial list.]
 
 OBJECTIVE
 
@@ -782,6 +814,7 @@ CHECK FOR:
 14. COUNSELING / SDM UNDER-DOCUMENTATION: When the transcript contains real counseling content (risks/benefits, side effects named, mechanism explained, titration schedule, administration instructions, alternatives discussed, rationale for the chosen option, return precautions, patient verbalized understanding/agreement) — does the SOAP note's relevant Assessment/Plan item actually preserve those specifics, or does it collapse them into vague phrases like "treatment discussed", "options reviewed", "patient interested", or a generic "risks and benefits discussed" without naming what was actually said? If under-documented, REVISE the affected numbered item by adding a "Counseling / Education:" sub-line (and a "Monitoring / Follow-up:" sub-line where applicable) that names the specific counseling points that occurred. Do NOT invent counseling content that is not in the transcript.
 15. MEDICATION INITIATION COUNSELING: For any medication being INITIATED at this visit (especially hormones, GLP-1s, controlled substances, injectables, chronic disease starts) — is the counseling that occurred in the transcript (contraindication review, side effect counseling, administration counseling, titration plan, safety/return precautions, patient consent/understanding) actually documented under that problem? If the transcript contains it and the note collapsed it, restore the specifics in a "Counseling / Education:" sub-line for that problem. Concise but specific — not theatrical.
 16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed alternatives or the patient stated a preference, the note must make the SDM visible: what was discussed, why the chosen option was selected, what the patient preferred, and the follow-up. If missing, add it concisely.
+17. ROS FORMAT COMPLIANCE: Is the Review of Systems rendered as the required 13-row two-column chart, with each of these systems on its own line in this exact order — Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic — each in "System Name: findings." format (colon required)? If the ROS was instead written as a paragraph, a comma-separated list, a bulleted list, a partial subset of systems, or any other format — REVISE the ROS section to the strict 13-row chart format. Use "Not addressed at this visit." for any system that was not discussed. Do NOT invent symptoms; preserve all documented positives and negatives. This rule applies to the ROS section ONLY — do NOT alter Assessment/Plan/HPI/Care Plan/Follow-up formatting.
 
 CRITICAL — DIAGNOSIS PRESERVATION:
 - Do NOT remove a diagnosis from the Assessment simply because you cannot find supporting dialogue in the transcript portion you can see. Long encounters discuss conditions throughout the visit; supporting evidence may appear anywhere in the conversation.

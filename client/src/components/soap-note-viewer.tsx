@@ -7,6 +7,13 @@ const MAJOR_SECTIONS = /^(SUBJECTIVE|OBJECTIVE|ASSESSMENT\/PLAN|CARE PLAN|FOLLOW
 const ASSESSMENT_SECTION = /^(ASSESSMENT\/PLAN|ASSESSMENT)$/i;
 const CC_LINE = /^CC\/Reason:\s*(.*)/i;
 const SUB_LABEL = /^([A-Z][A-Za-z\s\/\-]+):(\s*.*)$/;
+const ROS_HEADER = /^(ROS|REVIEW OF SYSTEMS)\s*:?\s*$/i;
+const ROS_SYSTEMS = new Set([
+  "constitutional", "heent", "cardiovascular", "respiratory",
+  "gastrointestinal", "genitourinary", "musculoskeletal", "skin",
+  "neurological", "psychiatric", "endocrine",
+  "hematologic/lymphatic", "allergic/immunologic",
+]);
 
 const guidelineClassBadge: Record<string, string> = {
   "I":   "bg-emerald-50 border-emerald-200 text-emerald-800",
@@ -178,9 +185,10 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
     return matched.map((sug, si) => <EvidenceCallout key={`${key}-${si}`} sug={sug} />);
   }
 
-  lines.forEach((raw, i) => {
+  for (let i = 0; i < lines.length; i++) {
+    const raw = lines[i];
     const trimmed = raw.trim();
-    if (!trimmed) { nodes.push(<div key={i} className="h-1" />); return; }
+    if (!trimmed) { nodes.push(<div key={i} className="h-1" />); continue; }
 
     const ccMatch = trimmed.match(CC_LINE);
     if (ccMatch) {
@@ -190,14 +198,66 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
           {ccMatch[1]}
         </div>
       );
-      return;
+      continue;
     }
 
     if (MAJOR_SECTIONS.test(trimmed)) {
       inAssessmentPlan = ASSESSMENT_SECTION.test(trimmed);
       inNumberedItem = false;
       nodes.push(<span key={i} className="soap-section-major">{trimmed}</span>);
-      return;
+      continue;
+    }
+
+    // Detect ROS header — render the following system rows as a true 2-column chart.
+    if (ROS_HEADER.test(trimmed)) {
+      nodes.push(
+        <p key={`${i}-ros-label`} className="soap-body">
+          <span className="soap-label">ROS</span>
+        </p>
+      );
+      const rows: { system: string; findings: string }[] = [];
+      let j = i + 1;
+      while (j < lines.length) {
+        const rawNext = lines[j];
+        const next = rawNext.trim();
+        if (!next) { j++; continue; }
+        if (MAJOR_SECTIONS.test(next)) break;
+        const m = next.match(SUB_LABEL);
+        if (!m) break;
+        const sysName = m[1].trim();
+        if (!ROS_SYSTEMS.has(sysName.toLowerCase())) break;
+        rows.push({ system: sysName, findings: m[2].trim() });
+        j++;
+      }
+      if (rows.length > 0) {
+        nodes.push(
+          <div
+            key={`${i}-ros-grid`}
+            className="soap-ros-grid grid grid-cols-[minmax(140px,180px)_1fr] gap-x-3 gap-y-1.5 my-1.5 border border-border/50 rounded-md overflow-hidden"
+            data-testid="ros-chart"
+          >
+            {rows.map((r, ri) => (
+              <div key={`ros-row-${ri}`} className="contents">
+                <div
+                  className={`soap-label text-xs px-2.5 py-1.5 bg-muted/30 ${ri < rows.length - 1 ? "border-b border-border/40" : ""}`}
+                  data-testid={`ros-system-${r.system.toLowerCase().replace(/[^a-z]+/g, "-")}`}
+                >
+                  {r.system}
+                </div>
+                <div
+                  className={`text-xs px-2.5 py-1.5 ${ri < rows.length - 1 ? "border-b border-border/40" : ""} ${/not addressed at this visit/i.test(r.findings) ? "text-muted-foreground italic" : "text-foreground"}`}
+                  data-testid={`ros-findings-${r.system.toLowerCase().replace(/[^a-z]+/g, "-")}`}
+                >
+                  {r.findings || "—"}
+                </div>
+              </div>
+            ))}
+          </div>
+        );
+        i = j - 1; // advance past consumed rows
+        continue;
+      }
+      // No system rows followed — fall through to default rendering.
     }
 
     const subMatch = trimmed.match(SUB_LABEL);
@@ -208,7 +268,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
           {subMatch[2].trim()}
         </p>
       );
-      return;
+      continue;
     }
 
     if (trimmed.startsWith("-") || trimmed.startsWith("•")) {
@@ -222,7 +282,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
         </p>
       );
       if (mode === "callouts") nodes.push(...evNodes);
-      return;
+      continue;
     }
 
     if (/^\d+\./.test(trimmed)) {
@@ -235,7 +295,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
         </p>
       );
       if (mode === "callouts") nodes.push(...evNodes);
-      return;
+      continue;
     }
 
     const evNodes = (inAssessmentPlan && inNumberedItem) ? renderEvidenceFor(trimmed, `p${i}`) : [];
@@ -246,7 +306,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
       </p>
     );
     if (mode === "callouts") nodes.push(...evNodes);
-  });
+  }
 
   if (evidence?.length) {
     const unmatched = evidence.filter((_, idx) => !usedIndices.has(idx));
