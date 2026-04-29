@@ -1059,6 +1059,20 @@ function EncounterEditor({
         apiRequest("POST", `/api/encounters/${encounterId}/evidence`, { expectedPatientId }).then(r => r.json()),
       ]);
 
+      // apiRequest throws errors of the form "<status>: <body>" — pull the
+      // server's `message` so the toast shows the real reason (e.g. "Evidence
+      // service is rate-limited") instead of a raw HTTP/JSON blob.
+      const niceMessage = (e: any): string | undefined => {
+        const raw = typeof e?.message === "string" ? e.message : "";
+        if (!raw) return undefined;
+        const colon = raw.indexOf(":");
+        const tail = colon > -1 ? raw.slice(colon + 1).trim() : raw.trim();
+        if (tail.startsWith("{")) {
+          try { const p = JSON.parse(tail); if (p?.message) return String(p.message); } catch {}
+        }
+        return tail || raw;
+      };
+
       if (soapResult.status === "fulfilled") {
         setSoap(soapResult.value.soapNote);
         if (soapResult.value.diarizedTranscript?.length) setDiarizedTranscript(soapResult.value.diarizedTranscript);
@@ -1066,14 +1080,14 @@ function EncounterEditor({
         if (soapResult.value.medicationMatches?.length) setMedMatches(soapResult.value.medicationMatches);
         setActiveTab("soap");
       } else {
-        toast({ variant: "destructive", title: "SOAP generation failed", description: (soapResult.reason as any)?.message });
+        toast({ variant: "destructive", title: "SOAP generation failed", description: niceMessage(soapResult.reason) });
       }
 
       if (evidenceResult.status === "fulfilled") {
         setEvidenceOverlay(evidenceResult.value.evidenceSuggestions);
         // Evidence pills appear automatically in View mode — no mode switch needed
       } else {
-        toast({ variant: "destructive", title: "Evidence generation failed", description: (evidenceResult.reason as any)?.message });
+        toast({ variant: "destructive", title: "Evidence generation failed", description: niceMessage(evidenceResult.reason) });
       }
 
       invalidate();

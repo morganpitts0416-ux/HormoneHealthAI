@@ -6482,7 +6482,9 @@ Return this exact JSON structure (all arrays, even if empty):
             rawTranscriptFallback ? `Transcript:\n${rawTranscriptFallback}` : null,
           ].filter(Boolean).join('\n');
 
-      const questionsCompletion = await openai.chat.completions.create({
+      let questionsCompletion;
+      try {
+        questionsCompletion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
@@ -6509,9 +6511,23 @@ Return a JSON object: { "clinical_questions": ["question1", "question2", ...] }`
         ],
         response_format: { type: "json_object" },
       });
+      } catch (err: any) {
+        console.error('[Evidence] Stage 1 (questions) failed:', err?.status, err?.message);
+        const status = err?.status === 429 ? 429 : 502;
+        return res.status(status).json({
+          message: err?.status === 429
+            ? "Evidence service is rate-limited. Please try again in a moment."
+            : `Evidence service unavailable: ${err?.message ?? "unknown error"}. Please try again.`,
+        });
+      }
 
-      const questionsRaw = JSON.parse(questionsCompletion.choices[0].message.content || "{}");
-      const clinicalQuestions: string[] = (questionsRaw.clinical_questions ?? []).slice(0, 5);
+      let clinicalQuestions: string[] = [];
+      try {
+        const questionsRaw = JSON.parse(questionsCompletion.choices[0].message.content || "{}");
+        clinicalQuestions = (questionsRaw.clinical_questions ?? []).slice(0, 5);
+      } catch (err: any) {
+        console.error('[Evidence] Stage 1 parse failed:', err?.message);
+      }
 
       if (clinicalQuestions.length === 0) {
         const overlay = { clinical_questions: [], suggestions: [], not_for_auto_insertion: true as const };
@@ -6520,7 +6536,9 @@ Return a JSON object: { "clinical_questions": ["question1", "question2", ...] }`
       }
 
       // ── Step 2: Generate evidence-based suggestions per question ─────────────
-      const evidenceCompletion = await openai.chat.completions.create({
+      let evidenceCompletion;
+      try {
+        evidenceCompletion = await openai.chat.completions.create({
         model: "gpt-4o",
         messages: [
           {
@@ -6591,14 +6609,53 @@ Return a JSON object matching this schema exactly:
         ],
         response_format: { type: "json_object" },
       });
+      } catch (err: any) {
+        console.error('[Evidence] Stage 2 (suggestions) failed:', err?.status, err?.message);
+        // Only persist the partial overlay (questions only) if there's no existing
+        // successful overlay to preserve. Otherwise a Regenerate failure would
+        // wipe out the user's previously-good suggestions.
+        const existing = encounter.evidenceSuggestions as any;
+        const hasPriorSuggestions = Array.isArray(existing?.suggestions) && existing.suggestions.length > 0;
+        let partialSaved = false;
+        if (!hasPriorSuggestions) {
+          const partial = {
+            clinical_questions: clinicalQuestions,
+            suggestions: [],
+            guideline_validations: [],
+            not_for_auto_insertion: true as const,
+          };
+          try {
+            await storage.updateEncounter(id, clinicianId, { evidenceSuggestions: partial }, clinicId);
+            partialSaved = true;
+          } catch {}
+        }
+        const status = err?.status === 429 ? 429 : 502;
+        const baseMsg = err?.status === 429
+          ? "Evidence service is rate-limited. Please try again in a moment."
+          : `Evidence suggestions step failed: ${err?.message ?? "unknown error"}. Click Regenerate to retry.`;
+        return res.status(status).json({
+          message: hasPriorSuggestions
+            ? `${baseMsg} (Your previous evidence has been preserved.)`
+            : baseMsg,
+          partialSaved,
+          priorPreserved: hasPriorSuggestions,
+        });
+      }
 
-      const evidenceRaw = JSON.parse(evidenceCompletion.choices[0].message.content || "{}");
-      const rawSuggestions: any[] = evidenceRaw.suggestions ?? [];
-      const validSuggestions = rawSuggestions.filter(s => Array.isArray(s.citations) && s.citations.length > 0);
+      let validSuggestions: any[] = [];
+      try {
+        const evidenceRaw = JSON.parse(evidenceCompletion.choices[0].message.content || "{}");
+        const rawSuggestions: any[] = evidenceRaw.suggestions ?? [];
+        validSuggestions = rawSuggestions.filter(s => Array.isArray(s.citations) && s.citations.length > 0);
+      } catch (err: any) {
+        console.error('[Evidence] Stage 2 parse failed:', err?.message);
+      }
 
       // ── Step 3: Guideline validation against the current plan ────────────────
+      // Best-effort — never fail the whole request because of this stage.
       let guidelineValidations: import("@shared/schema").GuidelineValidation[] = [];
       if (soapPlan || visitContext) {
+        try {
         const validationCompl = await openai.chat.completions.create({
           model: "gpt-4o",
           messages: [
@@ -6647,6 +6704,10 @@ Only return validations for guidelines that are directly and specifically applic
 
         const valRaw = JSON.parse(validationCompl.choices[0].message.content || "{}");
         guidelineValidations = valRaw.guideline_validations ?? [];
+        } catch (err: any) {
+          // Best-effort step — log but don't fail the request.
+          console.error('[Evidence] Stage 3 (validations) failed (non-fatal):', err?.status, err?.message);
+        }
       }
 
       const overlay = {
