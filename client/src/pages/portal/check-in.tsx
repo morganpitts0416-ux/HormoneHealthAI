@@ -16,7 +16,7 @@ import {
   CheckCircle2, Loader2, Plus, Trash2, Sparkles, Sun, ChevronDown, X,
 } from "lucide-react";
 import { ActiveVitalsMonitoringCard } from "@/components/portal/active-vitals-monitoring-card";
-import { LabeledChipScale } from "@/components/portal/labeled-chip-scale";
+import { LabeledChipScale, SCALES, type ScaleId } from "@/components/portal/labeled-chip-scale";
 
 /* ------------------------------- types ------------------------------- */
 
@@ -46,7 +46,13 @@ type CheckIn = {
   giSymptoms?: string[] | null;
   unexpectedBleeding?: boolean | null;
   otherSymptoms?: string | null;
-  cycleData?: { bleeding?: "none" | "spotting" | "light" | "medium" | "heavy"; cramps?: number } | null;
+  cycleData?: {
+    bleeding?: "none" | "spotting" | "light" | "medium" | "heavy"; // legacy
+    status?: "none" | "started_today" | "on_period" | "breakthrough";
+    flow?: "spotting" | "light" | "medium" | "heavy" | "flooding";
+    cramps?: number;
+    symptoms?: string[];
+  } | null;
   notes?: string | null;
 };
 
@@ -195,6 +201,7 @@ type StepId =
   | "welcome"
   | "feeling"
   | "body"
+  | "sleep"
   | "fuel"
   | "movement"
   | "meds"
@@ -257,7 +264,7 @@ export default function PortalCheckIn() {
 
   // ---- step list (built dynamically) ----
   const steps = useMemo<StepId[]>(() => {
-    const s: StepId[] = ["welcome", "feeling", "body", "fuel", "movement", "meds"];
+    const s: StepId[] = ["welcome", "feeling", "body", "sleep", "fuel", "movement", "meds"];
     if (hasActiveVitals) s.push("vitals");
     s.push("reflection", "done");
     return s;
@@ -410,7 +417,10 @@ export default function PortalCheckIn() {
           <FeelingStep draft={draft} setDraft={setDraft} />
         )}
         {currentStep === "body" && (
-          <BodyStep draft={draft} setDraft={setDraft} />
+          <BodyStep draft={draft} setDraft={setDraft} showCycle={showCycle} />
+        )}
+        {currentStep === "sleep" && (
+          <SleepStep draft={draft} setDraft={setDraft} />
         )}
         {currentStep === "fuel" && (
           <FuelStep draft={draft} setDraft={setDraft} powerMode={settings?.trackingMode === "power"} />
@@ -428,11 +438,7 @@ export default function PortalCheckIn() {
         )}
         {currentStep === "vitals" && <VitalsStep />}
         {currentStep === "reflection" && (
-          <ReflectionStep
-            draft={draft}
-            setDraft={setDraft}
-            showCycle={showCycle}
-          />
+          <ReflectionStep draft={draft} setDraft={setDraft} />
         )}
       </main>
 
@@ -509,7 +515,8 @@ function WelcomeStep({ firstName, hasVitals, totalSteps }: {
         <p className="text-sm font-medium" style={{ color: PALETTE.ink }}>Today's flow</p>
         <ul className="space-y-2 text-sm" style={{ color: PALETTE.inkSoft }}>
           <li className="flex items-center gap-2.5"><Smile className="w-4 h-4" style={{ color: PALETTE.brand }} /> How you're feeling</li>
-          <li className="flex items-center gap-2.5"><Moon className="w-4 h-4" style={{ color: PALETTE.brand }} /> Body & sleep</li>
+          <li className="flex items-center gap-2.5"><Heart className="w-4 h-4" style={{ color: PALETTE.brand }} /> Body &amp; symptoms</li>
+          <li className="flex items-center gap-2.5"><Moon className="w-4 h-4" style={{ color: PALETTE.brand }} /> Sleep</li>
           <li className="flex items-center gap-2.5"><Apple className="w-4 h-4" style={{ color: PALETTE.brand }} /> Fuel & hydration</li>
           <li className="flex items-center gap-2.5"><Activity className="w-4 h-4" style={{ color: PALETTE.brand }} /> Movement</li>
           <li className="flex items-center gap-2.5"><Pill className="w-4 h-4" style={{ color: PALETTE.brand }} /> Today's medications & supplements</li>
@@ -561,14 +568,270 @@ function FeelingStep({ draft, setDraft }: { draft: CheckIn; setDraft: (d: CheckI
   );
 }
 
-function BodyStep({ draft, setDraft }: { draft: CheckIn; setDraft: (d: CheckIn) => void }) {
+/* ---- hormone-related body symptoms (checkbox grid) ---- */
+
+const BODY_SYMPTOMS_FEMALE: { id: string; label: string }[] = [
+  { id: "breast_tenderness", label: "Breast tenderness" },
+  { id: "bloating", label: "Bloating" },
+  { id: "vaginal_dryness", label: "Vaginal dryness or irritation" },
+  { id: "hot_flashes", label: "Hot flashes" },
+  { id: "headaches", label: "Headaches" },
+  { id: "mood_swings", label: "Mood swings" },
+  { id: "joint_aches", label: "Joint or muscle aches" },
+  { id: "acne_skin", label: "Acne or skin changes" },
+  { id: "water_retention", label: "Water retention / puffiness" },
+  { id: "low_libido", label: "Low libido" },
+  { id: "fatigue", label: "Unusual fatigue" },
+];
+
+const BODY_SYMPTOMS_GENERAL: { id: string; label: string }[] = [
+  { id: "bloating", label: "Bloating" },
+  { id: "hot_flashes", label: "Hot flashes" },
+  { id: "headaches", label: "Headaches" },
+  { id: "mood_swings", label: "Mood swings" },
+  { id: "joint_aches", label: "Joint or muscle aches" },
+  { id: "acne_skin", label: "Acne or skin changes" },
+  { id: "water_retention", label: "Water retention / puffiness" },
+  { id: "low_libido", label: "Low libido" },
+  { id: "fatigue", label: "Unusual fatigue" },
+];
+
+function CheckboxChip({
+  label, selected, onToggle, testId,
+}: { label: string; selected: boolean; onToggle: () => void; testId: string }) {
+  return (
+    <button
+      type="button"
+      onClick={onToggle}
+      className="rounded-full px-4 py-2 text-sm font-medium border hover-elevate active-elevate-2 transition-colors"
+      style={{
+        backgroundColor: selected ? PALETTE.brand : PALETTE.card,
+        color: selected ? "#ffffff" : PALETTE.ink,
+        borderColor: selected ? PALETTE.brand : "#d4c9b5",
+      }}
+      data-testid={testId}
+      aria-pressed={selected}
+    >
+      {label}
+    </button>
+  );
+}
+
+function BodyStep({ draft, setDraft, showCycle }: {
+  draft: CheckIn; setDraft: (d: CheckIn) => void; showCycle: boolean;
+}) {
+  // Symptoms list — fuller for cycling-female patients, slimmer otherwise.
+  const symptomList = showCycle ? BODY_SYMPTOMS_FEMALE : BODY_SYMPTOMS_GENERAL;
+  const selectedSymptoms = draft.cycleData?.symptoms ?? [];
+  const toggleSymptom = (id: string) => {
+    const next = selectedSymptoms.includes(id)
+      ? selectedSymptoms.filter((s) => s !== id)
+      : [...selectedSymptoms, id];
+    setDraft({ ...draft, cycleData: { ...(draft.cycleData ?? {}), symptoms: next } });
+  };
+
+  // Menstrual tracker — derive status with back-compat from legacy `bleeding` field.
+  type CycleStatus = "none" | "started_today" | "on_period" | "breakthrough";
+  const legacyBleeding = draft.cycleData?.bleeding;
+  const derivedStatus: CycleStatus =
+    draft.cycleData?.status ??
+    (legacyBleeding && legacyBleeding !== "none" ? "on_period" : "none");
+  const isBleeding = derivedStatus !== "none";
+
+  const setCycleStatus = (status: CycleStatus) => {
+    const next = { ...(draft.cycleData ?? {}), status };
+    if (status === "none") {
+      // Clear the related fields so we don't carry stale flow/cramps for a non-bleeding day.
+      delete (next as any).flow;
+      delete (next as any).cramps;
+      next.bleeding = "none";
+    } else {
+      // Keep `bleeding` (legacy) in sync with `flow` for older clinician views.
+      next.bleeding = (next.flow as any) ?? "light";
+    }
+    setDraft({
+      ...draft,
+      cycleData: next,
+      // Synchronize the inbox-notification flag strictly with the current status.
+      // Setting this true ONLY for "breakthrough" — and explicitly false for every
+      // other status — prevents a stale `true` from a prior breakthrough click
+      // generating false urgent care-team alerts after the patient corrects to
+      // "On my period" or "No bleeding today".
+      unexpectedBleeding: status === "breakthrough",
+    });
+  };
+
+  const setFlow = (flow: "spotting" | "light" | "medium" | "heavy" | "flooding") => {
+    setDraft({
+      ...draft,
+      cycleData: {
+        ...(draft.cycleData ?? {}),
+        flow,
+        // mirror legacy column where possible
+        bleeding: (flow === "flooding" ? "heavy" : flow) as any,
+      },
+    });
+  };
+
+  const STATUS_OPTIONS: { id: CycleStatus; label: string; testId: string }[] = [
+    { id: "none",           label: "No bleeding today",                   testId: "cycle-status-none" },
+    { id: "started_today",  label: "Started my period today",             testId: "cycle-status-started" },
+    { id: "on_period",      label: "On my period",                        testId: "cycle-status-on" },
+    { id: "breakthrough",   label: "Breakthrough / unexpected bleeding",  testId: "cycle-status-breakthrough" },
+  ];
+
+  const FLOW_OPTIONS: { id: "spotting" | "light" | "medium" | "heavy" | "flooding"; label: string }[] = [
+    { id: "spotting", label: "Spotting" },
+    { id: "light",    label: "Light" },
+    { id: "medium",   label: "Medium" },
+    { id: "heavy",    label: "Heavy" },
+    { id: "flooding", label: "Flooding" },
+  ];
+
   return (
     <div className="space-y-6" data-testid="step-body">
       <StepHeading
-        icon={Moon}
+        icon={Heart}
         eyebrow="Moment 2"
-        title="Body & sleep"
-        subtitle="Sleep shapes energy, mood, and cravings. A snapshot of last night helps us see what's affecting your day."
+        title="How's your body today?"
+        subtitle="Tap anything you're noticing. The more your team sees, the better they can tailor your care."
+      />
+      <div className="space-y-5">
+        <Field
+          label="Symptoms you're noticing today"
+          hint="Tap all that apply. Skip if nothing stands out."
+        >
+          <div className="flex flex-wrap gap-2" role="group" data-testid="symptom-chip-grid">
+            {symptomList.map((s) => (
+              <CheckboxChip
+                key={s.id}
+                label={s.label}
+                selected={selectedSymptoms.includes(s.id)}
+                onToggle={() => toggleSymptom(s.id)}
+                testId={`symptom-${s.id}`}
+              />
+            ))}
+          </div>
+        </Field>
+
+        {showCycle && (
+          <Field
+            label="Menstrual cycle"
+            hint="Tracking this helps your team connect symptoms to your cycle."
+          >
+            <div className="flex flex-wrap gap-2" role="radiogroup" data-testid="cycle-status-group">
+              {STATUS_OPTIONS.map((s) => (
+                <button
+                  key={s.id}
+                  type="button"
+                  role="radio"
+                  aria-checked={derivedStatus === s.id}
+                  onClick={() => setCycleStatus(s.id)}
+                  className="rounded-full px-4 py-2 text-sm font-medium border hover-elevate active-elevate-2 transition-colors"
+                  style={{
+                    backgroundColor: derivedStatus === s.id
+                      ? (s.id === "breakthrough" ? PALETTE.rose : PALETTE.brand)
+                      : PALETTE.card,
+                    color: derivedStatus === s.id ? "#ffffff" : PALETTE.ink,
+                    borderColor: derivedStatus === s.id
+                      ? (s.id === "breakthrough" ? PALETTE.rose : PALETTE.brand)
+                      : "#d4c9b5",
+                  }}
+                  data-testid={s.testId}
+                >
+                  {s.label}
+                </button>
+              ))}
+            </div>
+
+            {isBleeding && (
+              <div
+                className="mt-3 rounded-2xl border p-4 space-y-4"
+                style={{
+                  backgroundColor: "#fdf3f5",
+                  borderColor: "#f0d4dc",
+                }}
+                data-testid="cycle-detail-panel"
+              >
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium" style={{ color: PALETTE.ink }}>
+                    Flow today
+                  </Label>
+                  <div className="flex flex-wrap gap-2" role="radiogroup" data-testid="cycle-flow-group">
+                    {FLOW_OPTIONS.map((f) => {
+                      const selected = (draft.cycleData?.flow ?? null) === f.id;
+                      return (
+                        <button
+                          key={f.id}
+                          type="button"
+                          role="radio"
+                          aria-checked={selected}
+                          onClick={() => setFlow(f.id)}
+                          className="rounded-full px-4 py-2 text-sm font-medium border hover-elevate active-elevate-2 transition-colors"
+                          style={{
+                            backgroundColor: selected ? PALETTE.rose : "#ffffff",
+                            color: selected ? "#ffffff" : PALETTE.ink,
+                            borderColor: selected ? PALETTE.rose : "#e8c8d0",
+                          }}
+                          data-testid={`cycle-flow-${f.id}`}
+                        >
+                          {f.label}
+                        </button>
+                      );
+                    })}
+                  </div>
+                </div>
+
+                <div className="space-y-2">
+                  <Label className="text-sm font-medium" style={{ color: PALETTE.ink }}>
+                    Cramps
+                  </Label>
+                  <LabeledChipScale
+                    scale="cramps"
+                    value={draft.cycleData?.cramps ?? null}
+                    onChange={(n) => setDraft({
+                      ...draft,
+                      cycleData: { ...(draft.cycleData ?? {}), cramps: n ?? undefined },
+                    })}
+                    testId="rating-cramps"
+                  />
+                </div>
+
+                {derivedStatus === "breakthrough" && (
+                  <p className="text-xs" style={{ color: PALETTE.rose }} data-testid="text-breakthrough-notice">
+                    Your care team will be notified about today's unexpected bleeding.
+                  </p>
+                )}
+              </div>
+            )}
+          </Field>
+        )}
+
+        <Disclosure summary="Log today's weight (optional)" testId="disclosure-weight">
+          <Field label="Weight (lbs)">
+            <Input
+              type="number" step="0.1" inputMode="decimal"
+              placeholder="lbs"
+              value={draft.weight ?? ""}
+              onChange={(e) => setDraft({ ...draft, weight: e.target.value || null })}
+              className="max-w-32"
+              data-testid="input-weight"
+            />
+          </Field>
+        </Disclosure>
+      </div>
+    </div>
+  );
+}
+
+function SleepStep({ draft, setDraft }: { draft: CheckIn; setDraft: (d: CheckIn) => void }) {
+  return (
+    <div className="space-y-6" data-testid="step-sleep">
+      <StepHeading
+        icon={Moon}
+        eyebrow="Moment 3"
+        title="How did you sleep?"
+        subtitle="Sleep shapes energy, mood, and cravings the next day. A quick snapshot of last night is enough."
       />
       <div className="space-y-5">
         <Field label="Sleep quality" hint="How restorative did last night feel?">
@@ -597,18 +860,6 @@ function BodyStep({ draft, setDraft }: { draft: CheckIn; setDraft: (d: CheckIn) 
           onChange={(v) => setDraft({ ...draft, wokeDuringNight: v })}
           testId="toggle-woke"
         />
-        <Disclosure summary="Log today's weight (optional)" testId="disclosure-weight">
-          <Field label="Weight (lbs)">
-            <Input
-              type="number" step="0.1" inputMode="decimal"
-              placeholder="lbs"
-              value={draft.weight ?? ""}
-              onChange={(e) => setDraft({ ...draft, weight: e.target.value || null })}
-              className="max-w-32"
-              data-testid="input-weight"
-            />
-          </Field>
-        </Disclosure>
       </div>
     </div>
   );
@@ -842,8 +1093,8 @@ function VitalsStep() {
   );
 }
 
-function ReflectionStep({ draft, setDraft, showCycle }: {
-  draft: CheckIn; setDraft: (d: CheckIn) => void; showCycle: boolean;
+function ReflectionStep({ draft, setDraft }: {
+  draft: CheckIn; setDraft: (d: CheckIn) => void;
 }) {
   return (
     <div className="space-y-6" data-testid="step-reflection">
@@ -851,52 +1102,18 @@ function ReflectionStep({ draft, setDraft, showCycle }: {
         icon={Sparkles}
         eyebrow="Last moment"
         title="Anything else?"
-        subtitle="Use this space to flag anything notable. Even a sentence helps your team see the full picture."
+        subtitle="A few sentences your team should see — wins, worries, questions for your next visit."
       />
       <div className="space-y-5">
-        <Field label="Symptoms or notes" hint="Headache, joint pain, hot flashes, mood shift — whatever stood out.">
+        <Field label="Notes for your care team" hint="Optional — even one sentence is helpful.">
           <Textarea
-            rows={4}
-            placeholder="Anything you'd like your team to see (optional)"
+            rows={5}
+            placeholder="What's on your mind today?"
             value={draft.otherSymptoms ?? ""}
             onChange={(e) => setDraft({ ...draft, otherSymptoms: e.target.value })}
             data-testid="input-other-symptoms"
           />
         </Field>
-        {showCycle && (
-          <div className="space-y-4">
-            <Field label="Bleeding today">
-              <div className="flex flex-wrap gap-2">
-                {(["none", "spotting", "light", "medium", "heavy"] as const).map((b) => {
-                  const selected = (draft.cycleData?.bleeding ?? "none") === b;
-                  return (
-                    <button
-                      key={b}
-                      type="button"
-                      onClick={() => setDraft({ ...draft, cycleData: { ...(draft.cycleData ?? {}), bleeding: b } })}
-                      className="rounded-full px-4 py-2 text-sm font-medium border hover-elevate active-elevate-2 capitalize"
-                      style={{
-                        backgroundColor: selected ? PALETTE.brand : PALETTE.card,
-                        color: selected ? "#ffffff" : PALETTE.ink,
-                        borderColor: selected ? PALETTE.brand : "#d4c9b5",
-                      }}
-                      data-testid={`bleeding-${b}`}
-                    >
-                      {b}
-                    </button>
-                  );
-                })}
-              </div>
-            </Field>
-            <SoftToggle
-              label="Unexpected or breakthrough bleeding"
-              hint="If on, your care team will be notified."
-              value={draft.unexpectedBleeding}
-              onChange={(v) => setDraft({ ...draft, unexpectedBleeding: v })}
-              testId="toggle-unexpected-bleeding"
-            />
-          </div>
-        )}
       </div>
       <p
         className="text-xs italic text-center pt-1"
@@ -912,37 +1129,114 @@ function ReflectionStep({ draft, setDraft, showCycle }: {
                   Completion + Opt-in screens
    ============================================================ */
 
-function buildInsight(draft: CheckIn): string {
+/* ----- Today's snapshot helpers ----- */
+
+function labelFor(scale: ScaleId, value: number | null | undefined): string | null {
+  if (value === null || value === undefined) return null;
+  const def = SCALES[scale];
+  if (!def) return null;
+  const min = def.min ?? 1;
+  return def.labels[value - min] ?? null;
+}
+
+type SnapshotItem = { icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>; label: string; value: string };
+
+function buildSnapshot(draft: CheckIn): SnapshotItem[] {
+  const items: SnapshotItem[] = [];
+  const mood = labelFor("mood", draft.moodScore);
+  if (mood) items.push({ icon: Smile, label: "Mood", value: mood });
+  const energy = labelFor("energy", draft.energyScore);
+  if (energy) items.push({ icon: Sparkles, label: "Energy", value: energy });
+  const sleep = labelFor("sleepQuality", draft.sleepQuality);
+  if (sleep) items.push({ icon: Moon, label: "Sleep", value: draft.sleepHours ? `${sleep} · ${draft.sleepHours}h` : sleep });
+  const water = labelFor("water", draft.waterLevel);
+  if (water) items.push({ icon: Droplets, label: "Water", value: water });
+  const protein = labelFor("protein", draft.foodProteinLevel);
+  if (protein) items.push({ icon: Apple, label: "Protein", value: protein });
+  if (draft.exerciseDone) {
+    const intensity = labelFor("intensity", draft.exerciseIntensity);
+    items.push({
+      icon: Activity,
+      label: "Movement",
+      value: [draft.exerciseType, draft.exerciseMinutes ? `${draft.exerciseMinutes}m` : null, intensity]
+        .filter(Boolean)
+        .join(" · ") || "Logged",
+    });
+  }
+  return items;
+}
+
+function buildInsight(draft: CheckIn, firstName?: string): { headline: string; body: string } {
   const sleep = draft.sleepQuality ?? null;
   const mood = draft.moodScore ?? null;
   const energy = draft.energyScore ?? null;
   const protein = draft.foodProteinLevel ?? null;
   const water = draft.waterLevel ?? null;
   const moved = !!draft.exerciseDone;
+  const symptoms = draft.cycleData?.symptoms ?? [];
+  const breakthrough = draft.cycleData?.status === "breakthrough" || !!draft.unexpectedBleeding;
+  void firstName; // reserved for future personalized copy
 
+  if (breakthrough) {
+    return {
+      headline: "Flagged for your care team",
+      body: `We've notified your team about today's unexpected bleeding so they can reach out if needed. Rest, hydrate, and log again tomorrow.`,
+    };
+  }
   if (sleep !== null && sleep <= 2) {
-    return "Sleep was lower last night, which can affect cravings and energy today. Lean on hydration, protein at meals, and an earlier bedtime tonight.";
+    return {
+      headline: "Sleep was light last night",
+      body: `Short sleep often shows up as cravings and lower energy by mid-afternoon. Try a glass of water now, protein at your next meal, and an earlier bedtime tonight — and see how tomorrow's check-in compares.`,
+    };
   }
   if (mood !== null && mood <= 2 && energy !== null && energy <= 2) {
-    return "Today's a low-energy day. Be gentle with yourself — a short walk and a protein-forward meal often help reset.";
+    return {
+      headline: "Be gentle today",
+      body: `Mood and energy both came in low. A short walk outside and a protein-forward meal are two tiny resets that tend to help — no pressure to do more.`,
+    };
+  }
+  if (symptoms.length >= 3) {
+    return {
+      headline: `${symptoms.length} symptoms noted today`,
+      body: `Patterns across days are what your team looks for, so today's detail is a real help. Tomorrow's check-in will start to reveal what's connected.`,
+    };
   }
   if (protein !== null && protein <= 2) {
-    return "Protein was light today. Adding a meaningful protein source at the next meal usually steadies energy and cravings.";
+    return {
+      headline: "Protein ran light today",
+      body: `Adding a clear protein anchor (eggs, yogurt, fish, chicken, beans) at your next meal usually steadies energy and curbs cravings within a few hours.`,
+    };
   }
   if (water !== null && water <= 2) {
-    return "Hydration was on the lighter side. A glass of water now is an easy next best step.";
+    return {
+      headline: "Hydration was on the lighter side",
+      body: `A tall glass of water right now is the easiest next best step — it tends to lift energy more than people expect.`,
+    };
   }
   if (moved && (energy ?? 3) >= 3) {
-    return "Movement plus steady energy is a great combo. Your team will see this rhythm building.";
+    return {
+      headline: "Movement + steady energy",
+      body: `That's a combo your team loves to see — keep this rhythm going and the trends in your chart will reflect it.`,
+    };
   }
-  return "Thanks for checking in. Your care team will see today's snapshot — patterns over time are what matter most.";
+  if (mood !== null && mood >= 4 && energy !== null && energy >= 4) {
+    return {
+      headline: "Today's a strong day",
+      body: `Mood and energy both came in high — note what's working (sleep, food, movement, meds) so you can lean on it again.`,
+    };
+  }
+  return {
+    headline: "Thanks for checking in",
+    body: `Patterns over time are what your team uses to fine-tune your care. Today's snapshot is now part of that picture.`,
+  };
 }
 
 function CompletionScreen({ draft, firstName }: { draft: CheckIn; firstName?: string }) {
-  const insight = useMemo(() => buildInsight(draft), [draft]);
+  const insight = useMemo(() => buildInsight(draft, firstName), [draft, firstName]);
+  const snapshot = useMemo(() => buildSnapshot(draft), [draft]);
   return (
     <div className="min-h-screen flex flex-col" style={{ backgroundColor: PALETTE.bg }}>
-      <main className="flex-1 max-w-xl w-full mx-auto px-4 py-12 space-y-8" data-testid="step-done">
+      <main className="flex-1 max-w-xl w-full mx-auto px-4 py-12 space-y-7" data-testid="step-done">
         <div className="space-y-3 text-center">
           <div
             className="w-16 h-16 mx-auto rounded-full flex items-center justify-center"
@@ -951,13 +1245,53 @@ function CompletionScreen({ draft, firstName }: { draft: CheckIn; firstName?: st
             <CheckCircle2 className="w-8 h-8" style={{ color: "#ffffff" }} />
           </div>
           <h1 className="text-3xl font-semibold leading-tight" style={{ color: PALETTE.ink }}>
-            {firstName ? `You're all set, ${firstName}.` : "You're all set for today."}
+            {firstName ? `Nicely done, ${firstName}.` : "Nicely done."}
           </h1>
           <p className="text-base leading-relaxed" style={{ color: PALETTE.inkSoft }}>
-            Your check-in was saved and will help your care team see the full picture.
+            Today's check-in is saved and on its way to your care team.
           </p>
         </div>
 
+        {/* Today's snapshot */}
+        {snapshot.length > 0 && (
+          <div
+            className="rounded-2xl border p-5 space-y-3"
+            style={{ backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }}
+            data-testid="panel-snapshot"
+          >
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: PALETTE.inkMuted }}>
+              Today's snapshot
+            </p>
+            <div className="grid grid-cols-2 gap-2.5">
+              {snapshot.map((s, i) => {
+                const Icon = s.icon;
+                return (
+                  <div
+                    key={`${s.label}-${i}`}
+                    className="flex items-center gap-2.5 rounded-xl border px-3 py-2.5 min-w-0"
+                    style={{ backgroundColor: PALETTE.brandSoft, borderColor: PALETTE.brandSoftBorder }}
+                    data-testid={`snapshot-${s.label.toLowerCase()}`}
+                  >
+                    <div
+                      className="w-7 h-7 rounded-lg flex items-center justify-center flex-shrink-0"
+                      style={{ backgroundColor: "#ffffff" }}
+                    >
+                      <Icon className="w-3.5 h-3.5" style={{ color: PALETTE.brand }} />
+                    </div>
+                    <div className="min-w-0 flex-1">
+                      <p className="text-[10px] font-semibold uppercase tracking-wider" style={{ color: PALETTE.inkMuted }}>
+                        {s.label}
+                      </p>
+                      <p className="text-sm font-medium truncate" style={{ color: PALETTE.ink }}>{s.value}</p>
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Today's insight */}
         <div
           className="rounded-2xl border p-5 space-y-3"
           style={{ backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }}
@@ -968,30 +1302,37 @@ function CompletionScreen({ draft, firstName }: { draft: CheckIn; firstName?: st
               Today's insight
             </p>
           </div>
-          <p className="text-sm leading-relaxed" style={{ color: PALETTE.ink }} data-testid="text-todays-insight">
-            {insight}
+          <p className="text-base font-semibold leading-snug" style={{ color: PALETTE.ink }} data-testid="text-insight-headline">
+            {insight.headline}
+          </p>
+          <p className="text-sm leading-relaxed" style={{ color: PALETTE.inkSoft }} data-testid="text-todays-insight">
+            {insight.body}
           </p>
           <p className="text-[11px] italic pt-1" style={{ color: PALETTE.inkMuted }}>
-            Informational only — not medical advice. Your care team reviews these notes as they make care decisions.
+            Informational only — not medical advice. Your care team reviews these notes alongside your chart.
           </p>
         </div>
 
         <div className="flex flex-col-reverse sm:flex-row gap-2.5">
-          <Link href="/portal/dashboard" className="flex-1">
-            <Button variant="outline" className="w-full" data-testid="button-back-dashboard-done">
-              Back to dashboard
+          <Link href="/portal/messages" className="flex-1">
+            <Button variant="outline" className="w-full" data-testid="button-message-team">
+              Message my care team
             </Button>
           </Link>
-          <Link href="/portal/wellness" className="flex-1">
+          <Link href="/portal/dashboard" className="flex-1">
             <Button
               className="w-full"
               style={{ backgroundColor: PALETTE.brand, color: "#ffffff" }}
-              data-testid="button-view-insights"
+              data-testid="button-back-dashboard-done"
             >
-              View insights <ArrowRight className="w-4 h-4 ml-1.5" />
+              Back to dashboard <ArrowRight className="w-4 h-4 ml-1.5" />
             </Button>
           </Link>
         </div>
+
+        <p className="text-xs text-center pt-2" style={{ color: PALETTE.inkMuted }}>
+          See you tomorrow — small daily snapshots become the trends that move your care forward.
+        </p>
       </main>
     </div>
   );
