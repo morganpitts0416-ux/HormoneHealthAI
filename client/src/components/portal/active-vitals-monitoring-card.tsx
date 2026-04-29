@@ -136,7 +136,24 @@ function ActiveCard({ data }: { data: ActiveResponse }) {
       setSystolic(""); setDiastolic(""); setHeartRate(""); setWeight("");
       setSymptoms([]); setNotes("");
     },
-    onError: () => toast({ title: "Couldn't save", description: "Please try again.", variant: "destructive" }),
+    onError: async (err: any) => {
+      // Surface the server's actual message (e.g. "Weight is required.") so the
+      // patient knows what to fix instead of a vague generic error.
+      let description = "Please check your entries and try again.";
+      try {
+        const msg = typeof err?.message === "string" ? err.message : "";
+        // apiRequest throws errors of the form "<status>: <body>" — pull the body.
+        const colonIdx = msg.indexOf(":");
+        const tail = colonIdx > -1 ? msg.slice(colonIdx + 1).trim() : msg.trim();
+        if (tail.startsWith("{")) {
+          const parsed = JSON.parse(tail);
+          if (parsed?.message) description = String(parsed.message);
+        } else if (tail) {
+          description = tail;
+        }
+      } catch { /* fall through to default */ }
+      toast({ title: "Couldn't save reading", description, variant: "destructive" });
+    },
   });
 
   const todayCount = data.todayCount ?? 0;
@@ -158,8 +175,21 @@ function ActiveCard({ data }: { data: ActiveResponse }) {
   }
 
   function canSubmit(): boolean {
-    if (includesBp && (!systolic || !diastolic)) return false;
-    if (includesHr && !heartRate && !systolic && !weight) return false;
+    // Every vital type requested by the provider must have a valid number entered.
+    if (includesBp) {
+      const sbp = Number(systolic);
+      const dbp = Number(diastolic);
+      if (!systolic || !diastolic || !Number.isFinite(sbp) || !Number.isFinite(dbp)) return false;
+      if (sbp <= 0 || dbp <= 0) return false;
+    }
+    if (includesHr) {
+      const hr = Number(heartRate);
+      if (!heartRate || !Number.isFinite(hr) || hr <= 0) return false;
+    }
+    if (includesWt) {
+      const wt = Number(weight);
+      if (!weight || !Number.isFinite(wt) || wt <= 0) return false;
+    }
     return true;
   }
 
