@@ -48,7 +48,7 @@ import { PhoneNoteDialog } from "@/components/phone-note-dialog";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 import { VitalsDialog } from "@/components/vitals-dialog";
 import { VitalTrendsDialog } from "@/components/vital-trends-dialog";
-import { PreventCalculatorDialog } from "@/components/prevent-calculator-dialog";
+import { PreventCalculatorDialog, PreventCalculatorPanel } from "@/components/prevent-calculator-dialog";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -1136,7 +1136,6 @@ export default function PatientProfiles() {
   const [showAppointmentDialog, setShowAppointmentDialog] = useState(false);
   const [showVitalsDialog, setShowVitalsDialog] = useState(false);
   const [showVitalTrendsDialog, setShowVitalTrendsDialog] = useState(false);
-  const [showPreventDialog, setShowPreventDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteLink, setInviteLink] = useState<string | null>(null);
   const [inviteEmailSent, setInviteEmailSent] = useState<boolean | null>(null);
@@ -1187,7 +1186,7 @@ export default function PatientProfiles() {
     | "monitoring"
     | "encounters"
     | "labs"
-    | "vitals"
+    | "prevent"
     | "documents";
   const [profileSection, setProfileSection] = useState<ProfileSection>("overview");
   const [showMergeDialog, setShowMergeDialog] = useState(false);
@@ -1960,7 +1959,9 @@ export default function PatientProfiles() {
               Loading patient data...
             </div>
           ) : (
-            <div className="p-6 space-y-6">
+            // pb-32 leaves room for the fixed "Ask ClinIQ" floating button so
+            // it never covers the bottom of the last clinical card.
+            <div className="p-6 pb-32 space-y-6">
               {/* Mobile-only back to patient list */}
               <div className="md:hidden -mt-2 -mx-2 mb-0">
                 <button
@@ -2131,7 +2132,16 @@ export default function PatientProfiles() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => setShowPreventDialog(true)}
+                    onClick={() => {
+                      setProfileSection("prevent");
+                      // Defer scroll until after the section renders so the
+                      // panel slides into view next to the patient chart
+                      // instead of staying off-screen below.
+                      setTimeout(() => {
+                        document.querySelector('[data-testid="card-prevent-section"]')
+                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
+                      }, 50);
+                    }}
                     data-testid="button-prevent-calc"
                     className="text-xs gap-1.5"
                     style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
@@ -2173,7 +2183,7 @@ export default function PatientProfiles() {
                         badge: (patientEncounters.length > 0 ? patientEncounters.length : null) as number | null },
                       { id: "labs" as ProfileSection, label: "Labs", Icon: FlaskConical,
                         badge: (labs.length > 0 ? labs.length : null) as number | null },
-                      { id: "vitals" as ProfileSection, label: "Vitals", Icon: Heart, badge: null as number | null },
+                      { id: "prevent" as ProfileSection, label: "PREVENT Calc", Icon: Activity, badge: null as number | null },
                       { id: "documents" as ProfileSection, label: "Documents", Icon: FolderOpen,
                         badge: ((
                           patientFormAssignments.filter((a: any) => a.status === "pending").length +
@@ -2387,21 +2397,21 @@ export default function PatientProfiles() {
                 <MonitoringPanel patientId={selectedPatient.id} />
               )}
 
-              {/* ── Vitals (inline access to the dialog) ───────────────── */}
-              {profileSection === "vitals" && (
-                <Card data-testid="card-vitals-section">
+              {/* ── PREVENT Calculator (inline panel) ──────────────────── */}
+              {profileSection === "prevent" && (
+                <Card data-testid="card-prevent-section">
                   <CardHeader className="pb-3">
                     <div className="flex items-center justify-between gap-2 flex-wrap">
                       <CardTitle className="text-sm flex items-center gap-2">
-                        <Heart className="w-4 h-4 text-muted-foreground" />
-                        Vital Signs
+                        <Activity className="w-4 h-4 text-muted-foreground" />
+                        AHA PREVENT Risk Calculator
                       </CardTitle>
                       <Button
                         size="sm"
+                        variant="outline"
                         onClick={() => setShowVitalsDialog(true)}
                         className="text-xs gap-1.5"
-                        style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
-                        data-testid="button-open-vitals-dialog"
+                        data-testid="button-open-vitals-from-prevent"
                       >
                         <Heart className="h-3 w-3" />
                         Open Vitals
@@ -2409,11 +2419,7 @@ export default function PatientProfiles() {
                     </div>
                   </CardHeader>
                   <CardContent>
-                    <p className="text-xs text-muted-foreground leading-relaxed">
-                      Open the Vitals workspace to record new readings, configure
-                      at-home monitoring, view trends, and review every clinic and
-                      patient-logged measurement.
-                    </p>
+                    <PreventCalculatorPanel patient={selectedPatient} />
                   </CardContent>
                 </Card>
               )}
@@ -3513,13 +3519,6 @@ export default function PatientProfiles() {
         />
       )}
 
-      {/* PREVENT Calculator Dialog */}
-      <PreventCalculatorDialog
-        open={showPreventDialog}
-        onOpenChange={setShowPreventDialog}
-        patient={selectedPatient}
-      />
-
       {/* Invite to Portal Modal */}
       {showInviteModal && selectedPatient && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/50" data-testid="invite-portal-modal">
@@ -4512,6 +4511,49 @@ function StatusTilesRow({
 }
 
 // ── Monitoring & Check-Ins panel (Daily Check-In Phase 1) ─────────────────
+type _CheckinRow = {
+  id: number;
+  date: string;
+  weight?: number | string | null;
+  moodScore?: number | null;
+  energyScore?: number | null;
+  cravingsScore?: number | null;
+  hungerScore?: number | null;
+  brainFogScore?: number | null;
+  anxietyIrritabilityScore?: number | null;
+  sleepHours?: number | string | null;
+  sleepQuality?: number | null;
+  nightSweats?: boolean | null;
+  wokeDuringNight?: boolean | null;
+  foodProteinLevel?: string | null;
+  waterLevel?: string | null;
+  fiberVeggieLevel?: string | null;
+  processedFoodLevel?: string | null;
+  alcoholUse?: boolean | null;
+  foodNotes?: string | null;
+  proteinGrams?: number | null;
+  calories?: number | null;
+  fiberGrams?: number | null;
+  waterOunces?: number | null;
+  exerciseDone?: boolean | null;
+  exerciseType?: string | null;
+  exerciseMinutes?: number | null;
+  exerciseIntensity?: string | null;
+  giSymptoms?: string[] | null;
+  unexpectedBleeding?: boolean | null;
+  otherSymptoms?: string | null;
+  cycleData?: Record<string, unknown> | null;
+  notes?: string | null;
+  updatedAt: string;
+};
+type _AdherenceRow = {
+  id: number;
+  date: string;
+  medicationName: string;
+  status: "taken" | "skipped" | "missed" | "backfilled";
+  source: string;
+  reason?: string | null;
+};
 type _MonitoringSummary = {
   settings: {
     trackingMode: "off" | "standard" | "power";
@@ -4519,23 +4561,8 @@ type _MonitoringSummary = {
     setupCompleted: boolean;
     lastActivityAt: string | null;
   };
-  recentCheckins: Array<{
-    id: number;
-    date: string;
-    weight?: string | null;
-    moodScore?: number | null;
-    energyScore?: number | null;
-    sleepHours?: string | null;
-    sleepQuality?: number | null;
-    foodProteinLevel?: number | null;
-    waterLevel?: number | null;
-    exerciseDone?: boolean | null;
-    exerciseMinutes?: number | null;
-    unexpectedBleeding?: boolean | null;
-    otherSymptoms?: string | null;
-    notes?: string | null;
-    updatedAt: string;
-  }>;
+  recentCheckins: _CheckinRow[];
+  adherence: _AdherenceRow[];
   reportedMeds: Array<{
     id: number;
     name: string;
@@ -4555,8 +4582,74 @@ type _MonitoringSummary = {
   };
 };
 
+const _MONTH_NAMES = ["January","February","March","April","May","June","July","August","September","October","November","December"];
+const _DOW_LABELS = ["S","M","T","W","T","F","S"];
+
+function _formatDateYmd(d: Date): string {
+  const y = d.getFullYear();
+  const m = String(d.getMonth() + 1).padStart(2, "0");
+  const day = String(d.getDate()).padStart(2, "0");
+  return `${y}-${m}-${day}`;
+}
+
+function _checkinSeverity(c: _CheckinRow): "normal" | "amber" | "rose" {
+  if (c.unexpectedBleeding) return "rose";
+  const sleep = c.sleepHours == null ? null : Number(c.sleepHours);
+  if (sleep !== null && !Number.isNaN(sleep) && sleep > 0 && sleep < 5) return "amber";
+  let load = 0;
+  if (c.cravingsScore && c.cravingsScore >= 4) load++;
+  if (c.hungerScore && c.hungerScore >= 4) load++;
+  if (c.brainFogScore && c.brainFogScore >= 4) load++;
+  if (c.anxietyIrritabilityScore && c.anxietyIrritabilityScore >= 4) load++;
+  if (Array.isArray(c.giSymptoms) && c.giSymptoms.length >= 2) load++;
+  if (c.nightSweats) load++;
+  if (load >= 3) return "amber";
+  return "normal";
+}
+
+function _severityColors(s: "normal" | "amber" | "rose"): { bg: string; ring: string } {
+  if (s === "rose") return { bg: "#c0392b", ring: "#fdf2f0" };
+  if (s === "amber") return { bg: "#c98b1f", ring: "#fdf6e6" };
+  return { bg: "#2e7a3a", ring: "#ecf6ee" };
+}
+
+function _adherenceStreak(adherence: _AdherenceRow[], today: Date): number {
+  if (adherence.length === 0) return 0;
+  // Group statuses by date
+  const byDay = new Map<string, _AdherenceRow[]>();
+  for (const a of adherence) {
+    if (!byDay.has(a.date)) byDay.set(a.date, []);
+    byDay.get(a.date)!.push(a);
+  }
+  let streak = 0;
+  // Walk back from yesterday so we don't penalize a not-yet-logged today
+  const cursor = new Date(today);
+  cursor.setDate(cursor.getDate() - 1);
+  for (let i = 0; i < 60; i++) {
+    const key = _formatDateYmd(cursor);
+    const day = byDay.get(key);
+    if (!day || day.length === 0) break;
+    const skipped = day.some((d) => d.status === "skipped" || d.status === "missed");
+    if (skipped) break;
+    streak++;
+    cursor.setDate(cursor.getDate() - 1);
+  }
+  return streak;
+}
+
 function MonitoringPanel({ patientId }: { patientId: number }) {
   const [open, setOpen] = useState(true);
+  const today = useMemo(() => {
+    const d = new Date();
+    d.setHours(0, 0, 0, 0);
+    return d;
+  }, []);
+  const [viewMonth, setViewMonth] = useState<Date>(() => {
+    const d = new Date();
+    return new Date(d.getFullYear(), d.getMonth(), 1);
+  });
+  const [openDayKey, setOpenDayKey] = useState<string | null>(null);
+
   const { data, isLoading } = useQuery<_MonitoringSummary>({
     queryKey: ['/api/patients', patientId, 'tracking-summary'],
     queryFn: async () => {
@@ -4574,17 +4667,63 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
     onSuccess: () => queryClient.invalidateQueries({ queryKey: ['/api/patients', patientId, 'tracking-summary'] }),
   });
 
-  // Default-off contract: render absolutely nothing until we confirm the patient
-  // has opted into tracking. No skeleton, no "Not enrolled" banner — clinicians
-  // see zero behavioral change for non-enrolled patients.
+  // Patient-logged vitals for the same calendar (so a small heart appears on
+  // days the patient self-reported BP/HR/weight from the portal).
+  const { data: patientVitalsData } = useQuery<{ vitals: Array<{ id: number; recordedAt: string; source: string }> }>({
+    queryKey: ['/api/patients', patientId, 'vitals'],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/vitals`, { credentials: 'include' });
+      if (!res.ok) return { vitals: [] };
+      const j = await res.json();
+      return Array.isArray(j) ? { vitals: j } : j;
+    },
+  });
+
+  // Default-off contract: render nothing until we know the patient is enrolled.
   if (isLoading || !data) return null;
   const trackingActive = data.settings.trackingMode !== "off" && data.settings.enabled;
   if (!trackingActive) return null;
 
   const recent = data.recentCheckins ?? [];
+  const adherence = data.adherence ?? [];
   const reportedMeds = data.reportedMeds ?? [];
   const unreviewedMeds = reportedMeds.filter((m) => !m.reviewedByProvider && m.status === "active");
   const recentBleeding = recent.find((c) => c.unexpectedBleeding === true);
+  const streak = _adherenceStreak(adherence, today);
+
+  // Index check-ins, adherence, and patient-vitals by YYYY-MM-DD for the
+  // calendar.
+  const checkinByDay = new Map<string, _CheckinRow>();
+  for (const c of recent) checkinByDay.set(c.date, c);
+  const adherenceByDay = new Map<string, _AdherenceRow[]>();
+  for (const a of adherence) {
+    if (!adherenceByDay.has(a.date)) adherenceByDay.set(a.date, []);
+    adherenceByDay.get(a.date)!.push(a);
+  }
+  const patientVitalDays = new Set<string>();
+  for (const v of patientVitalsData?.vitals ?? []) {
+    if (v.source !== "patient_logged") continue;
+    patientVitalDays.add(_formatDateYmd(new Date(v.recordedAt)));
+  }
+
+  // Build the calendar grid (always render a 6-row grid so layout is stable).
+  const firstOfMonth = new Date(viewMonth.getFullYear(), viewMonth.getMonth(), 1);
+  const startDow = firstOfMonth.getDay();
+  const gridStart = new Date(firstOfMonth);
+  gridStart.setDate(gridStart.getDate() - startDow);
+  const days: Date[] = [];
+  for (let i = 0; i < 42; i++) {
+    const d = new Date(gridStart);
+    d.setDate(gridStart.getDate() + i);
+    days.push(d);
+  }
+
+  const goPrev = () => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() - 1, 1));
+  const goNext = () => setViewMonth(new Date(viewMonth.getFullYear(), viewMonth.getMonth() + 1, 1));
+  const isThisMonth = today.getFullYear() === viewMonth.getFullYear() && today.getMonth() === viewMonth.getMonth();
+
+  const openDayCheckin = openDayKey ? checkinByDay.get(openDayKey) : null;
+  const openDayAdherence = openDayKey ? adherenceByDay.get(openDayKey) ?? [] : [];
 
   return (
     <div
@@ -4598,20 +4737,14 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
         className="w-full flex items-center justify-between gap-2 px-4 pt-3 pb-2.5 hover-elevate rounded-t-xl"
         data-testid="button-toggle-monitoring"
       >
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Activity className="w-4 h-4" style={{ color: "#2e3a20" }} />
           <h3 className="text-sm font-semibold" style={{ color: "#1c2414" }}>
             Monitoring & Check-Ins
           </h3>
-          {trackingActive ? (
-            <Badge variant="outline" className="text-xs">
-              {data.settings.trackingMode === "power" ? "Power Mode" : "Standard"}
-            </Badge>
-          ) : (
-            <Badge variant="outline" className="text-xs" style={{ color: "#7a8a64" }}>
-              Not enrolled
-            </Badge>
-          )}
+          <Badge variant="outline" className="text-xs">
+            {data.settings.trackingMode === "power" ? "Power Mode" : "Standard"}
+          </Badge>
           {unreviewedMeds.length > 0 && (
             <Badge className="text-white text-xs" style={{ backgroundColor: "#c0392b" }}>
               {unreviewedMeds.length} to review
@@ -4620,155 +4753,436 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
         </div>
         <ChevronDown className={`w-4 h-4 transition-transform ${open ? "rotate-180" : ""}`} style={{ color: "#7a8a64" }} />
       </button>
+
       {open && (
         <div className="px-4 pb-4 space-y-4 border-t" style={{ borderColor: "#e8ddd0" }}>
-          {!trackingActive ? (
-            <div className="pt-4">
-              <p className="text-sm" style={{ color: "#5a6048" }}>
-                Patient hasn't opted into Daily Check-In. They can enable it from their portal at any time.
+          {/* Stat tiles — replaced "Patient-added" with the more useful
+              "Adherence streak" so the number isn't duplicated below. */}
+          <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-4">
+            <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }} data-testid="stat-last-activity">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Last activity</p>
+              <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
+                {data.summary.lastActivityAt
+                  ? new Date(data.summary.lastActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
+                  : "—"}
               </p>
             </div>
-          ) : (
-            <>
-              {/* Summary stats */}
-              <div className="grid grid-cols-2 sm:grid-cols-4 gap-2 pt-4">
-                <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}>
-                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Last activity</p>
-                  <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
-                    {data.summary.lastActivityAt
-                      ? new Date(data.summary.lastActivityAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })
-                      : "—"}
-                  </p>
-                </div>
-                <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}>
-                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Check-ins (30d)</p>
-                  <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
-                    {data.summary.totalCheckins}
-                  </p>
-                </div>
-                <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}>
-                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Med adherence</p>
-                  <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
-                    {data.summary.adherencePct === null ? "—" : `${data.summary.adherencePct}%`}
-                  </p>
-                </div>
-                <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}>
-                  <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Patient-added</p>
-                  <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
-                    {reportedMeds.length}
-                  </p>
-                </div>
+            <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }} data-testid="stat-checkins-30d">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Check-ins (30d)</p>
+              <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
+                {data.summary.totalCheckins}
+              </p>
+            </div>
+            <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }} data-testid="stat-adherence">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Med adherence</p>
+              <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
+                {data.summary.adherencePct === null ? "—" : `${data.summary.adherencePct}%`}
+              </p>
+            </div>
+            <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }} data-testid="stat-streak">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Adherence streak</p>
+              <p className="text-sm font-semibold mt-0.5" style={{ color: "#1c2414" }}>
+                {streak === 0 ? "—" : `${streak} day${streak === 1 ? "" : "s"}`}
+              </p>
+            </div>
+          </div>
+
+          {recentBleeding && (
+            <div
+              className="rounded-md border p-3 flex items-start gap-2"
+              style={{ borderColor: "#e8c1ba", backgroundColor: "#fdf2f0" }}
+              data-testid="alert-bleeding"
+            >
+              <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#c0392b" }} />
+              <div className="text-sm" style={{ color: "#1c2414" }}>
+                <p className="font-semibold">Unexpected bleeding reported on {recentBleeding.date}</p>
+                <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
+                  Notes: {recentBleeding.notes ?? recentBleeding.otherSymptoms ?? "no additional notes"}
+                </p>
               </div>
+            </div>
+          )}
 
-              {recentBleeding && (
-                <div
-                  className="rounded-md border p-3 flex items-start gap-2"
-                  style={{ borderColor: "#e8c1ba", backgroundColor: "#fdf2f0" }}
-                  data-testid="alert-bleeding"
-                >
-                  <AlertTriangle className="w-4 h-4 flex-shrink-0 mt-0.5" style={{ color: "#c0392b" }} />
-                  <div className="text-sm" style={{ color: "#1c2414" }}>
-                    <p className="font-semibold">Unexpected bleeding reported on {recentBleeding.date}</p>
-                    <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
-                      Notes: {recentBleeding.notes ?? recentBleeding.otherSymptoms ?? "no additional notes"}
-                    </p>
-                  </div>
-                </div>
-              )}
+          {/* ── Calendar ───────────────────────────────────────────────── */}
+          <div className="rounded-md border bg-white" style={{ borderColor: "#e8ddd0" }} data-testid="monitoring-calendar">
+            <div className="flex items-center justify-between px-3 py-2 border-b" style={{ borderColor: "#e8ddd0" }}>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={goPrev}
+                data-testid="button-calendar-prev"
+              >
+                <ChevronLeft className="w-4 h-4" />
+              </Button>
+              <div className="flex items-center gap-2">
+                <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+                  {_MONTH_NAMES[viewMonth.getMonth()]} {viewMonth.getFullYear()}
+                </p>
+                {!isThisMonth && (
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    className="h-6 text-[10px]"
+                    onClick={() => setViewMonth(new Date(today.getFullYear(), today.getMonth(), 1))}
+                    data-testid="button-calendar-today"
+                  >
+                    Today
+                  </Button>
+                )}
+              </div>
+              <Button
+                size="icon"
+                variant="ghost"
+                className="h-7 w-7"
+                onClick={goNext}
+                data-testid="button-calendar-next"
+              >
+                <ChevronRight className="w-4 h-4" />
+              </Button>
+            </div>
+            <div className="grid grid-cols-7 gap-px px-2 pt-2 text-[10px] uppercase tracking-wider text-center" style={{ color: "#7a8a64" }}>
+              {_DOW_LABELS.map((d, i) => (
+                <div key={i} className="py-1">{d}</div>
+              ))}
+            </div>
+            <div className="grid grid-cols-7 gap-1 p-2">
+              {days.map((d, idx) => {
+                const key = _formatDateYmd(d);
+                const inMonth = d.getMonth() === viewMonth.getMonth();
+                const isToday = d.getTime() === today.getTime();
+                const ci = checkinByDay.get(key);
+                const sev = ci ? _checkinSeverity(ci) : null;
+                const sevColors = sev ? _severityColors(sev) : null;
+                const hasVital = patientVitalDays.has(key);
+                const hasMeds = (adherenceByDay.get(key)?.length ?? 0) > 0;
+                const isFuture = d.getTime() > today.getTime();
+                const clickable = !!ci || hasMeds || hasVital;
+                return (
+                  <button
+                    key={idx}
+                    type="button"
+                    disabled={!clickable}
+                    onClick={() => clickable && setOpenDayKey(key)}
+                    className={`relative aspect-square rounded-md border text-xs flex flex-col items-center justify-start p-1 ${clickable ? "hover-elevate cursor-pointer" : "cursor-default"}`}
+                    style={{
+                      borderColor: isToday ? "#2e3a20" : "#eadfd0",
+                      backgroundColor: !inMonth ? "#fbf7f0" : (sev ? sevColors!.ring : "#ffffff"),
+                      opacity: !inMonth || isFuture ? 0.55 : 1,
+                    }}
+                    data-testid={`calendar-day-${key}`}
+                  >
+                    <span
+                      className="font-medium leading-none"
+                      style={{ color: isToday ? "#2e3a20" : (inMonth ? "#1c2414" : "#a89c87") }}
+                    >
+                      {d.getDate()}
+                    </span>
+                    <div className="flex items-center gap-1 mt-auto">
+                      {sev && (
+                        <span
+                          className="w-1.5 h-1.5 rounded-full"
+                          style={{ backgroundColor: sevColors!.bg }}
+                          aria-hidden
+                        />
+                      )}
+                      {hasVital && (
+                        <Heart className="w-2.5 h-2.5" style={{ color: "#c0392b" }} aria-label="patient-logged vital" />
+                      )}
+                      {hasMeds && (
+                        <Pill className="w-2.5 h-2.5" style={{ color: "#2e7a3a" }} aria-label="meds logged" />
+                      )}
+                    </div>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-3 px-3 py-2 border-t text-[10px]" style={{ borderColor: "#e8ddd0", color: "#5a6048" }}>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#2e7a3a" }} /> Normal</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#c98b1f" }} /> Concerning</span>
+              <span className="flex items-center gap-1"><span className="w-2 h-2 rounded-full" style={{ backgroundColor: "#c0392b" }} /> Bleeding</span>
+              <span className="flex items-center gap-1"><Heart className="w-2.5 h-2.5" style={{ color: "#c0392b" }} /> Patient vital</span>
+              <span className="flex items-center gap-1"><Pill className="w-2.5 h-2.5" style={{ color: "#2e7a3a" }} /> Meds logged</span>
+            </div>
+          </div>
 
-              {/* Patient-reported medications */}
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#5a6048" }}>
-                  Patient-added medications & supplements
-                </h4>
-                {reportedMeds.length === 0 ? (
-                  <p className="text-sm" style={{ color: "#7a8a64" }}>None.</p>
-                ) : (
-                  <div className="space-y-1.5">
-                    {reportedMeds.map((m) => (
-                      <div
-                        key={m.id}
-                        className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border"
-                        style={{
-                          borderColor: m.reviewedByProvider ? "#e8ddd0" : "#e8c1ba",
-                          backgroundColor: m.reviewedByProvider ? "#ffffff" : "#fdf2f0",
-                        }}
-                        data-testid={`reported-med-${m.id}`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <div className="flex items-center gap-2 flex-wrap">
-                            <p className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>{m.name}</p>
-                            <Badge variant="outline" className="text-[10px] capitalize">{m.type}</Badge>
-                            {!m.reviewedByProvider && (
-                              <Badge className="text-[10px] text-white" style={{ backgroundColor: "#c0392b" }}>Needs review</Badge>
-                            )}
-                          </div>
-                          <p className="text-[11px] mt-0.5" style={{ color: "#7a8a64" }}>
-                            {[m.dose, m.frequency].filter(Boolean).join(" · ") || "no dose / frequency"}
-                            {" · added "}
-                            {new Date(m.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                          </p>
-                        </div>
+          {/* ── Patient-reported medications (needs review) ───────────── */}
+          <div>
+            <h4 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#5a6048" }}>
+              Patient-added medications & supplements
+            </h4>
+            {reportedMeds.length === 0 ? (
+              <p className="text-sm" style={{ color: "#7a8a64" }} data-testid="text-no-reported-meds">None reported.</p>
+            ) : (
+              <div className="space-y-1.5">
+                {reportedMeds.map((m) => (
+                  <div
+                    key={m.id}
+                    className="flex items-center justify-between gap-2 px-3 py-2 rounded-md border"
+                    style={{
+                      borderColor: m.reviewedByProvider ? "#e8ddd0" : "#e8c1ba",
+                      backgroundColor: m.reviewedByProvider ? "#ffffff" : "#fdf2f0",
+                    }}
+                    data-testid={`reported-med-${m.id}`}
+                  >
+                    <div className="min-w-0 flex-1">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>{m.name}</p>
+                        <Badge variant="outline" className="text-[10px] capitalize">{m.type}</Badge>
                         {!m.reviewedByProvider && (
-                          <Button
-                            size="sm"
-                            variant="outline"
-                            onClick={() => markReviewedMutation.mutate(m.id)}
-                            disabled={markReviewedMutation.isPending}
-                            data-testid={`button-mark-reviewed-${m.id}`}
-                          >
-                            <Check className="w-3.5 h-3.5 mr-1" /> Mark reviewed
-                          </Button>
+                          <Badge className="text-[10px] text-white" style={{ backgroundColor: "#c0392b" }}>Needs review</Badge>
                         )}
                       </div>
-                    ))}
-                  </div>
-                )}
-              </div>
-
-              {/* Recent check-ins */}
-              <div>
-                <h4 className="text-xs font-semibold uppercase tracking-wider mb-2" style={{ color: "#5a6048" }}>
-                  Recent check-ins
-                </h4>
-                {recent.length === 0 ? (
-                  <p className="text-sm" style={{ color: "#7a8a64" }}>No check-ins yet.</p>
-                ) : (
-                  <div className="space-y-1">
-                    {recent.slice(0, 7).map((c) => (
-                      <div
-                        key={c.id}
-                        className="grid grid-cols-12 gap-2 px-3 py-2 rounded-md border text-xs"
-                        style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}
-                        data-testid={`checkin-row-${c.id}`}
+                      <p className="text-[11px] mt-0.5" style={{ color: "#7a8a64" }}>
+                        {[m.dose, m.frequency].filter(Boolean).join(" · ") || "no dose / frequency"}
+                        {" · added "}
+                        {new Date(m.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                      </p>
+                    </div>
+                    {!m.reviewedByProvider && (
+                      <Button
+                        size="sm"
+                        variant="outline"
+                        onClick={() => markReviewedMutation.mutate(m.id)}
+                        disabled={markReviewedMutation.isPending}
+                        data-testid={`button-mark-reviewed-${m.id}`}
                       >
-                        <div className="col-span-3 sm:col-span-2 font-medium" style={{ color: "#1c2414" }}>
-                          {new Date(c.date + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })}
-                        </div>
-                        <div className="col-span-3 sm:col-span-2" style={{ color: "#5a6048" }}>
-                          {c.sleepHours ? `${c.sleepHours}h sleep` : "—"}
-                        </div>
-                        <div className="col-span-3 sm:col-span-2" style={{ color: "#5a6048" }}>
-                          {c.moodScore ? `Mood ${c.moodScore}/5` : "—"}
-                        </div>
-                        <div className="col-span-3 sm:col-span-2" style={{ color: "#5a6048" }}>
-                          {c.energyScore ? `Energy ${c.energyScore}/5` : "—"}
-                        </div>
-                        <div className="hidden sm:block sm:col-span-2" style={{ color: "#5a6048" }}>
-                          {c.exerciseDone ? `${c.exerciseMinutes ?? "?"} min exercise` : "no exercise"}
-                        </div>
-                        <div className="hidden sm:block sm:col-span-2" style={{ color: "#5a6048" }}>
-                          {c.weight ? `${c.weight} lb` : "—"}
-                        </div>
-                      </div>
-                    ))}
+                        <Check className="w-3.5 h-3.5 mr-1" /> Mark reviewed
+                      </Button>
+                    )}
                   </div>
-                )}
+                ))}
               </div>
-            </>
-          )}
+            )}
+          </div>
         </div>
       )}
+
+      {/* ── Per-day detail dialog ───────────────────────────────────── */}
+      <Dialog open={!!openDayKey} onOpenChange={(v) => { if (!v) setOpenDayKey(null); }}>
+        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-day-detail">
+          <DialogHeader>
+            <DialogTitle className="text-base">
+              {openDayKey
+                ? new Date(openDayKey + "T00:00:00").toLocaleDateString("en-US", {
+                    weekday: "long", month: "long", day: "numeric", year: "numeric",
+                  })
+                : ""}
+            </DialogTitle>
+          </DialogHeader>
+
+          {openDayKey && (
+            <DayDetailContent
+              checkin={openDayCheckin ?? null}
+              adherence={openDayAdherence}
+              hasPatientVital={patientVitalDays.has(openDayKey)}
+            />
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ── Per-day detail card body ──────────────────────────────────────────────
+function DayDetailContent({
+  checkin,
+  adherence,
+  hasPatientVital,
+}: {
+  checkin: _CheckinRow | null;
+  adherence: _AdherenceRow[];
+  hasPatientVital: boolean;
+}) {
+  const c = checkin;
+  const sev = c ? _checkinSeverity(c) : null;
+  const sevColors = sev ? _severityColors(sev) : null;
+  const cycle = (c?.cycleData ?? null) as Record<string, any> | null;
+
+  const sleepText = c?.sleepHours != null ? `${c.sleepHours}h` : "—";
+  const sleepQ = c?.sleepQuality != null ? `quality ${c.sleepQuality}/5` : null;
+  const sleepBits: string[] = [];
+  if (c?.nightSweats) sleepBits.push("night sweats");
+  if (c?.wokeDuringNight) sleepBits.push("woke during night");
+
+  const renderScore = (label: string, val?: number | null) => (
+    <div className="flex items-center gap-2 text-xs">
+      <span className="w-24" style={{ color: "#7a8a64" }}>{label}</span>
+      <span className="font-medium" style={{ color: "#1c2414" }}>
+        {val == null ? "—" : `${val}/5`}
+      </span>
+    </div>
+  );
+
+  if (!c && adherence.length === 0 && !hasPatientVital) {
+    return (
+      <p className="text-sm py-4" style={{ color: "#7a8a64" }}>
+        No patient activity recorded on this day.
+      </p>
+    );
+  }
+
+  return (
+    <div className="space-y-4">
+      {sev && (
+        <div className="flex items-center gap-2">
+          <span
+            className="w-2.5 h-2.5 rounded-full"
+            style={{ backgroundColor: sevColors!.bg }}
+          />
+          <span className="text-xs font-medium uppercase tracking-wider" style={{ color: sevColors!.bg }}>
+            {sev === "rose" ? "Bleeding reported" : sev === "amber" ? "Concerning" : "Normal day"}
+          </span>
+        </div>
+      )}
+
+      {c && (
+        <>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            {/* Mood / Energy / etc. */}
+            <div className="rounded-md border p-3 space-y-1.5" style={{ borderColor: "#e8ddd0" }} data-testid="day-mood">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Mood &amp; Energy</p>
+              {renderScore("Mood", c.moodScore)}
+              {renderScore("Energy", c.energyScore)}
+              {renderScore("Brain fog", c.brainFogScore)}
+              {renderScore("Anxiety", c.anxietyIrritabilityScore)}
+              {renderScore("Cravings", c.cravingsScore)}
+              {renderScore("Hunger", c.hungerScore)}
+            </div>
+
+            {/* Sleep */}
+            <div className="rounded-md border p-3 space-y-1.5" style={{ borderColor: "#e8ddd0" }} data-testid="day-sleep">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Sleep</p>
+              <p className="text-sm font-medium" style={{ color: "#1c2414" }}>
+                {sleepText}{sleepQ ? ` · ${sleepQ}` : ""}
+              </p>
+              {sleepBits.length > 0 && (
+                <p className="text-xs" style={{ color: "#5a6048" }}>{sleepBits.join(" · ")}</p>
+              )}
+            </div>
+
+            {/* Food */}
+            <div className="rounded-md border p-3 space-y-1.5" style={{ borderColor: "#e8ddd0" }} data-testid="day-food">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Food</p>
+              <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                <span style={{ color: "#7a8a64" }}>Protein</span><span style={{ color: "#1c2414" }}>{c.foodProteinLevel ?? "—"}</span>
+                <span style={{ color: "#7a8a64" }}>Water</span><span style={{ color: "#1c2414" }}>{c.waterLevel ?? "—"}</span>
+                <span style={{ color: "#7a8a64" }}>Fiber/veg</span><span style={{ color: "#1c2414" }}>{c.fiberVeggieLevel ?? "—"}</span>
+                <span style={{ color: "#7a8a64" }}>Processed</span><span style={{ color: "#1c2414" }}>{c.processedFoodLevel ?? "—"}</span>
+                <span style={{ color: "#7a8a64" }}>Alcohol</span><span style={{ color: "#1c2414" }}>{c.alcoholUse == null ? "—" : (c.alcoholUse ? "yes" : "no")}</span>
+                {c.proteinGrams != null && (<><span style={{ color: "#7a8a64" }}>Protein g</span><span style={{ color: "#1c2414" }}>{c.proteinGrams}g</span></>)}
+                {c.calories != null && (<><span style={{ color: "#7a8a64" }}>Calories</span><span style={{ color: "#1c2414" }}>{c.calories}</span></>)}
+                {c.fiberGrams != null && (<><span style={{ color: "#7a8a64" }}>Fiber g</span><span style={{ color: "#1c2414" }}>{c.fiberGrams}g</span></>)}
+                {c.waterOunces != null && (<><span style={{ color: "#7a8a64" }}>Water oz</span><span style={{ color: "#1c2414" }}>{c.waterOunces}</span></>)}
+              </div>
+              {c.foodNotes && (
+                <p className="text-xs italic mt-1" style={{ color: "#5a6048" }}>"{c.foodNotes}"</p>
+              )}
+            </div>
+
+            {/* Movement */}
+            <div className="rounded-md border p-3 space-y-1.5" style={{ borderColor: "#e8ddd0" }} data-testid="day-exercise">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Movement</p>
+              {c.exerciseDone ? (
+                <p className="text-sm" style={{ color: "#1c2414" }}>
+                  {[c.exerciseType, c.exerciseMinutes ? `${c.exerciseMinutes} min` : null, c.exerciseIntensity]
+                    .filter(Boolean).join(" · ") || "Recorded"}
+                </p>
+              ) : (
+                <p className="text-sm" style={{ color: "#7a8a64" }}>No exercise reported.</p>
+              )}
+            </div>
+
+            {/* Symptoms / Cycle */}
+            <div className="rounded-md border p-3 space-y-1.5 sm:col-span-2" style={{ borderColor: "#e8ddd0" }} data-testid="day-symptoms">
+              <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Symptoms &amp; Cycle</p>
+              {c.unexpectedBleeding && (
+                <p className="text-xs font-semibold" style={{ color: "#c0392b" }}>Unexpected bleeding reported.</p>
+              )}
+              {Array.isArray(c.giSymptoms) && c.giSymptoms.length > 0 && (
+                <p className="text-xs" style={{ color: "#1c2414" }}>
+                  <span style={{ color: "#7a8a64" }}>GI: </span>{c.giSymptoms.join(", ")}
+                </p>
+              )}
+              {cycle && Object.keys(cycle).length > 0 && (
+                <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                  {Object.entries(cycle).map(([k, v]) => {
+                    const display = Array.isArray(v) ? v.join(", ") : (typeof v === "boolean" ? (v ? "yes" : "no") : String(v));
+                    return (
+                      <div key={k} className="contents">
+                        <span style={{ color: "#7a8a64" }}>{k}</span>
+                        <span style={{ color: "#1c2414" }}>{display || "—"}</span>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+              {c.otherSymptoms && (
+                <p className="text-xs italic" style={{ color: "#5a6048" }}>"{c.otherSymptoms}"</p>
+              )}
+            </div>
+
+            {/* Weight + patient vitals */}
+            {(c.weight != null || hasPatientVital) && (
+              <div className="rounded-md border p-3 space-y-1.5" style={{ borderColor: "#e8ddd0" }} data-testid="day-weight">
+                <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Weight &amp; Vitals</p>
+                {c.weight != null && (
+                  <p className="text-sm" style={{ color: "#1c2414" }}>{c.weight} lb</p>
+                )}
+                {hasPatientVital && (
+                  <p className="text-xs flex items-center gap-1" style={{ color: "#5a6048" }}>
+                    <Heart className="w-3 h-3" style={{ color: "#c0392b" }} />
+                    Patient logged a vital sign — see Vitals workspace.
+                  </p>
+                )}
+              </div>
+            )}
+
+            {c.notes && (
+              <div className="rounded-md border p-3 sm:col-span-2" style={{ borderColor: "#e8ddd0" }} data-testid="day-notes">
+                <p className="text-[11px] uppercase tracking-wider" style={{ color: "#7a8a64" }}>Patient notes</p>
+                <p className="text-sm mt-1" style={{ color: "#1c2414" }}>{c.notes}</p>
+              </div>
+            )}
+          </div>
+        </>
+      )}
+
+      {/* ── Med adherence list ─────────────────────────────────────── */}
+      <div className="rounded-md border p-3" style={{ borderColor: "#e8ddd0" }} data-testid="day-adherence">
+        <p className="text-[11px] uppercase tracking-wider mb-2" style={{ color: "#7a8a64" }}>Medication Adherence</p>
+        {adherence.length === 0 ? (
+          <p className="text-xs" style={{ color: "#7a8a64" }}>No medications logged on this day.</p>
+        ) : (
+          <ul className="space-y-1">
+            {adherence.map((a) => {
+              const color =
+                a.status === "taken" ? "#2e7a3a" :
+                a.status === "skipped" ? "#c98b1f" :
+                a.status === "missed" ? "#c0392b" : "#7a8a64";
+              const Icon =
+                a.status === "taken" ? CheckCircle :
+                a.status === "skipped" ? AlertTriangle :
+                a.status === "missed" ? XCircle : Pill;
+              return (
+                <li
+                  key={a.id}
+                  className="flex items-center justify-between gap-2 text-xs"
+                  data-testid={`adherence-${a.id}`}
+                >
+                  <span className="flex items-center gap-1.5 min-w-0">
+                    <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color }} />
+                    <span className="truncate" style={{ color: "#1c2414" }}>{a.medicationName}</span>
+                  </span>
+                  <span className="capitalize flex-shrink-0" style={{ color }}>
+                    {a.status}{a.reason ? ` — ${a.reason}` : ""}
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+      </div>
     </div>
   );
 }
