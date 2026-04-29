@@ -2407,7 +2407,7 @@ export default function PatientProfiles() {
               {profileSection === "encounters" && (
               <Card data-testid="card-encounters">
                 <CardHeader className="pb-3">
-                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                  <div className="flex items-center gap-3 flex-wrap">
                     <CardTitle className="text-sm flex items-center gap-2">
                       <Stethoscope className="w-4 h-4 text-muted-foreground" />
                       Clinical Encounters
@@ -2415,18 +2415,17 @@ export default function PatientProfiles() {
                         <Badge variant="secondary" className="text-xs">{patientEncounters.length}</Badge>
                       )}
                     </CardTitle>
-                    <div className="flex items-center gap-2">
-                      {patientEncounters.length > 0 && (
-                        <Button
-                          variant="ghost"
-                          size="sm"
-                          onClick={() => setShowEncounters(!showEncounters)}
-                          className="text-xs"
-                          data-testid="button-toggle-encounters"
-                        >
-                          {showEncounters ? "Hide" : "View visits"}
-                        </Button>
-                      )}
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Button
+                        size="sm"
+                        onClick={() => setLocation(`/encounters?patientId=${selectedPatient.id}`)}
+                        data-testid="button-new-encounter-from-profile"
+                        className="text-xs gap-1.5"
+                        style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                      >
+                        <Plus className="h-3 w-3" />
+                        New Encounter
+                      </Button>
                       <Button
                         size="sm"
                         variant="outline"
@@ -2457,16 +2456,6 @@ export default function PatientProfiles() {
                         <FileText className="h-3 w-3" />
                         + Manual SOAP
                       </Button>
-                      <Button
-                        size="sm"
-                        onClick={() => setLocation(`/encounters?patientId=${selectedPatient.id}`)}
-                        data-testid="button-new-encounter-from-profile"
-                        className="text-xs gap-1.5"
-                        style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
-                      >
-                        <Plus className="h-3 w-3" />
-                        New Encounter
-                      </Button>
                     </div>
                   </div>
                 </CardHeader>
@@ -2475,7 +2464,7 @@ export default function PatientProfiles() {
                     <p className="text-sm text-muted-foreground">No encounters documented yet. Start one above to create an audio-transcribed SOAP note for this patient.</p>
                   </CardContent>
                 )}
-                {showEncounters && patientEncounters.length > 0 && (
+                {patientEncounters.length > 0 && (
                   <CardContent className="space-y-2">
                     {patientEncounters.map(enc => {
                       const VISIT_LABELS: Record<string, string> = {
@@ -2593,9 +2582,9 @@ export default function PatientProfiles() {
                             onClick={handleClick}
                           >
                             <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="flex items-center gap-2 min-w-0">
+                              <div className="flex items-center gap-2 min-w-0 flex-1">
                                 <Calendar className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-                                <span className="text-sm font-medium">{safeDate(enc.visitDate as unknown as string)}</span>
+                                <span className="text-sm font-medium whitespace-nowrap">{safeDate(enc.visitDate as unknown as string)}</span>
                                 <Badge className="text-[10px] py-0 h-4 gap-0.5 border-0" style={{ backgroundColor: ns.bg, color: ns.fg }}>
                                   <NoteIcon className="w-2.5 h-2.5" />
                                   {ns.label}
@@ -2603,6 +2592,16 @@ export default function PatientProfiles() {
                                 <Badge variant="outline" className="text-[10px] py-0 h-4">
                                   {VISIT_LABELS[enc.visitType] ?? enc.visitType}
                                 </Badge>
+                                {enc.chiefComplaint && (
+                                  <span
+                                    className="text-xs text-muted-foreground truncate min-w-0"
+                                    title={enc.chiefComplaint}
+                                    data-testid={`text-encounter-cc-${enc.id}`}
+                                  >
+                                    <span className="font-medium text-foreground/80">CC:</span>{" "}
+                                    {enc.chiefComplaint}
+                                  </span>
+                                )}
                                 {isSigned && (
                                   <Badge variant="outline" className="text-[10px] py-0 h-4 text-emerald-700 border-emerald-300 flex items-center gap-0.5">
                                     <Lock className="w-2.5 h-2.5" />
