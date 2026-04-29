@@ -69,7 +69,14 @@ function formatVitalTypes(types: string[]): string {
   return types.map((t) => names[t] || t).join(" + ");
 }
 
-export function ActiveVitalsMonitoringCard() {
+interface ActiveVitalsMonitoringCardProps {
+  /** Optional controlled open state for the log-reading dialog. */
+  controlledOpen?: boolean;
+  /** Optional handler for controlled open changes. */
+  onControlledOpenChange?: (open: boolean) => void;
+}
+
+export function ActiveVitalsMonitoringCard(props: ActiveVitalsMonitoringCardProps = {}) {
   const { data, isLoading } = useQuery<ActiveResponse>({
     queryKey: ["/api/portal/vitals-monitoring/active"],
   });
@@ -77,15 +84,21 @@ export function ActiveVitalsMonitoringCard() {
   if (isLoading) return null;
   if (!data?.episode) return null;
 
-  return <ActiveCard data={data} />;
+  return <ActiveCard data={data} {...props} />;
 }
 
-function ActiveCard({ data }: { data: ActiveResponse }) {
+function ActiveCard({ data, controlledOpen, onControlledOpenChange }: { data: ActiveResponse } & ActiveVitalsMonitoringCardProps) {
   const ep = data.episode!;
   const qc = useQueryClient();
   const { toast } = useToast();
 
-  const [open, setOpen] = useState(false);
+  const [internalOpen, setInternalOpen] = useState(false);
+  const isControlled = controlledOpen !== undefined;
+  const open = isControlled ? !!controlledOpen : internalOpen;
+  const setOpen = (v: boolean) => {
+    if (isControlled) onControlledOpenChange?.(v);
+    else setInternalOpen(v);
+  };
   const [systolic, setSystolic] = useState<string>("");
   const [diastolic, setDiastolic] = useState<string>("");
   const [heartRate, setHeartRate] = useState<string>("");
