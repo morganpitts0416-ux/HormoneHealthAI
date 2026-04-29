@@ -7,12 +7,18 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Switch } from "@/components/ui/switch";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
+} from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
 import {
-  ArrowLeft, Apple, Moon, Activity, Smile, AlertCircle, Pill, Droplets,
-  CheckCircle2, Loader2, Plus, Trash2, ChevronRight,
+  ArrowLeft, ArrowRight, Apple, Moon, Activity, Smile, Heart, Pill, Droplets,
+  CheckCircle2, Loader2, Plus, Trash2, Sparkles, Sun, ChevronDown, X,
 } from "lucide-react";
 import { ActiveVitalsMonitoringCard } from "@/components/portal/active-vitals-monitoring-card";
+import { LabeledChipScale } from "@/components/portal/labeled-chip-scale";
+
+/* ------------------------------- types ------------------------------- */
 
 type CheckIn = {
   date: string;
@@ -55,7 +61,10 @@ type Settings = {
 
 type MedicationsResponse = {
   chartMedications: Array<{ id: string; name: string; source: string }>;
-  patientReported: Array<{ id: string; rowId: number; name: string; dose?: string | null; frequency?: string | null; type: string; source: string; reviewedByProvider: boolean }>;
+  patientReported: Array<{
+    id: string; rowId: number; name: string; dose?: string | null;
+    frequency?: string | null; type: string; source: string; reviewedByProvider: boolean;
+  }>;
 };
 
 type AdherenceLog = {
@@ -65,85 +74,133 @@ type AdherenceLog = {
   status: string;
 };
 
-const SECTIONS = [
-  { id: "food", label: "Food & Drink", icon: Apple },
-  { id: "sleep", label: "Sleep", icon: Moon },
-  { id: "exercise", label: "Movement", icon: Activity },
-  { id: "mood", label: "How You Feel", icon: Smile },
-  { id: "symptoms", label: "Symptoms", icon: AlertCircle },
-  { id: "cycle", label: "Cycle", icon: Droplets },
-  { id: "meds", label: "Medications", icon: Pill },
-];
+type ActiveVitalsResponse = {
+  episode: { id: number; vitalTypes: string[]; status: string } | null;
+};
+
+/* ------------------------------- helpers ------------------------------- */
 
 function todayStr() { return new Date().toISOString().slice(0, 10); }
 
-function Rating({ value, onChange, min = 1, max = 5, lowLabel, highLabel, testId }: {
-  value: number | null | undefined;
-  onChange: (n: number | null) => void;
-  min?: number; max?: number;
-  lowLabel?: string; highLabel?: string;
-  testId: string;
-}) {
-  const opts: number[] = [];
-  for (let i = min; i <= max; i++) opts.push(i);
+const PALETTE = {
+  bg: "#f9f6f0",
+  card: "#ffffff",
+  cardBorder: "#ede8df",
+  ink: "#1c2414",
+  inkSoft: "#5a6048",
+  inkMuted: "#7a8a64",
+  brand: "#2e3a20",
+  brandSoft: "#edf4e4",
+  brandSoftBorder: "#c8dbb8",
+  divider: "#f0ebe2",
+  warmAccent: "#8b5a10",
+  warmAccentSoft: "#fdf6e8",
+  warmAccentBorder: "#f0d8a4",
+  rose: "#a0405c",
+} as const;
+
+/* small atoms ------------------------------------------------------------ */
+
+function Field({ label, hint, children }: { label: string; hint?: string; children: React.ReactNode }) {
   return (
-    <div className="space-y-1.5">
-      <div className="flex flex-wrap gap-1.5" data-testid={testId}>
-        {opts.map((n) => {
-          const selected = value === n;
-          return (
-            <button
-              key={n}
-              type="button"
-              onClick={() => onChange(selected ? null : n)}
-              className={`min-w-10 h-10 px-3 rounded-md text-sm font-medium border transition-colors hover-elevate active-elevate-2`}
-              style={{
-                backgroundColor: selected ? "#2e3a20" : "#ffffff",
-                color: selected ? "#ffffff" : "#1c2414",
-                borderColor: selected ? "#2e3a20" : "#d4c9b5",
-              }}
-              data-testid={`${testId}-opt-${n}`}
-            >
-              {n}
-            </button>
-          );
-        })}
+    <div className="space-y-2">
+      <div className="space-y-0.5">
+        <Label className="text-sm font-medium" style={{ color: PALETTE.ink }}>{label}</Label>
+        {hint && <p className="text-xs" style={{ color: PALETTE.inkMuted }}>{hint}</p>}
       </div>
-      {(lowLabel || highLabel) && (
-        <div className="flex justify-between text-[11px]" style={{ color: "#7a8a64" }}>
-          <span>{lowLabel}</span><span>{highLabel}</span>
-        </div>
-      )}
+      {children}
     </div>
   );
 }
 
-function Section({ id, title, children }: { id: string; title: string; children: React.ReactNode }) {
-  return (
-    <section
-      id={`section-${id}`}
-      className="rounded-xl border p-4 sm:p-5 space-y-4 scroll-mt-20"
-      style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}
-    >
-      <h2 className="text-base font-semibold" style={{ color: "#1c2414" }}>{title}</h2>
-      {children}
-    </section>
-  );
-}
-
-function ToggleRow({ label, value, onChange, testId }: {
+function SoftToggle({ label, hint, value, onChange, testId }: {
   label: string;
+  hint?: string;
   value: boolean | null | undefined;
   onChange: (v: boolean) => void;
   testId: string;
 }) {
   return (
-    <div className="flex items-center justify-between gap-3 py-1">
-      <Label className="text-sm font-normal" style={{ color: "#1c2414" }}>{label}</Label>
+    <div
+      className="flex items-start justify-between gap-3 rounded-xl border px-4 py-3"
+      style={{ backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }}
+    >
+      <div className="min-w-0 flex-1">
+        <p className="text-sm font-medium" style={{ color: PALETTE.ink }}>{label}</p>
+        {hint && <p className="text-xs mt-0.5" style={{ color: PALETTE.inkMuted }}>{hint}</p>}
+      </div>
       <Switch checked={!!value} onCheckedChange={onChange} data-testid={testId} />
     </div>
   );
 }
+
+function Disclosure({
+  summary, defaultOpen, children, testId,
+}: { summary: string; defaultOpen?: boolean; children: React.ReactNode; testId: string }) {
+  const [open, setOpen] = useState(!!defaultOpen);
+  // Sync when defaultOpen flips from false→true after async settings hydrate
+  // (e.g. Power Mode arrives after first render). Only opens; never auto-closes.
+  useEffect(() => {
+    if (defaultOpen) setOpen(true);
+  }, [defaultOpen]);
+  return (
+    <div className="rounded-xl border" style={{ backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }}>
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="w-full flex items-center justify-between gap-3 px-4 py-3 text-left hover-elevate rounded-xl"
+        data-testid={testId}
+      >
+        <span className="text-sm font-medium" style={{ color: PALETTE.ink }}>{summary}</span>
+        <ChevronDown
+          className="w-4 h-4 transition-transform"
+          style={{ color: PALETTE.inkMuted, transform: open ? "rotate(180deg)" : "none" }}
+        />
+      </button>
+      {open && <div className="px-4 pb-4 space-y-4">{children}</div>}
+    </div>
+  );
+}
+
+function StepHeading({ icon: Icon, eyebrow, title, subtitle }: {
+  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
+  eyebrow?: string;
+  title: string;
+  subtitle: string;
+}) {
+  return (
+    <div className="space-y-3">
+      <div
+        className="w-12 h-12 rounded-2xl flex items-center justify-center"
+        style={{ backgroundColor: PALETTE.brandSoft }}
+      >
+        <Icon className="w-6 h-6" style={{ color: PALETTE.brand }} />
+      </div>
+      {eyebrow && (
+        <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: PALETTE.inkMuted }}>
+          {eyebrow}
+        </p>
+      )}
+      <div>
+        <h2 className="text-2xl font-semibold leading-tight" style={{ color: PALETTE.ink }}>{title}</h2>
+        <p className="text-sm mt-1.5 leading-relaxed" style={{ color: PALETTE.inkSoft }}>{subtitle}</p>
+      </div>
+    </div>
+  );
+}
+
+/* -------------------- main component -------------------- */
+
+type StepId =
+  | "welcome"
+  | "feeling"
+  | "body"
+  | "fuel"
+  | "movement"
+  | "meds"
+  | "vitals"
+  | "reflection"
+  | "done";
 
 export default function PortalCheckIn() {
   const [, setLocation] = useLocation();
@@ -151,21 +208,16 @@ export default function PortalCheckIn() {
   const { toast } = useToast();
   const [date] = useState(todayStr());
   const [draft, setDraft] = useState<CheckIn>({ date });
-  const [activeSection, setActiveSection] = useState("food");
-  const [newMedName, setNewMedName] = useState("");
-  const [newMedDose, setNewMedDose] = useState("");
-  const [newMedFreq, setNewMedFreq] = useState("");
-  const [newMedType, setNewMedType] = useState<"medication" | "supplement">("supplement");
+  const [stepIndex, setStepIndex] = useState(0);
+  const [showAddMed, setShowAddMed] = useState(false);
 
-  // Auth check
+  // ---- queries ----
   const { data: me, isLoading: meLoading, error: meError } = useQuery<{ id: number; firstName: string; gender?: string }>({
     queryKey: ["/api/portal/me"],
     retry: false,
   });
 
-  useEffect(() => {
-    if (meError) setLocation("/portal/login");
-  }, [meError, setLocation]);
+  useEffect(() => { if (meError) setLocation("/portal/login"); }, [meError, setLocation]);
 
   const { data: settings } = useQuery<Settings>({
     queryKey: ["/api/portal/tracking/settings"],
@@ -187,30 +239,47 @@ export default function PortalCheckIn() {
     },
     enabled: !!me,
   });
+  const { data: activeVitals } = useQuery<ActiveVitalsResponse>({
+    queryKey: ["/api/portal/vitals-monitoring/active"],
+    enabled: !!me,
+  });
 
-  // Initialise draft from server-side today record
   useEffect(() => {
-    if (today && today.date) {
-      setDraft({ ...today, date: today.date });
-    }
+    if (today && today.date) setDraft({ ...today, date: today.date });
   }, [today]);
 
   const showCycle = useMemo(() => {
     const gender = (me as any)?.gender?.toLowerCase?.() ?? "";
     const isFemale = gender === "female" || gender === "f";
-    const stillHasCycle = settings?.stillHasCycle;
-    return isFemale && stillHasCycle !== false;
+    return isFemale && settings?.stillHasCycle !== false;
   }, [me, settings]);
+  const hasActiveVitals = !!activeVitals?.episode && activeVitals.episode.status === "active";
 
-  const visibleSections = useMemo(
-    () => SECTIONS.filter((s) => s.id !== "cycle" || showCycle),
-    [showCycle],
-  );
+  // ---- step list (built dynamically) ----
+  const steps = useMemo<StepId[]>(() => {
+    const s: StepId[] = ["welcome", "feeling", "body", "fuel", "movement", "meds"];
+    if (hasActiveVitals) s.push("vitals");
+    s.push("reflection", "done");
+    return s;
+  }, [hasActiveVitals]);
 
+  const totalDataSteps = steps.filter((s) => s !== "welcome" && s !== "done").length;
+  const currentDataStepIndex = useMemo(() => {
+    let count = 0;
+    for (let i = 0; i <= stepIndex && i < steps.length; i++) {
+      const id = steps[i];
+      if (id !== "welcome" && id !== "done") count++;
+    }
+    return count;
+  }, [steps, stepIndex]);
+  const currentStep = steps[stepIndex] ?? "welcome";
+  const isLastDataStep = stepIndex === steps.length - 2; // last one before "done"
+  const isCompletion = currentStep === "done";
+
+  // ---- mutations ----
   const saveMutation = useMutation({
     mutationFn: () => apiRequest("POST", "/api/portal/tracking/checkins", { ...draft, date }),
     onSuccess: () => {
-      toast({ title: "Check-in saved", description: "Thanks for keeping us in the loop." });
       qc.invalidateQueries({ queryKey: ["/api/portal/tracking/checkins/today"] });
       qc.invalidateQueries({ queryKey: ["/api/portal/tracking/checkins"] });
     },
@@ -223,489 +292,887 @@ export default function PortalCheckIn() {
     onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/portal/tracking/med-adherence", { from: date, to: date }] }),
   });
 
-  const addMedMutation = useMutation({
-    mutationFn: () => apiRequest("POST", "/api/portal/tracking/patient-reported-medication", {
-      name: newMedName.trim(), dose: newMedDose.trim() || null, frequency: newMedFreq.trim() || null, type: newMedType,
-    }),
-    onSuccess: () => {
-      toast({ title: `${newMedType === "medication" ? "Medication" : "Supplement"} added`, description: "Your care team has been notified for review." });
-      setNewMedName(""); setNewMedDose(""); setNewMedFreq("");
-      qc.invalidateQueries({ queryKey: ["/api/portal/tracking/medications"] });
-    },
-    onError: () => toast({ title: "Couldn't add", description: "Please try again.", variant: "destructive" }),
-  });
-
-  const deleteMedMutation = useMutation({
-    mutationFn: (rowId: number) => apiRequest("DELETE", `/api/portal/tracking/patient-reported-medication/${rowId}`, {}),
-    onSuccess: () => qc.invalidateQueries({ queryKey: ["/api/portal/tracking/medications"] }),
-  });
-
+  // ---- guards ----
   if (meLoading) {
     return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f9f6f0" }}>
-        <Loader2 className="w-6 h-6 animate-spin" style={{ color: "#2e3a20" }} />
+      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: PALETTE.bg }}>
+        <Loader2 className="w-6 h-6 animate-spin" style={{ color: PALETTE.brand }} />
       </div>
     );
   }
 
-  // Tracking is off — show opt-in nudge
+  // Tracking is OFF — opt-in nudge (kept; just polished)
   if (settings && settings.trackingMode === "off") {
-    return (
-      <div className="min-h-screen" style={{ backgroundColor: "#f9f6f0" }}>
-        <header className="border-b" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
-          <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
+    return <OptInScreen onEnable={async () => {
+      await apiRequest("POST", "/api/portal/tracking/settings", { trackingMode: "standard", enabled: true, setupCompleted: true });
+      qc.invalidateQueries({ queryKey: ["/api/portal/tracking/settings"] });
+    }} />;
+  }
+
+  /* ------------------ navigation handlers ------------------ */
+  const goBack = () => {
+    if (stepIndex === 0) {
+      setLocation("/portal/dashboard");
+      return;
+    }
+    setStepIndex((i) => Math.max(0, i - 1));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const goNext = () => {
+    if (isLastDataStep) {
+      // Save then advance to completion
+      saveMutation.mutate(undefined, {
+        onSuccess: () => {
+          setStepIndex((i) => i + 1);
+          if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+        },
+      });
+      return;
+    }
+    setStepIndex((i) => Math.min(steps.length - 1, i + 1));
+    if (typeof window !== "undefined") window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+  const saveAndExit = () => {
+    saveMutation.mutate(undefined, {
+      onSuccess: () => {
+        toast({ title: "Saved for now", description: "We kept what you've added so far." });
+        setLocation("/portal/dashboard");
+      },
+    });
+  };
+
+  /* ------------------ render ------------------ */
+
+  if (isCompletion) {
+    return <CompletionScreen draft={draft} firstName={me?.firstName} />;
+  }
+
+  return (
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: PALETTE.bg }}>
+      {/* Sticky header with progress + save & exit */}
+      <header
+        className="sticky top-0 z-40 border-b"
+        style={{ backgroundColor: PALETTE.bg, borderColor: PALETTE.cardBorder }}
+      >
+        <div className="max-w-2xl mx-auto px-4 py-3 space-y-2.5">
+          <div className="flex items-center justify-between gap-2">
             <Link href="/portal/dashboard">
               <Button variant="ghost" size="sm" data-testid="link-back-dashboard">
-                <ArrowLeft className="w-4 h-4 mr-1.5" /> Back
+                <ArrowLeft className="w-4 h-4 mr-1.5" /> Dashboard
               </Button>
             </Link>
-          </div>
-        </header>
-        <main className="max-w-2xl mx-auto px-4 py-8 space-y-6">
-          <div className="rounded-xl border p-6 space-y-4" style={{ backgroundColor: "#ffffff", borderColor: "#e8ddd0" }}>
-            <h1 className="text-xl font-semibold" style={{ color: "#1c2414" }}>Daily Check-In</h1>
-            <p className="text-sm" style={{ color: "#5a6048" }}>
-              Track how you're doing day-to-day so your care team can spot patterns between visits.
-              This is completely optional. You can pause or stop anytime.
-            </p>
-            <p className="text-sm" style={{ color: "#5a6048" }}>
-              Standard Mode takes about 60 seconds a day: food, sleep, mood, symptoms, and your medications.
-            </p>
-            <div className="flex flex-wrap gap-2 pt-2">
-              <Button
-                onClick={async () => {
-                  await apiRequest("POST", "/api/portal/tracking/settings", { trackingMode: "standard", enabled: true, setupCompleted: true });
-                  qc.invalidateQueries({ queryKey: ["/api/portal/tracking/settings"] });
-                }}
-                style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                data-testid="button-enable-tracking"
-              >
-                Start tracking
-              </Button>
-              <Link href="/portal/dashboard">
-                <Button variant="outline" data-testid="button-not-now">Not now</Button>
-              </Link>
+            <div className="text-center min-w-0 flex-1">
+              <p className="text-xs font-medium" style={{ color: PALETTE.inkMuted }}>
+                {currentStep === "welcome"
+                  ? "Today's check-in"
+                  : `Step ${currentDataStepIndex} of ${totalDataSteps}`}
+              </p>
             </div>
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={saveAndExit}
+              disabled={saveMutation.isPending}
+              data-testid="button-save-exit"
+            >
+              {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save & exit"}
+            </Button>
           </div>
-        </main>
-      </div>
-    );
-  }
 
+          {currentStep !== "welcome" && (
+            <div
+              className="h-1.5 rounded-full overflow-hidden"
+              style={{ backgroundColor: "#e8ddd0" }}
+              role="progressbar"
+              aria-valuenow={currentDataStepIndex}
+              aria-valuemin={1}
+              aria-valuemax={totalDataSteps}
+              data-testid="progress-checkin"
+            >
+              <div
+                className="h-full transition-all duration-300"
+                style={{
+                  width: `${(currentDataStepIndex / totalDataSteps) * 100}%`,
+                  backgroundColor: PALETTE.brand,
+                }}
+              />
+            </div>
+          )}
+        </div>
+      </header>
+
+      {/* Step content */}
+      <main className="flex-1 max-w-2xl w-full mx-auto px-4 py-8 pb-32">
+        {currentStep === "welcome" && (
+          <WelcomeStep firstName={me?.firstName} hasVitals={hasActiveVitals} totalSteps={totalDataSteps} />
+        )}
+        {currentStep === "feeling" && (
+          <FeelingStep draft={draft} setDraft={setDraft} />
+        )}
+        {currentStep === "body" && (
+          <BodyStep draft={draft} setDraft={setDraft} />
+        )}
+        {currentStep === "fuel" && (
+          <FuelStep draft={draft} setDraft={setDraft} powerMode={settings?.trackingMode === "power"} />
+        )}
+        {currentStep === "movement" && (
+          <MovementStep draft={draft} setDraft={setDraft} />
+        )}
+        {currentStep === "meds" && (
+          <MedsStep
+            meds={meds}
+            adherenceToday={adherenceToday}
+            adherenceMutation={adherenceMutation}
+            onOpenAddMed={() => setShowAddMed(true)}
+          />
+        )}
+        {currentStep === "vitals" && <VitalsStep />}
+        {currentStep === "reflection" && (
+          <ReflectionStep
+            draft={draft}
+            setDraft={setDraft}
+            showCycle={showCycle}
+          />
+        )}
+      </main>
+
+      {/* Sticky footer with Back / Continue */}
+      <div
+        className="sticky bottom-0 z-30 border-t"
+        style={{ backgroundColor: PALETTE.bg, borderColor: PALETTE.cardBorder }}
+      >
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+          <Button
+            variant="outline"
+            onClick={goBack}
+            disabled={saveMutation.isPending}
+            data-testid="button-step-back"
+          >
+            <ArrowLeft className="w-4 h-4 mr-1.5" /> Back
+          </Button>
+          <Button
+            size="lg"
+            onClick={goNext}
+            disabled={saveMutation.isPending}
+            style={{ backgroundColor: PALETTE.brand, color: "#ffffff" }}
+            data-testid="button-step-continue"
+          >
+            {saveMutation.isPending ? (
+              <Loader2 className="w-4 h-4 animate-spin" />
+            ) : isLastDataStep ? (
+              <>Finish check-in <CheckCircle2 className="w-4 h-4 ml-1.5" /></>
+            ) : currentStep === "welcome" ? (
+              <>Let's begin <ArrowRight className="w-4 h-4 ml-1.5" /></>
+            ) : (
+              <>Continue <ArrowRight className="w-4 h-4 ml-1.5" /></>
+            )}
+          </Button>
+        </div>
+      </div>
+
+      <AddMedDialog open={showAddMed} onOpenChange={setShowAddMed} />
+    </div>
+  );
+}
+
+/* ============================================================
+                          STEPS
+   ============================================================ */
+
+function WelcomeStep({ firstName, hasVitals, totalSteps }: {
+  firstName?: string; hasVitals: boolean; totalSteps: number;
+}) {
+  const greeting = firstName ? `Good to see you, ${firstName}.` : "Good to see you.";
+  return (
+    <div className="space-y-6" data-testid="step-welcome">
+      <div className="space-y-3">
+        <div
+          className="w-14 h-14 rounded-2xl flex items-center justify-center"
+          style={{ backgroundColor: PALETTE.brandSoft }}
+        >
+          <Sun className="w-7 h-7" style={{ color: PALETTE.brand }} />
+        </div>
+        <div>
+          <h1 className="text-3xl font-semibold leading-tight" style={{ color: PALETTE.ink }}>
+            {greeting}
+          </h1>
+          <p className="text-base mt-2 leading-relaxed" style={{ color: PALETTE.inkSoft }}>
+            A quick check-in helps your care team see how you're really doing
+            between visits — energy, sleep, fuel, and how things feel.
+          </p>
+        </div>
+      </div>
+      <div
+        className="rounded-2xl border p-5 space-y-3"
+        style={{ backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }}
+      >
+        <p className="text-sm font-medium" style={{ color: PALETTE.ink }}>Today's flow</p>
+        <ul className="space-y-2 text-sm" style={{ color: PALETTE.inkSoft }}>
+          <li className="flex items-center gap-2.5"><Smile className="w-4 h-4" style={{ color: PALETTE.brand }} /> How you're feeling</li>
+          <li className="flex items-center gap-2.5"><Moon className="w-4 h-4" style={{ color: PALETTE.brand }} /> Body & sleep</li>
+          <li className="flex items-center gap-2.5"><Apple className="w-4 h-4" style={{ color: PALETTE.brand }} /> Fuel & hydration</li>
+          <li className="flex items-center gap-2.5"><Activity className="w-4 h-4" style={{ color: PALETTE.brand }} /> Movement</li>
+          <li className="flex items-center gap-2.5"><Pill className="w-4 h-4" style={{ color: PALETTE.brand }} /> Today's medications & supplements</li>
+          {hasVitals && (
+            <li className="flex items-center gap-2.5"><Heart className="w-4 h-4" style={{ color: PALETTE.warmAccent }} /> Vitals — requested by your care team</li>
+          )}
+          <li className="flex items-center gap-2.5"><Sparkles className="w-4 h-4" style={{ color: PALETTE.brand }} /> A short reflection</li>
+        </ul>
+        <p className="text-xs pt-1" style={{ color: PALETTE.inkMuted }}>
+          About 60 seconds across {totalSteps} short moments. You can save & exit any time.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function FeelingStep({ draft, setDraft }: { draft: CheckIn; setDraft: (d: CheckIn) => void }) {
+  return (
+    <div className="space-y-6" data-testid="step-feeling">
+      <StepHeading
+        icon={Smile}
+        eyebrow="Moment 1"
+        title="How are you feeling today?"
+        subtitle="A quick check helps your care team see patterns over time. There are no wrong answers."
+      />
+      <div className="space-y-5">
+        <Field label="Mood">
+          <LabeledChipScale scale="mood" value={draft.moodScore} onChange={(n) => setDraft({ ...draft, moodScore: n })} testId="rating-mood" />
+        </Field>
+        <Field label="Energy">
+          <LabeledChipScale scale="energy" value={draft.energyScore} onChange={(n) => setDraft({ ...draft, energyScore: n })} testId="rating-energy" />
+        </Field>
+        <Disclosure summary="Track a bit more (cravings, hunger, focus, anxiety)" testId="disclosure-feeling-more">
+          <Field label="Cravings">
+            <LabeledChipScale scale="cravings" value={draft.cravingsScore} onChange={(n) => setDraft({ ...draft, cravingsScore: n })} testId="rating-cravings" />
+          </Field>
+          <Field label="Hunger">
+            <LabeledChipScale scale="hunger" value={draft.hungerScore} onChange={(n) => setDraft({ ...draft, hungerScore: n })} testId="rating-hunger" />
+          </Field>
+          <Field label="Focus / brain fog">
+            <LabeledChipScale scale="brainFog" value={draft.brainFogScore} onChange={(n) => setDraft({ ...draft, brainFogScore: n })} testId="rating-brainfog" />
+          </Field>
+          <Field label="Anxiety / irritability">
+            <LabeledChipScale scale="anxiety" value={draft.anxietyIrritabilityScore} onChange={(n) => setDraft({ ...draft, anxietyIrritabilityScore: n })} testId="rating-anxiety" />
+          </Field>
+        </Disclosure>
+      </div>
+    </div>
+  );
+}
+
+function BodyStep({ draft, setDraft }: { draft: CheckIn; setDraft: (d: CheckIn) => void }) {
+  return (
+    <div className="space-y-6" data-testid="step-body">
+      <StepHeading
+        icon={Moon}
+        eyebrow="Moment 2"
+        title="Body & sleep"
+        subtitle="Sleep shapes energy, mood, and cravings. A snapshot of last night helps us see what's affecting your day."
+      />
+      <div className="space-y-5">
+        <Field label="Sleep quality" hint="How restorative did last night feel?">
+          <LabeledChipScale scale="sleepQuality" value={draft.sleepQuality} onChange={(n) => setDraft({ ...draft, sleepQuality: n })} testId="rating-sleep-quality" />
+        </Field>
+        <Field label="Hours slept" hint="A rough estimate is fine.">
+          <Input
+            type="number" step="0.25" inputMode="decimal"
+            placeholder="7.5"
+            value={draft.sleepHours ?? ""}
+            onChange={(e) => setDraft({ ...draft, sleepHours: e.target.value || null })}
+            className="max-w-32"
+            data-testid="input-sleep-hours"
+          />
+        </Field>
+        <SoftToggle
+          label="Night sweats"
+          hint="Tap if you woke up sweaty or warm last night."
+          value={draft.nightSweats}
+          onChange={(v) => setDraft({ ...draft, nightSweats: v })}
+          testId="toggle-night-sweats"
+        />
+        <SoftToggle
+          label="Woke during the night"
+          value={draft.wokeDuringNight}
+          onChange={(v) => setDraft({ ...draft, wokeDuringNight: v })}
+          testId="toggle-woke"
+        />
+        <Disclosure summary="Log today's weight (optional)" testId="disclosure-weight">
+          <Field label="Weight (lbs)">
+            <Input
+              type="number" step="0.1" inputMode="decimal"
+              placeholder="lbs"
+              value={draft.weight ?? ""}
+              onChange={(e) => setDraft({ ...draft, weight: e.target.value || null })}
+              className="max-w-32"
+              data-testid="input-weight"
+            />
+          </Field>
+        </Disclosure>
+      </div>
+    </div>
+  );
+}
+
+function FuelStep({ draft, setDraft, powerMode }: {
+  draft: CheckIn; setDraft: (d: CheckIn) => void; powerMode: boolean;
+}) {
+  return (
+    <div className="space-y-6" data-testid="step-fuel">
+      <StepHeading
+        icon={Apple}
+        eyebrow="Moment 3"
+        title="Fuel & hydration"
+        subtitle="What you eat and drink can affect energy, cravings, sleep, and progress. Big picture is enough — no calorie counting needed."
+      />
+      <div className="space-y-5">
+        <Field label="Protein at meals" hint="Most patients do best with a protein source at each meal.">
+          <LabeledChipScale scale="protein" value={draft.foodProteinLevel} onChange={(n) => setDraft({ ...draft, foodProteinLevel: n })} testId="rating-protein" />
+        </Field>
+        <Field label="Water">
+          <LabeledChipScale scale="water" value={draft.waterLevel} onChange={(n) => setDraft({ ...draft, waterLevel: n })} testId="rating-water" />
+        </Field>
+        <Field label="Fiber & vegetables">
+          <LabeledChipScale scale="fiber" value={draft.fiberVeggieLevel} onChange={(n) => setDraft({ ...draft, fiberVeggieLevel: n })} testId="rating-fiber" />
+        </Field>
+        <Disclosure
+          summary={powerMode ? "Processed food, alcohol & notes" : "Add more detail (processed food, alcohol, notes)"}
+          defaultOpen={powerMode}
+          testId="disclosure-fuel-more"
+        >
+          <Field label="Processed / packaged food">
+            <LabeledChipScale scale="processed" value={draft.processedFoodLevel} onChange={(n) => setDraft({ ...draft, processedFoodLevel: n })} testId="rating-processed" />
+          </Field>
+          <Field label="Alcohol today">
+            <LabeledChipScale scale="alcohol" value={draft.alcoholUse} onChange={(n) => setDraft({ ...draft, alcoholUse: n })} testId="rating-alcohol" />
+          </Field>
+          <Field label="Notes" hint="Anything you'd like your team to know about food or drinks today?">
+            <Textarea
+              rows={3}
+              placeholder="A note about today's meals (optional)"
+              value={draft.foodNotes ?? ""}
+              onChange={(e) => setDraft({ ...draft, foodNotes: e.target.value })}
+              data-testid="input-food-notes"
+            />
+          </Field>
+        </Disclosure>
+      </div>
+    </div>
+  );
+}
+
+function MovementStep({ draft, setDraft }: { draft: CheckIn; setDraft: (d: CheckIn) => void }) {
+  return (
+    <div className="space-y-6" data-testid="step-movement">
+      <StepHeading
+        icon={Activity}
+        eyebrow="Moment 4"
+        title="Did you move today?"
+        subtitle="Even a short walk counts. We're tracking the rhythm, not the workout."
+      />
+      <div className="space-y-5">
+        <SoftToggle
+          label="I moved my body today"
+          hint="Walks, errands on foot, lifting, yoga, sports — anything intentional."
+          value={draft.exerciseDone}
+          onChange={(v) => setDraft({ ...draft, exerciseDone: v })}
+          testId="toggle-exercise"
+        />
+        {draft.exerciseDone && (
+          <div className="space-y-4 pl-1">
+            <Field label="What kind?">
+              <Input
+                placeholder="walk, lifting, yoga..."
+                value={draft.exerciseType ?? ""}
+                onChange={(e) => setDraft({ ...draft, exerciseType: e.target.value })}
+                data-testid="input-exercise-type"
+              />
+            </Field>
+            <Field label="Roughly how long? (minutes)">
+              <Input
+                type="number" inputMode="numeric"
+                placeholder="30"
+                value={draft.exerciseMinutes ?? ""}
+                onChange={(e) => setDraft({ ...draft, exerciseMinutes: e.target.value ? Number(e.target.value) : null })}
+                className="max-w-28"
+                data-testid="input-exercise-minutes"
+              />
+            </Field>
+            <Field label="Intensity">
+              <LabeledChipScale scale="intensity" value={draft.exerciseIntensity} onChange={(n) => setDraft({ ...draft, exerciseIntensity: n })} testId="rating-intensity" />
+            </Field>
+          </div>
+        )}
+      </div>
+    </div>
+  );
+}
+
+function MedsStep({
+  meds, adherenceToday, adherenceMutation, onOpenAddMed,
+}: {
+  meds: MedicationsResponse | undefined;
+  adherenceToday: AdherenceLog[];
+  adherenceMutation: any;
+  onOpenAddMed: () => void;
+}) {
   const adherenceMap = new Map<string, AdherenceLog>();
   for (const log of adherenceToday) adherenceMap.set(log.medicationName, log);
 
   const allMeds = [
-    ...(meds?.chartMedications ?? []).map((m) => ({ id: m.id, name: m.name, source: "patient_chart" as const, rowId: undefined as number | undefined })),
-    ...(meds?.patientReported ?? []).map((m) => ({ id: m.id, name: m.name, source: "patient_reported" as const, rowId: m.rowId })),
+    ...(meds?.chartMedications ?? []).map((m) => ({
+      id: m.id, name: m.name, source: "patient_chart" as const,
+      sourceLabel: "From chart", rowId: undefined as number | undefined,
+    })),
+    ...(meds?.patientReported ?? []).map((m) => ({
+      id: m.id, name: m.name, dose: m.dose, frequency: m.frequency,
+      source: "patient_reported" as const, sourceLabel: "Added by you", rowId: m.rowId,
+    })),
   ];
 
   return (
-    <div className="min-h-screen" style={{ backgroundColor: "#f9f6f0" }}>
-      <header className="sticky top-0 z-40 border-b" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
-        <div className="max-w-5xl mx-auto px-4 py-3 flex items-center justify-between gap-3">
+    <div className="space-y-6" data-testid="step-meds">
+      <StepHeading
+        icon={Pill}
+        eyebrow="Moment 5"
+        title="Today's medications & supplements"
+        subtitle="Consistency helps us understand what's working — and what may need adjusting."
+      />
+      <div className="space-y-3">
+        {allMeds.length === 0 && (
+          <div
+            className="rounded-xl border p-5 text-center space-y-1"
+            style={{ backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }}
+          >
+            <p className="text-sm" style={{ color: PALETTE.inkSoft }}>
+              No medications or supplements on file yet.
+            </p>
+            <p className="text-xs" style={{ color: PALETTE.inkMuted }}>
+              You can add what you take below.
+            </p>
+          </div>
+        )}
+        {allMeds.map((m: any) => {
+          const log = adherenceMap.get(m.name);
+          const taken = log?.status === "taken";
+          const skipped = log?.status === "skipped" || log?.status === "missed";
+          return (
+            <div
+              key={m.id}
+              className="rounded-xl border px-4 py-3.5 space-y-2.5"
+              style={{
+                backgroundColor: taken ? PALETTE.brandSoft : PALETTE.card,
+                borderColor: taken ? PALETTE.brandSoftBorder : PALETTE.cardBorder,
+              }}
+              data-testid={`med-row-${m.id}`}
+            >
+              <div className="flex items-start justify-between gap-3">
+                <div className="min-w-0 flex-1">
+                  <p className="text-sm font-medium" style={{ color: PALETTE.ink }}>{m.name}</p>
+                  {(m.dose || m.frequency) && (
+                    <p className="text-xs mt-0.5" style={{ color: PALETTE.inkSoft }}>
+                      {[m.dose, m.frequency].filter(Boolean).join(" · ")}
+                    </p>
+                  )}
+                </div>
+                <span
+                  className="text-[10px] font-medium uppercase tracking-wide rounded-full px-2 py-0.5 flex-shrink-0"
+                  style={{
+                    color: m.source === "patient_chart" ? PALETTE.brand : PALETTE.warmAccent,
+                    backgroundColor: m.source === "patient_chart" ? PALETTE.brandSoft : PALETTE.warmAccentSoft,
+                  }}
+                >
+                  {m.sourceLabel}
+                </span>
+              </div>
+              <div className="flex items-center gap-2">
+                <Button
+                  size="sm"
+                  variant={taken ? "default" : "outline"}
+                  onClick={() => adherenceMutation.mutate({ medicationName: m.name, status: "taken", source: m.source })}
+                  disabled={adherenceMutation.isPending}
+                  className="flex-1"
+                  style={taken ? { backgroundColor: PALETTE.brand, color: "#ffffff" } : undefined}
+                  data-testid={`button-taken-${m.id}`}
+                >
+                  <CheckCircle2 className="w-4 h-4 mr-1.5" /> Taken
+                </Button>
+                <Button
+                  size="sm"
+                  variant={skipped ? "default" : "outline"}
+                  onClick={() => adherenceMutation.mutate({ medicationName: m.name, status: "skipped", source: m.source })}
+                  disabled={adherenceMutation.isPending}
+                  className="flex-1"
+                  data-testid={`button-skipped-${m.id}`}
+                >
+                  Skipped
+                </Button>
+              </div>
+            </div>
+          );
+        })}
+
+        <Button
+          variant="outline"
+          onClick={onOpenAddMed}
+          className="w-full"
+          data-testid="button-open-add-med"
+        >
+          <Plus className="w-4 h-4 mr-1.5" /> Add something not listed
+        </Button>
+        <p className="text-[11px] text-center" style={{ color: PALETTE.inkMuted }}>
+          Anything you add here is sent to your care team for review.
+        </p>
+      </div>
+    </div>
+  );
+}
+
+function VitalsStep() {
+  return (
+    <div className="space-y-6" data-testid="step-vitals">
+      <StepHeading
+        icon={Heart}
+        eyebrow="Requested by your care team"
+        title="Today's vitals"
+        subtitle="Your provider has asked us to keep an eye on your readings. Take it sitting quietly for a moment, then log."
+      />
+      <ActiveVitalsMonitoringCard />
+    </div>
+  );
+}
+
+function ReflectionStep({ draft, setDraft, showCycle }: {
+  draft: CheckIn; setDraft: (d: CheckIn) => void; showCycle: boolean;
+}) {
+  return (
+    <div className="space-y-6" data-testid="step-reflection">
+      <StepHeading
+        icon={Sparkles}
+        eyebrow="Last moment"
+        title="Anything else?"
+        subtitle="Use this space to flag anything notable. Even a sentence helps your team see the full picture."
+      />
+      <div className="space-y-5">
+        <Field label="Symptoms or notes" hint="Headache, joint pain, hot flashes, mood shift — whatever stood out.">
+          <Textarea
+            rows={4}
+            placeholder="Anything you'd like your team to see (optional)"
+            value={draft.otherSymptoms ?? ""}
+            onChange={(e) => setDraft({ ...draft, otherSymptoms: e.target.value })}
+            data-testid="input-other-symptoms"
+          />
+        </Field>
+        {showCycle && (
+          <div className="space-y-4">
+            <Field label="Bleeding today">
+              <div className="flex flex-wrap gap-2">
+                {(["none", "spotting", "light", "medium", "heavy"] as const).map((b) => {
+                  const selected = (draft.cycleData?.bleeding ?? "none") === b;
+                  return (
+                    <button
+                      key={b}
+                      type="button"
+                      onClick={() => setDraft({ ...draft, cycleData: { ...(draft.cycleData ?? {}), bleeding: b } })}
+                      className="rounded-full px-4 py-2 text-sm font-medium border hover-elevate active-elevate-2 capitalize"
+                      style={{
+                        backgroundColor: selected ? PALETTE.brand : PALETTE.card,
+                        color: selected ? "#ffffff" : PALETTE.ink,
+                        borderColor: selected ? PALETTE.brand : "#d4c9b5",
+                      }}
+                      data-testid={`bleeding-${b}`}
+                    >
+                      {b}
+                    </button>
+                  );
+                })}
+              </div>
+            </Field>
+            <SoftToggle
+              label="Unexpected or breakthrough bleeding"
+              hint="If on, your care team will be notified."
+              value={draft.unexpectedBleeding}
+              onChange={(v) => setDraft({ ...draft, unexpectedBleeding: v })}
+              testId="toggle-unexpected-bleeding"
+            />
+          </div>
+        )}
+      </div>
+      <p
+        className="text-xs italic text-center pt-1"
+        style={{ color: PALETTE.inkMuted }}
+      >
+        No perfection needed. Just a quick snapshot.
+      </p>
+    </div>
+  );
+}
+
+/* ============================================================
+                  Completion + Opt-in screens
+   ============================================================ */
+
+function buildInsight(draft: CheckIn): string {
+  const sleep = draft.sleepQuality ?? null;
+  const mood = draft.moodScore ?? null;
+  const energy = draft.energyScore ?? null;
+  const protein = draft.foodProteinLevel ?? null;
+  const water = draft.waterLevel ?? null;
+  const moved = !!draft.exerciseDone;
+
+  if (sleep !== null && sleep <= 2) {
+    return "Sleep was lower last night, which can affect cravings and energy today. Lean on hydration, protein at meals, and an earlier bedtime tonight.";
+  }
+  if (mood !== null && mood <= 2 && energy !== null && energy <= 2) {
+    return "Today's a low-energy day. Be gentle with yourself — a short walk and a protein-forward meal often help reset.";
+  }
+  if (protein !== null && protein <= 2) {
+    return "Protein was light today. Adding a meaningful protein source at the next meal usually steadies energy and cravings.";
+  }
+  if (water !== null && water <= 2) {
+    return "Hydration was on the lighter side. A glass of water now is an easy next best step.";
+  }
+  if (moved && (energy ?? 3) >= 3) {
+    return "Movement plus steady energy is a great combo. Your team will see this rhythm building.";
+  }
+  return "Thanks for checking in. Your care team will see today's snapshot — patterns over time are what matter most.";
+}
+
+function CompletionScreen({ draft, firstName }: { draft: CheckIn; firstName?: string }) {
+  const insight = useMemo(() => buildInsight(draft), [draft]);
+  return (
+    <div className="min-h-screen flex flex-col" style={{ backgroundColor: PALETTE.bg }}>
+      <main className="flex-1 max-w-xl w-full mx-auto px-4 py-12 space-y-8" data-testid="step-done">
+        <div className="space-y-3 text-center">
+          <div
+            className="w-16 h-16 mx-auto rounded-full flex items-center justify-center"
+            style={{ backgroundColor: PALETTE.brand }}
+          >
+            <CheckCircle2 className="w-8 h-8" style={{ color: "#ffffff" }} />
+          </div>
+          <h1 className="text-3xl font-semibold leading-tight" style={{ color: PALETTE.ink }}>
+            {firstName ? `You're all set, ${firstName}.` : "You're all set for today."}
+          </h1>
+          <p className="text-base leading-relaxed" style={{ color: PALETTE.inkSoft }}>
+            Your check-in was saved and will help your care team see the full picture.
+          </p>
+        </div>
+
+        <div
+          className="rounded-2xl border p-5 space-y-3"
+          style={{ backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }}
+        >
+          <div className="flex items-center gap-2">
+            <Sparkles className="w-4 h-4" style={{ color: PALETTE.brand }} />
+            <p className="text-[11px] font-semibold uppercase tracking-wider" style={{ color: PALETTE.inkMuted }}>
+              Today's insight
+            </p>
+          </div>
+          <p className="text-sm leading-relaxed" style={{ color: PALETTE.ink }} data-testid="text-todays-insight">
+            {insight}
+          </p>
+          <p className="text-[11px] italic pt-1" style={{ color: PALETTE.inkMuted }}>
+            Informational only — not medical advice. Your care team reviews these notes as they make care decisions.
+          </p>
+        </div>
+
+        <div className="flex flex-col-reverse sm:flex-row gap-2.5">
+          <Link href="/portal/dashboard" className="flex-1">
+            <Button variant="outline" className="w-full" data-testid="button-back-dashboard-done">
+              Back to dashboard
+            </Button>
+          </Link>
+          <Link href="/portal/wellness" className="flex-1">
+            <Button
+              className="w-full"
+              style={{ backgroundColor: PALETTE.brand, color: "#ffffff" }}
+              data-testid="button-view-insights"
+            >
+              View insights <ArrowRight className="w-4 h-4 ml-1.5" />
+            </Button>
+          </Link>
+        </div>
+      </main>
+    </div>
+  );
+}
+
+function OptInScreen({ onEnable }: { onEnable: () => Promise<any> | void }) {
+  return (
+    <div className="min-h-screen" style={{ backgroundColor: PALETTE.bg }}>
+      <header className="border-b" style={{ backgroundColor: PALETTE.bg, borderColor: PALETTE.cardBorder }}>
+        <div className="max-w-2xl mx-auto px-4 py-3 flex items-center justify-between">
           <Link href="/portal/dashboard">
             <Button variant="ghost" size="sm" data-testid="link-back-dashboard">
               <ArrowLeft className="w-4 h-4 mr-1.5" /> Back
             </Button>
           </Link>
-          <div className="text-center min-w-0">
-            <h1 className="text-base font-semibold truncate" style={{ color: "#1c2414" }}>Today's check-in</h1>
-            <p className="text-xs" style={{ color: "#7a8a64" }}>
-              {new Date().toLocaleDateString("en-US", { weekday: "long", month: "long", day: "numeric" })}
-            </p>
-          </div>
-          <Button
-            onClick={() => saveMutation.mutate()}
-            disabled={saveMutation.isPending}
-            style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-            data-testid="button-save-checkin"
-          >
-            {saveMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
-          </Button>
         </div>
       </header>
-
-      <div className="max-w-5xl mx-auto px-4 py-6 flex gap-6">
-        {/* Left rail */}
-        <aside className="hidden md:block w-44 flex-shrink-0">
-          <nav className="sticky top-20 space-y-1">
-            {visibleSections.map((s) => {
-              const Icon = s.icon;
-              const active = activeSection === s.id;
-              return (
-                <a
-                  key={s.id}
-                  href={`#section-${s.id}`}
-                  onClick={() => setActiveSection(s.id)}
-                  className="flex items-center gap-2.5 px-3 py-2 rounded-md text-sm transition-colors hover-elevate"
-                  style={{
-                    color: active ? "#1c2414" : "#5a6048",
-                    backgroundColor: active ? "#edf4e4" : "transparent",
-                    fontWeight: active ? 600 : 400,
-                  }}
-                  data-testid={`rail-${s.id}`}
-                >
-                  <Icon className="w-4 h-4" /> {s.label}
-                </a>
-              );
-            })}
-          </nav>
-        </aside>
-
-        {/* Main content */}
-        <div className="flex-1 min-w-0 space-y-6 pb-32">
-          <ActiveVitalsMonitoringCard />
-
-          <Section id="food" title="Food & drink">
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm">Weight (optional)</Label>
-                <Input
-                  type="number" step="0.1" inputMode="decimal"
-                  placeholder="lbs"
-                  value={draft.weight ?? ""}
-                  onChange={(e) => setDraft({ ...draft, weight: e.target.value || null })}
-                  className="max-w-32 mt-1.5"
-                  data-testid="input-weight"
-                />
-              </div>
-              <div>
-                <Label className="text-sm">Protein at meals</Label>
-                <Rating
-                  value={draft.foodProteinLevel} onChange={(n) => setDraft({ ...draft, foodProteinLevel: n })}
-                  lowLabel="Skipped" highLabel="Hit goal" testId="rating-protein"
-                />
-              </div>
-              <div>
-                <Label className="text-sm">Water</Label>
-                <Rating
-                  value={draft.waterLevel} onChange={(n) => setDraft({ ...draft, waterLevel: n })}
-                  lowLabel="Barely any" highLabel="Plenty" testId="rating-water"
-                />
-              </div>
-              <div>
-                <Label className="text-sm">Fiber & vegetables</Label>
-                <Rating
-                  value={draft.fiberVeggieLevel} onChange={(n) => setDraft({ ...draft, fiberVeggieLevel: n })}
-                  lowLabel="None" highLabel="Lots" testId="rating-fiber"
-                />
-              </div>
-              <div>
-                <Label className="text-sm">Processed / packaged food</Label>
-                <Rating
-                  value={draft.processedFoodLevel} onChange={(n) => setDraft({ ...draft, processedFoodLevel: n })}
-                  lowLabel="None" highLabel="Most meals" testId="rating-processed"
-                />
-              </div>
-              <div>
-                <Label className="text-sm">Alcohol</Label>
-                <Rating
-                  value={draft.alcoholUse} onChange={(n) => setDraft({ ...draft, alcoholUse: n })}
-                  min={0} max={5}
-                  lowLabel="None" highLabel="5+ drinks" testId="rating-alcohol"
-                />
-              </div>
-              <div>
-                <Label className="text-sm">Notes</Label>
-                <Textarea
-                  rows={2}
-                  placeholder="Anything notable about food today?"
-                  value={draft.foodNotes ?? ""}
-                  onChange={(e) => setDraft({ ...draft, foodNotes: e.target.value })}
-                  className="mt-1.5"
-                  data-testid="input-food-notes"
-                />
-              </div>
-            </div>
-          </Section>
-
-          <Section id="sleep" title="Sleep">
-            <div className="space-y-4">
-              <div className="flex items-end gap-3">
-                <div>
-                  <Label className="text-sm">Hours slept</Label>
-                  <Input
-                    type="number" step="0.25" inputMode="decimal"
-                    placeholder="7.5"
-                    value={draft.sleepHours ?? ""}
-                    onChange={(e) => setDraft({ ...draft, sleepHours: e.target.value || null })}
-                    className="max-w-24 mt-1.5"
-                    data-testid="input-sleep-hours"
-                  />
-                </div>
-              </div>
-              <div>
-                <Label className="text-sm">Sleep quality</Label>
-                <Rating
-                  value={draft.sleepQuality} onChange={(n) => setDraft({ ...draft, sleepQuality: n })}
-                  lowLabel="Poor" highLabel="Restorative" testId="rating-sleep-quality"
-                />
-              </div>
-              <ToggleRow label="Night sweats" value={draft.nightSweats} onChange={(v) => setDraft({ ...draft, nightSweats: v })} testId="toggle-night-sweats" />
-              <ToggleRow label="Woke during the night" value={draft.wokeDuringNight} onChange={(v) => setDraft({ ...draft, wokeDuringNight: v })} testId="toggle-woke" />
-            </div>
-          </Section>
-
-          <Section id="exercise" title="Movement">
-            <div className="space-y-4">
-              <ToggleRow label="Did you move your body today?" value={draft.exerciseDone} onChange={(v) => setDraft({ ...draft, exerciseDone: v })} testId="toggle-exercise" />
-              {draft.exerciseDone && (
-                <>
-                  <div>
-                    <Label className="text-sm">What kind?</Label>
-                    <Input
-                      placeholder="walk, lifting, yoga..."
-                      value={draft.exerciseType ?? ""}
-                      onChange={(e) => setDraft({ ...draft, exerciseType: e.target.value })}
-                      className="mt-1.5"
-                      data-testid="input-exercise-type"
-                    />
-                  </div>
-                  <div className="flex items-end gap-3">
-                    <div>
-                      <Label className="text-sm">Minutes</Label>
-                      <Input
-                        type="number" inputMode="numeric"
-                        placeholder="30"
-                        value={draft.exerciseMinutes ?? ""}
-                        onChange={(e) => setDraft({ ...draft, exerciseMinutes: e.target.value ? Number(e.target.value) : null })}
-                        className="max-w-24 mt-1.5"
-                        data-testid="input-exercise-minutes"
-                      />
-                    </div>
-                  </div>
-                  <div>
-                    <Label className="text-sm">Intensity</Label>
-                    <Rating
-                      value={draft.exerciseIntensity} onChange={(n) => setDraft({ ...draft, exerciseIntensity: n })}
-                      lowLabel="Easy" highLabel="All-out" testId="rating-intensity"
-                    />
-                  </div>
-                </>
-              )}
-            </div>
-          </Section>
-
-          <Section id="mood" title="How you feel">
-            <div className="space-y-4">
-              <div>
-                <Label className="text-sm">Mood</Label>
-                <Rating value={draft.moodScore} onChange={(n) => setDraft({ ...draft, moodScore: n })} lowLabel="Low" highLabel="Great" testId="rating-mood" />
-              </div>
-              <div>
-                <Label className="text-sm">Energy</Label>
-                <Rating value={draft.energyScore} onChange={(n) => setDraft({ ...draft, energyScore: n })} lowLabel="Drained" highLabel="Energized" testId="rating-energy" />
-              </div>
-              <div>
-                <Label className="text-sm">Cravings</Label>
-                <Rating value={draft.cravingsScore} onChange={(n) => setDraft({ ...draft, cravingsScore: n })} lowLabel="None" highLabel="Strong" testId="rating-cravings" />
-              </div>
-              <div>
-                <Label className="text-sm">Hunger</Label>
-                <Rating value={draft.hungerScore} onChange={(n) => setDraft({ ...draft, hungerScore: n })} lowLabel="Low" highLabel="Ravenous" testId="rating-hunger" />
-              </div>
-              <div>
-                <Label className="text-sm">Brain fog</Label>
-                <Rating value={draft.brainFogScore} onChange={(n) => setDraft({ ...draft, brainFogScore: n })} lowLabel="Sharp" highLabel="Foggy" testId="rating-brainfog" />
-              </div>
-              <div>
-                <Label className="text-sm">Anxiety / irritability</Label>
-                <Rating value={draft.anxietyIrritabilityScore} onChange={(n) => setDraft({ ...draft, anxietyIrritabilityScore: n })} lowLabel="Calm" highLabel="On edge" testId="rating-anxiety" />
-              </div>
-            </div>
-          </Section>
-
-          <Section id="symptoms" title="Symptoms">
-            <div className="space-y-3">
-              <p className="text-xs" style={{ color: "#7a8a64" }}>
-                Anything notable today? Tell your team only what matters.
-              </p>
-              <Textarea
-                rows={3}
-                placeholder="Headache, joint pain, hot flashes, etc."
-                value={draft.otherSymptoms ?? ""}
-                onChange={(e) => setDraft({ ...draft, otherSymptoms: e.target.value })}
-                data-testid="input-other-symptoms"
-              />
-            </div>
-          </Section>
-
-          {showCycle && (
-            <Section id="cycle" title="Cycle">
-              <div className="space-y-3">
-                <Label className="text-sm">Bleeding today</Label>
-                <div className="flex flex-wrap gap-1.5">
-                  {(["none", "spotting", "light", "medium", "heavy"] as const).map((b) => {
-                    const selected = (draft.cycleData?.bleeding ?? "none") === b;
-                    return (
-                      <button
-                        key={b}
-                        type="button"
-                        onClick={() => setDraft({ ...draft, cycleData: { ...(draft.cycleData ?? {}), bleeding: b } })}
-                        className="h-10 px-4 rounded-md text-sm font-medium border hover-elevate active-elevate-2 capitalize"
-                        style={{
-                          backgroundColor: selected ? "#2e3a20" : "#ffffff",
-                          color: selected ? "#ffffff" : "#1c2414",
-                          borderColor: selected ? "#2e3a20" : "#d4c9b5",
-                        }}
-                        data-testid={`bleeding-${b}`}
-                      >
-                        {b}
-                      </button>
-                    );
-                  })}
-                </div>
-                <ToggleRow
-                  label="Unexpected / breakthrough bleeding"
-                  value={draft.unexpectedBleeding}
-                  onChange={(v) => setDraft({ ...draft, unexpectedBleeding: v })}
-                  testId="toggle-unexpected-bleeding"
-                />
-                {draft.unexpectedBleeding && (
-                  <p className="text-xs" style={{ color: "#c0392b" }}>
-                    Your care team will be notified about this.
-                  </p>
-                )}
-              </div>
-            </Section>
-          )}
-
-          <Section id="meds" title="Medications & supplements">
-            <div className="space-y-4">
-              {allMeds.length === 0 && (
-                <p className="text-sm" style={{ color: "#7a8a64" }}>
-                  No medications on file. Add anything you take below.
-                </p>
-              )}
-              {allMeds.length > 0 && (
-                <div className="space-y-1.5">
-                  {allMeds.map((m) => {
-                    const log = adherenceMap.get(m.name);
-                    const taken = log?.status === "taken";
-                    const skipped = log?.status === "skipped" || log?.status === "missed";
-                    return (
-                      <div
-                        key={m.id}
-                        className="flex items-center justify-between gap-3 px-3 py-2.5 rounded-md border"
-                        style={{ borderColor: "#e8ddd0", backgroundColor: taken ? "#edf4e4" : "#ffffff" }}
-                        data-testid={`med-row-${m.id}`}
-                      >
-                        <div className="min-w-0 flex-1">
-                          <p className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>{m.name}</p>
-                          <p className="text-[11px]" style={{ color: "#7a8a64" }}>
-                            {m.source === "patient_chart" ? "From your chart" : "Added by you"}
-                          </p>
-                        </div>
-                        <div className="flex items-center gap-1.5">
-                          <Button
-                            size="sm"
-                            variant={taken ? "default" : "outline"}
-                            onClick={() => adherenceMutation.mutate({ medicationName: m.name, status: "taken", source: m.source })}
-                            disabled={adherenceMutation.isPending}
-                            data-testid={`button-taken-${m.id}`}
-                          >
-                            <CheckCircle2 className="w-4 h-4 mr-1" /> Taken
-                          </Button>
-                          <Button
-                            size="sm"
-                            variant={skipped ? "default" : "outline"}
-                            onClick={() => adherenceMutation.mutate({ medicationName: m.name, status: "skipped", source: m.source })}
-                            disabled={adherenceMutation.isPending}
-                            data-testid={`button-skipped-${m.id}`}
-                          >
-                            Skipped
-                          </Button>
-                          {m.source === "patient_reported" && m.rowId && (
-                            <Button
-                              size="icon" variant="ghost"
-                              onClick={() => deleteMedMutation.mutate(m.rowId!)}
-                              data-testid={`button-delete-med-${m.id}`}
-                              title="Remove"
-                            >
-                              <Trash2 className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                    );
-                  })}
-                </div>
-              )}
-
-              <div className="rounded-md border p-3 space-y-3" style={{ borderColor: "#e8ddd0", backgroundColor: "#faf8f5" }}>
-                <p className="text-sm font-medium" style={{ color: "#1c2414" }}>
-                  Add a medication or supplement
-                </p>
-                <div className="flex flex-wrap gap-1.5">
-                  {(["medication", "supplement"] as const).map((t) => {
-                    const selected = newMedType === t;
-                    return (
-                      <button
-                        key={t}
-                        type="button"
-                        onClick={() => setNewMedType(t)}
-                        className="h-9 px-3 rounded-md text-sm font-medium border hover-elevate capitalize"
-                        style={{
-                          backgroundColor: selected ? "#2e3a20" : "#ffffff",
-                          color: selected ? "#ffffff" : "#1c2414",
-                          borderColor: selected ? "#2e3a20" : "#d4c9b5",
-                        }}
-                        data-testid={`button-add-type-${t}`}
-                      >
-                        {t}
-                      </button>
-                    );
-                  })}
-                </div>
-                <Input
-                  placeholder="Name (e.g. Magnesium glycinate)"
-                  value={newMedName}
-                  onChange={(e) => setNewMedName(e.target.value)}
-                  data-testid="input-new-med-name"
-                />
-                <div className="grid grid-cols-2 gap-2">
-                  <Input
-                    placeholder="Dose (e.g. 400 mg)"
-                    value={newMedDose}
-                    onChange={(e) => setNewMedDose(e.target.value)}
-                    data-testid="input-new-med-dose"
-                  />
-                  <Input
-                    placeholder="Frequency (e.g. nightly)"
-                    value={newMedFreq}
-                    onChange={(e) => setNewMedFreq(e.target.value)}
-                    data-testid="input-new-med-freq"
-                  />
-                </div>
-                <Button
-                  onClick={() => addMedMutation.mutate()}
-                  disabled={!newMedName.trim() || addMedMutation.isPending}
-                  style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                  data-testid="button-add-med"
-                >
-                  {addMedMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : <><Plus className="w-4 h-4 mr-1" /> Add</>}
-                </Button>
-                <p className="text-[11px]" style={{ color: "#7a8a64" }}>
-                  We'll let your care team know so they can review for interactions.
-                </p>
-              </div>
-            </div>
-          </Section>
-
-          <div className="sticky bottom-4 flex justify-end">
+      <main className="max-w-2xl mx-auto px-4 py-10 space-y-6">
+        <div className="space-y-3">
+          <div
+            className="w-14 h-14 rounded-2xl flex items-center justify-center"
+            style={{ backgroundColor: PALETTE.brandSoft }}
+          >
+            <Sun className="w-7 h-7" style={{ color: PALETTE.brand }} />
+          </div>
+          <h1 className="text-3xl font-semibold leading-tight" style={{ color: PALETTE.ink }}>
+            Daily Check-In
+          </h1>
+          <p className="text-base leading-relaxed" style={{ color: PALETTE.inkSoft }}>
+            Take 60 seconds a day to help your care team understand what's happening
+            between visits — energy, sleep, fuel, mood, and the medications you're on.
+          </p>
+        </div>
+        <div
+          className="rounded-2xl border p-5 space-y-3"
+          style={{ backgroundColor: PALETTE.card, borderColor: PALETTE.cardBorder }}
+        >
+          <p className="text-sm" style={{ color: PALETTE.inkSoft }}>
+            This is completely optional. You can pause or stop at any time, and you only share what feels useful.
+          </p>
+          <div className="flex flex-wrap gap-2 pt-1">
             <Button
-              size="lg"
-              onClick={() => saveMutation.mutate()}
-              disabled={saveMutation.isPending}
-              style={{ backgroundColor: "#2e3a20", color: "#ffffff", boxShadow: "0 6px 16px -4px rgba(46,58,32,0.4)" }}
-              data-testid="button-save-checkin-bottom"
+              onClick={() => onEnable()}
+              style={{ backgroundColor: PALETTE.brand, color: "#ffffff" }}
+              data-testid="button-enable-tracking"
             >
-              {saveMutation.isPending ? <Loader2 className="w-5 h-5 animate-spin" /> : <>Save check-in <ChevronRight className="w-4 h-4 ml-1" /></>}
+              Start check-in
             </Button>
+            <Link href="/portal/dashboard">
+              <Button variant="outline" data-testid="button-not-now">Not now</Button>
+            </Link>
           </div>
         </div>
-      </div>
+      </main>
     </div>
+  );
+}
+
+/* ============================================================
+                       Add-Med Dialog
+   ============================================================ */
+
+function AddMedDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (v: boolean) => void }) {
+  const qc = useQueryClient();
+  const { toast } = useToast();
+  const [name, setName] = useState("");
+  const [dose, setDose] = useState("");
+  const [frequency, setFrequency] = useState("");
+  const [why, setWhy] = useState("");
+  const [type, setType] = useState<"medication" | "supplement">("supplement");
+
+  const reset = () => { setName(""); setDose(""); setFrequency(""); setWhy(""); setType("supplement"); };
+
+  const addMutation = useMutation({
+    mutationFn: () => apiRequest("POST", "/api/portal/tracking/patient-reported-medication", {
+      name: name.trim(),
+      dose: dose.trim() || null,
+      frequency: frequency.trim() || null,
+      type,
+      // backend may ignore `why` today, but harmless to send for future use
+      reasonForUse: why.trim() || undefined,
+    }),
+    onSuccess: () => {
+      toast({
+        title: "Added",
+        description: "We'll let your care team know so they can review it.",
+      });
+      qc.invalidateQueries({ queryKey: ["/api/portal/tracking/medications"] });
+      reset();
+      onOpenChange(false);
+    },
+    onError: () => toast({ title: "Couldn't add", description: "Please try again.", variant: "destructive" }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={(v) => { if (!addMutation.isPending) { onOpenChange(v); if (!v) reset(); } }}>
+      <DialogContent className="max-w-md">
+        <DialogHeader>
+          <DialogTitle>Add something you take</DialogTitle>
+          <DialogDescription>
+            Tell us what you take and we'll share it with your care team for review.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-4 py-2">
+          <div className="flex flex-wrap gap-2">
+            {(["medication", "supplement"] as const).map((t) => {
+              const selected = type === t;
+              return (
+                <button
+                  key={t}
+                  type="button"
+                  onClick={() => setType(t)}
+                  className="rounded-full px-4 py-1.5 text-sm font-medium border hover-elevate capitalize"
+                  style={{
+                    backgroundColor: selected ? PALETTE.brand : PALETTE.card,
+                    color: selected ? "#ffffff" : PALETTE.ink,
+                    borderColor: selected ? PALETTE.brand : "#d4c9b5",
+                  }}
+                  data-testid={`button-add-type-${t}`}
+                >
+                  {t}
+                </button>
+              );
+            })}
+          </div>
+          <Field label="Name">
+            <Input
+              placeholder="e.g. Magnesium glycinate"
+              value={name}
+              onChange={(e) => setName(e.target.value)}
+              data-testid="input-new-med-name"
+              autoFocus
+            />
+          </Field>
+          <div className="grid grid-cols-2 gap-3">
+            <Field label="Dose">
+              <Input
+                placeholder="e.g. 400 mg"
+                value={dose}
+                onChange={(e) => setDose(e.target.value)}
+                data-testid="input-new-med-dose"
+              />
+            </Field>
+            <Field label="Frequency">
+              <Input
+                placeholder="e.g. nightly"
+                value={frequency}
+                onChange={(e) => setFrequency(e.target.value)}
+                data-testid="input-new-med-freq"
+              />
+            </Field>
+          </div>
+          <Field label="Why are you taking it?" hint="Optional, but helpful context for your team.">
+            <Textarea
+              rows={2}
+              placeholder="e.g. for sleep / cramps / energy"
+              value={why}
+              onChange={(e) => setWhy(e.target.value)}
+              data-testid="input-new-med-why"
+            />
+          </Field>
+        </div>
+        <DialogFooter className="flex-row gap-2 justify-end">
+          <Button
+            variant="outline"
+            onClick={() => { onOpenChange(false); reset(); }}
+            disabled={addMutation.isPending}
+            data-testid="button-cancel-add-med"
+          >
+            <X className="w-4 h-4 mr-1.5" /> Cancel
+          </Button>
+          <Button
+            onClick={() => addMutation.mutate()}
+            disabled={!name.trim() || addMutation.isPending}
+            style={{ backgroundColor: PALETTE.brand, color: "#ffffff" }}
+            data-testid="button-add-med"
+          >
+            {addMutation.isPending ? <Loader2 className="w-4 h-4 animate-spin" /> : "Save"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
