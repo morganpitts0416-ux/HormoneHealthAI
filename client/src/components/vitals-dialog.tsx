@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useMemo, useState } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
@@ -8,6 +8,8 @@ import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { ScrollArea } from "@/components/ui/scroll-area";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { LineChart, Line, ResponsiveContainer, XAxis, YAxis, Tooltip as RechartsTooltip, CartesianGrid } from "recharts";
 import {
   Activity,
   Heart,
@@ -22,6 +24,8 @@ import {
   Building2,
   AlertTriangle,
   Settings2,
+  ChevronDown,
+  ChevronRight,
 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -95,6 +99,140 @@ function trend(curr: number | null | undefined, prev: number | null | undefined)
   if (Math.abs(pct) < 1) return { icon: Minus, label: "—", color: "#64748b" };
   if (diff > 0) return { icon: TrendingUp, label: `+${diff.toFixed(1)}`, color: "#dc2626" };
   return { icon: TrendingDown, label: diff.toFixed(1), color: "#16a34a" };
+}
+
+// ── Flowsheet types + builder ──────────────────────────────────────────────
+// EMR-style flowsheet: rows = vital metrics, columns = visits (oldest→newest).
+// Each cell knows its source so styling can stay declarative.
+
+type FlowMetricKey = "bp" | "hr" | "wt" | "ht" | "bmi";
+type AbnormalLevel = "none" | "mild" | "severe";
+type FlowCell = {
+  display: string; // pre-formatted string ("132/86", "127.8", "—")
+  numeric: number | null; // primary value used by sparkline + drilldown
+  src: "clinic" | "patient_logged" | null; // null when no reading on that visit
+  abnormal: AbnormalLevel;
+  vitalId: number | null; // for testid + drilldown lookups
+};
+type FlowRow = {
+  key: FlowMetricKey;
+  label: string;
+  unit: string;
+  cells: FlowCell[]; // aligned 1:1 with sortedVitals
+  // Series for sparkline + drilldown (skips empty cells)
+  series: Array<{ x: number; y: number; src: "clinic" | "patient_logged"; date: string }>;
+  color: string; // line color for charts
+};
+
+// Per-metric abnormal classifiers — kept loose so a real "—" stays "none".
+function classifyBp(sys: number | null, dia: number | null): AbnormalLevel {
+  if (sys == null || dia == null) return "none";
+  if (sys >= 180 || dia >= 120) return "severe"; // crisis / stage 2 high
+  if (sys >= 140 || dia >= 90) return "severe"; // stage 2
+  if (sys >= 130 || dia >= 80) return "mild"; // stage 1
+  return "none";
+}
+function classifyHr(hr: number | null): AbnormalLevel {
+  if (hr == null) return "none";
+  if (hr >= 120 || hr <= 40) return "severe";
+  if (hr >= 100 || hr < 50) return "mild";
+  return "none";
+}
+function classifyBmi(bmi: number | null): AbnormalLevel {
+  if (bmi == null) return "none";
+  if (bmi >= 35 || bmi < 16) return "severe";
+  if (bmi >= 30 || bmi < 18.5) return "mild";
+  return "none";
+}
+
+function buildFlowsheet(vitals: PatientVital[]): FlowRow[] {
+  const metrics: Array<Omit<FlowRow, "cells" | "series"> & {
+    extract: (v: PatientVital) => { display: string; numeric: number | null; abnormal: AbnormalLevel } | null;
+  }> = [
+    {
+      key: "bp",
+      label: "BP",
+      unit: "mmHg",
+      color: "#dc2626",
+      extract: (v) => {
+        if (v.systolicBp == null && v.diastolicBp == null) return null;
+        return {
+          display: `${v.systolicBp ?? "—"}/${v.diastolicBp ?? "—"}`,
+          numeric: v.systolicBp ?? null,
+          abnormal: classifyBp(v.systolicBp, v.diastolicBp),
+        };
+      },
+    },
+    {
+      key: "hr",
+      label: "HR",
+      unit: "bpm",
+      color: "#7c3aed",
+      extract: (v) => {
+        if (v.heartRate == null) return null;
+        return { display: String(v.heartRate), numeric: v.heartRate, abnormal: classifyHr(v.heartRate) };
+      },
+    },
+    {
+      key: "wt",
+      label: "WT",
+      unit: "lbs",
+      color: "#16a34a",
+      extract: (v) => {
+        if (v.weightLbs == null) return null;
+        const n = Number(v.weightLbs);
+        return { display: n.toFixed(1), numeric: n, abnormal: "none" };
+      },
+    },
+    {
+      key: "ht",
+      label: "HT",
+      unit: "in",
+      color: "#0891b2",
+      extract: (v) => {
+        if (v.heightInches == null) return null;
+        const n = Number(v.heightInches);
+        return { display: n.toFixed(1), numeric: n, abnormal: "none" };
+      },
+    },
+    {
+      key: "bmi",
+      label: "BMI",
+      unit: "kg/m²",
+      color: "#ea580c",
+      extract: (v) => {
+        if (v.bmi == null) return null;
+        const n = Number(v.bmi);
+        return { display: n.toFixed(2), numeric: n, abnormal: classifyBmi(n) };
+      },
+    },
+  ];
+
+  return metrics
+    .map(({ extract, ...meta }) => {
+      const cells: FlowCell[] = vitals.map((v) => {
+        const r = extract(v);
+        if (!r) return { display: "—", numeric: null, src: null, abnormal: "none", vitalId: v.id };
+        return { ...r, src: srcOf(v), vitalId: v.id };
+      });
+      const series = cells
+        .map((c, i) => ({ c, v: vitals[i] }))
+        .filter(({ c }) => c.numeric != null)
+        .map(({ c, v }) => ({
+          x: new Date(v.recordedAt as any).getTime(),
+          y: c.numeric as number,
+          src: c.src as "clinic" | "patient_logged",
+          date: new Date(v.recordedAt as any).toLocaleDateString("en-US", {
+            month: "short",
+            day: "numeric",
+            year: "2-digit",
+            timeZone: "UTC",
+          }),
+        }));
+      return { ...meta, cells, series };
+    })
+    // Hide rows with no readings in the visible window.
+    .filter((row) => row.series.length > 0);
 }
 
 // ── Monitoring episode types (mirrors panel previously in patient-profiles) ──
@@ -204,23 +342,50 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
     onError: () => toast({ title: "Failed to end episode", variant: "destructive" }),
   });
 
+  // Defensive: TanStack Query default `= []` should always give us an array,
+  // but legacy/error responses occasionally return non-array shapes. Normalize
+  // here so every downstream `.find` / `.filter` is safe.
+  const safeVitals: PatientVital[] = Array.isArray(vitals) ? vitals : [];
+
   // Pre-fill height from most recent entry that has it
-  const lastHeight = vitals.find((v) => v.heightInches)?.heightInches;
+  const lastHeight = safeVitals.find((v) => v.heightInches)?.heightInches;
   const handleOpenForm = () => {
     setForm((f) => ({ ...f, heightInches: f.heightInches || (lastHeight ? String(lastHeight) : "") }));
     setShowForm(true);
   };
 
-  const latest = vitals[0];
-  const previous = vitals[1];
+  const latest = safeVitals[0];
+  const previous = safeVitals[1];
   const latestSrc = latest ? srcOf(latest) : "clinic";
 
   const activeEpisodes = monitoring?.episodes.filter((e) => e.status === "active") ?? [];
   const alertsPerEpisode = monitoring?.alertsPerEpisode ?? {};
   const totalAlerts = Object.values(alertsPerEpisode).reduce((sum, list) => sum + list.length, 0);
 
-  const clinicCount = vitals.filter((v) => srcOf(v) === "clinic").length;
-  const patientCount = vitals.filter((v) => srcOf(v) === "patient_logged").length;
+  const clinicCount = safeVitals.filter((v) => srcOf(v) === "clinic").length;
+  const patientCount = safeVitals.filter((v) => srcOf(v) === "patient_logged").length;
+
+  // ── Flowsheet state + derived data ───────────────────────────────────────
+  // Time window in months; 0 = "all data".
+  const [windowMonths, setWindowMonths] = useState<6 | 12 | 0>(6);
+  const [expandedRow, setExpandedRow] = useState<FlowMetricKey | null>(null);
+
+  // Filter to the chosen window then sort chronologically (oldest → newest)
+  // so each visit reads left-to-right like a paper flowsheet.
+  const sortedVitals = useMemo(() => {
+    const cutoff = windowMonths > 0 ? Date.now() - windowMonths * 30 * 86400000 : 0;
+    const inWindow = windowMonths > 0
+      ? safeVitals.filter((v) => new Date(v.recordedAt as any).getTime() >= cutoff)
+      : safeVitals;
+    return [...inWindow].sort(
+      (a, b) => new Date(a.recordedAt as any).getTime() - new Date(b.recordedAt as any).getTime()
+    );
+  }, [safeVitals, windowMonths]);
+
+  // Build the flowsheet: one row per metric that has at least one value in
+  // the visible window. Each cell carries the formatted value plus styling
+  // hints (source + abnormal severity) so rendering is dumb.
+  const flowRows = useMemo(() => buildFlowsheet(sortedVitals), [sortedVitals]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -535,89 +700,386 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
             </div>
           )}
 
-          {/* History */}
-          <div>
-            <div className="text-sm font-semibold mb-2">History</div>
+          {/* History — EMR-style flowsheet (rows = metrics, cols = visits) */}
+          <div data-testid="vitals-flowsheet-section">
+            <div className="flex items-center justify-between mb-2 gap-2 flex-wrap">
+              <div className="text-sm font-semibold">
+                History{" "}
+                <span className="text-xs font-normal text-muted-foreground">
+                  ({sortedVitals.length} {sortedVitals.length === 1 ? "result" : "results"})
+                </span>
+              </div>
+              <div className="flex items-center gap-2 text-xs">
+                <Label htmlFor="vitals-window" className="text-xs text-muted-foreground">
+                  Time Window:
+                </Label>
+                <Select
+                  value={String(windowMonths)}
+                  onValueChange={(v) => {
+                    setWindowMonths(Number(v) as 6 | 12 | 0);
+                    setExpandedRow(null); // collapse drilldown when range changes
+                  }}
+                >
+                  <SelectTrigger
+                    id="vitals-window"
+                    className="h-8 w-[150px] text-xs"
+                    data-testid="select-vitals-window"
+                  >
+                    <SelectValue />
+                  </SelectTrigger>
+                  <SelectContent>
+                    <SelectItem value="6">Last 6 months</SelectItem>
+                    <SelectItem value="12">Last 12 months</SelectItem>
+                    <SelectItem value="0">All Data</SelectItem>
+                  </SelectContent>
+                </Select>
+              </div>
+            </div>
+
             {isLoading && <div className="text-sm text-muted-foreground">Loading...</div>}
-            {!isLoading && vitals.length === 0 && (
+
+            {!isLoading && safeVitals.length === 0 && (
               <div className="text-sm text-muted-foreground text-center py-8">
-                No vitals recorded yet. Click "Record Vitals" to start tracking, or "Configure at-home monitoring" to
-                ask the patient to log readings from home.
+                No vitals recorded yet. Click "Record Vitals" to start tracking, or "Configure at-home
+                monitoring" to ask the patient to log readings from home.
               </div>
             )}
-            {vitals.length > 0 && (
-              <div className="border rounded-md overflow-hidden">
-                <table className="w-full text-sm">
-                  <thead className="bg-muted/50">
-                    <tr className="text-xs">
-                      <th className="text-left p-2">Date</th>
-                      <th className="text-left p-2">Source</th>
-                      <th className="text-right p-2">BP</th>
-                      <th className="text-right p-2">HR</th>
-                      <th className="text-right p-2">Weight</th>
-                      <th className="text-right p-2">BMI</th>
-                      <th className="p-2"></th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {vitals.map((v) => {
-                      const src = srcOf(v);
-                      const flagged =
-                        src === "patient_logged" &&
-                        v.systolicBp != null &&
-                        v.diastolicBp != null &&
-                        (v.systolicBp >= 140 || v.diastolicBp >= 90);
-                      return (
-                        <tr
-                          key={v.id}
-                          className="border-t"
-                          style={{
-                            backgroundColor: flagged
-                              ? "#fdf2f0"
-                              : src === "patient_logged"
-                              ? SRC.patient_logged.bg
-                              : undefined,
-                          }}
-                          data-testid={`row-vital-${v.id}`}
-                        >
-                          <td className="p-2 text-xs">
-                            {new Date(v.recordedAt).toLocaleDateString("en-US", {
-                              month: "short",
-                              day: "numeric",
-                              year: "numeric",
-                            })}
-                            {v.timeOfDay ? <span className="text-muted-foreground"> {v.timeOfDay}</span> : null}
-                          </td>
-                          <td className="p-2">
-                            <SourceBadge source={src} size="xs" />
-                          </td>
-                          <td className="p-2 text-right font-mono">
-                            {v.systolicBp && v.diastolicBp ? `${v.systolicBp}/${v.diastolicBp}` : "—"}
-                          </td>
-                          <td className="p-2 text-right font-mono">{v.heartRate ?? "—"}</td>
-                          <td className="p-2 text-right font-mono">{v.weightLbs ?? "—"}</td>
-                          <td className="p-2 text-right font-mono">{v.bmi ?? "—"}</td>
-                          <td className="p-2 text-right">
-                            {/* Patient-logged readings can't be deleted by the clinician
-                                (audit trail of patient-submitted data). */}
+
+            {!isLoading && safeVitals.length > 0 && sortedVitals.length === 0 && (
+              <div
+                className="text-sm text-muted-foreground text-center py-8 border rounded-md bg-muted/20"
+                data-testid="vitals-window-empty"
+              >
+                No readings in the last {windowMonths} months.{" "}
+                <button
+                  type="button"
+                  className="underline underline-offset-2 hover:text-foreground"
+                  onClick={() => setWindowMonths(0)}
+                  data-testid="link-show-all-vitals"
+                >
+                  Show all data
+                </button>
+                .
+              </div>
+            )}
+
+            {sortedVitals.length > 0 && flowRows.length === 0 && (
+              <div
+                className="text-sm text-muted-foreground text-center py-6 border rounded-md bg-muted/20 mb-3"
+                data-testid="vitals-flowsheet-no-metrics"
+              >
+                {sortedVitals.length} reading{sortedVitals.length === 1 ? "" : "s"} on file but no
+                tracked metrics (BP, HR, weight, height, BMI) recorded yet. Use{" "}
+                <span className="font-medium">Manage entries</span> below to review or remove them.
+              </div>
+            )}
+
+            {sortedVitals.length > 0 && flowRows.length > 0 && (
+              <div className="border rounded-md overflow-x-auto" data-testid="vitals-flowsheet-table">
+                  <table className="text-sm border-collapse">
+                    <thead className="bg-muted/40">
+                      <tr>
+                        <th className="sticky left-0 z-10 bg-muted/40 text-left p-2 text-[11px] font-semibold border-r border-b min-w-[64px]">
+                          {/* corner cell */}
+                        </th>
+                        {sortedVitals.map((v) => {
+                          const d = new Date(v.recordedAt as any);
+                          return (
+                            <th
+                              key={v.id}
+                              className="p-2 text-[11px] font-semibold text-center whitespace-nowrap border-r border-b"
+                              data-testid={`flowsheet-col-${v.id}`}
+                            >
+                              <div className="leading-tight">
+                                {d.toLocaleDateString("en-US", { year: "numeric", timeZone: "UTC" })}
+                              </div>
+                              <div className="leading-tight font-normal text-muted-foreground">
+                                {d.toLocaleDateString("en-US", { month: "2-digit", day: "2-digit", timeZone: "UTC" })}
+                              </div>
+                            </th>
+                          );
+                        })}
+                        <th className="p-2 text-[11px] font-semibold text-center sticky right-[44px] bg-muted/40 border-l border-b min-w-[100px]">
+                          Trend
+                        </th>
+                        <th className="p-2 text-[11px] font-semibold text-left sticky right-0 bg-muted/40 border-l border-b min-w-[44px]">
+                          {/* unit column — sticky-right offset matches body */}
+                        </th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {flowRows.flatMap((row) => {
+                        const expanded = expandedRow === row.key;
+                        const rows: JSX.Element[] = [
+                          <tr
+                            key={row.key}
+                            className="border-t hover-elevate cursor-pointer focus:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1"
+                            onClick={() => setExpandedRow(expanded ? null : row.key)}
+                            onKeyDown={(e) => {
+                              if (e.key === "Enter" || e.key === " ") {
+                                e.preventDefault();
+                                setExpandedRow(expanded ? null : row.key);
+                              }
+                            }}
+                            tabIndex={0}
+                            role="button"
+                            aria-expanded={expanded}
+                            aria-controls={`flowsheet-detail-${row.key}`}
+                            aria-label={`${row.label} row — ${expanded ? "collapse" : "expand"} trend chart`}
+                            data-testid={`flowsheet-row-${row.key}`}
+                          >
+                              <td className="sticky left-0 z-10 bg-background p-2 border-r font-semibold text-xs whitespace-nowrap">
+                                <span className="inline-flex items-center gap-1">
+                                  {expanded ? (
+                                    <ChevronDown className="w-3 h-3 text-muted-foreground" />
+                                  ) : (
+                                    <ChevronRight className="w-3 h-3 text-muted-foreground" />
+                                  )}
+                                  {row.label}
+                                </span>
+                              </td>
+                              {row.cells.map((cell, i) => {
+                                const isPatient = cell.src === "patient_logged";
+                                const colorByAbn =
+                                  cell.abnormal === "severe"
+                                    ? "#dc2626"
+                                    : cell.abnormal === "mild"
+                                    ? "#b45309"
+                                    : isPatient
+                                    ? SRC.patient_logged.color
+                                    : "inherit";
+                                const bg =
+                                  cell.abnormal === "severe"
+                                    ? "#fdf2f0"
+                                    : isPatient
+                                    ? SRC.patient_logged.bg
+                                    : undefined;
+                                const visitId = sortedVitals[i]?.id;
+                                return (
+                                  <td
+                                    key={`${row.key}-${visitId}`}
+                                    className="p-2 text-right font-mono text-xs whitespace-nowrap border-r"
+                                    style={{
+                                      backgroundColor: bg,
+                                      color: colorByAbn,
+                                      fontStyle: isPatient ? "italic" : "normal",
+                                      fontWeight: cell.abnormal !== "none" ? 600 : 400,
+                                    }}
+                                    title={
+                                      cell.src
+                                        ? `${cell.display} · ${
+                                            isPatient ? "Patient-reported" : "In-clinic"
+                                          }`
+                                        : undefined
+                                    }
+                                    data-testid={`flowsheet-cell-${row.key}-${visitId}`}
+                                  >
+                                    {cell.display}
+                                  </td>
+                                );
+                              })}
+                              <td className="p-1 sticky right-[44px] bg-background border-l">
+                                <div className="w-[90px] h-[24px]">
+                                  <ResponsiveContainer width="100%" height="100%">
+                                    <LineChart
+                                      data={row.series}
+                                      margin={{ top: 2, right: 2, bottom: 2, left: 2 }}
+                                    >
+                                      <Line
+                                        type="monotone"
+                                        dataKey="y"
+                                        stroke={row.color}
+                                        strokeWidth={1.5}
+                                        dot={false}
+                                        isAnimationActive={false}
+                                      />
+                                    </LineChart>
+                                  </ResponsiveContainer>
+                                </div>
+                              </td>
+                              <td className="p-2 sticky right-0 bg-background border-l text-[10px] text-muted-foreground whitespace-nowrap">
+                                {row.unit}
+                              </td>
+                          </tr>,
+                        ];
+                        if (expanded) {
+                          rows.push(
+                            <tr key={`${row.key}-detail`} data-testid={`flowsheet-detail-${row.key}`}>
+                                <td
+                                  colSpan={sortedVitals.length + 3}
+                                  className="p-3 border-t bg-muted/10"
+                                >
+                                  <div className="flex items-center justify-between mb-2">
+                                    <p className="text-xs font-semibold uppercase tracking-wider text-muted-foreground">
+                                      {row.label} Trend ({row.unit})
+                                    </p>
+                                    <Button
+                                      size="sm"
+                                      variant="ghost"
+                                      className="h-7 text-xs"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setExpandedRow(null);
+                                      }}
+                                      data-testid={`button-collapse-${row.key}`}
+                                    >
+                                      Hide
+                                    </Button>
+                                  </div>
+                                  <div className="w-full h-40">
+                                    <ResponsiveContainer width="100%" height="100%">
+                                      <LineChart
+                                        data={row.series}
+                                        margin={{ top: 8, right: 8, bottom: 8, left: 0 }}
+                                      >
+                                        <CartesianGrid strokeDasharray="3 3" />
+                                        <XAxis
+                                          dataKey="date"
+                                          tick={{ fontSize: 10 }}
+                                          interval="preserveStartEnd"
+                                        />
+                                        <YAxis tick={{ fontSize: 10 }} domain={["auto", "auto"]} />
+                                        <RechartsTooltip
+                                          contentStyle={{ fontSize: 11 }}
+                                          formatter={(val: any) => [`${val} ${row.unit}`, row.label]}
+                                          labelFormatter={(l: string) => `Visit: ${l}`}
+                                        />
+                                        <Line
+                                          type="monotone"
+                                          dataKey="y"
+                                          stroke={row.color}
+                                          strokeWidth={2}
+                                          dot={(props: any) => {
+                                            const { cx, cy, payload, key } = props;
+                                            if (cx == null || cy == null) return <g key={key} />;
+                                            const isPatient = payload?.src === "patient_logged";
+                                            return isPatient ? (
+                                              <circle
+                                                key={key}
+                                                cx={cx}
+                                                cy={cy}
+                                                r={4}
+                                                fill="#ffffff"
+                                                stroke={row.color}
+                                                strokeWidth={2}
+                                              />
+                                            ) : (
+                                              <circle
+                                                key={key}
+                                                cx={cx}
+                                                cy={cy}
+                                                r={3.5}
+                                                fill={row.color}
+                                                stroke={row.color}
+                                              />
+                                            );
+                                          }}
+                                          isAnimationActive={false}
+                                        />
+                                      </LineChart>
+                                    </ResponsiveContainer>
+                                  </div>
+                              </td>
+                            </tr>
+                          );
+                        }
+                        return rows;
+                      })}
+                    </tbody>
+                  </table>
+                </div>
+            )}
+
+            {sortedVitals.length > 0 && flowRows.length > 0 && (
+              <div
+                className="mt-3 flex flex-wrap items-center gap-x-4 gap-y-2 text-[11px]"
+                data-testid="flowsheet-color-key"
+              >
+                  <span className="font-semibold text-muted-foreground">Source:</span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm border"
+                      style={{ backgroundColor: "#ffffff", borderColor: SRC.clinic.border }}
+                    />
+                    <Building2 className="w-3 h-3" style={{ color: SRC.clinic.color }} />
+                    <span style={{ color: SRC.clinic.color }}>In-clinic</span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm border"
+                      style={{
+                        backgroundColor: SRC.patient_logged.bg,
+                        borderColor: SRC.patient_logged.border,
+                      }}
+                    />
+                    <Home className="w-3 h-3" style={{ color: SRC.patient_logged.color }} />
+                    <span style={{ color: SRC.patient_logged.color, fontStyle: "italic" }}>
+                      Patient-reported
+                    </span>
+                  </span>
+                  <span className="inline-flex items-center gap-1.5">
+                    <span
+                      className="inline-block w-3 h-3 rounded-sm border"
+                      style={{ backgroundColor: "#fdf2f0", borderColor: "#e8c1ba" }}
+                    />
+                    <span style={{ color: "#dc2626", fontWeight: 600 }}>Abnormal</span>
+                  </span>
+                <span className="text-muted-foreground/80">
+                  Click any row to expand the trend chart.
+                </span>
+              </div>
+            )}
+
+            {sortedVitals.length > 0 && (
+              <details className="mt-2 text-xs" data-testid="flowsheet-manage-details">
+                  <summary className="cursor-pointer text-muted-foreground hover:text-foreground inline-flex items-center gap-1">
+                    Manage entries
+                  </summary>
+                  <div className="mt-2 border rounded-md divide-y">
+                    {sortedVitals
+                      .slice()
+                      .reverse()
+                      .map((v) => {
+                        const src = srcOf(v);
+                        return (
+                          <div
+                            key={v.id}
+                            className="flex items-center justify-between gap-2 p-2"
+                            data-testid={`manage-row-${v.id}`}
+                          >
+                            <div className="flex items-center gap-2 min-w-0">
+                              <SourceBadge source={src} size="xs" />
+                              <span className="text-xs">
+                                {new Date(v.recordedAt).toLocaleDateString("en-US", {
+                                  month: "short",
+                                  day: "numeric",
+                                  year: "numeric",
+                                  timeZone: "UTC",
+                                })}
+                                {v.timeOfDay ? (
+                                  <span className="text-muted-foreground"> {v.timeOfDay}</span>
+                                ) : null}
+                              </span>
+                            </div>
                             {src === "clinic" ? (
                               <Button
-                                size="icon"
+                                size="sm"
                                 variant="ghost"
-                                className="h-7 w-7"
                                 onClick={() => deleteMut.mutate(v.id)}
                                 data-testid={`button-delete-vital-${v.id}`}
+                                className="text-xs gap-1 h-7"
                               >
                                 <Trash2 className="w-3 h-3 text-destructive" />
+                                Delete
                               </Button>
-                            ) : null}
-                          </td>
-                        </tr>
-                      );
-                    })}
-                  </tbody>
-                </table>
-              </div>
+                            ) : (
+                              <span className="text-[10px] text-muted-foreground">audit-locked</span>
+                            )}
+                          </div>
+                        );
+                      })}
+                </div>
+              </details>
             )}
           </div>
         </ScrollArea>
