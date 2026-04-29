@@ -48,7 +48,7 @@ import { PhoneNoteDialog } from "@/components/phone-note-dialog";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 import { VitalsDialog } from "@/components/vitals-dialog";
 import { VitalTrendsDialog } from "@/components/vital-trends-dialog";
-import { PreventCalculatorDialog, PreventCalculatorPanel } from "@/components/prevent-calculator-dialog";
+import { PreventCalculatorPanel } from "@/components/prevent-calculator-dialog";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -1134,6 +1134,7 @@ export default function PatientProfiles() {
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAppointmentDialog, setShowAppointmentDialog] = useState(false);
+  const [showUpcomingApptsDialog, setShowUpcomingApptsDialog] = useState(false);
   const [showVitalsDialog, setShowVitalsDialog] = useState(false);
   const [showVitalTrendsDialog, setShowVitalTrendsDialog] = useState(false);
   const [inviteEmail, setInviteEmail] = useState("");
@@ -2132,22 +2133,13 @@ export default function PatientProfiles() {
                   <Button
                     variant="outline"
                     size="sm"
-                    onClick={() => {
-                      setProfileSection("prevent");
-                      // Defer scroll until after the section renders so the
-                      // panel slides into view next to the patient chart
-                      // instead of staying off-screen below.
-                      setTimeout(() => {
-                        document.querySelector('[data-testid="card-prevent-section"]')
-                          ?.scrollIntoView({ behavior: "smooth", block: "start" });
-                      }, 50);
-                    }}
-                    data-testid="button-prevent-calc"
+                    onClick={() => setShowUpcomingApptsDialog(true)}
+                    data-testid="button-appointments"
                     className="text-xs gap-1.5"
                     style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
                   >
-                    <Activity className="h-3 w-3" />
-                    PREVENT Calc
+                    <CalendarDays className="h-3 w-3" />
+                    Appointments
                   </Button>
                 </div>
               </div>
@@ -2371,25 +2363,12 @@ export default function PatientProfiles() {
                 </div>
               )}
 
-              {/* ── Overview: status tiles + clinical snapshot ──────────── */}
+              {/* ── Overview: clinical snapshot only ─────────────────────
+                  Appointments now live in the top action bar; portal & check-ins
+                  have dedicated left-nav sections. The Overview tab focuses on
+                  the clinical snapshot. */}
               {profileSection === "overview" && (
-                <>
-                  <StatusTilesRow
-                    patientId={selectedPatient.id}
-                    onBookAppointment={() => setShowAppointmentDialog(true)}
-                    portalStatus={portalStatus ?? null}
-                    unreadCount={unreadData?.count ?? 0}
-                    portalOpen={false}
-                    onTogglePortal={() => {
-                      // Tile click jumps to the dedicated Portal & Messages
-                      // sub-section (the inline panel now lives there).
-                      setProfileSection("portal");
-                      setShowPortalSection(true);
-                      if (portalStatus?.hasPortalAccount) setShowMessages(true);
-                    }}
-                  />
-                  <ClinicalSnapshot labs={labs} patient={selectedPatient} />
-                </>
+                <ClinicalSnapshot labs={labs} patient={selectedPatient} />
               )}
 
               {/* ── Active Monitoring (vitals episodes + alerts) ───────── */}
@@ -3496,6 +3475,24 @@ export default function PatientProfiles() {
         defaultPatientId={selectedPatient?.id ?? null}
       />
 
+      {/* Upcoming Appointments Dialog (opened from top action bar) */}
+      {selectedPatient && (
+        <Dialog open={showUpcomingApptsDialog} onOpenChange={setShowUpcomingApptsDialog}>
+          <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto" data-testid="dialog-upcoming-appointments">
+            <DialogHeader>
+              <DialogTitle>Upcoming Appointments</DialogTitle>
+            </DialogHeader>
+            <UpcomingAppointmentsCard
+              patientId={selectedPatient.id}
+              onBook={() => {
+                setShowUpcomingApptsDialog(false);
+                setShowAppointmentDialog(true);
+              }}
+            />
+          </DialogContent>
+        </Dialog>
+      )}
+
       {/* Vitals Dialog */}
       {selectedPatient && (
         <VitalsDialog
@@ -4265,248 +4262,6 @@ function UpcomingAppointmentsCard({
         )}
       </div>
     </div>
-  );
-}
-
-// ── Status Tile + Tiles Row (compact summary tiles that pop dialogs) ──────
-function StatusTile({
-  icon: Icon,
-  iconColor,
-  title,
-  status,
-  statusBg,
-  statusColor,
-  subtitle,
-  subtitleColor,
-  alertCount,
-  onClick,
-  testId,
-  isOpen,
-}: {
-  icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
-  iconColor: string;
-  title: string;
-  status: string;
-  statusBg: string;
-  statusColor: string;
-  subtitle?: string | null;
-  subtitleColor?: string;
-  alertCount?: number;
-  onClick: () => void;
-  testId: string;
-  isOpen?: boolean;
-}) {
-  return (
-    <button
-      type="button"
-      onClick={onClick}
-      className="flex flex-col items-start text-left rounded-xl border px-4 py-3 hover-elevate active-elevate-2 w-full"
-      style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
-      data-testid={testId}
-    >
-      <div className="flex items-center gap-2 w-full">
-        <Icon className="w-4 h-4 flex-shrink-0" style={{ color: iconColor }} />
-        <span className="text-sm font-semibold flex-1 truncate" style={{ color: "#1c2414" }}>
-          {title}
-        </span>
-        {alertCount !== undefined && alertCount > 0 && (
-          <span
-            className="inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 min-w-[18px] h-[18px]"
-            style={{ backgroundColor: "#c0392b", color: "#ffffff" }}
-            data-testid={`${testId}-alert-badge`}
-          >
-            {alertCount}
-          </span>
-        )}
-        {isOpen !== undefined ? (
-          <ChevronDown
-            className={`w-4 h-4 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
-            style={{ color: "#a0a880" }}
-          />
-        ) : (
-          <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
-        )}
-      </div>
-      <span
-        className="inline-block mt-2 text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded"
-        style={{ backgroundColor: statusBg, color: statusColor }}
-      >
-        {status}
-      </span>
-      {subtitle && (
-        <span className="mt-1.5 text-xs truncate w-full" style={{ color: subtitleColor || "#7a8a64" }}>
-          {subtitle}
-        </span>
-      )}
-    </button>
-  );
-}
-
-function StatusTilesRow({
-  patientId,
-  onBookAppointment,
-  portalStatus,
-  unreadCount,
-  portalOpen,
-  onTogglePortal,
-}: {
-  patientId: number;
-  onBookAppointment: () => void;
-  portalStatus?: {
-    hasPortalAccount: boolean;
-    portalStatus: 'not_invited' | 'invite_pending' | 'active';
-    lastLoginAt: string | null;
-    latestReportPublishedAt: string | null;
-    latestReportViewedAt: string | null;
-  } | null;
-  unreadCount: number;
-  portalOpen: boolean;
-  onTogglePortal: () => void;
-}) {
-  const [openAppointments, setOpenAppointments] = useState(false);
-  const [openCheckin, setOpenCheckin] = useState(false);
-
-  // Summary queries — react-query dedupes against the panels' own queries
-  const { data: upcomingAppts = [] } = useQuery<Appointment[]>({
-    queryKey: ["/api/patients", patientId, "upcoming-appointments"],
-    queryFn: async () => {
-      const r = await fetch(`/api/patients/${patientId}/upcoming-appointments`, { credentials: "include" });
-      if (!r.ok) return [];
-      return r.json();
-    },
-  });
-
-  const { data: trackingData } = useQuery<_MonitoringSummary>({
-    queryKey: ["/api/patients", patientId, "tracking-summary"],
-    queryFn: async () => {
-      const res = await fetch(`/api/patients/${patientId}/tracking-summary`, { credentials: "include" });
-      if (!res.ok) throw new Error("failed");
-      return res.json();
-    },
-  });
-
-  // Appointments tile data
-  const apptCount = upcomingAppts.length;
-  const nextAppt = upcomingAppts[0];
-  const fmtAppt = (iso: string) => {
-    const d = new Date(iso);
-    return `${d.toLocaleDateString(undefined, { weekday: "short", month: "short", day: "numeric" })} · ${d.toLocaleTimeString(undefined, { hour: "numeric", minute: "2-digit" })}`;
-  };
-
-  // Check-Ins tile data
-  const trackingActive = !!(trackingData?.settings?.enabled && trackingData?.settings?.trackingMode !== "off");
-  const trackingMode = trackingData?.settings?.trackingMode ?? "off";
-  const unreviewedMedCount = (trackingData?.reportedMeds ?? []).filter(
-    (m) => !m.reviewedByProvider && m.status === "active"
-  ).length;
-  const lastCheckinDate = trackingData?.summary?.lastActivityAt;
-
-  // Portal tile data
-  const portalState = portalStatus?.portalStatus ?? 'not_invited';
-  const portalLabel =
-    portalState === 'active' ? 'Active'
-      : portalState === 'invite_pending' ? 'Invite pending'
-        : 'Not invited';
-  const portalBg =
-    portalState === 'active' ? '#dbe8c8'
-      : portalState === 'invite_pending' ? '#fde9d3'
-        : '#e8ddd0';
-  const portalColor =
-    portalState === 'active' ? '#2e3a20'
-      : portalState === 'invite_pending' ? '#7a4a14'
-        : '#7a8a64';
-  const portalSubtitle =
-    portalState === 'active'
-      ? (portalStatus?.lastLoginAt
-        ? `Last login: ${new Date(portalStatus.lastLoginAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
-        : 'Never logged in')
-      : portalState === 'invite_pending'
-        ? 'Awaiting signup'
-        : 'Send invite from above';
-
-  return (
-    <>
-      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="status-tiles-row">
-        <StatusTile
-          icon={CalendarDays}
-          iconColor="#5a7040"
-          title="Appointments"
-          status={apptCount > 0 ? `${apptCount} upcoming` : "None scheduled"}
-          statusBg={apptCount > 0 ? "#dbe8c8" : "#e8ddd0"}
-          statusColor={apptCount > 0 ? "#2e3a20" : "#7a8a64"}
-          subtitle={nextAppt ? `Next: ${fmtAppt(nextAppt.appointmentStart as unknown as string)}` : null}
-          onClick={() => setOpenAppointments(true)}
-          testId="tile-appointments"
-        />
-        <StatusTile
-          icon={MessageSquare}
-          iconColor="#2e3a20"
-          title="Portal & Messages"
-          status={portalLabel}
-          statusBg={portalBg}
-          statusColor={portalColor}
-          subtitle={portalSubtitle}
-          alertCount={unreadCount}
-          onClick={onTogglePortal}
-          testId="tile-portal"
-          isOpen={portalOpen}
-        />
-        <StatusTile
-          icon={Activity}
-          iconColor="#2e3a20"
-          title="Check-Ins"
-          status={trackingActive ? (trackingMode === "power" ? "Power Mode" : "Standard") : "Not enrolled"}
-          statusBg={trackingActive ? "#dbe8c8" : "#e8ddd0"}
-          statusColor={trackingActive ? "#2e3a20" : "#7a8a64"}
-          subtitle={
-            trackingActive && lastCheckinDate
-              ? `Last activity: ${new Date(lastCheckinDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}`
-              : trackingActive
-                ? "No check-ins yet"
-                : "Patient can opt in from portal"
-          }
-          alertCount={unreviewedMedCount}
-          onClick={() => setOpenCheckin(true)}
-          testId="tile-checkins"
-        />
-      </div>
-
-      {/* Appointments dialog */}
-      <Dialog open={openAppointments} onOpenChange={setOpenAppointments}>
-        <DialogContent className="max-w-2xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Upcoming Appointments</DialogTitle>
-          </DialogHeader>
-          <UpcomingAppointmentsCard
-            patientId={patientId}
-            onBook={() => {
-              setOpenAppointments(false);
-              onBookAppointment();
-            }}
-          />
-        </DialogContent>
-      </Dialog>
-
-      {/* Check-Ins dialog */}
-      <Dialog open={openCheckin} onOpenChange={setOpenCheckin}>
-        <DialogContent className="max-w-3xl max-h-[85vh] overflow-y-auto">
-          <DialogHeader>
-            <DialogTitle>Monitoring & Check-Ins</DialogTitle>
-          </DialogHeader>
-          {trackingActive ? (
-            <MonitoringPanel patientId={patientId} />
-          ) : (
-            <div className="py-4 text-sm space-y-2" style={{ color: "#5a6048" }} data-testid="checkin-not-enrolled">
-              <p>This patient hasn't opted in to Daily Check-In tracking.</p>
-              <p className="text-xs" style={{ color: "#7a8a64" }}>
-                Once they enable it from their patient portal, you'll see their daily activity, mood,
-                sleep, exercise, and any patient-added medications here for review.
-              </p>
-            </div>
-          )}
-        </DialogContent>
-      </Dialog>
-    </>
   );
 }
 
