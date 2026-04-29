@@ -238,7 +238,22 @@ Write the summary now:`;
         messages: [
           {
             role: "system",
-            content: `You are writing a patient-friendly lab results summary for a ${clinicType}. Always mention specific numeric values and give concrete, actionable lifestyle recommendations.${gender === 'female' ? ' Consider menstrual cycle phase when discussing hormone results. Address female-specific health concerns like iron status, thyroid function, and bone health.' : ''}`
+            content: `You are the patient's warm, knowledgeable health coach at a ${clinicType}. You write like a trusted clinician-friend who's read every page of their chart — never robotic, never alarmist, never a pile of single-marker observations.
+
+VOICE
+- Warm, second-person, encouraging. Confidence-building, not scary.
+- Sound human. Say "you" and "your" — not "the patient."
+- Acknowledge effort and progress when the labs show it.
+
+PATTERN RECOGNITION (CRITICAL)
+- Whenever two or more findings point in the same direction, connect them in one sentence as a pattern. Examples of the voice we want:
+  • "Your LDL of 162 paired with a triglyceride of 198 suggests your body is leaning toward storing rather than using fats — a pattern we can shift with consistent fiber, omega-3s, and daily movement."
+  • "Your fasting glucose, A1c, and waist trend are nudging in the same direction, which usually means insulin signaling needs more support — strength training and a protein-forward breakfast are the highest-yield first moves."
+- Avoid stacking isolated marker-by-marker bullets. Synthesize.
+- Always include specific numeric values inside the pattern sentences — never vague phrases like "high cholesterol."
+
+ACTIONS
+- Give 3–5 concrete, doable lifestyle actions tied to the patterns you named, not generic advice.${gender === 'female' ? ' If a hormone marker is involved, briefly consider menstrual cycle phase context. Cover female-specific themes (iron status, thyroid, bone health) when relevant.' : ''}`
           },
           {
             role: "user",
@@ -1194,5 +1209,71 @@ Write in second person ("your"), be warm but honest, avoid medical jargon. No bu
       clinicianNarrative: clinicianResp.choices[0]?.message?.content?.trim() || '',
       patientNarrative: patientResp.choices[0]?.message?.content?.trim() || '',
     };
+  }
+
+  /**
+   * HealthIQ multi-signal coaching insight for the patient portal.
+   * Reads the last 7 days of daily check-ins and writes a 2-3 sentence
+   * cross-domain pattern observation in a warm coach voice.
+   */
+  static async generateHealthIQInsight(input: {
+    firstName?: string | null;
+    gender?: "male" | "female" | string | null;
+    checkins: any[];
+  }): Promise<string> {
+    const { firstName, gender, checkins } = input;
+
+    const summarize = (label: string, vals: any[], unit = "") => {
+      const nums = vals.filter((v) => typeof v === "number") as number[];
+      if (!nums.length) return `${label}: not logged`;
+      const avg = Math.round((nums.reduce((a, b) => a + b, 0) / nums.length) * 10) / 10;
+      return `${label}: avg ${avg}${unit} across ${nums.length} day${nums.length === 1 ? "" : "s"}`;
+    };
+    const countWhere = (label: string, predicate: (c: any) => boolean) => {
+      const n = checkins.filter(predicate).length;
+      return `${label}: ${n}/${checkins.length} day${checkins.length === 1 ? "" : "s"}`;
+    };
+
+    const dataBlock = [
+      summarize("Sleep hours", checkins.map((c) => c.sleepHours), "h"),
+      summarize("Mood (1–5)", checkins.map((c) => c.moodScore)),
+      summarize("Energy (1–5)", checkins.map((c) => c.energyScore)),
+      summarize("Brain fog (1–5)", checkins.map((c) => c.brainFogScore)),
+      summarize("Anxiety/irritability (1–5)", checkins.map((c) => c.anxietyIrritabilityScore)),
+      countWhere("Strong hydration", (c) => c.waterLevel === "strong"),
+      countWhere("Strong protein", (c) => c.foodProteinLevel === "strong"),
+      countWhere("Movement", (c) => c.exerciseDone === true),
+      countWhere("Alcohol", (c) => c.alcoholUse === true),
+      countWhere("Night sweats / woke during night", (c) => c.nightSweats === true || c.wokeDuringNight === true),
+    ].join("\n");
+
+    const prompt = `Write a short HealthIQ weekly read for ${firstName || "this patient"} (${gender || "unspecified"}). Use only the data below.
+
+DATA (last 7 days):
+${dataBlock}
+
+REQUIREMENTS:
+- 2-3 sentences, warm coach voice, second person ("you", "your"). No headings, no bullets.
+- Connect AT LEAST TWO different signals into a single pattern observation. Example voices we want:
+   "Your energy may be dipping from a combination of light sleep, low hydration, and lighter protein this week — pulling those three up a notch tomorrow tends to lift the others with it."
+   "Your mood and brain fog scores both crept down on the days you skipped movement and slept under 6 hours, which is a really common combo to see together."
+- End with one specific, doable suggestion for tomorrow.
+- Never say "the patient." Never use medical jargon. Never list the data back at them — interpret it.`;
+
+    try {
+      const resp = await openai.chat.completions.create({
+        model: "gpt-5-mini",
+        messages: [
+          { role: "system", content: "You are a warm, pattern-recognizing health coach. Always respond with a single short paragraph (2-3 sentences) that synthesizes multiple signals into one observation, then ends with a concrete suggestion. No markdown, no lists." },
+          { role: "user", content: prompt },
+        ],
+        max_completion_tokens: 350,
+      });
+      const text = resp.choices[0]?.message?.content?.trim() || "";
+      return text || "Keep logging your check-ins this week and your AI coach will start spotting cross-signal patterns — sleep with energy, hydration with mood, movement with brain fog — to give you a personalized read.";
+    } catch (err) {
+      console.error("[AI Service] HealthIQ insight error:", err);
+      return "Your weekly insight is taking a moment. Keep logging your check-ins and try again shortly.";
+    }
   }
 }

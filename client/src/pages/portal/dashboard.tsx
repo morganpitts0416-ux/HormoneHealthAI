@@ -12,8 +12,18 @@ import {
   TrendingUp, TrendingDown, Minus, Package, MessageSquare, Smartphone,
   Heart, Activity, Utensils, X, ChevronDown, ChevronUp, Info,
   ChefHat, Clock, Users, Loader2, ArrowLeft, Bookmark, BookmarkCheck,
-  Download, Trash2, Stethoscope, FileText, Sun, CheckCircle2
+  Download, Trash2, Stethoscope, FileText, Sun, CheckCircle2,
+  Home as HomeIcon, UserCircle, ChefHat as RecipeIcon
 } from "lucide-react";
+import {
+  DropdownMenu,
+  DropdownMenuContent,
+  DropdownMenuItem,
+  DropdownMenuLabel,
+  DropdownMenuSeparator,
+  DropdownMenuTrigger,
+} from "@/components/ui/dropdown-menu";
+import { Avatar, AvatarFallback } from "@/components/ui/avatar";
 import type { SupplementRecommendation, Appointment } from "@shared/schema";
 import { generateTrendInsights } from "@/lib/clinical-trend-insights";
 import { ActiveVitalsMonitoringCard } from "@/components/portal/active-vitals-monitoring-card";
@@ -1033,18 +1043,53 @@ export default function PortalDashboard() {
             className="h-12 sm:h-11 w-auto flex-shrink-0"
             style={{ mixBlendMode: "multiply" }}
           />
-          <Button
-            variant="ghost"
-            size="sm"
-            onClick={() => logoutMutation.mutate()}
-            disabled={logoutMutation.isPending}
-            data-testid="button-portal-logout"
-            className="text-xs gap-1.5 flex-shrink-0"
-            style={{ color: "#7a8a64" }}
-          >
-            <LogOut className="w-3.5 h-3.5" />
-            <span className="hidden xs:inline">Sign out</span>
-          </Button>
+          <DropdownMenu>
+            <DropdownMenuTrigger asChild>
+              <button
+                className="flex items-center gap-2 rounded-full hover-elevate active-elevate-2 px-1.5 py-1"
+                data-testid="button-portal-avatar"
+                aria-label="Account menu"
+              >
+                <Avatar className="h-9 w-9">
+                  <AvatarFallback style={{ backgroundColor: "#edf4e4", color: "#2e3a20", fontWeight: 600, fontSize: "0.85rem" }}>
+                    {`${(patient?.firstName?.[0] ?? "").toUpperCase()}${(patient?.lastName?.[0] ?? "").toUpperCase()}` || "P"}
+                  </AvatarFallback>
+                </Avatar>
+              </button>
+            </DropdownMenuTrigger>
+            <DropdownMenuContent align="end" className="w-56">
+              <DropdownMenuLabel>
+                <div className="flex flex-col gap-0.5">
+                  <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+                    {patient?.firstName} {patient?.lastName}
+                  </span>
+                  {patient?.email && (
+                    <span className="text-xs font-normal truncate" style={{ color: "#7a8a64" }}>
+                      {patient.email}
+                    </span>
+                  )}
+                </div>
+              </DropdownMenuLabel>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem asChild>
+                <Link href="/portal/account">
+                  <span className="flex items-center gap-2 w-full" data-testid="menu-portal-account">
+                    <UserCircle className="w-4 h-4" />
+                    Account
+                  </span>
+                </Link>
+              </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <DropdownMenuItem
+                onClick={() => logoutMutation.mutate()}
+                disabled={logoutMutation.isPending}
+                data-testid="button-portal-logout"
+              >
+                <LogOut className="w-4 h-4 mr-2" />
+                Sign out
+              </DropdownMenuItem>
+            </DropdownMenuContent>
+          </DropdownMenu>
         </div>
       </header>
 
@@ -1063,6 +1108,22 @@ export default function PortalDashboard() {
             </p>
           )}
         </div>
+
+        {/* What would you like to do today? — primary interactive grid */}
+        <section data-testid="section-action-grid">
+          <p className="text-xs uppercase tracking-wider mb-3" style={{ color: "#7a8a64", letterSpacing: "0.08em" }}>
+            What would you like to do today?
+          </p>
+          <div className="grid grid-cols-2 gap-3">
+            <ActionTile href="/portal/dashboard#labs" Icon={FlaskConical} label="View labs" sublabel="Your most recent results" testId="action-labs" onClick={(e) => { e.preventDefault(); document.getElementById("section-lab-journey")?.scrollIntoView({ behavior: "smooth" }); }} />
+            <ActionTile href="/portal/dashboard#visits" Icon={Stethoscope} label="Visit summaries" sublabel="Notes from your care team" testId="action-visits" onClick={(e) => { e.preventDefault(); document.getElementById("section-visits")?.scrollIntoView({ behavior: "smooth" }); }} />
+            <ActionTile href="/portal/supplements" Icon={Package} label="My current protocol" sublabel="Supplements & dietary plan" testId="action-protocol" />
+            <ActionTile href="/portal/dashboard#recipes" Icon={RecipeIcon} label="Recipe book" sublabel="Saved meals from your plan" testId="action-recipes" onClick={(e) => { e.preventDefault(); document.getElementById("section-recipes")?.scrollIntoView({ behavior: "smooth" }); }} />
+            <ActionTile href="/portal/messages" Icon={MessageSquare} label="Message my care team" sublabel="Get answers, share updates" testId="action-messages" badge={unreadCount} />
+            <ActionTile href="/portal/healthiq" Icon={Activity} label="HealthIQ check-in" sublabel="Daily snapshot, weekly read" testId="action-healthiq" />
+            <ActionTile href="/portal/account" Icon={UserCircle} label="Account" sublabel="Contact, pharmacy, documents" testId="action-account" wide />
+          </div>
+        </section>
 
         {/* Unread message notification banner — always visible when there are unread messages */}
         {unreadCount > 0 && (
@@ -1199,7 +1260,7 @@ export default function PortalDashboard() {
 
         {/* Visit Summaries from clinician */}
         {visitSummaries.length > 0 && (
-          <section className="space-y-3">
+          <section id="section-visits" className="space-y-3 scroll-mt-20">
             <div className="flex items-center gap-2">
               <Stethoscope className="w-4 h-4" style={{ color: "#5a7040" }} />
               <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>My Visit Summaries</h2>
@@ -1214,7 +1275,7 @@ export default function PortalDashboard() {
 
         {/* Lab visit history — all visits, clickable */}
         {labs.length > 0 && (
-          <section className="space-y-4">
+          <section id="section-lab-journey" className="space-y-4 scroll-mt-20">
             <div className="flex items-center justify-between gap-2">
               <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>My Lab Evaluations</h2>
               <p className="text-xs" style={{ color: "#7a8a64" }}>Tap to view details</p>
@@ -1343,7 +1404,7 @@ export default function PortalDashboard() {
 
         {/* Saved Recipes */}
         {savedRecipesList.length > 0 && (
-          <section className="space-y-4">
+          <section id="section-recipes" className="space-y-4 scroll-mt-20">
             <div className="flex items-center gap-2">
               <BookmarkCheck className="w-4 h-4" style={{ color: "#5a7040" }} />
               <h2 className="text-lg font-semibold tracking-tight" style={{ color: "#1c2414" }}>My Saved Recipes</h2>
@@ -1371,18 +1432,18 @@ export default function PortalDashboard() {
       </main>
 
       {/* Bottom navigation */}
-      <nav className="fixed bottom-0 left-0 right-0 border-t z-40" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
-        <div className="max-w-3xl mx-auto px-4 flex">
+      <nav className="fixed bottom-0 left-0 right-0 border-t z-40" style={{ backgroundColor: "#1c2414", borderColor: "#0e1208" }}>
+        <div className="max-w-3xl mx-auto flex items-center justify-around">
           <Link href="/portal/dashboard" className="flex-1">
             <button className="w-full py-3.5 flex flex-col items-center gap-1" data-testid="nav-portal-home">
-              <CalendarDays className="w-4 h-4" style={{ color: "#2e3a20" }} />
-              <span className="text-xs font-semibold" style={{ color: "#2e3a20" }}>Overview</span>
+              <HomeIcon className="w-4 h-4" style={{ color: "#ffffff" }} />
+              <span className="text-xs font-semibold" style={{ color: "#ffffff" }}>Home</span>
             </button>
           </Link>
-          <Link href="/portal/forms" className="flex-1">
-            <button className="w-full py-3.5 flex flex-col items-center gap-1" data-testid="nav-portal-forms">
-              <FileText className="w-4 h-4" style={{ color: "#a0a880" }} />
-              <span className="text-xs" style={{ color: "#a0a880" }}>Forms</span>
+          <Link href="/portal/healthiq" className="flex-1">
+            <button className="w-full py-3.5 flex flex-col items-center gap-1" data-testid="nav-portal-healthiq">
+              <Activity className="w-4 h-4" style={{ color: "#a0a880" }} />
+              <span className="text-xs" style={{ color: "#a0a880" }}>HealthIQ</span>
             </button>
           </Link>
           <Link href="/portal/supplements" className="flex-1">
@@ -1496,6 +1557,60 @@ function DailyCheckInCard() {
           </div>
         </div>
       </div>
+    </Link>
+  );
+}
+
+// ── Action grid tile (Home dashboard "What would you like to do today?") ──
+function ActionTile({
+  href,
+  Icon,
+  label,
+  sublabel,
+  testId,
+  badge,
+  wide,
+  onClick,
+}: {
+  href: string;
+  Icon: typeof Package;
+  label: string;
+  sublabel: string;
+  testId: string;
+  badge?: number;
+  wide?: boolean;
+  onClick?: (e: React.MouseEvent) => void;
+}) {
+  return (
+    <Link href={href} className={wide ? "col-span-2" : undefined}>
+      <a
+        onClick={onClick}
+        className="block rounded-2xl border p-4 hover-elevate active-elevate-2 h-full"
+        style={{ borderColor: "#e8ddd0", backgroundColor: "#ffffff" }}
+        data-testid={testId}
+      >
+        <div className="flex items-start gap-3">
+          <div
+            className="w-10 h-10 rounded-xl flex items-center justify-center flex-shrink-0 relative"
+            style={{ backgroundColor: "#edf4e4" }}
+          >
+            <Icon className="w-4 h-4" style={{ color: "#2e3a20" }} />
+            {badge !== undefined && badge > 0 && (
+              <span
+                className="absolute -top-1 -right-1 min-w-[16px] h-[16px] rounded-full flex items-center justify-center text-[10px] font-bold leading-none text-white"
+                style={{ backgroundColor: "#c0392b" }}
+                data-testid={`${testId}-badge`}
+              >
+                {badge > 9 ? "9+" : badge}
+              </span>
+            )}
+          </div>
+          <div className="flex-1 min-w-0">
+            <p className="text-sm font-semibold leading-tight" style={{ color: "#1c2414" }}>{label}</p>
+            <p className="text-[11px] mt-0.5 leading-snug" style={{ color: "#7a8a64" }}>{sublabel}</p>
+          </div>
+        </div>
+      </a>
     </Link>
   );
 }
