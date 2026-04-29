@@ -1146,6 +1146,7 @@ export default function PatientProfiles() {
   const [isDietaryGenerating, setIsDietaryGenerating] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const [showMessages, setShowMessages] = useState(false);
+  const [showPortalSection, setShowPortalSection] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
   const [showEncounters, setShowEncounters] = useState(false);
   const [showForms, setShowForms] = useState(true);
@@ -2109,14 +2110,30 @@ export default function PatientProfiles() {
                 }}
               />
 
-              {/* ── Status tiles (Appointments · Vitals Monitoring · Check-Ins) ── */}
+              {/* ── Status tiles (Appointments · Portal & Messages · Check-Ins) ── */}
               <StatusTilesRow
                 patientId={selectedPatient.id}
                 onBookAppointment={() => setShowAppointmentDialog(true)}
+                portalStatus={portalStatus ?? null}
+                unreadCount={unreadData?.count ?? 0}
+                portalOpen={showPortalSection}
+                onTogglePortal={() => {
+                  const next = !showPortalSection;
+                  setShowPortalSection(next);
+                  // Honor the "one-click messages" promise: opening the portal tile
+                  // for an account-active patient also expands the message thread
+                  // immediately. Closing the section also collapses messages so
+                  // the next open starts in the same predictable state.
+                  if (next && portalStatus?.hasPortalAccount) {
+                    setShowMessages(true);
+                  } else if (!next) {
+                    setShowMessages(false);
+                  }
+                }}
               />
 
-              {/* ── Portal Engagement Panel (with inline messages) ────── */}
-              {portalStatus && (
+              {/* ── Portal & Messages inline panel (toggled by Portal tile) ─── */}
+              {showPortalSection && portalStatus && (
                 <div
                   className="rounded-xl border"
                   style={{ borderColor: "#d4c9b5", backgroundColor: "#faf8f5" }}
@@ -2139,7 +2156,7 @@ export default function PatientProfiles() {
                         }}
                       >
                         <MessageSquare className="w-3 h-3" />
-                        Messages
+                        {showMessages ? "Hide messages" : "Show messages"}
                         {(unreadData?.count ?? 0) > 0 && (
                           <span
                             className="inline-flex items-center justify-center rounded-full text-[10px] font-bold px-1.5 min-w-[16px] h-4"
@@ -4101,6 +4118,7 @@ function StatusTile({
   alertCount,
   onClick,
   testId,
+  isOpen,
 }: {
   icon: React.ComponentType<{ className?: string; style?: React.CSSProperties }>;
   iconColor: string;
@@ -4113,6 +4131,7 @@ function StatusTile({
   alertCount?: number;
   onClick: () => void;
   testId: string;
+  isOpen?: boolean;
 }) {
   return (
     <button
@@ -4136,7 +4155,14 @@ function StatusTile({
             {alertCount}
           </span>
         )}
-        <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
+        {isOpen !== undefined ? (
+          <ChevronDown
+            className={`w-4 h-4 flex-shrink-0 transition-transform ${isOpen ? "rotate-180" : ""}`}
+            style={{ color: "#a0a880" }}
+          />
+        ) : (
+          <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#a0a880" }} />
+        )}
       </div>
       <span
         className="inline-block mt-2 text-[10px] uppercase tracking-wide font-semibold px-2 py-0.5 rounded"
@@ -4156,9 +4182,23 @@ function StatusTile({
 function StatusTilesRow({
   patientId,
   onBookAppointment,
+  portalStatus,
+  unreadCount,
+  portalOpen,
+  onTogglePortal,
 }: {
   patientId: number;
   onBookAppointment: () => void;
+  portalStatus?: {
+    hasPortalAccount: boolean;
+    portalStatus: 'not_invited' | 'invite_pending' | 'active';
+    lastLoginAt: string | null;
+    latestReportPublishedAt: string | null;
+    latestReportViewedAt: string | null;
+  } | null;
+  unreadCount: number;
+  portalOpen: boolean;
+  onTogglePortal: () => void;
 }) {
   const [openAppointments, setOpenAppointments] = useState(false);
   const [openCheckin, setOpenCheckin] = useState(false);
@@ -4198,9 +4238,32 @@ function StatusTilesRow({
   ).length;
   const lastCheckinDate = trackingData?.summary?.lastActivityAt;
 
+  // Portal tile data
+  const portalState = portalStatus?.portalStatus ?? 'not_invited';
+  const portalLabel =
+    portalState === 'active' ? 'Active'
+      : portalState === 'invite_pending' ? 'Invite pending'
+        : 'Not invited';
+  const portalBg =
+    portalState === 'active' ? '#dbe8c8'
+      : portalState === 'invite_pending' ? '#fde9d3'
+        : '#e8ddd0';
+  const portalColor =
+    portalState === 'active' ? '#2e3a20'
+      : portalState === 'invite_pending' ? '#7a4a14'
+        : '#7a8a64';
+  const portalSubtitle =
+    portalState === 'active'
+      ? (portalStatus?.lastLoginAt
+        ? `Last login: ${new Date(portalStatus.lastLoginAt).toLocaleDateString('en-US', { month: 'short', day: 'numeric' })}`
+        : 'Never logged in')
+      : portalState === 'invite_pending'
+        ? 'Awaiting signup'
+        : 'Send invite from above';
+
   return (
     <>
-      <div className="grid grid-cols-1 sm:grid-cols-2 gap-3" data-testid="status-tiles-row">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-3" data-testid="status-tiles-row">
         <StatusTile
           icon={CalendarDays}
           iconColor="#5a7040"
@@ -4211,6 +4274,19 @@ function StatusTilesRow({
           subtitle={nextAppt ? `Next: ${fmtAppt(nextAppt.appointmentStart as unknown as string)}` : null}
           onClick={() => setOpenAppointments(true)}
           testId="tile-appointments"
+        />
+        <StatusTile
+          icon={MessageSquare}
+          iconColor="#2e3a20"
+          title="Portal & Messages"
+          status={portalLabel}
+          statusBg={portalBg}
+          statusColor={portalColor}
+          subtitle={portalSubtitle}
+          alertCount={unreadCount}
+          onClick={onTogglePortal}
+          testId="tile-portal"
+          isOpen={portalOpen}
         />
         <StatusTile
           icon={Activity}
