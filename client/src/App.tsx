@@ -58,6 +58,8 @@ import { TourProvider } from "@/components/product-tour";
 import { AiChatDrawer } from "@/components/ai-chat-drawer";
 import { PatientContextProvider, usePatientContext } from "@/hooks/use-patient-context";
 import { AppHeader } from "@/components/app-header";
+import { RecordingProvider } from "@/contexts/recording-context";
+import { FloatingRecorderDock } from "@/components/recording/floating-recorder-dock";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -86,14 +88,17 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   return (
     <BillingGate>
       <BaaGate>
-        <SessionTimeoutModal />
-        <div className="h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
-          <AppHeader />
-          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
-            <Component />
+        <RecordingProvider>
+          <SessionTimeoutModal />
+          <div className="h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
+            <AppHeader />
+            <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+              <Component />
+            </div>
           </div>
-        </div>
-        <ProtectedChatDrawer />
+          <ProtectedChatDrawer />
+          <FloatingRecorderDock />
+        </RecordingProvider>
       </BaaGate>
     </BillingGate>
   );

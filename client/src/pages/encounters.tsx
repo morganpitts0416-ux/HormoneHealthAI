@@ -28,6 +28,7 @@ import { exportSoapPdf } from "@/lib/soap-pdf-export";
 import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
 import { SoapNoteViewer, EvidenceCard } from "@/components/soap-note-viewer";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
+import { useRecording } from "@/contexts/recording-context";
 
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -288,428 +289,242 @@ function formatDuration(seconds: number) {
 
 type RecorderState = "idle" | "recording" | "transcribing";
 
-// How long each recording segment runs before being sent to Whisper (60 seconds)
-const SEGMENT_MS = 60 * 1000;
+  // AudioCapture is now a thin shell that owns ONLY upload mode locally.
+  // Record mode delegates to the global RecordingProvider so the recorder
+  // can keep running while the clinician navigates anywhere in the app.
+  function AudioCapture({
+    onTranscribed,
+    onStateChange,
+    visitType = "follow-up",
+    currentEncounterId,
+    onStartRequested,
+  }: {
+    onTranscribed: (text: string, utterances: DiarizedUtterance[] | null) => void;
+    onStateChange: (state: RecorderState) => void;
+    visitType?: string;
+    currentEncounterId: number | null;
+    onStartRequested: () => Promise<{
+      encounterId: number;
+      patientId: number;
+      patientName: string;
+      preExistingTranscript: string;
+    } | null>;
+  }) {
+    const recording = useRecording();
+    const [mode, setMode] = useState<"record" | "upload">("record");
+    const [isTranscribing, setIsTranscribing] = useState(false);
+    const [dragging, setDragging] = useState(false);
+    const [uploadFile, setUploadFile] = useState<File | null>(null);
+    const [starting, setStarting] = useState(false);
+    const fileRef = useRef<HTMLInputElement>(null);
+    const { toast } = useToast();
 
-function AudioCapture({
-  onTranscribed,
-  onPartialTranscription,
-  onStateChange,
-  visitType = "follow-up",
-}: {
-  onTranscribed: (text: string, utterances: DiarizedUtterance[] | null) => void;
-  onPartialTranscription?: (accumulatedText: string) => void;
-  onStateChange: (state: RecorderState) => void;
-  visitType?: string;
-}) {
-  const [mode, setMode] = useState<"record" | "upload">("record");
-  const [recState, setRecState] = useState<"idle" | "recording" | "stopped">("idle");
-  const [elapsed, setElapsed] = useState(0);
-  const [isTranscribing, setIsTranscribing] = useState(false);
-  const [dragging, setDragging] = useState(false);
-  const [uploadFile, setUploadFile] = useState<File | null>(null);
-  // Progress for chunked recording
-  const [segmentsDone, setSegmentsDone] = useState(0);
-  const [segmentsTotal, setSegmentsTotal] = useState(0);
+    const onTranscribedRef = useRef(onTranscribed);
+    const onStateChangeRef = useRef(onStateChange);
+    useEffect(() => { onTranscribedRef.current = onTranscribed; }, [onTranscribed]);
+    useEffect(() => { onStateChangeRef.current = onStateChange; }, [onStateChange]);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
-  const timerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const segmentTimerRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  const streamRef = useRef<MediaStream | null>(null);
-  const mimeTypeRef = useRef<string>("");
-  const segmentIndexRef = useRef(0);
-  // Map of segment index → transcription text (ordered)
-  const transcribedSegmentsRef = useRef<Map<number, string>>(new Map());
-  const transcribedUtterancesRef = useRef<Map<number, DiarizedUtterance[] | null>>(new Map());
-  const pendingSegmentsRef = useRef(0);
-  const recordingStoppedRef = useRef(false);
-  const finalizedRef = useRef(false);
-  const fileRef = useRef<HTMLInputElement>(null);
-  const wakeLockRef = useRef<WakeLockSentinel | null>(null);
-  const { toast } = useToast();
+    // Mirror context state into parent (only when this component's encounter
+    // is the one being recorded). Upload-mode local transcribing flag also
+    // counts as "transcribing" for parent gating.
+    const boundToThis = recording.boundEncounterId !== null
+      && recording.boundEncounterId === currentEncounterId;
+    useEffect(() => {
+      if (isTranscribing) { onStateChangeRef.current("transcribing"); return; }
+      if (boundToThis && recording.state === "recording") { onStateChangeRef.current("recording"); return; }
+      if (boundToThis && recording.state === "transcribing") { onStateChangeRef.current("transcribing"); return; }
+      onStateChangeRef.current("idle");
+    }, [isTranscribing, boundToThis, recording.state]);
 
-  // PATIENT-SAFETY: Always invoke the LATEST callback props, not the ones
-  // captured when the MediaRecorder was created. The MediaRecorder's onstop
-  // handler is bound exactly once when a segment recorder starts, so without
-  // these refs the entire transcribe → finalize → onTranscribed chain holds
-  // a closure over the parent's render at recording-start time — including
-  // the parent's `patientId` value at that instant. If the provider switches
-  // the patient dropdown mid-recording, the autosave then writes the new
-  // encounter against the ORIGINAL patient, causing a cross-patient leak.
-  // Reading via refs ensures the latest parent closure (with the latest
-  // patientId) is used at the moment transcription completes.
-  const onTranscribedRef = useRef(onTranscribed);
-  const onPartialTranscriptionRef = useRef(onPartialTranscription);
-  const onStateChangeRef = useRef(onStateChange);
-  useEffect(() => { onTranscribedRef.current = onTranscribed; }, [onTranscribed]);
-  useEffect(() => { onPartialTranscriptionRef.current = onPartialTranscription; }, [onPartialTranscription]);
-  useEffect(() => { onStateChangeRef.current = onStateChange; }, [onStateChange]);
-
-  // Request screen wake lock so the phone doesn't suspend the mic during recording
-  const acquireWakeLock = async () => {
-    if (!("wakeLock" in navigator)) return;
-    try {
-      wakeLockRef.current = await (navigator as any).wakeLock.request("screen");
-    } catch {
-      // Wake lock not granted — not a fatal error, recording continues
-    }
-  };
-
-  const releaseWakeLock = () => {
-    if (wakeLockRef.current) {
-      wakeLockRef.current.release().catch(() => {});
-      wakeLockRef.current = null;
-    }
-  };
-
-  // Re-acquire wake lock if the page becomes visible again while still recording
-  // (mobile browsers release wake locks when the tab goes to the background)
-  useEffect(() => {
-    const onVisibility = () => {
-      if (document.visibilityState === "visible" && recState === "recording") {
-        acquireWakeLock();
-      }
-    };
-    document.addEventListener("visibilitychange", onVisibility);
-    return () => document.removeEventListener("visibilitychange", onVisibility);
-  }, [recState]);
-
-  useEffect(() => {
-    return () => {
-      if (timerRef.current) clearInterval(timerRef.current);
-      if (segmentTimerRef.current) clearInterval(segmentTimerRef.current);
-      if (streamRef.current) streamRef.current.getTracks().forEach(t => t.stop());
-      releaseWakeLock();
-    };
-  }, []);
-
-  // Keep parent in sync with recorder state (read latest callback via ref)
-  useEffect(() => {
-    if (isTranscribing) { onStateChangeRef.current("transcribing"); return; }
-    if (recState === "recording") { onStateChangeRef.current("recording"); return; }
-    onStateChangeRef.current("idle");
-  }, [recState, isTranscribing]);
-
-  // Called when ALL segments have been transcribed and recording has stopped
-  const finalizeTranscription = () => {
-    if (finalizedRef.current) return;
-    finalizedRef.current = true;
-    // Collect segment indices in ascending order from the map
-    const indices = Array.from(transcribedSegmentsRef.current.keys()).sort((a, b) => a - b);
-    const allText: string[] = [];
-    const allUtterances: DiarizedUtterance[] = [];
-    let utteranceIdOffset = 0;
-    for (const i of indices) {
-      const t = transcribedSegmentsRef.current.get(i) ?? "";
-      if (t) allText.push(t);
-      const u = transcribedUtterancesRef.current.get(i);
-      if (u) {
-        u.forEach(ut => allUtterances.push({ ...ut, id: ut.id + utteranceIdOffset }));
-        utteranceIdOffset += u.length;
-      }
-    }
-    const fullText = allText.join(" ").trim();
-    const utterances = allUtterances.length > 0 ? allUtterances : null;
-    // Read latest callback via ref so a mid-recording prop change (e.g. the
-    // provider switching the patient dropdown) is honored at finalize time.
-    onTranscribedRef.current(fullText, utterances);
-    setIsTranscribing(false);
-    setRecState("idle");
-    setElapsed(0);
-    setSegmentsDone(0);
-    setSegmentsTotal(0);
-    transcribedSegmentsRef.current.clear();
-    transcribedUtterancesRef.current.clear();
-    segmentIndexRef.current = 0;
-    pendingSegmentsRef.current = 0;
-  };
-
-  // Transcribe a single segment blob. segIdx is used to keep ordering correct.
-  const transcribeSegment = async (blob: Blob, segIdx: number) => {
-    const ext = (blob.type || "audio/webm").includes("ogg") ? "ogg" : "webm";
-    const file = new File([blob], `seg-${segIdx}.${ext}`, { type: blob.type || "audio/webm" });
-    try {
-      const formData = new FormData();
-      formData.append("audio", file);
-      formData.append("visitType", visitType);
-      const res = await fetch("/api/encounters/transcribe", {
-        method: "POST", body: formData, credentials: "include",
-      });
-      if (!res.ok) {
-        const err = await res.json().catch(() => ({}));
-        throw new Error(err.message || "Transcription failed");
-      }
-      const data = await res.json();
-      transcribedSegmentsRef.current.set(segIdx, data.transcription ?? "");
-      transcribedUtterancesRef.current.set(segIdx, data.utterances ?? null);
-      setSegmentsDone(d => d + 1);
-      // If recording is still live, surface accumulated text so far
-      if (!recordingStoppedRef.current && onPartialTranscriptionRef.current) {
-        const partialIndices = Array.from(transcribedSegmentsRef.current.keys()).sort((a, b) => a - b);
-        const partialText = partialIndices.map(i => transcribedSegmentsRef.current.get(i) ?? "").filter(Boolean).join(" ").trim();
-        if (partialText) onPartialTranscriptionRef.current(partialText);
-      }
-    } catch (err: any) {
-      // Store empty string so segment doesn't block finalization
-      transcribedSegmentsRef.current.set(segIdx, "");
-      transcribedUtterancesRef.current.set(segIdx, null);
-      setSegmentsDone(d => d + 1);
-      toast({
-        variant: "destructive",
-        title: `Segment ${segIdx + 1} failed`,
-        description: err.message || "One recording segment could not be transcribed.",
-      });
-    } finally {
-      pendingSegmentsRef.current -= 1;
-      // If recording has stopped and all segments are done, finalize
-      if (recordingStoppedRef.current && pendingSegmentsRef.current === 0) {
-        finalizeTranscription();
-      }
-    }
-  };
-
-  // Flush: stop the current recorder (which triggers onstop → queues transcription),
-  // then start a fresh recorder on the same stream.
-  const flushSegment = (stream: MediaStream) => {
-    const mr = mediaRecorderRef.current;
-    if (!mr || mr.state === "inactive") return;
-
-    // Advance the segment index so the new recorder gets the next index
-    segmentIndexRef.current += 1;
-
-    mr.stop(); // fires onstop which queues this segment for transcription
-
-    setTimeout(() => {
-      if (!recordingStoppedRef.current && streamRef.current) {
-        startSegmentRecorder(stream);
-      }
-    }, 150);
-  };
-
-  const startSegmentRecorder = (stream: MediaStream) => {
-    const segIdx = segmentIndexRef.current; // captured in closure for this segment
-    const localChunks: Blob[] = [];
-    const mimeType = mimeTypeRef.current;
-    const mr = new MediaRecorder(stream, {
-      ...(mimeType ? { mimeType } : {}),
-      audioBitsPerSecond: 16000,
-    });
-    mediaRecorderRef.current = mr;
-
-    mr.ondataavailable = (e) => { if (e.data.size > 0) localChunks.push(e.data); };
-    mr.onstop = () => {
-      if (localChunks.length === 0) {
-        // Nothing recorded — check if we should finalize
-        if (recordingStoppedRef.current && pendingSegmentsRef.current === 0) {
-          finalizeTranscription();
-        }
+    const handleStartRecording = async () => {
+      if (recording.state !== "idle") {
+        toast({
+          variant: "destructive",
+          title: "Recording in progress",
+          description: recording.boundPatientName
+            ? `Already recording for ${recording.boundPatientName}. Stop it before starting a new one.`
+            : "Stop the current recording before starting a new one.",
+        });
         return;
       }
-      const blob = new Blob(localChunks, { type: mimeType || "audio/webm" });
-      // Only now do we count this as a pending segment
-      pendingSegmentsRef.current += 1;
-      setSegmentsTotal(t => t + 1);
-      transcribeSegment(blob, segIdx);
+      setStarting(true);
+      try {
+        const ctx = await onStartRequested();
+        if (!ctx) return; // editor showed its own toast (no patient, etc.)
+        await recording.start({
+          patientId: ctx.patientId,
+          patientName: ctx.patientName,
+          encounterId: ctx.encounterId,
+          visitType,
+          preExistingTranscript: ctx.preExistingTranscript,
+        });
+      } finally {
+        setStarting(false);
+      }
     };
 
-    mr.start(1000);
-  };
+    const sendToWhisper = async (file: File) => {
+      setIsTranscribing(true);
+      try {
+        const formData = new FormData();
+        formData.append("audio", file);
+        formData.append("visitType", visitType);
+        const res = await fetch("/api/encounters/transcribe", {
+          method: "POST", body: formData, credentials: "include",
+        });
+        if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Transcription failed"); }
+        const data = await res.json();
+        onTranscribedRef.current(data.transcription, data.utterances ?? null);
+        setUploadFile(null);
+      } catch (err: any) {
+        toast({ variant: "destructive", title: "Transcription failed", description: err.message || "Please try again or paste notes manually." });
+      } finally {
+        setIsTranscribing(false);
+      }
+    };
 
-  const sendToWhisper = async (file: File) => {
-    setIsTranscribing(true);
-    try {
-      const formData = new FormData();
-      formData.append("audio", file);
-      formData.append("visitType", visitType);
-      const res = await fetch("/api/encounters/transcribe", {
-        method: "POST", body: formData, credentials: "include",
-      });
-      if (!res.ok) { const err = await res.json(); throw new Error(err.message || "Transcription failed"); }
-      const data = await res.json();
-      // Read latest callback via ref so prop changes are honored.
-      onTranscribedRef.current(data.transcription, data.utterances ?? null);
-      setUploadFile(null);
-    } catch (err: any) {
-      toast({ variant: "destructive", title: "Transcription failed", description: err.message || "Please try again or paste notes manually." });
-    } finally {
-      setIsTranscribing(false);
-    }
-  };
+    const handleUploadFile = (f: File) => {
+      if (!f.type.startsWith("audio/") && !f.name.match(/\.(mp3|wav|ogg|m4a|webm|mp4|flac)$/i)) {
+        toast({ variant: "destructive", title: "Invalid file", description: "Please upload an audio file (MP3, WAV, M4A, WebM, etc.)" });
+        return;
+      }
+      if (f.size > 200 * 1024 * 1024) {
+        toast({ variant: "destructive", title: "File too large", description: "Audio files must be under 200 MB." });
+        return;
+      }
+      setUploadFile(f);
+    };
 
-  const startRecording = async () => {
-    try {
-      const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      chunksRef.current = [];
-      setElapsed(0);
-      setSegmentsDone(0);
-      setSegmentsTotal(0);
-      segmentIndexRef.current = 0;
-      pendingSegmentsRef.current = 0;
-      recordingStoppedRef.current = false;
-      finalizedRef.current = false;
-      transcribedSegmentsRef.current.clear();
-      transcribedUtterancesRef.current.clear();
+    const onDrop = useCallback((e: React.DragEvent) => {
+      e.preventDefault();
+      setDragging(false);
+      const f = e.dataTransfer.files[0];
+      if (f) handleUploadFile(f);
+    }, []);
 
-      mimeTypeRef.current = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
-        ? "audio/webm;codecs=opus"
-        : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+    const fmtElapsed = (s: number) => {
+      const m = Math.floor(s / 60);
+      const r = s % 60;
+      return `${m}:${String(r).padStart(2, "0")}`;
+    };
 
-      startSegmentRecorder(stream);
-      setRecState("recording");
+    // If a recording is bound to a DIFFERENT encounter, surface a warning
+    const boundElsewhere = recording.state !== "idle"
+      && recording.boundEncounterId !== null
+      && recording.boundEncounterId !== currentEncounterId;
 
-      timerRef.current = setInterval(() => setElapsed(p => p + 1), 1000);
-      // Every SEGMENT_MS, flush the current segment and start a new one
-      segmentTimerRef.current = setInterval(() => {
-        if (!recordingStoppedRef.current && streamRef.current) {
-          flushSegment(streamRef.current);
-        }
-      }, SEGMENT_MS);
+    return (
+      <div className="space-y-2">
+        {/* Mode toggle */}
+        <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
+          <button data-testid="button-mode-record" onClick={() => setMode("record")}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "record" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            <Mic className="w-3.5 h-3.5" />Record
+          </button>
+          <button data-testid="button-mode-upload" onClick={() => setMode("upload")}
+            className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "upload" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
+            <Upload className="w-3.5 h-3.5" />Upload File
+          </button>
+        </div>
 
-      acquireWakeLock();
-    } catch {
-      toast({ variant: "destructive", title: "Microphone access denied", description: "Please allow microphone access in your browser settings and try again." });
-    }
-  };
+        {/* RECORD MODE */}
+        {mode === "record" && (
+          <div>
+            {boundElsewhere && (
+              <div className="flex items-start gap-2 px-3 py-2 rounded-md border border-amber-300/60 bg-amber-50/60 dark:bg-amber-950/30 mb-2">
+                <TriangleAlert className="w-4 h-4 text-amber-600 dark:text-amber-400 flex-shrink-0 mt-0.5" />
+                <div className="text-xs text-amber-800 dark:text-amber-200">
+                  A recording is already in progress
+                  {recording.boundPatientName ? ` for ${recording.boundPatientName}` : ""}.
+                  Use the floating recorder dock to stop it before starting a new one for this encounter.
+                </div>
+              </div>
+            )}
+            {!boundToThis && !boundElsewhere && (
+              <Button
+                data-testid="button-start-recording"
+                onClick={handleStartRecording}
+                disabled={starting}
+                className="gap-2 w-full"
+                variant="outline"
+              >
+                {starting
+                  ? <><RefreshCw className="w-4 h-4 animate-spin" />Preparing encounter…</>
+                  : <><Mic className="w-4 h-4 text-red-500" />Start Recording Session</>}
+              </Button>
+            )}
+            {boundToThis && recording.state === "recording" && (
+              <div className="space-y-2">
+                <div className="flex items-center gap-3 px-4 py-3 rounded-md border-2 border-red-400/60 bg-red-50/40 dark:bg-red-950/20">
+                  <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
+                  <span className="text-sm font-semibold text-red-600 dark:text-red-400">Recording</span>
+                  <span className="text-sm font-mono tabular-nums text-foreground flex-1" data-testid="recording-timer">{fmtElapsed(recording.elapsed)}</span>
+                  <Button data-testid="button-stop-recording" variant="destructive" size="sm" onClick={recording.stop} className="gap-1.5">
+                    <Square className="w-3.5 h-3.5 fill-current" />Stop
+                  </Button>
+                </div>
+                <p className="text-[11px] text-muted-foreground px-1">
+                  Recording continues if you navigate away — see the floating dock at the bottom-right.
+                  {recording.segmentsDone > 0 && (
+                    <> · <CheckCircle2 className="w-3 h-3 inline mx-0.5 text-green-500" />{recording.segmentsDone} segment{recording.segmentsDone !== 1 ? "s" : ""} transcribed</>
+                  )}
+                </p>
+              </div>
+            )}
+            {boundToThis && recording.state === "transcribing" && (
+              <div className="flex items-center gap-2 px-4 py-3 rounded-md border bg-muted/30">
+                <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />
+                <span className="text-sm text-muted-foreground">
+                  {recording.segmentsTotal > 1
+                    ? `Transcribing ${recording.segmentsDone} of ${recording.segmentsTotal} segments…`
+                    : "Transcribing session audio — notes will appear below…"}
+                </span>
+              </div>
+            )}
+          </div>
+        )}
 
-  const stopRecording = () => {
-    if (timerRef.current) { clearInterval(timerRef.current); timerRef.current = null; }
-    if (segmentTimerRef.current) { clearInterval(segmentTimerRef.current); segmentTimerRef.current = null; }
-    releaseWakeLock();
-    recordingStoppedRef.current = true;
-    setRecState("stopped");
-    setIsTranscribing(true);
-
-    const mr = mediaRecorderRef.current;
-    if (mr && mr.state !== "inactive") {
-      // onstop handler will queue the final segment for transcription
-      mr.stop();
-    } else if (pendingSegmentsRef.current === 0) {
-      // Nothing pending — finalize immediately
-      finalizeTranscription();
-    }
-
-    if (streamRef.current) {
-      streamRef.current.getTracks().forEach(t => t.stop());
-      streamRef.current = null;
-    }
-  };
-
-  const handleUploadFile = (f: File) => {
-    if (!f.type.startsWith("audio/") && !f.name.match(/\.(mp3|wav|ogg|m4a|webm|mp4|flac)$/i)) {
-      toast({ variant: "destructive", title: "Invalid file", description: "Please upload an audio file (MP3, WAV, M4A, WebM, etc.)" });
-      return;
-    }
-    if (f.size > 200 * 1024 * 1024) {
-      toast({ variant: "destructive", title: "File too large", description: "Audio files must be under 200 MB." });
-      return;
-    }
-    setUploadFile(f);
-  };
-
-  const onDrop = useCallback((e: React.DragEvent) => {
-    e.preventDefault();
-    setDragging(false);
-    const f = e.dataTransfer.files[0];
-    if (f) handleUploadFile(f);
-  }, []);
-
-  return (
-    <div className="space-y-2">
-      {/* Mode toggle */}
-      <div className="flex gap-1 p-1 bg-muted/50 rounded-md w-fit">
-        <button data-testid="button-mode-record" onClick={() => setMode("record")}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "record" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-          <Mic className="w-3.5 h-3.5" />Record
-        </button>
-        <button data-testid="button-mode-upload" onClick={() => setMode("upload")}
-          className={`flex items-center gap-1.5 px-3 py-1 rounded text-xs font-medium transition-colors ${mode === "upload" ? "bg-background shadow-sm text-foreground" : "text-muted-foreground hover:text-foreground"}`}>
-          <Upload className="w-3.5 h-3.5" />Upload File
-        </button>
-      </div>
-
-      {/* RECORD MODE */}
-      {mode === "record" && (
-        <div>
-          {recState === "idle" && !isTranscribing && (
-            <Button data-testid="button-start-recording" onClick={startRecording} className="gap-2 w-full" variant="outline">
-              <Mic className="w-4 h-4 text-red-500" />
-              Start Recording Session
-            </Button>
-          )}
-          {recState === "recording" && (
-            <div className="space-y-2">
-              <div className="flex items-center gap-3 px-4 py-3 rounded-md border-2 border-red-400/60 bg-red-50/40 dark:bg-red-950/20">
-                <span className="w-2.5 h-2.5 rounded-full bg-red-500 animate-pulse flex-shrink-0" />
-                <span className="text-sm font-semibold text-red-600 dark:text-red-400">Recording</span>
-                <span className="text-sm font-mono tabular-nums text-foreground flex-1" data-testid="recording-timer">{formatDuration(elapsed)}</span>
-                <Button data-testid="button-stop-recording" variant="destructive" size="sm" onClick={stopRecording} className="gap-1.5">
-                  <Square className="w-3.5 h-3.5 fill-current" />Stop
+        {/* UPLOAD MODE */}
+        {mode === "upload" && (
+          <div className="space-y-2">
+            <div
+              data-testid="audio-drop-zone"
+              onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
+              onDragLeave={() => setDragging(false)}
+              onDrop={onDrop}
+              onClick={() => fileRef.current?.click()}
+              className={`border-2 border-dashed rounded-md p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"}`}
+            >
+              <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.mp4,.flac" className="hidden"
+                data-testid="input-audio-file"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); e.target.value = ""; }} />
+              <Upload className="w-6 h-6 text-muted-foreground" />
+              <p className="text-sm font-medium">Drop audio file or click to browse</p>
+              <p className="text-xs text-muted-foreground">MP3, WAV, M4A, WebM, OGG — up to 200 MB</p>
+            </div>
+            {uploadFile && (
+              <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-md">
+                <Mic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
+                <span className="text-sm flex-1 truncate">{uploadFile.name}</span>
+                <span className="text-xs text-muted-foreground">{(uploadFile.size / 1024 / 1024).toFixed(1)} MB</span>
+                <Button size="icon" variant="ghost" onClick={() => setUploadFile(null)} data-testid="button-remove-audio">
+                  <X className="w-3.5 h-3.5" />
+                </Button>
+                <Button size="sm" onClick={() => sendToWhisper(uploadFile)} disabled={isTranscribing} data-testid="button-transcribe">
+                  {isTranscribing ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Transcribing...</> : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Transcribe</>}
                 </Button>
               </div>
-              {segmentsDone > 0 && (
-                <p className="text-xs text-muted-foreground px-1">
-                  <CheckCircle2 className="w-3 h-3 inline mr-1 text-green-500" />
-                  {segmentsDone} segment{segmentsDone !== 1 ? "s" : ""} transcribed · continuing to record…
-                </p>
-              )}
-            </div>
-          )}
-          {(recState === "stopped" || (isTranscribing && recState !== "recording")) && (
-            <div className="flex items-center gap-2 px-4 py-3 rounded-md border bg-muted/30">
-              <RefreshCw className="w-4 h-4 animate-spin text-muted-foreground flex-shrink-0" />
-              <span className="text-sm text-muted-foreground">
-                {segmentsTotal > 1
-                  ? `Transcribing ${segmentsDone} of ${segmentsTotal} segments…`
-                  : "Transcribing session audio — notes will appear below…"}
-              </span>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* UPLOAD MODE */}
-      {mode === "upload" && (
-        <div className="space-y-2">
-          <div
-            data-testid="audio-drop-zone"
-            onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
-            onDragLeave={() => setDragging(false)}
-            onDrop={onDrop}
-            onClick={() => fileRef.current?.click()}
-            className={`border-2 border-dashed rounded-md p-5 flex flex-col items-center justify-center gap-2 cursor-pointer transition-colors ${dragging ? "border-primary bg-primary/5" : "border-border hover:border-muted-foreground/50"}`}
-          >
-            <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.mp4,.flac" className="hidden"
-              data-testid="input-audio-file"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleUploadFile(f); e.target.value = ""; }} />
-            <Upload className="w-6 h-6 text-muted-foreground" />
-            <p className="text-sm font-medium">Drop audio file or click to browse</p>
-            <p className="text-xs text-muted-foreground">MP3, WAV, M4A, WebM, OGG — up to 200 MB</p>
+            )}
           </div>
-          {uploadFile && (
-            <div className="flex items-center gap-3 p-3 bg-muted/40 rounded-md">
-              <Mic className="w-4 h-4 text-muted-foreground flex-shrink-0" />
-              <span className="text-sm flex-1 truncate">{uploadFile.name}</span>
-              <span className="text-xs text-muted-foreground">{(uploadFile.size / 1024 / 1024).toFixed(1)} MB</span>
-              <Button size="icon" variant="ghost" onClick={() => setUploadFile(null)} data-testid="button-remove-audio">
-                <X className="w-3.5 h-3.5" />
-              </Button>
-              <Button size="sm" onClick={() => sendToWhisper(uploadFile)} disabled={isTranscribing} data-testid="button-transcribe">
-                {isTranscribing ? <><RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />Transcribing...</> : <><Sparkles className="w-3.5 h-3.5 mr-1.5" />Transcribe</>}
-              </Button>
-            </div>
-          )}
-        </div>
-      )}
+        )}
 
-      <p className="text-[11px] text-muted-foreground flex items-center gap-1">
-        <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
-        Audio is processed by OpenAI Whisper and never stored
-      </p>
-    </div>
-  );
-}
+        <p className="text-[11px] text-muted-foreground flex items-center gap-1">
+          <CheckCircle2 className="w-3 h-3 text-emerald-500 flex-shrink-0" />
+          Audio is processed by OpenAI Whisper and never stored
+        </p>
+      </div>
+    );
+  }
 
 // ── SOAP Note Section ─────────────────────────────────────────────────────────
 // fullNote = new single-block format; legacy fields kept for backward compat display
@@ -783,14 +598,12 @@ function EncounterEditor({
   );
   const [transcription, setTranscription] = useState<string>(encounter?.transcription ?? initialTranscription ?? "");
   const [recorderState, setRecorderState] = useState<RecorderState>("idle");
-  // Captures what was in the textarea before a recording session starts, so partial
-  // transcription updates can be prepended correctly without doubling text.
-  const preRecordingTranscriptionRef = useRef<string>("");
   const isAutoSavingRef = useRef(false);
-  // PATIENT-SAFETY: Snapshot the patient at recording start. If the dropdown
-  // is changed mid-recording we surface a clear toast + persistent banner so
-  // the provider can verify the autosave is going to the intended patient.
-  const recordingStartPatientIdRef = useRef<string>("");
+  const recording = useRecording();
+  // PATIENT-SAFETY: Snapshot of which encounter the global recorder applied
+  // its transcript to last. We watch this so we don't re-apply the same
+  // transcript multiple times if React re-renders.
+  const lastAppliedFinalRef = useRef<{ encounterId: number; len: number } | null>(null);
   const [patientChangedDuringRecording, setPatientChangedDuringRecording] = useState<{
     fromId: string;
     toId: string;
@@ -853,6 +666,41 @@ function EncounterEditor({
       setActiveTab("soap");
     }
   }, [isSigned, activeTab]);
+
+  // Bridge the global recorder into this editor — only when the global
+  // recording is bound to THIS encounter. Live transcript flows in while
+  // recording; final transcript + utterances apply once on review state.
+  // NOTE: while state === 'recording' we mirror liveTranscript into the
+  // textarea, but the textarea is also rendered `readOnly` for that state
+  // (see Textarea props below) so the clinician cannot type into it and
+  // have those edits silently overwritten by the next live update. Edits
+  // resume in 'review' state once the final transcript is applied.
+  useEffect(() => {
+    if (savedId == null) return;
+    if (recording.boundEncounterId !== savedId) return;
+    if (recording.state === "recording" || recording.state === "transcribing") {
+      // Keep the editor textarea in sync with what the recorder has so far
+      if (recording.liveTranscript !== transcription) {
+        setTranscription(recording.liveTranscript);
+      }
+      return;
+    }
+    if (recording.state === "review") {
+      const text = recording.finalTranscript;
+      const last = lastAppliedFinalRef.current;
+      if (last && last.encounterId === savedId && last.len === text.length) return;
+      lastAppliedFinalRef.current = { encounterId: savedId, len: text.length };
+      setTranscription(text);
+      if (recording.finalUtterances?.length) {
+        setRawUtterances(recording.finalUtterances);
+        setDiarizedTranscript(recording.finalUtterances);
+      }
+      // Recording context already PUT the transcript with expectedPatientId;
+      // refresh the encounter cache so any stale fields (utterances) reload.
+      qc.invalidateQueries({ queryKey: ["/api/encounters", savedId] });
+      toast({ title: "Transcript saved", description: "The recorded transcript has been added to this encounter." });
+    }
+  }, [recording.state, recording.boundEncounterId, recording.liveTranscript, recording.finalTranscript, recording.finalUtterances, savedId]);
 
   // Sync JSONB states when detail fetch arrives after initial mount
   // (list query strips these fields; detail fetch brings them in asynchronously)
@@ -1609,21 +1457,23 @@ function EncounterEditor({
                     value={patientId || "none"}
                     onValueChange={(v) => {
                       const next = v === "none" ? "" : v;
-                      // PATIENT-SAFETY: If the dropdown is changed during an
-                      // active recording, record the swap so the UI shows a
-                      // warning and the provider can verify before generating
-                      // SOAP. The encounter row itself is not yet saved at
-                      // this point — the autosave will use the *new* patient
-                      // when transcription completes (see ref-based callbacks
-                      // in AudioCapture).
-                      if (recorderState === "recording" && patientId && next && patientId !== next) {
+                      // PATIENT-SAFETY: If the dropdown is changed while the
+                      // global recorder is bound to THIS encounter, surface a
+                      // warning. The recorder's expectedPatientId tripwire
+                      // will prevent the server from accepting a transcript
+                      // for the new patient — but the warning makes the
+                      // mismatch visible in the UI right away.
+                      const recorderBoundHere = recording.state !== "idle"
+                        && savedId != null
+                        && recording.boundEncounterId === savedId;
+                      if (recorderBoundHere && patientId && next && patientId !== next) {
                         setPatientChangedDuringRecording({ fromId: patientId, toId: next });
                         const fromName = patients.find(p => p.id.toString() === patientId);
                         const toName = patients.find(p => p.id.toString() === next);
                         toast({
                           variant: "destructive",
                           title: "Patient changed during active recording",
-                          description: `Recording will be saved against ${toName ? `${toName.firstName} ${toName.lastName}` : "the new patient"} (was ${fromName ? `${fromName.firstName} ${fromName.lastName}` : "previous patient"}). Please verify before generating the SOAP note.`,
+                          description: `Recording is bound to ${fromName ? `${fromName.firstName} ${fromName.lastName}` : "the original patient"}. Switching the dropdown to ${toName ? `${toName.firstName} ${toName.lastName}` : "another patient"} will not change where the transcript is saved — stop the recording first if needed.`,
                         });
                       }
                       setPatientId(next);
@@ -1762,16 +1612,17 @@ function EncounterEditor({
                     <TriangleAlert className="w-4 h-4 text-red-600 dark:text-red-400 flex-shrink-0 mt-0.5" />
                     <div className="flex-1 min-w-0 text-sm">
                       <div className="font-semibold text-red-700 dark:text-red-300">
-                        Patient was changed during this recording
+                        Patient dropdown changed during an active recording
                       </div>
                       <div className="text-red-700/90 dark:text-red-300/90 mt-0.5">
-                        Recording started for {fromName ? `${fromName.firstName} ${fromName.lastName}` : "an earlier patient"} and was switched to {toName ? `${toName.firstName} ${toName.lastName}` : "another patient"}.
-                        {" "}This encounter will be saved against{" "}
+                        The active recording is bound to{" "}
                         <span className="font-semibold">
-                          {currentMatchesNew && toName
-                            ? `${toName.firstName} ${toName.lastName}`
-                            : (() => { const p = patients.find(pp => pp.id.toString() === patientId); return p ? `${p.firstName} ${p.lastName}` : "the currently selected patient"; })()}
-                        </span>. Verify the transcript belongs to this patient before generating the SOAP note.
+                          {fromName ? `${fromName.firstName} ${fromName.lastName}` : "the original patient"}
+                        </span>{" "}and the transcript will still be saved to that encounter — the patient-safety check on the server will block any cross-patient write. Switching the dropdown to{" "}
+                        <span className="font-semibold">
+                          {toName ? `${toName.firstName} ${toName.lastName}` : "another patient"}
+                        </span>{" "}does not move the recording. To capture audio for{" "}
+                        {toName ? `${toName.firstName} ${toName.lastName}` : "this patient"}, stop the current recording first, then start a new one.
                       </div>
                     </div>
                     <button
@@ -1789,26 +1640,67 @@ function EncounterEditor({
 
               <AudioCapture
                 visitType={visitType}
+                currentEncounterId={savedId}
+                onStateChange={(state) => setRecorderState(state)}
+                onStartRequested={async () => {
+                  // Record mode requires a patient and a saved encounter so
+                  // the recording context can target the right chart for its
+                  // server-side autosave (with the expectedPatientId tripwire).
+                  if (!patientId) {
+                    toast({
+                      variant: "destructive",
+                      title: "Select a patient first",
+                      description: "Recording is bound to a specific encounter. Choose a patient before starting.",
+                    });
+                    return null;
+                  }
+                  let encounterId = savedId;
+                  if (!encounterId && !isAutoSavingRef.current) {
+                    isAutoSavingRef.current = true;
+                    try {
+                      const res = await apiRequest("POST", "/api/encounters", {
+                        patientId: parseInt(patientId),
+                        visitDate,
+                        visitType: visitType || "follow-up",
+                        chiefComplaint: chiefComplaint || null,
+                        transcription: transcription || null,
+                      });
+                      const data = await res.json();
+                      encounterId = data.id;
+                      setSavedId(data.id);
+                      invalidate();
+                    } catch {
+                      toast({ variant: "destructive", title: "Could not start recording", description: "Failed to create the encounter. Please try again." });
+                      return null;
+                    } finally {
+                      isAutoSavingRef.current = false;
+                    }
+                  }
+                  if (!encounterId) return null;
+                  setPatientChangedDuringRecording(null);
+                  const p = patients.find(pp => pp.id.toString() === patientId);
+                  return {
+                    encounterId,
+                    patientId: parseInt(patientId),
+                    patientName: p ? `${p.firstName} ${p.lastName}` : "patient",
+                    preExistingTranscript: transcription,
+                  };
+                }}
                 onTranscribed={async (text, utterances) => {
-                  const base = preRecordingTranscriptionRef.current;
-                  const updated = base ? base + "\n\n" + text : text;
-                  setTranscription(updated);
-                  preRecordingTranscriptionRef.current = "";
+                  // UPLOAD MODE only — record mode flows through the global
+                  // recording context (and the bridge useEffect above).
+                  setTranscription(text);
                   if (utterances?.length) {
                     setRawUtterances(utterances);
                     setDiarizedTranscript(utterances);
                   }
                   if (savedId) {
-                    // PATIENT-SAFETY: stamp expectedPatientId on the autosave so
-                    // the server's 409 tripwire prevents writing transcription
-                    // into another patient's encounter if patient context drifted.
                     apiRequest("PUT", `/api/encounters/${savedId}`, {
-                      transcription: updated,
+                      transcription: text,
                       expectedPatientId: patientId ? parseInt(patientId) : undefined,
-                    })
-                      .catch(() => {
-                        toast({ variant: "destructive", title: "Auto-save failed", description: "Transcription update could not be saved. Please save manually." });
-                      });
+                    }).catch(() => {
+                      toast({ variant: "destructive", title: "Auto-save failed", description: "Transcription update could not be saved. Please save manually." });
+                    });
                   } else if (patientId && !isAutoSavingRef.current) {
                     isAutoSavingRef.current = true;
                     try {
@@ -1817,7 +1709,7 @@ function EncounterEditor({
                         visitDate,
                         visitType: visitType || "follow-up",
                         chiefComplaint: chiefComplaint || null,
-                        transcription: updated,
+                        transcription: text,
                       };
                       const res = await apiRequest("POST", "/api/encounters", body);
                       const data = await res.json();
@@ -1832,7 +1724,7 @@ function EncounterEditor({
                   } else if (!isAutoSavingRef.current) {
                     try {
                       await apiRequest("POST", "/api/encounter-drafts", {
-                        transcription: updated,
+                        transcription: text,
                         visitDate,
                         visitType: visitType || "follow-up",
                       });
@@ -1842,23 +1734,6 @@ function EncounterEditor({
                       toast({ variant: "destructive", title: "Draft save failed", description: "Could not save draft to server. Please save manually." });
                     }
                   }
-                }}
-                onPartialTranscription={(accumulatedText) => {
-                  // Prepend pre-existing text so the box shows old + new live text
-                  const base = preRecordingTranscriptionRef.current;
-                  setTranscription(base ? base + "\n\n" + accumulatedText : accumulatedText);
-                }}
-                onStateChange={(state) => {
-                  if (state === "recording") {
-                    // Snapshot whatever is already in the box before this recording session
-                    preRecordingTranscriptionRef.current = transcription;
-                    // PATIENT-SAFETY: Snapshot the patient at recording start
-                    // and clear any prior change-warning. If the provider
-                    // switches the dropdown later, we'll flag it.
-                    recordingStartPatientIdRef.current = patientId;
-                    setPatientChangedDuringRecording(null);
-                  }
-                  setRecorderState(state);
                 }}
               />
 
@@ -1884,6 +1759,8 @@ function EncounterEditor({
                   className={`text-sm font-mono resize-y transition-opacity ${recorderState === "transcribing" ? "opacity-60" : ""}`}
                   data-testid="textarea-transcription"
                   disabled={recorderState === "transcribing"}
+                  readOnly={recorderState === "recording"}
+                  title={recorderState === "recording" ? "Recording in progress — stop recording to edit the transcript." : undefined}
                 />
               </div>
             </div>
