@@ -2922,12 +2922,212 @@ Return ONLY this JSON structure:
         lastName: patient.lastName,
         gender: patient.gender,
         dateOfBirth: patient.dateOfBirth,
+        phone: patient.phone,
+        preferredPharmacy: patient.preferredPharmacy,
         clinicName: clinician?.clinicName,
         clinicianName: clinician ? `${clinician.title} ${clinician.firstName} ${clinician.lastName}` : null,
       });
     } catch (error) {
       console.error("[PORTAL] Error fetching me:", error);
       res.status(500).json({ message: "Failed to fetch profile" });
+    }
+  });
+
+  // ── Portal: Patient self-update (phone, email, pharmacy) ─────────────────
+  app.patch("/api/portal/account", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const patient = await storage.getPatientById(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient record not found" });
+
+      const updateSchema = z.object({
+        phone: z.string().trim().max(40).optional().nullable(),
+        email: z.string().trim().email().toLowerCase().optional().nullable(),
+        preferredPharmacy: z.string().trim().max(255).optional().nullable(),
+      }).strict();
+      const parsed = updateSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({ message: "Invalid input", errors: parsed.error.format() });
+      }
+
+      const updates: Partial<typeof patient> = {};
+      if (parsed.data.phone !== undefined) (updates as any).phone = parsed.data.phone || null;
+      if (parsed.data.email !== undefined) (updates as any).email = parsed.data.email || null;
+      if (parsed.data.preferredPharmacy !== undefined) (updates as any).preferredPharmacy = parsed.data.preferredPharmacy || null;
+
+      const updated = await storage.updatePatient(patientId, updates as any, patient.userId, patient.clinicId);
+      if (!updated) return res.status(500).json({ message: "Update failed" });
+
+      // If email changed, also update the linked portal account so sign-in stays consistent.
+      if (parsed.data.email && parsed.data.email !== patient.email) {
+        try {
+          const account = await storage.getPortalAccountByPatientId(patientId);
+          if (account && account.email !== parsed.data.email) {
+            await storage.updatePortalAccount(patientId, { email: parsed.data.email });
+          }
+        } catch (err) {
+          console.warn("[PORTAL] Could not sync portal account email:", err);
+        }
+      }
+
+      res.json({
+        phone: updated.phone,
+        email: updated.email,
+        preferredPharmacy: updated.preferredPharmacy,
+      });
+    } catch (error) {
+      console.error("[PORTAL] Error updating account:", error);
+      res.status(500).json({ message: "Failed to update account" });
+    }
+  });
+
+  // ── Portal: List signed/submitted documents ──────────────────────────────
+  app.get("/api/portal/account/documents", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+
+      const [submissions, encounters] = await Promise.all([
+        storage.getFormSubmissionsByPatient(patientId),
+        storage.getPublishedEncountersByPatient(patientId).catch(() => [] as any[]),
+      ]);
+
+      const submissionDocs = await Promise.all(submissions.map(async (s) => {
+        const form = await storage.getIntakeFormById(s.formId).catch(() => null);
+        return {
+          kind: "form" as const,
+          id: `form-${s.id}`,
+          submissionId: s.id,
+          name: form?.name ?? "Submitted form",
+          category: form?.category ?? "intake",
+          submittedAt: s.submittedAt,
+          viewUrl: `/portal/forms`,
+        };
+      }));
+
+      const encounterDocs = (encounters as any[])
+        .filter((e: any) => e.patientSummaryPublishedAt || e.publishedAt || e.patientSummary)
+        .map((e: any) => ({
+          kind: "visit" as const,
+          id: `visit-${e.id}`,
+          encounterId: e.id,
+          name: e.visitType ? `Visit summary — ${e.visitType}` : "Visit summary",
+          category: "visit_summary",
+          submittedAt: e.patientSummaryPublishedAt || e.publishedAt || e.visitDate,
+          viewUrl: `/portal/dashboard#section-visits`,
+        }));
+
+      const all = [...submissionDocs, ...encounterDocs].sort((a, b) => {
+        const ad = a.submittedAt ? new Date(a.submittedAt).getTime() : 0;
+        const bd = b.submittedAt ? new Date(b.submittedAt).getTime() : 0;
+        return bd - ad;
+      });
+
+      res.json({ documents: all });
+    } catch (error) {
+      console.error("[PORTAL] Error fetching documents:", error);
+      res.status(500).json({ message: "Failed to load documents" });
+    }
+  });
+
+  // ── Portal: HealthIQ weekly snapshot ─────────────────────────────────────
+  app.get("/api/portal/healthiq/snapshot", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const today = new Date();
+      const fromDate = new Date(today);
+      fromDate.setDate(fromDate.getDate() - 6);
+      const toIso = today.toISOString().slice(0, 10);
+      const fromIso = fromDate.toISOString().slice(0, 10);
+
+      const [checkins, adherence] = await Promise.all([
+        (storage as any).getPatientDailyCheckins(patientId, { from: fromIso, to: toIso }) as Promise<any[]>,
+        (storage as any).getMedicationAdherence(patientId, { from: fromIso, to: toIso }) as Promise<any[]>,
+      ]);
+
+      const avg = (vals: number[]) =>
+        vals.length ? Math.round((vals.reduce((a, b) => a + b, 0) / vals.length) * 10) / 10 : null;
+
+      const sleepHours = checkins.map((c: any) => c.sleepHours).filter((v: any) => typeof v === "number");
+      const moodScores = checkins.map((c: any) => c.moodScore).filter((v: any) => typeof v === "number");
+      const energyScores = checkins.map((c: any) => c.energyScore).filter((v: any) => typeof v === "number");
+      const weights = checkins.map((c: any) => c.weight).filter((v: any) => typeof v === "number");
+
+      const movementDays = checkins.filter((c: any) => c.exerciseDone).length;
+      const hydrationStrong = checkins.filter((c: any) => c.waterLevel === "strong" || c.waterLevel === "moderate").length;
+      const proteinStrong = checkins.filter((c: any) => c.foodProteinLevel === "strong" || c.foodProteinLevel === "moderate").length;
+      const symptomDays = checkins.filter((c: any) =>
+        (Array.isArray(c.giSymptoms) && c.giSymptoms.length > 0) ||
+        c.unexpectedBleeding === true ||
+        (typeof c.brainFogScore === "number" && c.brainFogScore >= 4) ||
+        (typeof c.anxietyIrritabilityScore === "number" && c.anxietyIrritabilityScore >= 4)
+      ).length;
+
+      const adherenceTotal = adherence.length;
+      const adherenceTaken = adherence.filter((a: any) => a.status === "taken" || a.status === "backfilled").length;
+      const adherencePct = adherenceTotal ? Math.round((adherenceTaken / adherenceTotal) * 100) : null;
+
+      const days: { date: string; logged: boolean }[] = [];
+      for (let i = 6; i >= 0; i--) {
+        const d = new Date(today);
+        d.setDate(d.getDate() - i);
+        const iso = d.toISOString().slice(0, 10);
+        days.push({ date: iso, logged: checkins.some((c: any) => c.date === iso) });
+      }
+
+      res.json({
+        windowDays: 7,
+        from: fromIso,
+        to: toIso,
+        loggedDays: checkins.length,
+        days,
+        avgSleepHours: avg(sleepHours),
+        avgMood: avg(moodScores),
+        avgEnergy: avg(energyScores),
+        latestWeight: weights.length ? weights[0] : null,
+        movementDays,
+        hydrationDays: hydrationStrong,
+        proteinDays: proteinStrong,
+        symptomDays,
+        medAdherencePct: adherencePct,
+        medAdherenceTotal: adherenceTotal,
+      });
+    } catch (error) {
+      console.error("[PORTAL] HealthIQ snapshot error:", error);
+      res.status(500).json({ message: "Failed to load snapshot" });
+    }
+  });
+
+  // ── Portal: HealthIQ AI multi-signal coaching insight ────────────────────
+  app.get("/api/portal/healthiq/insight", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const patient = await storage.getPatientById(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      const today = new Date();
+      const fromDate = new Date(today);
+      fromDate.setDate(fromDate.getDate() - 6);
+      const checkins = await (storage as any).getPatientDailyCheckins(patientId, {
+        from: fromDate.toISOString().slice(0, 10),
+        to: today.toISOString().slice(0, 10),
+      }) as any[];
+
+      if (checkins.length < 2) {
+        return res.json({
+          insight: "Log a few days of HealthIQ check-ins and your AI coach will start spotting patterns across your sleep, energy, hydration, and movement to give you a personalized weekly read.",
+          generated: false,
+        });
+      }
+
+      const insight = await AIService.generateHealthIQInsight({
+        firstName: patient.firstName,
+        gender: patient.gender as "male" | "female",
+        checkins,
+      });
+      res.json({ insight, generated: true });
+    } catch (error) {
+      console.error("[PORTAL] HealthIQ insight error:", error);
+      res.status(500).json({ message: "Failed to generate insight" });
     }
   });
 
@@ -7858,6 +8058,8 @@ Return JSON matching EvidenceOverlay structure:
 
 VOICE & TONE
 - Write in second person ("you", "your"). Warm, supportive, confidence-building — like a high-touch follow-up message from the care team.
+- Sound like a trusted clinician-friend, not a medical chart. Never robotic or alarmist.
+- When two or more findings point in the same direction, connect them as one pattern in plain language ("your sleep, hydration, and protein were all a little light this week — that combo tends to drag energy down together") instead of stacking single-marker observations.
 - Clear and concise, but prioritize clarity and guidance over brevity. Never sacrifice important counseling to be short.
 - Translate clinical language into plain English. If a medical term is necessary, define it in the same sentence.
 
