@@ -57,7 +57,7 @@ function makeSourceDot(stroke: string) {
 }
 
 export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }: Props) {
-  const { data: vitals = [], isLoading } = useQuery<PatientVital[]>({
+  const { data: vitalsRaw, isLoading } = useQuery<PatientVital[]>({
     queryKey: ["/api/patients", patientId, "vitals"],
     queryFn: async () => {
       const r = await fetch(`/api/patients/${patientId}/vitals`, { credentials: "include" });
@@ -66,6 +66,8 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
     },
     enabled: open,
   });
+
+  const vitals: PatientVital[] = Array.isArray(vitalsRaw) ? vitalsRaw : [];
 
   // One row per reading. Both clinic + patient_logged readings live on the SAME
   // series — source is conveyed via dot shape (filled vs hollow), not by
