@@ -22,12 +22,39 @@ function srcOf(v: { source?: string | null }): "clinic" | "patient_logged" {
   return v.source === "patient_logged" ? "patient_logged" : "clinic";
 }
 
-// Distinct color/style per metric × source so trends are unambiguous at a glance.
-// Clinic = solid, Patient-logged = dashed, with hollow dots.
-const STYLE = {
-  clinic: { dash: undefined as string | undefined, dot: { r: 3 } as any },
-  patient_logged: { dash: "5 4", dot: { r: 4, fill: "#ffffff", strokeWidth: 2 } as any },
-};
+// Custom dot renderer: filled circle = clinic, hollow ring = patient-reported.
+// Same dot rule for every metric so the source convention is consistent.
+function makeSourceDot(stroke: string) {
+  // eslint-disable-next-line react/display-name
+  return (props: any) => {
+    const { cx, cy, payload, key } = props;
+    if (cx == null || cy == null) return <g key={key} />;
+    const isPatient = payload?.source === "patient_logged";
+    if (isPatient) {
+      return (
+        <circle
+          key={key}
+          cx={cx}
+          cy={cy}
+          r={4}
+          fill="#ffffff"
+          stroke={stroke}
+          strokeWidth={2}
+        />
+      );
+    }
+    return (
+      <circle
+        key={key}
+        cx={cx}
+        cy={cy}
+        r={3.5}
+        fill={stroke}
+        stroke={stroke}
+      />
+    );
+  };
+}
 
 export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }: Props) {
   const { data: vitals = [], isLoading } = useQuery<PatientVital[]>({
@@ -40,29 +67,22 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
     enabled: open,
   });
 
-  // Build a single, time-sorted series with separate keys per source so each
-  // line shows only its own source's points (gaps where the other source was
-  // recorded). Recharts `connectNulls` bridges those gaps visually.
+  // One row per reading. Both clinic + patient_logged readings live on the SAME
+  // series — source is conveyed via dot shape (filled vs hollow), not by
+  // splitting into separate lines. This keeps the systolic/diastolic pair
+  // visually connected per reading and avoids 4-line legend clutter.
   const series = useMemo(() => {
     return [...vitals]
       .sort((a, b) => new Date(a.recordedAt as any).getTime() - new Date(b.recordedAt as any).getTime())
-      .map((v) => {
-        const src = srcOf(v);
-        const isClinic = src === "clinic";
-        return {
-          date: fmtDate(v.recordedAt as any),
-          systolic_clinic: isClinic ? v.systolicBp ?? null : null,
-          systolic_patient: !isClinic ? v.systolicBp ?? null : null,
-          diastolic_clinic: isClinic ? v.diastolicBp ?? null : null,
-          diastolic_patient: !isClinic ? v.diastolicBp ?? null : null,
-          hr_clinic: isClinic ? v.heartRate ?? null : null,
-          hr_patient: !isClinic ? v.heartRate ?? null : null,
-          weight_clinic: isClinic && v.weightLbs != null ? Number(v.weightLbs) : null,
-          weight_patient: !isClinic && v.weightLbs != null ? Number(v.weightLbs) : null,
-          bmi_clinic: isClinic && (v as any).bmi != null ? Number((v as any).bmi) : null,
-          bmi_patient: !isClinic && (v as any).bmi != null ? Number((v as any).bmi) : null,
-        };
-      });
+      .map((v) => ({
+        date: fmtDate(v.recordedAt as any),
+        source: srcOf(v),
+        systolic: v.systolicBp ?? null,
+        diastolic: v.diastolicBp ?? null,
+        hr: v.heartRate ?? null,
+        weight: v.weightLbs != null ? Number(v.weightLbs) : null,
+        bmi: (v as any).bmi != null ? Number((v as any).bmi) : null,
+      }));
   }, [vitals]);
 
   const hasPatientLogged = vitals.some((v) => srcOf(v) === "patient_logged");
@@ -77,18 +97,18 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
           </DialogTitle>
         </DialogHeader>
 
-        {/* Source legend */}
-        <div className="flex items-center gap-4 text-xs text-muted-foreground -mt-2 mb-1">
+        {/* Source legend — applies to every chart below */}
+        <div className="flex flex-wrap items-center gap-x-4 gap-y-1 text-xs text-muted-foreground -mt-2 mb-1">
           <span className="inline-flex items-center gap-1.5">
             <Building2 className="w-3.5 h-3.5" style={{ color: "#2e3a20" }} />
             <span>
-              In-clinic <span className="text-muted-foreground/70">(solid)</span>
+              In-clinic <span className="text-muted-foreground/70">(filled dot)</span>
             </span>
           </span>
           <span className="inline-flex items-center gap-1.5">
             <Home className="w-3.5 h-3.5" style={{ color: "#8b5a10" }} />
             <span>
-              Patient-reported <span className="text-muted-foreground/70">(dashed)</span>
+              Patient-reported <span className="text-muted-foreground/70">(hollow dot)</span>
             </span>
           </span>
           {!hasPatientLogged && (
@@ -117,40 +137,22 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line
                   type="monotone"
-                  dataKey="systolic_clinic"
-                  name="Systolic (clinic)"
+                  dataKey="systolic"
+                  name="Systolic"
                   stroke="#dc2626"
                   strokeWidth={2}
-                  dot={STYLE.clinic.dot}
+                  dot={makeSourceDot("#dc2626")}
+                  activeDot={makeSourceDot("#dc2626")}
                   connectNulls
                 />
                 <Line
                   type="monotone"
-                  dataKey="systolic_patient"
-                  name="Systolic (patient)"
-                  stroke="#dc2626"
-                  strokeWidth={2}
-                  strokeDasharray={STYLE.patient_logged.dash}
-                  dot={STYLE.patient_logged.dot}
-                  connectNulls
-                />
-                <Line
-                  type="monotone"
-                  dataKey="diastolic_clinic"
-                  name="Diastolic (clinic)"
+                  dataKey="diastolic"
+                  name="Diastolic"
                   stroke="#2563eb"
                   strokeWidth={2}
-                  dot={STYLE.clinic.dot}
-                  connectNulls
-                />
-                <Line
-                  type="monotone"
-                  dataKey="diastolic_patient"
-                  name="Diastolic (patient)"
-                  stroke="#2563eb"
-                  strokeWidth={2}
-                  strokeDasharray={STYLE.patient_logged.dash}
-                  dot={STYLE.patient_logged.dot}
+                  dot={makeSourceDot("#2563eb")}
+                  activeDot={makeSourceDot("#2563eb")}
                   connectNulls
                 />
               </LineChart>
@@ -165,21 +167,12 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line
                   type="monotone"
-                  dataKey="hr_clinic"
-                  name="Heart Rate (clinic)"
+                  dataKey="hr"
+                  name="Heart Rate"
                   stroke="#7c3aed"
                   strokeWidth={2}
-                  dot={STYLE.clinic.dot}
-                  connectNulls
-                />
-                <Line
-                  type="monotone"
-                  dataKey="hr_patient"
-                  name="Heart Rate (patient)"
-                  stroke="#7c3aed"
-                  strokeWidth={2}
-                  strokeDasharray={STYLE.patient_logged.dash}
-                  dot={STYLE.patient_logged.dot}
+                  dot={makeSourceDot("#7c3aed")}
+                  activeDot={makeSourceDot("#7c3aed")}
                   connectNulls
                 />
               </LineChart>
@@ -194,27 +187,18 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                 <Legend wrapperStyle={{ fontSize: 11 }} />
                 <Line
                   type="monotone"
-                  dataKey="weight_clinic"
-                  name="Weight (clinic)"
+                  dataKey="weight"
+                  name="Weight"
                   stroke="#16a34a"
                   strokeWidth={2}
-                  dot={STYLE.clinic.dot}
-                  connectNulls
-                />
-                <Line
-                  type="monotone"
-                  dataKey="weight_patient"
-                  name="Weight (patient)"
-                  stroke="#16a34a"
-                  strokeWidth={2}
-                  strokeDasharray={STYLE.patient_logged.dash}
-                  dot={STYLE.patient_logged.dot}
+                  dot={makeSourceDot("#16a34a")}
+                  activeDot={makeSourceDot("#16a34a")}
                   connectNulls
                 />
               </LineChart>
             </ChartCard>
 
-            {series.some((s) => s.bmi_clinic != null || s.bmi_patient != null) && (
+            {series.some((s) => s.bmi != null) && (
               <ChartCard title="BMI">
                 <LineChart data={series}>
                   <CartesianGrid strokeDasharray="3 3" />
@@ -224,21 +208,12 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
                   <Legend wrapperStyle={{ fontSize: 11 }} />
                   <Line
                     type="monotone"
-                    dataKey="bmi_clinic"
-                    name="BMI (clinic)"
+                    dataKey="bmi"
+                    name="BMI"
                     stroke="#ea580c"
                     strokeWidth={2}
-                    dot={STYLE.clinic.dot}
-                    connectNulls
-                  />
-                  <Line
-                    type="monotone"
-                    dataKey="bmi_patient"
-                    name="BMI (patient)"
-                    stroke="#ea580c"
-                    strokeWidth={2}
-                    strokeDasharray={STYLE.patient_logged.dash}
-                    dot={STYLE.patient_logged.dot}
+                    dot={makeSourceDot("#ea580c")}
+                    activeDot={makeSourceDot("#ea580c")}
                     connectNulls
                   />
                 </LineChart>
