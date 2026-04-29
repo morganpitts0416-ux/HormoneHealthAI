@@ -4679,7 +4679,32 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
     },
   });
 
-  if (isLoading || !data) {
+  // Phase 2: Vitals Monitoring Episodes — a patient may be enrolled in
+  // clinician-directed BP/HR/weight monitoring even if Daily Check-In tracking
+  // is off. We surface that here so this section never goes blank for those
+  // patients.
+  type _Episode = {
+    id: number;
+    status: string;
+    vitalTypes: string[];
+    frequencyPerDay: number;
+    durationDays: number;
+    startedAt: string;
+    endedAt?: string | null;
+    reason?: string | null;
+  };
+  const { data: episodesData, isLoading: epLoading } = useQuery<{ episodes: _Episode[] }>({
+    queryKey: ['/api/patients', patientId, 'vitals-monitoring'],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/vitals-monitoring`, { credentials: 'include' });
+      if (!res.ok) return { episodes: [] };
+      return res.json();
+    },
+  });
+  const episodes = episodesData?.episodes ?? [];
+  const activeEpisode = episodes.find((e) => e.status === "active") ?? null;
+
+  if (isLoading || epLoading || !data) {
     return (
       <div
         className="rounded-xl border p-6"
@@ -4691,7 +4716,8 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
       </div>
     );
   }
-  const trackingActive = data.settings.trackingMode !== "off" && data.settings.enabled;
+  const checkinTrackingActive = data.settings.trackingMode !== "off" && data.settings.enabled;
+  const trackingActive = checkinTrackingActive || activeEpisode != null || episodes.length > 0;
   if (!trackingActive) {
     return (
       <div
@@ -4711,14 +4737,19 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
               Active Monitoring is not enabled for this patient
             </h3>
             <p className="text-sm mt-1" style={{ color: "#5a6048" }}>
-              When you enable Daily Check-In tracking from the patient portal settings, this view will show their
-              calendar of check-ins, patient-logged vitals, medication adherence, and an alert feed for
-              concerning patterns.
+              This view shows two kinds of active monitoring:
             </p>
-            <p className="text-xs mt-3" style={{ color: "#7a8a64" }}>
-              Tracking is opt-in by default. Ask the patient to enable it from their portal, or enable it for
-              them under Portal &amp; Messages → Tracking settings.
-            </p>
+            <ul className="text-sm mt-2 space-y-1 list-disc pl-5" style={{ color: "#5a6048" }}>
+              <li>
+                <strong>Vitals Monitoring Episodes</strong> — clinician-directed BP, heart rate, or weight
+                tracking. Start one from the Vitals dialog.
+              </li>
+              <li>
+                <strong>Daily Check-In tracking</strong> — patient-logged mood, sleep, food, movement,
+                symptoms, cycle, and medication adherence. The patient enables it from their portal, or you
+                can enable it for them under Portal &amp; Messages.
+              </li>
+            </ul>
           </div>
         </div>
       </div>
@@ -4827,6 +4858,47 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
               </p>
             </div>
           </div>
+
+          {/* ── Active vitals monitoring episode banner ─────────────── */}
+          {activeEpisode && (
+            <div
+              className="rounded-md border p-3 flex items-start gap-3"
+              style={{ borderColor: "#c4b9a5", backgroundColor: "#faf6ed" }}
+              data-testid="active-episode-banner"
+            >
+              <div
+                className="rounded-md p-2 flex-shrink-0"
+                style={{ backgroundColor: "#eef0e6", color: "#2e3a20" }}
+              >
+                <Activity className="w-4 h-4" />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="text-sm font-semibold" style={{ color: "#1c2414" }}>
+                  Active vitals monitoring episode
+                </p>
+                <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
+                  Tracking {(activeEpisode.vitalTypes ?? []).map((t) => t.replace("_", " ")).join(", ") || "vitals"} —{" "}
+                  {activeEpisode.frequencyPerDay}× per day for {activeEpisode.durationDays} days
+                  {activeEpisode.startedAt &&
+                    ` (started ${new Date(activeEpisode.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })})`}
+                  .
+                </p>
+                {activeEpisode.reason && (
+                  <p className="text-xs mt-1 italic" style={{ color: "#7a8a64" }}>
+                    Reason: {activeEpisode.reason}
+                  </p>
+                )}
+              </div>
+            </div>
+          )}
+
+          {/* ── Hint when only Phase 2 is active ─────────────────────── */}
+          {!checkinTrackingActive && (
+            <div className="text-xs px-1" style={{ color: "#7a8a64" }} data-testid="text-no-checkin-hint">
+              Daily Check-In tracking is off, so the calendar below is empty. Patient-logged vitals from the
+              monitoring episode will still appear with a heart marker on the days they're recorded.
+            </div>
+          )}
 
           {recentBleeding && (
             <div
