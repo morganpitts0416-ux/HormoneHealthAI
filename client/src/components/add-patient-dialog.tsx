@@ -22,6 +22,12 @@ import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { Patient } from "@shared/schema";
 
+interface ClinicProvider {
+  id: number;
+  displayName: string;
+  isOwner: boolean;
+}
+
 interface AddPatientDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
@@ -45,7 +51,7 @@ export function AddPatientDialog({ open, onOpenChange, onCreated }: AddPatientDi
     if (!open) setForm(EMPTY_FORM);
   }, [open]);
 
-  const { data: clinicProviders = [] } = useQuery<any[]>({
+  const { data: clinicProviders = [] } = useQuery<ClinicProvider[]>({
     queryKey: ['/api/clinic/providers'],
     enabled: open,
   });
@@ -60,7 +66,7 @@ export function AddPatientDialog({ open, onOpenChange, onCreated }: AddPatientDi
       if (data.dateOfBirth) body.dateOfBirth = new Date(data.dateOfBirth).toISOString();
       if (data.email.trim()) body.email = data.email.trim().toLowerCase();
       if (data.phone.trim()) body.phone = data.phone.trim();
-      const ownerProvider = (clinicProviders as any[]).find((p: any) => p.isOwner);
+      const ownerProvider = clinicProviders.find((p) => p.isOwner);
       if (ownerProvider) body.primaryProvider = ownerProvider.displayName;
       const res = await apiRequest("POST", "/api/patients", body);
       if (!res.ok) {
@@ -79,11 +85,11 @@ export function AddPatientDialog({ open, onOpenChange, onCreated }: AddPatientDi
       });
       onCreated?.(newPatient);
     },
-    onError: (err: any) => {
+    onError: (err: Error) => {
       toast({
         variant: "destructive",
         title: "Error",
-        description: err?.message || "Failed to create patient.",
+        description: err.message || "Failed to create patient.",
       });
     },
   });
