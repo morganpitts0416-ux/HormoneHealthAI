@@ -49,6 +49,7 @@ import { FormSubmissionPreviewDialog } from "@/components/form-submission-previe
 import { VitalsDialog } from "@/components/vitals-dialog";
 import { VitalTrendsDialog } from "@/components/vital-trends-dialog";
 import { PreventCalculatorPanel } from "@/components/prevent-calculator-dialog";
+import { EncounterEditor, EncounterErrorBoundary } from "@/pages/encounters";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -1163,6 +1164,15 @@ export default function PatientProfiles() {
   const [showPhoneNote, setShowPhoneNote] = useState(false);
   const [previewSubId, setPreviewSubId] = useState<number | null>(null);
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
+  // INLINE ENCOUNTER EDITOR — when set, the Encounters sub-section renders the
+  // full EncounterEditor in place of the encounter list. This lets clinicians
+  // start / edit a SOAP note without leaving the patient profile (no route
+  // change), preserving the patient context and the left sub-nav.
+  const [inlineEncounter, setInlineEncounter] = useState<
+    | { mode: "new" }
+    | { mode: "edit"; encounterId: number }
+    | null
+  >(null);
   const [pdfExportingEncounterId, setPdfExportingEncounterId] = useState<number | null>(null);
   const [copiedEncounterId, setCopiedEncounterId] = useState<number | null>(null);
   const [amendingEncounterId, setAmendingEncounterId] = useState<number | null>(null);
@@ -1244,6 +1254,15 @@ export default function PatientProfiles() {
     if (tab === "encounters") setShowEncounters(true);
     if (tab === "forms") setShowForms(true);
   }, [allPatients, searchStr]);
+
+  // PATIENT-SAFETY: When the user switches patients in the rail while an
+  // inline encounter editor is open, close it so we never end up showing
+  // Patient A's encounter while the chart is on Patient B. The server
+  // tripwire (expectedPatientId) would block any cross-patient write
+  // anyway, but this prevents the visual ghost-editor in the first place.
+  useEffect(() => {
+    setInlineEncounter(null);
+  }, [selectedPatient?.id]);
 
   const { data: labs = [], isLoading: labsLoading } = useQuery<LabResult[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'labs'],
@@ -2097,7 +2116,11 @@ export default function PatientProfiles() {
                   <Button
                     size="sm"
                     variant="outline"
-                    onClick={() => setLocation(`/encounters?patientId=${selectedPatient.id}`)}
+                    onClick={() => {
+                      setProfileSection("encounters");
+                      setExpandedEncounterId(null);
+                      setInlineEncounter({ mode: "new" });
+                    }}
                     data-testid="button-start-encounter"
                     className="text-xs gap-1.5"
                     style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
@@ -2418,7 +2441,10 @@ export default function PatientProfiles() {
                     <div className="flex items-center gap-2 flex-wrap">
                       <Button
                         size="sm"
-                        onClick={() => setLocation(`/encounters?patientId=${selectedPatient.id}`)}
+                        onClick={() => {
+                          setExpandedEncounterId(null);
+                          setInlineEncounter({ mode: "new" });
+                        }}
                         data-testid="button-new-encounter-from-profile"
                         className="text-xs gap-1.5"
                         style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
@@ -2459,12 +2485,75 @@ export default function PatientProfiles() {
                     </div>
                   </div>
                 </CardHeader>
-                {patientEncounters.length === 0 && (
+                {/* INLINE ENCOUNTER EDITOR — when the user clicks "New Encounter"
+                    or opens an existing one for editing, the editor renders here
+                    in place of the list. They never leave the patient profile. */}
+                {inlineEncounter && (
+                  <CardContent className="p-0">
+                    <div
+                      className="px-4 py-2 flex items-center gap-2 border-b"
+                      style={{ borderColor: "#e8e0d2", background: "#f9f6f0" }}
+                    >
+                      <Button
+                        size="sm"
+                        variant="ghost"
+                        onClick={() => setInlineEncounter(null)}
+                        data-testid="button-close-inline-encounter"
+                        className="text-xs gap-1.5"
+                        style={{ color: "#2e3a20" }}
+                      >
+                        <ChevronLeft className="h-3.5 w-3.5" />
+                        Back to encounters
+                      </Button>
+                      <span className="text-xs ml-2" style={{ color: "#7a8a64" }}>
+                        {inlineEncounter.mode === "new" ? "New encounter" : "Editing encounter"} for{" "}
+                        <span style={{ color: "#1c2414", fontWeight: 600 }}>
+                          {selectedPatient.firstName} {selectedPatient.lastName}
+                        </span>
+                      </span>
+                    </div>
+                    <div
+                      className="bg-background"
+                      style={{ minHeight: "60vh" }}
+                      data-testid="inline-encounter-editor"
+                    >
+                      <EncounterErrorBoundary>
+                        <EncounterEditor
+                          key={
+                            inlineEncounter.mode === "edit"
+                              ? `edit-${inlineEncounter.encounterId}`
+                              : `new-${selectedPatient.id}`
+                          }
+                          encounter={
+                            inlineEncounter.mode === "edit"
+                              ? ((patientEncounters.find(e => e.id === inlineEncounter.encounterId) ?? null) as any)
+                              : null
+                          }
+                          patients={allPatients}
+                          onClose={() => {
+                            setInlineEncounter(null);
+                            queryClient.invalidateQueries({ queryKey: ['/api/encounters'] });
+                            queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                          }}
+                          onDeleted={() => {
+                            setInlineEncounter(null);
+                            queryClient.invalidateQueries({ queryKey: ['/api/encounters'] });
+                            queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                          }}
+                          initialPatientId={
+                            inlineEncounter.mode === "new" ? String(selectedPatient.id) : undefined
+                          }
+                        />
+                      </EncounterErrorBoundary>
+                    </div>
+                  </CardContent>
+                )}
+                {!inlineEncounter && patientEncounters.length === 0 && (
                   <CardContent>
                     <p className="text-sm text-muted-foreground">No encounters documented yet. Start one above to create an audio-transcribed SOAP note for this patient.</p>
                   </CardContent>
                 )}
-                {patientEncounters.length > 0 && (
+                {!inlineEncounter && patientEncounters.length > 0 && (
                   <CardContent className="space-y-2">
                     {patientEncounters.map(enc => {
                       const VISIT_LABELS: Record<string, string> = {
