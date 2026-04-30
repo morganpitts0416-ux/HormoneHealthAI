@@ -4532,10 +4532,9 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
     status: string;
     vitalTypes: string[];
     frequencyPerDay: number;
-    durationDays: number;
-    startedAt: string;
-    endedAt?: string | null;
-    reason?: string | null;
+    startDate: string;
+    endDate: string;
+    endedEarlyReason?: string | null;
   };
   const { data: episodesData, isLoading: epLoading } = useQuery<{ episodes: _Episode[] }>({
     queryKey: ['/api/patients', patientId, 'vitals-monitoring'],
@@ -4722,14 +4721,13 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
                 </p>
                 <p className="text-xs mt-0.5" style={{ color: "#5a6048" }}>
                   Tracking {(activeEpisode.vitalTypes ?? []).map((t) => t.replace("_", " ")).join(", ") || "vitals"} —{" "}
-                  {activeEpisode.frequencyPerDay}× per day for {activeEpisode.durationDays} days
-                  {activeEpisode.startedAt &&
-                    ` (started ${new Date(activeEpisode.startedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })})`}
+                  {activeEpisode.frequencyPerDay}× per day
+                  {activeEpisode.startDate && ` (started ${new Date(activeEpisode.startDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })} through ${new Date(activeEpisode.endDate + "T00:00:00").toLocaleDateString("en-US", { month: "short", day: "numeric" })})`}
                   .
                 </p>
-                {activeEpisode.reason && (
+                {activeEpisode.endedEarlyReason && (
                   <p className="text-xs mt-1 italic" style={{ color: "#7a8a64" }}>
-                    Reason: {activeEpisode.reason}
+                    Ended early: {activeEpisode.endedEarlyReason}
                   </p>
                 )}
               </div>
