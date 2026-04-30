@@ -1834,19 +1834,23 @@ Rules:
 
   // ===== PATIENT PROFILE ENDPOINTS =====
 
-  // GET /api/clinician/notifications — unread messages + pending supplement orders
+  // GET /api/clinician/notifications — unread messages, pending supplement
+  // orders, and pending patient-portal medication refill requests. The latter
+  // two are surfaced in a single combined dashboard widget
+  // ("Medication & Supplement Requests").
   app.get("/api/clinician/notifications", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const [unreadMessages, pendingOrders] = await Promise.all([
+      const [unreadMessages, pendingOrders, pendingRefillRequests] = await Promise.all([
         storage.getUnreadMessageSummaryForClinician(clinicianId),
         storage.getPendingOrdersForClinician(clinicianId),
+        storage.getPendingRefillRequestsForClinician(clinicianId, clinicId ?? null),
       ]);
-      res.json({ unreadMessages, pendingOrders });
+      res.json({ unreadMessages, pendingOrders, pendingRefillRequests });
     } catch (error) {
       console.error("Clinician notifications error:", error);
-      res.json({ unreadMessages: [], pendingOrders: [] });
+      res.json({ unreadMessages: [], pendingOrders: [], pendingRefillRequests: [] });
     }
   });
 

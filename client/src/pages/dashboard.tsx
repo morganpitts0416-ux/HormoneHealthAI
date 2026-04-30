@@ -55,6 +55,16 @@ interface PendingOrderRow {
   createdAt: string;
 }
 
+interface PendingRefillRequestRow {
+  id: number;
+  patientId: number | null;
+  patientFirstName: string | null;
+  patientLastName: string | null;
+  title: string;
+  message: string;
+  createdAt: string;
+}
+
 interface PendingSubmissionRow {
   id: number;
   formId: number;
@@ -69,6 +79,7 @@ interface PendingSubmissionRow {
 interface NotificationsData {
   unreadMessages: UnreadMessageRow[];
   pendingOrders: PendingOrderRow[];
+  pendingRefillRequests: PendingRefillRequestRow[];
 }
 
 interface OpenEncounterRow {
@@ -178,6 +189,21 @@ export default function Dashboard() {
     },
   });
 
+  // Mark a med-refill request "handled" by dismissing the underlying inbox
+  // notification. Same endpoint the inbox page uses, so the two views stay in
+  // sync.
+  const dismissRefillMutation = useMutation({
+    mutationFn: async (notificationId: number) => {
+      const res = await apiRequest("DELETE", `/api/clinician/inbox-notifications/${notificationId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinician/notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clinician/inbox-notifications"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/clinician/inbox-notifications/unread-count"] });
+    },
+  });
+
   const { data: pendingSubmissions = [] } = useQuery<PendingSubmissionRow[]>({
     queryKey: ["/api/intake-forms/submissions/pending"],
     refetchInterval: 30 * 1000,
@@ -196,7 +222,28 @@ export default function Dashboard() {
 
   const unreadMessages = notifications?.unreadMessages ?? [];
   const pendingOrders = notifications?.pendingOrders ?? [];
-  const totalNotifications = unreadMessages.length + pendingOrders.length + pendingSubmissions.length;
+  const pendingRefillRequests = notifications?.pendingRefillRequests ?? [];
+
+  // Combined list for the "Medication & Supplement Requests" widget. Each row
+  // is tagged so the renderer can show the right icon and action buttons.
+  type CombinedRequestRow =
+    | { kind: "order"; sortAt: number; row: PendingOrderRow }
+    | { kind: "refill"; sortAt: number; row: PendingRefillRequestRow };
+  const combinedRequests: CombinedRequestRow[] = [
+    ...pendingOrders.map(o => ({
+      kind: "order" as const,
+      sortAt: new Date(o.createdAt).getTime() || 0,
+      row: o,
+    })),
+    ...pendingRefillRequests.map(r => ({
+      kind: "refill" as const,
+      sortAt: new Date(r.createdAt).getTime() || 0,
+      row: r,
+    })),
+  ].sort((a, b) => b.sortAt - a.sortAt);
+
+  const totalNotifications =
+    unreadMessages.length + combinedRequests.length + pendingSubmissions.length;
 
   // ── Open SOAP Notes (unsigned encounters) — provider-scoped, switchable.
   // Defaults to the signed-in user; the Select lets you view another
@@ -546,16 +593,28 @@ export default function Dashboard() {
               )}
             </div>
 
-            {/* ── Orders column ───────────────────────────────────── */}
+            {/* ── Medication & Supplement Requests column ─────────── */}
+            {/* Combines pending supplement orders and patient-portal medication
+                refill requests into a single inbox-style widget. */}
             <div className="rounded-xl overflow-hidden border" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
               {/* Column header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ede8df", backgroundColor: pendingOrders.length > 0 ? "#fef8ed" : "#faf8f5" }}>
+              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ede8df", backgroundColor: combinedRequests.length > 0 ? "#fef8ed" : "#faf8f5" }}>
                 <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4" style={{ color: pendingOrders.length > 0 ? "#7a5c20" : "#a0a880" }} />
-                  <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Supplement Orders</span>
-                  {pendingOrders.length > 0 && (
-                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#7a5c20", color: "#fef8ed" }}>
-                      {pendingOrders.length} pending
+                  <ShoppingBag className="w-4 h-4" style={{ color: combinedRequests.length > 0 ? "#7a5c20" : "#a0a880" }} />
+                  <span
+                    className="text-sm font-semibold"
+                    style={{ color: "#1c2414" }}
+                    data-testid="text-medication-supplement-requests-title"
+                  >
+                    Medication &amp; Supplement Requests
+                  </span>
+                  {combinedRequests.length > 0 && (
+                    <span
+                      className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold"
+                      style={{ backgroundColor: "#7a5c20", color: "#fef8ed" }}
+                      data-testid="badge-medication-supplement-requests-count"
+                    >
+                      {combinedRequests.length} pending
                     </span>
                   )}
                 </div>
@@ -563,79 +622,168 @@ export default function Dashboard() {
                   className="text-xs font-medium flex items-center gap-1"
                   style={{ color: "#7a5c20" }}
                   onClick={() => setLocation("/patients")}
+                  data-testid="button-medication-supplement-requests-view-all"
                 >
                   View all <ArrowRight className="w-3 h-3" />
                 </button>
               </div>
 
-              {/* Order rows */}
+              {/* Combined rows: supplement orders + medication refill requests */}
               {notifLoading ? (
                 <div className="space-y-2 p-3">
                   {[1, 2].map(i => <div key={i} className="h-14 rounded-lg animate-pulse" style={{ backgroundColor: "#f0ece5" }} />)}
                 </div>
-              ) : pendingOrders.length === 0 ? (
+              ) : combinedRequests.length === 0 ? (
                 <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
                   <Package className="w-7 h-7 mb-2" style={{ color: "#c4b9a5" }} />
-                  <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>No pending orders</p>
-                  <p className="text-xs mt-0.5" style={{ color: "#a0a880" }}>Patient supplement orders will appear here</p>
+                  <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>No pending requests</p>
+                  <p className="text-xs mt-0.5" style={{ color: "#a0a880" }}>Patient supplement orders and medication refill requests will appear here</p>
                 </div>
               ) : (
                 <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
-                  {pendingOrders.map((order) => (
-                    <div
-                      key={`order-${order.id}`}
-                      data-testid={`notification-order-${order.id}`}
-                      className="px-4 py-3"
-                    >
-                      <div className="flex items-start gap-3">
-                        <PatientInitials first={order.patientFirstName} last={order.patientLastName} />
-                        <div className="flex-1 min-w-0">
-                          <button
-                            className="w-full text-left"
-                            onClick={() => goToPatient(order.patientId, "orders")}
-                          >
-                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                              {order.patientFirstName} {order.patientLastName}
-                            </p>
-                            <p className="text-xs" style={{ color: "#7a8a64" }}>
-                              {order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)} total
-                            </p>
-                            {/* Item preview */}
-                            <p className="text-xs truncate mt-0.5" style={{ color: "#a0a880" }}>
-                              {order.items.slice(0, 2).map(i => i.name).join(", ")}
-                              {order.items.length > 2 ? ` +${order.items.length - 2} more` : ""}
-                            </p>
-                          </button>
-                          <div className="flex items-center gap-2 mt-2">
-                            <div className="flex items-center gap-1 text-xs" style={{ color: "#a0a880" }}>
-                              <Clock className="w-3 h-3" />
-                              {formatDate(order.createdAt)}
+                  {combinedRequests.map((entry) => {
+                    if (entry.kind === "order") {
+                      const order = entry.row;
+                      return (
+                        <div
+                          key={`order-${order.id}`}
+                          data-testid={`notification-order-${order.id}`}
+                          className="px-4 py-3"
+                        >
+                          <div className="flex items-start gap-3">
+                            <PatientInitials first={order.patientFirstName} last={order.patientLastName} />
+                            <div className="flex-1 min-w-0">
+                              <button
+                                className="w-full text-left"
+                                onClick={() => goToPatient(order.patientId, "orders")}
+                              >
+                                <div className="flex items-center gap-1.5">
+                                  <ShoppingBag className="w-3 h-3 flex-shrink-0" style={{ color: "#7a5c20" }} />
+                                  <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                                    {order.patientFirstName} {order.patientLastName}
+                                  </p>
+                                  <span className="text-xs" style={{ color: "#7a5c20" }}>
+                                    Supplement order
+                                  </span>
+                                </div>
+                                <p className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>
+                                  {order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)} total
+                                </p>
+                                {/* Item preview */}
+                                <p className="text-xs truncate mt-0.5" style={{ color: "#a0a880" }}>
+                                  {order.items.slice(0, 2).map(i => i.name).join(", ")}
+                                  {order.items.length > 2 ? ` +${order.items.length - 2} more` : ""}
+                                </p>
+                              </button>
+                              <div className="flex items-center gap-2 mt-2 flex-wrap">
+                                <div className="flex items-center gap-1 text-xs" style={{ color: "#a0a880" }}>
+                                  <Clock className="w-3 h-3" />
+                                  {formatDate(order.createdAt)}
+                                </div>
+                                <div className="flex-1" />
+                                <Button
+                                  size="sm"
+                                  data-testid={`button-fulfill-order-${order.id}`}
+                                  className="h-7 px-3 text-xs gap-1.5"
+                                  style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
+                                  onClick={() => fulfillOrderMutation.mutate(order.id)}
+                                  disabled={fulfillOrderMutation.isPending}
+                                >
+                                  <CheckCircle2 className="w-3 h-3" />
+                                  Mark fulfilled
+                                </Button>
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => goToPatient(order.patientId, "orders")}
+                                >
+                                  View <ChevronRight className="w-3 h-3 ml-0.5" />
+                                </Button>
+                              </div>
                             </div>
-                            <div className="flex-1" />
-                            <Button
-                              size="sm"
-                              data-testid={`button-fulfill-order-${order.id}`}
-                              className="h-7 px-3 text-xs gap-1.5"
-                              style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                              onClick={() => fulfillOrderMutation.mutate(order.id)}
-                              disabled={fulfillOrderMutation.isPending}
+                          </div>
+                        </div>
+                      );
+                    }
+                    // Medication refill request row
+                    const refill = entry.row;
+                    const firstName = refill.patientFirstName ?? "";
+                    const lastName = refill.patientLastName ?? "";
+                    const displayName = (firstName || lastName)
+                      ? `${firstName} ${lastName}`.trim()
+                      : "Patient";
+                    return (
+                      <div
+                        key={`refill-${refill.id}`}
+                        data-testid={`notification-refill-${refill.id}`}
+                        className="px-4 py-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <PatientInitials first={firstName} last={lastName} />
+                          <div className="flex-1 min-w-0">
+                            <button
+                              className="w-full text-left"
+                              onClick={() => refill.patientId != null && goToPatient(refill.patientId)}
+                              disabled={refill.patientId == null}
                             >
-                              <CheckCircle2 className="w-3 h-3" />
-                              Mark fulfilled
-                            </Button>
-                            <Button
-                              size="sm"
-                              variant="ghost"
-                              className="h-7 px-2 text-xs"
-                              onClick={() => goToPatient(order.patientId, "orders")}
-                            >
-                              View <ChevronRight className="w-3 h-3 ml-0.5" />
-                            </Button>
+                              <div className="flex items-center gap-1.5">
+                                <Pill className="w-3 h-3 flex-shrink-0" style={{ color: "#2e5a7a" }} />
+                                <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                                  {displayName}
+                                </p>
+                                <span className="text-xs" style={{ color: "#2e5a7a" }}>
+                                  Medication refill request
+                                </span>
+                              </div>
+                              {/* Show first 2 lines of the structured refill message as a preview */}
+                              <p
+                                className="text-xs mt-0.5 whitespace-pre-line"
+                                style={{
+                                  color: "#7a8a64",
+                                  display: "-webkit-box",
+                                  WebkitLineClamp: 3,
+                                  WebkitBoxOrient: "vertical",
+                                  overflow: "hidden",
+                                }}
+                                data-testid={`text-refill-message-${refill.id}`}
+                              >
+                                {refill.message}
+                              </p>
+                            </button>
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              <div className="flex items-center gap-1 text-xs" style={{ color: "#a0a880" }}>
+                                <Clock className="w-3 h-3" />
+                                {formatDate(refill.createdAt)}
+                              </div>
+                              <div className="flex-1" />
+                              <Button
+                                size="sm"
+                                data-testid={`button-handle-refill-${refill.id}`}
+                                className="h-7 px-3 text-xs gap-1.5"
+                                style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
+                                onClick={() => dismissRefillMutation.mutate(refill.id)}
+                                disabled={dismissRefillMutation.isPending}
+                              >
+                                <CheckCircle2 className="w-3 h-3" />
+                                Mark handled
+                              </Button>
+                              {refill.patientId != null && (
+                                <Button
+                                  size="sm"
+                                  variant="ghost"
+                                  className="h-7 px-2 text-xs"
+                                  onClick={() => goToPatient(refill.patientId!)}
+                                >
+                                  View <ChevronRight className="w-3 h-3 ml-0.5" />
+                                </Button>
+                              )}
+                            </div>
                           </div>
                         </div>
                       </div>
-                    </div>
-                  ))}
+                    );
+                  })}
                 </div>
               )}
             </div>
