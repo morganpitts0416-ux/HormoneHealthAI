@@ -167,6 +167,7 @@ export interface IStorage {
 
   // Clinician notification helpers
   getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>>;
+  getPendingRefillRequestsForClinician(clinicianId: number, clinicId: number | null): Promise<Array<{ id: number; patientId: number | null; patientFirstName: string | null; patientLastName: string | null; title: string; message: string; createdAt: string }>>;
 
   // Clinician Supplement Settings (discount)
   getClinicianSupplementSettings(clinicianId: number): Promise<ClinicianSupplementSettings | undefined>;
@@ -1152,6 +1153,46 @@ export class DbStorage implements IStorage {
       patientLastName: r.patient_last_name as string,
       count: Number(r.count),
       lastAt: r.last_at as string,
+    }));
+  }
+
+  // Pending patient-portal medication refill requests for this clinician.
+  // Pulls from provider_inbox_notifications (type='med_refill_request') so
+  // refill requests can be surfaced in the same dashboard widget as pending
+  // supplement orders. Returns items not yet dismissed, scoped to the
+  // clinician's clinic, and either targeted at the clinician (providerId
+  // matches) or clinic-wide (providerId IS NULL).
+  async getPendingRefillRequestsForClinician(
+    clinicianId: number,
+    clinicId: number | null,
+  ): Promise<Array<{ id: number; patientId: number | null; patientFirstName: string | null; patientLastName: string | null; title: string; message: string; createdAt: string }>> {
+    if (!clinicId) return [];
+    const rows = await db.execute(sql`
+      SELECT
+        n.id            AS id,
+        n.patient_id    AS patient_id,
+        p.first_name    AS patient_first_name,
+        p.last_name     AS patient_last_name,
+        n.title         AS title,
+        n.message       AS message,
+        n.created_at::text AS created_at
+      FROM provider_inbox_notifications n
+      LEFT JOIN patients p ON p.id = n.patient_id
+      WHERE n.clinic_id = ${clinicId}
+        AND n.type = 'med_refill_request'
+        AND n.dismissed_at IS NULL
+        AND (n.provider_id = ${clinicianId} OR n.provider_id IS NULL)
+      ORDER BY n.created_at DESC
+      LIMIT 100
+    `);
+    return (rows.rows as any[]).map(r => ({
+      id: Number(r.id),
+      patientId: r.patient_id == null ? null : Number(r.patient_id),
+      patientFirstName: (r.patient_first_name as string | null) ?? null,
+      patientLastName: (r.patient_last_name as string | null) ?? null,
+      title: r.title as string,
+      message: r.message as string,
+      createdAt: r.created_at as string,
     }));
   }
 
@@ -2747,12 +2788,20 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
   clinicId: number,
   userId: number,
 ): Promise<schema.ProviderInboxNotification | undefined> {
+  // Visibility scope: a user may only act on notifications they can see —
+  // i.e. those targeted at them OR clinic-wide (provider_id IS NULL). This
+  // matches `listInboxNotifications` and prevents intra-clinic IDOR where one
+  // provider could mark another provider's targeted notification read by ID.
   const [row] = await db
     .update(schema.providerInboxNotifications)
     .set({ readAt: new Date(), readByUserId: userId })
     .where(and(
       eq(schema.providerInboxNotifications.id, id),
       eq(schema.providerInboxNotifications.clinicId, clinicId),
+      or(
+        eq(schema.providerInboxNotifications.providerId, userId),
+        isNull(schema.providerInboxNotifications.providerId),
+      )!,
     ))
     .returning();
   return row;
@@ -2787,12 +2836,19 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
   clinicId: number,
   userId: number,
 ): Promise<boolean> {
+  // Visibility scope (see markInboxNotificationRead). Without this predicate,
+  // any clinic member could dismiss a notification targeted at a specific
+  // other provider just by knowing the ID — a real intra-clinic IDOR.
   const result = await db
     .update(schema.providerInboxNotifications)
     .set({ dismissedAt: new Date(), dismissedByUserId: userId })
     .where(and(
       eq(schema.providerInboxNotifications.id, id),
       eq(schema.providerInboxNotifications.clinicId, clinicId),
+      or(
+        eq(schema.providerInboxNotifications.providerId, userId),
+        isNull(schema.providerInboxNotifications.providerId),
+      )!,
     ))
     .returning({ id: schema.providerInboxNotifications.id });
   return result.length > 0;
