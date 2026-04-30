@@ -45,7 +45,7 @@ export function FloatingRecorderDock() {
       className="fixed z-[80] shadow-xl"
       style={{
         bottom: "1rem",
-        right: "1rem",
+        left: "1rem",
         width: expanded ? "min(380px, calc(100vw - 2rem))" : "min(320px, calc(100vw - 2rem))",
         backgroundColor: "#ffffff",
         border: "1px solid #d4c9b5",
