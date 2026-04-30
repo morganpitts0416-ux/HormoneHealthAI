@@ -69,7 +69,8 @@ ${gender === 'female' ? `- Consider menstrual cycle phase when interpreting horm
 - Note HRT or birth control interactions where relevant` : ''}
 - Do not diagnose - provide clinical guidance for staff review
 - NO EMOJIS - use professional medical terminology only
-- Format as clear bullet points or numbered list`
+- Format as clear bullet points or numbered list
+- MEDICATION NAMES: Only use real, established generic or brand names (e.g., semaglutide, tirzepatide, testosterone cypionate, metformin, anastrozole, levothyroxine, atorvastatin). If a specific drug is not confirmed in the patient's chart, refer to the drug class only (e.g., "GLP-1 receptor agonist," "statin therapy"). NEVER invent or approximate a medication name — doing so is a patient-safety error.`
           },
           {
             role: "user",
@@ -469,7 +470,8 @@ CRITICAL FORMATTING RULES:
 - Be thorough but concise — this goes directly into a medical chart
 - Use professional medical terminology
 - NO emojis
-- Include today's date: ${today}`;
+- Include today's date: ${today}
+- MEDICATION NAMES: Only use real, established generic or brand names. If the patient chart does not specify the exact drug name, write the drug class (e.g., "GLP-1 receptor agonist") — NEVER invent a name. Fictional medication names are a patient-safety violation.`;
 
     try {
       console.log('[AI Service] Generating SOAP note...');
@@ -478,7 +480,9 @@ CRITICAL FORMATTING RULES:
         messages: [
           {
             role: "system",
-            content: `You are an experienced clinician-level documentation specialist generating chart-ready SOAP notes for a ${clinicType}. Your notes synthesize clinical findings the way an experienced NP, PA, or physician would — integrating lab data, clinical context, and medical reasoning into a polished, professional document. You do NOT merely restate findings as a list. You write substantive Assessment/Plan entries with clinical reasoning, appropriate treatment rationale, and follow-up logic. Your Assessment section always begins with a 2–4 sentence summary paragraph synthesizing the overall clinical picture before the numbered problem list. Every note you produce is ready to sign with minimal editing. You never invent facts not present in the provided data.`
+            content: `You are an experienced clinician-level documentation specialist generating chart-ready SOAP notes for a ${clinicType}. Your notes synthesize clinical findings the way an experienced NP, PA, or physician would — integrating lab data, clinical context, and medical reasoning into a polished, professional document. You do NOT merely restate findings as a list. You write substantive Assessment/Plan entries with clinical reasoning, appropriate treatment rationale, and follow-up logic. Your Assessment section always begins with a 2–4 sentence summary paragraph synthesizing the overall clinical picture before the numbered problem list. Every note you produce is ready to sign with minimal editing. You never invent facts not present in the provided data.
+
+MEDICATION NAME RULE — NON-NEGOTIABLE: You must NEVER invent, fabricate, or approximate a medication or supplement name. Only use real, established generic or brand names (e.g., semaglutide, tirzepatide, liraglutide, metformin, testosterone cypionate, anastrozole, progesterone, levothyroxine, atorvastatin, rosuvastatin, vitamin D3, magnesium glycinate, omega-3, berberine, etc.). If the patient's chart does not specify the exact medication name, refer to the DRUG CLASS only (e.g., "GLP-1 receptor agonist," "testosterone therapy," "statin therapy") — never invent a brand name to fill the gap. Any fictional name (e.g., "Zephytide," "Hormonex," "Testovance") is a serious clinical documentation error.`
           },
           {
             role: "user",

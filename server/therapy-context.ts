@@ -742,7 +742,12 @@ export function buildTherapyPromptBlock(ctx: TherapyContext | undefined | null):
     "assessment (frequency, missed doses, refill history), (b) verifying the " +
     "current dose is adequate for the finding, and (c) dose optimization or " +
     "formulation change as the next step. Name the exact medication/" +
-    "supplement from the chart in your recommendation."
+    "supplement from the chart in your recommendation. " +
+    "CRITICAL — MEDICATION NAMES: You must ONLY use real, established " +
+    "generic or brand names. Do NOT invent, fabricate, or approximate any " +
+    "drug or supplement name. If the patient chart lists a therapy class " +
+    "without a specific drug name, use the class name only " +
+    "(e.g., 'GLP-1 receptor agonist') — never create a fictional brand name."
   );
   return lines.join("\n");
 }
