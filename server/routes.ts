@@ -12158,6 +12158,106 @@ IMPORTANT:
     }
   });
 
+  // ── PORTAL: Medication refill request ─────────────────────────────────
+  // Patient submits a list of meds they'd like refilled (a mix of items
+  // already on their chart and free-form additions). Creates a single
+  // inbox notification for the clinic so the care team can review and act.
+  app.post("/api/portal/refill-request", requirePortalAuth, async (req, res) => {
+    try {
+      const patientId = (req.session as any).portalPatientId as number;
+      const patient = await storage.getPatientById(patientId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (!patient.clinicId) {
+        // Refill requests must route to a real clinic; if a patient is not
+        // attached to one, fail loudly so it can be triaged manually rather
+        // than silently writing to clinic 0 (where no one would see it).
+        return res.status(409).json({
+          message: "Your account is not yet linked to a clinic. Please contact your care team directly.",
+        });
+      }
+
+      const refillSchema = z.object({
+        chartMedications: z.array(z.string().trim().min(1).max(200)).max(50).default([]),
+        newMedications: z.array(z.object({
+          name: z.string().trim().min(1, "Medication name is required").max(200),
+          dose: z.string().trim().max(100).optional().or(z.literal("")),
+          frequency: z.string().trim().max(100).optional().or(z.literal("")),
+        })).max(20).default([]),
+        pharmacyNote: z.string().trim().max(1000).optional().or(z.literal("")),
+      }).refine(
+        (v) => v.chartMedications.length > 0 || v.newMedications.length > 0,
+        { message: "Select at least one medication to refill" },
+      );
+
+      const parsed = refillSchema.safeParse(req.body);
+      if (!parsed.success) {
+        return res.status(400).json({
+          message: parsed.error.issues[0]?.message || "Invalid refill request",
+        });
+      }
+      const { chartMedications, newMedications, pharmacyNote } = parsed.data;
+
+      // Case-insensitive de-dupe of chart selections (preserve first occurrence's casing)
+      const seenChart = new Set<string>();
+      const uniqueChart: string[] = [];
+      for (const name of chartMedications) {
+        const key = name.toLowerCase();
+        if (!seenChart.has(key)) {
+          seenChart.add(key);
+          uniqueChart.push(name);
+        }
+      }
+
+      // Case-insensitive de-dupe of new medications by name
+      const seenNew = new Set<string>();
+      const uniqueNew: typeof newMedications = [];
+      for (const m of newMedications) {
+        const key = m.name.toLowerCase();
+        if (!seenNew.has(key)) {
+          seenNew.add(key);
+          uniqueNew.push(m);
+        }
+      }
+
+      const lines: string[] = [];
+      if (uniqueChart.length > 0) {
+        lines.push("From chart:");
+        for (const m of uniqueChart) lines.push(`  • ${m}`);
+      }
+      if (uniqueNew.length > 0) {
+        if (lines.length > 0) lines.push("");
+        lines.push("Additional / not on chart:");
+        for (const m of uniqueNew) {
+          const parts = [m.name];
+          if (m.dose) parts.push(m.dose);
+          if (m.frequency) parts.push(m.frequency);
+          lines.push(`  • ${parts.join(" — ")}`);
+        }
+      }
+      if (pharmacyNote && pharmacyNote.trim().length > 0) {
+        if (lines.length > 0) lines.push("");
+        lines.push(`Note from patient: ${pharmacyNote.trim()}`);
+      }
+
+      const notif = await storage.createInboxNotification({
+        clinicId: patient.clinicId,
+        patientId,
+        providerId: patient.primaryProviderId ?? null,
+        type: "med_refill_request",
+        title: `Refill request from ${patient.firstName} ${patient.lastName}`,
+        message: lines.join("\n"),
+        relatedEntityType: "patient",
+        relatedEntityId: patientId,
+        severity: "normal",
+      } as any);
+
+      res.json({ ok: true, notificationId: notif.id });
+    } catch (err) {
+      console.error("[portal] refill-request POST error:", err);
+      res.status(500).json({ message: "Failed to submit refill request" });
+    }
+  });
+
   // ── CLINICIAN: per-patient tracking summary panel ─────────────────────
   app.get("/api/patients/:id/tracking-summary", requireAuth, async (req, res) => {
     try {

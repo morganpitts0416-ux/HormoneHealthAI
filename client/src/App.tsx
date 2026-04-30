@@ -33,6 +33,7 @@ import PortalCheckIn from "@/pages/portal/check-in";
 import PortalLabsPage from "@/pages/portal/labs";
 import PortalVisitsPage from "@/pages/portal/visits";
 import PortalRecipesPage from "@/pages/portal/recipes";
+import PortalRefillRequest from "@/pages/portal/refill-request";
 import StaffSetPassword from "@/pages/staff-set-password";
 import EncountersPage from "@/pages/encounters";
 import AppointmentsPage from "@/pages/appointments";
@@ -300,6 +301,7 @@ function Router() {
       <Route path="/portal/labs" component={PortalLabsPage} />
       <Route path="/portal/visits" component={PortalVisitsPage} />
       <Route path="/portal/recipes" component={PortalRecipesPage} />
+      <Route path="/portal/refill-request" component={PortalRefillRequest} />
       <Route path="/staff-set-password" component={StaffSetPassword} />
       <Route path="/join-clinic" component={JoinClinicPage} />
       <Route>

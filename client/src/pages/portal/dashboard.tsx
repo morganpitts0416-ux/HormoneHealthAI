@@ -6,7 +6,7 @@ import { usePortalUnreadCount } from "@/hooks/use-portal-unread";
 import {
   Leaf, LogOut, FlaskConical, Package, MessageSquare, ChevronRight,
   Activity, Stethoscope, Home as HomeIcon, UserCircle, ChefHat as RecipeIcon,
-  CalendarDays, HeartPulse,
+  CalendarDays, HeartPulse, Pill,
 } from "lucide-react";
 import {
   DropdownMenu,
@@ -210,7 +210,7 @@ export default function PortalDashboard() {
             <ActionTile href="/portal/recipes" Icon={RecipeIcon} label="Recipe book" sublabel="Meals built from your plan" testId="action-recipes" />
             <ActionTile href="/portal/messages" Icon={MessageSquare} label="Message my care team" sublabel="Get answers, share updates" testId="action-messages" badge={unreadCount} />
             <ActionTile href="/portal/healthiq" Icon={Activity} label="HealthIQ check-in" sublabel="Daily snapshot, weekly read" testId="action-healthiq" />
-            <ActionTile href="/portal/account" Icon={UserCircle} label="Account" sublabel="Contact, pharmacy, documents" testId="action-account" wide />
+            <ActionTile href="/portal/refill-request" Icon={Pill} label="Request med refill" sublabel="Send a refill request to your care team" testId="action-refill-request" wide />
           </div>
         </section>
 

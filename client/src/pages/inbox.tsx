@@ -55,6 +55,7 @@ function timeAgo(iso: string): string {
 
 function iconForType(type: string) {
   if (type === "patient_added_med_or_supplement") return Pill;
+  if (type === "med_refill_request") return Pill;
   if (type === "unexpected_bleeding_reported") return Droplet;
   if (type === "severe_bp_reading") return AlertCircle;
   if (type === "stage_2_bp_pattern") return Heart;
