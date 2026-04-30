@@ -49,6 +49,7 @@ import { FormSubmissionPreviewDialog } from "@/components/form-submission-previe
 import { VitalsDialog } from "@/components/vitals-dialog";
 import { VitalTrendsDialog } from "@/components/vital-trends-dialog";
 import { PreventCalculatorPanel } from "@/components/prevent-calculator-dialog";
+import { usePhraseSearch } from "@/components/phrase-search";
 import { EncounterEditor, EncounterErrorBoundary } from "@/pages/encounters";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
