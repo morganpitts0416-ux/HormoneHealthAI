@@ -1208,11 +1208,17 @@ export default function PatientProfiles() {
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
 
-  // Auto-generate dietary guidance when publish dialog opens for a lab with AI recommendations
+  // Auto-generate patient-specific dietary guidance when the publish dialog opens.
+  // The endpoint pulls directly from this lab's interpretations + lab values, so
+  // we trigger generation as long as the lab has any interpretation data —
+  // not gated on the staff-facing aiRecommendations text (which often lacks
+  // dietary content and led to identical guidance across patients).
   useEffect(() => {
     if (!publishDialogLab) return;
-    const aiRecommendations = (publishDialogLab.interpretationResult as any)?.aiRecommendations;
-    if (!aiRecommendations || publishDietaryGuidance) return; // skip if no AI data or already filled
+    const interp = (publishDialogLab.interpretationResult as any) || {};
+    const hasInterpretations = Array.isArray(interp.interpretations) && interp.interpretations.length > 0;
+    const hasLabValues = publishDialogLab.labValues && Object.keys(publishDialogLab.labValues as any).length > 0;
+    if ((!hasInterpretations && !hasLabValues) || publishDietaryGuidance) return;
 
     let cancelled = false;
     setIsDietaryGenerating(true);
