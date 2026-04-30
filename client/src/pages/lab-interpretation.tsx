@@ -54,6 +54,11 @@ export default function LabInterpretation() {
       setCurrentPatient(null);
     }
   }, [selectedPatient, setCurrentPatient]);
+  useEffect(() => {
+    return () => {
+      setCurrentPatient(null);
+    };
+  }, [setCurrentPatient]);
   const [selectedSupplementNames, setSelectedSupplementNames] = useState<Set<string>>(new Set());
   const [customSupplements, setCustomSupplements] = useState<CustomSupplement[]>([]);
   const fileInputRef = useRef<HTMLInputElement>(null);

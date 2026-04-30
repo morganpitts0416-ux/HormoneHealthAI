@@ -1124,6 +1124,11 @@ export default function PatientProfiles() {
       setCurrentPatient(null);
     }
   }, [selectedPatient, setCurrentPatient]);
+  useEffect(() => {
+    return () => {
+      setCurrentPatient(null);
+    };
+  }, [setCurrentPatient]);
   const [viewingLab, setViewingLab] = useState<LabResult | null>(null);
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
