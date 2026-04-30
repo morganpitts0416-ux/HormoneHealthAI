@@ -50,7 +50,7 @@ import { VitalsDialog } from "@/components/vitals-dialog";
 import { VitalTrendsDialog } from "@/components/vital-trends-dialog";
 import { PreventCalculatorPanel } from "@/components/prevent-calculator-dialog";
 import { usePhraseSearch } from "@/components/phrase-search";
-import { EncounterEditor, EncounterErrorBoundary } from "@/pages/encounters";
+import { EncounterEditor, EncounterErrorBoundary, type EncounterWithPatient } from "@/pages/encounters";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -2527,7 +2527,7 @@ export default function PatientProfiles() {
                           }
                           encounter={
                             inlineEncounter.mode === "edit"
-                              ? ((patientEncounters.find(e => e.id === inlineEncounter.encounterId) ?? null) as any)
+                              ? ((patientEncounters.find(e => e.id === inlineEncounter.encounterId) ?? null) as unknown as EncounterWithPatient | null)
                               : null
                           }
                           patients={allPatients}
