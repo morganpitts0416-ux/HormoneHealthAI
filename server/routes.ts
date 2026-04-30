@@ -1582,7 +1582,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
 
-  // Auto-generate dietary guidance from stored AI recommendations for the portal publish dialog
+  // Auto-generate patient-specific dietary guidance for the portal publish dialog.
+  // Generates directly from the patient's actual lab values, abnormal/borderline
+  // findings, and recommended supplements — NOT from a second-pass extraction of
+  // staff-facing recommendations text (which often lacks dietary content and
+  // produces generic, identical output across patients).
   app.post("/api/generate-dietary-guidance", requireAuth, async (req, res) => {
     try {
       const { labResultId } = req.body;
@@ -1591,47 +1595,141 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const labResult = await storage.getLabResult(labResultId);
       if (!labResult) return res.status(404).json({ message: "Lab result not found" });
 
-      const aiRecommendations = (labResult.interpretationResult as any)?.aiRecommendations;
-      if (!aiRecommendations) {
-        return res.status(422).json({ message: "No AI recommendations available for this lab result" });
+      // Enforce clinic/clinician ownership before exposing any lab data to the LLM.
+      // Prevents cross-clinic IDOR via crafted labResultId.
+      let clinicianId: number;
+      try {
+        clinicianId = getClinicianId(req);
+      } catch {
+        return res.status(401).json({ message: "Authentication required" });
       }
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(labResult.patientId, clinicianId, clinicId);
+      if (!patient) {
+        return res.status(404).json({ message: "Lab result not found" });
+      }
+
+      const interp = (labResult.interpretationResult as any) || {};
+      const interpretations: Array<any> = Array.isArray(interp.interpretations) ? interp.interpretations : [];
+      const redFlags: Array<any> = Array.isArray(interp.redFlags) ? interp.redFlags : [];
+      const supplements: Array<any> = Array.isArray(interp.supplements) ? interp.supplements : [];
+      const labValues: any = labResult.labValues || {};
+
+      if (interpretations.length === 0 && Object.keys(labValues).length === 0) {
+        return res.status(422).json({ message: "No lab data available for this lab result" });
+      }
+
+      const gender: 'male' | 'female' = patient.gender === 'female' ? 'female' : 'male';
+
+      // Build patient-specific findings sections
+      const critical = interpretations.filter((i: any) => i?.status === 'critical');
+      const abnormal = interpretations.filter((i: any) => i?.status === 'abnormal');
+      const borderline = interpretations.filter((i: any) => i?.status === 'borderline');
+
+      const fmtFinding = (i: any) =>
+        `- ${i.category}: ${i.value ?? '?'} ${i.unit ?? ''} (${i.status}) — ${i.interpretation || ''}`.trim();
+
+      // Collect a compact snapshot of key dietarily-relevant lab values that
+      // were actually measured. This anchors the AI to the patient's real data.
+      const dietRelevantKeys: Array<[string, string, string]> = [
+        ['hemoglobin', 'Hemoglobin', 'g/dL'],
+        ['ferritin', 'Ferritin', 'ng/mL'],
+        ['ironSat', 'Iron Saturation', '%'],
+        ['vitaminD', 'Vitamin D', 'ng/mL'],
+        ['vitaminB12', 'Vitamin B12', 'pg/mL'],
+        ['folate', 'Folate', 'ng/mL'],
+        ['magnesium', 'Magnesium', 'mg/dL'],
+        ['tsh', 'TSH', 'mIU/L'],
+        ['ldl', 'LDL', 'mg/dL'],
+        ['hdl', 'HDL', 'mg/dL'],
+        ['triglycerides', 'Triglycerides', 'mg/dL'],
+        ['totalCholesterol', 'Total Cholesterol', 'mg/dL'],
+        ['a1c', 'HbA1c', '%'],
+        ['fastingGlucose', 'Fasting Glucose', 'mg/dL'],
+        ['fastingInsulin', 'Fasting Insulin', 'uIU/mL'],
+        ['hsCRP', 'hs-CRP', 'mg/L'],
+        ['homocysteine', 'Homocysteine', 'umol/L'],
+        ['uricAcid', 'Uric Acid', 'mg/dL'],
+        ['alt', 'ALT', 'U/L'],
+        ['ast', 'AST', 'U/L'],
+        ['creatinine', 'Creatinine', 'mg/dL'],
+        ['testosterone', 'Total Testosterone', 'ng/dL'],
+        ['estradiol', 'Estradiol', 'pg/mL'],
+        ['progesterone', 'Progesterone', 'ng/mL'],
+        ['shbg', 'SHBG', 'nmol/L'],
+        ['systolicBP', 'Systolic BP', 'mmHg'],
+        ['bmi', 'BMI', 'kg/m²'],
+      ];
+      const measured = dietRelevantKeys
+        .filter(([k]) => labValues[k] !== undefined && labValues[k] !== null && labValues[k] !== '')
+        .map(([k, label, unit]) => `- ${label}: ${labValues[k]} ${unit}`);
+
+      const supplementsList = supplements
+        .map((s: any) => `- ${s.name} (${s.dose}) — ${s.indication || s.rationale || ''}`.trim())
+        .join('\n');
+
+      const redFlagsList = redFlags
+        .map((rf: any) => `- ${rf.title || rf.category || ''}: ${rf.value ?? ''} ${rf.unit ?? ''} — ${rf.message || rf.interpretation || ''}`.trim())
+        .join('\n');
+
+      const promptSections: string[] = [];
+      if (critical.length) promptSections.push(`CRITICAL FINDINGS:\n${critical.map(fmtFinding).join('\n')}`);
+      if (abnormal.length) promptSections.push(`ABNORMAL FINDINGS:\n${abnormal.map(fmtFinding).join('\n')}`);
+      if (borderline.length) promptSections.push(`BORDERLINE FINDINGS:\n${borderline.map(fmtFinding).join('\n')}`);
+      if (redFlagsList) promptSections.push(`RED FLAGS:\n${redFlagsList}`);
+      if (measured.length) promptSections.push(`KEY LAB VALUES MEASURED:\n${measured.join('\n')}`);
+      if (supplementsList) promptSections.push(`RECOMMENDED SUPPLEMENTS (do NOT repeat as foods, but use as context for nutritional gaps):\n${supplementsList}`);
+
+      // If the patient has no flagged findings AND no measured diet-relevant
+      // values, surface that explicitly so the model focuses on prevention
+      // anchored to whatever values exist rather than making things up.
+      const hasFlagged = critical.length + abnormal.length + borderline.length > 0;
+      if (!hasFlagged) {
+        promptSections.push(`OVERALL: No abnormal/borderline findings — focus on optimizing the measured values above and prevention specific to this patient's lab snapshot.`);
+      }
+
+      const clinicType = gender === 'female' ? "women's hormone and primary care clinic" : "men's hormone and primary care clinic";
+
+      const prompt = `You are a clinical nutritionist at a ${clinicType}. Generate patient-specific dietary guidance based on THIS patient's actual lab results below. Every food you recommend MUST be tied to a specific lab value or finding from this patient's data — never give generic advice.
+
+${promptSections.join('\n\n')}
+
+Format your response EXACTLY like this (use these exact section headers, no markdown bold, no asterisks):
+
+Goal: [One sentence naming the patient's top 1-2 nutritional priorities, citing specific lab values from above, e.g. "Lower your LDL of 165 mg/dL and raise your HDL of 38 mg/dL through a heart-healthy eating pattern."]
+
+Diet: [Recommended dietary pattern in 3-8 words tailored to this patient, e.g. "Mediterranean diet with emphasis on soluble fiber"]
+
+Foods to Emphasize:
+[Food name] - ([serving size and frequency, e.g. "3-4 oz, 2-3x/week"]) - [plain-language reason that names a SPECIFIC lab value from above, e.g. "Rich in omega-3s to lower your triglycerides of 220 mg/dL"]
+[Food name] - ([serving size and frequency]) - [reason citing specific lab value]
+[Food name] - ([serving size and frequency]) - [reason citing specific lab value]
+[Food name] - ([serving size and frequency]) - [reason citing specific lab value]
+[Food name] - ([serving size and frequency]) - [reason citing specific lab value]
+
+Rules:
+- List exactly 5-7 specific foods
+- Every food's "reason" MUST reference a specific lab value or finding from the data above (e.g. "to raise your ferritin of 18 ng/mL", "to support your A1c of 5.9%")
+- Do NOT recommend foods unrelated to this patient's actual findings
+- Write in plain language a patient can understand — no jargon
+- Keep each food entry on ONE line only
+- Format exactly: Food Name - (serving info) - reason (include the dashes and parens)
+- Do NOT include supplement recommendations — foods only
+- Do NOT include "Foods to Avoid" or other sections — only the three sections above
+- Do NOT use markdown bold or asterisks anywhere`;
+
+      console.log('[Dietary] Generating for lab', labResultId, '— findings:', critical.length, 'crit /', abnormal.length, 'abn /', borderline.length, 'bord, measured values:', measured.length);
 
       const client = new OpenAI({
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
       });
 
-      const prompt = `You are a clinical nutritionist. A clinician has generated AI recommendations for a patient. Extract and reformat ONLY the dietary/nutrition guidance into a clear, patient-friendly format for their wellness portal.
-
-Format your response EXACTLY like this (use these exact section headers):
-
-Goal: [One clear sentence about the patient's primary nutritional goal based on their specific lab findings]
-
-Diet: [Recommended dietary pattern in 3-8 words, e.g. "Mediterranean-style diet with emphasis on iron-rich foods"]
-
-Foods to Emphasize:
-[Food name] - ([serving size and frequency, e.g. "3-4 oz, 2-3x/week"]) - [plain-language explanation of why this specific food helps their specific lab results]
-[Food name] - ([serving size and frequency]) - [explanation]
-[Food name] - ([serving size and frequency]) - [explanation]
-[Food name] - ([serving size and frequency]) - [explanation]
-[Food name] - ([serving size and frequency]) - [explanation]
-
-Rules:
-- List exactly 5-7 specific foods
-- Tie each food to their SPECIFIC lab findings (e.g. "to help raise your low ferritin", "to support your elevated LDL")  
-- Write in plain language a patient can understand — no jargon
-- Keep each food entry on ONE line only
-- Format exactly: Food Name - (serving info) - reason (include the dashes and parens)
-- Do NOT include supplement recommendations — foods only
-- Do NOT include "Foods to Avoid" or other sections — only the three sections above
-
-CLINICAL RECOMMENDATIONS TO EXTRACT FROM:
-${aiRecommendations}`;
-
       const completion = await client.chat.completions.create({
         model: "gpt-4o-mini",
+        temperature: 0.4,
         messages: [
-          { role: "system", content: "You are a clinical nutritionist. Extract and format dietary guidance from clinical recommendations into a clear, patient-friendly structure. Always respond with the exact format requested." },
+          { role: "system", content: `You are a clinical nutritionist generating patient-specific dietary guidance for a ${clinicType}. You always tie every food recommendation to specific lab values from the patient's actual data. Never give generic advice that could apply to any patient.` },
           { role: "user", content: prompt },
         ],
       });
