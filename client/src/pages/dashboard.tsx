@@ -28,10 +28,12 @@ import {
   Calendar,
   Clock,
   Loader2,
+  UserPlus,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 import { PatientSearchBar } from "@/components/patient-search-bar";
+import { AddPatientDialog } from "@/components/add-patient-dialog";
 
 interface UnreadMessageRow {
   patientId: number;
@@ -148,6 +150,7 @@ export default function Dashboard() {
   const { user } = useAuth();
   const [, setLocation] = useLocation();
   const [previewSubId, setPreviewSubId] = useState<number | null>(null);
+  const [showAddPatient, setShowAddPatient] = useState(false);
   useFirstVisitTour();
 
   const { data: patients = [] } = useQuery<Patient[]>({
@@ -239,8 +242,17 @@ export default function Dashboard() {
               {patients.length} patient{patients.length !== 1 ? "s" : ""} · {user?.clinicName}
             </p>
           </div>
-          <div className="flex items-center gap-2 w-full sm:w-auto">
+          <div className="flex items-center gap-2 w-full sm:w-auto flex-wrap">
             <PatientSearchBar className="w-full sm:w-80" />
+            <Button
+              onClick={() => setShowAddPatient(true)}
+              data-testid="button-add-patient-header"
+              className="flex-shrink-0"
+              style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+            >
+              <UserPlus className="w-4 h-4 mr-2" />
+              New Patient
+            </Button>
             <Button
               variant="outline"
               onClick={() => setLocation("/patients")}
@@ -252,6 +264,12 @@ export default function Dashboard() {
             </Button>
           </div>
         </div>
+
+        <AddPatientDialog
+          open={showAddPatient}
+          onOpenChange={setShowAddPatient}
+          onCreated={(p) => setLocation(`/patients?patient=${p.id}`)}
+        />
 
         {/* ══════════════════════════════════════════════════════════
             TODAY'S APPOINTMENTS — standalone block, NOT a notification.
