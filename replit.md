@@ -31,7 +31,7 @@ The ClinIQ platform offers comprehensive lab input, results display with color-c
 -   **Patient-Safety Tripwires**: Defense-in-depth against cross-patient data writes using `expectedPatientId` for server-side validation.
 -   **Global Recording Context**: Audio recording persists across navigation via a `RecordingProvider` and `FloatingRecorderDock`.
 -   **Dashboard**: Displays "Open SOAP Notes" and allows resuming existing notes.
--   **Patient Portal**: Interactive Home & HealthIQ Hub with dedicated pages for labs, visit summaries, protocols, recipes, and messages. Includes patient self-service for contact info and document downloads.
+-   **Patient Portal**: Interactive Home & HealthIQ Hub with dedicated pages for labs, visit summaries, protocols, recipes, messages, and medication refill requests (chart meds with checkboxes plus add-your-own form). Account access lives only in the top-right avatar menu. Includes patient self-service for contact info and document downloads.
 -   **UI/UX**: Professional blue color scheme, Material Design-inspired components, Inter and JetBrains Mono fonts. React, TypeScript, Wouter, Shadcn UI, TanStack Query, Tailwind CSS, React Hook Form, Zod for frontend; Express.js for backend; PostgreSQL with Drizzle ORM for database.
 
 ## External Dependencies
