@@ -6,6 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
+import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { useFirstVisitTour } from "@/components/product-tour";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import {
@@ -26,6 +27,7 @@ import {
   X,
   Calendar,
   Clock,
+  Loader2,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
@@ -65,6 +67,41 @@ interface PendingSubmissionRow {
 interface NotificationsData {
   unreadMessages: UnreadMessageRow[];
   pendingOrders: PendingOrderRow[];
+}
+
+interface OpenEncounterRow {
+  kind: "encounter";
+  id: number;
+  clinicianId: number;
+  patientId: number;
+  visitDate: string;
+  visitType: string;
+  chiefComplaint: string | null;
+  soapGeneratedAt: string | null;
+  updatedAt: string;
+  patientFirstName: string;
+  patientLastName: string;
+}
+
+interface OpenDraftRow {
+  kind: "draft";
+  id: number;
+  clinicianId: number;
+  transcription: string;
+  visitDate: string;
+  visitType: string;
+  createdAt: string;
+}
+
+type OpenNoteItem = OpenEncounterRow | OpenDraftRow;
+
+interface ClinicUser {
+  id: number;
+  firstName: string;
+  lastName: string;
+  title: string | null;
+  kind: "provider" | "staff";
+  displayName: string;
 }
 
 
@@ -158,6 +195,31 @@ export default function Dashboard() {
   const pendingOrders = notifications?.pendingOrders ?? [];
   const totalNotifications = unreadMessages.length + pendingOrders.length + pendingSubmissions.length;
 
+  // ── Open SOAP Notes (unsigned encounters) — provider-scoped, switchable.
+  // Defaults to the signed-in user; the Select lets you view another
+  // clinician's open notes (e.g. an MA reviewing a provider's queue).
+  const [openNotesProviderId, setOpenNotesProviderId] = useState<number | null>(null);
+  const effectiveOpenNotesProviderId = openNotesProviderId ?? user?.id ?? null;
+
+  const { data: clinicUsers = [] } = useQuery<ClinicUser[]>({
+    queryKey: ["/api/clinic/users"],
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const { data: openNotes = [], isLoading: openNotesLoading } = useQuery<OpenNoteItem[]>({
+    queryKey: ["/api/encounters/open", effectiveOpenNotesProviderId],
+    queryFn: async () => {
+      const url = effectiveOpenNotesProviderId
+        ? `/api/encounters/open?providerId=${effectiveOpenNotesProviderId}`
+        : `/api/encounters/open`;
+      const res = await fetch(url, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load open notes");
+      return res.json();
+    },
+    enabled: !!user,
+    refetchInterval: 60 * 1000,
+  });
+
   const goToPatient = (patientId: number, tab?: "messages" | "orders") => {
     setLocation(tab ? `/patients?patient=${patientId}&tab=${tab}` : `/patients?patient=${patientId}`);
   };
@@ -197,6 +259,174 @@ export default function Dashboard() {
             be mistaken for an alert on this widget.
         ══════════════════════════════════════════════════════════ */}
         <TodaysAppointmentsWidget />
+
+        {/* ══════════════════════════════════════════════════════════
+            OPEN SOAP NOTES — unsigned encounters, switchable by provider.
+            Defaults to the signed-in user; the Select switches to any
+            other provider/staff member in the clinic. Drafts (transcripts
+            without a patient yet) appear with an amber "Needs patient"
+            badge; clicking routes to /encounters with the right query.
+        ══════════════════════════════════════════════════════════ */}
+        <div data-testid="open-notes-panel">
+          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+            <div className="flex items-center gap-2">
+              <div
+                className="w-7 h-7 rounded-lg flex items-center justify-center"
+                style={{ backgroundColor: openNotes.length > 0 ? "#2e3a20" : "#d4c9b5" }}
+              >
+                <FileText
+                  className="w-4 h-4"
+                  style={{ color: openNotes.length > 0 ? "#e8ddd0" : "#7a8a64" }}
+                />
+              </div>
+              <span className="text-base font-semibold" style={{ color: "#1c2414" }}>
+                Open SOAP Notes
+              </span>
+              {openNotes.length > 0 && (
+                <span
+                  className="inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full text-xs font-bold text-white"
+                  style={{ backgroundColor: "#c0392b" }}
+                  data-testid="badge-open-notes-count"
+                >
+                  {openNotes.length}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-2 flex-wrap">
+              <span className="text-xs" style={{ color: "#7a8a64" }}>Provider</span>
+              <Select
+                value={String(effectiveOpenNotesProviderId ?? "")}
+                onValueChange={(v) => setOpenNotesProviderId(v ? Number(v) : null)}
+              >
+                <SelectTrigger
+                  className="w-56 h-9"
+                  style={{ backgroundColor: "#ffffff", borderColor: "#d4c9b5", color: "#1c2414" }}
+                  data-testid="select-open-notes-provider"
+                >
+                  <SelectValue placeholder="Select provider" />
+                </SelectTrigger>
+                <SelectContent>
+                  {clinicUsers.map((u) => (
+                    <SelectItem key={u.id} value={String(u.id)} data-testid={`option-provider-${u.id}`}>
+                      {u.displayName}
+                      {u.kind === "staff" ? " · Staff" : ""}
+                      {u.id === user?.id ? " (you)" : ""}
+                    </SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+            </div>
+          </div>
+
+          <div
+            className="rounded-xl border overflow-hidden"
+            style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}
+          >
+            {openNotesLoading ? (
+              <div className="flex items-center justify-center py-10" style={{ color: "#7a8a64" }}>
+                <Loader2 className="w-4 h-4 animate-spin mr-2" />
+                Loading open notes…
+              </div>
+            ) : openNotes.length === 0 ? (
+              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
+                <CheckCircle2 className="w-8 h-8 mb-2" style={{ color: "#a0a880" }} />
+                <p className="text-sm" style={{ color: "#1c2414" }}>No open notes</p>
+                <p className="text-xs mt-1" style={{ color: "#7a8a64" }}>
+                  All encounters for this provider have been signed.
+                </p>
+              </div>
+            ) : (
+              <div className="max-h-80 overflow-y-auto divide-y" style={{ borderColor: "#f0ece5" }}>
+                {openNotes.map((item) => {
+                  if (item.kind === "draft") {
+                    const created = new Date(item.createdAt);
+                    const createdLabel = created.toLocaleString(undefined, {
+                      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+                    });
+                    const preview = item.transcription.replace(/\s+/g, " ").slice(0, 140);
+                    return (
+                      <button
+                        key={`draft-${item.id}`}
+                        type="button"
+                        onClick={() => setLocation(`/encounters?draft=${item.id}`)}
+                        className="w-full text-left px-4 py-3 flex items-center gap-3 hover-elevate active-elevate-2"
+                        style={{ backgroundColor: "#fffaed" }}
+                        data-testid={`item-open-draft-${item.id}`}
+                      >
+                        <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#fef0c7" }}>
+                          <ClipboardList className="w-4 h-4" style={{ color: "#a06a08" }} />
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-semibold" style={{ color: "#7a5c20" }}>
+                              Transcription draft
+                            </span>
+                            <span className="text-xs" style={{ color: "#a08456" }}>·</span>
+                            <span className="text-xs" style={{ color: "#a08456" }}>{createdLabel}</span>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>
+                              {item.visitType}
+                            </Badge>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20" }}>
+                              Needs patient
+                            </Badge>
+                          </div>
+                          <p className="text-xs mt-1 truncate" style={{ color: "#a08456" }}>
+                            {preview}{item.transcription.length > 140 ? "…" : ""}
+                          </p>
+                        </div>
+                        <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4a75a" }} />
+                      </button>
+                    );
+                  }
+
+                  const enc = item;
+                  const visit = new Date(enc.visitDate);
+                  const visitLabel = visit.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+                  return (
+                    <button
+                      key={`enc-${enc.id}`}
+                      type="button"
+                      onClick={() => setLocation(`/encounters?encounterId=${enc.id}`)}
+                      className="w-full text-left px-4 py-3 flex items-center gap-3 hover-elevate active-elevate-2"
+                      data-testid={`item-open-encounter-${enc.id}`}
+                    >
+                      <div className="w-8 h-8 rounded-lg flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#edf4e4" }}>
+                        <FileText className="w-4 h-4" style={{ color: "#2e3a20" }} />
+                      </div>
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap">
+                          <span className="text-sm font-semibold truncate" style={{ color: "#1c2414" }} data-testid={`text-patient-${enc.id}`}>
+                            {enc.patientFirstName} {enc.patientLastName}
+                          </span>
+                          <span className="text-xs" style={{ color: "#7a8a64" }}>·</span>
+                          <span className="text-xs" style={{ color: "#7a8a64" }}>{visitLabel}</span>
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>
+                            {enc.visitType}
+                          </Badge>
+                          {enc.soapGeneratedAt ? (
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>
+                              SOAP drafted · unsigned
+                            </Badge>
+                          ) : (
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>
+                              Awaiting SOAP
+                            </Badge>
+                          )}
+                        </div>
+                        {enc.chiefComplaint && (
+                          <p className="text-xs mt-1 truncate" style={{ color: "#7a8a64" }}>
+                            {enc.chiefComplaint}
+                          </p>
+                        )}
+                      </div>
+                      <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4b9a5" }} />
+                    </button>
+                  );
+                })}
+              </div>
+            )}
+          </div>
+        </div>
 
         {/* ══════════════════════════════════════════════════════════
             NOTIFICATION CENTER — always visible, full width.
