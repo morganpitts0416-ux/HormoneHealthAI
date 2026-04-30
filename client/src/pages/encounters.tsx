@@ -33,7 +33,7 @@ import { useRecording } from "@/contexts/recording-context";
 type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
 // Error boundary to catch rendering crashes and show a message instead of a blank screen
-class EncounterErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
+export class EncounterErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
   constructor(props: { children: ReactNode }) {
     super(props);
     this.state = { error: null };
@@ -555,7 +555,7 @@ function initSoap(raw: any): SoapNote {
 }
 
 // ── Main Encounter Editor ─────────────────────────────────────────────────────
-function EncounterEditor({
+export function EncounterEditor({
   encounter,
   patients,
   onClose,
