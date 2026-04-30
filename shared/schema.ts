@@ -1899,3 +1899,108 @@ export const insertVitalsMonitoringAlertSchema = createInsertSchema(vitalsMonito
   id: true, createdAt: true,
 });
 export type InsertVitalsMonitoringAlert = z.infer<typeof insertVitalsMonitoringAlertSchema>;
+
+// ─── Collaborating Physician Chart Review ─────────────────────────────────
+// One agreement per mid-level provider. Holds quota + rules + admin floor +
+// physician override. Mid-level configures their own; collaborating physician
+// can override (overridden fields then locked to mid-level edits).
+export const chartReviewAgreements = pgTable("chart_review_agreements", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  midLevelUserId: integer("mid_level_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  reviewType: varchar("review_type", { length: 20 }).notNull().default("retrospective"), // 'prospective' | 'retrospective'
+  quotaKind: varchar("quota_kind", { length: 10 }).notNull().default("percent"), // 'percent' | 'count'
+  quotaValue: integer("quota_value").notNull().default(20), // 20 = 20% or 20 charts
+  quotaPeriod: varchar("quota_period", { length: 10 }).notNull().default("month"), // 'month' | 'quarter' | 'year'
+  enforcementPeriod: varchar("enforcement_period", { length: 10 }).notNull().default("quarter"), // when past-due clock starts
+  ruleControlledSubstance: boolean("rule_controlled_substance").notNull().default(false),
+  ruleNewDiagnosis: boolean("rule_new_diagnosis").notNull().default(false),
+  // Admin-set minimum quota; mid-level cannot configure below this. NULL = no floor.
+  minQuotaValue: integer("min_quota_value"),
+  // Set of field names ('quotaValue', 'reviewType', etc.) that the collaborating
+  // physician has overridden. Mid-level can only request changes to these.
+  physicianLockedFields: text("physician_locked_fields").array(),
+  physicianOverriddenAt: timestamp("physician_overridden_at"),
+  physicianOverriddenBy: integer("physician_overridden_by"),
+  active: boolean("active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ChartReviewAgreement = typeof chartReviewAgreements.$inferSelect;
+export const insertChartReviewAgreementSchema = createInsertSchema(chartReviewAgreements).omit({
+  id: true, createdAt: true, updatedAt: true, physicianOverriddenAt: true, physicianOverriddenBy: true, physicianLockedFields: true,
+});
+export type InsertChartReviewAgreement = z.infer<typeof insertChartReviewAgreementSchema>;
+
+// Physicians who collaborate on an agreement. Each agreement has at least one
+// 'primary' physician. Backups share the queue (any physician can sign off)
+// but do NOT inflate the quota — the agreement's quota is what the mid-level
+// owes total.
+export const chartReviewCollaborators = pgTable("chart_review_collaborators", {
+  id: serial("id").primaryKey(),
+  agreementId: integer("agreement_id").notNull().references(() => chartReviewAgreements.id, { onDelete: "cascade" }),
+  physicianUserId: integer("physician_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  role: varchar("role", { length: 10 }).notNull().default("primary"), // 'primary' | 'backup'
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type ChartReviewCollaborator = typeof chartReviewCollaborators.$inferSelect;
+export const insertChartReviewCollaboratorSchema = createInsertSchema(chartReviewCollaborators).omit({
+  id: true, createdAt: true,
+});
+export type InsertChartReviewCollaborator = z.infer<typeof insertChartReviewCollaboratorSchema>;
+
+// One row per chart that has been queued for review. Created at SOAP sign time
+// (mandatory rules + opt-in via "Send for review?" prompt + mid-level flag +
+// physician pick).
+export const chartReviewItems = pgTable("chart_review_items", {
+  id: serial("id").primaryKey(),
+  agreementId: integer("agreement_id").notNull().references(() => chartReviewAgreements.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull(),
+  encounterId: integer("encounter_id").notNull().references(() => clinicalEncounters.id, { onDelete: "cascade" }),
+  patientId: integer("patient_id").notNull(),
+  midLevelUserId: integer("mid_level_user_id").notNull(),
+  // 'pending' | 'concurred' | 'rejected' | 'amended_pending' | 'amended_concurred'
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  // 'mandatory' | 'sample' | 'physician_pick' | 'midlevel_flag'
+  priority: varchar("priority", { length: 20 }).notNull().default("sample"),
+  // Reasons that triggered mandatory inclusion, e.g.
+  // ['controlled_substance:Adderall XR', 'new_diagnosis:Major depressive disorder']
+  mandatoryReasons: text("mandatory_reasons").array(),
+  signedAt: timestamp("signed_at").notNull(), // copy of encounter.signedAt for fast queries
+  // 'YYYY-MM' / 'YYYY-Q#' / 'YYYY' depending on agreement.quotaPeriod
+  quotaPeriodKey: varchar("quota_period_key", { length: 10 }).notNull(),
+  // End of the enforcement period (e.g. last day of the quarter). Past-due clock
+  // starts the day after this.
+  enforcementDueAt: timestamp("enforcement_due_at").notNull(),
+  // Set when first rejected; locks re-review to the same physician (per #3).
+  assignedReviewerUserId: integer("assigned_reviewer_user_id"),
+  reviewedByUserId: integer("reviewed_by_user_id"),
+  reviewedAt: timestamp("reviewed_at"),
+  amendmentCount: integer("amendment_count").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ChartReviewItem = typeof chartReviewItems.$inferSelect;
+export const insertChartReviewItemSchema = createInsertSchema(chartReviewItems).omit({
+  id: true, createdAt: true, updatedAt: true, reviewedAt: true, reviewedByUserId: true,
+});
+export type InsertChartReviewItem = z.infer<typeof insertChartReviewItemSchema>;
+
+// Two-way comment thread on a queued chart. Physician comments + mid-level
+// responses live here. Drives the "two-way learning loop".
+export const chartReviewComments = pgTable("chart_review_comments", {
+  id: serial("id").primaryKey(),
+  itemId: integer("item_id").notNull().references(() => chartReviewItems.id, { onDelete: "cascade" }),
+  authorUserId: integer("author_user_id").notNull(),
+  // 'physician' | 'midlevel' (audit-friendly snapshot of authoring role)
+  authorRole: varchar("author_role", { length: 10 }).notNull(),
+  body: text("body").notNull(),
+  // 'comment' | 'rejection_reason' | 'amendment_note' | 'concur_note'
+  type: varchar("type", { length: 20 }).notNull().default("comment"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type ChartReviewComment = typeof chartReviewComments.$inferSelect;
+export const insertChartReviewCommentSchema = createInsertSchema(chartReviewComments).omit({
+  id: true, createdAt: true,
+});
+export type InsertChartReviewComment = z.infer<typeof insertChartReviewCommentSchema>;

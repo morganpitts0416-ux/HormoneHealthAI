@@ -18,6 +18,8 @@ import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Separator } from "@/components/ui/separator";
+import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
+import { Switch } from "@/components/ui/switch";
 
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
@@ -646,6 +648,7 @@ export function EncounterEditor({
   const [soapSaved, setSoapSaved] = useState(() =>
     encRecsKey ? localStorage.getItem(encRecsKey) === "1" : false
   );
+  const [signDialogOpen, setSignDialogOpen] = useState(false);
 
   const soapNoteValue = soap.fullNote ?? legacySoapToText(soap);
   const dxSearch = useDiagnosisSearch({
@@ -1191,13 +1194,14 @@ export function EncounterEditor({
   });
 
   const signMutation = useMutation({
-    mutationFn: async () => {
+    mutationFn: async (sendForReview: boolean = false) => {
       if (!savedId) throw new Error("Save the encounter before signing.");
       if (!hasSoap) throw new Error("Generate a SOAP note before signing.");
       // PATIENT-SAFETY: tripwire — refuse to sign+lock a chart that doesn't
       // match the patient currently shown in the UI.
       const res = await apiRequest("POST", `/api/encounters/${savedId}/sign`, {
         expectedPatientId: patientId ? parseInt(patientId) : undefined,
+        sendForReview,
       });
       return res.json();
     },
@@ -1209,7 +1213,14 @@ export function EncounterEditor({
       setSoapSaved(true); // hide recommendations permanently
       if (encRecsKey) localStorage.setItem(encRecsKey, "1");
       invalidate();
-      toast({ title: "Note signed and locked", description: "The chart note has been co-signed and locked for the record." });
+      const queued = !!data.chartReviewItem;
+      toast({
+        title: "Note signed and locked",
+        description: queued
+          ? "Sent to your collaborating physician for review."
+          : "The chart note has been co-signed and locked for the record.",
+      });
+      setSignDialogOpen(false);
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Sign failed", description: e.message }),
   });
@@ -2752,7 +2763,7 @@ export function EncounterEditor({
                 {hasSoap && savedId && !isSigned && (
                   <Button
                     size="sm"
-                    onClick={() => { if (confirm("Sign and lock this chart note? You can amend it later if needed.")) signMutation.mutate(); }}
+                    onClick={() => setSignDialogOpen(true)}
                     disabled={signMutation.isPending}
                     data-testid="button-sign-note"
                   >
@@ -2760,6 +2771,14 @@ export function EncounterEditor({
                     {signMutation.isPending ? "Signing…" : "Sign Note"}
                   </Button>
                 )}
+                <SignNoteDialog
+                  open={signDialogOpen}
+                  onOpenChange={setSignDialogOpen}
+                  encounterId={savedId}
+                  isPending={signMutation.isPending}
+                  onConfirm={(sendForReview) => signMutation.mutate(sendForReview)}
+                />
+
               </div>
             </div>
             )}
@@ -3579,5 +3598,119 @@ export default function EncountersPage() {
         )}
       </div>
     </div>
+  );
+}
+
+// ─── Sign Note Dialog ──────────────────────────────────────────────────
+// Replaces the legacy confirm() with a structured prompt that pre-fetches
+// chart-review preview flags and asks "Send for collaborating physician
+// review?". Toggle is locked ON when mandatory rules apply.
+function SignNoteDialog(props: {
+  open: boolean;
+  onOpenChange: (open: boolean) => void;
+  encounterId: number | null;
+  isPending: boolean;
+  onConfirm: (sendForReview: boolean) => void;
+}) {
+  const { open, onOpenChange, encounterId, isPending, onConfirm } = props;
+  const [sendForReview, setSendForReview] = useState(false);
+  const [userTouched, setUserTouched] = useState(false);
+  const previewQuery = useQuery<{
+    hasAgreement: boolean;
+    wouldBeMandatory: boolean;
+    mandatoryReasons: string[];
+    runningPeriodPct: number;
+    quotaTargetPct: number;
+  }>({
+    queryKey: ['/api/chart-review/preview-flags', encounterId],
+    enabled: open && !!encounterId,
+    queryFn: async () => {
+      const res = await fetch(`/api/chart-review/preview-flags?encounterId=${encounterId}`);
+      if (!res.ok) throw new Error('preview flags failed');
+      return res.json();
+    },
+  });
+  const flags = previewQuery.data;
+  // Default the toggle when flags arrive (only if user hasn't touched it yet).
+  useEffect(() => {
+    if (!flags || userTouched) return;
+    if (!flags.hasAgreement) {
+      setSendForReview(false);
+      return;
+    }
+    if (flags.wouldBeMandatory) {
+      setSendForReview(true);
+      return;
+    }
+    // Default ON if mid-level is below quota target this period.
+    if (flags.quotaTargetPct > 0 && flags.runningPeriodPct < flags.quotaTargetPct) {
+      setSendForReview(true);
+    } else {
+      setSendForReview(false);
+    }
+  }, [flags, userTouched]);
+  // Reset state on open.
+  useEffect(() => {
+    if (open) setUserTouched(false);
+  }, [open]);
+
+  const lockedOn = !!flags?.wouldBeMandatory;
+  const effectiveSend = lockedOn ? true : sendForReview;
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="dialog-sign-note">
+        <DialogHeader>
+          <DialogTitle>Sign and lock note</DialogTitle>
+          <DialogDescription>
+            Once signed, this chart note becomes part of the patient's record.
+            You can amend it later if needed.
+          </DialogDescription>
+        </DialogHeader>
+
+        {flags?.hasAgreement && (
+          <div className="rounded-md border p-3 space-y-2" data-testid="section-chart-review-prompt">
+            <div className="flex items-center justify-between gap-3">
+              <div className="space-y-0.5">
+                <Label className="text-sm">Send for collaborating physician review?</Label>
+                <p className="text-xs text-muted-foreground">
+                  {lockedOn
+                    ? "Required by your collaborating-physician agreement."
+                    : flags.quotaTargetPct > 0
+                      ? `You're at ${flags.runningPeriodPct}% submitted this period (target ${flags.quotaTargetPct}%).`
+                      : "Optional — counts toward your sample for this period."}
+                </p>
+              </div>
+              <Switch
+                checked={effectiveSend}
+                disabled={lockedOn || isPending}
+                onCheckedChange={(v) => { setUserTouched(true); setSendForReview(v); }}
+                data-testid="switch-send-for-review"
+              />
+            </div>
+            {lockedOn && flags.mandatoryReasons.length > 0 && (
+              <div className="flex flex-wrap gap-1.5" data-testid="list-mandatory-reasons">
+                {flags.mandatoryReasons.map((r, i) => (
+                  <Badge key={i} variant="secondary" data-testid={`badge-mandatory-reason-${i}`}>
+                    {r.startsWith('controlled_substance:') ? `Controlled: ${r.split(':')[1]}` :
+                      r.startsWith('new_diagnosis:') ? `New dx: ${r.split(':')[1]}` : r}
+                  </Badge>
+                ))}
+              </div>
+            )}
+          </div>
+        )}
+
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending} data-testid="button-cancel-sign">
+            Cancel
+          </Button>
+          <Button onClick={() => onConfirm(effectiveSend)} disabled={isPending} data-testid="button-confirm-sign">
+            <Lock className="w-3.5 h-3.5 mr-1.5" />
+            {isPending ? "Signing…" : "Sign and lock"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }

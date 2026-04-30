@@ -6128,7 +6128,23 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         encounterVersions: [...existingVersions, newVersion],
       } as any, clinicId);
 
-      res.json(updated);
+      // Collaborating-physician chart review hook. Provider SOAPs only;
+      // skip for nurse/phone notes signed by staff. Never blocks the response.
+      let chartReviewItem: any = null;
+      try {
+        if (!isStaff && noteType === "soap_provider" && clinicId) {
+          chartReviewItem = await (storage as any).enqueueChartForReviewIfApplicable({
+            encounterId: id,
+            midLevelUserId: clinicianId,
+            clinicId,
+            sendForReview: !!req.body?.sendForReview,
+          });
+        }
+      } catch (e) {
+        console.warn('[Sign] chart-review enqueue failed (non-fatal):', (e as any)?.message ?? e);
+      }
+
+      res.json({ ...updated, chartReviewItem });
     } catch (err) {
       console.error('[Sign] Error:', err);
       res.status(500).json({ message: "Failed to sign note." });
@@ -12772,6 +12788,348 @@ IMPORTANT:
   });
 
   // ─── End Daily Check-In (Phase 1) ─────────────────────────────────────
+
+  // ═══════════════════════════════════════════════════════════════════════
+  // ─── Collaborating Physician Chart Review ─────────────────────────────
+  // ═══════════════════════════════════════════════════════════════════════
+
+  // GET /api/chart-review/agreements — every agreement the current user
+  // touches: as the mid-level (their own) and as a collaborating physician.
+  app.get("/api/chart-review/agreements", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json([]);
+      const list = await (storage as any).listChartReviewAgreementsForUser(userId, clinicId);
+      res.json(list);
+    } catch (err) {
+      console.error("[chart-review] list agreements error:", err);
+      res.status(500).json({ message: "Failed to list agreements" });
+    }
+  });
+
+  // POST /api/chart-review/agreements — mid-level creates their own agreement.
+  // Body: { primaryPhysicianUserId, reviewType?, quotaKind?, quotaValue?,
+  //         quotaPeriod?, enforcementPeriod?, ruleControlledSubstance?,
+  //         ruleNewDiagnosis? }
+  app.post("/api/chart-review/agreements", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const body = req.body ?? {};
+      const primaryPhysicianUserId = parseInt(String(body.primaryPhysicianUserId));
+      if (!Number.isFinite(primaryPhysicianUserId)) {
+        return res.status(400).json({ message: "primaryPhysicianUserId required" });
+      }
+      const existing = await (storage as any).getChartReviewAgreementForMidLevel(userId, clinicId);
+      if (existing) return res.status(409).json({ message: "You already have an active agreement.", agreement: existing });
+      const created = await (storage as any).createChartReviewAgreement({
+        clinicId,
+        midLevelUserId: userId,
+        reviewType: body.reviewType ?? "retrospective",
+        quotaKind: body.quotaKind ?? "percent",
+        quotaValue: body.quotaValue ?? 20,
+        quotaPeriod: body.quotaPeriod ?? "month",
+        enforcementPeriod: body.enforcementPeriod ?? "quarter",
+        ruleControlledSubstance: body.ruleControlledSubstance !== false,
+        ruleNewDiagnosis: body.ruleNewDiagnosis !== false,
+      }, { primaryPhysicianUserId });
+      res.json(created);
+    } catch (err) {
+      console.error("[chart-review] create agreement error:", err);
+      res.status(500).json({ message: "Failed to create agreement" });
+    }
+  });
+
+  // PATCH /api/chart-review/agreements/:id
+  app.patch("/api/chart-review/agreements/:id", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
+      // Look up the agreement scoped to this caller's clinic.
+      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      // Determine actor role from real ownership (not from "is not a physician").
+      const collaborators = await (storage as any).listChartReviewCollaborators(id, clinicId);
+      const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
+      const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+      const adminRole = await getSessionAdminRole(req);
+      const isAdmin = adminRole === "owner" || adminRole === "admin";
+      // Hard authz: must be the owning mid-level OR a collaborating physician
+      // OR a clinic admin. Everyone else is rejected.
+      if (!isMidLevelOnAgreement && !isPhysicianOnAgreement && !isAdmin) {
+        return res.status(403).json({ message: "Not authorized to edit this agreement" });
+      }
+      const updated = await (storage as any).updateChartReviewAgreement(id, clinicId, req.body ?? {}, {
+        userId,
+        isMidLevel: isMidLevelOnAgreement,
+        isPhysicianOnAgreement,
+        isAdmin,
+      });
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("[chart-review] update agreement error:", err);
+      res.status(500).json({ message: "Failed to update agreement" });
+    }
+  });
+
+  // POST /api/chart-review/agreements/:id/override — physician locks fields
+  app.post("/api/chart-review/agreements/:id/override", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
+      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      const collaborators = await (storage as any).listChartReviewCollaborators(id, clinicId);
+      const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
+      if (!isPhysicianOnAgreement) return res.status(403).json({ message: "Only collaborating physicians can override." });
+      const lockedFields = Array.isArray(req.body?.lockedFields) ? req.body.lockedFields : [];
+      const updated = await (storage as any).setPhysicianOverride(id, clinicId, lockedFields, userId);
+      if (!updated) return res.status(404).json({ message: "Not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("[chart-review] override error:", err);
+      res.status(500).json({ message: "Failed to set override" });
+    }
+  });
+
+  // POST /api/chart-review/agreements/:id/collaborators — add physician
+  // Only the agreement's mid-level or a clinic admin may add collaborators.
+  app.post("/api/chart-review/agreements/:id/collaborators", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      const physicianUserId = parseInt(String(req.body?.physicianUserId));
+      const role = (req.body?.role === "backup" ? "backup" : "primary") as "primary" | "backup";
+      if (!Number.isFinite(id) || !Number.isFinite(physicianUserId) || !clinicId) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      const adminRole = await getSessionAdminRole(req);
+      const isAdmin = adminRole === "owner" || adminRole === "admin";
+      const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+      if (!isMidLevelOnAgreement && !isAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const created = await (storage as any).addChartReviewCollaborator(id, physicianUserId, role, clinicId);
+      if (!created) return res.status(404).json({ message: "Not found" });
+      res.json(created);
+    } catch (err) {
+      console.error("[chart-review] add collaborator error:", err);
+      res.status(500).json({ message: "Failed to add collaborator" });
+    }
+  });
+
+  // DELETE /api/chart-review/agreements/:id/collaborators/:cid
+  // Only the agreement's mid-level or a clinic admin may remove collaborators.
+  app.delete("/api/chart-review/agreements/:id/collaborators/:cid", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      const cid = parseInt(req.params.cid);
+      if (!Number.isFinite(id) || !Number.isFinite(cid) || !clinicId) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      const adminRole = await getSessionAdminRole(req);
+      const isAdmin = adminRole === "owner" || adminRole === "admin";
+      const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+      if (!isMidLevelOnAgreement && !isAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const ok = await (storage as any).removeChartReviewCollaborator(cid, id, clinicId);
+      res.json({ ok });
+    } catch (err) {
+      console.error("[chart-review] remove collaborator error:", err);
+      res.status(500).json({ message: "Failed to remove collaborator" });
+    }
+  });
+
+  // GET /api/chart-review/queue/physician — mid-level summary cards for the
+  // logged-in collaborating physician.
+  app.get("/api/chart-review/queue/physician", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json([]);
+      const list = await (storage as any).listMidLevelsForPhysician(userId, clinicId);
+      res.json(list);
+    } catch (err) {
+      console.error("[chart-review] physician queue error:", err);
+      res.status(500).json({ message: "Failed to load queue" });
+    }
+  });
+
+  // GET /api/chart-review/queue/midlevel — current user's submitted notes.
+  app.get("/api/chart-review/queue/midlevel", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.json({ agreement: null, items: [] });
+      const agreement = await (storage as any).getChartReviewAgreementForMidLevel(userId, clinicId);
+      if (!agreement) return res.json({ agreement: null, items: [] });
+      const items = await (storage as any).listChartReviewItemsForAgreement(agreement.id, { clinicId });
+      res.json({ agreement, items });
+    } catch (err) {
+      console.error("[chart-review] midlevel queue error:", err);
+      res.status(500).json({ message: "Failed to load queue" });
+    }
+  });
+
+  // GET /api/chart-review/agreements/:id/items — full queue for one agreement.
+  // Used for physician's drill-in.
+  app.get("/api/chart-review/agreements/:id/items", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
+      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      const collaborators = await (storage as any).listChartReviewCollaborators(id, clinicId);
+      const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
+      const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+      if (!isMidLevelOnAgreement && !isPhysicianOnAgreement) {
+        return res.status(403).json({ message: "Not on this agreement" });
+      }
+      const items = await (storage as any).listChartReviewItemsForAgreement(id, { clinicId });
+      res.json(items);
+    } catch (err) {
+      console.error("[chart-review] agreement items error:", err);
+      res.status(500).json({ message: "Failed to load items" });
+    }
+  });
+
+  // GET /api/chart-review/items/:id — full detail. Caller must be the mid-
+  // level on the item OR a collaborating physician on the agreement.
+  app.get("/api/chart-review/items/:id", requireClinicianOnly, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const userId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
+      const item = await (storage as any).getChartReviewItem(id, clinicId);
+      if (!item) return res.status(404).json({ message: "Not found" });
+      const collaborators = await (storage as any).listChartReviewCollaborators(item.agreementId, clinicId);
+      const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
+      const isMidLevelOnItem = item.midLevelUserId === userId;
+      if (!isMidLevelOnItem && !isPhysicianOnAgreement) {
+        return res.status(403).json({ message: "Not on this item" });
+      }
+      const comments = await (storage as any).listChartReviewComments(id, clinicId);
+      // Pull encounter for context (server-side scoped to clinic via storage).
+      const encounter = await storage.getEncounter(item.encounterId, userId, clinicId);
+      res.json({ item, comments, encounter });
+    } catch (err) {
+      console.error("[chart-review] item detail error:", err);
+      res.status(500).json({ message: "Failed to load item" });
+    }
+  });
+
+  // POST /api/chart-review/items/:id/concur
+  app.post("/api/chart-review/items/:id/concur", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
+      const item = await (storage as any).getChartReviewItem(id, clinicId);
+      if (!item) return res.status(404).json({ message: "Not found" });
+      const collaborators = await (storage as any).listChartReviewCollaborators(item.agreementId, clinicId);
+      const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
+      if (!isPhysicianOnAgreement) return res.status(403).json({ message: "Only collaborating physicians can concur." });
+      const updated = await (storage as any).concurChartReviewItem(id, clinicId, userId, req.body?.comment);
+      if (!updated) return res.status(409).json({ message: "Cannot concur (assigned to another reviewer)." });
+      res.json(updated);
+    } catch (err) {
+      console.error("[chart-review] concur error:", err);
+      res.status(500).json({ message: "Failed to concur" });
+    }
+  });
+
+  // POST /api/chart-review/items/:id/reject
+  app.post("/api/chart-review/items/:id/reject", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      const reason = String(req.body?.reason ?? "").trim();
+      if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
+      if (!reason) return res.status(400).json({ message: "A rejection reason is required." });
+      const item = await (storage as any).getChartReviewItem(id, clinicId);
+      if (!item) return res.status(404).json({ message: "Not found" });
+      const collaborators = await (storage as any).listChartReviewCollaborators(item.agreementId, clinicId);
+      const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
+      if (!isPhysicianOnAgreement) return res.status(403).json({ message: "Only collaborating physicians can reject." });
+      const updated = await (storage as any).rejectChartReviewItem(id, clinicId, userId, reason);
+      if (!updated) return res.status(409).json({ message: "Cannot reject (assigned to another reviewer)." });
+      res.json(updated);
+    } catch (err) {
+      console.error("[chart-review] reject error:", err);
+      res.status(500).json({ message: "Failed to reject" });
+    }
+  });
+
+  // POST /api/chart-review/items/:id/comments — two-way thread
+  app.post("/api/chart-review/items/:id/comments", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      const body = String(req.body?.body ?? "").trim();
+      if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
+      if (!body) return res.status(400).json({ message: "Comment body required" });
+      const item = await (storage as any).getChartReviewItem(id, clinicId);
+      if (!item) return res.status(404).json({ message: "Not found" });
+      const collaborators = await (storage as any).listChartReviewCollaborators(item.agreementId, clinicId);
+      const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
+      const isMidLevel = item.midLevelUserId === userId;
+      if (!isPhysicianOnAgreement && !isMidLevel) {
+        return res.status(403).json({ message: "Not on this agreement" });
+      }
+      const created = await (storage as any).addChartReviewComment({
+        itemId: id,
+        authorUserId: userId,
+        authorRole: isPhysicianOnAgreement ? "physician" : "midlevel",
+        body,
+        type: "comment",
+      }, clinicId);
+      if (!created) return res.status(404).json({ message: "Not found" });
+      res.json(created);
+    } catch (err) {
+      console.error("[chart-review] add comment error:", err);
+      res.status(500).json({ message: "Failed to add comment" });
+    }
+  });
+
+  // GET /api/chart-review/preview-flags?encounterId=N — pre-sign preview.
+  app.get("/api/chart-review/preview-flags", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const encounterId = parseInt(String(req.query.encounterId));
+      if (!Number.isFinite(encounterId) || !clinicId) {
+        return res.json({ hasAgreement: false, wouldBeMandatory: false, mandatoryReasons: [], runningPeriodPct: 0, quotaTargetPct: 0 });
+      }
+      const result = await (storage as any).previewChartReviewFlags({ encounterId, midLevelUserId: userId, clinicId });
+      res.json(result);
+    } catch (err) {
+      console.error("[chart-review] preview flags error:", err);
+      res.status(500).json({ message: "Failed to compute flags" });
+    }
+  });
+
+  // ─── End Chart Review ─────────────────────────────────────────────────
 
   const httpServer = createServer(app);
   return httpServer;
