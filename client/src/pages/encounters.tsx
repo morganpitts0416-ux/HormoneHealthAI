@@ -30,7 +30,7 @@ import { SoapNoteViewer, EvidenceCard } from "@/components/soap-note-viewer";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { useRecording } from "@/contexts/recording-context";
 
-type EncounterWithPatient = ClinicalEncounter & { patientName: string };
+export type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
 // Error boundary to catch rendering crashes and show a message instead of a blank screen
 export class EncounterErrorBoundary extends Component<{ children: ReactNode }, { error: string | null }> {
