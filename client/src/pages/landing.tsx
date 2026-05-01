@@ -101,7 +101,7 @@ export default function Landing() {
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
           <div className="flex items-center">
-            <img src="/cliniq-logo.png" alt="ClinIQ by ReAlign Health" className="h-14 w-auto" />
+            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-14 w-auto" />
           </div>
           <nav className="flex items-center gap-2">
             <a href={appUrl("/login")}>
@@ -128,7 +128,7 @@ export default function Landing() {
             Stop guessing. Start seeing<br />the full clinical picture.
           </h1>
           <p className="text-lg sm:text-xl leading-relaxed max-w-2xl mx-auto mb-8" style={{ color: "#4a5a38" }}>
-            Built for clinicians who know there's more to the story — ClinIQ by ReAlign Health helps you connect the dots, identify patterns, and confidently guide your patients with care that actually makes sense.
+            Built for clinicians who know there's more to the story — ClinIQ helps you connect the dots, identify patterns, and confidently guide your patients with care that actually makes sense.
           </p>
           <div className="flex flex-col sm:flex-row items-center justify-center gap-3 flex-wrap">
             <a href={appUrl("/register?plan=solo")}>
@@ -385,7 +385,7 @@ export default function Landing() {
               >
                 {/* Mobile status bar mockup */}
                 <div className="flex items-center justify-between px-4 py-2" style={{ backgroundColor: "#f9f6f0", borderBottom: "1px solid #e8ddd0" }}>
-                  <span className="text-[10px] font-semibold" style={{ color: "#5a7040" }}>ReAlign Health · Patient Portal</span>
+                  <span className="text-[10px] font-semibold" style={{ color: "#5a7040" }}>Your Clinic · Patient Portal</span>
                 </div>
                 <img
                   src="/help-shots/portal-overview.png"
@@ -402,7 +402,7 @@ export default function Landing() {
                 Finally — a patient portal that actually makes sense
               </h2>
               <p className="text-sm leading-relaxed mb-8" style={{ color: "#5a6a4a" }}>
-                ClinIQ by ReAlign Health was built to help patients truly understand their health — not just see numbers on a page. Clear explanations, personalized guidance, and real insight — all in one place.
+                ClinIQ was built to help patients truly understand their health — not just see numbers on a page. Clear explanations, personalized guidance, and real insight — all in one place.
               </p>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 {PATIENT_FEATURES.map(({ icon: Icon, title, desc }) => (
@@ -538,7 +538,7 @@ export default function Landing() {
       <footer className="border-t" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-6 w-auto opacity-70" />
+            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-6 w-auto opacity-70" />
             <span className="text-xs" style={{ color: "#9aaa84" }}>© {new Date().getFullYear()} ReAlign Health. All rights reserved.</span>
           </div>
           <div className="flex items-center gap-5">

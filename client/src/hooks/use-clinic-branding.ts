@@ -5,6 +5,8 @@ export interface ClinicBrandingResponse {
   primaryColor: string | null;
   accentColor: string | null;
   formBackgroundColor: string | null;
+  /** Clinic-uploaded logo as a data URL. Used in patient PDFs when set. */
+  clinicLogo: string | null;
 }
 
 /**

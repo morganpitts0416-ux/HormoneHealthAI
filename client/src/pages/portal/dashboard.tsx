@@ -127,8 +127,8 @@ export default function PortalDashboard() {
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
         <div className="max-w-3xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
           <img
-            src="/realign-health-logo.png"
-            alt="ReAlign Health"
+            src="/cliniq-logo.png"
+            alt="ClinIQ"
             className="h-12 sm:h-11 w-auto flex-shrink-0"
             style={{ mixBlendMode: "multiply" }}
           />
@@ -288,7 +288,7 @@ export default function PortalDashboard() {
           <p className="text-xs" style={{ color: "#b0b8a0" }}>
             Your data is private and accessible only to you and your care team.
             <br />
-            Powered by ReAlign Health.
+            Powered by ClinIQ.
           </p>
         </div>
       </main>

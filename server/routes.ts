@@ -4789,18 +4789,19 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const user = req.user as any;
       const clinicId = user.defaultClinicId;
       if (!clinicId) {
-        return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null });
+        return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null });
       }
       const rows = await storageDb
         .select({
           primaryColor: clinics.primaryColor,
           accentColor: clinics.accentColor,
           formBackgroundColor: clinics.formBackgroundColor,
+          clinicLogo: clinics.clinicLogo,
         })
         .from(clinics)
         .where(eq(clinics.id, clinicId))
         .limit(1);
-      const c = rows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null };
+      const c = rows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null };
       res.json(c);
     } catch (err) {
       console.error('[API] Error fetching clinic branding:', err);
