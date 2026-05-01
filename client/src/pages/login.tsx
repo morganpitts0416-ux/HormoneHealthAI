@@ -106,10 +106,7 @@ export default function Login() {
           {mode === "clinician" ? (
             <div className="space-y-2">
               <p className="text-[#2e3a20] text-base font-medium leading-snug">
-                Clinical-grade lab interpretation
-              </p>
-              <p className="text-[#5a6e44] text-sm leading-relaxed">
-                for hormone and primary care providers
+                A Clinical Intelligence + Patient Experience Platform
               </p>
             </div>
           ) : (
