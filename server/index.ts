@@ -54,6 +54,44 @@ app.use(express.json({
 }));
 app.use(express.urlencoded({ extended: false, limit: "15mb" }));
 
+// Liveness probe. Registered before session/auth/deny-list so it stays
+// responsive even if the DB is degraded. Intentionally does NOT touch
+// the database — used by Cloud Run liveness checks where a DB blip
+// shouldn't trigger a container restart.
+app.get("/api/health", (_req, res) => {
+  res.status(200).json({
+    status: "ok",
+    uptime: process.uptime(),
+    timestamp: new Date().toISOString(),
+  });
+});
+
+// Readiness probe. Verifies the DB pool can complete a trivial query
+// within 3 seconds. Used by deploy-prod.sh smoke tests to confirm a
+// new revision is actually able to serve real requests before traffic
+// is promoted to it. Returns 503 (not 500) on failure so load balancers
+// know to keep traffic on the previous revision.
+const readinessPool = new Pool({
+  connectionString: process.env.DATABASE_URL,
+  max: 1,
+  idleTimeoutMillis: 10_000,
+  connectionTimeoutMillis: 3_000,
+});
+app.get("/api/ready", async (_req, res) => {
+  try {
+    const result = await Promise.race([
+      readinessPool.query("SELECT 1 AS ok"),
+      new Promise((_, reject) => setTimeout(() => reject(new Error("readiness timeout")), 3_000)),
+    ]) as { rows: Array<{ ok: number }> };
+    if (result.rows?.[0]?.ok === 1) {
+      return res.status(200).json({ status: "ready", db: "ok" });
+    }
+    return res.status(503).json({ status: "not_ready", db: "unexpected_response" });
+  } catch (err: any) {
+    return res.status(503).json({ status: "not_ready", db: "error", error: err?.message ?? String(err) });
+  }
+});
+
 // Session middleware
 app.use(
   session({
