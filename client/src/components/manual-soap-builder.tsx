@@ -18,6 +18,7 @@ import {
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { usePhraseSearch } from "@/components/phrase-search";
 import { useSlashMenu } from "@/components/slash-menu";
+import { SlashShortcutsHelp } from "@/components/slash-shortcuts-help";
 import {
   BUILTIN_BY_ID, type BuiltinBlockId, type ChartDomainKey,
   ROS_SYSTEMS, PE_SYSTEMS,
@@ -1365,11 +1366,17 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
               </div>
             )}
           </div>
-          <p className="text-[10px] text-muted-foreground">
-            Type <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/</kbd> in any field for templates &amp; built-ins (HPI, ROS, PE, etc.) ·{" "}
-            <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/dx</kbd> for diagnoses ·{" "}
-            <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/phrase</kbd> for snippets
-          </p>
+          <div className="flex items-center gap-1 flex-wrap">
+            <p className="text-[10px] text-muted-foreground">
+              Type <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/</kbd> in any field for templates &amp; built-ins (HPI, ROS, PE, etc.) ·{" "}
+              <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/dx</kbd> for diagnoses ·{" "}
+              <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/phrase</kbd> for snippets
+            </p>
+            <SlashShortcutsHelp
+              noteType="soap_provider"
+              triggerTestId="button-slash-shortcuts-help-manual"
+            />
+          </div>
         </div>
 
         <div className="space-y-3 pb-8">

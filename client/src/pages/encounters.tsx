@@ -32,6 +32,7 @@ import { SoapNoteViewer, EvidenceCard } from "@/components/soap-note-viewer";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { usePhraseSearch } from "@/components/phrase-search";
 import { useSlashMenu } from "@/components/slash-menu";
+import { SlashShortcutsHelp } from "@/components/slash-shortcuts-help";
 import { useRecording } from "@/contexts/recording-context";
 
 export type EncounterWithPatient = ClinicalEncounter & { patientName: string };
@@ -3270,13 +3271,21 @@ export function EncounterEditor({
                   </div>
                 )}
 
-                <p className="text-xs text-muted-foreground">
-                  {isSigned
-                    ? "This note is electronically signed and locked. Use Amend above to open it for editing."
-                    : soapViewMode === "edit"
-                      ? "Editing raw note — save when ready. Type / for templates, built-in sections (HPI, ROS, PE…), or saved phrases. /dx still works for ICD-10."
-                      : "Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline."}
-                </p>
+                <div className="flex items-start gap-1 flex-wrap">
+                  <p className="text-xs text-muted-foreground">
+                    {isSigned
+                      ? "This note is electronically signed and locked. Use Amend above to open it for editing."
+                      : soapViewMode === "edit"
+                        ? "Editing raw note — save when ready. Type / for templates, built-in sections (HPI, ROS, PE…), or saved phrases. /dx still works for ICD-10."
+                        : "Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline."}
+                  </p>
+                  {!isSigned && soapViewMode === "edit" && (
+                    <SlashShortcutsHelp
+                      noteType="soap_provider"
+                      triggerTestId="button-slash-shortcuts-help-encounter"
+                    />
+                  )}
+                </div>
               </div>
             )}
           </>
