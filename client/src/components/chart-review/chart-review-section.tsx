@@ -844,7 +844,7 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
             </div>
             <div>
               <Label className="text-xs">Role</Label>
-              <Select value={newCollabRole} onValueChange={(v) => setNewCollabRole(v as any)}>
+              <Select value={newCollabRole} onValueChange={(v) => setNewCollabRole(v === "primary" ? "primary" : "backup")}>
                 <SelectTrigger data-testid="select-new-collaborator-role"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="primary">Primary</SelectItem>
