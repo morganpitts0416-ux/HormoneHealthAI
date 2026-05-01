@@ -72,7 +72,7 @@ export default function PortalResetPassword() {
         style={{ borderColor: "#e8ddd0", backgroundColor: "#f9f6f0" }}
       >
         <img
-          src="/cliniq-logo.png"
+          src="/cliniq-logo.png?v=2"
           alt="ClinIQ"
           className="h-9 w-auto"
           style={{ mixBlendMode: "multiply" }}

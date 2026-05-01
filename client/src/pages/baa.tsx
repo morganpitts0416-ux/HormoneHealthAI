@@ -34,7 +34,7 @@ export default function BusinessAssociateAgreement() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-2">
-            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-7 w-auto" />
+            <img src="/cliniq-logo.png?v=2" alt="ClinIQ" className="h-7 w-auto" />
             <span className="text-sm font-bold" style={{ color: "#1c2414" }}>ClinIQ</span>
           </div>
           <h1 className="text-2xl font-bold mb-1" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>Business Associate Agreement</h1>

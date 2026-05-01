@@ -101,7 +101,7 @@ export default function Landing() {
       <header className="sticky top-0 z-50 border-b" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-20 flex items-center justify-between gap-4">
           <div className="flex items-center">
-            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-14 w-auto" />
+            <img src="/cliniq-logo.png?v=2" alt="ClinIQ" className="h-14 w-auto" />
           </div>
           <nav className="flex items-center gap-2">
             <a href={appUrl("/login")}>
@@ -538,7 +538,7 @@ export default function Landing() {
       <footer className="border-t" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
-            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-6 w-auto opacity-70" />
+            <img src="/cliniq-logo.png?v=2" alt="ClinIQ" className="h-6 w-auto opacity-70" />
             <span className="text-xs" style={{ color: "#9aaa84" }}>© {new Date().getFullYear()} ReAlign Health. All rights reserved.</span>
           </div>
           <div className="flex items-center gap-5">

@@ -78,7 +78,7 @@ export default function SetPassword() {
       >
         <div className="flex flex-col items-center text-center space-y-8 max-w-xs">
           <img
-            src="/cliniq-logo.png"
+            src="/cliniq-logo.png?v=2"
             alt="ClinIQ"
             className="w-64 h-auto"
             style={{ mixBlendMode: "multiply" }}
@@ -99,7 +99,7 @@ export default function SetPassword() {
         <div className="w-full max-w-sm">
           {/* Mobile logo */}
           <div className="md:hidden flex justify-center mb-10" style={{ backgroundColor: "#e8ddd0", borderRadius: "12px", padding: "12px 24px" }}>
-            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-12 w-auto" style={{ mixBlendMode: "multiply" }} />
+            <img src="/cliniq-logo.png?v=2" alt="ClinIQ" className="h-12 w-auto" style={{ mixBlendMode: "multiply" }} />
           </div>
 
           {status === "validating" && (
