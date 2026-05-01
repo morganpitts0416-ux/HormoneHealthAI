@@ -2377,6 +2377,99 @@ export class DbStorage implements IStorage {
 
 export const storage = new DbStorage();
 
+// ─── Typed accessor for chart-review storage methods ──────────────────────
+// The chart-review methods are attached to DbStorage.prototype dynamically
+// (the codebase-wide pattern for non-IStorage methods). We expose a typed
+// view here so that route handlers don't need to use `(storage as any).<m>`
+// for chart-review work specifically.
+export interface ChartReviewStorage {
+  createChartReviewAgreement(
+    data: schema.InsertChartReviewAgreement,
+    opts: { primaryPhysicianUserId: number },
+  ): Promise<schema.ChartReviewAgreement>;
+  getChartReviewAgreementForMidLevel(
+    midLevelUserId: number, clinicId: number,
+  ): Promise<schema.ChartReviewAgreement | undefined>;
+  getChartReviewAgreementById(
+    id: number, clinicId: number,
+  ): Promise<schema.ChartReviewAgreement | undefined>;
+  listChartReviewAgreementsForUser(
+    userId: number, clinicId: number,
+  ): Promise<Array<schema.ChartReviewAgreement & { role: 'midlevel' | 'physician'; collaboratorRole?: 'primary' | 'backup' }>>;
+  setPhysicianOverride(
+    agreementId: number,
+    patch: Partial<schema.InsertChartReviewAgreement>,
+    lockedFields: string[],
+    clinicId: number,
+  ): Promise<schema.ChartReviewAgreement | undefined>;
+  listChartReviewCollaborators(
+    agreementId: number, clinicId?: number,
+  ): Promise<schema.ChartReviewCollaborator[]>;
+  addChartReviewCollaborator(
+    agreementId: number, physicianUserId: number, role: 'primary' | 'backup', clinicId?: number,
+  ): Promise<schema.ChartReviewCollaborator | null>;
+  removeChartReviewCollaborator(
+    id: number, agreementId: number, clinicId?: number,
+  ): Promise<boolean>;
+  listMidLevelsForPhysician(
+    physicianUserId: number, clinicId: number,
+  ): Promise<Array<{
+    agreement: schema.ChartReviewAgreement;
+    midLevel: { id: number; firstName: string | null; lastName: string | null; title: string | null };
+    role: 'primary' | 'backup';
+    periodPctComplete: number;
+    pendingCount: number;
+    pastDueCount: number;
+    maxDaysPastDue: number;
+  }>>;
+  listChartReviewItemsForAgreement(
+    agreementId: number,
+    opts?: { status?: string; limit?: number; clinicId?: number },
+  ): Promise<Array<schema.ChartReviewItem & {
+    patientName: string;
+    encounterVisitDate: Date;
+    encounterChiefComplaint: string | null;
+  }>>;
+  getChartReviewItem(
+    id: number, clinicId: number,
+  ): Promise<schema.ChartReviewItem | undefined>;
+  listChartReviewComments(
+    itemId: number, clinicId: number,
+  ): Promise<schema.ChartReviewComment[]>;
+  addChartReviewComment(
+    itemId: number, authorUserId: number, body: string, type: string, clinicId: number,
+  ): Promise<schema.ChartReviewComment | null>;
+  concurChartReviewItem(
+    itemId: number, reviewerUserId: number, clinicId: number,
+  ): Promise<schema.ChartReviewItem | null>;
+  rejectChartReviewItem(
+    itemId: number, reviewerUserId: number, reason: string, clinicId: number,
+  ): Promise<schema.ChartReviewItem | null>;
+  flagChartForReview(input: {
+    encounterId: number;
+    midLevelUserId: number;
+    clinicId: number;
+    reason?: string | null;
+  }): Promise<schema.ChartReviewItem | null>;
+  enqueueChartForReviewIfApplicable(input: {
+    encounterId: number;
+    clinicianId: number;
+    clinicId: number;
+    sendForReview: boolean;
+  }): Promise<schema.ChartReviewItem | null>;
+  previewChartReviewFlags(input: {
+    encounterId: number;
+    clinicianId: number;
+    clinicId: number;
+  }): Promise<{
+    isMandatory: boolean;
+    mandatoryReasons: string[];
+    hasAgreement: boolean;
+  }>;
+}
+
+export const chartReviewStorage = storage as unknown as ChartReviewStorage;
+
 // ─── Clinic plan stamping ─────────────────────────────────────────────────
 /**
  * Called by the Stripe webhook when a subscription event is received.
