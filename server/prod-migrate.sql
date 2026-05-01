@@ -45,6 +45,14 @@ ALTER TABLE providers ADD COLUMN IF NOT EXISTS staff_id INTEGER
 -- ── patients ────────────────────────────────────────────────
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS clinic_id INTEGER;
 ALTER TABLE patients ADD COLUMN IF NOT EXISTS primary_provider_id INTEGER;
+-- Structured pharmacy details from Google Places lookup. Existing free-text
+-- preferred_pharmacy column is left intact so legacy values keep displaying.
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_name TEXT;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_address TEXT;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_phone VARCHAR(50);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_fax VARCHAR(50);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_ncpdp_id VARCHAR(30);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_place_id VARCHAR(200);
 
 -- ── clinical_encounters ─────────────────────────────────────
 ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS diarized_transcript JSONB;

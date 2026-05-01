@@ -1199,9 +1199,13 @@ export function EncounterEditor({
       if (!hasSoap) throw new Error("Generate a SOAP note before signing.");
       // PATIENT-SAFETY: tripwire — refuse to sign+lock a chart that doesn't
       // match the patient currently shown in the UI.
+      // Include the current SOAP state so unsaved edits are persisted as
+      // part of the same atomic sign operation. Without this, the server
+      // would snapshot the last persisted (potentially un-edited) note.
       const res = await apiRequest("POST", `/api/encounters/${savedId}/sign`, {
         expectedPatientId: patientId ? parseInt(patientId) : undefined,
         sendForReview,
+        soapNote: soap,
       });
       return res.json();
     },

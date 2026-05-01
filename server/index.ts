@@ -8,6 +8,7 @@ import { passport } from "./auth";
 import { registerRoutes } from "./routes";
 import { log } from "./logger";
 import { serveStatic } from "./static-serve";
+import { externalReviewerDenyList } from "./external-reviewer";
 
 async function ensureSchema(): Promise<void> {
   const candidates = [
@@ -76,6 +77,11 @@ app.use(
 
 app.use(passport.initialize());
 app.use(passport.session());
+
+// External-reviewer (chart-review-only) deny-list. Mounted after auth/session
+// init so req.user is populated. Allow-listed paths pass through; everything
+// else returns 403 + audit row when the active membership is external_reviewer.
+app.use(externalReviewerDenyList());
 
 app.use((req, res, next) => {
   const start = Date.now();

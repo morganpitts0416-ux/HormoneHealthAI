@@ -406,6 +406,60 @@ export async function sendProviderInviteEmail(
   });
 }
 
+/**
+ * Invite an external collaborating physician to chart-review-only access.
+ * `accessScopeLabel` is shown verbatim in the email body so the invitee
+ * understands what they're being asked to log into.
+ */
+export async function sendExternalCollaboratorInviteEmail(
+  to: string,
+  physicianFirstName: string,
+  midLevelName: string,
+  clinicName: string,
+  accessScopeLabel: string,
+  token: string,
+  req?: any
+): Promise<void> {
+  const base = getBaseUrl(req);
+  const link = `${base}/join-clinic?token=${token}`;
+  await sendEmail({
+    to,
+    fromName: clinicName,
+    subject: `You've been invited to review charts for ${midLevelName} at ${clinicName}`,
+    html: `
+      <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
+        <div style="background: #2e3a20; padding: 28px 32px;">
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">${clinicName}</h1>
+          <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Collaborating Physician Invitation</p>
+        </div>
+        <div style="padding: 36px 32px;">
+          <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hi ${physicianFirstName},</p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
+            <strong>${midLevelName}</strong> at <strong>${clinicName}</strong> has invited you to be their collaborating physician on ReAlign ClinIQ.
+          </p>
+          <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
+            Access scope: <strong>${accessScopeLabel}</strong>.
+          </p>
+          <div style="text-align: center; margin: 32px 0;">
+            <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
+              Accept &amp; Set Up Account
+            </a>
+          </div>
+          <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
+            This invite link expires in <strong>72 hours</strong>. If you already have a ClinIQ login at another clinic, the same email + password will work — this clinic will simply appear in your clinic switcher.
+          </p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 8px 0 0; word-break: break-all;">
+            Or copy this link: ${link}
+          </p>
+        </div>
+        <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; ClinIQ Clinical Lab Interpretation Platform</p>
+        </div>
+      </div>
+    `,
+  });
+}
+
 export async function sendPortalPasswordResetEmail(
   to: string,
   patientFirstName: string,
