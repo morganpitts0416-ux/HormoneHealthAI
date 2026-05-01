@@ -7,7 +7,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory } from "@shared/schema";
 import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -4227,6 +4227,193 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       res.json(orders);
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch orders" });
+    }
+  });
+
+  // ── Patient Documents (drag-drop uploads + camera scans) ───────────────
+  // Files are accepted in-memory and persisted as base64 TEXT in the
+  // patient_documents table, scoped by clinic_id. No external object store
+  // needed for HIPAA — everything stays inside the existing Postgres
+  // perimeter.
+  // Memory-safety limits (Cloud Run profile):
+  //   • Per file: 25 MB
+  //   • Per request total: 50 MB aggregate (enforced post-multer)
+  //   • Per request count: 10 files
+  // These bounds prevent in-memory exhaustion + base64 inflation (~33%)
+  // under concurrent uploads on a small Cloud Run instance.
+  const DOC_MAX_FILE_BYTES = 25 * 1024 * 1024;
+  const DOC_MAX_TOTAL_BYTES = 50 * 1024 * 1024;
+  const DOC_MAX_FILES_PER_REQUEST = 10;
+  const docUpload = multer({
+    storage: multer.memoryStorage(),
+    limits: { fileSize: DOC_MAX_FILE_BYTES, files: DOC_MAX_FILES_PER_REQUEST },
+    fileFilter: (_req, file, cb) => {
+      const allowed = [
+        'application/pdf',
+        'image/jpeg', 'image/png', 'image/webp', 'image/heic', 'image/heif',
+        'image/gif', 'image/tiff',
+      ];
+      if (allowed.includes(file.mimetype)) cb(null, true);
+      else cb(new Error(`Unsupported file type: ${file.mimetype}`));
+    },
+  });
+  // Multer error → proper 4xx (413 for size, 415 for type, 400 otherwise).
+  function docUploadErrorHandler(err: any, _req: any, res: any, next: any) {
+    if (!err) return next();
+    if (err && err.name === 'MulterError') {
+      const code = err.code as string;
+      if (code === 'LIMIT_FILE_SIZE') {
+        return res.status(413).json({ message: `File exceeds ${DOC_MAX_FILE_BYTES / 1024 / 1024} MB limit.` });
+      }
+      if (code === 'LIMIT_FILE_COUNT') {
+        return res.status(413).json({ message: `Too many files. Max ${DOC_MAX_FILES_PER_REQUEST} per upload.` });
+      }
+      return res.status(400).json({ message: err.message });
+    }
+    if (typeof err.message === 'string' && err.message.startsWith('Unsupported file type')) {
+      return res.status(415).json({ message: err.message });
+    }
+    return next(err);
+  }
+
+  function isAllowedDocCategory(value: unknown): value is PatientDocumentCategory {
+    return typeof value === 'string' && (PATIENT_DOCUMENT_CATEGORIES as readonly string[]).includes(value);
+  }
+
+  // GET /api/patients/:id/documents — list patient docs (no payloads)
+  app.get("/api/patients/:id/documents", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+      const docs = await storage.listPatientDocuments(patientId, clinicId);
+      res.json(docs);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to list documents" });
+    }
+  });
+
+  // POST /api/patients/:id/documents — upload one or more files
+  app.post(
+    "/api/patients/:id/documents",
+    requireAuth,
+    (req, res, next) => docUpload.array("files", DOC_MAX_FILES_PER_REQUEST)(req, res, (err) => docUploadErrorHandler(err, req, res, next)),
+    async (req, res) => {
+      try {
+        const clinicianId = getClinicianId(req);
+        const clinicId = getEffectiveClinicId(req);
+        const patientId = parseInt(req.params.id);
+        if (Number.isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+        const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+        if (!patient) return res.status(404).json({ message: "Patient not found" });
+        if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+
+        const files = (req.files as Express.Multer.File[]) ?? [];
+        if (files.length === 0) return res.status(400).json({ message: "No files uploaded" });
+
+        // Aggregate-bytes guard: cap total bytes per request to protect
+        // against memory exhaustion from many medium-sized files at once.
+        const totalBytes = files.reduce((acc, f) => acc + f.size, 0);
+        if (totalBytes > DOC_MAX_TOTAL_BYTES) {
+          return res.status(413).json({
+            message: `Total upload exceeds ${DOC_MAX_TOTAL_BYTES / 1024 / 1024} MB. Try uploading fewer files at once.`,
+          });
+        }
+
+        const rawCategory = (req.body?.category as string | undefined) ?? 'other';
+        const category: PatientDocumentCategory = isAllowedDocCategory(rawCategory) ? rawCategory : 'other';
+        const rawSource = (req.body?.source as string | undefined) ?? 'upload';
+        const source = ['upload', 'scan', 'photo'].includes(rawSource) ? rawSource : 'upload';
+        const notes = typeof req.body?.notes === 'string' && req.body.notes.length > 0
+          ? req.body.notes.slice(0, 2000)
+          : null;
+
+        // Resolve a display name for the uploader (for audit/UX).
+        let uploadedByName: string | null = null;
+        try {
+          const u = await storage.getUserById(clinicianId);
+          if (u) uploadedByName = `${u.firstName ?? ''} ${u.lastName ?? ''}`.trim() || u.email || null;
+        } catch { /* non-fatal */ }
+
+        const created: any[] = [];
+        for (const f of files) {
+          const safeName = (f.originalname ?? 'document').replace(/[\r\n]/g, '').slice(0, 200);
+          const doc = await storage.createPatientDocument({
+            clinicId,
+            patientId,
+            uploadedByUserId: clinicianId,
+            uploadedByName,
+            fileName: safeName,
+            mimeType: f.mimetype,
+            sizeBytes: f.size,
+            category,
+            notes,
+            source,
+            fileData: f.buffer.toString('base64'),
+          });
+          created.push(doc);
+        }
+        res.status(201).json(created);
+      } catch (e: any) {
+        res.status(500).json({ message: e?.message ?? 'Upload failed' });
+      }
+    }
+  );
+
+  // GET /api/patients/:id/documents/:docId/download — stream the file
+  app.get("/api/patients/:id/documents/:docId/download", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const docId = parseInt(req.params.docId);
+      if (Number.isNaN(patientId) || Number.isNaN(docId)) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+
+      const doc = await storage.getPatientDocument(docId, clinicId);
+      if (!doc || doc.patientId !== patientId) return res.status(404).json({ message: "Document not found" });
+
+      const buf = Buffer.from(doc.fileData, 'base64');
+      res.setHeader('Content-Type', doc.mimeType);
+      res.setHeader('Content-Length', String(buf.length));
+      const inline = req.query.inline === '1';
+      const safeName = doc.fileName.replace(/"/g, '');
+      res.setHeader('Content-Disposition', `${inline ? 'inline' : 'attachment'}; filename="${safeName}"`);
+      res.end(buf);
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to download document" });
+    }
+  });
+
+  // DELETE /api/patients/:id/documents/:docId
+  app.delete("/api/patients/:id/documents/:docId", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const docId = parseInt(req.params.docId);
+      if (Number.isNaN(patientId) || Number.isNaN(docId)) {
+        return res.status(400).json({ message: "Invalid id" });
+      }
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (clinicId == null) return res.status(403).json({ message: "Clinic context required" });
+
+      const doc = await storage.getPatientDocument(docId, clinicId);
+      if (!doc || doc.patientId !== patientId) return res.status(404).json({ message: "Document not found" });
+
+      const ok = await storage.deletePatientDocument(docId, clinicId);
+      res.json({ ok });
+    } catch (e: any) {
+      res.status(500).json({ message: e?.message ?? "Failed to delete document" });
     }
   });
 
