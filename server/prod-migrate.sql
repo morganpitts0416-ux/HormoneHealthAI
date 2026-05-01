@@ -710,3 +710,6 @@ CREATE INDEX IF NOT EXISTS patient_documents_patient_idx
   ON patient_documents (patient_id, created_at DESC);
 CREATE INDEX IF NOT EXISTS patient_documents_clinic_idx
   ON patient_documents (clinic_id);
+
+-- ── note_templates: optional /shortcut field (mirrors note_phrases) ─────
+ALTER TABLE note_templates ADD COLUMN IF NOT EXISTS shortcut VARCHAR(50);

@@ -30,6 +30,8 @@ import { exportSoapPdf } from "@/lib/soap-pdf-export";
 import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
 import { SoapNoteViewer, EvidenceCard } from "@/components/soap-note-viewer";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
+import { usePhraseSearch } from "@/components/phrase-search";
+import { useSlashMenu } from "@/components/slash-menu";
 import { useRecording } from "@/contexts/recording-context";
 
 export type EncounterWithPatient = ClinicalEncounter & { patientName: string };
@@ -652,6 +654,20 @@ export function EncounterEditor({
 
   const soapNoteValue = soap.fullNote ?? legacySoapToText(soap);
   const dxSearch = useDiagnosisSearch({
+    textareaRef: soapTextareaRef,
+    value: soapNoteValue,
+    onChange: (newValue: string) => setSoap({ fullNote: newValue }),
+  });
+  const soapSlashMenu = useSlashMenu({
+    textareaRef: soapTextareaRef,
+    value: soapNoteValue,
+    onChange: (newValue: string) => setSoap({ fullNote: newValue }),
+    patientId: encounter?.patientId ?? null,
+    noteType: "soap_provider",
+  });
+  // The slash menu deliberately yields to /phrase so the dedicated phrase
+  // search keeps owning that trigger here as well.
+  const soapPhraseSearch = usePhraseSearch({
     textareaRef: soapTextareaRef,
     value: soapNoteValue,
     onChange: (newValue: string) => setSoap({ fullNote: newValue }),
@@ -3235,14 +3251,22 @@ export function EncounterEditor({
                       onChange={e => {
                         setSoap({ fullNote: e.target.value });
                         dxSearch.handleInput(e);
+                        soapPhraseSearch.handleInput(e);
+                        soapSlashMenu.handleInput(e);
                       }}
-                      onKeyDown={dxSearch.handleKeyDown}
+                      onKeyDown={(e) => {
+                        soapSlashMenu.handleKeyDown(e);
+                        if (!e.defaultPrevented) soapPhraseSearch.handleKeyDown(e);
+                        if (!e.defaultPrevented) dxSearch.handleKeyDown(e);
+                      }}
                       rows={32}
                       className="text-sm font-mono resize-y leading-relaxed"
                       data-testid="soap-full-note"
                       spellCheck
                     />
                     {dxSearch.dropdown}
+                    {soapPhraseSearch.dropdown}
+                    {soapSlashMenu.dropdown}
                   </div>
                 )}
 
@@ -3250,7 +3274,7 @@ export function EncounterEditor({
                   {isSigned
                     ? "This note is electronically signed and locked. Use Amend above to open it for editing."
                     : soapViewMode === "edit"
-                      ? "Editing raw note — save when ready. Type /dx to search and insert ICD-10 diagnoses."
+                      ? "Editing raw note — save when ready. Type / for templates, built-in sections (HPI, ROS, PE…), or saved phrases. /dx still works for ICD-10."
                       : "Use Copy Note to paste the clean note into your EHR. Evidence pills on each diagnosis open guideline citations inline."}
                 </p>
               </div>

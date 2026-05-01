@@ -1275,6 +1275,7 @@ export const noteTemplates = pgTable("note_templates", {
   name: varchar("name", { length: 200 }).notNull(),
   description: text("description"),
   noteType: varchar("note_type", { length: 30 }).notNull(),  // 'soap_provider' | 'nurse' | 'phone'
+  shortcut: varchar("shortcut", { length: 50 }),          // optional /trigger to insert this template
   blocks: jsonb("blocks").$type<any[]>().notNull(),       // array of block definitions
   isShared: boolean("is_shared").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),

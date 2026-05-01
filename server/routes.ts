@@ -7,7 +7,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate } from "@shared/schema";
 import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -10930,8 +10930,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
       const body = z.object({
         name: z.string().min(1),
-        description: z.string().optional(),
+        description: z.string().nullable().optional(),
         noteType: z.enum(["soap_provider", "nurse", "phone"]),
+        shortcut: z.string().max(50).nullable().optional(),
         blocks: z.array(z.any()),
         isShared: z.boolean().default(false),
       }).parse(req.body);
@@ -10941,9 +10942,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         name: body.name,
         description: body.description ?? null,
         noteType: body.noteType,
+        shortcut: typeof body.shortcut === "string" ? (body.shortcut.trim() || null) : null,
         blocks: body.blocks,
         isShared: body.isShared,
-      } as any);
+      });
       res.status(201).json(tpl);
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
@@ -10955,10 +10957,13 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const body = z.object({
         name: z.string().optional(),
         description: z.string().nullable().optional(),
+        shortcut: z.string().max(50).nullable().optional(),
         blocks: z.array(z.any()).optional(),
         isShared: z.boolean().optional(),
       }).parse(req.body);
-      const updated = await storage.updateNoteTemplate(id, clinicId, body as any);
+      const patch: Partial<InsertNoteTemplate> = { ...body };
+      if (typeof body.shortcut === "string") patch.shortcut = body.shortcut.trim() || null;
+      const updated = await storage.updateNoteTemplate(id, clinicId, patch);
       if (!updated) return res.status(404).json({ message: "Not found" });
       res.json(updated);
     } catch (e: any) { res.status(400).json({ message: e.message }); }

@@ -1,7 +1,7 @@
 import { useState, useRef, useCallback, useEffect } from "react";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import type { NoteTemplate } from "@shared/schema";
+import type { NoteTemplate, PatientChart } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -13,10 +13,18 @@ import {
   Plus, X, GripVertical, ChevronDown, ChevronUp, Save, FileText,
   Stethoscope, Pill, Heart, Brain, ClipboardList, Activity, Users,
   Scissors, AlertTriangle, ListChecks, CalendarCheck, ToggleLeft, ToggleRight,
-  Search, Loader2,
+  Search, Loader2, Download,
 } from "lucide-react";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { usePhraseSearch } from "@/components/phrase-search";
+import { useSlashMenu } from "@/components/slash-menu";
+import {
+  BUILTIN_BY_ID, type BuiltinBlockId, type ChartDomainKey,
+  ROS_SYSTEMS, PE_SYSTEMS,
+  createChartData,
+  chartDataToText as sharedChartDataToText,
+  mergeChartItems,
+} from "@shared/note-builtin-blocks";
 
 const BLOCK_TYPES = [
   { id: "hpi", label: "HPI", icon: FileText, category: "subjective" },
@@ -45,6 +53,12 @@ interface SoapBlock {
   assessmentSummary?: string;
   collapsed?: boolean;
   listItems?: string[];
+  /**
+   * For history list blocks (PMH/PSH/SH/FH/Meds/Allergies). When true (default)
+   * the block renders as a bullet list (one input per item). When false the
+   * block renders as a free-text textarea with full slash/dx/phrase support.
+   */
+  bulletMode?: boolean;
 }
 
 interface AssessmentItem {
@@ -55,24 +69,6 @@ interface AssessmentItem {
   plan: string;
 }
 
-const ROS_SYSTEMS = [
-  "Constitutional", "Eyes", "ENT", "Cardiovascular", "Respiratory",
-  "Gastrointestinal", "Genitourinary", "Musculoskeletal", "Integumentary",
-  "Neurological", "Psychiatric", "Endocrine", "Hematologic/Lymphatic",
-  "Allergic/Immunologic",
-];
-
-const PE_SYSTEMS = [
-  "General Appearance", "Head", "Eyes", "ENT", "Neck", "Cardiovascular",
-  "Respiratory", "Abdomen", "Musculoskeletal", "Neurological", "Skin",
-  "Psychiatric", "Lymphatic",
-];
-
-function createChartData(systems: string[]): Record<string, { status: string; notes: string; visible: boolean }> {
-  const data: Record<string, { status: string; notes: string; visible: boolean }> = {};
-  systems.forEach(s => { data[s] = { status: "normal", notes: "", visible: true }; });
-  return data;
-}
 
 function uid(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -161,6 +157,7 @@ function DxAwareTextarea({
   placeholder,
   className,
   testId,
+  patientId,
 }: {
   value: string;
   onChange: (v: string) => void;
@@ -168,6 +165,8 @@ function DxAwareTextarea({
   placeholder?: string;
   className?: string;
   testId?: string;
+  /** Optional: enables the universal `/` slash menu and chart pulls. */
+  patientId?: number | null;
 }) {
   const ref = useRef<HTMLTextAreaElement>(null);
   const dxSearch = useDiagnosisSearch({
@@ -180,6 +179,16 @@ function DxAwareTextarea({
     value,
     onChange,
   });
+  // Universal slash menu (built-ins + templates + phrases). It yields to /dx
+  // and /phrase, so wiring all three handlers in series is safe — the slash
+  // hook returns early for those reserved prefixes.
+  const slashSearch = useSlashMenu({
+    textareaRef: ref,
+    value,
+    onChange,
+    patientId: patientId ?? null,
+    noteType: "soap_provider",
+  });
   return (
     <div className="relative">
       <Textarea
@@ -189,8 +198,13 @@ function DxAwareTextarea({
           onChange(e.target.value);
           dxSearch.handleInput(e);
           phraseSearch.handleInput(e);
+          slashSearch.handleInput(e);
         }}
-        onKeyDown={(e) => { phraseSearch.handleKeyDown(e); if (!e.defaultPrevented) dxSearch.handleKeyDown(e); }}
+        onKeyDown={(e) => {
+          slashSearch.handleKeyDown(e);
+          if (!e.defaultPrevented) phraseSearch.handleKeyDown(e);
+          if (!e.defaultPrevented) dxSearch.handleKeyDown(e);
+        }}
         rows={rows}
         placeholder={placeholder}
         className={className}
@@ -198,6 +212,7 @@ function DxAwareTextarea({
       />
       {dxSearch.dropdown}
       {phraseSearch.dropdown}
+      {slashSearch.dropdown}
     </div>
   );
 }
@@ -207,11 +222,14 @@ function AssessmentPlanEditor({
   summary,
   onItemsChange,
   onSummaryChange,
+  patientId,
 }: {
   items: AssessmentItem[];
   summary: string;
   onItemsChange: (items: AssessmentItem[]) => void;
   onSummaryChange: (s: string) => void;
+  /** Forwarded to DxAwareTextarea so the universal `/` menu has chart context. */
+  patientId?: number | null;
 }) {
   const addItem = () => {
     onItemsChange([...items, { uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }]);
@@ -235,9 +253,10 @@ function AssessmentPlanEditor({
           value={summary}
           onChange={onSummaryChange}
           rows={2}
-          placeholder="Brief clinical summary... (type /dx for diagnoses, /phrase for snippets)"
+          placeholder="Brief clinical summary... (type / for templates, /dx for diagnoses, /phrase for snippets)"
           className="text-sm resize-y"
           testId="textarea-assessment-summary"
+          patientId={patientId}
         />
       </div>
 
@@ -269,9 +288,10 @@ function AssessmentPlanEditor({
                 value={item.supportingFactors}
                 onChange={v => updateItem(idx, "supportingFactors", v)}
                 rows={2}
-                placeholder="Clinical reasoning, lab findings, symptoms... (type /dx to search)"
+                placeholder="Clinical reasoning, lab findings, symptoms... (type / for templates, /dx to search)"
                 className="text-xs resize-y"
                 testId={`textarea-supporting-${idx}`}
+                patientId={patientId}
               />
             </div>
             <div>
@@ -280,9 +300,10 @@ function AssessmentPlanEditor({
                 value={item.plan}
                 onChange={v => updateItem(idx, "plan", v)}
                 rows={2}
-                placeholder="- Treatment actions&#10;- Medications&#10;- Follow-up&#10;(type /dx to search diagnoses)"
+                placeholder="- Treatment actions&#10;- Medications&#10;- Follow-up&#10;(type / for templates, /dx for diagnoses)"
                 className="text-xs resize-y"
                 testId={`textarea-plan-${idx}`}
+                patientId={patientId}
               />
             </div>
           </CardContent>
@@ -427,6 +448,8 @@ function BlockEditor({
   onDragOver,
   onDragLeave,
   onDrop,
+  patientId,
+  patientChart,
 }: {
   block: SoapBlock;
   onUpdate: (updates: Partial<SoapBlock>) => void;
@@ -439,6 +462,8 @@ function BlockEditor({
   onDragOver?: () => void;
   onDragLeave?: () => void;
   onDrop?: () => void;
+  patientId?: number;
+  patientChart?: PatientChart | null;
 }) {
   const blockDef = BLOCK_TYPES.find(b => b.id === block.type)!;
   const Icon = blockDef.icon;
@@ -457,6 +482,57 @@ function BlockEditor({
     value: block.content,
     onChange: (newValue: string) => onUpdate({ content: newValue }),
   });
+  const slashSearch = useSlashMenu({
+    textareaRef,
+    value: block.content,
+    onChange: (newValue: string) => onUpdate({ content: newValue }),
+    patientId: patientId ?? null,
+    noteType: "soap_provider",
+  });
+
+  // SOAP block type → patient chart key. HPI has no chart-stored field but
+  // is included in the eligibility check so it shows the "No chart data"
+  // badge consistently with the other history-style blocks.
+  const chartKeyForBlock: Partial<Record<BlockTypeId, ChartDomainKey>> = {
+    medical_history: "medicalHistory",
+    surgical_history: "surgicalHistory",
+    social_history: "socialHistory",
+    family_history: "familyHistory",
+    current_medications: "currentMedications",
+    allergies: "allergies",
+  };
+  const chartKey = chartKeyForBlock[block.type];
+  const canPullFromChart = isHistoryStyleBlock(block.type) && !!patientChart;
+  const chartItemsForBlock: string[] = canPullFromChart && chartKey
+    ? ((patientChart![chartKey] as string[] | undefined) ?? [])
+    : [];
+
+  // Bullet/free-text toggle defaults: list blocks start in bullet mode; HPI
+  // starts in free text. Templates can override via tb.bulletMode.
+  const supportsBulletToggle = isHistoryStyleBlock(block.type);
+  const defaultBullet = isListBlock(block.type);
+  const bulletMode = supportsBulletToggle ? (block.bulletMode ?? defaultBullet) : false;
+
+  const pullFromChart = () => {
+    if (!canPullFromChart || !chartKey) return;
+    if (bulletMode) {
+      const existing = block.listItems ?? (block.content ? block.content.split("\n").map(s => s.trim()).filter(Boolean) : []);
+      const merged = mergeChartItems(existing, chartItemsForBlock);
+      onUpdate({ listItems: merged, content: merged.join("\n") });
+    } else {
+      // Free-text mode renders a comma-joined paragraph that round-trips
+      // cleanly when re-pulled.
+      const existing = block.content
+        ? block.content
+            .split(/[\n,;]+/)
+            .map(s => s.replace(/^[-*•]\s*/, "").trim().replace(/\.$/, "").trim())
+            .filter(Boolean)
+        : [];
+      const merged = mergeChartItems(existing, chartItemsForBlock);
+      const ends = merged.length > 0 ? "." : "";
+      onUpdate({ content: merged.join(", ") + ends });
+    }
+  };
 
   return (
     <div
@@ -479,6 +555,42 @@ function BlockEditor({
         />
         <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
         <span className="text-xs font-semibold flex-1">{blockDef.label}</span>
+        {canPullFromChart && chartItemsForBlock.length > 0 && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px] gap-1"
+            onClick={pullFromChart}
+            data-testid={`button-pull-chart-${block.uid}`}
+            title={`Add ${chartItemsForBlock.length} item${chartItemsForBlock.length === 1 ? "" : "s"} from patient chart`}
+          >
+            <Download className="w-3 h-3" />
+            Pull from chart ({chartItemsForBlock.length})
+          </Button>
+        )}
+        {canPullFromChart && chartItemsForBlock.length === 0 && (
+          <span
+            className="inline-flex items-center gap-1 h-6 px-2 text-[10px] rounded-sm text-muted-foreground/70"
+            data-testid={`badge-no-chart-data-${block.uid}`}
+            title="The patient's chart has no entries for this section yet."
+          >
+            <Download className="w-3 h-3 opacity-60" />
+            No chart data
+          </span>
+        )}
+        {supportsBulletToggle && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px] gap-1"
+            onClick={() => onUpdate({ bulletMode: !bulletMode })}
+            data-testid={`button-toggle-bullet-${block.uid}`}
+            title={bulletMode ? "Switch to free text" : "Switch to bullet list"}
+          >
+            {bulletMode ? <ToggleRight className="w-3 h-3" /> : <ToggleLeft className="w-3 h-3" />}
+            {bulletMode ? "Bullets" : "Free Text"}
+          </Button>
+        )}
         {supportsChart && (
           <Button
             size="sm"
@@ -525,10 +637,11 @@ function BlockEditor({
               summary={block.assessmentSummary ?? ""}
               onItemsChange={items => onUpdate({ assessmentItems: items })}
               onSummaryChange={s => onUpdate({ assessmentSummary: s })}
+              patientId={patientId}
             />
-          ) : isListBlock(block.type) ? (
+          ) : supportsBulletToggle && bulletMode ? (
             <ListItemsEditor
-              items={block.listItems ?? (block.content ? block.content.split("\n").map(s => s.trim()).filter(Boolean) : [])}
+              items={block.listItems ?? (block.content ? block.content.split("\n").map(s => s.replace(/^[-*•]\s*/, "").trim()).filter(Boolean) : [])}
               placeholder={getListItemPlaceholder(block.type)}
               onChange={items => onUpdate({ listItems: items, content: items.join("\n") })}
             />
@@ -547,8 +660,13 @@ function BlockEditor({
                   onUpdate({ content: e.target.value });
                   dxSearch.handleInput(e);
                   phraseSearch.handleInput(e);
+                  slashSearch.handleInput(e);
                 }}
-                onKeyDown={(e) => { phraseSearch.handleKeyDown(e); if (!e.defaultPrevented) dxSearch.handleKeyDown(e); }}
+                onKeyDown={(e) => {
+                  slashSearch.handleKeyDown(e);
+                  if (!e.defaultPrevented) phraseSearch.handleKeyDown(e);
+                  if (!e.defaultPrevented) dxSearch.handleKeyDown(e);
+                }}
                 rows={block.type === "hpi" ? 6 : 3}
                 placeholder={getPlaceholder(block.type)}
                 className="text-sm resize-y"
@@ -556,6 +674,7 @@ function BlockEditor({
               />
               {dxSearch.dropdown}
               {phraseSearch.dropdown}
+              {slashSearch.dropdown}
             </div>
           )}
         </div>
@@ -565,13 +684,28 @@ function BlockEditor({
 }
 
 function isListBlock(type: BlockTypeId): boolean {
-  return type === "medical_history" || type === "surgical_history" || type === "current_medications" || type === "allergies";
+  return (
+    type === "medical_history" ||
+    type === "surgical_history" ||
+    type === "social_history" ||
+    type === "family_history" ||
+    type === "current_medications" ||
+    type === "allergies"
+  );
+}
+
+// Superset of isListBlock — HPI also supports the bullet/free-text toggle.
+function isHistoryStyleBlock(type: BlockTypeId): boolean {
+  return type === "hpi" || isListBlock(type);
 }
 
 function getListItemPlaceholder(type: BlockTypeId): string {
   switch (type) {
+    case "hpi": return "e.g., Onset: 2 days ago";
     case "medical_history": return "e.g., Hypertension";
     case "surgical_history": return "e.g., Appendectomy 2018";
+    case "social_history": return "e.g., Non-smoker";
+    case "family_history": return "e.g., Father - CAD";
     case "current_medications": return "e.g., Lisinopril 10mg daily";
     case "allergies": return "e.g., Penicillin — rash";
     default: return "Add item...";
@@ -663,19 +797,10 @@ function getPlaceholder(type: BlockTypeId): string {
   }
 }
 
-function chartDataToText(
-  label: string,
-  chartData: Record<string, { status: string; notes: string; visible: boolean }>,
-): string {
-  const lines: string[] = [`${label}:`];
-  Object.entries(chartData).forEach(([system, data]) => {
-    if (!data.visible) return;
-    const statusLabel = data.status === "normal" ? "Normal/Negative" : data.status === "abnormal" ? "Abnormal/Positive" : "Not examined";
-    const notePart = data.notes ? ` — ${data.notes}` : "";
-    lines.push(`  ${system}: ${statusLabel}${notePart}`);
-  });
-  return lines.join("\n");
-}
+// Render chart-mode data using the shared helper which strips hidden rows AND
+// "not-examined" rows that have no notes — those carry no clinical info and
+// would otherwise clutter the saved note.
+const chartDataToText = sharedChartDataToText;
 
 function blocksToFullNote(
   chiefComplaint: string,
@@ -823,6 +948,17 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     },
   });
 
+  const { data: patientChart = null } = useQuery<PatientChart | null>({
+    queryKey: ["/api/patients", patientId, "chart"],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/chart`);
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!patientId,
+    staleTime: 60_000,
+  });
+
   const applyTemplate = useCallback((templateId: string) => {
     setSelectedTemplateId(templateId);
     if (!templateId) return;
@@ -853,14 +989,33 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
       return null;
     };
 
-    const tplBlocks = (tpl.blocks ?? []) as Array<{ uid?: string; type: string; label?: string; defaultValue?: string }>;
+    const tplBlocks = (tpl.blocks ?? []) as Array<{
+      uid?: string; type: string; label?: string; defaultValue?: string;
+      builtinId?: BuiltinBlockId; bulletMode?: boolean; systems?: string[];
+    }>;
     const newSoapBlocks: SoapBlock[] = [];
     const claimed = new Set<BlockTypeId>();
     let unmappedHpiBuffer = "";
 
+    // Map a built-in block id (HPI, ROS, etc.) directly to a SOAP block id —
+    // the two enums share the same vocabulary for clinical sections.
+    const builtinIdToBlockType = (id: BuiltinBlockId): BlockTypeId | null => {
+      const all = BLOCK_TYPES.map(b => b.id);
+      return (all as readonly string[]).includes(id) ? (id as BlockTypeId) : null;
+    };
+
     for (const tb of tplBlocks) {
       if (tb.type === "section_header") continue; // headers are visual-only in templates
-      const mapped = mapLabelToType(tb.label ?? "");
+
+      // Clinical block coming straight from the template builder's clinical
+      // group. Use its builtinId for an exact mapping rather than fuzzy label.
+      let mapped: BlockTypeId | null = null;
+      if (tb.type.startsWith("clinical_")) {
+        const id = (tb.builtinId ?? tb.type.slice("clinical_".length)) as BuiltinBlockId;
+        mapped = builtinIdToBlockType(id);
+      }
+      if (!mapped) mapped = mapLabelToType(tb.label ?? "");
+
       const value = (tb.defaultValue ?? "").trim();
 
       if (mapped && !claimed.has(mapped)) {
@@ -872,6 +1027,41 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
           block.assessmentItems = [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }];
           block.assessmentSummary = value;
           block.content = "";
+        } else if (mapped === "ros" || mapped === "physical_exam") {
+          // Clinical chart blocks pre-fill in chart mode so the provider can
+          // jump straight to per-system editing. Honor the template's chosen
+          // subset of systems if set; otherwise fall back to the canonical
+          // full list.
+          if (tb.type.startsWith("clinical_")) {
+            const fallback = mapped === "ros" ? ROS_SYSTEMS : PE_SYSTEMS;
+            const systems = tb.systems && tb.systems.length > 0 ? tb.systems : fallback;
+            block.mode = "chart";
+            block.chartData = createChartData(systems);
+            block.content = "";
+          }
+        } else if (isListBlock(mapped) && tb.type.startsWith("clinical_")) {
+          // For history list blocks: split default value into bullet items if
+          // present, leave list empty otherwise — the provider can then click
+          // "Pull from chart" to populate from the patient's chart. Honor the
+          // template's bulletMode preference (default true for chart-mapped
+          // lists, since they are inherently lists).
+          const items = value
+            ? value.split(/\r?\n/).map(s => s.replace(/^[-*•]\s*/, "").trim()).filter(Boolean)
+            : [];
+          block.listItems = items;
+          block.content = items.join("\n");
+          block.bulletMode = tb.bulletMode ?? true;
+        } else if (mapped === "hpi" && tb.type.startsWith("clinical_")) {
+          // HPI is a narrative by default but a template may opt in to bullet
+          // mode (e.g. OPQRST). Honor tb.bulletMode (default false).
+          const items = value
+            ? value.split(/\r?\n/).map(s => s.replace(/^[-*•]\s*/, "").trim()).filter(Boolean)
+            : [];
+          block.bulletMode = tb.bulletMode ?? false;
+          if (block.bulletMode) {
+            block.listItems = items;
+            block.content = items.join("\n");
+          }
         }
         newSoapBlocks.push(block);
         claimed.add(mapped);
@@ -1176,7 +1366,9 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
             )}
           </div>
           <p className="text-[10px] text-muted-foreground">
-            Type <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/dx</kbd> in any text field to search diagnoses
+            Type <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/</kbd> in any field for templates &amp; built-ins (HPI, ROS, PE, etc.) ·{" "}
+            <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/dx</kbd> for diagnoses ·{" "}
+            <kbd className="px-1 py-0.5 rounded border bg-muted text-[9px] font-mono">/phrase</kbd> for snippets
           </p>
         </div>
 
@@ -1195,6 +1387,8 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
               onDragOver={() => { if (dragUid && dragUid !== block.uid) setDragOverUid(block.uid); }}
               onDragLeave={() => { if (dragOverUid === block.uid) setDragOverUid(null); }}
               onDrop={() => { if (dragUid) reorderBlocks(dragUid, block.uid); setDragUid(null); setDragOverUid(null); }}
+              patientId={patientId}
+              patientChart={patientChart}
             />
           ))}
         </div>
