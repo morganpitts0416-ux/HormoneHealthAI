@@ -47,7 +47,7 @@ import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
 import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
 import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail, sendProviderInviteEmail, sendExternalCollaboratorInviteEmail, sendEmail } from "./email-service";
-import { findUserForCollaboratorInvite, isValidNpi, listMembershipsForUser, getMembership, isExternalReviewerMembership } from "./external-reviewer";
+import { findUserForCollaboratorInvite, isValidNpi, listMembershipsForUser, getMembership, isExternalReviewerMembership, listPendingInvitesForAgreement } from "./external-reviewer";
 import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
 import Stripe from "stripe";
 import bcrypt from "bcrypt";
@@ -14071,7 +14071,7 @@ IMPORTANT:
         .where(
           and(
             eq(clinicProviderInvites.email, normalizedEmail),
-            eq((clinicProviderInvites as any).agreementId, id),
+            eq(clinicProviderInvites.agreementId, id),
             eq(clinicProviderInvites.status, "pending"),
           )
         )
@@ -14147,11 +14147,163 @@ IMPORTANT:
     }
   });
 
+  // GET /api/chart-review/agreements/:id/invites
+  // ──────────────────────────────────────────────────────────────────────────
+  // Lists every pending external chart-review invite for this agreement so the
+  // mid-level / admin can see who hasn't accepted yet, when the email went out,
+  // and resend or cancel from the UI without a DB trip. Restricted to the
+  // agreement's mid-level and clinic admins — the same gate the cancel/resend
+  // endpoints enforce — because a non-owner physician on the agreement should
+  // not be able to enumerate every pending email address.
+  app.get("/api/chart-review/agreements/:id/invites", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id) || !clinicId) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      const adminRole = await getSessionAdminRole(req);
+      const isAdmin = adminRole === "owner" || adminRole === "admin";
+      const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+      if (!isMidLevelOnAgreement && !isAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const invites = await listPendingInvitesForAgreement(id, clinicId);
+      res.json(
+        invites.map((p) => ({
+          id: p.id,
+          email: p.email,
+          firstName: p.firstName,
+          lastName: p.lastName,
+          displayName: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim() || p.email,
+          credentials: p.credentials ?? null,
+          accessScope: p.accessScope ?? "chart_review_only",
+          inviteExpires: p.inviteExpires,
+          createdAt: p.createdAt,
+        }))
+      );
+    } catch (err: any) {
+      console.error("[chart-review] list invites error:", err);
+      res.status(500).json({ message: "Failed to list pending invites" });
+    }
+  });
+
+  // ── Shared cancel-invite logic ──────────────────────────────────────────
+  // Cancelling a pending invite is exposed via both DELETE (legacy) and POST
+  // /cancel paths so the frontend can pick whichever fits its mutation style.
+  // Releases the reserved Stripe seat for 'full' (seat-consuming) invites.
+  async function cancelExternalInvite(req: Request, res: Response): Promise<void> {
+    const userId = getClinicianId(req);
+    const clinicId = getEffectiveClinicId(req);
+    const id = parseInt(req.params.id);
+    const inviteId = parseInt(req.params.inviteId);
+    if (!Number.isFinite(id) || !Number.isFinite(inviteId) || !clinicId) {
+      res.status(400).json({ message: "Invalid request" });
+      return;
+    }
+    const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
+    if (!agreement) {
+      res.status(404).json({ message: "Not found" });
+      return;
+    }
+    const adminRole = await getSessionAdminRole(req);
+    const isAdmin = adminRole === "owner" || adminRole === "admin";
+    const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+    if (!isMidLevelOnAgreement && !isAdmin) {
+      res.status(403).json({ message: "Not authorized" });
+      return;
+    }
+    const [invite] = await storageDb
+      .select()
+      .from(clinicProviderInvites)
+      .where(
+        and(
+          eq(clinicProviderInvites.id, inviteId),
+          eq(clinicProviderInvites.clinicId, clinicId),
+          eq(clinicProviderInvites.agreementId, id),
+        )
+      )
+      .limit(1);
+    if (!invite || invite.status !== "pending") {
+      res.status(404).json({ message: "No pending invite to cancel" });
+      return;
+    }
+    await storage.updateClinicProviderInviteStatus(inviteId, "cancelled");
+    // Release the reserved seat for 'full' invites that consumed one.
+    if (invite.accessScope === "full") {
+      try {
+        const ownerSub = await resolveClinicOwnerSubscription(clinicId);
+        const planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
+        if (!planState.isFreeAccount && planState.isSuitePlan && (planState.extraProviderSeats ?? 0) > 0) {
+          const SUITE_SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+          if (SUITE_SEAT_PRICE_ID && ownerSub.stripeSubscriptionId) {
+            const stripe = getStripe();
+            const subscription = await stripe.subscriptions.retrieve(ownerSub.stripeSubscriptionId, { expand: ["items"] });
+            const items: any[] = (subscription as any).items?.data ?? [];
+            const seatItem = items.find((item: any) => item.price?.id === SUITE_SEAT_PRICE_ID);
+            if (seatItem && (seatItem.quantity ?? 0) > 0) {
+              const newQty = Math.max(0, (seatItem.quantity ?? 0) - 1);
+              if (newQty === 0) {
+                await stripe.subscriptionItems.del(seatItem.id);
+              } else {
+                await stripe.subscriptionItems.update(seatItem.id, { quantity: newQty });
+              }
+              await updateClinicSeats(clinicId, Math.max(0, (planState.extraProviderSeats ?? 0) - 1));
+            }
+          }
+        }
+      } catch (e: any) {
+        console.warn("[cancel-invite] seat release non-fatal:", e?.message ?? e);
+      }
+    }
+    logAudit(req, {
+      action: "EXTERNAL_REVIEWER_INVITE_CANCELLED",
+      resourceType: "clinic_provider_invite",
+      resourceId: inviteId,
+      details: { clinicId, agreementId: id, email: invite.email, accessScope: invite.accessScope ?? null },
+    });
+    res.json({ ok: true });
+  }
+
   // DELETE /api/chart-review/agreements/:id/invites/:inviteId
   // Cancel a pending external-physician invite. Only the agreement's mid-level
   // or a clinic admin may cancel. If the invite was a 'full' (seat-consuming)
   // invite, we release the seat we reserved at invite time.
   app.delete("/api/chart-review/agreements/:id/invites/:inviteId", requireClinicianOnly, async (req, res) => {
+    try {
+      await cancelExternalInvite(req, res);
+    } catch (err: any) {
+      console.error("[chart-review] cancel invite error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: err?.message ?? "Failed to cancel invite" });
+      }
+    }
+  });
+
+  // POST /api/chart-review/agreements/:id/invites/:inviteId/cancel
+  // POST alias for cancel — same gate, same audit, same seat release.
+  app.post("/api/chart-review/agreements/:id/invites/:inviteId/cancel", requireClinicianOnly, async (req, res) => {
+    try {
+      await cancelExternalInvite(req, res);
+    } catch (err: any) {
+      console.error("[chart-review] cancel invite error:", err);
+      if (!res.headersSent) {
+        res.status(500).json({ message: err?.message ?? "Failed to cancel invite" });
+      }
+    }
+  });
+
+  // POST /api/chart-review/agreements/:id/invites/:inviteId/resend
+  // ──────────────────────────────────────────────────────────────────────────
+  // Re-emails the original invite token to the same address. The token itself
+  // is preserved (so any link the original recipient has in their inbox keeps
+  // working) but the expiration is bumped 72h forward — otherwise resending an
+  // expired invite would still land on a "this link has expired" page. Same
+  // mid-level / admin gate as cancel, audit-logged separately.
+  app.post("/api/chart-review/agreements/:id/invites/:inviteId/resend", requireClinicianOnly, async (req, res) => {
     try {
       const userId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -14175,51 +14327,61 @@ IMPORTANT:
           and(
             eq(clinicProviderInvites.id, inviteId),
             eq(clinicProviderInvites.clinicId, clinicId),
-            eq((clinicProviderInvites as any).agreementId, id),
+            eq(clinicProviderInvites.agreementId, id),
           )
         )
         .limit(1);
       if (!invite || invite.status !== "pending") {
-        return res.status(404).json({ message: "No pending invite to cancel" });
+        return res.status(404).json({ message: "No pending invite to resend" });
       }
-      await storage.updateClinicProviderInviteStatus(inviteId, "cancelled");
-      // Release the reserved seat for 'full' invites that consumed one.
-      if ((invite as any).accessScope === "full") {
-        try {
-          const ownerSub = await resolveClinicOwnerSubscription(clinicId);
-          const planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
-          if (!planState.isFreeAccount && planState.isSuitePlan && (planState.extraProviderSeats ?? 0) > 0) {
-            const SUITE_SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
-            if (SUITE_SEAT_PRICE_ID && ownerSub.stripeSubscriptionId) {
-              const stripe = getStripe();
-              const subscription = await stripe.subscriptions.retrieve(ownerSub.stripeSubscriptionId, { expand: ["items"] });
-              const items: any[] = (subscription as any).items?.data ?? [];
-              const seatItem = items.find((item: any) => item.price?.id === SUITE_SEAT_PRICE_ID);
-              if (seatItem && (seatItem.quantity ?? 0) > 0) {
-                const newQty = Math.max(0, (seatItem.quantity ?? 0) - 1);
-                if (newQty === 0) {
-                  await stripe.subscriptionItems.del(seatItem.id);
-                } else {
-                  await stripe.subscriptionItems.update(seatItem.id, { quantity: newQty });
-                }
-                await updateClinicSeats(clinicId, Math.max(0, (planState.extraProviderSeats ?? 0) - 1));
-              }
-            }
-          }
-        } catch (e: any) {
-          console.warn("[cancel-invite] seat release non-fatal:", e?.message ?? e);
-        }
+      // Send the email FIRST. If delivery fails we leave inviteExpires
+      // untouched so the panel still reflects the real (unrefreshed) state —
+      // an admin can retry without the UI implying the resend "took".
+      const inviter = req.user as any;
+      const inviterName = `${inviter?.firstName ?? ""} ${inviter?.lastName ?? ""}`.trim() || inviter?.email || "your colleague";
+      const clinicRows = await storageDb.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+      const clinicName = clinicRows[0]?.name || "the clinic";
+      const accessScopeLabel =
+        invite.accessScope === "full"
+          ? "Full clinic access (full provider seat in this clinic)"
+          : "Chart-review only (you'll only see notes routed to you for sign-off)";
+      try {
+        await sendExternalCollaboratorInviteEmail(
+          invite.email,
+          invite.firstName,
+          inviterName,
+          clinicName,
+          accessScopeLabel,
+          invite.inviteToken,
+          req
+        );
+      } catch (emailErr: any) {
+        console.error("[EMAIL] External collaborator invite resend failed:", emailErr);
+        return res.status(502).json({ message: "Could not send the invite email. Try again in a moment." });
       }
+      // Email sent successfully — only NOW bump the expiration so the resent
+      // link is guaranteed to work for another 72h. Token is unchanged.
+      const newExpires = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      await storageDb
+        .update(clinicProviderInvites)
+        .set({ inviteExpires: newExpires })
+        .where(eq(clinicProviderInvites.id, inviteId));
       logAudit(req, {
-        action: "EXTERNAL_REVIEWER_INVITE_CANCELLED",
+        action: "EXTERNAL_REVIEWER_INVITE_RESENT",
         resourceType: "clinic_provider_invite",
         resourceId: inviteId,
-        details: { clinicId, agreementId: id, email: invite.email, accessScope: (invite as any).accessScope ?? null },
+        details: {
+          clinicId,
+          agreementId: id,
+          email: invite.email,
+          accessScope: invite.accessScope ?? null,
+          inviteExpires: newExpires,
+        },
       });
-      res.json({ ok: true });
+      res.json({ ok: true, inviteExpires: newExpires });
     } catch (err: any) {
-      console.error("[chart-review] cancel invite error:", err);
-      res.status(500).json({ message: err?.message ?? "Failed to cancel invite" });
+      console.error("[chart-review] resend invite error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to resend invite" });
     }
   });
 

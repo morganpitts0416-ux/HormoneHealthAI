@@ -16,7 +16,7 @@
 import type { Request, Response, NextFunction } from "express";
 import { db } from "./storage";
 import * as schema from "@shared/schema";
-import { eq, and } from "drizzle-orm";
+import { eq, and, desc } from "drizzle-orm";
 import { logAudit } from "./audit";
 
 export type AccessScope = "full" | "chart_review_only";
@@ -380,4 +380,53 @@ export async function findUserForCollaboratorInvite(opts: {
 
 export function isValidNpi(npi: string): boolean {
   return /^\d{10}$/.test(npi.trim());
+}
+
+/**
+ * Pending external chart-review invites for a given agreement, scoped to the
+ * agreement's clinic so a reviewer in another clinic could never enumerate
+ * invites here. Used by the "Pending invites" admin panel and by the resend /
+ * cancel endpoints to look up an invite by id.
+ *
+ * Ordering: newest first so the most-recently-sent invite appears at the top
+ * of the panel — matches what an admin expects after clicking "Invite outside
+ * MD/DO".
+ */
+export type PendingAgreementInvite = {
+  id: number;
+  email: string;
+  firstName: string;
+  lastName: string;
+  credentials: string | null;
+  accessScope: string;
+  inviteExpires: Date;
+  createdAt: Date;
+};
+
+export async function listPendingInvitesForAgreement(
+  agreementId: number,
+  clinicId: number
+): Promise<PendingAgreementInvite[]> {
+  if (!Number.isFinite(agreementId) || !Number.isFinite(clinicId)) return [];
+  const rows = await db
+    .select({
+      id: schema.clinicProviderInvites.id,
+      email: schema.clinicProviderInvites.email,
+      firstName: schema.clinicProviderInvites.firstName,
+      lastName: schema.clinicProviderInvites.lastName,
+      credentials: schema.clinicProviderInvites.credentials,
+      accessScope: schema.clinicProviderInvites.accessScope,
+      inviteExpires: schema.clinicProviderInvites.inviteExpires,
+      createdAt: schema.clinicProviderInvites.createdAt,
+    })
+    .from(schema.clinicProviderInvites)
+    .where(
+      and(
+        eq(schema.clinicProviderInvites.clinicId, clinicId),
+        eq(schema.clinicProviderInvites.agreementId, agreementId),
+        eq(schema.clinicProviderInvites.status, "pending")
+      )
+    )
+    .orderBy(desc(schema.clinicProviderInvites.createdAt));
+  return rows;
 }

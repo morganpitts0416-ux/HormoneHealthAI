@@ -15,8 +15,8 @@ import { useAuth } from "@/hooks/use-auth";
 import type { SoapNote } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckCircle2, XCircle, Clock, AlertTriangle, MessageSquare, ChevronRight, ArrowLeft, ShieldCheck, UserPlus, Trash2, Mail } from "lucide-react";
-import { format } from "date-fns";
+import { CheckCircle2, XCircle, Clock, AlertTriangle, MessageSquare, ChevronRight, ArrowLeft, ShieldCheck, UserPlus, Trash2, Mail, Send } from "lucide-react";
+import { format, formatDistanceToNow } from "date-fns";
 
 type Agreement = {
   id: number;
@@ -892,15 +892,55 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
   // Stripe seat (the server handles that) and refreshes the collaborator list.
   const cancelInviteMut = useMutation({
     mutationFn: async (inviteId: number) => {
-      const res = await apiRequest('DELETE', `/api/chart-review/agreements/${agreement.id}/invites/${inviteId}`);
+      const res = await apiRequest('POST', `/api/chart-review/agreements/${agreement.id}/invites/${inviteId}/cancel`);
       return res.json();
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreement.id, 'collaborators'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreement.id, 'invites'] });
       toast({ title: "Invite cancelled" });
     },
     onError: (e: unknown) => toast({ variant: "destructive", title: "Cancel failed", description: errorMessage(e) }),
   });
+
+  // Re-email the original invite token. The server bumps the invite's
+  // expiration so the resent link works even if the original 72h window
+  // had already lapsed.
+  const resendInviteMut = useMutation({
+    mutationFn: async (inviteId: number) => {
+      const res = await apiRequest('POST', `/api/chart-review/agreements/${agreement.id}/invites/${inviteId}/resend`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreement.id, 'collaborators'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreement.id, 'invites'] });
+      toast({ title: "Invite resent", description: "We re-emailed the same invite link and refreshed its expiration." });
+    },
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Resend failed", description: errorMessage(e) }),
+  });
+
+  // Dedicated pending-invites query — sourced from the new
+  // GET /api/chart-review/agreements/:id/invites endpoint so the panel can
+  // refresh independently of the collaborators list.
+  const invitesQuery = useQuery<Array<{
+    id: number;
+    email: string;
+    firstName: string;
+    lastName: string;
+    displayName: string;
+    credentials: 'MD' | 'DO' | null;
+    accessScope: 'full' | 'chart_review_only';
+    inviteExpires: string;
+    createdAt: string;
+  }>>({
+    queryKey: ['/api/chart-review/agreements', agreement.id, 'invites'],
+    queryFn: async () => {
+      const res = await fetch(`/api/chart-review/agreements/${agreement.id}/invites`);
+      if (!res.ok) return [];
+      return res.json();
+    },
+  });
+  const pendingInvites = invitesQuery.data ?? [];
 
   // Promote an existing chart-review-only collaborator to a full clinic
   // provider (admin-only). Reuses the same /api/clinic/upgrade-collaborator
@@ -1107,12 +1147,10 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
             </Button>
           </div>
 
-          {/* Unified collaborators list — seated (Active) + pending invites
-              shown together so pending invitees behave as first-class members
-              of this agreement. They will inherit ALL queued chart-review
-              items (count below) the moment they accept the invite. */}
-          {((collaboratorsQuery.data?.seated?.length ?? 0) > 0
-            || (collaboratorsQuery.data?.pending?.length ?? 0) > 0) && (
+          {/* Active collaborators on this agreement. Pending external invites
+              are surfaced in a dedicated "Pending invites" card below so admins
+              can resend or cancel them without scrolling through seated rows. */}
+          {(collaboratorsQuery.data?.seated?.length ?? 0) > 0 && (
             <div className="space-y-1.5">
               <Label className="text-xs">Collaborators on this agreement</Label>
               <div className="flex flex-col gap-1.5">
@@ -1150,48 +1188,102 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
                     </div>
                   );
                 })}
-                {(collaboratorsQuery.data?.pending ?? []).map((p) => (
-                  <div
-                    key={`pending-${p.id}`}
-                    className="flex items-center justify-between gap-2 rounded-md border border-dashed p-2 flex-wrap"
-                    data-testid={`row-pending-invite-${p.id}`}
-                  >
-                    <div className="flex items-center gap-2 flex-wrap">
-                      <Badge
-                        variant="outline"
-                        data-testid={`badge-pending-invite-${p.id}`}
-                        title={`Expires ${new Date(p.inviteExpires).toLocaleString()}`}
-                      >
-                        {p.displayName}{p.credentials ? ` (${p.credentials})` : ""}
-                      </Badge>
-                      <Badge variant="outline" className="text-xs">
-                        Pending · {p.accessScope === "full" ? "full" : "chart-review"}
-                      </Badge>
-                    </div>
-                    <Button
-                      size="sm"
-                      variant="ghost"
-                      onClick={() => cancelInviteMut.mutate(p.id)}
-                      disabled={cancelInviteMut.isPending}
-                      data-testid={`button-cancel-invite-${p.id}`}
-                    >
-                      Cancel invite
-                    </Button>
-                  </div>
-                ))}
               </div>
-              {(collaboratorsQuery.data?.pending?.length ?? 0) > 0 && (
-                <p className="text-xs text-muted-foreground" data-testid="text-pending-handoff-note">
-                  Pending invitees inherit this agreement's queue immediately on
-                  acceptance — they will pick up{" "}
-                  <strong>{collaboratorsQuery.data?.queuedItemCount ?? 0}</strong>{" "}
-                  chart{collaboratorsQuery.data?.queuedItemCount === 1 ? "" : "s"} currently waiting for review.
-                </p>
-              )}
             </div>
           )}
         </CardContent>
       </Card>
+
+      {/* Pending invites panel — every clinic_provider_invites row with
+          status='pending' for this agreement. Each row shows email, name,
+          access scope, sent date, plus Resend (re-emails the original token
+          and refreshes the 72h expiration) and Cancel (marks status='cancelled'
+          and audit-logs). Hidden entirely when there are no pending invites
+          so admins aren't shown an empty-state on every visit. */}
+      {pendingInvites.length > 0 && (
+        <Card data-testid="card-pending-invites">
+          <CardHeader className="space-y-1">
+            <CardTitle className="text-sm flex items-center gap-2">
+              <Mail className="w-4 h-4" />
+              Pending invites
+              <Badge variant="outline" className="text-xs" data-testid="badge-pending-invites-count">
+                {pendingInvites.length}
+              </Badge>
+            </CardTitle>
+            <p className="text-xs text-muted-foreground" data-testid="text-pending-handoff-note">
+              Outside physicians who haven't accepted their email invite yet.
+              They'll inherit this agreement's queue ({collaboratorsQuery.data?.queuedItemCount ?? 0}{" "}
+              chart{collaboratorsQuery.data?.queuedItemCount === 1 ? "" : "s"} currently waiting) the moment they accept.
+            </p>
+          </CardHeader>
+          <CardContent className="space-y-2">
+            {pendingInvites.map((p) => {
+              const expiresAt = new Date(p.inviteExpires);
+              const sentAt = new Date(p.createdAt);
+              const expired = expiresAt.getTime() <= Date.now();
+              return (
+                <div
+                  key={`pending-${p.id}`}
+                  className="flex items-start justify-between gap-3 rounded-md border border-dashed p-3 flex-wrap"
+                  data-testid={`row-pending-invite-${p.id}`}
+                >
+                  <div className="space-y-1 min-w-0 flex-1">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className="text-sm font-medium" data-testid={`text-pending-invite-name-${p.id}`}>
+                        {p.displayName}
+                      </span>
+                      {p.credentials && (
+                        <Badge variant="outline" className="text-xs" data-testid={`badge-pending-invite-credentials-${p.id}`}>
+                          {p.credentials}
+                        </Badge>
+                      )}
+                      <Badge variant="outline" className="text-xs" data-testid={`badge-pending-invite-scope-${p.id}`}>
+                        {p.accessScope === "full" ? "Full clinic access" : "Chart-review only"}
+                      </Badge>
+                      {expired && (
+                        <Badge variant="destructive" className="text-xs" data-testid={`badge-pending-invite-expired-${p.id}`}>
+                          Link expired
+                        </Badge>
+                      )}
+                    </div>
+                    <div className="text-xs text-muted-foreground break-all" data-testid={`text-pending-invite-email-${p.id}`}>
+                      {p.email}
+                    </div>
+                    <div className="text-xs text-muted-foreground" data-testid={`text-pending-invite-sent-${p.id}`}>
+                      Sent {format(sentAt, "MMM d, yyyy 'at' h:mm a")} ·{" "}
+                      {expired
+                        ? `Expired ${formatDistanceToNow(expiresAt, { addSuffix: true })}`
+                        : `Expires ${formatDistanceToNow(expiresAt, { addSuffix: true })}`}
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => resendInviteMut.mutate(p.id)}
+                      disabled={resendInviteMut.isPending || cancelInviteMut.isPending}
+                      data-testid={`button-resend-invite-${p.id}`}
+                    >
+                      <Send className="w-3.5 h-3.5 mr-1" />
+                      {resendInviteMut.isPending && resendInviteMut.variables === p.id ? "Resending…" : "Resend"}
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => cancelInviteMut.mutate(p.id)}
+                      disabled={cancelInviteMut.isPending || resendInviteMut.isPending}
+                      data-testid={`button-cancel-invite-${p.id}`}
+                    >
+                      <Trash2 className="w-3.5 h-3.5 mr-1" />
+                      Cancel
+                    </Button>
+                  </div>
+                </div>
+              );
+            })}
+          </CardContent>
+        </Card>
+      )}
 
       {/* Admin-only confirm dialog for upgrading an external reviewer to full
           provider. Mirrors the invite dialog's seat-confirm pattern: server may
@@ -1310,6 +1402,9 @@ function InviteExternalCollaboratorDialog({
     onSuccess: (data: any) => {
       queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements'] });
       queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreementId, 'collaborators'] });
+      // Refresh the new "Pending invites" panel so the just-sent invite shows
+      // up immediately, without waiting for a manual refetch / page refresh.
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreementId, 'invites'] });
       const isFull = data?.accessScope === "full";
       if (data?.mode === "linked_existing_user" || data?.mode === "linked_existing_provider") {
         toast({
