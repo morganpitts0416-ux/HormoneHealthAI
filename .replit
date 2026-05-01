@@ -64,3 +64,7 @@ STRIPE_PROVIDER_SEAT_PRICE_ID = "price_1TKR6NKbgudErHaMgd2q3k1p"
 
 [userenv.production]
 APP_URL = "https://app.cliniqapp.ai"
+
+[postMerge]
+path = "scripts/post-merge.sh"
+timeoutMs = 20000
