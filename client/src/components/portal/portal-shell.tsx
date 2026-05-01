@@ -66,8 +66,8 @@ export function PortalShell({ children, activeTab, headerSubtitle }: PortalShell
         <div className="max-w-3xl mx-auto px-4 sm:px-6 h-14 flex items-center justify-between gap-3">
           <Link href="/portal/dashboard">
             <img
-              src="/realign-health-logo.png"
-              alt="ReAlign Health"
+              src="/cliniq-logo.png"
+              alt="ClinIQ"
               className="h-12 sm:h-11 w-auto flex-shrink-0 cursor-pointer"
               style={{ mixBlendMode: "multiply" }}
               data-testid="link-portal-logo"

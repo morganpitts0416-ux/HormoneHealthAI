@@ -34,8 +34,8 @@ export default function BusinessAssociateAgreement() {
       <main className="max-w-4xl mx-auto px-4 sm:px-6 py-10">
         <div className="mb-8">
           <div className="flex items-center gap-2 mb-2">
-            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-7 w-auto" />
-            <span className="text-sm font-bold" style={{ color: "#1c2414" }}>ReAlign Health ClinIQ</span>
+            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-7 w-auto" />
+            <span className="text-sm font-bold" style={{ color: "#1c2414" }}>ClinIQ</span>
           </div>
           <h1 className="text-2xl font-bold mb-1" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>Business Associate Agreement</h1>
           <p className="text-xs" style={{ color: "#7a8a64" }}>Effective Date: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Last Updated: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>

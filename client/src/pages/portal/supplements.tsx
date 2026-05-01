@@ -729,7 +729,7 @@ export default function PortalSupplements() {
               <ChevronLeft className="w-4 h-4" /> Back
             </button>
           </Link>
-          <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-8 w-auto flex-shrink-0 absolute left-1/2 -translate-x-1/2" style={{ mixBlendMode: "multiply" }} />
+          <img src="/cliniq-logo.png" alt="ClinIQ" className="h-8 w-auto flex-shrink-0 absolute left-1/2 -translate-x-1/2" style={{ mixBlendMode: "multiply" }} />
           <Button
             variant="ghost" size="sm"
             onClick={() => logoutMutation.mutate()}

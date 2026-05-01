@@ -200,7 +200,7 @@ export function BaaGate({ children }: { children: React.ReactNode }) {
             </h1>
           </div>
           <p className="text-xs" style={{ color: "#7a8a64" }}>
-            ReAlign Health ClinIQ · Version {BAA_VERSION} · Effective upon signing
+            ClinIQ · Version {BAA_VERSION} · Effective upon signing
           </p>
 
           {BAA_SECTIONS.map((section) => (

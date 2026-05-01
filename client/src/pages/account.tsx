@@ -78,7 +78,7 @@ const MESSAGING_OPTIONS: {
   {
     value: 'in_app',
     label: 'In-app messaging',
-    description: 'Patients message you through the portal. You reply from the patient profile in ReAlign.',
+    description: 'Patients message you through the portal. You reply from the patient profile in ClinIQ.',
     icon: MessageSquare,
   },
   {
@@ -115,7 +115,7 @@ const CHANNEL_ID_LABELS: Record<ExternalProvider, { label: string; placeholder: 
   custom: {
     label: 'Endpoint URL',
     placeholder: 'https://your-platform.com/api/inbound',
-    hint: 'When a patient sends a message, ReAlign will POST the message JSON to this URL with your API key in the Authorization header.',
+    hint: 'When a patient sends a message, ClinIQ will POST the message JSON to this URL with your API key in the Authorization header.',
   },
 };
 

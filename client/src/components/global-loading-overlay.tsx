@@ -83,7 +83,7 @@ export function GlobalLoadingOverlay() {
           />
           <img
             src="/realign-emblem.png"
-            alt="ReAlign Health"
+            alt="ClinIQ"
             width={68}
             height={68}
             style={{ objectFit: "contain", position: "relative", zIndex: 1 }}

@@ -460,8 +460,8 @@ export default function Register() {
       >
         <div className="flex flex-col items-center text-center space-y-8 max-w-xs">
           <img
-            src="/realign-health-logo.png"
-            alt="ReAlign Health"
+            src="/cliniq-logo.png"
+            alt="ClinIQ"
             className="w-60 h-auto"
             style={{ mixBlendMode: "multiply" }}
           />
@@ -500,7 +500,7 @@ export default function Register() {
       <div className="flex-1 flex items-center justify-center p-8 bg-white overflow-y-auto">
         <div className="w-full max-w-md py-8">
           <div className="md:hidden flex justify-center mb-6" style={{ backgroundColor: "#e8ddd0", borderRadius: "12px", padding: "10px 20px" }}>
-            <img src="/realign-health-logo.png" alt="ReAlign Health" className="h-12 w-auto" style={{ mixBlendMode: "multiply" }} />
+            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-12 w-auto" style={{ mixBlendMode: "multiply" }} />
           </div>
 
           <div className="md:hidden rounded-md px-3 py-2 mb-4 flex items-center gap-2" style={{ backgroundColor: planColor }}>
@@ -510,7 +510,7 @@ export default function Register() {
 
           <div className="mb-6">
             <h1 className="text-2xl font-semibold" style={{ color: "#1c2414" }}>Create your account</h1>
-            <p className="text-sm mt-1 text-muted-foreground">Set up your ReAlign Health provider workspace</p>
+            <p className="text-sm mt-1 text-muted-foreground">Set up your ClinIQ provider workspace</p>
           </div>
 
           <div className="flex items-center mb-6">

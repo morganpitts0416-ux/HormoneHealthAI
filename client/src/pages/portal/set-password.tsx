@@ -64,8 +64,8 @@ export default function PortalSetPassword() {
         style={{ borderColor: "#e8ddd0", backgroundColor: "#f9f6f0" }}
       >
         <img
-          src="/realign-health-logo.png"
-          alt="ReAlign Health"
+          src="/cliniq-logo.png"
+          alt="ClinIQ"
           className="h-9 w-auto"
           style={{ mixBlendMode: "multiply" }}
         />
@@ -245,7 +245,7 @@ export default function PortalSetPassword() {
 
       <div className="py-5 text-center border-t" style={{ borderColor: "#e8ddd0" }}>
         <p className="text-xs" style={{ color: "#b0b8a0" }}>
-          Powered by ReAlign Health
+          Powered by ClinIQ
         </p>
       </div>
     </div>

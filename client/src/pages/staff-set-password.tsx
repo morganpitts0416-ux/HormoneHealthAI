@@ -76,8 +76,8 @@ export default function StaffSetPassword() {
       >
         <div className="flex flex-col items-center text-center space-y-8 max-w-xs">
           <img
-            src="/realign-health-logo.png"
-            alt="ReAlign Health"
+            src="/cliniq-logo.png"
+            alt="ClinIQ"
             className="w-64 h-auto"
             style={{ mixBlendMode: "multiply" }}
           />
@@ -101,8 +101,8 @@ export default function StaffSetPassword() {
             style={{ backgroundColor: "#e8ddd0", borderRadius: "12px", padding: "12px 24px" }}
           >
             <img
-              src="/realign-health-logo.png"
-              alt="ReAlign Health"
+              src="/cliniq-logo.png"
+              alt="ClinIQ"
               className="h-12 w-auto"
               style={{ mixBlendMode: "multiply" }}
             />

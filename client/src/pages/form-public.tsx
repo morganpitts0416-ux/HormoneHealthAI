@@ -423,7 +423,7 @@ function PageShell({ children, clinic, isEmbedded }: {
       </div>
       <div className="border-t py-6 text-center" style={{ borderColor: palette.border }}>
         <p className="text-xs" style={{ color: palette.muted }}>
-          Powered by ClinIQ by ReAlign Health
+          Powered by ClinIQ
         </p>
       </div>
     </div>
