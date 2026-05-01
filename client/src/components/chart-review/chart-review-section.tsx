@@ -96,9 +96,18 @@ export function ChartReviewSection() {
   const isMidLevel = agreements.some((a) => a.role === 'midlevel');
   const isPhysician = agreements.some((a) => a.role === 'physician');
 
-  // Default tab: physician-first if both, else mid-level (or "setup" if neither).
-  const defaultTab = isPhysician ? "physician" : isMidLevel ? "midlevel" : "setup";
-  const [tab, setTab] = useState<string>(defaultTab);
+  // Default tab: physician-first if both, else mid-level. We track only the
+  // user's explicit selection; the *rendered* tab is derived so that whenever
+  // the user's role flags change (e.g. data finishes loading, or they create
+  // their first agreement), we always land on a tab that actually exists.
+  const [tab, setTab] = useState<string | null>(null);
+  const allowedTabs: string[] = [
+    ...(isPhysician ? ["physician"] : []),
+    ...(isMidLevel ? ["midlevel", "agreement"] : []),
+  ];
+  const effectiveTab = tab && allowedTabs.includes(tab)
+    ? tab
+    : (isPhysician ? "physician" : isMidLevel ? "midlevel" : "");
 
   if (agreementsQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading…</div>;
@@ -119,7 +128,7 @@ export function ChartReviewSection() {
       {!isMidLevel && !isPhysician ? (
         <SetupAgreementCard userId={userId} />
       ) : (
-        <Tabs value={tab} onValueChange={setTab} className="w-full">
+        <Tabs value={effectiveTab} onValueChange={setTab} className="w-full">
           <TabsList>
             {isPhysician && <TabsTrigger value="physician" data-testid="tab-physician">As Collaborating Physician</TabsTrigger>}
             {isMidLevel && <TabsTrigger value="midlevel" data-testid="tab-midlevel">My Submissions</TabsTrigger>}
@@ -216,18 +225,19 @@ function SetupAgreementCard({ userId }: { userId: number }) {
 
 // ─── Mid-level view ─────────────────────────────────────────────────────
 function MidLevelView({ userId }: { userId: number }) {
-  const { toast } = useToast();
   const queueQuery = useQuery<{ agreement: Agreement | null; items: Item[] }>({
     queryKey: ['/api/chart-review/queue/midlevel'],
   });
   const data = queueQuery.data;
   const items = data?.items ?? [];
   const [openItemId, setOpenItemId] = useState<number | null>(null);
+  const [flagOpen, setFlagOpen] = useState(false);
 
   const rejected = items.filter((i) => i.status === 'rejected');
   const pending = items.filter((i) => i.status === 'pending' || i.status === 'amended_pending');
   const concurred = items.filter((i) => i.status === 'concurred' || i.status === 'amended_concurred');
   const submittedPct = items.length > 0 ? Math.round((concurred.length / items.length) * 100) : 0;
+  const queuedEncounterIds = new Set(items.map((i) => i.encounterId));
 
   return (
     <div className="space-y-4">
@@ -252,8 +262,12 @@ function MidLevelView({ userId }: { userId: number }) {
         </Card>
       )}
       <Card>
-        <CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 flex-wrap">
           <CardTitle className="text-sm">Submitted notes</CardTitle>
+          <Button size="sm" variant="outline" onClick={() => setFlagOpen(true)} data-testid="button-flag-note">
+            <ShieldCheck className="w-4 h-4 mr-1" />
+            Add note to review queue
+          </Button>
         </CardHeader>
         <CardContent className="space-y-2">
           {items.length === 0 && <p className="text-sm text-muted-foreground">No notes submitted yet.</p>}
@@ -263,7 +277,92 @@ function MidLevelView({ userId }: { userId: number }) {
         </CardContent>
       </Card>
       <ItemDetailDialog itemId={openItemId} onOpenChange={(o) => !o && setOpenItemId(null)} canDecide={false} />
+      <FlagNoteDialog
+        open={flagOpen}
+        onOpenChange={setFlagOpen}
+        excludeEncounterIds={queuedEncounterIds}
+      />
     </div>
+  );
+}
+
+// ─── Flag-a-signed-note dialog (mid-level manually queues a chart) ──────
+type SignedEncounter = {
+  id: number;
+  visitDate: string;
+  visitType: string | null;
+  chiefComplaint: string | null;
+  signedAt: string | null;
+  patientName?: string;
+  patientId: number;
+};
+
+function FlagNoteDialog({
+  open, onOpenChange, excludeEncounterIds,
+}: {
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+  excludeEncounterIds: Set<number>;
+}) {
+  const { toast } = useToast();
+  const encQuery = useQuery<SignedEncounter[]>({
+    queryKey: ['/api/encounters'],
+    enabled: open,
+  });
+  const eligible = (encQuery.data ?? []).filter((e) => e.signedAt && !excludeEncounterIds.has(e.id));
+  const [selected, setSelected] = useState<string>("");
+
+  const flagMut = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest('POST', '/api/chart-review/flag', {
+        encounterId: parseInt(selected),
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/queue/midlevel'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/queue/physician'] });
+      toast({ title: "Note flagged for review" });
+      setSelected("");
+      onOpenChange(false);
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+  });
+
+  return (
+    <Dialog open={open} onOpenChange={onOpenChange}>
+      <DialogContent data-testid="dialog-flag-note">
+        <DialogHeader>
+          <DialogTitle>Add a signed note to your review queue</DialogTitle>
+          <DialogDescription>
+            Pick one of your signed notes to send to your collaborating physician.
+          </DialogDescription>
+        </DialogHeader>
+        <div className="space-y-2">
+          <Label className="text-xs">Signed note</Label>
+          <Select value={selected} onValueChange={setSelected}>
+            <SelectTrigger data-testid="select-flag-encounter"><SelectValue placeholder="Choose a signed note…" /></SelectTrigger>
+            <SelectContent>
+              {eligible.length === 0 && (
+                <div className="text-xs text-muted-foreground p-2">No eligible signed notes.</div>
+              )}
+              {eligible.map((e) => (
+                <SelectItem key={e.id} value={String(e.id)} data-testid={`option-encounter-${e.id}`}>
+                  {e.patientName ?? `Patient #${e.patientId}`} — {format(new Date(e.visitDate), "MMM d, yyyy")}
+                  {e.chiefComplaint ? ` — ${e.chiefComplaint.slice(0, 40)}` : ""}
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+        </div>
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="button-cancel-flag">Cancel</Button>
+          <Button onClick={() => flagMut.mutate()} disabled={!selected || flagMut.isPending} data-testid="button-confirm-flag">
+            {flagMut.isPending ? "Adding…" : "Add to queue"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 
