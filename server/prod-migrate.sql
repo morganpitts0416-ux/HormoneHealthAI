@@ -593,3 +593,79 @@ CREATE INDEX IF NOT EXISTS vitals_monitoring_alerts_episode_idx
   ON vitals_monitoring_alerts (episode_id, alert_type);
 CREATE INDEX IF NOT EXISTS vitals_monitoring_alerts_dedupe_idx
   ON vitals_monitoring_alerts (episode_id, alert_type, alert_date);
+
+-- ── chart_review (collaborating physician chart review) ────
+CREATE TABLE IF NOT EXISTS chart_review_agreements (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  mid_level_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  review_type VARCHAR(20) NOT NULL DEFAULT 'retrospective',
+  quota_kind VARCHAR(10) NOT NULL DEFAULT 'percent',
+  quota_value INTEGER NOT NULL DEFAULT 20,
+  quota_period VARCHAR(10) NOT NULL DEFAULT 'month',
+  enforcement_period VARCHAR(10) NOT NULL DEFAULT 'quarter',
+  rule_controlled_substance BOOLEAN NOT NULL DEFAULT false,
+  rule_new_diagnosis BOOLEAN NOT NULL DEFAULT false,
+  min_quota_value INTEGER,
+  physician_locked_fields TEXT[],
+  physician_overridden_at TIMESTAMP,
+  physician_overridden_by INTEGER,
+  active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS chart_review_agreements_clinic_idx
+  ON chart_review_agreements (clinic_id, mid_level_user_id);
+
+CREATE TABLE IF NOT EXISTS chart_review_collaborators (
+  id SERIAL PRIMARY KEY,
+  agreement_id INTEGER NOT NULL REFERENCES chart_review_agreements(id) ON DELETE CASCADE,
+  physician_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  role VARCHAR(10) NOT NULL DEFAULT 'primary',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS chart_review_collaborators_agreement_idx
+  ON chart_review_collaborators (agreement_id);
+CREATE INDEX IF NOT EXISTS chart_review_collaborators_physician_idx
+  ON chart_review_collaborators (physician_user_id);
+
+CREATE TABLE IF NOT EXISTS chart_review_items (
+  id SERIAL PRIMARY KEY,
+  agreement_id INTEGER NOT NULL REFERENCES chart_review_agreements(id) ON DELETE CASCADE,
+  clinic_id INTEGER NOT NULL,
+  encounter_id INTEGER NOT NULL REFERENCES clinical_encounters(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL,
+  mid_level_user_id INTEGER NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  priority VARCHAR(20) NOT NULL DEFAULT 'sample',
+  mandatory_reasons TEXT[],
+  signed_at TIMESTAMP NOT NULL,
+  quota_period_key VARCHAR(10) NOT NULL,
+  enforcement_due_at TIMESTAMP NOT NULL,
+  assigned_reviewer_user_id INTEGER,
+  reviewed_by_user_id INTEGER,
+  reviewed_at TIMESTAMP,
+  amendment_count INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS chart_review_items_clinic_encounter_uq
+  ON chart_review_items (clinic_id, encounter_id);
+CREATE INDEX IF NOT EXISTS chart_review_items_agreement_status_idx
+  ON chart_review_items (agreement_id, status);
+CREATE INDEX IF NOT EXISTS chart_review_items_midlevel_idx
+  ON chart_review_items (mid_level_user_id, status);
+CREATE INDEX IF NOT EXISTS chart_review_items_period_idx
+  ON chart_review_items (agreement_id, quota_period_key);
+
+CREATE TABLE IF NOT EXISTS chart_review_comments (
+  id SERIAL PRIMARY KEY,
+  item_id INTEGER NOT NULL REFERENCES chart_review_items(id) ON DELETE CASCADE,
+  author_user_id INTEGER NOT NULL,
+  author_role VARCHAR(10) NOT NULL,
+  body TEXT NOT NULL,
+  type VARCHAR(20) NOT NULL DEFAULT 'comment',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS chart_review_comments_item_idx
+  ON chart_review_comments (item_id, created_at);
