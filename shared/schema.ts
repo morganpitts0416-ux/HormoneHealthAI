@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, time } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, time, uniqueIndex } from "drizzle-orm/pg-core";
 
 // Patient Demographics & ASCVD Risk Factors Schema
 export const patientDemographicsSchema = z.object({
@@ -1979,7 +1979,10 @@ export const chartReviewItems = pgTable("chart_review_items", {
   amendmentCount: integer("amendment_count").notNull().default(0),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Defense-in-depth: prevent double-queue under concurrent sign + manual flag.
+  uqClinicEncounter: uniqueIndex("chart_review_items_clinic_encounter_uq").on(t.clinicId, t.encounterId),
+}));
 export type ChartReviewItem = typeof chartReviewItems.$inferSelect;
 export const insertChartReviewItemSchema = createInsertSchema(chartReviewItems).omit({
   id: true, createdAt: true, updatedAt: true, reviewedAt: true, reviewedByUserId: true,

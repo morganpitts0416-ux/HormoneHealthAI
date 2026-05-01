@@ -12825,18 +12825,27 @@ IMPORTANT:
       }
       const existing = await (storage as any).getChartReviewAgreementForMidLevel(userId, clinicId);
       if (existing) return res.status(409).json({ message: "You already have an active agreement.", agreement: existing });
-      const created = await (storage as any).createChartReviewAgreement({
-        clinicId,
-        midLevelUserId: userId,
-        reviewType: body.reviewType ?? "retrospective",
-        quotaKind: body.quotaKind ?? "percent",
-        quotaValue: body.quotaValue ?? 20,
-        quotaPeriod: body.quotaPeriod ?? "month",
-        enforcementPeriod: body.enforcementPeriod ?? "quarter",
-        ruleControlledSubstance: body.ruleControlledSubstance !== false,
-        ruleNewDiagnosis: body.ruleNewDiagnosis !== false,
-      }, { primaryPhysicianUserId });
-      res.json(created);
+      try {
+        const created = await (storage as any).createChartReviewAgreement({
+          clinicId,
+          midLevelUserId: userId,
+          reviewType: body.reviewType ?? "retrospective",
+          quotaKind: body.quotaKind ?? "percent",
+          quotaValue: body.quotaValue ?? 20,
+          quotaPeriod: body.quotaPeriod ?? "month",
+          enforcementPeriod: body.enforcementPeriod ?? "quarter",
+          ruleControlledSubstance: body.ruleControlledSubstance !== false,
+          ruleNewDiagnosis: body.ruleNewDiagnosis !== false,
+        }, { primaryPhysicianUserId });
+        return res.json(created);
+      } catch (innerErr: any) {
+        // Friendly 400s for our explicit validation throws; everything else falls
+        // through to the outer 500.
+        if (typeof innerErr?.message === "string" && innerErr.message.startsWith("Primary physician must be")) {
+          return res.status(400).json({ message: innerErr.message });
+        }
+        throw innerErr;
+      }
     } catch (err) {
       console.error("[chart-review] create agreement error:", err);
       res.status(500).json({ message: "Failed to create agreement" });
@@ -12921,7 +12930,11 @@ IMPORTANT:
         return res.status(403).json({ message: "Not authorized" });
       }
       const created = await (storage as any).addChartReviewCollaborator(id, physicianUserId, role, clinicId);
-      if (!created) return res.status(404).json({ message: "Not found" });
+      if (!created) {
+        return res.status(400).json({
+          message: "Collaborating physician must be a different active provider in this clinic.",
+        });
+      }
       res.json(created);
     } catch (err) {
       console.error("[chart-review] add collaborator error:", err);
@@ -13127,6 +13140,30 @@ IMPORTANT:
     } catch (err) {
       console.error("[chart-review] preview flags error:", err);
       res.status(500).json({ message: "Failed to compute flags" });
+    }
+  });
+
+  // POST /api/chart-review/flag — mid-level manually adds an already-signed
+  // encounter to their review queue (useful for "I want a second set of eyes").
+  // Only the encounter's signing clinician (mid-level) may flag it.
+  app.post("/api/chart-review/flag", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const encounterId = parseInt(String(req.body?.encounterId));
+      if (!Number.isFinite(encounterId) || !clinicId) {
+        return res.status(400).json({ message: "encounterId required" });
+      }
+      const item = await (storage as any).flagChartForReview({
+        encounterId, midLevelUserId: userId, clinicId,
+      });
+      if (!item) {
+        return res.status(404).json({ message: "Cannot flag this chart (no agreement, not signed, or not your encounter)" });
+      }
+      res.json(item);
+    } catch (err) {
+      console.error("[chart-review] flag error:", err);
+      res.status(500).json({ message: "Failed to flag chart" });
     }
   });
 

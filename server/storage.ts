@@ -1,4 +1,4 @@
-import { eq, ne, desc, ilike, or, and, isNull, count, sql } from "drizzle-orm";
+import { eq, ne, desc, ilike, or, and, isNull, count, sql, inArray } from "drizzle-orm";
 import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -366,6 +366,14 @@ export interface IStorage {
     midLevelUserId: number;
     clinicId: number;
     sendForReview: boolean;
+  }): Promise<schema.ChartReviewItem | null>;
+  // Mid-level manually flags an already-signed chart for review. Always queues
+  // (idempotent — returns existing if already queued). Priority='midlevel_flag'
+  // unless mandatory reasons apply (then 'mandatory').
+  flagChartForReview(opts: {
+    encounterId: number;
+    midLevelUserId: number;
+    clinicId: number;
   }): Promise<schema.ChartReviewItem | null>;
   // Used by the "Send for review?" prompt to compute mandatory flags before signing.
   previewChartReviewFlags(opts: {
@@ -3095,7 +3103,26 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
   data: schema.InsertChartReviewAgreement,
   opts: { primaryPhysicianUserId: number },
 ): Promise<schema.ChartReviewAgreement> {
+  // The whole point of collaborating-physician oversight is independent review;
+  // a mid-level cannot designate themselves as their own collaborating physician.
+  if (opts.primaryPhysicianUserId === data.midLevelUserId) {
+    throw new Error("Primary physician must be a different user than the mid-level on the agreement");
+  }
   return await db.transaction(async (tx) => {
+    // Validate the primary physician is an active provider-role member of the
+    // same clinic. Prevents pinning a staff member or cross-tenant user as
+    // the collaborating physician.
+    const [m] = await tx.select({ id: schema.clinicMemberships.id })
+      .from(schema.clinicMemberships)
+      .where(and(
+        eq(schema.clinicMemberships.userId, opts.primaryPhysicianUserId),
+        eq(schema.clinicMemberships.clinicId, data.clinicId),
+        eq(schema.clinicMemberships.isActive, true),
+        eq(schema.clinicMemberships.clinicalRole, 'provider'),
+      )).limit(1);
+    if (!m) {
+      throw new Error("Primary physician must be an active provider in this clinic");
+    }
     const [row] = await tx.insert(schema.chartReviewAgreements).values(data).returning();
     await tx.insert(schema.chartReviewCollaborators).values({
       agreementId: row.id,
@@ -3199,19 +3226,36 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
 };
 
 // Defense-in-depth: only inserts when the agreement actually belongs to the
-// given clinic. Routes already check, but this guarantees we never write a
-// collaborator across tenants.
+// given clinic AND the proposed physician is an active provider in that clinic.
+// Routes already check, but this guarantees we never write a collaborator
+// across tenants or pin a non-clinical staff member as a "physician reviewer".
 (DbStorage.prototype as any).addChartReviewCollaborator = async function(
   agreementId: number, physicianUserId: number, role: 'primary' | 'backup', clinicId?: number,
 ): Promise<schema.ChartReviewCollaborator | null> {
   if (clinicId != null) {
-    const [agr] = await db.select({ id: schema.chartReviewAgreements.id })
+    const [agr] = await db.select({
+      id: schema.chartReviewAgreements.id,
+      midLevelUserId: schema.chartReviewAgreements.midLevelUserId,
+    })
       .from(schema.chartReviewAgreements)
       .where(and(
         eq(schema.chartReviewAgreements.id, agreementId),
         eq(schema.chartReviewAgreements.clinicId, clinicId),
       )).limit(1);
     if (!agr) return null;
+    // The mid-level cannot collaborate-on-themself; collaborating-physician
+    // oversight requires an independent reviewer.
+    if (agr.midLevelUserId === physicianUserId) return null;
+    // Validate proposed physician is an active provider-role member of this clinic.
+    const [m] = await db.select({ id: schema.clinicMemberships.id })
+      .from(schema.clinicMemberships)
+      .where(and(
+        eq(schema.clinicMemberships.userId, physicianUserId),
+        eq(schema.clinicMemberships.clinicId, clinicId),
+        eq(schema.clinicMemberships.isActive, true),
+        eq(schema.clinicMemberships.clinicalRole, 'provider'),
+      )).limit(1);
+    if (!m) return null;
   }
   const [row] = await db.insert(schema.chartReviewCollaborators).values({
     agreementId, physicianUserId, role,
@@ -3287,13 +3331,30 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
     ));
 
   const now = new Date();
+  if (rows.length === 0) return [];
+  // Single batched fetch of all items for the agreements in scope, scoped to
+  // each agreement's current quota period. Avoids N+1 against chart_review_items.
+  const agreementIds = rows.map((r) => r.agreement.id);
+  const periodKeyByAgreement = new Map<number, string>();
+  for (const r of rows) {
+    periodKeyByAgreement.set(
+      r.agreement.id,
+      computeQuotaPeriodKey(now, r.agreement.quotaPeriod as 'month' | 'quarter' | 'year'),
+    );
+  }
+  const allItems = await db.select().from(schema.chartReviewItems).where(
+    inArray(schema.chartReviewItems.agreementId, agreementIds),
+  );
+  const itemsByAgreement = new Map<number, typeof allItems>();
+  for (const it of allItems) {
+    if (it.quotaPeriodKey !== periodKeyByAgreement.get(it.agreementId)) continue;
+    const arr = itemsByAgreement.get(it.agreementId) ?? [];
+    arr.push(it);
+    itemsByAgreement.set(it.agreementId, arr);
+  }
   const out: any[] = [];
   for (const r of rows) {
-    const periodKey = computeQuotaPeriodKey(now, r.agreement.quotaPeriod as 'month' | 'quarter' | 'year');
-    const items = await db.select().from(schema.chartReviewItems).where(and(
-      eq(schema.chartReviewItems.agreementId, r.agreement.id),
-      eq(schema.chartReviewItems.quotaPeriodKey, periodKey),
-    ));
+    const items = itemsByAgreement.get(r.agreement.id) ?? [];
     const total = items.length;
     const completed = items.filter((i) => i.status === 'concurred' || i.status === 'amended_concurred').length;
     const pending = items.filter((i) => i.status === 'pending' || i.status === 'amended_pending').length;
@@ -3415,12 +3476,21 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
       return undefined;
     }
     const isAmendmentFlow = existing.status === 'amended_pending';
+    // Race-safe conditional update: only flip status if it's still in a
+    // pending state. If two physicians click Concur at once, the second
+    // update returns no row and we exit cleanly.
+    const expectedStatus = isAmendmentFlow ? 'amended_pending' : 'pending';
     const [updated] = await tx.update(schema.chartReviewItems).set({
       status: isAmendmentFlow ? 'amended_concurred' : 'concurred',
       reviewedByUserId: physicianUserId,
       reviewedAt: new Date(),
       updatedAt: new Date(),
-    }).where(eq(schema.chartReviewItems.id, id)).returning();
+    }).where(and(
+      eq(schema.chartReviewItems.id, id),
+      eq(schema.chartReviewItems.clinicId, clinicId),
+      eq(schema.chartReviewItems.status, expectedStatus),
+    )).returning();
+    if (!updated) return undefined;
     if (comment && comment.trim()) {
       await tx.insert(schema.chartReviewComments).values({
         itemId: id,
@@ -3446,13 +3516,23 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
     if (existing.assignedReviewerUserId && existing.assignedReviewerUserId !== physicianUserId) {
       return undefined;
     }
+    // Conditional update: only reject if still pending (initial or amendment).
+    // Prevents two physicians double-rejecting.
     const [updated] = await tx.update(schema.chartReviewItems).set({
       status: 'rejected',
       assignedReviewerUserId: physicianUserId, // lock re-review to this physician
       reviewedByUserId: physicianUserId,
       reviewedAt: new Date(),
       updatedAt: new Date(),
-    }).where(eq(schema.chartReviewItems.id, id)).returning();
+    }).where(and(
+      eq(schema.chartReviewItems.id, id),
+      eq(schema.chartReviewItems.clinicId, clinicId),
+      or(
+        eq(schema.chartReviewItems.status, 'pending'),
+        eq(schema.chartReviewItems.status, 'amended_pending'),
+      ),
+    )).returning();
+    if (!updated) return undefined;
     await tx.insert(schema.chartReviewComments).values({
       itemId: id,
       authorUserId: physicianUserId,
@@ -3517,15 +3597,21 @@ async function _resolveMandatoryReasons(
   const isMandatory = reasons.length > 0;
   if (!isMandatory && !opts.sendForReview) return null;
 
-  const [encounter] = await db.select().from(schema.clinicalEncounters).where(
+  // Scope encounter lookup by clinicId AND clinicianId — same defense-in-depth
+  // as flagChartForReview so we never queue an encounter from another tenant.
+  const [encounter] = await db.select().from(schema.clinicalEncounters).where(and(
     eq(schema.clinicalEncounters.id, opts.encounterId),
-  ).limit(1);
+    eq(schema.clinicalEncounters.clinicId, opts.clinicId),
+    eq(schema.clinicalEncounters.clinicianId, opts.midLevelUserId),
+  )).limit(1);
   if (!encounter || !encounter.signedAt) return null;
 
   const signedAt = new Date(encounter.signedAt);
   const quotaPeriodKey = computeQuotaPeriodKey(signedAt, agreement.quotaPeriod as 'month' | 'quarter' | 'year');
   const enforcementDueAt = computeEnforcementDueAt(signedAt, agreement.enforcementPeriod as 'month' | 'quarter' | 'year');
 
+  // Race-safe insert: unique index on (clinic_id, encounter_id) blocks duplicates
+  // when sign-hook + manual flag fire concurrently or when sign is retried.
   const [created] = await db.insert(schema.chartReviewItems).values({
     agreementId: agreement.id,
     clinicId: opts.clinicId,
@@ -3538,8 +3624,68 @@ async function _resolveMandatoryReasons(
     signedAt,
     quotaPeriodKey,
     enforcementDueAt,
-  }).returning();
-  return created;
+  }).onConflictDoNothing({ target: [schema.chartReviewItems.clinicId, schema.chartReviewItems.encounterId] }).returning();
+  if (created) return created;
+  const [raced] = await db.select().from(schema.chartReviewItems).where(and(
+    eq(schema.chartReviewItems.encounterId, opts.encounterId),
+    eq(schema.chartReviewItems.clinicId, opts.clinicId),
+  )).limit(1);
+  return raced ?? null;
+};
+
+(DbStorage.prototype as any).flagChartForReview = async function(opts: {
+  encounterId: number;
+  midLevelUserId: number;
+  clinicId: number;
+}): Promise<schema.ChartReviewItem | null> {
+  const agreement = await (this as any).getChartReviewAgreementForMidLevel(opts.midLevelUserId, opts.clinicId);
+  if (!agreement) return null;
+
+  // Idempotent: if already queued, return existing row.
+  const [existing] = await db.select().from(schema.chartReviewItems).where(and(
+    eq(schema.chartReviewItems.encounterId, opts.encounterId),
+    eq(schema.chartReviewItems.clinicId, opts.clinicId),
+  )).limit(1);
+  if (existing) return existing;
+
+  // Verify the encounter belongs to this mid-level AND this clinic and is signed.
+  // Scoping by clinicId is required to prevent a clinician with encounters in
+  // multiple clinics from flagging an external encounter into the current clinic.
+  const [encounter] = await db.select().from(schema.clinicalEncounters).where(and(
+    eq(schema.clinicalEncounters.id, opts.encounterId),
+    eq(schema.clinicalEncounters.clinicianId, opts.midLevelUserId),
+    eq(schema.clinicalEncounters.clinicId, opts.clinicId),
+  )).limit(1);
+  if (!encounter || !encounter.signedAt) return null;
+
+  const reasons = await _resolveMandatoryReasons(opts.encounterId, opts.midLevelUserId, agreement);
+  const isMandatory = reasons.length > 0;
+  const signedAt = new Date(encounter.signedAt);
+  const quotaPeriodKey = computeQuotaPeriodKey(signedAt, agreement.quotaPeriod as 'month' | 'quarter' | 'year');
+  const enforcementDueAt = computeEnforcementDueAt(signedAt, agreement.enforcementPeriod as 'month' | 'quarter' | 'year');
+
+  // Race-safe insert: a unique index on (clinic_id, encounter_id) prevents
+  // double-queue. If a concurrent sign-hook already inserted the row,
+  // onConflictDoNothing returns no row — re-fetch the existing one.
+  const [created] = await db.insert(schema.chartReviewItems).values({
+    agreementId: agreement.id,
+    clinicId: opts.clinicId,
+    encounterId: opts.encounterId,
+    patientId: encounter.patientId,
+    midLevelUserId: opts.midLevelUserId,
+    status: 'pending',
+    priority: isMandatory ? 'mandatory' : 'midlevel_flag',
+    mandatoryReasons: isMandatory ? reasons : null,
+    signedAt,
+    quotaPeriodKey,
+    enforcementDueAt,
+  }).onConflictDoNothing({ target: [schema.chartReviewItems.clinicId, schema.chartReviewItems.encounterId] }).returning();
+  if (created) return created;
+  const [raced] = await db.select().from(schema.chartReviewItems).where(and(
+    eq(schema.chartReviewItems.encounterId, opts.encounterId),
+    eq(schema.chartReviewItems.clinicId, opts.clinicId),
+  )).limit(1);
+  return raced ?? null;
 };
 
 (DbStorage.prototype as any).previewChartReviewFlags = async function(opts: {
