@@ -6000,6 +6000,16 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         }
       }
 
+      // Slice 2 prospective-gate: chart parked for collaborating-physician
+      // review is read-only until the physician concurs (which finalizes the
+      // sign) or rejects (which unlocks for editing).
+      const lockCheck = await storage.getEncounter(id, clinicianId, clinicId);
+      if (lockCheck?.pendingCollabReview) {
+        return res.status(423).json({
+          message: "This chart is locked pending collaborating-physician review and cannot be edited.",
+        });
+      }
+
       const updated = await storage.updateEncounter(id, clinicianId, {
         ...(visitDate !== undefined && { visitDate: new Date(visitDate) }),
         ...(visitType !== undefined && { visitType }),
@@ -6042,6 +6052,14 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
             expectedPatientId: exp,
           });
         }
+      }
+
+      // Slice 2 prospective-gate: SOAP edits blocked while pending review.
+      const lockCheck = await storage.getEncounter(id, clinicianId, clinicId);
+      if (lockCheck?.pendingCollabReview) {
+        return res.status(423).json({
+          message: "This SOAP note is locked pending collaborating-physician review and cannot be edited.",
+        });
       }
 
       const updated = await storage.updateEncounter(id, clinicianId, { soapNote }, clinicId);
@@ -6110,9 +6128,60 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
       const now = new Date();
 
+      // ── Prospective collaborating-physician gate ────────────────────────
+      // If the mid-level is under a Prospective agreement and this chart hits
+      // a mandatory rule (controlled substance / new diagnosis), we DON'T
+      // finalize the sign. Instead the chart is locked-pending-review: edits
+      // are blocked, but signedAt stays null until the physician concurs.
+      // Skip entirely for staff sessions, non-provider notes, amendments to
+      // already-signed charts, and missing clinic context.
+      const existingVersionsForGate = (encounter.encounterVersions as any[] | null) ?? [];
+      const isAmendmentSign = !!encounter.signedAt || existingVersionsForGate.length > 0 || !!encounter.isAmended;
+      if (!isStaff && noteType === "soap_provider" && clinicId && !isAmendmentSign) {
+        try {
+          const gate = await chartReviewStorage.getProspectiveGateState({
+            encounterId: id,
+            midLevelUserId: clinicianId,
+            clinicId,
+          });
+          if (gate.shouldGate && gate.agreement) {
+            // Atomic park-and-queue: encounter lock + chart_review_item
+            // insert happen in one DB transaction. If the queue write
+            // fails, the encounter is NOT left half-locked.
+            const { item, encounter: updatedGated } = await chartReviewStorage.submitProspectiveChartForReview({
+              encounterId: id,
+              midLevelUserId: clinicianId,
+              clinicId,
+              agreement: gate.agreement,
+              reasons: gate.reasons,
+              parkEncounter: { signedBy },
+            });
+            if (!updatedGated || !item) {
+              // Defense-in-depth: if the atomic submission fails for any
+              // reason, fall through to the standard (retrospective) sign
+              // path rather than block the user. The post-sign hook below
+              // will still queue the chart for review retrospectively.
+              console.warn('[Sign] prospective parking failed, falling back to retrospective sign for encounter', id);
+            } else {
+              return res.json({
+                ...updatedGated,
+                chartReviewItem: item,
+                pendingReview: true,
+                prospectiveGate: true,
+              });
+            }
+          }
+        } catch (e) {
+          // Defense-in-depth: if the gate calculation itself fails, fall
+          // through to standard sign rather than block the user. The
+          // post-sign enqueue hook below will still queue retrospectively.
+          console.warn('[Sign] prospective gate check failed (non-fatal):', (e as any)?.message ?? e);
+        }
+      }
+
       // Build version snapshot for audit trail
-      const existingVersions = (encounter.encounterVersions as any[] | null) ?? [];
-      const isAlreadySigned = !!encounter.signedAt || existingVersions.length > 0 || !!encounter.isAmended;
+      const existingVersions = existingVersionsForGate;
+      const isAlreadySigned = isAmendmentSign;
       const newVersion = {
         version: existingVersions.length + 1,
         soapNote: encounter.soapNote,
@@ -6127,6 +6196,11 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         isAmended: isAlreadySigned,
         amendedAt: isAlreadySigned ? now : undefined,
         encounterVersions: [...existingVersions, newVersion],
+        // If this is an amendment of a previously prospectively-gated chart,
+        // clear the pending flag — the signedAt above represents a fresh
+        // initial physician concur or an unrelated amendment path.
+        pendingCollabReview: false,
+        lockedAt: now,
       } as any, clinicId);
 
       // Collaborating-physician chart review hook. Provider SOAPs only;
@@ -6177,9 +6251,21 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         }
       }
 
+      // Slice 2: a chart parked for collaborating-physician review can NOT
+      // be unilaterally amended out of that state. The mid-level must wait
+      // for the physician to either concur (which finalizes the sign and
+      // makes amendment possible) or reject (which auto-clears the lock).
+      if (encounter.pendingCollabReview) {
+        return res.status(423).json({
+          message: "This chart is awaiting collaborating-physician review. You cannot amend it until the physician concurs or rejects it.",
+        });
+      }
+
       const updated = await storage.updateEncounter(id, clinicianId, {
         signedAt: null,
         signedBy: null,
+        // Clear the lock timestamp too so the chart is fully editable again.
+        lockedAt: null,
       } as any, clinicId);
 
       res.json(updated);
@@ -12839,8 +12925,9 @@ IMPORTANT:
         }, { primaryPhysicianUserId });
         return res.json(created);
       } catch (innerErr: any) {
-        // Friendly 400s for our explicit validation throws; everything else falls
-        // through to the outer 500.
+        // Friendly 400s for our explicit validation throws (different user,
+        // active provider, MD/DO title); everything else falls through to the
+        // outer 500.
         if (typeof innerErr?.message === "string" && innerErr.message.startsWith("Primary physician must be")) {
           return res.status(400).json({ message: innerErr.message });
         }

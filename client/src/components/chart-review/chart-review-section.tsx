@@ -187,18 +187,29 @@ export function ChartReviewSection() {
   );
 }
 
+// Collaborating-physician role of record is reserved by most state
+// scope-of-practice rules to MDs and DOs only. Mirrors the server-side
+// guard in createChartReviewAgreement / addChartReviewCollaborator.
+const COLLAB_TITLES = new Set(["MD", "DO"]);
+function isCollabEligible(m: ClinicMember): boolean {
+  return COLLAB_TITLES.has((m.title ?? "").trim().toUpperCase());
+}
+
 // ─── Setup card (mid-level creates first agreement) ────────────────────
 function SetupAgreementCard({ userId }: { userId: number }) {
   const { toast } = useToast();
   const membersQuery = useQuery<ClinicMember[]>({ queryKey: ['/api/clinic/members'] });
   const members = membersQuery.data ?? [];
-  const physicianCandidates = members.filter((m) => m.id !== userId);
+  // Filter to MD/DO only — picker should never offer an ineligible candidate.
+  const physicianCandidates = members.filter((m) => m.id !== userId && isCollabEligible(m));
   const [primary, setPrimary] = useState<string>("");
+  const [quotaKind, setQuotaKind] = useState<'percent' | 'count'>("percent");
   const [quota, setQuota] = useState<number>(20);
   const createMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest('POST', '/api/chart-review/agreements', {
         primaryPhysicianUserId: parseInt(primary),
+        quotaKind,
         quotaValue: quota,
       });
       return res.json();
@@ -216,14 +227,17 @@ function SetupAgreementCard({ userId }: { userId: number }) {
       </CardHeader>
       <CardContent className="space-y-3">
         <p className="text-sm text-muted-foreground">
-          As a mid-level clinician, configure the physician who will review a percentage
-          of your signed notes. You can adjust quota and rules anytime.
+          As a mid-level clinician, configure the physician (MD or DO) who will review
+          a percentage — or fixed count — of your signed notes. You can adjust quota
+          and rules anytime.
         </p>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
           <div>
-            <Label className="text-xs">Primary collaborating physician</Label>
+            <Label className="text-xs">Primary collaborating physician (MD/DO)</Label>
             <Select value={primary} onValueChange={setPrimary}>
-              <SelectTrigger data-testid="select-primary-physician"><SelectValue placeholder="Choose physician" /></SelectTrigger>
+              <SelectTrigger data-testid="select-primary-physician">
+                <SelectValue placeholder={physicianCandidates.length === 0 ? "No MD/DO members in this clinic" : "Choose physician"} />
+              </SelectTrigger>
               <SelectContent>
                 {physicianCandidates.map((m) => (
                   <SelectItem key={m.id} value={String(m.id)} data-testid={`option-physician-${m.id}`}>
@@ -234,11 +248,23 @@ function SetupAgreementCard({ userId }: { userId: number }) {
             </Select>
           </div>
           <div>
-            <Label className="text-xs">Monthly quota (%)</Label>
+            <Label className="text-xs">Quota kind</Label>
+            <Select value={quotaKind} onValueChange={(v) => setQuotaKind(v as 'percent' | 'count')}>
+              <SelectTrigger data-testid="select-quota-kind"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="percent">Percent of signed notes</SelectItem>
+                <SelectItem value="count">Fixed count of charts</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div className="sm:col-span-2">
+            <Label className="text-xs">
+              {quotaKind === 'percent' ? "Monthly quota (%)" : "Monthly quota (charts)"}
+            </Label>
             <Input
               type="number"
               min={1}
-              max={100}
+              max={quotaKind === 'percent' ? 100 : 999}
               value={quota}
               onChange={(e) => setQuota(parseInt(e.target.value || "0"))}
               data-testid="input-quota-value"
@@ -741,6 +767,7 @@ function ItemDetailDialog({ itemId, onOpenChange, canDecide }: {
 function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: number }) {
   const { toast } = useToast();
   const [reviewType, setReviewType] = useState(agreement.reviewType);
+  const [quotaKind, setQuotaKind] = useState<'percent' | 'count'>((agreement.quotaKind as 'percent' | 'count') ?? 'percent');
   const [quotaValue, setQuotaValue] = useState(agreement.quotaValue);
   const [quotaPeriod, setQuotaPeriod] = useState(agreement.quotaPeriod);
   const [enforcementPeriod, setEnforcementPeriod] = useState(agreement.enforcementPeriod);
@@ -763,7 +790,7 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
   const saveMut = useMutation({
     mutationFn: async () => {
       const res = await apiRequest('PATCH', `/api/chart-review/agreements/${agreement.id}`, {
-        reviewType, quotaValue, quotaPeriod, enforcementPeriod,
+        reviewType, quotaKind, quotaValue, quotaPeriod, enforcementPeriod,
         ruleControlledSubstance, ruleNewDiagnosis,
       });
       return res.json();
@@ -807,13 +834,40 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
                 <SelectTrigger data-testid="select-review-type"><SelectValue /></SelectTrigger>
                 <SelectContent>
                   <SelectItem value="retrospective">Retrospective (standard)</SelectItem>
-                  <SelectItem value="prospective">Prospective (Slice 2)</SelectItem>
+                  <SelectItem value="prospective">Prospective (full gate)</SelectItem>
                 </SelectContent>
               </Select>
             </div>
             <div>
-              <Label className="text-xs">Quota value (%) {isLocked('quotaValue') && <Badge variant="outline" className="ml-1">locked</Badge>}</Label>
-              <Input type="number" min={1} max={100} value={quotaValue} onChange={(e) => setQuotaValue(parseInt(e.target.value || "0"))} disabled={isLocked('quotaValue')} data-testid="input-quota-value" />
+              <Label className="text-xs">
+                Quota kind {isLocked('quotaKind') && <Badge variant="outline" className="ml-1">locked</Badge>}
+              </Label>
+              <Select
+                value={quotaKind}
+                onValueChange={(v) => setQuotaKind(v === 'count' ? 'count' : 'percent')}
+                disabled={isLocked('quotaKind')}
+              >
+                <SelectTrigger data-testid="select-quota-kind"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="percent">Percent of signed notes</SelectItem>
+                  <SelectItem value="count">Fixed count of charts</SelectItem>
+                </SelectContent>
+              </Select>
+            </div>
+            <div>
+              <Label className="text-xs">
+                {quotaKind === 'percent' ? "Quota value (%)" : "Quota value (charts)"}
+                {isLocked('quotaValue') && <Badge variant="outline" className="ml-1">locked</Badge>}
+              </Label>
+              <Input
+                type="number"
+                min={1}
+                max={quotaKind === 'percent' ? 100 : 999}
+                value={quotaValue}
+                onChange={(e) => setQuotaValue(parseInt(e.target.value || "0"))}
+                disabled={isLocked('quotaValue')}
+                data-testid="input-quota-value"
+              />
             </div>
             <div>
               <Label className="text-xs">Quota period {isLocked('quotaPeriod') && <Badge variant="outline" className="ml-1">locked</Badge>}</Label>
@@ -861,16 +915,27 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
             Backup physicians share the queue but do not increase your quota.
+            Only MD or DO members can serve as collaborating physicians.
           </p>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="flex-1 min-w-48">
-              <Label className="text-xs">Physician</Label>
+              <Label className="text-xs">Physician (MD/DO)</Label>
               <Select value={newCollabId} onValueChange={setNewCollabId}>
-                <SelectTrigger data-testid="select-new-collaborator"><SelectValue placeholder="Choose…" /></SelectTrigger>
+                <SelectTrigger data-testid="select-new-collaborator">
+                  <SelectValue placeholder={
+                    (membersQuery.data ?? []).filter((m) => m.id !== userId && isCollabEligible(m)).length === 0
+                      ? "No MD/DO members in this clinic"
+                      : "Choose…"
+                  } />
+                </SelectTrigger>
                 <SelectContent>
-                  {(membersQuery.data ?? []).filter((m) => m.id !== userId).map((m) => (
-                    <SelectItem key={m.id} value={String(m.id)}>{m.displayName}</SelectItem>
-                  ))}
+                  {(membersQuery.data ?? [])
+                    .filter((m) => m.id !== userId && isCollabEligible(m))
+                    .map((m) => (
+                      <SelectItem key={m.id} value={String(m.id)}>
+                        {m.displayName}{m.title ? ` — ${m.title}` : ""}
+                      </SelectItem>
+                    ))}
                 </SelectContent>
               </Select>
             </div>

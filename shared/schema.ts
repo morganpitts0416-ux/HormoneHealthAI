@@ -1034,6 +1034,14 @@ export const clinicalEncounters = pgTable("clinical_encounters", {
   isAmended: boolean("is_amended").notNull().default(false),
   amendedAt: timestamp("amended_at"),
   encounterVersions: jsonb("encounter_versions").$type<EncounterVersion[]>(), // audit trail
+  // ── Prospective collaborating-physician gate (Slice 2) ───────────────────
+  // When a mid-level under a Prospective agreement clicks Sign on a chart that
+  // would normally be queued for collaborating-physician review, we DON'T set
+  // signedAt; instead we set lockedAt + pendingCollabReview so the chart is
+  // immutable while awaiting concurrence. Concur finalizes signedAt; reject
+  // clears both flags so the mid-level can edit and re-submit.
+  lockedAt: timestamp("locked_at"),
+  pendingCollabReview: boolean("pending_collab_review").notNull().default(false),
   // ── Multi-clinic foundation (nullable — populated by migration) ──────────
   clinicId: integer("clinic_id"),   // No FK constraint during initial rollout
   providerId: integer("provider_id"), // No FK constraint during initial rollout
