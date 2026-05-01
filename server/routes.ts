@@ -40,7 +40,7 @@ import {
   generateWebhookSecret,
   type ExternalProvider,
 } from "./external-messaging";
-import { storage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership, updateClinicPlanFromStripe } from "./storage";
+import { storage, chartReviewStorage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership, updateClinicPlanFromStripe } from "./storage";
 import { getClinicPlanState, getActiveProviderCount, calculateRequiredSeatQuantity, SUITE_BASE_PROVIDER_LIMIT, EXTRA_SEAT_MONTHLY_PRICE } from "./clinic-plan";
 import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
@@ -6134,7 +6134,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       let chartReviewItem: any = null;
       try {
         if (!isStaff && noteType === "soap_provider" && clinicId) {
-          chartReviewItem = await (storage as any).enqueueChartForReviewIfApplicable({
+          chartReviewItem = await chartReviewStorage.enqueueChartForReviewIfApplicable({
             encounterId: id,
             midLevelUserId: clinicianId,
             clinicId,
@@ -12801,7 +12801,7 @@ IMPORTANT:
       const userId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.json([]);
-      const list = await (storage as any).listChartReviewAgreementsForUser(userId, clinicId);
+      const list = await chartReviewStorage.listChartReviewAgreementsForUser(userId, clinicId);
       res.json(list);
     } catch (err) {
       console.error("[chart-review] list agreements error:", err);
@@ -12823,10 +12823,10 @@ IMPORTANT:
       if (!Number.isFinite(primaryPhysicianUserId)) {
         return res.status(400).json({ message: "primaryPhysicianUserId required" });
       }
-      const existing = await (storage as any).getChartReviewAgreementForMidLevel(userId, clinicId);
+      const existing = await chartReviewStorage.getChartReviewAgreementForMidLevel(userId, clinicId);
       if (existing) return res.status(409).json({ message: "You already have an active agreement.", agreement: existing });
       try {
-        const created = await (storage as any).createChartReviewAgreement({
+        const created = await chartReviewStorage.createChartReviewAgreement({
           clinicId,
           midLevelUserId: userId,
           reviewType: body.reviewType ?? "retrospective",
@@ -12860,10 +12860,10 @@ IMPORTANT:
       const id = parseInt(req.params.id);
       if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
       // Look up the agreement scoped to this caller's clinic.
-      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
       if (!agreement) return res.status(404).json({ message: "Not found" });
       // Determine actor role from real ownership (not from "is not a physician").
-      const collaborators = await (storage as any).listChartReviewCollaborators(id, clinicId);
+      const collaborators = await chartReviewStorage.listChartReviewCollaborators(id, clinicId);
       const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
       const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
       const adminRole = await getSessionAdminRole(req);
@@ -12894,13 +12894,13 @@ IMPORTANT:
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
-      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
       if (!agreement) return res.status(404).json({ message: "Not found" });
-      const collaborators = await (storage as any).listChartReviewCollaborators(id, clinicId);
+      const collaborators = await chartReviewStorage.listChartReviewCollaborators(id, clinicId);
       const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
       if (!isPhysicianOnAgreement) return res.status(403).json({ message: "Only collaborating physicians can override." });
       const lockedFields = Array.isArray(req.body?.lockedFields) ? req.body.lockedFields : [];
-      const updated = await (storage as any).setPhysicianOverride(id, clinicId, lockedFields, userId);
+      const updated = await chartReviewStorage.setPhysicianOverride(id, clinicId, lockedFields, userId);
       if (!updated) return res.status(404).json({ message: "Not found" });
       res.json(updated);
     } catch (err) {
@@ -12921,7 +12921,7 @@ IMPORTANT:
       if (!Number.isFinite(id) || !Number.isFinite(physicianUserId) || !clinicId) {
         return res.status(400).json({ message: "Invalid request" });
       }
-      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
       if (!agreement) return res.status(404).json({ message: "Not found" });
       const adminRole = await getSessionAdminRole(req);
       const isAdmin = adminRole === "owner" || adminRole === "admin";
@@ -12929,7 +12929,7 @@ IMPORTANT:
       if (!isMidLevelOnAgreement && !isAdmin) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      const created = await (storage as any).addChartReviewCollaborator(id, physicianUserId, role, clinicId);
+      const created = await chartReviewStorage.addChartReviewCollaborator(id, physicianUserId, role, clinicId);
       if (!created) {
         return res.status(400).json({
           message: "Collaborating physician must be a different active provider in this clinic.",
@@ -12953,7 +12953,7 @@ IMPORTANT:
       if (!Number.isFinite(id) || !Number.isFinite(cid) || !clinicId) {
         return res.status(400).json({ message: "Invalid request" });
       }
-      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
       if (!agreement) return res.status(404).json({ message: "Not found" });
       const adminRole = await getSessionAdminRole(req);
       const isAdmin = adminRole === "owner" || adminRole === "admin";
@@ -12961,7 +12961,7 @@ IMPORTANT:
       if (!isMidLevelOnAgreement && !isAdmin) {
         return res.status(403).json({ message: "Not authorized" });
       }
-      const ok = await (storage as any).removeChartReviewCollaborator(cid, id, clinicId);
+      const ok = await chartReviewStorage.removeChartReviewCollaborator(cid, id, clinicId);
       res.json({ ok });
     } catch (err) {
       console.error("[chart-review] remove collaborator error:", err);
@@ -12976,7 +12976,7 @@ IMPORTANT:
       const userId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.json([]);
-      const list = await (storage as any).listMidLevelsForPhysician(userId, clinicId);
+      const list = await chartReviewStorage.listMidLevelsForPhysician(userId, clinicId);
       res.json(list);
     } catch (err) {
       console.error("[chart-review] physician queue error:", err);
@@ -12990,9 +12990,9 @@ IMPORTANT:
       const userId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.json({ agreement: null, items: [] });
-      const agreement = await (storage as any).getChartReviewAgreementForMidLevel(userId, clinicId);
+      const agreement = await chartReviewStorage.getChartReviewAgreementForMidLevel(userId, clinicId);
       if (!agreement) return res.json({ agreement: null, items: [] });
-      const items = await (storage as any).listChartReviewItemsForAgreement(agreement.id, { clinicId });
+      const items = await chartReviewStorage.listChartReviewItemsForAgreement(agreement.id, { clinicId });
       res.json({ agreement, items });
     } catch (err) {
       console.error("[chart-review] midlevel queue error:", err);
@@ -13008,15 +13008,15 @@ IMPORTANT:
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
-      const agreement = await (storage as any).getChartReviewAgreementById(id, clinicId);
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
       if (!agreement) return res.status(404).json({ message: "Not found" });
-      const collaborators = await (storage as any).listChartReviewCollaborators(id, clinicId);
+      const collaborators = await chartReviewStorage.listChartReviewCollaborators(id, clinicId);
       const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
       const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
       if (!isMidLevelOnAgreement && !isPhysicianOnAgreement) {
         return res.status(403).json({ message: "Not on this agreement" });
       }
-      const items = await (storage as any).listChartReviewItemsForAgreement(id, { clinicId });
+      const items = await chartReviewStorage.listChartReviewItemsForAgreement(id, { clinicId });
       res.json(items);
     } catch (err) {
       console.error("[chart-review] agreement items error:", err);
@@ -13032,15 +13032,15 @@ IMPORTANT:
       const userId = getClinicianId(req);
       const id = parseInt(req.params.id);
       if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
-      const item = await (storage as any).getChartReviewItem(id, clinicId);
+      const item = await chartReviewStorage.getChartReviewItem(id, clinicId);
       if (!item) return res.status(404).json({ message: "Not found" });
-      const collaborators = await (storage as any).listChartReviewCollaborators(item.agreementId, clinicId);
+      const collaborators = await chartReviewStorage.listChartReviewCollaborators(item.agreementId, clinicId);
       const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
       const isMidLevelOnItem = item.midLevelUserId === userId;
       if (!isMidLevelOnItem && !isPhysicianOnAgreement) {
         return res.status(403).json({ message: "Not on this item" });
       }
-      const comments = await (storage as any).listChartReviewComments(id, clinicId);
+      const comments = await chartReviewStorage.listChartReviewComments(id, clinicId);
       // Pull encounter for context (server-side scoped to clinic via storage).
       const encounter = await storage.getEncounter(item.encounterId, userId, clinicId);
       res.json({ item, comments, encounter });
@@ -13057,12 +13057,12 @@ IMPORTANT:
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
-      const item = await (storage as any).getChartReviewItem(id, clinicId);
+      const item = await chartReviewStorage.getChartReviewItem(id, clinicId);
       if (!item) return res.status(404).json({ message: "Not found" });
-      const collaborators = await (storage as any).listChartReviewCollaborators(item.agreementId, clinicId);
+      const collaborators = await chartReviewStorage.listChartReviewCollaborators(item.agreementId, clinicId);
       const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
       if (!isPhysicianOnAgreement) return res.status(403).json({ message: "Only collaborating physicians can concur." });
-      const updated = await (storage as any).concurChartReviewItem(id, clinicId, userId, req.body?.comment);
+      const updated = await chartReviewStorage.concurChartReviewItem(id, clinicId, userId, req.body?.comment);
       if (!updated) return res.status(409).json({ message: "Cannot concur (assigned to another reviewer)." });
       res.json(updated);
     } catch (err) {
@@ -13080,12 +13080,12 @@ IMPORTANT:
       const reason = String(req.body?.reason ?? "").trim();
       if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
       if (!reason) return res.status(400).json({ message: "A rejection reason is required." });
-      const item = await (storage as any).getChartReviewItem(id, clinicId);
+      const item = await chartReviewStorage.getChartReviewItem(id, clinicId);
       if (!item) return res.status(404).json({ message: "Not found" });
-      const collaborators = await (storage as any).listChartReviewCollaborators(item.agreementId, clinicId);
+      const collaborators = await chartReviewStorage.listChartReviewCollaborators(item.agreementId, clinicId);
       const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
       if (!isPhysicianOnAgreement) return res.status(403).json({ message: "Only collaborating physicians can reject." });
-      const updated = await (storage as any).rejectChartReviewItem(id, clinicId, userId, reason);
+      const updated = await chartReviewStorage.rejectChartReviewItem(id, clinicId, userId, reason);
       if (!updated) return res.status(409).json({ message: "Cannot reject (assigned to another reviewer)." });
       res.json(updated);
     } catch (err) {
@@ -13103,15 +13103,15 @@ IMPORTANT:
       const body = String(req.body?.body ?? "").trim();
       if (!Number.isFinite(id) || !clinicId) return res.status(400).json({ message: "Invalid request" });
       if (!body) return res.status(400).json({ message: "Comment body required" });
-      const item = await (storage as any).getChartReviewItem(id, clinicId);
+      const item = await chartReviewStorage.getChartReviewItem(id, clinicId);
       if (!item) return res.status(404).json({ message: "Not found" });
-      const collaborators = await (storage as any).listChartReviewCollaborators(item.agreementId, clinicId);
+      const collaborators = await chartReviewStorage.listChartReviewCollaborators(item.agreementId, clinicId);
       const isPhysicianOnAgreement = collaborators.some((c: any) => c.physicianUserId === userId);
       const isMidLevel = item.midLevelUserId === userId;
       if (!isPhysicianOnAgreement && !isMidLevel) {
         return res.status(403).json({ message: "Not on this agreement" });
       }
-      const created = await (storage as any).addChartReviewComment({
+      const created = await chartReviewStorage.addChartReviewComment({
         itemId: id,
         authorUserId: userId,
         authorRole: isPhysicianOnAgreement ? "physician" : "midlevel",
@@ -13135,7 +13135,7 @@ IMPORTANT:
       if (!Number.isFinite(encounterId) || !clinicId) {
         return res.json({ hasAgreement: false, wouldBeMandatory: false, mandatoryReasons: [], runningPeriodPct: 0, quotaTargetPct: 0 });
       }
-      const result = await (storage as any).previewChartReviewFlags({ encounterId, midLevelUserId: userId, clinicId });
+      const result = await chartReviewStorage.previewChartReviewFlags({ encounterId, midLevelUserId: userId, clinicId });
       res.json(result);
     } catch (err) {
       console.error("[chart-review] preview flags error:", err);
@@ -13154,7 +13154,7 @@ IMPORTANT:
       if (!Number.isFinite(encounterId) || !clinicId) {
         return res.status(400).json({ message: "encounterId required" });
       }
-      const item = await (storage as any).flagChartForReview({
+      const item = await chartReviewStorage.flagChartForReview({
         encounterId, midLevelUserId: userId, clinicId,
       });
       if (!item) {

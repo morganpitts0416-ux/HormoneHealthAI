@@ -12,6 +12,7 @@ import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Progress } from "@/components/ui/progress";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import { useAuth } from "@/hooks/use-auth";
+import type { SoapNote } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { CheckCircle2, XCircle, Clock, AlertTriangle, MessageSquare, ChevronRight, ArrowLeft, ShieldCheck, UserPlus, Trash2 } from "lucide-react";
@@ -75,6 +76,37 @@ type Comment = {
   createdAt: string;
 };
 
+type EncounterDetail = {
+  id: number;
+  visitDate: string | null;
+  chiefComplaint: string | null;
+  soapNote: SoapNote | null;
+};
+
+type ItemDetailResponse = {
+  item: Item;
+  comments: Comment[];
+  encounter: EncounterDetail | null;
+};
+
+type CollaboratorRow = {
+  id: number;
+  agreementId: number;
+  physicianUserId: number;
+  role: 'primary' | 'backup';
+  physicianName?: string | null;
+};
+
+// Narrows arbitrary thrown values to a user-facing message string so we can
+// wire mutation onError handlers without resorting to `any` casts.
+function errorMessage(e: unknown): string {
+  if (e && typeof e === "object" && "message" in e) {
+    const m = (e as { message?: unknown }).message;
+    if (typeof m === "string") return m;
+  }
+  return "Something went wrong. Please try again.";
+}
+
 type MidLevelCard = {
   agreement: Agreement;
   midLevel: { id: number; firstName: string | null; lastName: string | null; title: string | null };
@@ -87,7 +119,7 @@ type MidLevelCard = {
 
 export function ChartReviewSection() {
   const { user } = useAuth();
-  const userId = (user as any)?.id;
+  const userId = user?.id;
 
   const agreementsQuery = useQuery<Agreement[]>({
     queryKey: ['/api/chart-review/agreements'],
@@ -175,7 +207,7 @@ function SetupAgreementCard({ userId }: { userId: number }) {
       queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements'] });
       toast({ title: "Chart review agreement created" });
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Failed", description: errorMessage(e) }),
   });
   return (
     <Card data-testid="card-chart-review-setup">
@@ -326,7 +358,7 @@ function FlagNoteDialog({
       setSelected("");
       onOpenChange(false);
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Failed", description: errorMessage(e) }),
   });
 
   return (
@@ -507,9 +539,9 @@ function ItemDetailDialog({ itemId, onOpenChange, canDecide }: {
 }) {
   const { toast } = useToast();
   const { user } = useAuth();
-  const userId = (user as any)?.id;
+  const userId = user?.id;
   const open = itemId !== null;
-  const detailQuery = useQuery<{ item: Item; comments: Comment[]; encounter: any }>({
+  const detailQuery = useQuery<ItemDetailResponse>({
     queryKey: ['/api/chart-review/items', itemId],
     enabled: open,
     queryFn: async () => {
@@ -536,7 +568,7 @@ function ItemDetailDialog({ itemId, onOpenChange, canDecide }: {
       onOpenChange(false);
       setComment(""); setShowReject(false); setRejectReason("");
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Failed", description: errorMessage(e) }),
   });
   const rejectMut = useMutation({
     mutationFn: async () => {
@@ -551,7 +583,7 @@ function ItemDetailDialog({ itemId, onOpenChange, canDecide }: {
       onOpenChange(false);
       setComment(""); setShowReject(false); setRejectReason("");
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Failed", description: errorMessage(e) }),
   });
   const commentMut = useMutation({
     mutationFn: async () => {
@@ -565,12 +597,12 @@ function ItemDetailDialog({ itemId, onOpenChange, canDecide }: {
       detailQuery.refetch();
       toast({ title: "Comment added" });
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Failed", description: errorMessage(e) }),
   });
 
   const item = data?.item;
   const encounter = data?.encounter;
-  const soap: any = encounter?.soapNote;
+  const soap: SoapNote | null = encounter?.soapNote ?? null;
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
@@ -717,7 +749,7 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
   const lockedFields: string[] = agreement.physicianLockedFields ?? [];
   const isLocked = (f: string) => lockedFields.includes(f);
 
-  const collaboratorsQuery = useQuery<any[]>({
+  const collaboratorsQuery = useQuery<CollaboratorRow[]>({
     queryKey: ['/api/chart-review/agreements', agreement.id, 'collaborators'],
     queryFn: async () => {
       // No dedicated GET — derive from listChartReviewAgreementsForUser (returns own agreement, not collaborators).
@@ -740,7 +772,7 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
       queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements'] });
       toast({ title: "Agreement updated" });
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Failed", description: errorMessage(e) }),
   });
 
   const addCollabMut = useMutation({
@@ -752,7 +784,7 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
       queryClient.invalidateQueries();
       toast({ title: "Collaborator added" });
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Failed", description: e.message }),
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Failed", description: errorMessage(e) }),
   });
 
   const [newCollabId, setNewCollabId] = useState<string>("");
