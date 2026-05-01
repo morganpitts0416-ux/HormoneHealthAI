@@ -6738,12 +6738,13 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
+      let encounter = await storage.getEncounter(id, clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
-      if (!encounter.soapNote) return res.status(400).json({ message: "No SOAP note to sign." });
 
       // PATIENT-SAFETY: stale-context tripwire — never sign+lock a chart that
-      // belongs to a different patient than the UI is showing.
+      // belongs to a different patient than the UI is showing. Run this
+      // BEFORE persisting any edited soapNote so a stale UI never overwrites
+      // another patient's note.
       if (req.body?.expectedPatientId !== undefined && req.body?.expectedPatientId !== null) {
         const exp = parseInt(String(req.body.expectedPatientId));
         if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
@@ -6755,6 +6756,21 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
           });
         }
       }
+
+      // Persist any unsaved SOAP edits sent with the sign request so the
+      // signed snapshot reflects what the clinician saw on screen, not the
+      // last separately-saved version. The client now always sends `soapNote`
+      // with the sign payload; legacy callers that omit it still work.
+      if (req.body?.soapNote !== undefined && req.body?.soapNote !== null) {
+        const persisted = await storage.updateEncounter(
+          id,
+          clinicianId,
+          { soapNote: req.body.soapNote },
+          clinicId,
+        );
+        if (persisted) encounter = persisted;
+      }
+      if (!encounter.soapNote) return res.status(400).json({ message: "No SOAP note to sign." });
 
       const noteType = (encounter as any).noteType ?? "soap_provider";
       if (noteType === "soap_provider" && isStaff) {
