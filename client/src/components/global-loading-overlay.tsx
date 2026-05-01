@@ -82,11 +82,11 @@ export function GlobalLoadingOverlay() {
             }}
           />
           <img
-            src="/realign-emblem.png"
+            src="/cliniq-logo.png"
             alt="ClinIQ"
-            width={68}
+            width={120}
             height={68}
-            style={{ objectFit: "contain", position: "relative", zIndex: 1 }}
+            style={{ objectFit: "contain", position: "relative", zIndex: 1, mixBlendMode: "multiply" }}
           />
         </div>
       </div>

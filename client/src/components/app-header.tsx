@@ -59,8 +59,8 @@ export function AppHeader() {
       <div className="max-w-[1400px] mx-auto px-3 sm:px-6 h-14 flex items-center justify-between gap-2">
         <div className="flex items-center gap-2 sm:gap-4 flex-shrink-0 min-w-0">
           <img
-            src="/realign-health-logo.png"
-            alt="ReAlign Health"
+            src="/cliniq-logo.png"
+            alt="ClinIQ"
             className="h-12 sm:h-14 w-auto flex-shrink-0 cursor-pointer"
             style={{ mixBlendMode: "multiply" }}
             onClick={() => setLocation("/dashboard")}
