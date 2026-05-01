@@ -15,7 +15,7 @@ import { useAuth } from "@/hooks/use-auth";
 import type { SoapNote } from "@shared/schema";
 import { useToast } from "@/hooks/use-toast";
 import { apiRequest, queryClient } from "@/lib/queryClient";
-import { CheckCircle2, XCircle, Clock, AlertTriangle, MessageSquare, ChevronRight, ArrowLeft, ShieldCheck, UserPlus, Trash2 } from "lucide-react";
+import { CheckCircle2, XCircle, Clock, AlertTriangle, MessageSquare, ChevronRight, ArrowLeft, ShieldCheck, UserPlus, Trash2, Mail } from "lucide-react";
 import { format } from "date-fns";
 
 type Agreement = {
@@ -32,7 +32,7 @@ type Agreement = {
   active: boolean;
   physicianLockedFields: string[] | null;
   minQuotaValue: number | null;
-  role?: 'midlevel' | 'physician';
+  role?: 'midlevel' | 'physician' | 'admin';
   collaboratorRole?: 'primary' | 'backup';
 };
 
@@ -97,6 +97,31 @@ type CollaboratorRow = {
   physicianName?: string | null;
 };
 
+type CollaboratorsList = {
+  /** All chart-review items currently queued under this agreement. Tells the
+   *  inviting mid-level/admin how many charts a pending invitee will inherit
+   *  the moment they accept (everyone on an agreement shares the queue). */
+  queuedItemCount: number;
+  seated: Array<{
+    id: number;
+    physicianUserId: number;
+    role: 'primary' | 'backup';
+    displayName: string;
+    email: string;
+    accessScope: 'full' | 'chart_review_only' | null;
+    clinicalRole: string | null;
+  }>;
+  pending: Array<{
+    id: number;
+    email: string;
+    displayName: string;
+    credentials: 'MD' | 'DO' | null;
+    accessScope: 'full' | 'chart_review_only';
+    inviteExpires: string;
+    createdAt: string;
+  }>;
+};
+
 // Narrows arbitrary thrown values to a user-facing message string so we can
 // wire mutation onError handlers without resorting to `any` casts.
 function errorMessage(e: unknown): string {
@@ -127,19 +152,28 @@ export function ChartReviewSection() {
   const agreements = agreementsQuery.data ?? [];
   const isMidLevel = agreements.some((a) => a.role === 'midlevel');
   const isPhysician = agreements.some((a) => a.role === 'physician');
+  // Admin oversight: clinic owners/admins receive an extra "Admin oversight"
+  // tab that lists every agreement in the clinic (server tags those as
+  // role:'admin'), so admins who aren't on an agreement can still invite,
+  // cancel pending invites, and upgrade chart-review-only collaborators.
+  const isAdmin = user?.adminRole === "owner" || user?.adminRole === "admin";
+  const adminAgreements = agreements.filter((a) => a.role === 'admin');
+  const showAdminTab = isAdmin && adminAgreements.length > 0;
+  const [adminAgreementId, setAdminAgreementId] = useState<number | null>(null);
+  const selectedAdminAgreement = adminAgreements.find((a) => a.id === adminAgreementId)
+    ?? adminAgreements[0]
+    ?? null;
 
-  // Default tab: physician-first if both, else mid-level. We track only the
-  // user's explicit selection; the *rendered* tab is derived so that whenever
-  // the user's role flags change (e.g. data finishes loading, or they create
-  // their first agreement), we always land on a tab that actually exists.
+  // Default tab: physician-first if both, else mid-level, else admin oversight.
   const [tab, setTab] = useState<string | null>(null);
   const allowedTabs: string[] = [
     ...(isPhysician ? ["physician"] : []),
     ...(isMidLevel ? ["midlevel", "agreement"] : []),
+    ...(showAdminTab ? ["admin"] : []),
   ];
   const effectiveTab = tab && allowedTabs.includes(tab)
     ? tab
-    : (isPhysician ? "physician" : isMidLevel ? "midlevel" : "");
+    : (isPhysician ? "physician" : isMidLevel ? "midlevel" : showAdminTab ? "admin" : "");
 
   if (agreementsQuery.isLoading) {
     return <div className="text-sm text-muted-foreground">Loading…</div>;
@@ -157,7 +191,7 @@ export function ChartReviewSection() {
         </p>
       </div>
 
-      {!isMidLevel && !isPhysician ? (
+      {!isMidLevel && !isPhysician && !showAdminTab ? (
         <SetupAgreementCard userId={userId} />
       ) : (
         <Tabs value={effectiveTab} onValueChange={setTab} className="w-full">
@@ -165,6 +199,7 @@ export function ChartReviewSection() {
             {isPhysician && <TabsTrigger value="physician" data-testid="tab-physician">As Collaborating Physician</TabsTrigger>}
             {isMidLevel && <TabsTrigger value="midlevel" data-testid="tab-midlevel">My Submissions</TabsTrigger>}
             {isMidLevel && <TabsTrigger value="agreement" data-testid="tab-agreement">Agreement</TabsTrigger>}
+            {showAdminTab && <TabsTrigger value="admin" data-testid="tab-admin-oversight">Admin oversight</TabsTrigger>}
           </TabsList>
           {isPhysician && (
             <TabsContent value="physician">
@@ -179,6 +214,35 @@ export function ChartReviewSection() {
           {isMidLevel && (
             <TabsContent value="agreement">
               <AgreementEditor agreement={agreements.find((a) => a.role === 'midlevel')!} userId={userId} />
+            </TabsContent>
+          )}
+          {showAdminTab && (
+            <TabsContent value="admin">
+              <div className="space-y-3">
+                {adminAgreements.length > 1 && (
+                  <div className="flex items-center gap-2">
+                    <Label className="text-xs">Agreement</Label>
+                    <Select
+                      value={String(selectedAdminAgreement?.id ?? "")}
+                      onValueChange={(v) => setAdminAgreementId(parseInt(v))}
+                    >
+                      <SelectTrigger className="w-[260px]" data-testid="select-admin-agreement">
+                        <SelectValue placeholder="Select agreement" />
+                      </SelectTrigger>
+                      <SelectContent>
+                        {adminAgreements.map((a) => (
+                          <SelectItem key={a.id} value={String(a.id)} data-testid={`option-admin-agreement-${a.id}`}>
+                            Agreement #{a.id}
+                          </SelectItem>
+                        ))}
+                      </SelectContent>
+                    </Select>
+                  </div>
+                )}
+                {selectedAdminAgreement && (
+                  <AgreementEditor agreement={selectedAdminAgreement} userId={userId} />
+                )}
+              </div>
             </TabsContent>
           )}
         </Tabs>
@@ -776,12 +840,15 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
   const lockedFields: string[] = agreement.physicianLockedFields ?? [];
   const isLocked = (f: string) => lockedFields.includes(f);
 
-  const collaboratorsQuery = useQuery<CollaboratorRow[]>({
+  // Lists both seated (active) collaborators AND pending external invites for
+  // this agreement. The pending list satisfies the "newly invited reviewer
+  // appears immediately even before they accept" UX requirement.
+  const collaboratorsQuery = useQuery<CollaboratorsList>({
     queryKey: ['/api/chart-review/agreements', agreement.id, 'collaborators'],
     queryFn: async () => {
-      // No dedicated GET — derive from listChartReviewAgreementsForUser (returns own agreement, not collaborators).
-      // Show via a separate endpoint would be ideal; for slice 1 we list nothing here besides the primary.
-      return [];
+      const res = await fetch(`/api/chart-review/agreements/${agreement.id}/collaborators`);
+      if (!res.ok) return { seated: [], pending: [] };
+      return res.json();
     },
   });
 
@@ -816,6 +883,75 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
 
   const [newCollabId, setNewCollabId] = useState<string>("");
   const [newCollabRole, setNewCollabRole] = useState<'primary' | 'backup'>("backup");
+  const [externalOpen, setExternalOpen] = useState(false);
+
+  const { user: authUser } = useAuth();
+  const isAdmin = authUser?.adminRole === "owner" || authUser?.adminRole === "admin";
+
+  // Cancel a still-pending external-physician invite. Releases any reserved
+  // Stripe seat (the server handles that) and refreshes the collaborator list.
+  const cancelInviteMut = useMutation({
+    mutationFn: async (inviteId: number) => {
+      const res = await apiRequest('DELETE', `/api/chart-review/agreements/${agreement.id}/invites/${inviteId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreement.id, 'collaborators'] });
+      toast({ title: "Invite cancelled" });
+    },
+    onError: (e: unknown) => toast({ variant: "destructive", title: "Cancel failed", description: errorMessage(e) }),
+  });
+
+  // Promote an existing chart-review-only collaborator to a full clinic
+  // provider (admin-only). Reuses the same /api/clinic/upgrade-collaborator
+  // endpoint the seat-prompt path uses, including the 402 confirmation
+  // round-trip when an extra Stripe seat is needed.
+  const [upgradeTarget, setUpgradeTarget] = useState<{
+    userId: number;
+    displayName: string;
+  } | null>(null);
+  const [upgradeSeatPrompt, setUpgradeSeatPrompt] = useState<{
+    message: string;
+    seatPrice?: number;
+  } | null>(null);
+  const [upgradeConfirm, setUpgradeConfirm] = useState(false);
+  const upgradeMut = useMutation({
+    mutationFn: async (vars: { userId: number; confirmExtraSeat?: boolean }) => {
+      const res = await apiRequest('POST', `/api/clinic/upgrade-collaborator`, {
+        userId: vars.userId,
+        confirmExtraSeat: vars.confirmExtraSeat ?? false,
+      });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreement.id, 'collaborators'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/clinic/members'] });
+      toast({
+        title: "Upgraded to full provider",
+        description: data?.billingUpdated
+          ? "An extra seat was added to your subscription."
+          : "No seat charge — your plan had room.",
+      });
+      setUpgradeTarget(null);
+      setUpgradeSeatPrompt(null);
+      setUpgradeConfirm(false);
+    },
+    onError: (e: any) => {
+      const msg = typeof e?.message === "string" ? e.message : "";
+      if (msg.startsWith("402:")) {
+        let detail: any = null;
+        try { detail = JSON.parse(msg.slice(4).trim()); } catch { /* ignore */ }
+        if (detail?.requiresSeatConfirmation) {
+          setUpgradeSeatPrompt({
+            message: detail?.message ?? "Upgrading this collaborator will add an extra seat to your subscription.",
+            seatPrice: detail?.seatPrice,
+          });
+          return;
+        }
+      }
+      toast({ variant: "destructive", title: "Upgrade failed", description: errorMessage(e) });
+    },
+  });
 
   return (
     <div className="space-y-4">
@@ -911,11 +1047,23 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
       </Card>
 
       <Card>
-        <CardHeader><CardTitle className="text-sm">Add backup collaborating physician</CardTitle></CardHeader>
+        <CardHeader className="flex flex-row items-center justify-between gap-2 space-y-0 flex-wrap">
+          <CardTitle className="text-sm">Add backup collaborating physician</CardTitle>
+          <Button
+            size="sm"
+            variant="outline"
+            onClick={() => setExternalOpen(true)}
+            data-testid="button-open-invite-external"
+          >
+            <Mail className="w-4 h-4 mr-1" />
+            Invite outside MD/DO
+          </Button>
+        </CardHeader>
         <CardContent className="space-y-3">
           <p className="text-xs text-muted-foreground">
             Backup physicians share the queue but do not increase your quota.
             Only MD or DO members can serve as collaborating physicians.
+            Outside physicians joining for chart review only do not consume a clinic seat.
           </p>
           <div className="flex items-end gap-2 flex-wrap">
             <div className="flex-1 min-w-48">
@@ -958,9 +1106,402 @@ function AgreementEditor({ agreement, userId }: { agreement: Agreement; userId: 
               Add
             </Button>
           </div>
+
+          {/* Unified collaborators list — seated (Active) + pending invites
+              shown together so pending invitees behave as first-class members
+              of this agreement. They will inherit ALL queued chart-review
+              items (count below) the moment they accept the invite. */}
+          {((collaboratorsQuery.data?.seated?.length ?? 0) > 0
+            || (collaboratorsQuery.data?.pending?.length ?? 0) > 0) && (
+            <div className="space-y-1.5">
+              <Label className="text-xs">Collaborators on this agreement</Label>
+              <div className="flex flex-col gap-1.5">
+                {(collaboratorsQuery.data?.seated ?? []).map((s) => {
+                  const isExternal = s.accessScope === "chart_review_only";
+                  return (
+                    <div
+                      key={`seated-${s.id}`}
+                      className="flex items-center justify-between gap-2 rounded-md border p-2 flex-wrap"
+                      data-testid={`row-seated-collaborator-${s.physicianUserId}`}
+                    >
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <Badge variant="secondary" data-testid={`badge-seated-collaborator-${s.physicianUserId}`}>
+                          {s.displayName}
+                        </Badge>
+                        <Badge variant="outline" className="text-xs">{s.role}</Badge>
+                        <Badge
+                          variant="outline"
+                          className="text-xs"
+                          data-testid={`badge-scope-${s.physicianUserId}`}
+                        >
+                          {isExternal ? "Active · chart-review" : "Active · full"}
+                        </Badge>
+                      </div>
+                      {isExternal && isAdmin && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          onClick={() => { setUpgradeTarget({ userId: s.physicianUserId, displayName: s.displayName }); setUpgradeConfirm(false); setUpgradeSeatPrompt(null); }}
+                          data-testid={`button-upgrade-collaborator-${s.physicianUserId}`}
+                        >
+                          Upgrade to full access
+                        </Button>
+                      )}
+                    </div>
+                  );
+                })}
+                {(collaboratorsQuery.data?.pending ?? []).map((p) => (
+                  <div
+                    key={`pending-${p.id}`}
+                    className="flex items-center justify-between gap-2 rounded-md border border-dashed p-2 flex-wrap"
+                    data-testid={`row-pending-invite-${p.id}`}
+                  >
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <Badge
+                        variant="outline"
+                        data-testid={`badge-pending-invite-${p.id}`}
+                        title={`Expires ${new Date(p.inviteExpires).toLocaleString()}`}
+                      >
+                        {p.displayName}{p.credentials ? ` (${p.credentials})` : ""}
+                      </Badge>
+                      <Badge variant="outline" className="text-xs">
+                        Pending · {p.accessScope === "full" ? "full" : "chart-review"}
+                      </Badge>
+                    </div>
+                    <Button
+                      size="sm"
+                      variant="ghost"
+                      onClick={() => cancelInviteMut.mutate(p.id)}
+                      disabled={cancelInviteMut.isPending}
+                      data-testid={`button-cancel-invite-${p.id}`}
+                    >
+                      Cancel invite
+                    </Button>
+                  </div>
+                ))}
+              </div>
+              {(collaboratorsQuery.data?.pending?.length ?? 0) > 0 && (
+                <p className="text-xs text-muted-foreground" data-testid="text-pending-handoff-note">
+                  Pending invitees inherit this agreement's queue immediately on
+                  acceptance — they will pick up{" "}
+                  <strong>{collaboratorsQuery.data?.queuedItemCount ?? 0}</strong>{" "}
+                  chart{collaboratorsQuery.data?.queuedItemCount === 1 ? "" : "s"} currently waiting for review.
+                </p>
+              )}
+            </div>
+          )}
         </CardContent>
       </Card>
+
+      {/* Admin-only confirm dialog for upgrading an external reviewer to full
+          provider. Mirrors the invite dialog's seat-confirm pattern: server may
+          short-circuit with 402 + requiresSeatConfirmation when an extra seat
+          is needed; we then surface the seat price and re-submit with confirm. */}
+      <Dialog open={!!upgradeTarget} onOpenChange={(o) => { if (!o) { setUpgradeTarget(null); setUpgradeSeatPrompt(null); setUpgradeConfirm(false); } }}>
+        <DialogContent data-testid="dialog-upgrade-collaborator">
+          <DialogHeader>
+            <DialogTitle>Upgrade to full clinic access</DialogTitle>
+            <DialogDescription>
+              {upgradeTarget?.displayName} currently has chart-review-only
+              access in this clinic. Upgrading converts them to a full provider
+              with access to all patients, encounters, and clinic data.
+            </DialogDescription>
+          </DialogHeader>
+          {upgradeSeatPrompt && (
+            <div className="rounded-md border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-2">
+              <p className="text-xs" data-testid="text-upgrade-seat-prompt">{upgradeSeatPrompt.message}</p>
+              <label className="flex items-center gap-2 text-xs">
+                <input
+                  type="checkbox"
+                  checked={upgradeConfirm}
+                  onChange={(e) => setUpgradeConfirm(e.target.checked)}
+                  data-testid="checkbox-upgrade-confirm-seat"
+                />
+                Yes, add an extra seat to my subscription
+              </label>
+            </div>
+          )}
+          <DialogFooter>
+            <Button
+              variant="ghost"
+              onClick={() => { setUpgradeTarget(null); setUpgradeSeatPrompt(null); setUpgradeConfirm(false); }}
+              data-testid="button-cancel-upgrade"
+            >
+              Cancel
+            </Button>
+            <Button
+              onClick={() => upgradeTarget && upgradeMut.mutate({
+                userId: upgradeTarget.userId,
+                confirmExtraSeat: !!upgradeSeatPrompt && upgradeConfirm,
+              })}
+              disabled={upgradeMut.isPending || (!!upgradeSeatPrompt && !upgradeConfirm)}
+              data-testid="button-confirm-upgrade"
+            >
+              {upgradeMut.isPending ? "Upgrading…" : upgradeSeatPrompt ? "Confirm & upgrade" : "Upgrade"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+
+      <InviteExternalCollaboratorDialog
+        agreementId={agreement.id}
+        open={externalOpen}
+        onOpenChange={setExternalOpen}
+      />
     </div>
+  );
+}
+
+// ─── Invite outside MD/DO as chart-review-only OR full-access collaborator ─
+function InviteExternalCollaboratorDialog({
+  agreementId, open, onOpenChange,
+}: {
+  agreementId: number;
+  open: boolean;
+  onOpenChange: (o: boolean) => void;
+}) {
+  const { toast } = useToast();
+  const { user } = useAuth();
+  const isAdmin = user?.adminRole === "owner" || user?.adminRole === "admin";
+
+  const [email, setEmail] = useState("");
+  const [firstName, setFirstName] = useState("");
+  const [lastName, setLastName] = useState("");
+  const [credentials, setCredentials] = useState<"MD" | "DO">("MD");
+  const [npi, setNpi] = useState("");
+  const [dea, setDea] = useState("");
+  const [phone, setPhone] = useState("");
+  const [role, setRole] = useState<"primary" | "backup">("backup");
+  // Access scope: chart-review-only (no seat) or full clinic access (consumes a seat).
+  // Non-admins can only invite chart-review-only.
+  const [scope, setScope] = useState<"chart_review_only" | "full">("chart_review_only");
+  // For the 402 seat-confirmation round-trip on the 'full' branch.
+  const [seatPrompt, setSeatPrompt] = useState<{ message: string; seatPrice?: number } | null>(null);
+  const [confirmExtraSeat, setConfirmExtraSeat] = useState(false);
+
+  const reset = () => {
+    setEmail(""); setFirstName(""); setLastName("");
+    setCredentials("MD"); setNpi(""); setDea(""); setPhone("");
+    setRole("backup"); setScope("chart_review_only");
+    setSeatPrompt(null); setConfirmExtraSeat(false);
+  };
+
+  const inviteMut = useMutation({
+    mutationFn: async (vars: { confirmExtraSeat?: boolean }) => {
+      const res = await apiRequest('POST', `/api/chart-review/agreements/${agreementId}/external-collaborators`, {
+        email: email.trim(),
+        firstName: firstName.trim(),
+        lastName: lastName.trim(),
+        credentials,
+        // NPI is REQUIRED for outside MD/DO invites — server enforces, but
+        // we still send the trimmed value (canSubmit blocks empty/invalid).
+        npi: npi.trim(),
+        dea: dea.trim() || undefined,
+        phone: phone.trim() || undefined,
+        role,
+        accessScope: scope,
+        confirmExtraSeat: vars.confirmExtraSeat ?? false,
+      });
+      // The 402 seat-confirmation path is a "soft error" we want to surface in
+      // the dialog rather than throw — apiRequest only throws on !ok, so we
+      // handle 402 manually by parsing it before re-throwing.
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/chart-review/agreements', agreementId, 'collaborators'] });
+      const isFull = data?.accessScope === "full";
+      if (data?.mode === "linked_existing_user" || data?.mode === "linked_existing_provider") {
+        toast({
+          title: "Outside physician linked",
+          description: isFull
+            ? "Their account was added to this clinic as a full provider and seated on this agreement."
+            : "Their existing ClinIQ account was added to this agreement for chart review only.",
+        });
+      } else {
+        toast({
+          title: "Invite sent",
+          description: isFull
+            ? "We emailed the physician an invite for full clinic access. A seat has been reserved."
+            : "We emailed the physician an invite. They'll join for chart review only — no seat is used.",
+        });
+      }
+      reset();
+      onOpenChange(false);
+    },
+    onError: async (e: any) => {
+      // queryClient.apiRequest throws `${status}: ${textBody}`. Detect the 402
+      // seat-confirmation prompt by parsing the body, and surface a confirm step.
+      const msg = typeof e?.message === "string" ? e.message : "";
+      if (msg.startsWith("402:")) {
+        let detail: any = null;
+        try { detail = JSON.parse(msg.slice(4).trim()); } catch { /* ignore */ }
+        if (detail?.requiresSeatConfirmation) {
+          setSeatPrompt({
+            message: detail?.message ?? "Adding this physician as a full provider will add an extra seat to your subscription.",
+            seatPrice: detail?.seatPrice,
+          });
+          return;
+        }
+      }
+      toast({ variant: "destructive", title: "Could not invite", description: errorMessage(e) });
+    },
+  });
+
+  const isValidNpiClient = (s: string) => /^\d{10}$/.test(s);
+  // NPI is required for outside collaborating physicians — it's how identity
+  // is unified across clinics (email+NPI) and how the signed-note credential
+  // line is filled out. The server returns 400 if missing/invalid; we mirror
+  // that here so the user gets immediate feedback.
+  const npiOk = !!npi.trim() && isValidNpiClient(npi.trim());
+  const canSubmit = !!email.trim() && !!firstName.trim() && !!lastName.trim() && npiOk && !inviteMut.isPending;
+
+  return (
+    <Dialog open={open} onOpenChange={(o) => { if (!o) reset(); onOpenChange(o); }}>
+      <DialogContent data-testid="dialog-invite-external">
+        <DialogHeader>
+          <DialogTitle>Invite outside MD/DO physician</DialogTitle>
+          <DialogDescription>
+            Choose how much of your clinic this physician will see. Chart-review-only is free
+            (no seat consumed); full clinic access uses one provider seat.
+          </DialogDescription>
+        </DialogHeader>
+        {/* Access scope picker — always visible. The 'full' branch is admin-only. */}
+        <div className="space-y-2 rounded-md border p-3">
+          <Label className="text-xs">Access scope</Label>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-2">
+            <label
+              className={`flex items-start gap-2 rounded-md border p-2 cursor-pointer hover-elevate ${scope === "chart_review_only" ? "border-primary" : ""}`}
+              data-testid="radio-scope-chart-review-only"
+            >
+              <input
+                type="radio"
+                name="invite-scope"
+                value="chart_review_only"
+                checked={scope === "chart_review_only"}
+                onChange={() => setScope("chart_review_only")}
+                className="mt-1"
+              />
+              <span className="text-xs">
+                <span className="font-medium">Chart review only</span>
+                <span className="block text-muted-foreground">
+                  Sees only charts routed to them on this agreement. No seat consumed.
+                </span>
+              </span>
+            </label>
+            <label
+              className={`flex items-start gap-2 rounded-md border p-2 ${isAdmin ? "cursor-pointer hover-elevate" : "cursor-not-allowed opacity-50"} ${scope === "full" ? "border-primary" : ""}`}
+              data-testid="radio-scope-full"
+              title={isAdmin ? undefined : "Only clinic owners or admins can grant full clinic access"}
+            >
+              <input
+                type="radio"
+                name="invite-scope"
+                value="full"
+                disabled={!isAdmin}
+                checked={scope === "full"}
+                onChange={() => setScope("full")}
+                className="mt-1"
+              />
+              <span className="text-xs">
+                <span className="font-medium">Full clinic access</span>
+                <span className="block text-muted-foreground">
+                  Full provider in this clinic (consumes a Stripe seat). Admin only.
+                </span>
+              </span>
+            </label>
+          </div>
+        </div>
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          <div className="sm:col-span-2">
+            <Label className="text-xs">Email</Label>
+            <Input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="dr.smith@example.com"
+              data-testid="input-external-email"
+            />
+          </div>
+          <div>
+            <Label className="text-xs">First name</Label>
+            <Input value={firstName} onChange={(e) => setFirstName(e.target.value)} data-testid="input-external-first-name" />
+          </div>
+          <div>
+            <Label className="text-xs">Last name</Label>
+            <Input value={lastName} onChange={(e) => setLastName(e.target.value)} data-testid="input-external-last-name" />
+          </div>
+          <div>
+            <Label className="text-xs">Credentials</Label>
+            <Select value={credentials} onValueChange={(v) => setCredentials(v === "DO" ? "DO" : "MD")}>
+              <SelectTrigger data-testid="select-external-credentials"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="MD">MD</SelectItem>
+                <SelectItem value="DO">DO</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">Role on agreement</Label>
+            <Select value={role} onValueChange={(v) => setRole(v === "primary" ? "primary" : "backup")}>
+              <SelectTrigger data-testid="select-external-role"><SelectValue /></SelectTrigger>
+              <SelectContent>
+                <SelectItem value="primary">Primary</SelectItem>
+                <SelectItem value="backup">Backup</SelectItem>
+              </SelectContent>
+            </Select>
+          </div>
+          <div>
+            <Label className="text-xs">NPI (required, 10 digits)</Label>
+            <Input
+              value={npi}
+              onChange={(e) => setNpi(e.target.value)}
+              data-testid="input-external-npi"
+              className={!npiOk ? "border-destructive" : ""}
+            />
+            {!npiOk && (
+              <p className="text-xs text-destructive mt-1" data-testid="error-npi">
+                {npi.trim() ? "NPI must be 10 digits." : "NPI is required."}
+              </p>
+            )}
+          </div>
+          <div>
+            <Label className="text-xs">DEA (optional)</Label>
+            <Input value={dea} onChange={(e) => setDea(e.target.value)} data-testid="input-external-dea" />
+          </div>
+          <div className="sm:col-span-2">
+            <Label className="text-xs">Phone (optional)</Label>
+            <Input value={phone} onChange={(e) => setPhone(e.target.value)} data-testid="input-external-phone" />
+          </div>
+        </div>
+        {seatPrompt && (
+          <div className="rounded-md border border-amber-500/40 bg-amber-50/50 dark:bg-amber-950/20 p-3 space-y-2">
+            <p className="text-xs">{seatPrompt.message}</p>
+            <label className="flex items-center gap-2 text-xs">
+              <input
+                type="checkbox"
+                checked={confirmExtraSeat}
+                onChange={(e) => setConfirmExtraSeat(e.target.checked)}
+                data-testid="checkbox-confirm-extra-seat"
+              />
+              Yes, add an extra seat to my subscription
+            </label>
+          </div>
+        )}
+        <DialogFooter>
+          <Button variant="ghost" onClick={() => onOpenChange(false)} data-testid="button-cancel-invite-external">
+            Cancel
+          </Button>
+          <Button
+            onClick={() => inviteMut.mutate({ confirmExtraSeat: !!seatPrompt && confirmExtraSeat })}
+            disabled={!canSubmit || (!!seatPrompt && !confirmExtraSeat)}
+            data-testid="button-submit-invite-external"
+          >
+            {inviteMut.isPending ? "Sending…" : seatPrompt ? "Confirm & send" : "Send invite"}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
   );
 }
 

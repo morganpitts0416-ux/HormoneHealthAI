@@ -50,6 +50,7 @@ import TermsOfService from "@/pages/terms";
 import BusinessAssociateAgreement from "@/pages/baa";
 import HelpCenter from "@/pages/help";
 import JoinClinicPage from "@/pages/join-clinic";
+import ExternalReviewerWorkspace from "@/pages/external-reviewer-workspace";
 import { BaaGate } from "@/components/baa-gate";
 import { BillingGate } from "@/components/billing-gate";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
@@ -86,6 +87,25 @@ function ProtectedRoute({ component: Component }: { component: React.ComponentTy
   }
 
   if (!user) return null;
+
+  // External chart-review-only collaborators only ever see their stripped-down
+  // workspace, regardless of which route they navigate to. No billing gate
+  // (they don't pay for this clinic), no recording, no AI chat, no patient
+  // context — strict minimum-necessary HIPAA scope.
+  if ((user as any)?.accessScope === "chart_review_only") {
+    return (
+      <BaaGate>
+        <SessionTimeoutModal />
+        <div className="h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
+          <AppHeader />
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            <ExternalReviewerWorkspace />
+          </div>
+        </div>
+      </BaaGate>
+    );
+  }
+
   return (
     <BillingGate>
       <BaaGate>
@@ -133,6 +153,19 @@ function BillingExemptRoute({ component: Component }: { component: React.Compone
   }
 
   if (!user) return null;
+  if ((user as any)?.accessScope === "chart_review_only") {
+    return (
+      <BaaGate>
+        <SessionTimeoutModal />
+        <div className="h-screen flex flex-col" style={{ backgroundColor: "#f5f2ed" }}>
+          <AppHeader />
+          <div className="flex-1 flex flex-col overflow-hidden min-h-0">
+            <ExternalReviewerWorkspace />
+          </div>
+        </div>
+      </BaaGate>
+    );
+  }
   return (
     <BaaGate>
       <SessionTimeoutModal />

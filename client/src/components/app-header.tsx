@@ -25,6 +25,7 @@ import {
   ChevronDown,
   User as UserIcon,
 } from "lucide-react";
+import { ClinicSwitcher } from "@/components/clinic-switcher";
 
 export function AppHeader() {
   const { user, logoutMutation } = useAuth();
@@ -49,6 +50,7 @@ export function AppHeader() {
   if (!user) return null;
 
   const isStaff = (user as any)?.isStaff;
+  const isExternalReviewer = (user as any)?.accessScope === "chart_review_only";
 
   return (
     <header
@@ -61,9 +63,9 @@ export function AppHeader() {
           <img
             src="/cliniq-logo.png?v=2"
             alt="ClinIQ"
-            className="h-12 sm:h-14 w-auto flex-shrink-0 cursor-pointer"
+            className={`h-12 sm:h-14 w-auto flex-shrink-0 ${isExternalReviewer ? "" : "cursor-pointer"}`}
             style={{ mixBlendMode: "multiply" }}
-            onClick={() => setLocation("/dashboard")}
+            onClick={() => { if (!isExternalReviewer) setLocation("/dashboard"); }}
             data-testid="logo-home"
           />
           <div className="h-5 w-px hidden sm:block" style={{ backgroundColor: "#c4b9a5" }} />
@@ -79,6 +81,20 @@ export function AppHeader() {
         </div>
 
         <div className="flex items-center gap-1">
+          <ClinicSwitcher />
+          {isExternalReviewer ? (
+            <Button
+              variant="ghost"
+              size="sm"
+              onClick={() => logoutMutation.mutateAsync()}
+              disabled={logoutMutation.isPending}
+              style={{ color: "#2e3a20" }}
+              data-testid="button-header-external-logout"
+            >
+              <LogOut className="w-4 h-4 mr-1.5" />
+              <span className="hidden sm:inline">Sign out</span>
+            </Button>
+          ) : (
           <div className="hidden sm:flex items-center gap-0.5">
             {(user as any)?.role === "admin" && (
               <NavButton
@@ -183,7 +199,9 @@ export function AppHeader() {
               </DropdownMenuContent>
             </DropdownMenu>
           </div>
+          )}
 
+          {!isExternalReviewer && (
           <Sheet>
             <SheetTrigger asChild>
               <Button size="icon" variant="ghost" className="sm:hidden" style={{ color: "#2e3a20" }} data-testid="button-mobile-menu">
@@ -224,6 +242,7 @@ export function AppHeader() {
               </div>
             </SheetContent>
           </Sheet>
+          )}
         </div>
       </div>
     </header>

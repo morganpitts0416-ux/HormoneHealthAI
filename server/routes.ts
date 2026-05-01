@@ -7,7 +7,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements } from "@shared/schema";
 import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -46,7 +46,8 @@ import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
 import { validatePasswordStrength } from "@shared/password-policy";
 import { LAB_MARKER_DEFAULTS, SYMPTOM_KEYS, SUPPLEMENT_CATEGORIES, LAB_MARKER_KEYS } from "./lab-marker-defaults";
-import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail, sendProviderInviteEmail, sendEmail } from "./email-service";
+import { sendInviteEmail, sendPasswordResetEmail, sendPatientPortalInviteEmail, sendProtocolPublishedEmail, sendNewPortalMessageEmail, sendStaffInviteEmail, sendPortalPasswordResetEmail, sendProviderInviteEmail, sendExternalCollaboratorInviteEmail, sendEmail } from "./email-service";
+import { findUserForCollaboratorInvite, isValidNpi, listMembershipsForUser, getMembership, isExternalReviewerMembership } from "./external-reviewer";
 import { buildMedicalTermsList, buildNormalizationRules, buildWhisperPrompt, NORMALIZATION_EXAMPLES } from "./clinical-lexicon";
 import Stripe from "stripe";
 import bcrypt from "bcrypt";
@@ -69,6 +70,12 @@ function getEffectiveClinicId(req: Request): number | null {
   const sess = req.session as any;
   if (sess.staffId) {
     return (sess.staffClinicianClinicId as number | undefined) ?? null;
+  }
+  // External reviewers (and any clinician with multiple clinic memberships)
+  // can swap clinic context via POST /api/me/active-clinic. The override is
+  // session-scoped and validated server-side every time it's set.
+  if (sess.activeClinicId && Number.isFinite(sess.activeClinicId)) {
+    return sess.activeClinicId as number;
   }
   return (req.user as any)?.defaultClinicId ?? null;
 }
@@ -547,25 +554,218 @@ export async function registerRoutes(app: Express): Promise<Server> {
       return res.status(401).json({ message: "Not authenticated" });
     }
     const { passwordHash: _ph, externalMessagingApiKey, ...safeUser } = req.user as any;
-    let membershipInfo: { clinicalRole?: string; adminRole?: string } = {};
-    if (safeUser.defaultClinicId) {
+    // Resolve the *active* clinic — for external reviewers, this may be a
+    // session-scoped override set via POST /api/me/active-clinic.
+    const activeClinicId = getEffectiveClinicId(req) ?? safeUser.defaultClinicId ?? null;
+    let membershipInfo: {
+      clinicalRole?: string;
+      adminRole?: string;
+      accessScope?: string;
+      activeClinicId?: number | null;
+    } = { activeClinicId };
+    if (activeClinicId) {
       try {
         const membershipRows = await storageDb.execute(
-          sql`SELECT role, admin_role, clinical_role FROM clinic_memberships WHERE user_id = ${safeUser.id} AND clinic_id = ${safeUser.defaultClinicId} LIMIT 1`
+          sql`SELECT role, admin_role, clinical_role, access_scope FROM clinic_memberships WHERE user_id = ${safeUser.id} AND clinic_id = ${activeClinicId} LIMIT 1`
         );
         const row = (membershipRows as any)?.rows?.[0];
         if (row) {
           membershipInfo = {
+            ...membershipInfo,
             adminRole: row.admin_role || "standard",
             clinicalRole: row.clinical_role || row.role || "provider",
+            accessScope: row.access_scope || "full",
           };
         }
-        console.log(`[AUTH /api/auth/me] userId=${safeUser.id} clinicId=${safeUser.defaultClinicId} membership:`, JSON.stringify(membershipInfo));
+        console.log(`[AUTH /api/auth/me] userId=${safeUser.id} activeClinicId=${activeClinicId} membership:`, JSON.stringify(membershipInfo));
       } catch (membershipErr) {
         console.error("[AUTH /api/auth/me] Membership lookup failed:", membershipErr);
       }
     }
     res.json({ ...safeUser, externalMessagingApiKeySet: !!(externalMessagingApiKey), ...membershipInfo });
+  });
+
+  // ── Multi-clinic membership endpoints ───────────────────────────────────
+  // External reviewers (and any clinician with multiple memberships) get a
+  // clinic switcher. These two endpoints back the switcher.
+  app.get("/api/me/memberships", requireAuth, async (req, res) => {
+    try {
+      const sess = req.session as any;
+      // Staff sessions are pinned to a single clinic and don't need the switcher.
+      if (sess.staffId) {
+        return res.json({ memberships: [], activeClinicId: (sess.staffClinicianClinicId as number | undefined) ?? null });
+      }
+      const user = req.user as any;
+      if (!user?.id) return res.status(401).json({ message: "Not authenticated" });
+      const memberships = await listMembershipsForUser(user.id);
+      const activeClinicId = getEffectiveClinicId(req);
+      // De-dupe by clinicId in case a user erroneously has more than one
+      // membership row in the same clinic. We prefer the row with broader
+      // access (full > chart_review_only).
+      const byClinic = new Map<number, any>();
+      for (const m of memberships) {
+        const existing = byClinic.get(m.clinicId);
+        if (!existing) {
+          byClinic.set(m.clinicId, m);
+        } else if (m.accessScope === "full" && existing.accessScope !== "full") {
+          byClinic.set(m.clinicId, m);
+        }
+      }
+      res.json({
+        memberships: Array.from(byClinic.values()).map(m => ({
+          clinicId: m.clinicId,
+          clinicName: m.clinicName,
+          clinicalRole: m.clinicalRole,
+          adminRole: m.adminRole,
+          accessScope: m.accessScope,
+          acceptanceStatus: m.acceptanceStatus ?? "active",
+          isActive: m.isActive ?? true,
+          isExternalReviewer: m.clinicalRole === "external_reviewer",
+        })),
+        activeClinicId,
+      });
+    } catch (err) {
+      console.error("[/api/me/memberships]", err);
+      res.status(500).json({ message: "Failed to load memberships" });
+    }
+  });
+
+  // POST /api/me/active-clinic { clinicId }
+  // Server-side validates the user actually has an active membership in the
+  // requested clinic before stamping the session. The deny-list middleware
+  // re-resolves on the next request.
+  app.post("/api/me/active-clinic", requireAuth, async (req, res) => {
+    try {
+      const sess = req.session as any;
+      if (sess.staffId) {
+        return res.status(403).json({ message: "Staff sessions cannot switch clinics." });
+      }
+      const user = req.user as any;
+      const requestedClinicId = parseInt(String(req.body?.clinicId));
+      if (!user?.id || !Number.isFinite(requestedClinicId)) {
+        return res.status(400).json({ message: "clinicId is required" });
+      }
+      const m = await getMembership(user.id, requestedClinicId);
+      if (!m || !m.isActive) {
+        return res.status(403).json({ message: "You don't have an active membership in that clinic." });
+      }
+      const previousClinicId = sess.activeClinicId ?? null;
+      sess.activeClinicId = requestedClinicId;
+      // Audit cross-clinic switches by external reviewers (HIPAA traceability).
+      if (isExternalReviewerMembership(m as any)) {
+        logAudit(req, {
+          action: "EXTERNAL_REVIEWER_SWITCH_CLINIC",
+          resourceType: "clinic",
+          resourceId: requestedClinicId,
+          details: { previousClinicId },
+        });
+      }
+      res.json({
+        ok: true,
+        activeClinicId: requestedClinicId,
+        accessScope: m.accessScope,
+        clinicalRole: m.clinicalRole,
+      });
+    } catch (err) {
+      console.error("[/api/me/active-clinic]", err);
+      res.status(500).json({ message: "Failed to switch clinic" });
+    }
+  });
+
+  // POST /api/me/upgrade-to-full
+  // The clinic owner/admin upgrades an external_reviewer to a full provider
+  // membership in their clinic. Consumes a Stripe seat (subject to existing
+  // seat-confirmation flow) and creates a providers row. The user keeps their
+  // existing memberships in OTHER clinics untouched.
+  app.post("/api/clinic/upgrade-collaborator", requireClinicianOnly, async (req, res) => {
+    try {
+      // Use the *active* clinic context (set via /api/me/active-clinic), not
+      // the inviter's defaultClinicId. Admins with memberships in multiple
+      // clinics need the upgrade to land on the clinic they're currently
+      // operating in.
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No active clinic" });
+      const adminRole = await getSessionAdminRole(req);
+      if (adminRole !== "owner" && adminRole !== "admin") {
+        return res.status(403).json({ message: "Only clinic owners or admins can upgrade collaborators." });
+      }
+      const targetUserId = parseInt(String(req.body?.userId));
+      const confirmExtraSeat = !!req.body?.confirmExtraSeat;
+      if (!Number.isFinite(targetUserId)) {
+        return res.status(400).json({ message: "userId is required" });
+      }
+      const m = await getMembership(targetUserId, clinicId);
+      if (!m) return res.status(404).json({ message: "User is not a member of this clinic" });
+      if (m.clinicalRole !== "external_reviewer") {
+        return res.status(409).json({ message: "Only external reviewers can be upgraded to full provider via this endpoint." });
+      }
+
+      // Re-use the same seat-availability logic as the regular invite flow.
+      const ownerSub = await resolveClinicOwnerSubscription(clinicId);
+      const planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
+      if (planState.isSoloPlan) {
+        return res.status(403).json({ message: "Solo plan supports only 1 provider. Upgrade to ClinIQ Suite first." });
+      }
+      const requiresPaidSeat =
+        !planState.isFreeAccount && planState.isSuitePlan && planState.activeProviderCount >= planState.maxProviders;
+
+      if (requiresPaidSeat) {
+        if (!confirmExtraSeat) {
+          return res.status(402).json({
+            requiresSeatConfirmation: true,
+            seatPrice: EXTRA_SEAT_MONTHLY_PRICE,
+            currentProviders: planState.activeProviderCount,
+            maxIncluded: planState.baseProviderLimit,
+            message: `Upgrading this collaborator will add $${EXTRA_SEAT_MONTHLY_PRICE}/month to your subscription. Please confirm to proceed.`,
+          });
+        }
+        const SUITE_SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+        if (!SUITE_SEAT_PRICE_ID || !ownerSub.stripeSubscriptionId) {
+          return res.status(503).json({ message: "Provider seat billing is not configured. Contact support." });
+        }
+        const stripe = getStripe();
+        const subscription = await stripe.subscriptions.retrieve(ownerSub.stripeSubscriptionId, { expand: ["items"] });
+        const items: any[] = (subscription as any).items?.data ?? [];
+        const seatItem = items.find((item: any) => item.price?.id === SUITE_SEAT_PRICE_ID);
+        if (seatItem) {
+          await stripe.subscriptionItems.update(seatItem.id, { quantity: (seatItem.quantity ?? 0) + 1 });
+        } else {
+          await stripe.subscriptionItems.create({ subscription: ownerSub.stripeSubscriptionId, price: SUITE_SEAT_PRICE_ID, quantity: 1 });
+        }
+        await updateClinicSeats(clinicId, (planState.extraProviderSeats ?? 0) + 1);
+      }
+
+      // Promote membership: provider + full scope. Keep adminRole as standard
+      // unless the caller explicitly asked for something else (out of scope here).
+      await storageDb.update(clinicMemberships).set({
+        clinicalRole: "provider",
+        accessScope: "full",
+        acceptanceStatus: "active",
+        updatedAt: new Date(),
+      }).where(eq(clinicMemberships.id, m.membershipId));
+
+      // Backfill the providers-table row that the chart_review_only path skipped.
+      try {
+        const [u] = await storageDb.select().from(usersTable).where(eq(usersTable.id, targetUserId)).limit(1);
+        if (u) {
+          await storageDb.insert(providersTable).values({
+            clinicId,
+            userId: targetUserId,
+            displayName: `${u.firstName ?? ""} ${u.lastName ?? ""}`.trim() || u.email,
+            npi: u.npi ?? null,
+          } as any);
+        }
+      } catch (e: any) {
+        // unique-violation if a row was somehow already present is non-fatal.
+        if (!String(e?.message ?? "").includes("duplicate")) {
+          console.warn("[upgrade-collaborator] providers insert non-fatal:", e?.message);
+        }
+      }
+      res.json({ ok: true, billingUpdated: requiresPaidSeat });
+    } catch (err: any) {
+      console.error("[upgrade-collaborator]", err);
+      res.status(500).json({ message: err?.message ?? "Failed to upgrade collaborator" });
+    }
   });
 
   // Update profile (clinicians only — staff cannot change clinic settings)
@@ -5462,7 +5662,16 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const clinic = await storageDb.select().from(clinics).where(eq(clinics.id, invite.clinicId)).limit(1);
       res.json({
         valid: true,
-        invite: { id: invite.id, firstName: invite.firstName, lastName: invite.lastName, email: invite.email, clinicalRole: invite.clinicalRole, adminRole: invite.adminRole },
+        invite: {
+          id: invite.id,
+          firstName: invite.firstName,
+          lastName: invite.lastName,
+          email: invite.email,
+          clinicalRole: invite.clinicalRole,
+          adminRole: invite.adminRole,
+          accessScope: (invite as any).accessScope ?? "full",
+          credentials: (invite as any).credentials ?? null,
+        },
         clinic: { name: clinic[0]?.name || "the clinic" },
       });
     } catch (err) {
@@ -5482,10 +5691,65 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (!password || password.length < 8) {
         return res.status(400).json({ message: "Password must be at least 8 characters." });
       }
-      // Check if email already used
+      // Identity check: an account *may* exist for this email if the user signed
+      // up between invite-time and accept-time, OR if the inviter targeted an
+      // already-registered prescriber from a different clinic. We try to LINK
+      // rather than fail outright — but only if the NPI on the invite matches
+      // the NPI on file (or one of the two is missing). That preserves the
+      // unified email+NPI identity rule. A genuine NPI mismatch must be
+      // rejected, since otherwise we'd be silently re-linking an unrelated
+      // physician to this invite.
       const existingUser = await storage.getUserByEmail(invite.email);
       if (existingUser) {
-        return res.status(409).json({ message: "An account with this email already exists. Please log in." });
+        const inviteNpi = ((invite as any).npi ?? "").trim();
+        const userNpi = (existingUser.npi ?? "").trim();
+        const npiConflict = !!inviteNpi && !!userNpi && inviteNpi !== userNpi;
+        if (npiConflict) {
+          return res.status(409).json({
+            message: "An account already exists for this email but its NPI does not match this invite. Contact the inviting clinic to re-issue the invite with the correct NPI.",
+          });
+        }
+        // Linkable: short-circuit account creation and seat them on the
+        // existing user. We rely on the chart-review collaborator add and
+        // membership upsert paths from POST /external-collaborators when the
+        // inviter retried with the right email; for the acceptance branch we
+        // attach to clinic + agreement here directly.
+        const isExternalReviewerLink = (invite as any).accessScope === "chart_review_only"
+          || invite.clinicalRole === "external_reviewer";
+        await storage.addUserToClinic(invite.clinicId, existingUser.id, invite.clinicalRole);
+        await storageDb.update(clinicMemberships)
+          .set({
+            adminRole: invite.adminRole as any,
+            clinicalRole: invite.clinicalRole as any,
+            accessScope: isExternalReviewerLink ? "chart_review_only" : "full",
+            acceptanceStatus: "active",
+            isActive: true,
+          } as any)
+          .where(and(eq(clinicMemberships.clinicId, invite.clinicId), eq(clinicMemberships.userId, existingUser.id)));
+        // Backfill NPI on the existing user if they had none.
+        if (!userNpi && inviteNpi) {
+          await storageDb.update(usersTable).set({ npi: inviteNpi }).where(eq(usersTable.id, existingUser.id));
+        }
+        const agreementIdLink = (invite as any).agreementId as number | null | undefined;
+        if (agreementIdLink) {
+          try {
+            await chartReviewStorage.addChartReviewCollaborator(
+              agreementIdLink,
+              existingUser.id,
+              "primary",
+              invite.clinicId,
+            );
+          } catch (e) {
+            console.warn("[invite-accept] linked-user agreement seat failed (non-fatal):", e);
+          }
+        }
+        await storage.updateClinicProviderInviteStatus(invite.id, "accepted");
+        return res.status(200).json({
+          success: true,
+          mode: "linked_existing_user",
+          message: "Linked to your existing account. Sign in normally to access the new clinic.",
+          accessScope: isExternalReviewerLink ? "chart_review_only" : "full",
+        });
       }
       const passwordHash = await hashPassword(password);
       // Get clinic info for the new user
@@ -5519,24 +5783,63 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         subscriptionStatus: inheritedSubStatus,
         defaultClinicId: invite.clinicId,
       } as any);
-      // Add to clinic membership
+      const isExternalReviewer = (invite as any).accessScope === "chart_review_only"
+        || invite.clinicalRole === "external_reviewer";
+
+      // Add to clinic membership. For external reviewers we set the new
+      // membership fields explicitly so the deny-list middleware engages
+      // immediately on first login.
       await storage.addUserToClinic(invite.clinicId, newUser.id, invite.clinicalRole);
-      // Also update the membership adminRole
       await storageDb.update(clinicMemberships)
-        .set({ adminRole: invite.adminRole as any })
+        .set({
+          adminRole: invite.adminRole as any,
+          clinicalRole: invite.clinicalRole as any,
+          accessScope: isExternalReviewer ? "chart_review_only" : "full",
+          acceptanceStatus: "active",
+        })
         .where(and(eq(clinicMemberships.clinicId, invite.clinicId), eq(clinicMemberships.userId, newUser.id)));
-      // Create provider entry
-      try {
-        await storageDb.insert(providersTable).values({
-          clinicId: invite.clinicId,
-          userId: newUser.id,
-          displayName: `${invite.firstName} ${invite.lastName}`.trim(),
-          npi: npi?.trim() || null,
-        } as any);
-      } catch {}
+
+      if (isExternalReviewer) {
+        // External collaborating physicians are NOT billable clinic providers.
+        // We deliberately skip the providers-table insert and any Stripe seat
+        // bookkeeping. The seat was never consumed at invite time.
+      } else {
+        // Normal full-clinician path — provider profile, no agreement seating
+        // (unless an agreementId was set at invite time, see below).
+        try {
+          await storageDb.insert(providersTable).values({
+            clinicId: invite.clinicId,
+            userId: newUser.id,
+            displayName: `${invite.firstName} ${invite.lastName}`.trim(),
+            npi: npi?.trim() || null,
+          } as any);
+        } catch {}
+      }
+      // Seat the new user on the chart-review agreement if the invite was
+      // issued from the chart-review surface (works for both 'chart_review_only'
+      // and 'full' invites — the inviting mid-level wants this physician on
+      // their queue regardless of access scope).
+      const agreementId = (invite as any).agreementId as number | null | undefined;
+      if (agreementId) {
+        try {
+          await chartReviewStorage.addChartReviewCollaborator(
+            agreementId,
+            newUser.id,
+            "primary",
+            invite.clinicId,
+          );
+        } catch (e) {
+          console.warn("[invite-accept] auto-seat collaborator failed (non-fatal):", e);
+        }
+      }
+
       // Mark invite as accepted
       await storage.updateClinicProviderInviteStatus(invite.id, "accepted");
-      res.status(201).json({ success: true, message: "Account created. You can now log in." });
+      res.status(201).json({
+        success: true,
+        message: "Account created. You can now log in.",
+        accessScope: isExternalReviewer ? "chart_review_only" : "full",
+      });
     } catch (err: any) {
       console.error('[API] Error accepting clinic invite:', err);
       res.status(500).json({ message: err.message || "Failed to create account" });
@@ -13241,7 +13544,32 @@ IMPORTANT:
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.json([]);
       const list = await chartReviewStorage.listChartReviewAgreementsForUser(userId, clinicId);
-      res.json(list);
+      // Admin oversight: clinic owners/admins must be able to manage every
+      // chart-review agreement in their clinic — invite collaborators, cancel
+      // pending invites, upgrade reviewers — even if they aren't the
+      // agreement's mid-level. We append any clinic-scoped agreements not
+      // already present (tagged role:'admin') so the UI can render an admin
+      // tab and reuse the same AgreementEditor surface.
+      const adminRole = await getSessionAdminRole(req);
+      const isAdmin = adminRole === "owner" || adminRole === "admin";
+      let augmented = list;
+      if (isAdmin) {
+        const allClinicAgreements = await storageDb
+          .select()
+          .from(chartReviewAgreements)
+          .where(
+            and(
+              eq(chartReviewAgreements.clinicId, clinicId),
+              eq(chartReviewAgreements.active, true),
+            ),
+          );
+        const seenIds = new Set(list.map((a: any) => a.id));
+        const adminOnly = allClinicAgreements
+          .filter((a: any) => !seenIds.has(a.id))
+          .map((a: any) => ({ ...a, role: "admin" as const }));
+        augmented = [...list, ...adminOnly];
+      }
+      res.json(augmented);
     } catch (err) {
       console.error("[chart-review] list agreements error:", err);
       res.status(500).json({ message: "Failed to list agreements" });
@@ -13349,6 +13677,109 @@ IMPORTANT:
     }
   });
 
+  // GET /api/chart-review/agreements/:id/collaborators — list seated collaborators
+  // and any pending external-physician invites for this agreement. The pending
+  // invites are surfaced so the inviting mid-level / admin can immediately see
+  // that the invite went out (the user account doesn't exist yet, so they will
+  // not appear in /api/clinic/members until they accept).
+  app.get("/api/chart-review/agreements/:id/collaborators", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id) || !clinicId) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      const adminRole = await getSessionAdminRole(req);
+      const isAdmin = adminRole === "owner" || adminRole === "admin";
+      const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+      // Active collaborators on the agreement are visible to anyone in the clinic
+      // who can already see the agreement; pending invites are restricted to
+      // the agreement owner (mid-level) and clinic admins.
+      const seated = await storageDb
+        .select({
+          id: chartReviewCollaborators.id,
+          physicianUserId: chartReviewCollaborators.physicianUserId,
+          role: chartReviewCollaborators.role,
+          firstName: usersTable.firstName,
+          lastName: usersTable.lastName,
+          email: usersTable.email,
+          title: usersTable.title,
+          membershipScope: clinicMemberships.accessScope,
+          membershipClinicalRole: clinicMemberships.clinicalRole,
+        })
+        .from(chartReviewCollaborators)
+        .innerJoin(usersTable, eq(chartReviewCollaborators.physicianUserId, usersTable.id))
+        .leftJoin(
+          clinicMemberships,
+          and(
+            eq(clinicMemberships.userId, chartReviewCollaborators.physicianUserId),
+            eq(clinicMemberships.clinicId, clinicId)
+          )
+        )
+        .where(eq(chartReviewCollaborators.agreementId, id));
+      let pending: any[] = [];
+      if (isMidLevelOnAgreement || isAdmin) {
+        pending = await storageDb
+          .select({
+            id: clinicProviderInvites.id,
+            email: clinicProviderInvites.email,
+            firstName: clinicProviderInvites.firstName,
+            lastName: clinicProviderInvites.lastName,
+            credentials: (clinicProviderInvites as any).credentials,
+            accessScope: (clinicProviderInvites as any).accessScope,
+            inviteExpires: clinicProviderInvites.inviteExpires,
+            createdAt: clinicProviderInvites.createdAt,
+          })
+          .from(clinicProviderInvites)
+          .where(
+            and(
+              eq(clinicProviderInvites.clinicId, clinicId),
+              eq((clinicProviderInvites as any).agreementId, id),
+              eq(clinicProviderInvites.status, "pending")
+            )
+          );
+      }
+      // The "queued items" count tells the inviter how many charts a pending
+      // invitee will inherit immediately upon acceptance — answering the
+      // "are pending invitees usable?" UX question without us needing a
+      // schema change. (All collaborators on an agreement share its queue.)
+      let queuedItemCount = 0;
+      try {
+        const items = await chartReviewStorage.listChartReviewItemsForAgreement(id, { clinicId });
+        queuedItemCount = items.length;
+      } catch {
+        // Non-fatal — fall back to 0 so the badge just hides the count.
+      }
+      res.json({
+        queuedItemCount,
+        seated: seated.map((s: any) => ({
+          id: s.id,
+          physicianUserId: s.physicianUserId,
+          role: s.role,
+          displayName: `${s.title ? s.title + " " : ""}${s.firstName ?? ""} ${s.lastName ?? ""}`.trim() || s.email,
+          email: s.email,
+          accessScope: s.membershipScope ?? null,
+          clinicalRole: s.membershipClinicalRole ?? null,
+        })),
+        pending: pending.map((p: any) => ({
+          id: p.id,
+          email: p.email,
+          displayName: `${p.firstName ?? ""} ${p.lastName ?? ""}`.trim() || p.email,
+          credentials: p.credentials ?? null,
+          accessScope: p.accessScope ?? "chart_review_only",
+          inviteExpires: p.inviteExpires,
+          createdAt: p.createdAt,
+        })),
+      });
+    } catch (err) {
+      console.error("[chart-review] list collaborators error:", err);
+      res.status(500).json({ message: "Failed to list collaborators" });
+    }
+  });
+
   // POST /api/chart-review/agreements/:id/collaborators — add physician
   // Only the agreement's mid-level or a clinic admin may add collaborators.
   app.post("/api/chart-review/agreements/:id/collaborators", requireClinicianOnly, async (req, res) => {
@@ -13379,6 +13810,416 @@ IMPORTANT:
     } catch (err) {
       console.error("[chart-review] add collaborator error:", err);
       res.status(500).json({ message: "Failed to add collaborator" });
+    }
+  });
+
+  // POST /api/chart-review/agreements/:id/external-collaborators
+  // ──────────────────────────────────────────────────────────────────────────
+  // Invite an OUTSIDE collaborating physician (chart-review-only). Behavior:
+  //   1. If a ClinIQ user with this email already exists (identity unified by
+  //      email + NPI), upsert a chart_review_only membership in this clinic
+  //      and seat them on the agreement immediately. No email/invite token —
+  //      they already have a login. NO Stripe seat consumed, NO providers row.
+  //   2. Otherwise, create a `clinic_provider_invites` row scoped
+  //      access_scope='chart_review_only' AND a placeholder membership in
+  //      acceptance_status='pending_acceptance'. Send the invite email.
+  //      The acceptance flow at POST /api/join-clinic/:token then activates
+  //      the membership and creates the user account.
+  // Only the agreement's mid-level or a clinic admin may invite.
+  app.post("/api/chart-review/agreements/:id/external-collaborators", requireClinicianOnly, async (req, res) => {
+    try {
+      const inviter = req.user as any;
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (!Number.isFinite(id) || !clinicId) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      const adminRole = await getSessionAdminRole(req);
+      const isAdmin = adminRole === "owner" || adminRole === "admin";
+      const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+      if (!isMidLevelOnAgreement && !isAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+
+      const { email, firstName, lastName, credentials, npi, dea, phone, role, accessScope, confirmExtraSeat } = req.body ?? {};
+      if (!email || !firstName || !lastName) {
+        return res.status(400).json({ message: "email, firstName, and lastName are required" });
+      }
+      const credUpper = String(credentials ?? "").trim().toUpperCase();
+      if (credUpper !== "MD" && credUpper !== "DO") {
+        return res.status(400).json({ message: "Collaborating physician must be MD or DO" });
+      }
+      // NPI is REQUIRED for outside collaborating physicians: it's how we
+      // unify identity across clinics (email+NPI) and how we surface the right
+      // signing credential on signed notes. The chart-review-only role exists
+      // expressly for licensed prescribers, so demanding NPI is correct.
+      if (!npi || !isValidNpi(String(npi))) {
+        return res.status(400).json({ message: "NPI is required and must be a 10-digit number" });
+      }
+      const collaboratorRole = (role === "backup" ? "backup" : "primary") as "primary" | "backup";
+      const normalizedEmail = String(email).trim().toLowerCase();
+      const normalizedNpi = String(npi).trim();
+
+      // Access scope: 'chart_review_only' (default — no Stripe seat, no providers row,
+      // deny-listed workspace) or 'full' (full clinic provider, consumes a Stripe seat).
+      // 'full' is admin-only and runs the same seat-confirmation path used by
+      // /api/clinic/invite-provider.
+      const wantsFullAccess = accessScope === "full";
+      if (wantsFullAccess && !isAdmin) {
+        return res.status(403).json({
+          message: "Only clinic owners or admins can grant full clinic access. Choose chart-review-only, or ask an admin to invite this physician.",
+        });
+      }
+
+      // Shared seat check for the 'full' branch — runs BEFORE we mutate state so
+      // we can short-circuit with 402 if the caller hasn't confirmed an extra seat.
+      let requiresPaidSeat = false;
+      let ownerSub: any = null;
+      let planState: any = null;
+      if (wantsFullAccess) {
+        ownerSub = await resolveClinicOwnerSubscription(clinicId);
+        planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
+        if (planState.isSoloPlan) {
+          return res.status(403).json({ message: "Solo plan supports only 1 provider. Upgrade to ClinIQ Suite first." });
+        }
+        // Match invite-provider semantics: count pending invites toward the cap so
+        // we don't oversell the existing seat pool.
+        const pendingInvitesRows = await storageDb
+          .select({ id: clinicProviderInvites.id })
+          .from(clinicProviderInvites)
+          .where(and(eq(clinicProviderInvites.clinicId, clinicId), eq(clinicProviderInvites.status, "pending")));
+        const effectiveCount = planState.activeProviderCount + pendingInvitesRows.length;
+        requiresPaidSeat = !planState.isFreeAccount && planState.isSuitePlan && effectiveCount >= planState.maxProviders;
+        if (requiresPaidSeat && !confirmExtraSeat) {
+          return res.status(402).json({
+            requiresSeatConfirmation: true,
+            seatPrice: EXTRA_SEAT_MONTHLY_PRICE,
+            currentProviders: planState.activeProviderCount,
+            pendingInvites: pendingInvitesRows.length,
+            maxIncluded: planState.baseProviderLimit,
+            message: `Adding this physician as a full provider will add $${EXTRA_SEAT_MONTHLY_PRICE}/month to your subscription. Please confirm to proceed.`,
+          });
+        }
+      }
+      // If we're past the gate, perform the Stripe seat add now (for 'full' branch only).
+      const consumeSeatIfNeeded = async () => {
+        if (!wantsFullAccess || !requiresPaidSeat) return;
+        const SUITE_SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+        if (!SUITE_SEAT_PRICE_ID || !ownerSub.stripeSubscriptionId) {
+          throw new Error("Provider seat billing is not configured. Contact support.");
+        }
+        const stripe = getStripe();
+        const subscription = await stripe.subscriptions.retrieve(ownerSub.stripeSubscriptionId, { expand: ["items"] });
+        const items: any[] = (subscription as any).items?.data ?? [];
+        const seatItem = items.find((item: any) => item.price?.id === SUITE_SEAT_PRICE_ID);
+        if (seatItem) {
+          await stripe.subscriptionItems.update(seatItem.id, { quantity: (seatItem.quantity ?? 0) + 1 });
+        } else {
+          await stripe.subscriptionItems.create({ subscription: ownerSub.stripeSubscriptionId, price: SUITE_SEAT_PRICE_ID, quantity: 1 });
+        }
+        await updateClinicSeats(clinicId, (planState.extraProviderSeats ?? 0) + 1);
+      };
+
+      // ── Branch 1: existing ClinIQ user → cross-clinic linking ────────────
+      const existing = await findUserForCollaboratorInvite({ email: normalizedEmail, npi: npi ?? null });
+      if (existing) {
+        // Title check — user must already have MD or DO on file (unified identity).
+        const existingTitle = (existing.title ?? "").trim().toUpperCase();
+        if (existingTitle && existingTitle !== credUpper) {
+          return res.status(409).json({
+            message: `An account exists for this email but its credential is "${existing.title}", not "${credUpper}". Use a different email or contact support.`,
+          });
+        }
+        // Backfill NPI on the existing user if they don't have one yet.
+        if (!existing.npi && npi) {
+          await storageDb.update(usersTable).set({ npi: String(npi).trim() }).where(eq(usersTable.id, existing.id));
+        }
+        // Upsert membership in this clinic, honoring requested scope.
+        const [existingMembership] = await storageDb.select().from(clinicMemberships)
+          .where(and(eq(clinicMemberships.userId, existing.id), eq(clinicMemberships.clinicId, clinicId))).limit(1);
+        if (existingMembership) {
+          // If they're already a full provider here, just seat them on the agreement.
+          if (existingMembership.clinicalRole === "provider") {
+            const created = await chartReviewStorage.addChartReviewCollaborator(id, existing.id, collaboratorRole, clinicId);
+            if (!created) {
+              return res.status(409).json({
+                message: "This user is already a full provider in this clinic and could not be seated on the agreement (likely already a collaborator).",
+              });
+            }
+            return res.json({
+              mode: "linked_existing_provider",
+              collaborator: created,
+              user: { id: existing.id, email: existing.email, firstName: existing.firstName, lastName: existing.lastName },
+            });
+          }
+          // Promote to full if requested; otherwise (re-)apply chart-review-only.
+          if (wantsFullAccess) {
+            await consumeSeatIfNeeded();
+            await storageDb.update(clinicMemberships).set({
+              clinicalRole: "provider",
+              accessScope: "full",
+              acceptanceStatus: "active",
+              isActive: true,
+              updatedAt: new Date(),
+            }).where(eq(clinicMemberships.id, existingMembership.id));
+            try {
+              await storageDb.insert(providersTable).values({
+                clinicId,
+                userId: existing.id,
+                displayName: `${existing.firstName ?? ""} ${existing.lastName ?? ""}`.trim() || existing.email,
+                npi: existing.npi ?? (npi ? String(npi).trim() : null),
+              } as any);
+            } catch (e: any) {
+              if (!String(e?.message ?? "").includes("duplicate")) {
+                console.warn("[external-collaborators] providers insert non-fatal:", e?.message);
+              }
+            }
+          } else {
+            await storageDb.update(clinicMemberships).set({
+              clinicalRole: "external_reviewer",
+              adminRole: "standard",
+              accessScope: "chart_review_only",
+              acceptanceStatus: "active",
+              isActive: true,
+              updatedAt: new Date(),
+            }).where(eq(clinicMemberships.id, existingMembership.id));
+          }
+        } else {
+          if (wantsFullAccess) {
+            await consumeSeatIfNeeded();
+            await storageDb.insert(clinicMemberships).values({
+              clinicId,
+              userId: existing.id,
+              role: "provider", // legacy field
+              clinicalRole: "provider",
+              adminRole: "standard",
+              accessScope: "full",
+              acceptanceStatus: "active",
+              isActive: true,
+              isPrimaryClinic: false,
+            } as any);
+            try {
+              await storageDb.insert(providersTable).values({
+                clinicId,
+                userId: existing.id,
+                displayName: `${existing.firstName ?? ""} ${existing.lastName ?? ""}`.trim() || existing.email,
+                npi: existing.npi ?? (npi ? String(npi).trim() : null),
+              } as any);
+            } catch (e: any) {
+              if (!String(e?.message ?? "").includes("duplicate")) {
+                console.warn("[external-collaborators] providers insert non-fatal:", e?.message);
+              }
+            }
+          } else {
+            await storageDb.insert(clinicMemberships).values({
+              clinicId,
+              userId: existing.id,
+              role: "provider", // legacy field
+              clinicalRole: "external_reviewer",
+              adminRole: "standard",
+              accessScope: "chart_review_only",
+              acceptanceStatus: "active",
+              isActive: true,
+              isPrimaryClinic: false, // not their primary clinic
+            } as any);
+          }
+        }
+        // Seat on the agreement.
+        const created = await chartReviewStorage.addChartReviewCollaborator(id, existing.id, collaboratorRole, clinicId);
+        if (!created) {
+          return res.status(400).json({
+            message: "Could not add this physician as a collaborator (may already be on the agreement, or be the mid-level themselves).",
+          });
+        }
+        return res.json({
+          mode: "linked_existing_user",
+          accessScope: wantsFullAccess ? "full" : "chart_review_only",
+          collaborator: created,
+          user: { id: existing.id, email: existing.email, firstName: existing.firstName, lastName: existing.lastName },
+        });
+      }
+
+      // ── Identity conflict guard: NPI mismatch on existing email ───────────
+      // findUserForCollaboratorInvite returns undefined either because the
+      // email is brand new OR because an account exists for the email but its
+      // NPI does not match the one supplied. We must distinguish those: in the
+      // mismatch case we cannot let an invite proceed (the acceptance flow
+      // would later collide on email and fail account creation, leaving the
+      // mid-level confused and the invitee stuck).
+      const [emailHolder] = await storageDb
+        .select({ id: usersTable.id, email: usersTable.email, npi: usersTable.npi })
+        .from(usersTable)
+        .where(eq(usersTable.email, normalizedEmail))
+        .limit(1);
+      if (emailHolder) {
+        // We already proved (above) that findUserForCollaboratorInvite returned
+        // undefined, so reaching here means email matches but NPI does not.
+        return res.status(409).json({
+          message: "An account exists for this email, but the NPI on file does not match the NPI you entered. Verify the NPI for this physician (or use their existing account email).",
+        });
+      }
+
+      // Also reject any other in-flight invite to the same email under this
+      // agreement so we don't double-send and confuse the invitee with two
+      // different tokens.
+      const [duplicateInvite] = await storageDb
+        .select({ id: clinicProviderInvites.id })
+        .from(clinicProviderInvites)
+        .where(
+          and(
+            eq(clinicProviderInvites.email, normalizedEmail),
+            eq((clinicProviderInvites as any).agreementId, id),
+            eq(clinicProviderInvites.status, "pending"),
+          )
+        )
+        .limit(1);
+      if (duplicateInvite) {
+        return res.status(409).json({
+          message: "There's already a pending invite to this email for this agreement. Cancel that invite first if you need to re-send.",
+        });
+      }
+
+      // ── Branch 2: brand-new external user → invite + pending membership ──
+      // Charge the seat NOW for the 'full' branch so we can't oversell, mirroring
+      // /api/clinic/invite-provider semantics. The acceptance flow will create
+      // the user + membership + providers row.
+      if (wantsFullAccess) {
+        await consumeSeatIfNeeded();
+      }
+      const inviteToken = crypto.randomBytes(32).toString("hex");
+      const inviteExpires = new Date(Date.now() + 72 * 60 * 60 * 1000);
+      const invite = await storage.createClinicProviderInvite({
+        clinicId,
+        invitedByUserId: inviter.id,
+        email: normalizedEmail,
+        firstName: String(firstName).trim(),
+        lastName: String(lastName).trim(),
+        clinicalRole: wantsFullAccess ? "provider" : "external_reviewer",
+        adminRole: "standard",
+        accessScope: wantsFullAccess ? "full" : "chart_review_only",
+        credentials: credUpper,
+        npi: normalizedNpi,
+        dea: dea ? String(dea).trim() : null,
+        phone: phone ? String(phone).trim() : null,
+        agreementId: id,
+        inviteToken,
+        inviteExpires,
+        status: "pending",
+      } as any);
+      const clinicRows = await storageDb.select().from(clinics).where(eq(clinics.id, clinicId)).limit(1);
+      const clinicName = clinicRows[0]?.name || "the clinic";
+      const inviterName = `${inviter.firstName ?? ""} ${inviter.lastName ?? ""}`.trim() || inviter.email;
+      sendExternalCollaboratorInviteEmail(
+        invite.email,
+        invite.firstName,
+        inviterName,
+        clinicName,
+        wantsFullAccess
+          ? "Full clinic access (full provider seat in this clinic)"
+          : "Chart-review only (you'll only see notes routed to you for sign-off)",
+        inviteToken,
+        req
+      ).catch(err => console.error("[EMAIL] External collaborator invite failed:", err));
+      logAudit(req, {
+        action: "EXTERNAL_REVIEWER_INVITE_CREATED",
+        resourceType: "clinic_provider_invite",
+        resourceId: invite.id,
+        details: {
+          clinicId,
+          agreementId: id,
+          email: invite.email,
+          accessScope: wantsFullAccess ? "full" : "chart_review_only",
+          billingUpdated: requiresPaidSeat,
+        },
+      });
+      res.status(201).json({
+        mode: "invited_new_user",
+        accessScope: wantsFullAccess ? "full" : "chart_review_only",
+        billingUpdated: requiresPaidSeat,
+        invite,
+      });
+    } catch (err: any) {
+      console.error("[chart-review] external collaborator invite error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to invite external collaborator" });
+    }
+  });
+
+  // DELETE /api/chart-review/agreements/:id/invites/:inviteId
+  // Cancel a pending external-physician invite. Only the agreement's mid-level
+  // or a clinic admin may cancel. If the invite was a 'full' (seat-consuming)
+  // invite, we release the seat we reserved at invite time.
+  app.delete("/api/chart-review/agreements/:id/invites/:inviteId", requireClinicianOnly, async (req, res) => {
+    try {
+      const userId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      const inviteId = parseInt(req.params.inviteId);
+      if (!Number.isFinite(id) || !Number.isFinite(inviteId) || !clinicId) {
+        return res.status(400).json({ message: "Invalid request" });
+      }
+      const agreement = await chartReviewStorage.getChartReviewAgreementById(id, clinicId);
+      if (!agreement) return res.status(404).json({ message: "Not found" });
+      const adminRole = await getSessionAdminRole(req);
+      const isAdmin = adminRole === "owner" || adminRole === "admin";
+      const isMidLevelOnAgreement = agreement.midLevelUserId === userId;
+      if (!isMidLevelOnAgreement && !isAdmin) {
+        return res.status(403).json({ message: "Not authorized" });
+      }
+      const [invite] = await storageDb
+        .select()
+        .from(clinicProviderInvites)
+        .where(
+          and(
+            eq(clinicProviderInvites.id, inviteId),
+            eq(clinicProviderInvites.clinicId, clinicId),
+            eq((clinicProviderInvites as any).agreementId, id),
+          )
+        )
+        .limit(1);
+      if (!invite || invite.status !== "pending") {
+        return res.status(404).json({ message: "No pending invite to cancel" });
+      }
+      await storage.updateClinicProviderInviteStatus(inviteId, "cancelled");
+      // Release the reserved seat for 'full' invites that consumed one.
+      if ((invite as any).accessScope === "full") {
+        try {
+          const ownerSub = await resolveClinicOwnerSubscription(clinicId);
+          const planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
+          if (!planState.isFreeAccount && planState.isSuitePlan && (planState.extraProviderSeats ?? 0) > 0) {
+            const SUITE_SEAT_PRICE_ID = process.env.STRIPE_PROVIDER_SEAT_PRICE_ID;
+            if (SUITE_SEAT_PRICE_ID && ownerSub.stripeSubscriptionId) {
+              const stripe = getStripe();
+              const subscription = await stripe.subscriptions.retrieve(ownerSub.stripeSubscriptionId, { expand: ["items"] });
+              const items: any[] = (subscription as any).items?.data ?? [];
+              const seatItem = items.find((item: any) => item.price?.id === SUITE_SEAT_PRICE_ID);
+              if (seatItem && (seatItem.quantity ?? 0) > 0) {
+                const newQty = Math.max(0, (seatItem.quantity ?? 0) - 1);
+                if (newQty === 0) {
+                  await stripe.subscriptionItems.del(seatItem.id);
+                } else {
+                  await stripe.subscriptionItems.update(seatItem.id, { quantity: newQty });
+                }
+                await updateClinicSeats(clinicId, Math.max(0, (planState.extraProviderSeats ?? 0) - 1));
+              }
+            }
+          }
+        } catch (e: any) {
+          console.warn("[cancel-invite] seat release non-fatal:", e?.message ?? e);
+        }
+      }
+      logAudit(req, {
+        action: "EXTERNAL_REVIEWER_INVITE_CANCELLED",
+        resourceType: "clinic_provider_invite",
+        resourceId: inviteId,
+        details: { clinicId, agreementId: id, email: invite.email, accessScope: (invite as any).accessScope ?? null },
+      });
+      res.json({ ok: true });
+    } catch (err: any) {
+      console.error("[chart-review] cancel invite error:", err);
+      res.status(500).json({ message: err?.message ?? "Failed to cancel invite" });
     }
   });
 
@@ -13417,6 +14258,16 @@ IMPORTANT:
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.json([]);
       const list = await chartReviewStorage.listMidLevelsForPhysician(userId, clinicId);
+      // Audit external-reviewer queue loads. We don't audit normal in-clinic
+      // physician usage (they already have implicit clinic access).
+      const m = await getMembership(userId, clinicId);
+      if (isExternalReviewerMembership(m as any)) {
+        logAudit(req, {
+          action: "EXTERNAL_REVIEWER_VIEW_QUEUE",
+          resourceType: "chart_review_queue",
+          details: { clinicId, agreementCount: list.length },
+        });
+      }
       res.json(list);
     } catch (err) {
       console.error("[chart-review] physician queue error:", err);
@@ -13483,6 +14334,18 @@ IMPORTANT:
       const comments = await chartReviewStorage.listChartReviewComments(id, clinicId);
       // Pull encounter for context (server-side scoped to clinic via storage).
       const encounter = await storage.getEncounter(item.encounterId, userId, clinicId);
+      // HIPAA: every chart open by an external reviewer is audited with the
+      // patient ID so the inviting clinic can produce an access report.
+      const m = await getMembership(userId, clinicId);
+      if (isExternalReviewerMembership(m as any)) {
+        logAudit(req, {
+          action: "EXTERNAL_REVIEWER_VIEW_ITEM",
+          resourceType: "chart_review_item",
+          resourceId: id,
+          patientId: encounter?.patientId ?? undefined,
+          details: { clinicId, encounterId: item.encounterId, agreementId: item.agreementId },
+        });
+      }
       res.json({ item, comments, encounter });
     } catch (err) {
       console.error("[chart-review] item detail error:", err);
@@ -13504,6 +14367,15 @@ IMPORTANT:
       if (!isPhysicianOnAgreement) return res.status(403).json({ message: "Only collaborating physicians can concur." });
       const updated = await chartReviewStorage.concurChartReviewItem(id, clinicId, userId, req.body?.comment);
       if (!updated) return res.status(409).json({ message: "Cannot concur (assigned to another reviewer)." });
+      const m = await getMembership(userId, clinicId);
+      if (isExternalReviewerMembership(m as any)) {
+        logAudit(req, {
+          action: "EXTERNAL_REVIEWER_SIGN",
+          resourceType: "chart_review_item",
+          resourceId: id,
+          details: { clinicId, encounterId: item.encounterId },
+        });
+      }
       res.json(updated);
     } catch (err) {
       console.error("[chart-review] concur error:", err);
@@ -13527,6 +14399,15 @@ IMPORTANT:
       if (!isPhysicianOnAgreement) return res.status(403).json({ message: "Only collaborating physicians can reject." });
       const updated = await chartReviewStorage.rejectChartReviewItem(id, clinicId, userId, reason);
       if (!updated) return res.status(409).json({ message: "Cannot reject (assigned to another reviewer)." });
+      const m = await getMembership(userId, clinicId);
+      if (isExternalReviewerMembership(m as any)) {
+        logAudit(req, {
+          action: "EXTERNAL_REVIEWER_REJECT",
+          resourceType: "chart_review_item",
+          resourceId: id,
+          details: { clinicId, encounterId: item.encounterId, reason },
+        });
+      }
       res.json(updated);
     } catch (err) {
       console.error("[chart-review] reject error:", err);

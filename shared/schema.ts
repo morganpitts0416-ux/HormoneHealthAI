@@ -661,6 +661,13 @@ export type InsertClinicianStaff = z.infer<typeof insertClinicianStaffSchema>;
 export type ClinicianStaff = typeof clinicianStaff.$inferSelect;
 
 // ─── Clinic Provider Invites (suite: invite a new full-clinician to join clinic) ─
+// Also used to invite external collaborating physicians for chart-review-only
+// access (no Stripe seat, no providers row). Distinguished by accessScope:
+//   'full'              — normal clinic provider invite (creates providers row,
+//                         increments Stripe seat).
+//   'chart_review_only' — external collaborating MD/DO who reviews assigned
+//                         charts only; no provider seat, no patient list, no
+//                         Stripe seat increment.
 export const clinicProviderInvites = pgTable("clinic_provider_invites", {
   id: serial("id").primaryKey(),
   clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: 'cascade' }),
@@ -673,6 +680,16 @@ export const clinicProviderInvites = pgTable("clinic_provider_invites", {
   inviteToken: varchar("invite_token", { length: 255 }).notNull().unique(),
   inviteExpires: timestamp("invite_expires").notNull(),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
+  // ── External collaborating physician fields (nullable for back-compat) ──
+  accessScope: varchar("access_scope", { length: 30 }).notNull().default("full"), // 'full' | 'chart_review_only'
+  credentials: varchar("credentials", { length: 20 }), // 'MD' | 'DO' (used for chart_review_only invites)
+  npi: varchar("npi", { length: 20 }),
+  dea: varchar("dea", { length: 30 }),
+  phone: varchar("phone", { length: 30 }),
+  // If invite was issued in the context of a specific chart-review agreement,
+  // record it so we can immediately seat the invitee as a collaborator before
+  // they accept.
+  agreementId: integer("agreement_id"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 
@@ -1386,9 +1403,12 @@ export const clinicMemberships = pgTable("clinic_memberships", {
   // Legacy single-role field — kept for backward compat. Use clinicalRole + adminRole going forward.
   role: varchar("role", { length: 30 }).notNull().default("provider"), // 'admin' | 'provider' | 'staff'
   // Clinical role: what this person does clinically (signing authority, rendering provider, etc.)
-  // 'provider' = MD/DO/NP/PA — can sign notes, appears as rendering clinician
-  // 'rn'       = Registered Nurse — limited signing authority
-  // 'staff'    = Non-clinical staff — no signing authority
+  // 'provider'          = MD/DO/NP/PA — can sign notes, appears as rendering clinician
+  // 'rn'                = Registered Nurse — limited signing authority
+  // 'staff'             = Non-clinical staff — no signing authority
+  // 'external_reviewer' = External collaborating physician (MD/DO) who only reads/signs
+  //                       charts routed to them via chart-review agreements. NOT a billable
+  //                       clinic provider; does not appear in the providers table.
   clinicalRole: varchar("clinical_role", { length: 30 }).notNull().default("provider"),
   // Administrative role: what this person can manage operationally
   // 'owner'         = Full control including billing and user management
@@ -1396,6 +1416,17 @@ export const clinicMemberships = pgTable("clinic_memberships", {
   // 'limited_admin' = Can manage forms, scheduling; no billing/user-management
   // 'standard'      = No admin access
   adminRole: varchar("admin_role", { length: 30 }).notNull().default("standard"),
+  // Access scope — drives both the route deny-list and the workspace UI.
+  // 'full'              = standard clinic membership (default)
+  // 'chart_review_only' = paired with clinicalRole='external_reviewer'; the
+  //                       user can ONLY hit chart-review endpoints in this clinic.
+  accessScope: varchar("access_scope", { length: 30 }).notNull().default("full"),
+  // Lifecycle. Pending memberships are created at invite time so the user is
+  // already assignable to chart-review collaborator slots before they accept.
+  // 'active'             = normal, fully provisioned membership
+  // 'pending_acceptance' = invite sent but not yet accepted; user can be
+  //                        assigned to charts but cannot log in yet
+  acceptanceStatus: varchar("acceptance_status", { length: 30 }).notNull().default("active"),
   isActive: boolean("is_active").notNull().default(true),
   isPrimaryClinic: boolean("is_primary_clinic").notNull().default(true),
   createdAt: timestamp("created_at").defaultNow().notNull(),

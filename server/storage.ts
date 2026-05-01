@@ -3311,12 +3311,16 @@ function normalizeTitle(t: string | null | undefined): string {
     throw new Error("Primary physician must be a different user than the mid-level on the agreement");
   }
   return await db.transaction(async (tx) => {
-    // Validate the primary physician is an active provider-role member of the
-    // same clinic. Prevents pinning a staff member or cross-tenant user as
-    // the collaborating physician.
+    // Validate the primary physician is an active member of this clinic with
+    // either clinicalRole='provider' (full clinician) OR
+    // clinicalRole='external_reviewer' (chart-review-only collaborating MD/DO).
+    // Prevents pinning a staff member or cross-tenant user as the collaborating
+    // physician.
     const [m] = await tx.select({
       membershipId: schema.clinicMemberships.id,
       title: schema.users.title,
+      clinicalRole: schema.clinicMemberships.clinicalRole,
+      acceptanceStatus: schema.clinicMemberships.acceptanceStatus,
     })
       .from(schema.clinicMemberships)
       .innerJoin(schema.users, eq(schema.users.id, schema.clinicMemberships.userId))
@@ -3324,10 +3328,9 @@ function normalizeTitle(t: string | null | undefined): string {
         eq(schema.clinicMemberships.userId, opts.primaryPhysicianUserId),
         eq(schema.clinicMemberships.clinicId, data.clinicId),
         eq(schema.clinicMemberships.isActive, true),
-        eq(schema.clinicMemberships.clinicalRole, 'provider'),
       )).limit(1);
-    if (!m) {
-      throw new Error("Primary physician must be an active provider in this clinic");
+    if (!m || (m.clinicalRole !== 'provider' && m.clinicalRole !== 'external_reviewer')) {
+      throw new Error("Primary physician must be an active provider or external collaborating physician in this clinic");
     }
     if (!ALLOWED_COLLAB_TITLES.has(normalizeTitle(m.title))) {
       throw new Error("Primary physician must be an MD or DO");
@@ -3455,12 +3458,13 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
     // The mid-level cannot collaborate-on-themself; collaborating-physician
     // oversight requires an independent reviewer.
     if (agr.midLevelUserId === physicianUserId) return null;
-    // Validate proposed physician is an active provider-role MD/DO member of
-    // this clinic. Returning null surfaces as a 404 in the route, which the
-    // UI already handles.
+    // Validate proposed physician is an active MD/DO member of this clinic
+    // — either a full provider OR an external_reviewer (chart-review-only).
+    // Returning null surfaces as a 400 in the route, which the UI handles.
     const [m] = await db.select({
       membershipId: schema.clinicMemberships.id,
       title: schema.users.title,
+      clinicalRole: schema.clinicMemberships.clinicalRole,
     })
       .from(schema.clinicMemberships)
       .innerJoin(schema.users, eq(schema.users.id, schema.clinicMemberships.userId))
@@ -3468,9 +3472,9 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
         eq(schema.clinicMemberships.userId, physicianUserId),
         eq(schema.clinicMemberships.clinicId, clinicId),
         eq(schema.clinicMemberships.isActive, true),
-        eq(schema.clinicMemberships.clinicalRole, 'provider'),
       )).limit(1);
     if (!m) return null;
+    if (m.clinicalRole !== 'provider' && m.clinicalRole !== 'external_reviewer') return null;
     if (!ALLOWED_COLLAB_TITLES.has(normalizeTitle(m.title))) return null;
   }
   const [row] = await db.insert(schema.chartReviewCollaborators).values({

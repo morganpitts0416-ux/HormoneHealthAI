@@ -20,6 +20,12 @@ export interface AuthUser {
   staffFirstName?: string;
   staffLastName?: string;
   staffRole?: string;
+  // Active clinic context (server resolves from session override or default)
+  activeClinicId?: number | null;
+  // Membership in the *active* clinic — drives the external-reviewer workspace
+  clinicalRole?: string;
+  adminRole?: string;
+  accessScope?: "full" | "chart_review_only";
 }
 
 export function useAuth() {
