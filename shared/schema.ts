@@ -537,6 +537,19 @@ export const patients = pgTable("patients", {
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 30 }),
   preferredPharmacy: text("preferred_pharmacy"),
+  // ── Structured pharmacy details (populated when clinician/patient picks
+  // one from the Google Places lookup). The legacy `preferredPharmacy` column
+  // above is also written with the chosen pharmacy's name so any existing
+  // reader keeps working. Fax / NCPDP ID are stored nullable because
+  // Google Places doesn't return them — a future Surescripts integration can
+  // backfill them. Existing free-text values stay readable in
+  // `preferredPharmacy` with all of these fields null.
+  pharmacyName: text("pharmacy_name"),
+  pharmacyAddress: text("pharmacy_address"),
+  pharmacyPhone: varchar("pharmacy_phone", { length: 50 }),
+  pharmacyFax: varchar("pharmacy_fax", { length: 50 }),
+  pharmacyNcpdpId: varchar("pharmacy_ncpdp_id", { length: 30 }),
+  pharmacyPlaceId: varchar("pharmacy_place_id", { length: 200 }),
   // ── Multi-clinic foundation (nullable — populated by migration) ──────────
   clinicId: integer("clinic_id"),            // No FK constraint during initial rollout
   primaryProviderId: integer("primary_provider_id"), // No FK constraint during initial rollout
@@ -558,11 +571,31 @@ export const labResults = pgTable("lab_results", {
 
 export const insertPatientSchema = createInsertSchema(patients, {
   preferredPharmacy: z.string().nullable().optional(),
+  pharmacyName: z.string().nullable().optional(),
+  pharmacyAddress: z.string().nullable().optional(),
+  pharmacyPhone: z.string().nullable().optional(),
+  pharmacyFax: z.string().nullable().optional(),
+  pharmacyNcpdpId: z.string().nullable().optional(),
+  pharmacyPlaceId: z.string().nullable().optional(),
 }).omit({
   id: true,
   createdAt: true,
   updatedAt: true,
 });
+
+// Structured pharmacy details — shared between the lookup component, the
+// clinician PATCH route, and the portal PATCH route. Every field is optional
+// because Google Places does not return fax or NCPDP ID.
+export const pharmacyDetailsSchema = z.object({
+  pharmacyName: z.string().trim().max(255).nullable().optional(),
+  pharmacyAddress: z.string().trim().max(500).nullable().optional(),
+  pharmacyPhone: z.string().trim().max(50).nullable().optional(),
+  pharmacyFax: z.string().trim().max(50).nullable().optional(),
+  pharmacyNcpdpId: z.string().trim().max(30).nullable().optional(),
+  pharmacyPlaceId: z.string().trim().max(200).nullable().optional(),
+});
+
+export type PharmacyDetails = z.infer<typeof pharmacyDetailsSchema>;
 
 export type InsertPatient = z.infer<typeof insertPatientSchema>;
 export type Patient = typeof patients.$inferSelect;

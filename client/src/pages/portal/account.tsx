@@ -1,4 +1,4 @@
-import { useEffect } from "react";
+import { useEffect, useState } from "react";
 import { Link } from "wouter";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useForm } from "react-hook-form";
@@ -19,6 +19,8 @@ import {
   FormMessage,
 } from "@/components/ui/form";
 import { FileText, Stethoscope, ChevronRight, Loader2 } from "lucide-react";
+import { PharmacyLookup, pharmacyValueFromRecord, pharmacyValueToPatch, type PharmacyLookupValue } from "@/components/pharmacy-lookup";
+import { PharmacyDisplay } from "@/components/pharmacy-display";
 
 interface PortalMe {
   patientId: number;
@@ -27,6 +29,12 @@ interface PortalMe {
   email?: string;
   phone?: string | null;
   preferredPharmacy?: string | null;
+  pharmacyName?: string | null;
+  pharmacyAddress?: string | null;
+  pharmacyPhone?: string | null;
+  pharmacyFax?: string | null;
+  pharmacyNcpdpId?: string | null;
+  pharmacyPlaceId?: string | null;
   clinicName?: string;
 }
 
@@ -42,7 +50,6 @@ interface PortalDocument {
 const accountSchema = z.object({
   phone: z.string().trim().max(40, "Too long").optional().or(z.literal("")),
   email: z.string().trim().email("Enter a valid email").optional().or(z.literal("")),
-  preferredPharmacy: z.string().trim().max(255, "Too long").optional().or(z.literal("")),
 });
 type AccountFormValues = z.infer<typeof accountSchema>;
 
@@ -62,22 +69,36 @@ export default function PortalAccount() {
 
   const form = useForm<AccountFormValues>({
     resolver: zodResolver(accountSchema),
-    defaultValues: { phone: "", email: "", preferredPharmacy: "" },
+    defaultValues: { phone: "", email: "" },
   });
+
+  // Pharmacy lives outside react-hook-form because it's a structured value
+  // (PharmacyLookupValue). We track its initial snapshot so we can detect a
+  // dirty change and enable the Save button accordingly.
+  const [pharmacy, setPharmacy] = useState<PharmacyLookupValue>({ text: "", details: null });
+  const [pharmacyInitial, setPharmacyInitial] = useState<PharmacyLookupValue>({ text: "", details: null });
 
   useEffect(() => {
     if (me) {
       form.reset({
         phone: me.phone ?? "",
         email: me.email ?? "",
-        preferredPharmacy: me.preferredPharmacy ?? "",
       });
+      const initial = pharmacyValueFromRecord(me);
+      setPharmacy(initial);
+      setPharmacyInitial(initial);
     }
   }, [me, form]);
 
+  const pharmacyDirty =
+    pharmacy.text.trim() !== pharmacyInitial.text.trim() ||
+    (pharmacy.details?.pharmacyPlaceId ?? null) !== (pharmacyInitial.details?.pharmacyPlaceId ?? null);
+
   const updateMutation = useMutation({
-    mutationFn: async (values: AccountFormValues) => {
-      return apiRequest("PATCH", "/api/portal/account", values);
+    mutationFn: async (values: AccountFormValues & { pharmacy: PharmacyLookupValue }) => {
+      const { pharmacy: pharm, ...rest } = values;
+      const body = { ...rest, ...pharmacyValueToPatch(pharm) };
+      return apiRequest("PATCH", "/api/portal/account", body);
     },
     onSuccess: () => {
       toast({ title: "Saved", description: "Your contact info is up to date." });
@@ -92,7 +113,7 @@ export default function PortalAccount() {
     },
   });
 
-  const onSubmit = (values: AccountFormValues) => updateMutation.mutate(values);
+  const onSubmit = (values: AccountFormValues) => updateMutation.mutate({ ...values, pharmacy });
 
   return (
     <PortalShell activeTab="home" headerSubtitle="Account">
@@ -154,28 +175,32 @@ export default function PortalAccount() {
                   </FormItem>
                 )}
               />
-              <FormField
-                control={form.control}
-                name="preferredPharmacy"
-                render={({ field }) => (
-                  <FormItem>
-                    <FormLabel style={{ color: "#1c2414" }}>Preferred pharmacy</FormLabel>
-                    <FormControl>
-                      <Input
-                        placeholder="Pharmacy name &amp; location"
-                        {...field}
-                        data-testid="input-account-pharmacy"
-                      />
-                    </FormControl>
-                    <FormMessage />
-                  </FormItem>
+              <div className="space-y-1.5">
+                <Label htmlFor="account-pharmacy" style={{ color: "#1c2414" }}>Preferred pharmacy</Label>
+                <PharmacyLookup
+                  inputId="account-pharmacy"
+                  value={pharmacy}
+                  onChange={setPharmacy}
+                  placeholder="Search pharmacy by name or city"
+                />
+                {pharmacy.details?.pharmacyName && (
+                  <div className="pt-1">
+                    <PharmacyDisplay
+                      pharmacyName={pharmacy.details.pharmacyName}
+                      pharmacyAddress={pharmacy.details.pharmacyAddress}
+                      pharmacyPhone={pharmacy.details.pharmacyPhone}
+                      pharmacyFax={pharmacy.details.pharmacyFax}
+                      pharmacyNcpdpId={pharmacy.details.pharmacyNcpdpId}
+                      variant="inline"
+                    />
+                  </div>
                 )}
-              />
+              </div>
 
               <div className="pt-2">
                 <Button
                   type="submit"
-                  disabled={updateMutation.isPending || !form.formState.isDirty}
+                  disabled={updateMutation.isPending || (!form.formState.isDirty && !pharmacyDirty)}
                   data-testid="button-account-save"
                   style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
                 >

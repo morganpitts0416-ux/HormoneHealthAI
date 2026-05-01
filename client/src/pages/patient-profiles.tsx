@@ -52,6 +52,8 @@ import { VitalTrendsDialog } from "@/components/vital-trends-dialog";
 import { PreventCalculatorPanel } from "@/components/prevent-calculator-dialog";
 import { usePhraseSearch } from "@/components/phrase-search";
 import { EncounterEditor, EncounterErrorBoundary, type EncounterWithPatient } from "@/pages/encounters";
+import { PharmacyLookup, pharmacyValueFromRecord, pharmacyValueToPatch, type PharmacyLookupValue } from "@/components/pharmacy-lookup";
+import { PharmacyDisplay } from "@/components/pharmacy-display";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -1134,7 +1136,8 @@ export default function PatientProfiles() {
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
-  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", primaryProvider: "", preferredPharmacy: "" });
+  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", primaryProvider: "" });
+  const [editPatientPharmacy, setEditPatientPharmacy] = useState<PharmacyLookupValue>({ text: "", details: null });
   const [showNewPatientDialog, setShowNewPatientDialog] = useState(false);
   const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", gender: "female" as "male" | "female", email: "", phone: "" });
   const [showFullDemographics, setShowFullDemographics] = useState(false);
@@ -1654,8 +1657,8 @@ export default function PatientProfiles() {
   });
 
   const updatePatientMutation = useMutation({
-    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; primaryProvider: string; preferredPharmacy: string }) => {
-      const { id, ...fields } = data;
+    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; primaryProvider: string; pharmacy: PharmacyLookupValue }) => {
+      const { id, pharmacy, ...fields } = data;
       const body: Record<string, string | null> = {
         firstName: fields.firstName,
         lastName: fields.lastName,
@@ -1663,7 +1666,7 @@ export default function PatientProfiles() {
         phone: fields.phone || null,
         dateOfBirth: fields.dateOfBirth || null,
         primaryProvider: fields.primaryProvider || null,
-        preferredPharmacy: fields.preferredPharmacy || null,
+        ...pharmacyValueToPatch(pharmacy),
       };
       const res = await apiRequest("PATCH", `/api/patients/${id}`, body);
       if (!res.ok) throw new Error("Failed to update patient");
@@ -1751,8 +1754,8 @@ export default function PatientProfiles() {
       dateOfBirth: dob,
       phone: (selectedPatient as any).phone ?? "",
       primaryProvider: defaultProvider,
-      preferredPharmacy: (selectedPatient as any).preferredPharmacy ?? "",
     });
+    setEditPatientPharmacy(pharmacyValueFromRecord(selectedPatient as any));
     setShowEditPatient(true);
   };
 
@@ -2075,10 +2078,16 @@ export default function PatientProfiles() {
                         {selectedPatient.mrn && (
                           <span className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</span>
                         )}
-                        {(selectedPatient as any).preferredPharmacy && (
-                          <span className="text-xs text-muted-foreground flex items-center gap-1">
-                            <Building2 className="w-3 h-3" /> Pharmacy: <span className="font-medium text-foreground">{(selectedPatient as any).preferredPharmacy}</span>
-                          </span>
+                        {((selectedPatient as any).pharmacyName || (selectedPatient as any).preferredPharmacy) && (
+                          <PharmacyDisplay
+                            legacyText={(selectedPatient as any).preferredPharmacy}
+                            pharmacyName={(selectedPatient as any).pharmacyName}
+                            pharmacyAddress={(selectedPatient as any).pharmacyAddress}
+                            pharmacyPhone={(selectedPatient as any).pharmacyPhone}
+                            pharmacyFax={(selectedPatient as any).pharmacyFax}
+                            pharmacyNcpdpId={(selectedPatient as any).pharmacyNcpdpId}
+                            variant="inline"
+                          />
                         )}
                         <Badge variant="outline" className="text-xs">
                           {labs.length} lab result{labs.length !== 1 ? 's' : ''}
@@ -3966,12 +3975,11 @@ export default function PatientProfiles() {
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-pharmacy">Preferred Pharmacy</Label>
-              <Input
-                id="edit-pharmacy"
-                placeholder="Pharmacy name, address, or phone"
-                value={editPatientForm.preferredPharmacy}
-                onChange={e => setEditPatientForm(f => ({ ...f, preferredPharmacy: e.target.value }))}
-                data-testid="input-edit-patient-pharmacy"
+              <PharmacyLookup
+                inputId="edit-pharmacy"
+                value={editPatientPharmacy}
+                onChange={setEditPatientPharmacy}
+                placeholder="Search pharmacy by name or city"
               />
             </div>
           </div>
@@ -3998,7 +4006,7 @@ export default function PatientProfiles() {
                 disabled={!editPatientForm.firstName.trim() || !editPatientForm.lastName.trim() || updatePatientMutation.isPending}
                 onClick={() => {
                   if (!selectedPatient) return;
-                  updatePatientMutation.mutate({ id: selectedPatient.id, ...editPatientForm });
+                  updatePatientMutation.mutate({ id: selectedPatient.id, ...editPatientForm, pharmacy: editPatientPharmacy });
                 }}
                 data-testid="button-save-edit-patient"
                 style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}

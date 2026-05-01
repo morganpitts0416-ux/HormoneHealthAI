@@ -1933,11 +1933,32 @@ Rules:
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
       if (isNaN(id)) return res.status(400).json({ error: "Invalid patient ID" });
-      const { firstName, lastName, email, dateOfBirth, phone, primaryProvider, preferredPharmacy } = req.body as {
-        firstName?: string; lastName?: string; email?: string;
-        dateOfBirth?: string; phone?: string;
-        primaryProvider?: string | null; preferredPharmacy?: string | null;
-      };
+      const patchSchema = z.object({
+        firstName: z.string().optional(),
+        lastName: z.string().optional(),
+        email: z.string().optional().nullable(),
+        dateOfBirth: z.string().optional().nullable(),
+        phone: z.string().optional().nullable(),
+        primaryProvider: z.string().optional().nullable(),
+        preferredPharmacy: z.string().optional().nullable(),
+        // Structured pharmacy details from the lookup component. All optional —
+        // when present, replace whatever is currently stored. Pass nulls
+        // explicitly to clear back to legacy plain-text mode.
+        pharmacyName: z.string().trim().max(255).optional().nullable(),
+        pharmacyAddress: z.string().trim().max(500).optional().nullable(),
+        pharmacyPhone: z.string().trim().max(50).optional().nullable(),
+        pharmacyFax: z.string().trim().max(50).optional().nullable(),
+        pharmacyNcpdpId: z.string().trim().max(30).optional().nullable(),
+        pharmacyPlaceId: z.string().trim().max(200).optional().nullable(),
+      });
+      const parsedPatch = patchSchema.safeParse(req.body);
+      if (!parsedPatch.success) {
+        return res.status(400).json({ error: "Invalid input", details: parsedPatch.error.format() });
+      }
+      const {
+        firstName, lastName, email, dateOfBirth, phone, primaryProvider, preferredPharmacy,
+        pharmacyName, pharmacyAddress, pharmacyPhone, pharmacyFax, pharmacyNcpdpId, pharmacyPlaceId,
+      } = parsedPatch.data;
       const updates: Record<string, unknown> = {};
       if (firstName !== undefined) updates.firstName = (firstName ?? "").trim();
       if (lastName !== undefined) updates.lastName = (lastName ?? "").trim();
@@ -1968,6 +1989,17 @@ Rules:
           ? (preferredPharmacy.trim() || null)
           : preferredPharmacy ?? null;
       }
+      // Structured pharmacy fields. When the caller picked a result from the
+      // Google Places lookup it sends pharmacyName + the rest; when the user
+      // typed a free-text fallback the caller sends pharmacyName = null to
+      // clear any previous structured selection so the legacy text path stays
+      // accurate.
+      if (pharmacyName !== undefined) updates.pharmacyName = pharmacyName?.trim() || null;
+      if (pharmacyAddress !== undefined) updates.pharmacyAddress = pharmacyAddress?.trim() || null;
+      if (pharmacyPhone !== undefined) updates.pharmacyPhone = pharmacyPhone?.trim() || null;
+      if (pharmacyFax !== undefined) updates.pharmacyFax = pharmacyFax?.trim() || null;
+      if (pharmacyNcpdpId !== undefined) updates.pharmacyNcpdpId = pharmacyNcpdpId?.trim() || null;
+      if (pharmacyPlaceId !== undefined) updates.pharmacyPlaceId = pharmacyPlaceId?.trim() || null;
       if (Object.keys(updates).length === 0) return res.status(400).json({ error: "No fields to update" });
       const updated = await storage.updatePatient(id, updates as any, clinicianId, clinicId);
       if (!updated) return res.status(404).json({ error: "Patient not found" });
@@ -1990,6 +2022,111 @@ Rules:
     } catch (error) {
       console.error("Error getting patient labs:", error);
       res.status(500).json({ error: "Failed to get patient labs" });
+    }
+  });
+
+  // ── Pharmacy lookup proxy (Google Places) ────────────────────────────────
+  // Used by the PharmacyLookup component on both the clinician edit dialog
+  // and the patient portal Account page. Accepts either a clinician/staff
+  // session OR a portal patient session — the API key never leaves the server.
+  app.get("/api/pharmacy-lookup", async (req, res) => {
+    const sess = req.session as any;
+    const clinicianAuthed = !!(req.isAuthenticated && req.isAuthenticated()) || !!sess?.staffClinicianId;
+    const portalAuthed = !!sess?.portalPatientId;
+    if (!clinicianAuthed && !portalAuthed) {
+      return res.status(401).json({ error: "Authentication required" });
+    }
+
+    const apiKey = process.env.GOOGLE_PLACES_API_KEY;
+    if (!apiKey) {
+      // Surface a clear, distinguishable error so the UI can degrade to plain
+      // text entry without confusing the user.
+      return res.status(503).json({
+        error: "pharmacy_lookup_unavailable",
+        message: "Pharmacy lookup is not configured. You can still type the pharmacy name and save it as plain text.",
+      });
+    }
+
+    const querySchema = z.object({
+      q: z.string().trim().min(2).max(120),
+    });
+    const parsed = querySchema.safeParse(req.query);
+    if (!parsed.success) {
+      // Too short / missing — return empty list rather than an error so the UI
+      // can show "keep typing…" without flashing an error.
+      return res.json({ results: [] });
+    }
+    const query = parsed.data.q;
+
+    try {
+      // Use the legacy Places Text Search API — works with standard Places
+      // API keys without requiring "Places API (New)" to be enabled. It does
+      // NOT return phone numbers, so we follow up with a parallel Place
+      // Details fetch per result to populate phone.
+      const searchUrl = new URL("https://maps.googleapis.com/maps/api/place/textsearch/json");
+      searchUrl.searchParams.set("query", `${query} pharmacy`);
+      searchUrl.searchParams.set("type", "pharmacy");
+      searchUrl.searchParams.set("key", apiKey);
+
+      const upstream = await fetch(searchUrl.toString());
+      if (!upstream.ok) {
+        const text = await upstream.text().catch(() => "");
+        console.error("[pharmacy-lookup] Google Places HTTP error:", upstream.status, text);
+        return res.status(502).json({
+          error: "pharmacy_lookup_failed",
+          message: "Pharmacy lookup is temporarily unavailable. You can type a pharmacy name to save it as plain text.",
+        });
+      }
+
+      const data = await upstream.json() as { status?: string; results?: Array<any>; error_message?: string };
+      // Treat ZERO_RESULTS as a successful empty list — anything else non-OK is an error.
+      if (data.status && data.status !== "OK" && data.status !== "ZERO_RESULTS") {
+        console.error("[pharmacy-lookup] Google Places status:", data.status, data.error_message);
+        return res.status(502).json({
+          error: "pharmacy_lookup_failed",
+          message: "Pharmacy lookup is temporarily unavailable. You can type a pharmacy name to save it as plain text.",
+        });
+      }
+
+      const places = Array.isArray(data.results) ? data.results.slice(0, 8) : [];
+      // Fetch phone numbers in parallel via Place Details. Failures per-place
+      // degrade silently to phone=null so the dropdown still renders.
+      const detailsPromises = places.map(async (p: any) => {
+        if (!p?.place_id) return null;
+        try {
+          const detailsUrl = new URL("https://maps.googleapis.com/maps/api/place/details/json");
+          detailsUrl.searchParams.set("place_id", p.place_id);
+          detailsUrl.searchParams.set("fields", "formatted_phone_number,international_phone_number");
+          detailsUrl.searchParams.set("key", apiKey);
+          const dRes = await fetch(detailsUrl.toString());
+          if (!dRes.ok) return null;
+          const dJson = await dRes.json() as { result?: any };
+          const r = dJson?.result || {};
+          return r.formatted_phone_number || r.international_phone_number || null;
+        } catch {
+          return null;
+        }
+      });
+      const phones = await Promise.all(detailsPromises);
+
+      const results = places.map((p: any, idx: number) => ({
+        placeId: p?.place_id || "",
+        name: p?.name || "",
+        address: p?.formatted_address || "",
+        phone: phones[idx] ?? null,
+        // Google Places does not return fax or NCPDP — left null for a future
+        // Surescripts/NCPDP backfill.
+        fax: null as string | null,
+        ncpdpId: null as string | null,
+      })).filter((r: any) => r.placeId && r.name);
+
+      res.json({ results });
+    } catch (err: any) {
+      console.error("[pharmacy-lookup] error:", err?.message ?? err);
+      res.status(502).json({
+        error: "pharmacy_lookup_failed",
+        message: "Pharmacy lookup is temporarily unavailable. You can type a pharmacy name to save it as plain text.",
+      });
     }
   });
 
@@ -3026,6 +3163,15 @@ Return ONLY this JSON structure:
         dateOfBirth: patient.dateOfBirth,
         phone: patient.phone,
         preferredPharmacy: patient.preferredPharmacy,
+        // Structured pharmacy fields — populated only after the patient/clinician
+        // picks a real pharmacy from the lookup. Legacy free-text patients keep
+        // these as nulls and the client falls back to plain `preferredPharmacy`.
+        pharmacyName: (patient as any).pharmacyName ?? null,
+        pharmacyAddress: (patient as any).pharmacyAddress ?? null,
+        pharmacyPhone: (patient as any).pharmacyPhone ?? null,
+        pharmacyFax: (patient as any).pharmacyFax ?? null,
+        pharmacyNcpdpId: (patient as any).pharmacyNcpdpId ?? null,
+        pharmacyPlaceId: (patient as any).pharmacyPlaceId ?? null,
         clinicName: clinician?.clinicName,
         clinicianName: clinician ? `${clinician.title} ${clinician.firstName} ${clinician.lastName}` : null,
       });
@@ -3046,6 +3192,14 @@ Return ONLY this JSON structure:
         phone: z.string().trim().max(40).optional().nullable(),
         email: z.string().trim().email().toLowerCase().optional().nullable(),
         preferredPharmacy: z.string().trim().max(255).optional().nullable(),
+        // Structured pharmacy fields from the lookup component (mirrors the
+        // clinician PATCH route). All optional — typed-only fallback omits them.
+        pharmacyName: z.string().trim().max(255).optional().nullable(),
+        pharmacyAddress: z.string().trim().max(500).optional().nullable(),
+        pharmacyPhone: z.string().trim().max(50).optional().nullable(),
+        pharmacyFax: z.string().trim().max(50).optional().nullable(),
+        pharmacyNcpdpId: z.string().trim().max(30).optional().nullable(),
+        pharmacyPlaceId: z.string().trim().max(200).optional().nullable(),
       }).strict();
       const parsed = updateSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -3056,6 +3210,12 @@ Return ONLY this JSON structure:
       if (parsed.data.phone !== undefined) (updates as any).phone = parsed.data.phone || null;
       if (parsed.data.email !== undefined) (updates as any).email = parsed.data.email || null;
       if (parsed.data.preferredPharmacy !== undefined) (updates as any).preferredPharmacy = parsed.data.preferredPharmacy || null;
+      if (parsed.data.pharmacyName !== undefined) (updates as any).pharmacyName = parsed.data.pharmacyName || null;
+      if (parsed.data.pharmacyAddress !== undefined) (updates as any).pharmacyAddress = parsed.data.pharmacyAddress || null;
+      if (parsed.data.pharmacyPhone !== undefined) (updates as any).pharmacyPhone = parsed.data.pharmacyPhone || null;
+      if (parsed.data.pharmacyFax !== undefined) (updates as any).pharmacyFax = parsed.data.pharmacyFax || null;
+      if (parsed.data.pharmacyNcpdpId !== undefined) (updates as any).pharmacyNcpdpId = parsed.data.pharmacyNcpdpId || null;
+      if (parsed.data.pharmacyPlaceId !== undefined) (updates as any).pharmacyPlaceId = parsed.data.pharmacyPlaceId || null;
 
       const updated = await storage.updatePatient(patientId, updates as any, patient.userId, patient.clinicId);
       if (!updated) return res.status(500).json({ message: "Update failed" });
@@ -3076,6 +3236,12 @@ Return ONLY this JSON structure:
         phone: updated.phone,
         email: updated.email,
         preferredPharmacy: updated.preferredPharmacy,
+        pharmacyName: (updated as any).pharmacyName ?? null,
+        pharmacyAddress: (updated as any).pharmacyAddress ?? null,
+        pharmacyPhone: (updated as any).pharmacyPhone ?? null,
+        pharmacyFax: (updated as any).pharmacyFax ?? null,
+        pharmacyNcpdpId: (updated as any).pharmacyNcpdpId ?? null,
+        pharmacyPlaceId: (updated as any).pharmacyPlaceId ?? null,
       });
     } catch (error) {
       console.error("[PORTAL] Error updating account:", error);
