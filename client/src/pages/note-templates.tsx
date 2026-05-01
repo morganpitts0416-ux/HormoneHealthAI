@@ -13,8 +13,9 @@ import { Switch } from "@/components/ui/switch";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Plus, Edit, Trash2, FileText, MessageSquare, Lock, Users, Save, X, GripVertical } from "lucide-react";
+import { Plus, Edit, Trash2, FileText, MessageSquare, Lock, Users, Save, X, GripVertical, Stethoscope } from "lucide-react";
 import type { NoteTemplate, NotePhrase } from "@shared/schema";
+import { BUILTIN_BLOCKS, ROS_SYSTEMS, PE_SYSTEMS, type BuiltinBlockId } from "@shared/note-builtin-blocks";
 
 const NOTE_TYPES = [
   { value: "soap_provider", label: "Provider SOAP Note" },
@@ -32,12 +33,26 @@ const FIELD_BLOCK_TYPES = [
   { id: "radio", label: "Radio Buttons" },
 ] as const;
 
+// Built-in clinical blocks shown in their own group inside the template editor.
+// `type` here is `clinical_<id>` so the renderer can distinguish them from the
+// generic field types and apply special UI (bullet toggle, chart prompt).
+const CLINICAL_BLOCK_OPTIONS = BUILTIN_BLOCKS.map(b => ({
+  id: `clinical_${b.id}` as const,
+  builtinId: b.id,
+  label: b.label,
+  list: b.list,
+  chart: b.chart,
+}));
+
 interface TemplateBlock {
   uid: string;
   type: string;
   label?: string;
   defaultValue?: string;
   options?: string[]; // for dropdown/radio
+  builtinId?: BuiltinBlockId;        // present for clinical_* blocks
+  bulletMode?: boolean;              // true → render as bullet list (history blocks)
+  systems?: string[];                // ROS/PE: which systems this template uses
 }
 
 function uid() { return Math.random().toString(36).substring(2, 10); }
@@ -143,6 +158,7 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
   const { toast } = useToast();
   const [name, setName] = useState(template?.name ?? "");
   const [description, setDescription] = useState(template?.description ?? "");
+  const [shortcut, setShortcut] = useState(template?.shortcut ?? "");
   const [noteType, setNoteType] = useState<string>(template?.noteType ?? "soap_provider");
   const [isShared, setIsShared] = useState(template?.isShared ?? false);
   const [blocks, setBlocks] = useState<TemplateBlock[]>(
@@ -151,7 +167,7 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      const body = { name, description, noteType, isShared, blocks };
+      const body = { name, description, shortcut: shortcut.trim() || null, noteType, isShared, blocks };
       if (template) return apiRequest("PATCH", `/api/note-templates/${template.id}`, body);
       return apiRequest("POST", "/api/note-templates", body);
     },
@@ -167,6 +183,24 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
     const b: TemplateBlock = { uid: uid(), type, label: "" };
     if (type === "dropdown" || type === "radio") b.options = ["Option 1", "Option 2"];
     setBlocks([...blocks, b]);
+  };
+
+  const addClinicalBlock = (opt: typeof CLINICAL_BLOCK_OPTIONS[number]) => {
+    const block: TemplateBlock = {
+      uid: uid(),
+      type: opt.id,
+      builtinId: opt.builtinId,
+      label: opt.label,
+      // History list blocks default to bullets; HPI defaults to free text
+      // (narrative) but providers can flip it to bullets (OPQRST etc.).
+      bulletMode: opt.list ? true : (opt.builtinId === "hpi" ? false : undefined),
+    };
+    if (opt.chart) {
+      // Default ROS/PE charts ship with every canonical system selected.
+      // Providers can untick the ones their specialty doesn't need.
+      block.systems = opt.builtinId === "ros" ? [...ROS_SYSTEMS] : [...PE_SYSTEMS];
+    }
+    setBlocks([...blocks, block]);
   };
 
   const updateBlock = (i: number, patch: Partial<TemplateBlock>) => {
@@ -203,9 +237,20 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
               </Select>
             </div>
           </div>
-          <div className="space-y-1.5">
-            <Label>Description (optional)</Label>
-            <Input value={description ?? ""} onChange={e => setDescription(e.target.value)} placeholder="Short description" />
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+            <div className="space-y-1.5">
+              <Label>Description (optional)</Label>
+              <Input value={description ?? ""} onChange={e => setDescription(e.target.value)} placeholder="Short description" />
+            </div>
+            <div className="space-y-1.5">
+              <Label>Slash shortcut (optional)</Label>
+              <Input
+                value={shortcut ?? ""}
+                onChange={e => setShortcut(e.target.value)}
+                placeholder="e.g. wellness — type /wellness in any note"
+                data-testid="input-template-shortcut"
+              />
+            </div>
           </div>
           <div className="flex items-center gap-2">
             <Switch checked={isShared} onCheckedChange={setIsShared} data-testid="switch-template-shared" />
@@ -214,14 +259,38 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
             </Label>
           </div>
 
-          <div>
-            <Label className="text-sm font-semibold">Template Blocks</Label>
-            <div className="flex flex-wrap gap-1.5 mt-2">
-              {FIELD_BLOCK_TYPES.map(b => (
-                <Button key={b.id} type="button" size="sm" variant="outline" onClick={() => addBlock(b.id)} data-testid={`button-add-block-${b.id}`}>
-                  <Plus className="w-3 h-3 mr-1" />{b.label}
-                </Button>
-              ))}
+          <div className="space-y-3">
+            <div>
+              <Label className="text-sm font-semibold flex items-center gap-1.5">
+                <Stethoscope className="w-3.5 h-3.5" /> Clinical Blocks
+              </Label>
+              <p className="text-[11px] text-muted-foreground mt-0.5">
+                Built-in sections that map to standard SOAP fields. History blocks default to bullet lists; ROS/PE drop in a per-system chart.
+              </p>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {CLINICAL_BLOCK_OPTIONS.map(b => (
+                  <Button
+                    key={b.id}
+                    type="button"
+                    size="sm"
+                    variant="outline"
+                    onClick={() => addClinicalBlock(b)}
+                    data-testid={`button-add-clinical-${b.builtinId}`}
+                  >
+                    <Plus className="w-3 h-3 mr-1" />{b.label}
+                  </Button>
+                ))}
+              </div>
+            </div>
+            <div>
+              <Label className="text-sm font-semibold">Generic Field Blocks</Label>
+              <div className="flex flex-wrap gap-1.5 mt-2">
+                {FIELD_BLOCK_TYPES.map(b => (
+                  <Button key={b.id} type="button" size="sm" variant="outline" onClick={() => addBlock(b.id)} data-testid={`button-add-block-${b.id}`}>
+                    <Plus className="w-3 h-3 mr-1" />{b.label}
+                  </Button>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -229,54 +298,91 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
             {blocks.length === 0 && (
               <p className="text-xs text-muted-foreground italic">Add blocks above to start building your template.</p>
             )}
-            {blocks.map((b, i) => (
-              <Card key={b.uid}>
-                <CardContent className="p-3 space-y-2">
-                  <div className="flex items-center gap-2">
-                    <GripVertical className="w-4 h-4 text-muted-foreground" />
-                    <Badge variant="outline" className="font-mono text-[10px]">{FIELD_BLOCK_TYPES.find(t => t.id === b.type)?.label ?? b.type}</Badge>
-                    <div className="flex-1" />
-                    <Button size="icon" variant="ghost" onClick={() => moveBlock(i, -1)} disabled={i === 0}>↑</Button>
-                    <Button size="icon" variant="ghost" onClick={() => moveBlock(i, 1)} disabled={i === blocks.length - 1}>↓</Button>
-                    <Button size="icon" variant="ghost" onClick={() => removeBlock(i)} data-testid={`button-remove-block-${i}`}><X className="w-4 h-4" /></Button>
-                  </div>
-                  <Input
-                    placeholder={b.type === "section_header" ? "Section heading" : "Field label"}
-                    value={b.label ?? ""}
-                    onChange={e => updateBlock(i, { label: e.target.value })}
-                    data-testid={`input-block-label-${i}`}
-                  />
-                  {(b.type === "free_text" || b.type === "long_text") && (
-                    <Textarea
-                      placeholder="Default content (optional)"
-                      value={b.defaultValue ?? ""}
-                      onChange={e => updateBlock(i, { defaultValue: e.target.value })}
-                      rows={3}
-                    />
-                  )}
-                  {b.type === "short_text" && (
-                    <Input
-                      placeholder="Default value (optional)"
-                      value={b.defaultValue ?? ""}
-                      onChange={e => updateBlock(i, { defaultValue: e.target.value })}
-                    />
-                  )}
-                  {b.type === "checkbox" && (
-                    <p className="text-xs text-muted-foreground">Single checkbox (yes/no). Label above.</p>
-                  )}
-                  {(b.type === "dropdown" || b.type === "radio") && (
-                    <div className="space-y-1">
-                      <Label className="text-xs">Options (one per line)</Label>
-                      <Textarea
-                        rows={3}
-                        value={(b.options ?? []).join("\n")}
-                        onChange={e => updateBlock(i, { options: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })}
-                      />
+            {blocks.map((b, i) => {
+              const isClinical = b.type.startsWith("clinical_");
+              const clinicalDef = isClinical ? CLINICAL_BLOCK_OPTIONS.find(c => c.id === b.type) : null;
+              const typeLabel = clinicalDef
+                ? `Clinical · ${clinicalDef.label}`
+                : (FIELD_BLOCK_TYPES.find(t => t.id === b.type)?.label ?? b.type);
+              return (
+                <Card key={b.uid}>
+                  <CardContent className="p-3 space-y-2">
+                    <div className="flex items-center gap-2">
+                      <GripVertical className="w-4 h-4 text-muted-foreground" />
+                      <Badge variant="outline" className="font-mono text-[10px]">{typeLabel}</Badge>
+                      <div className="flex-1" />
+                      <Button size="icon" variant="ghost" onClick={() => moveBlock(i, -1)} disabled={i === 0}>↑</Button>
+                      <Button size="icon" variant="ghost" onClick={() => moveBlock(i, 1)} disabled={i === blocks.length - 1}>↓</Button>
+                      <Button size="icon" variant="ghost" onClick={() => removeBlock(i)} data-testid={`button-remove-block-${i}`}><X className="w-4 h-4" /></Button>
                     </div>
-                  )}
-                </CardContent>
-              </Card>
-            ))}
+                    <Input
+                      placeholder={b.type === "section_header" ? "Section heading" : "Field label"}
+                      value={b.label ?? ""}
+                      onChange={e => updateBlock(i, { label: e.target.value })}
+                      data-testid={`input-block-label-${i}`}
+                    />
+                    {(clinicalDef?.list || clinicalDef?.builtinId === "hpi") && (
+                      <div className="flex items-center gap-2 pt-1">
+                        <Switch
+                          checked={b.bulletMode ?? (clinicalDef?.builtinId === "hpi" ? false : true)}
+                          onCheckedChange={(v) => updateBlock(i, { bulletMode: v })}
+                          data-testid={`switch-bullet-${i}`}
+                        />
+                        <Label className="text-xs cursor-pointer">
+                          {(b.bulletMode ?? (clinicalDef?.builtinId === "hpi" ? false : true))
+                            ? (clinicalDef?.builtinId === "hpi" ? "Bullet list (OPQRST etc.)" : "Bullet list (recommended)")
+                            : (clinicalDef?.builtinId === "hpi" ? "Free text (narrative)" : "Free text")}
+                        </Label>
+                      </div>
+                    )}
+                    {clinicalDef?.chart && (
+                      <ChartSystemPicker
+                        kind={clinicalDef.builtinId as "ros" | "physical_exam"}
+                        selected={b.systems ?? (clinicalDef.builtinId === "ros" ? ROS_SYSTEMS : PE_SYSTEMS)}
+                        onChange={(systems) => updateBlock(i, { systems })}
+                        blockIndex={i}
+                      />
+                    )}
+                    {clinicalDef && !clinicalDef.chart && (
+                      <Textarea
+                        placeholder={`Default ${clinicalDef.label.toLowerCase()} content (optional)`}
+                        value={b.defaultValue ?? ""}
+                        onChange={e => updateBlock(i, { defaultValue: e.target.value })}
+                        rows={3}
+                      />
+                    )}
+                    {(b.type === "free_text" || b.type === "long_text") && (
+                      <Textarea
+                        placeholder="Default content (optional)"
+                        value={b.defaultValue ?? ""}
+                        onChange={e => updateBlock(i, { defaultValue: e.target.value })}
+                        rows={3}
+                      />
+                    )}
+                    {b.type === "short_text" && (
+                      <Input
+                        placeholder="Default value (optional)"
+                        value={b.defaultValue ?? ""}
+                        onChange={e => updateBlock(i, { defaultValue: e.target.value })}
+                      />
+                    )}
+                    {b.type === "checkbox" && (
+                      <p className="text-xs text-muted-foreground">Single checkbox (yes/no). Label above.</p>
+                    )}
+                    {(b.type === "dropdown" || b.type === "radio") && (
+                      <div className="space-y-1">
+                        <Label className="text-xs">Options (one per line)</Label>
+                        <Textarea
+                          rows={3}
+                          value={(b.options ?? []).join("\n")}
+                          onChange={e => updateBlock(i, { options: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })}
+                        />
+                      </div>
+                    )}
+                  </CardContent>
+                </Card>
+              );
+            })}
           </div>
         </div>
         <DialogFooter>
@@ -287,6 +393,85 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
         </DialogFooter>
       </DialogContent>
     </Dialog>
+  );
+}
+
+/**
+ * Multi-select for which systems a ROS/PE template should include. Lets a
+ * specialist trim ROS down to (e.g.) Cardio + Resp + Constitutional, or add a
+ * Skin row to a derm PE template. Works as a checkbox grid that always
+ * preserves the canonical system order regardless of click order.
+ */
+function ChartSystemPicker({
+  kind, selected, onChange, blockIndex,
+}: {
+  kind: "ros" | "physical_exam";
+  selected: string[];
+  onChange: (systems: string[]) => void;
+  blockIndex: number;
+}) {
+  const all = kind === "ros" ? ROS_SYSTEMS : PE_SYSTEMS;
+  const selectedSet = new Set(selected);
+  const toggle = (s: string) => {
+    const next = selectedSet.has(s)
+      ? selected.filter(x => x !== s)
+      : all.filter(x => selectedSet.has(x) || x === s); // preserve canonical order
+    onChange(next);
+  };
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center justify-between gap-2">
+        <Label className="text-xs text-muted-foreground">
+          Systems included in this {kind === "ros" ? "Review of Systems" : "Physical Exam"} chart
+        </Label>
+        <div className="flex gap-1">
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px]"
+            onClick={() => onChange([...all])}
+            data-testid={`button-systems-all-${blockIndex}`}
+          >
+            All
+          </Button>
+          <Button
+            type="button"
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px]"
+            onClick={() => onChange([])}
+            data-testid={`button-systems-none-${blockIndex}`}
+          >
+            None
+          </Button>
+        </div>
+      </div>
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-1.5">
+        {all.map(system => {
+          const checked = selectedSet.has(system);
+          return (
+            <label
+              key={system}
+              className="flex items-center gap-1.5 text-xs cursor-pointer hover-elevate rounded-sm px-1.5 py-1"
+              data-testid={`label-system-${kind}-${system.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${blockIndex}`}
+            >
+              <input
+                type="checkbox"
+                className="h-3.5 w-3.5"
+                checked={checked}
+                onChange={() => toggle(system)}
+                data-testid={`checkbox-system-${kind}-${system.toLowerCase().replace(/[^a-z0-9]+/g, '-')}-${blockIndex}`}
+              />
+              <span className="truncate">{system}</span>
+            </label>
+          );
+        })}
+      </div>
+      <p className="text-[10px] text-muted-foreground">
+        {selected.length} of {all.length} systems · empty rows are stripped on save.
+      </p>
+    </div>
   );
 }
 
