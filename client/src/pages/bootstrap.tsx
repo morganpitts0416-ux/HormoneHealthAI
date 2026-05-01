@@ -93,7 +93,7 @@ export default function Bootstrap() {
       <div className="w-full max-w-sm space-y-4">
         <div className="text-center">
           <img
-            src="/cliniq-logo.png"
+            src="/cliniq-logo.png?v=2"
             alt="ClinIQ"
             className="h-12 w-auto mx-auto mb-4"
             style={{ mixBlendMode: "multiply" }}

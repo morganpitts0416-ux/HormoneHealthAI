@@ -82,7 +82,7 @@ export function GlobalLoadingOverlay() {
             }}
           />
           <img
-            src="/cliniq-logo.png"
+            src="/cliniq-logo.png?v=2"
             alt="ClinIQ"
             width={120}
             height={68}

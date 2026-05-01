@@ -460,7 +460,7 @@ export default function Register() {
       >
         <div className="flex flex-col items-center text-center space-y-8 max-w-xs">
           <img
-            src="/cliniq-logo.png"
+            src="/cliniq-logo.png?v=2"
             alt="ClinIQ"
             className="w-60 h-auto"
             style={{ mixBlendMode: "multiply" }}
@@ -500,7 +500,7 @@ export default function Register() {
       <div className="flex-1 flex items-center justify-center p-8 bg-white overflow-y-auto">
         <div className="w-full max-w-md py-8">
           <div className="md:hidden flex justify-center mb-6" style={{ backgroundColor: "#e8ddd0", borderRadius: "12px", padding: "10px 20px" }}>
-            <img src="/cliniq-logo.png" alt="ClinIQ" className="h-12 w-auto" style={{ mixBlendMode: "multiply" }} />
+            <img src="/cliniq-logo.png?v=2" alt="ClinIQ" className="h-12 w-auto" style={{ mixBlendMode: "multiply" }} />
           </div>
 
           <div className="md:hidden rounded-md px-3 py-2 mb-4 flex items-center gap-2" style={{ backgroundColor: planColor }}>
