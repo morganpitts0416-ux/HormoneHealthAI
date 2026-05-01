@@ -39,6 +39,7 @@ import { apiRequest } from "@/lib/queryClient";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { PatientSummary } from "@/components/patient-summary";
+import PatientDocumentsCard from "@/components/patient-documents-card";
 import { SOAPNote } from "@/components/soap-note";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import { SoapNoteViewer } from "@/components/soap-note-viewer";
@@ -3303,6 +3304,11 @@ export default function PatientProfiles() {
                   </CardContent>
                 )}
               </Card>
+
+              {/* ── Uploaded Documents (drag-drop + camera scan) ─────────── */}
+              {selectedPatient?.id && (
+                <PatientDocumentsCard patientId={selectedPatient.id} />
+              )}
                 </>
               )}
 

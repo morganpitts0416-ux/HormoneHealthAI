@@ -681,3 +681,24 @@ ALTER TABLE clinical_encounters
 -- production clinics created before Slice 2 still need this column added.
 ALTER TABLE chart_review_agreements
   ADD COLUMN IF NOT EXISTS quota_kind VARCHAR(10) NOT NULL DEFAULT 'percent';
+
+-- ─── Patient Documents (uploads + camera scans) ───────────────────────────
+CREATE TABLE IF NOT EXISTS patient_documents (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  uploaded_by_user_id INTEGER,
+  uploaded_by_name TEXT,
+  file_name TEXT NOT NULL,
+  mime_type TEXT NOT NULL,
+  size_bytes INTEGER NOT NULL,
+  category VARCHAR(30) NOT NULL DEFAULT 'other',
+  notes TEXT,
+  source VARCHAR(20) NOT NULL DEFAULT 'upload',
+  file_data TEXT NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS patient_documents_patient_idx
+  ON patient_documents (patient_id, created_at DESC);
+CREATE INDEX IF NOT EXISTS patient_documents_clinic_idx
+  ON patient_documents (clinic_id);

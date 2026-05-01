@@ -756,6 +756,48 @@ export const insertSupplementOrderSchema = createInsertSchema(supplementOrders).
 export type InsertSupplementOrder = z.infer<typeof insertSupplementOrderSchema>;
 export type SupplementOrder = typeof supplementOrders.$inferSelect;
 
+// ─── Patient Uploaded Documents ────────────────────────────────────────────
+// Generic file storage for outside medical records, PA forms, PMP reports,
+// insurance cards, IDs, imaging reports, scanned-from-camera docs, etc.
+// Stored as base64 in TEXT for HIPAA-safe Postgres-only persistence (no
+// external object store needed). Swap to GCS later by replacing fileData
+// with a storage key.
+export const PATIENT_DOCUMENT_CATEGORIES = [
+  'outside_records',
+  'pa_form',
+  'pmp',
+  'insurance',
+  'id',
+  'imaging',
+  'referral',
+  'consent',
+  'lab_external',
+  'other',
+] as const;
+export type PatientDocumentCategory = typeof PATIENT_DOCUMENT_CATEGORIES[number];
+
+export const patientDocuments = pgTable("patient_documents", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  uploadedByUserId: integer("uploaded_by_user_id"),
+  uploadedByName: text("uploaded_by_name"),
+  fileName: text("file_name").notNull(),
+  mimeType: text("mime_type").notNull(),
+  sizeBytes: integer("size_bytes").notNull(),
+  category: varchar("category", { length: 30 }).notNull().default('other'),
+  notes: text("notes"),
+  source: varchar("source", { length: 20 }).notNull().default('upload'), // 'upload' | 'scan' | 'photo'
+  fileData: text("file_data").notNull(), // base64 payload
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertPatientDocumentSchema = createInsertSchema(patientDocuments).omit({ id: true, createdAt: true });
+export type InsertPatientDocument = z.infer<typeof insertPatientDocumentSchema>;
+export type PatientDocument = typeof patientDocuments.$inferSelect;
+// Lightweight summary type used by listing endpoints (no fileData).
+export type PatientDocumentSummary = Omit<PatientDocument, 'fileData'>;
+
 // ─── HIPAA Audit Logs ──────────────────────────────────────────────────────────
 export const auditLogs = pgTable("audit_logs", {
   id: serial("id").primaryKey(),

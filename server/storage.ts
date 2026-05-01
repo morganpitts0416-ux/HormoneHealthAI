@@ -16,6 +16,7 @@ import type {
   PortalMessage, InsertPortalMessage,
   SavedRecipe, InsertSavedRecipe,
   SupplementOrder, InsertSupplementOrder,
+  PatientDocument, InsertPatientDocument, PatientDocumentSummary,
   ClinicianSupplementSettings, InsertClinicianSupplementSettings,
   ClinicianSupplement, InsertClinicianSupplement,
   ClinicianSupplementRule, InsertClinicianSupplementRule,
@@ -165,6 +166,12 @@ export interface IStorage {
   getSupplementOrdersByClinicianPatient(clinicianId: number, patientId: number): Promise<SupplementOrder[]>;
   getPendingOrdersForClinician(clinicianId: number): Promise<Array<SupplementOrder & { patientFirstName: string; patientLastName: string }>>;
   updateSupplementOrderStatus(orderId: number, clinicianId: number, status: string): Promise<SupplementOrder | undefined>;
+
+  // Patient uploaded documents (outside records, PA forms, PMP, scans, etc.)
+  createPatientDocument(doc: InsertPatientDocument): Promise<PatientDocumentSummary>;
+  listPatientDocuments(patientId: number, clinicId: number): Promise<PatientDocumentSummary[]>;
+  getPatientDocument(docId: number, clinicId: number): Promise<PatientDocument | undefined>;
+  deletePatientDocument(docId: number, clinicId: number): Promise<boolean>;
 
   // Clinician notification helpers
   getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>>;
@@ -1189,6 +1196,69 @@ export class DbStorage implements IStorage {
       .where(and(eq(schema.supplementOrders.id, orderId), eq(schema.supplementOrders.clinicianId, clinicianId)))
       .returning();
     return result[0];
+  }
+
+  // ── Patient Uploaded Documents ────────────────────────────────────────────
+  async createPatientDocument(doc: InsertPatientDocument): Promise<PatientDocumentSummary> {
+    const result = await db.insert(schema.patientDocuments).values(doc).returning({
+      id: schema.patientDocuments.id,
+      clinicId: schema.patientDocuments.clinicId,
+      patientId: schema.patientDocuments.patientId,
+      uploadedByUserId: schema.patientDocuments.uploadedByUserId,
+      uploadedByName: schema.patientDocuments.uploadedByName,
+      fileName: schema.patientDocuments.fileName,
+      mimeType: schema.patientDocuments.mimeType,
+      sizeBytes: schema.patientDocuments.sizeBytes,
+      category: schema.patientDocuments.category,
+      notes: schema.patientDocuments.notes,
+      source: schema.patientDocuments.source,
+      createdAt: schema.patientDocuments.createdAt,
+    });
+    return result[0] as PatientDocumentSummary;
+  }
+
+  async listPatientDocuments(patientId: number, clinicId: number): Promise<PatientDocumentSummary[]> {
+    const rows = await db.select({
+      id: schema.patientDocuments.id,
+      clinicId: schema.patientDocuments.clinicId,
+      patientId: schema.patientDocuments.patientId,
+      uploadedByUserId: schema.patientDocuments.uploadedByUserId,
+      uploadedByName: schema.patientDocuments.uploadedByName,
+      fileName: schema.patientDocuments.fileName,
+      mimeType: schema.patientDocuments.mimeType,
+      sizeBytes: schema.patientDocuments.sizeBytes,
+      category: schema.patientDocuments.category,
+      notes: schema.patientDocuments.notes,
+      source: schema.patientDocuments.source,
+      createdAt: schema.patientDocuments.createdAt,
+    })
+      .from(schema.patientDocuments)
+      .where(and(
+        eq(schema.patientDocuments.patientId, patientId),
+        eq(schema.patientDocuments.clinicId, clinicId),
+      ))
+      .orderBy(desc(schema.patientDocuments.createdAt));
+    return rows as PatientDocumentSummary[];
+  }
+
+  async getPatientDocument(docId: number, clinicId: number): Promise<PatientDocument | undefined> {
+    const rows = await db.select().from(schema.patientDocuments)
+      .where(and(
+        eq(schema.patientDocuments.id, docId),
+        eq(schema.patientDocuments.clinicId, clinicId),
+      ))
+      .limit(1);
+    return rows[0];
+  }
+
+  async deletePatientDocument(docId: number, clinicId: number): Promise<boolean> {
+    const result = await db.delete(schema.patientDocuments)
+      .where(and(
+        eq(schema.patientDocuments.id, docId),
+        eq(schema.patientDocuments.clinicId, clinicId),
+      ))
+      .returning({ id: schema.patientDocuments.id });
+    return result.length > 0;
   }
 
   async getUnreadMessageSummaryForClinician(clinicianId: number): Promise<Array<{ patientId: number; patientFirstName: string; patientLastName: string; count: number; lastAt: string }>> {
