@@ -669,3 +669,15 @@ CREATE TABLE IF NOT EXISTS chart_review_comments (
 );
 CREATE INDEX IF NOT EXISTS chart_review_comments_item_idx
   ON chart_review_comments (item_id, created_at);
+
+-- ─── Chart Review Slice 2: prospective full-gate columns ───────────────────
+ALTER TABLE clinical_encounters
+  ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP;
+ALTER TABLE clinical_encounters
+  ADD COLUMN IF NOT EXISTS pending_collab_review BOOLEAN NOT NULL DEFAULT FALSE;
+
+-- ─── Chart Review Slice 2: quotaKind backfill ─────────────────────────────
+-- The CREATE TABLE above only fires for fresh deployments. Existing
+-- production clinics created before Slice 2 still need this column added.
+ALTER TABLE chart_review_agreements
+  ADD COLUMN IF NOT EXISTS quota_kind VARCHAR(10) NOT NULL DEFAULT 'percent';

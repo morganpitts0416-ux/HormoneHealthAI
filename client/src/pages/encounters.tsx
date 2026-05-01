@@ -1206,7 +1206,11 @@ export function EncounterEditor({
       return res.json();
     },
     onSuccess: (data: any) => {
-      setSignedAtLocal(data.signedAt ?? new Date().toISOString());
+      // Slice 2: prospective full-gate parks the chart in
+      // pending_collab_review state — signedAt stays null until the
+      // physician concurs. UI must reflect "locked but not yet signed".
+      const isPendingReview = !!data.pendingReview;
+      setSignedAtLocal(isPendingReview ? null : (data.signedAt ?? new Date().toISOString()));
       setSignedByLocal(data.signedBy ?? null);
       setIsAmendedLocal(data.isAmended ?? false);
       setSoapViewMode("view");
@@ -1215,10 +1219,14 @@ export function EncounterEditor({
       invalidate();
       const queued = !!data.chartReviewItem;
       toast({
-        title: "Note signed and locked",
-        description: queued
-          ? "Sent to your collaborating physician for review."
-          : "The chart note has been co-signed and locked for the record.",
+        title: isPendingReview
+          ? "Submitted for physician review"
+          : "Note signed and locked",
+        description: isPendingReview
+          ? "This chart is locked from edits and awaiting your collaborating physician's concurrence. It will be officially signed at that moment."
+          : queued
+            ? "Sent to your collaborating physician for review."
+            : "The chart note has been co-signed and locked for the record.",
       });
       setSignDialogOpen(false);
     },
@@ -3621,6 +3629,13 @@ function SignNoteDialog(props: {
     mandatoryReasons: string[];
     runningPeriodPct: number;
     quotaTargetPct: number;
+    // Slice 2 additions
+    quotaKind?: 'percent' | 'count';
+    runningPeriodCount?: number;
+    quotaTargetCount?: number;
+    quotaTargetReached?: boolean;
+    prospectiveGate?: boolean;
+    reviewType?: 'retrospective' | 'prospective';
   }>({
     queryKey: ['/api/chart-review/preview-flags', encounterId],
     enabled: open && !!encounterId,
@@ -3643,7 +3658,13 @@ function SignNoteDialog(props: {
       return;
     }
     // Default ON if mid-level is below quota target this period.
-    if (flags.quotaTargetPct > 0 && flags.runningPeriodPct < flags.quotaTargetPct) {
+    // Slice 2: respect quotaKind — count agreements compare counts, not
+    // percentages, so we mirror the same default-on-when-below behavior.
+    const isCountQuota = flags.quotaKind === 'count';
+    const belowTarget = isCountQuota
+      ? (flags.quotaTargetCount ?? 0) > 0 && (flags.runningPeriodCount ?? 0) < (flags.quotaTargetCount ?? 0)
+      : flags.quotaTargetPct > 0 && flags.runningPeriodPct < flags.quotaTargetPct;
+    if (belowTarget) {
       setSendForReview(true);
     } else {
       setSendForReview(false);
@@ -3655,40 +3676,82 @@ function SignNoteDialog(props: {
   }, [open]);
 
   const lockedOn = !!flags?.wouldBeMandatory;
-  const effectiveSend = lockedOn ? true : sendForReview;
+  const prospectiveGate = !!flags?.prospectiveGate;
+  const quotaTargetReached = !!flags?.quotaTargetReached;
+  // Slice 2: voluntary "Send for review?" prompt is suppressed entirely
+  // once the mid-level has hit their monthly quota — the prompt only adds
+  // friction once they've already met the agreement target. It still shows
+  // when (a) review would be mandatory, or (b) prospective full-gate
+  // applies (in which case the dialog reframes around the gate).
+  const suppressVoluntaryPrompt =
+    !!flags?.hasAgreement && !lockedOn && !prospectiveGate && quotaTargetReached;
+  const showPromptBlock = !!flags?.hasAgreement && !suppressVoluntaryPrompt;
+  // Effective "send" payload sent to the server.
+  // - Prospective gate: always submit for review (the server will park
+  //   the note in pending_collab_review state instead of finalizing sign).
+  // - Mandatory rule: locked on.
+  // - Suppressed prompt: implicit "no" — quota already met.
+  // - Otherwise: whatever the user toggled.
+  const effectiveSend = prospectiveGate
+    ? true
+    : lockedOn
+      ? true
+      : suppressVoluntaryPrompt
+        ? false
+        : sendForReview;
+
+  // Quota progress label adapts to percent vs count.
+  const quotaProgress = (() => {
+    if (!flags) return "";
+    if (flags.quotaKind === 'count') {
+      return `You're at ${flags.runningPeriodCount ?? 0} of ${flags.quotaTargetCount ?? 0} charts submitted this period.`;
+    }
+    return `You're at ${flags.runningPeriodPct}% submitted this period (target ${flags.quotaTargetPct}%).`;
+  })();
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent data-testid="dialog-sign-note">
         <DialogHeader>
-          <DialogTitle>Sign and lock note</DialogTitle>
+          <DialogTitle>
+            {prospectiveGate ? "Submit for physician review" : "Sign and lock note"}
+          </DialogTitle>
           <DialogDescription>
-            Once signed, this chart note becomes part of the patient's record.
-            You can amend it later if needed.
+            {prospectiveGate
+              ? "Your collaborating-physician agreement requires prospective review for this chart. Signing will lock it from further edits and send it to your physician. The chart will be officially signed at the moment they concur."
+              : "Once signed, this chart note becomes part of the patient's record. You can amend it later if needed."}
           </DialogDescription>
         </DialogHeader>
 
-        {flags?.hasAgreement && (
+        {showPromptBlock && (
           <div className="rounded-md border p-3 space-y-2" data-testid="section-chart-review-prompt">
             <div className="flex items-center justify-between gap-3">
               <div className="space-y-0.5">
-                <Label className="text-sm">Send for collaborating physician review?</Label>
+                <Label className="text-sm">
+                  {prospectiveGate
+                    ? "Prospective review required"
+                    : "Send for collaborating physician review?"}
+                </Label>
                 <p className="text-xs text-muted-foreground">
-                  {lockedOn
-                    ? "Required by your collaborating-physician agreement."
-                    : flags.quotaTargetPct > 0
-                      ? `You're at ${flags.runningPeriodPct}% submitted this period (target ${flags.quotaTargetPct}%).`
-                      : "Optional — counts toward your sample for this period."}
+                  {prospectiveGate
+                    ? "This chart will be parked awaiting your collaborating physician's concurrence before it is officially signed."
+                    : lockedOn
+                      ? "Required by your collaborating-physician agreement."
+                      : flags && (flags.quotaTargetPct > 0 || (flags.quotaTargetCount ?? 0) > 0)
+                        ? quotaProgress
+                        : "Optional — counts toward your sample for this period."}
                 </p>
               </div>
-              <Switch
-                checked={effectiveSend}
-                disabled={lockedOn || isPending}
-                onCheckedChange={(v) => { setUserTouched(true); setSendForReview(v); }}
-                data-testid="switch-send-for-review"
-              />
+              {!prospectiveGate && (
+                <Switch
+                  checked={effectiveSend}
+                  disabled={lockedOn || isPending}
+                  onCheckedChange={(v) => { setUserTouched(true); setSendForReview(v); }}
+                  data-testid="switch-send-for-review"
+                />
+              )}
             </div>
-            {lockedOn && flags.mandatoryReasons.length > 0 && (
+            {(lockedOn || prospectiveGate) && flags && flags.mandatoryReasons.length > 0 && (
               <div className="flex flex-wrap gap-1.5" data-testid="list-mandatory-reasons">
                 {flags.mandatoryReasons.map((r, i) => (
                   <Badge key={i} variant="secondary" data-testid={`badge-mandatory-reason-${i}`}>
@@ -3707,7 +3770,9 @@ function SignNoteDialog(props: {
           </Button>
           <Button onClick={() => onConfirm(effectiveSend)} disabled={isPending} data-testid="button-confirm-sign">
             <Lock className="w-3.5 h-3.5 mr-1.5" />
-            {isPending ? "Signing…" : "Sign and lock"}
+            {isPending
+              ? (prospectiveGate ? "Submitting…" : "Signing…")
+              : (prospectiveGate ? "Submit for physician review" : "Sign and lock")}
           </Button>
         </DialogFooter>
       </DialogContent>

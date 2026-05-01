@@ -2398,9 +2398,9 @@ export interface ChartReviewStorage {
   ): Promise<Array<schema.ChartReviewAgreement & { role: 'midlevel' | 'physician'; collaboratorRole?: 'primary' | 'backup' }>>;
   setPhysicianOverride(
     agreementId: number,
-    patch: Partial<schema.InsertChartReviewAgreement>,
-    lockedFields: string[],
     clinicId: number,
+    lockedFields: string[],
+    physicianUserId: number,
   ): Promise<schema.ChartReviewAgreement | undefined>;
   listChartReviewCollaborators(
     agreementId: number, clinicId?: number,
@@ -2437,14 +2437,14 @@ export interface ChartReviewStorage {
     itemId: number, clinicId: number,
   ): Promise<schema.ChartReviewComment[]>;
   addChartReviewComment(
-    itemId: number, authorUserId: number, body: string, type: string, clinicId: number,
+    data: schema.InsertChartReviewComment, clinicId: number,
   ): Promise<schema.ChartReviewComment | null>;
   concurChartReviewItem(
-    itemId: number, reviewerUserId: number, clinicId: number,
-  ): Promise<schema.ChartReviewItem | null>;
+    id: number, clinicId: number, physicianUserId: number, comment?: string,
+  ): Promise<schema.ChartReviewItem | undefined>;
   rejectChartReviewItem(
-    itemId: number, reviewerUserId: number, reason: string, clinicId: number,
-  ): Promise<schema.ChartReviewItem | null>;
+    id: number, clinicId: number, physicianUserId: number, reason: string,
+  ): Promise<schema.ChartReviewItem | undefined>;
   flagChartForReview(input: {
     encounterId: number;
     midLevelUserId: number;
@@ -2453,18 +2453,48 @@ export interface ChartReviewStorage {
   }): Promise<schema.ChartReviewItem | null>;
   enqueueChartForReviewIfApplicable(input: {
     encounterId: number;
-    clinicianId: number;
+    midLevelUserId: number;
     clinicId: number;
     sendForReview: boolean;
   }): Promise<schema.ChartReviewItem | null>;
   previewChartReviewFlags(input: {
     encounterId: number;
-    clinicianId: number;
+    midLevelUserId: number;
     clinicId: number;
   }): Promise<{
-    isMandatory: boolean;
-    mandatoryReasons: string[];
     hasAgreement: boolean;
+    wouldBeMandatory: boolean;
+    mandatoryReasons: string[];
+    runningPeriodPct: number;
+    quotaTargetPct: number;
+    quotaKind: 'percent' | 'count';
+    runningPeriodCount: number;
+    quotaTargetCount: number;
+    quotaTargetReached: boolean;
+    prospectiveGate: boolean;
+    reviewType: 'retrospective' | 'prospective';
+  }>;
+  // Slice 2: prospective gate — called by sign route to decide whether to
+  // park the chart instead of finalizing the sign.
+  getProspectiveGateState(opts: {
+    encounterId: number;
+    midLevelUserId: number;
+    clinicId: number;
+  }): Promise<{
+    shouldGate: boolean;
+    agreement: schema.ChartReviewAgreement | null;
+    reasons: string[];
+  }>;
+  submitProspectiveChartForReview(opts: {
+    encounterId: number;
+    midLevelUserId: number;
+    clinicId: number;
+    agreement: schema.ChartReviewAgreement;
+    reasons: string[];
+    parkEncounter?: { signedBy: string };
+  }): Promise<{
+    item: schema.ChartReviewItem | null;
+    encounter: schema.ClinicalEncounter | null;
   }>;
 }
 
@@ -3192,6 +3222,15 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
   return row;
 };
 
+// Collaborating-physician supervision is a regulatory function in most US
+// states (mid-level/PA/NP scope-of-practice rules). Only physicians (MD or DO)
+// may serve as the collaborator of record. We normalize whitespace + case
+// before comparing so "md", " MD ", "Md", etc. all pass.
+const ALLOWED_COLLAB_TITLES = new Set(["MD", "DO"]);
+function normalizeTitle(t: string | null | undefined): string {
+  return (t ?? "").trim().toUpperCase();
+}
+
 (DbStorage.prototype as any).createChartReviewAgreement = async function(
   data: schema.InsertChartReviewAgreement,
   opts: { primaryPhysicianUserId: number },
@@ -3205,8 +3244,12 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
     // Validate the primary physician is an active provider-role member of the
     // same clinic. Prevents pinning a staff member or cross-tenant user as
     // the collaborating physician.
-    const [m] = await tx.select({ id: schema.clinicMemberships.id })
+    const [m] = await tx.select({
+      membershipId: schema.clinicMemberships.id,
+      title: schema.users.title,
+    })
       .from(schema.clinicMemberships)
+      .innerJoin(schema.users, eq(schema.users.id, schema.clinicMemberships.userId))
       .where(and(
         eq(schema.clinicMemberships.userId, opts.primaryPhysicianUserId),
         eq(schema.clinicMemberships.clinicId, data.clinicId),
@@ -3215,6 +3258,9 @@ export async function setupClinicForNewUser(user: User): Promise<{ clinicId: num
       )).limit(1);
     if (!m) {
       throw new Error("Primary physician must be an active provider in this clinic");
+    }
+    if (!ALLOWED_COLLAB_TITLES.has(normalizeTitle(m.title))) {
+      throw new Error("Primary physician must be an MD or DO");
     }
     const [row] = await tx.insert(schema.chartReviewAgreements).values(data).returning();
     await tx.insert(schema.chartReviewCollaborators).values({
@@ -3339,9 +3385,15 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
     // The mid-level cannot collaborate-on-themself; collaborating-physician
     // oversight requires an independent reviewer.
     if (agr.midLevelUserId === physicianUserId) return null;
-    // Validate proposed physician is an active provider-role member of this clinic.
-    const [m] = await db.select({ id: schema.clinicMemberships.id })
+    // Validate proposed physician is an active provider-role MD/DO member of
+    // this clinic. Returning null surfaces as a 404 in the route, which the
+    // UI already handles.
+    const [m] = await db.select({
+      membershipId: schema.clinicMemberships.id,
+      title: schema.users.title,
+    })
       .from(schema.clinicMemberships)
+      .innerJoin(schema.users, eq(schema.users.id, schema.clinicMemberships.userId))
       .where(and(
         eq(schema.clinicMemberships.userId, physicianUserId),
         eq(schema.clinicMemberships.clinicId, clinicId),
@@ -3349,6 +3401,7 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
         eq(schema.clinicMemberships.clinicalRole, 'provider'),
       )).limit(1);
     if (!m) return null;
+    if (!ALLOWED_COLLAB_TITLES.has(normalizeTitle(m.title))) return null;
   }
   const [row] = await db.insert(schema.chartReviewCollaborators).values({
     agreementId, physicianUserId, role,
@@ -3573,11 +3626,12 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
     // pending state. If two physicians click Concur at once, the second
     // update returns no row and we exit cleanly.
     const expectedStatus = isAmendmentFlow ? 'amended_pending' : 'pending';
+    const reviewedAt = new Date();
     const [updated] = await tx.update(schema.chartReviewItems).set({
       status: isAmendmentFlow ? 'amended_concurred' : 'concurred',
       reviewedByUserId: physicianUserId,
-      reviewedAt: new Date(),
-      updatedAt: new Date(),
+      reviewedAt,
+      updatedAt: reviewedAt,
     }).where(and(
       eq(schema.chartReviewItems.id, id),
       eq(schema.chartReviewItems.clinicId, clinicId),
@@ -3593,6 +3647,38 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
         type: 'concur_note',
       });
     }
+
+    // ── Slice 2 prospective gate finalization ────────────────────────────
+    // If the encounter is parked awaiting this physician's concurrence,
+    // finalize the sign here: stamp signedAt = reviewedAt, append a version
+    // snapshot, clear the pending flag. signedBy was stashed on the
+    // encounter at sign-attempt time so we don't have to recompute it.
+    const [encounter] = await tx.select().from(schema.clinicalEncounters).where(and(
+      eq(schema.clinicalEncounters.id, existing.encounterId),
+      eq(schema.clinicalEncounters.clinicId, clinicId),
+    )).limit(1);
+    if (encounter && encounter.pendingCollabReview && !encounter.signedAt) {
+      const existingVersions = (encounter.encounterVersions as any[] | null) ?? [];
+      const newVersion = {
+        version: existingVersions.length + 1,
+        soapNote: encounter.soapNote,
+        signedAt: reviewedAt.toISOString(),
+        signedBy: encounter.signedBy ?? "(prospective concur)",
+        action: "initial_sign",
+        prospectiveConcurredBy: physicianUserId,
+      };
+      await tx.update(schema.clinicalEncounters).set({
+        signedAt: reviewedAt,
+        pendingCollabReview: false,
+        // lockedAt stays — chart is now signed and locked normally.
+        encounterVersions: [...existingVersions, newVersion],
+        updatedAt: reviewedAt,
+      }).where(and(
+        eq(schema.clinicalEncounters.id, existing.encounterId),
+        eq(schema.clinicalEncounters.clinicId, clinicId),
+      ));
+    }
+
     return updated;
   });
 };
@@ -3633,6 +3719,26 @@ const ALLOWED_AGREEMENT_FIELDS: ReadonlySet<string> = new Set([
       body: reason.trim() || "(no reason provided)",
       type: 'rejection_reason',
     });
+
+    // ── Slice 2 prospective gate: rejection unlocks the chart ────────────
+    // If the encounter was parked awaiting this physician's concurrence,
+    // clear the pending flag and the lock so the mid-level can edit and
+    // re-submit. signedAt was never set, so nothing to clear there.
+    const [encounter] = await tx.select().from(schema.clinicalEncounters).where(and(
+      eq(schema.clinicalEncounters.id, existing.encounterId),
+      eq(schema.clinicalEncounters.clinicId, clinicId),
+    )).limit(1);
+    if (encounter && encounter.pendingCollabReview) {
+      await tx.update(schema.clinicalEncounters).set({
+        pendingCollabReview: false,
+        lockedAt: null,
+        updatedAt: new Date(),
+      }).where(and(
+        eq(schema.clinicalEncounters.id, existing.encounterId),
+        eq(schema.clinicalEncounters.clinicId, clinicId),
+      ));
+    }
+
     return updated;
   });
 };
@@ -3788,18 +3894,35 @@ async function _resolveMandatoryReasons(
 }) {
   const agreement = await (this as any).getChartReviewAgreementForMidLevel(opts.midLevelUserId, opts.clinicId);
   if (!agreement) {
-    return { hasAgreement: false, wouldBeMandatory: false, mandatoryReasons: [], runningPeriodPct: 0, quotaTargetPct: 0 };
+    return {
+      hasAgreement: false,
+      wouldBeMandatory: false,
+      mandatoryReasons: [],
+      runningPeriodPct: 0,
+      quotaTargetPct: 0,
+      quotaKind: 'percent' as 'percent' | 'count',
+      runningPeriodCount: 0,
+      quotaTargetCount: 0,
+      quotaTargetReached: false,
+      prospectiveGate: false,
+      reviewType: 'retrospective' as 'retrospective' | 'prospective',
+    };
   }
   const reasons = await _resolveMandatoryReasons(opts.encounterId, opts.midLevelUserId, agreement);
-  // Approximation of "running pace" — % of this period's signed encounters
-  // that the mid-level has already submitted for review.
+  // Approximation of "running pace" — count of this period's submissions
+  // by this mid-level. Compute both percent and count so the dialog can
+  // honor whichever quota kind the agreement uses.
   const now = new Date();
   const periodKey = computeQuotaPeriodKey(now, agreement.quotaPeriod as 'month' | 'quarter' | 'year');
   const submitted = await db.select({ id: schema.chartReviewItems.id }).from(schema.chartReviewItems).where(and(
     eq(schema.chartReviewItems.agreementId, agreement.id),
     eq(schema.chartReviewItems.quotaPeriodKey, periodKey),
   ));
-  // Total encounters this period for this mid-level.
+  const runningPeriodCount = submitted.length;
+  // Total signed encounters this period for this mid-level — denominator
+  // for the percent calculation. Encounters parked for prospective review
+  // (signedAt null but pendingCollabReview true) intentionally don't count
+  // until they are concurred and signed.
   const all = await db.select({ id: schema.clinicalEncounters.id, signedAt: schema.clinicalEncounters.signedAt })
     .from(schema.clinicalEncounters)
     .where(and(
@@ -3807,13 +3930,153 @@ async function _resolveMandatoryReasons(
       eq(schema.clinicalEncounters.clinicId, opts.clinicId),
     ));
   const periodTotal = all.filter((e) => e.signedAt && computeQuotaPeriodKey(new Date(e.signedAt), agreement.quotaPeriod as any) === periodKey).length;
-  const runningPeriodPct = periodTotal > 0 ? Math.round((submitted.length / periodTotal) * 100) : 0;
-  const quotaTargetPct = agreement.quotaKind === 'percent' ? agreement.quotaValue : 0;
+  const runningPeriodPct = periodTotal > 0 ? Math.round((runningPeriodCount / periodTotal) * 100) : 0;
+  const quotaKind = (agreement.quotaKind ?? 'percent') as 'percent' | 'count';
+  const quotaTargetPct = quotaKind === 'percent' ? agreement.quotaValue : 0;
+  const quotaTargetCount = quotaKind === 'count' ? agreement.quotaValue : 0;
+  // "Have I already met my voluntary quota?" — used by the sign dialog to
+  // suppress the "Send for review?" prompt when the answer is yes. Mandatory
+  // reviews still queue regardless.
+  const quotaTargetReached = quotaKind === 'percent'
+    ? (quotaTargetPct > 0 && runningPeriodPct >= quotaTargetPct)
+    : (quotaTargetCount > 0 && runningPeriodCount >= quotaTargetCount);
+  const reviewType = (agreement.reviewType ?? 'retrospective') as 'retrospective' | 'prospective';
+  // Prospective gate fires on mandatory charts under a prospective agreement;
+  // voluntary submissions still flow through the standard sign-then-queue path.
+  const prospectiveGate = reviewType === 'prospective' && reasons.length > 0;
   return {
     hasAgreement: true,
     wouldBeMandatory: reasons.length > 0,
     mandatoryReasons: reasons,
     runningPeriodPct,
     quotaTargetPct,
+    quotaKind,
+    runningPeriodCount,
+    quotaTargetCount,
+    quotaTargetReached,
+    prospectiveGate,
+    reviewType,
   };
+};
+
+// Used by the sign route: should this sign attempt be parked for prospective
+// physician review instead of finalized? Returns the agreement + the mandatory
+// reasons so the route can persist them on the chart_review_item.
+(DbStorage.prototype as any).getProspectiveGateState = async function(opts: {
+  encounterId: number;
+  midLevelUserId: number;
+  clinicId: number;
+}): Promise<{ shouldGate: boolean; agreement: schema.ChartReviewAgreement | null; reasons: string[] }> {
+  const agreement = await (this as any).getChartReviewAgreementForMidLevel(opts.midLevelUserId, opts.clinicId);
+  if (!agreement || agreement.reviewType !== 'prospective') {
+    return { shouldGate: false, agreement: agreement ?? null, reasons: [] };
+  }
+  const reasons = await _resolveMandatoryReasons(opts.encounterId, opts.midLevelUserId, agreement);
+  return { shouldGate: reasons.length > 0, agreement, reasons };
+};
+
+// Variant of enqueue used by the prospective gate. Unlike the standard
+// enqueue (which is called *after* a successful sign and uses the
+// encounter.signedAt as the submission timestamp), this one is called
+// before the encounter is signed, so it uses `now` as the submission time
+// for quota tracking. It also reopens an existing rejected item so the
+// edit-and-resubmit cycle uses one chart_review_items row per encounter.
+(DbStorage.prototype as any).submitProspectiveChartForReview = async function(opts: {
+  encounterId: number;
+  midLevelUserId: number;
+  clinicId: number;
+  agreement: schema.ChartReviewAgreement;
+  reasons: string[];
+  // Slice 2: when supplied, the encounter is atomically parked (locked +
+  // pendingCollabReview) inside the same transaction as the queue insert.
+  // signedBy is stashed on the encounter so the physician's concur step
+  // can finalize the sign without recomputing the mid-level's identity.
+  parkEncounter?: { signedBy: string };
+}): Promise<{
+  item: schema.ChartReviewItem | null;
+  encounter: schema.ClinicalEncounter | null;
+}> {
+  const now = new Date();
+  const quotaPeriodKey = computeQuotaPeriodKey(now, opts.agreement.quotaPeriod as 'month' | 'quarter' | 'year');
+  const enforcementDueAt = computeEnforcementDueAt(now, opts.agreement.enforcementPeriod as 'month' | 'quarter' | 'year');
+
+  // ── Atomic park-and-queue ──────────────────────────────────────────────
+  // Wrap encounter parking + queue row write in one transaction so the
+  // encounter can never be left locked-pending without a queue item (or
+  // vice versa). On rollback, both side-effects unwind together.
+  return await db.transaction(async (tx) => {
+    // Verify encounter ownership / clinic scope under the same tx.
+    const [encounter] = await tx.select().from(schema.clinicalEncounters).where(and(
+      eq(schema.clinicalEncounters.id, opts.encounterId),
+      eq(schema.clinicalEncounters.clinicId, opts.clinicId),
+      eq(schema.clinicalEncounters.clinicianId, opts.midLevelUserId),
+    )).limit(1);
+    if (!encounter) return { item: null, encounter: null };
+
+    // Park the encounter atomically (only if caller asked us to). We
+    // intentionally do this BEFORE the queue insert: if the queue write
+    // fails (e.g. unexpected DB error), the lock is rolled back too.
+    let parkedEncounter: schema.ClinicalEncounter = encounter;
+    if (opts.parkEncounter) {
+      const [updated] = await tx.update(schema.clinicalEncounters).set({
+        lockedAt: now,
+        pendingCollabReview: true,
+        signedBy: opts.parkEncounter.signedBy,
+        updatedAt: now,
+      }).where(and(
+        eq(schema.clinicalEncounters.id, opts.encounterId),
+        eq(schema.clinicalEncounters.clinicId, opts.clinicId),
+      )).returning();
+      if (!updated) return { item: null, encounter: null };
+      parkedEncounter = updated;
+    }
+
+    // If there's already a row for this encounter (e.g. rejected last time),
+    // reopen it instead of trying to insert and hitting the unique index.
+    const [existing] = await tx.select().from(schema.chartReviewItems).where(and(
+      eq(schema.chartReviewItems.encounterId, opts.encounterId),
+      eq(schema.chartReviewItems.clinicId, opts.clinicId),
+    )).limit(1);
+
+    if (existing) {
+      if (existing.status === 'rejected') {
+        const [reopened] = await tx.update(schema.chartReviewItems).set({
+          status: 'pending',
+          priority: 'mandatory',
+          mandatoryReasons: opts.reasons,
+          signedAt: now,                 // re-submission time for quota tracking
+          quotaPeriodKey,
+          enforcementDueAt,
+          reviewedAt: null,
+          reviewedByUserId: null,
+          // assignedReviewerUserId intentionally retained — same physician
+          // who rejected it sees the rework.
+          updatedAt: now,
+        }).where(eq(schema.chartReviewItems.id, existing.id)).returning();
+        return { item: reopened ?? existing, encounter: parkedEncounter };
+      }
+      return { item: existing, encounter: parkedEncounter };
+    }
+
+    const [created] = await tx.insert(schema.chartReviewItems).values({
+      agreementId: opts.agreement.id,
+      clinicId: opts.clinicId,
+      encounterId: opts.encounterId,
+      patientId: parkedEncounter.patientId,
+      midLevelUserId: opts.midLevelUserId,
+      status: 'pending',
+      priority: 'mandatory',
+      mandatoryReasons: opts.reasons,
+      signedAt: now,
+      quotaPeriodKey,
+      enforcementDueAt,
+    }).onConflictDoNothing({ target: [schema.chartReviewItems.clinicId, schema.chartReviewItems.encounterId] }).returning();
+    if (created) return { item: created, encounter: parkedEncounter };
+
+    const [raced] = await tx.select().from(schema.chartReviewItems).where(and(
+      eq(schema.chartReviewItems.encounterId, opts.encounterId),
+      eq(schema.chartReviewItems.clinicId, opts.clinicId),
+    )).limit(1);
+    return { item: raced ?? null, encounter: parkedEncounter };
+  });
 };
