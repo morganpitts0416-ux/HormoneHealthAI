@@ -41,6 +41,54 @@ import {
   type ExternalProvider,
 } from "./external-messaging";
 import { storage, chartReviewStorage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership, updateClinicPlanFromStripe } from "./storage";
+
+/**
+ * Converts a family-history intake field response into human-readable strings
+ * for storage in patientChart.familyHistory (string[]).
+ *
+ * Two supported shapes:
+ *  1. family_history_chart field  → { "Mother": "Diabetes, HTN", "Father": "..." }
+ *     Output: ["Mother: Diabetes, HTN", "Father: ..."]
+ *
+ *  2. matrix field (condition rows × YES checkbox + Notes/Family Member column)
+ *     optionsJson: { rows: [{id, label}], columns: [{id, header, fieldType}] }
+ *     value:       { rowId: { checkboxColId: true, notesColId: "Mother" } }
+ *     Output: ["Cancer- Breast (Mother)", "Diabetes (Father)"]   ← only checked rows
+ */
+function extractFamilyHistoryEntries(field: any, value: Record<string, any>): string[] {
+  const entries: string[] = [];
+
+  const cfg = field.optionsJson;
+  const isMatrix =
+    field.fieldType === "matrix" &&
+    cfg && typeof cfg === "object" && !Array.isArray(cfg) &&
+    Array.isArray(cfg.rows) && Array.isArray(cfg.columns);
+
+  if (isMatrix) {
+    const rows: Array<{ id: string; label: string }> = cfg.rows;
+    const cols: Array<{ id: string; header: string; fieldType: string }> = cfg.columns;
+    const yesCol  = cols.find(c => c.fieldType === "checkbox");
+    const noteCol = cols.find(c => c.fieldType !== "checkbox");
+
+    for (const row of rows) {
+      const cellData = value[row.id];
+      if (!cellData || typeof cellData !== "object") continue;
+      if (yesCol && !cellData[yesCol.id]) continue;
+      const member = noteCol ? String(cellData[noteCol.id] || "").trim() : "";
+      entries.push(member ? `${row.label} (${member})` : row.label);
+    }
+  } else {
+    // family_history_chart: { memberName: "conditions text" }
+    for (const [member, conditions] of Object.entries(value)) {
+      const cond = String(conditions || "").trim();
+      if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
+        entries.push(`${member}: ${cond}`);
+      }
+    }
+  }
+
+  return entries;
+}
 import { getClinicPlanState, getActiveProviderCount, calculateRequiredSeatQuantity, SUITE_BASE_PROVIDER_LIMIT, EXTRA_SEAT_MONTHLY_PRICE } from "./clinic-plan";
 import { passport, hashPassword } from "./auth";
 import { logAudit } from "./audit";
@@ -4324,12 +4372,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
               toSync[domain].push(...value.filter(Boolean).map(String));
             } else if (typeof value === "object" && value !== null) {
               if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
-                for (const [member, conditions] of Object.entries(value)) {
-                  const cond = String(conditions || "").trim();
-                  if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
-                    toSync[domain].push(`${member}: ${cond}`);
-                  }
-                }
+                extractFamilyHistoryEntries(field, value).forEach(e => toSync[domain].push(e));
               } else {
                 const rows = value.rows ?? value;
                 if (Array.isArray(rows)) {
@@ -11871,12 +11914,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
                 toSync[domain].push(...value.filter(Boolean).map(String));
               } else if (typeof value === "object" && value !== null) {
                 if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
-                  for (const [member, conditions] of Object.entries(value)) {
-                    const cond = String(conditions || "").trim();
-                    if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
-                      toSync[domain].push(`${member}: ${cond}`);
-                    }
-                  }
+                  extractFamilyHistoryEntries(field, value).forEach(e => toSync[domain].push(e));
                 } else {
                   const rows = value.rows ?? value;
                   if (Array.isArray(rows)) {
@@ -12149,12 +12187,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           extracted[domain].push(...value.filter(Boolean).map(String));
         } else if (typeof value === "object") {
           if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
-            for (const [member, conditions] of Object.entries(value)) {
-              const cond = String(conditions || "").trim();
-              if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
-                extracted[domain].push(`${member}: ${cond}`);
-              }
-            }
+            extractFamilyHistoryEntries(field, value).forEach(e => extracted[domain].push(e));
           } else {
             const rows = value.rows ?? value;
             if (Array.isArray(rows)) {
@@ -12247,12 +12280,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             toSync[domain].push(...value.filter(Boolean).map(String));
           } else if (typeof value === "object") {
             if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
-              for (const [member, conditions] of Object.entries(value)) {
-                const cond = String(conditions || "").trim();
-                if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
-                  toSync[domain].push(`${member}: ${cond}`);
-                }
-              }
+              extractFamilyHistoryEntries(field, value).forEach(e => toSync[domain].push(e));
             } else {
               const rows = value.rows ?? value;
               if (Array.isArray(rows)) {
