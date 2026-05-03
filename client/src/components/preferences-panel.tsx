@@ -1,4 +1,4 @@
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect } from "react";
 import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -1098,23 +1098,31 @@ export function PreferencesPanel() {
   const { data: labRangeData } = useQuery<{ preferences: ClinicianLabPreference[]; defaults: LabMarkerDefault[] }>({ queryKey: ["/api/preferences/lab-ranges"] });
   const { data: discountData } = useQuery<{ discountType: string; discountPercent: number; discountFlat: number; supplementMode?: string }>({
     queryKey: ["/api/preferences/discount"],
-    onSuccess: (d: any) => {
-      setDiscountType(d.discountType || 'percent');
-      setDiscountPercent(String(d.discountPercent ?? 20));
-      if (d.supplementMode === 'custom_only' || d.supplementMode === 'defaults_plus_custom') {
-        setSupplementMode(d.supplementMode);
-      }
-    },
-  } as any);
+  });
 
-  // Save supplement-mode toggle (auto-save on change)
+  // TanStack Query v5 removed onSuccess on useQuery — sync server data into local state via effect
+  useEffect(() => {
+    if (!discountData) return;
+    setDiscountType(discountData.discountType || 'percent');
+    setDiscountPercent(String(discountData.discountPercent ?? 20));
+    if (discountData.supplementMode === 'custom_only' || discountData.supplementMode === 'defaults_plus_custom') {
+      setSupplementMode(discountData.supplementMode);
+    }
+  }, [discountData]);
+
+  // Save supplement-mode toggle (auto-save on change).
+  // Uses server-fetched discount values so we never overwrite the user's saved
+  // discount settings with stale local-state defaults.
   const saveSupplementModeMutation = useMutation({
     mutationFn: async (mode: 'defaults_plus_custom' | 'custom_only') => {
+      const serverDiscountType    = discountData?.discountType    ?? discountType;
+      const serverDiscountPercent = discountData?.discountPercent ?? parseInt(discountPercent) || 0;
+      const serverDiscountFlat    = discountData?.discountFlat    ?? 0;
       const res = await apiRequest("PUT", "/api/preferences/discount", {
-        discountType,
-        discountPercent: parseInt(discountPercent) || 0,
-        discountFlat: 0,
-        supplementMode: mode,
+        discountType:    serverDiscountType,
+        discountPercent: serverDiscountPercent,
+        discountFlat:    serverDiscountFlat,
+        supplementMode:  mode,
       });
       return res.json();
     },
