@@ -1116,7 +1116,7 @@ export function PreferencesPanel() {
   const saveSupplementModeMutation = useMutation({
     mutationFn: async (mode: 'defaults_plus_custom' | 'custom_only') => {
       const serverDiscountType    = discountData?.discountType    ?? discountType;
-      const serverDiscountPercent = discountData?.discountPercent ?? parseInt(discountPercent) || 0;
+      const serverDiscountPercent = discountData?.discountPercent ?? (parseInt(discountPercent) || 0);
       const serverDiscountFlat    = discountData?.discountFlat    ?? 0;
       const res = await apiRequest("PUT", "/api/preferences/discount", {
         discountType:    serverDiscountType,
