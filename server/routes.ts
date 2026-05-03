@@ -10518,6 +10518,46 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // ── Helper: find clinic appointments with no patientId that match a patient
+  // by email or full name, auto-link them, and return the matched records.
+  // This recovers "orphaned" appointments booked from the schedule page when
+  // the clinician typed/selected a patient name but didn't pick from the picker.
+  async function findAndLinkOrphanedAppointments(
+    st: typeof storage,
+    patient: { id: number; firstName?: string | null; lastName?: string | null; email?: string | null },
+    clinicId: number | null,
+  ) {
+    if (!clinicId) return [];
+    // Scan a wide window: 6 months back → 2 years forward
+    const windowStart = new Date(Date.now() - 183 * 86400000);
+    const windowEnd   = new Date(Date.now() + 730 * 86400000);
+    const clinicAppts = await st.getAppointmentsByClinicAndRange(clinicId, windowStart, windowEnd);
+    const candidates = clinicAppts.filter(a => !a.patientId);
+    if (!candidates.length) return [];
+
+    const normalize = (s: string | null | undefined) =>
+      (s ?? "").toLowerCase().replace(/\s+/g, " ").trim();
+
+    const patientEmail = normalize(patient.email);
+    const patientName  = normalize(`${patient.firstName ?? ""} ${patient.lastName ?? ""}`);
+
+    const matched: typeof candidates = [];
+    for (const a of candidates) {
+      const apptEmail = normalize(a.patientEmail);
+      const apptName  = normalize(a.patientName);
+      const emailHit  = patientEmail && apptEmail && apptEmail === patientEmail;
+      const nameHit   = patientName.length > 1 && apptName.length > 1 && apptName === patientName;
+      if (emailHit || nameHit) {
+        matched.push({ ...a, patientId: patient.id });
+        // Backfill patientId so future queries find it instantly
+        st.matchAppointmentToPatient(a.id, patient.id).catch(e =>
+          console.warn("[Scheduling] auto-link failed for appt", a.id, e)
+        );
+      }
+    }
+    return matched;
+  }
+
   // ── Range query for native + Boulevard appointments together ──────────────
   app.get("/api/appointments/range", requireAuth, async (req: any, res) => {
     try {
@@ -10554,13 +10594,21 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (!patientId) return res.status(400).json({ message: "Invalid patient id" });
       const clinicId = getEffectiveClinicId(req);
 
-      const patient = await storage.getPatient(patientId);
+      const patient = await storage.getPatientById(patientId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       if (clinicId && patient.clinicId && patient.clinicId !== clinicId) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const all = await storage.getAppointmentsByPatientId(patientId);
+      const byId = await storage.getAppointmentsByPatientId(patientId);
+
+      // Also find clinic appointments booked without a patientId but matching by
+      // name or email (common when booking from the schedule page without
+      // selecting from the patient picker). Auto-link them as they are found.
+      const orphaned = await findAndLinkOrphanedAppointments(storage, patient, clinicId);
+      const seenIds = new Set(byId.map(a => a.id));
+      const all = [...byId, ...orphaned.filter(a => !seenIds.has(a.id))];
+
       const now = Date.now();
       const past = all
         .filter(a => new Date(a.appointmentStart).getTime() < now && a.status !== "cancelled")
@@ -10583,13 +10631,21 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (!patientId) return res.status(400).json({ message: "Invalid patient id" });
       const clinicId = getEffectiveClinicId(req);
 
-      const patient = await storage.getPatient(patientId);
+      const patient = await storage.getPatientById(patientId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
       if (clinicId && patient.clinicId && patient.clinicId !== clinicId) {
         return res.status(403).json({ message: "Forbidden" });
       }
 
-      const all = await storage.getAppointmentsByPatientId(patientId);
+      const byId = await storage.getAppointmentsByPatientId(patientId);
+
+      // Also find clinic appointments booked without a patientId but matching by
+      // name or email (common when booking from the schedule page without
+      // selecting from the patient picker). Auto-link them as they are found.
+      const orphaned = await findAndLinkOrphanedAppointments(storage, patient, clinicId);
+      const seenIds = new Set(byId.map(a => a.id));
+      const all = [...byId, ...orphaned.filter(a => !seenIds.has(a.id))];
+
       const now = Date.now();
       const upcoming = all
         .filter(a => new Date(a.appointmentStart).getTime() >= now && a.status !== "cancelled")
