@@ -10,7 +10,10 @@ export type BuiltinBlockId =
   | "current_medications"
   | "allergies"
   | "ros"
-  | "physical_exam";
+  | "physical_exam"
+  | "assessment_plan"
+  | "care_plan"
+  | "follow_up";
 
 export type ChartDomainKey =
   | "medicalHistory"
@@ -25,7 +28,7 @@ export interface BuiltinBlockDef {
   label: string;          // human title used in pickers / template builder
   shortLabel: string;     // shorter title used in the inserted note section header
   triggers: string[];     // slash triggers (lowercase, no `/`)
-  category: "subjective" | "objective";
+  category: "subjective" | "objective" | "assessment" | "plan";
   /**
    * Bullet-style history blocks render as a list of items rather than free
    * text. They also support pulling items from the patient chart.
@@ -127,6 +130,33 @@ export const BUILTIN_BLOCKS: BuiltinBlockDef[] = [
     category: "objective",
     list: false,
     chart: true,
+  },
+  {
+    id: "assessment_plan",
+    label: "Assessment / Plan",
+    shortLabel: "Assessment / Plan",
+    triggers: ["ap", "assessment", "a/p"],
+    category: "assessment",
+    list: false,
+    chart: false,
+  },
+  {
+    id: "care_plan",
+    label: "Care Plan",
+    shortLabel: "Care Plan",
+    triggers: ["careplan", "care"],
+    category: "plan",
+    list: false,
+    chart: false,
+  },
+  {
+    id: "follow_up",
+    label: "Follow-Up",
+    shortLabel: "Follow-Up",
+    triggers: ["fu", "followup", "follow"],
+    category: "plan",
+    list: false,
+    chart: false,
   },
 ];
 
@@ -268,9 +298,10 @@ export function renderTemplateBlocks(
         continue;
       }
 
-      // HPI: narrative by default, opt-in to bullets via bulletMode.
-      if (def.id === "hpi") {
-        if (tb.bulletMode) {
+      // HPI, Assessment/Plan, Care Plan, Follow-Up: free-text blocks.
+      // HPI supports an opt-in bullet mode; the others are always free text.
+      if (!def.list && !def.chart) {
+        if (def.id === "hpi" && tb.bulletMode) {
           const items = value
             ? value.split(/\r?\n/).map(s => s.replace(/^[-*•]\s*/, "").trim()).filter(Boolean)
             : [];
