@@ -2237,6 +2237,7 @@ Rules:
         email: z.string().optional().nullable(),
         dateOfBirth: z.string().optional().nullable(),
         phone: z.string().optional().nullable(),
+        gender: z.enum(["male", "female"]).optional(),
         primaryProvider: z.string().optional().nullable(),
         preferredPharmacy: z.string().optional().nullable(),
         // Structured pharmacy details from the lookup component. All optional —
@@ -2248,14 +2249,21 @@ Rules:
         pharmacyFax: z.string().trim().max(50).optional().nullable(),
         pharmacyNcpdpId: z.string().trim().max(30).optional().nullable(),
         pharmacyPlaceId: z.string().trim().max(200).optional().nullable(),
+        // Additional demographics
+        ssn: z.string().trim().max(20).optional().nullable(),
+        driversLicense: z.string().trim().max(50).optional().nullable(),
+        insuranceCarrier: z.string().trim().max(150).optional().nullable(),
+        insuranceMemberId: z.string().trim().max(100).optional().nullable(),
       });
       const parsedPatch = patchSchema.safeParse(req.body);
       if (!parsedPatch.success) {
         return res.status(400).json({ error: "Invalid input", details: parsedPatch.error.format() });
       }
       const {
-        firstName, lastName, email, dateOfBirth, phone, primaryProvider, preferredPharmacy,
+        firstName, lastName, email, dateOfBirth, phone, gender,
+        primaryProvider, preferredPharmacy,
         pharmacyName, pharmacyAddress, pharmacyPhone, pharmacyFax, pharmacyNcpdpId, pharmacyPlaceId,
+        ssn, driversLicense, insuranceCarrier, insuranceMemberId,
       } = parsedPatch.data;
       const updates: Record<string, unknown> = {};
       if (firstName !== undefined) updates.firstName = (firstName ?? "").trim();
@@ -2263,6 +2271,11 @@ Rules:
       if (email !== undefined) updates.email = (email ?? "").trim().toLowerCase() || null;
       if (dateOfBirth !== undefined) updates.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
       if (phone !== undefined) updates.phone = (phone ?? "").trim() || null;
+      if (gender !== undefined) updates.gender = gender;
+      if (ssn !== undefined) updates.ssn = ssn?.trim() || null;
+      if (driversLicense !== undefined) updates.driversLicense = driversLicense?.trim() || null;
+      if (insuranceCarrier !== undefined) updates.insuranceCarrier = insuranceCarrier?.trim() || null;
+      if (insuranceMemberId !== undefined) updates.insuranceMemberId = insuranceMemberId?.trim() || null;
       if (primaryProvider !== undefined) {
         const providerName = typeof primaryProvider === "string" ? primaryProvider.trim() : "";
         updates.primaryProvider = providerName || null;
@@ -4410,6 +4423,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
             medications: [], allergies: [], medical_history: [],
             surgical_history: [], family_history: [], social_history: [],
           };
+          let genderFromSync: string | null = null;
           for (const field of fields) {
             if (!field.syncConfigJson) continue;
             const sync = field.syncConfigJson as any;
@@ -4417,6 +4431,11 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
             const value = (responses as Record<string, any>)[field.fieldKey];
             if (value === undefined || value === null || value === "") continue;
             const domain = sync.domain as string;
+            if (domain === "gender") {
+              const raw = Array.isArray(value) ? String(value[0] ?? "") : String(value);
+              genderFromSync = raw.toLowerCase().startsWith("f") ? "female" : "male";
+              continue;
+            }
             if (!toSync[domain]) continue;
             if (Array.isArray(value)) {
               toSync[domain].push(...value.filter(Boolean).map(String));
@@ -4461,6 +4480,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
               familyHistory: merged.family_history,
               socialHistory: merged.social_history,
             });
+          }
+          if (genderFromSync) {
+            await storage.updatePatient(patientId, { gender: genderFromSync as "male" | "female" }, form.clinicianId ?? 0);
           }
           await storage.updateFormSubmission(submission.id, { syncStatus: "synced" });
         } catch (syncErr) {
@@ -12038,6 +12060,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               medications: [], allergies: [], medical_history: [],
               surgical_history: [], family_history: [], social_history: [],
             };
+            let genderFromSync: string | null = null;
             for (const field of fields) {
               if (!field.syncConfigJson) continue;
               const sync = field.syncConfigJson as any;
@@ -12045,6 +12068,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               const value = (responses as Record<string, any>)[field.fieldKey];
               if (value === undefined || value === null || value === "") continue;
               const domain = sync.domain as string;
+              if (domain === "gender") {
+                const raw = Array.isArray(value) ? String(value[0] ?? "") : String(value);
+                genderFromSync = raw.toLowerCase().startsWith("f") ? "female" : "male";
+                continue;
+              }
               if (!toSync[domain]) continue;
               if (Array.isArray(value)) {
                 toSync[domain].push(...value.filter(Boolean).map(String));
@@ -12089,6 +12117,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               if (Object.keys(chartData).length > 0) {
                 await storage.upsertPatientChart(resolvedPatientId!, form.clinicianId!, chartData);
               }
+            }
+            if (genderFromSync && resolvedPatientId) {
+              await storage.updatePatient(resolvedPatientId, { gender: genderFromSync as "male" | "female" }, form.clinicianId!);
             }
           } catch (syncErr) {
             console.error("[FormSubmit] smart-field sync error:", syncErr);
@@ -12300,6 +12331,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
 
       const domainLabels: Record<string, string> = {
+        gender: "Patient Sex / Gender",
         medications: "Current Medications",
         allergies: "Allergies & Sensitivities",
         medical_history: "Medical History",
@@ -12309,6 +12341,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       };
 
       const extracted: Record<string, string[]> = {
+        gender: [],
         medications: [], allergies: [], medical_history: [],
         surgical_history: [], family_history: [], social_history: [],
       };
@@ -12320,6 +12353,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         const value = responses[field.fieldKey];
         if (value === undefined || value === null || value === "") continue;
         const domain = sync.domain as string;
+        if (domain === "gender") {
+          const raw = Array.isArray(value) ? String(value[0] ?? "") : String(value);
+          extracted.gender = [raw.toLowerCase().startsWith("f") ? "female" : "male"];
+          continue;
+        }
         if (!extracted[domain]) continue;
         if (Array.isArray(value)) {
           extracted[domain].push(...value.filter(Boolean).map(String));
@@ -12415,6 +12453,12 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           const value = responses[field.fieldKey];
           if (value === undefined || value === null || value === "") continue;
           const domain = sync.domain as string;
+          if (domain === "gender") {
+            const raw = Array.isArray(value) ? String(value[0] ?? "") : String(value);
+            const resolvedGender = raw.toLowerCase().startsWith("f") ? "female" : "male";
+            await storage.updatePatient(patientId, { gender: resolvedGender as "male" | "female" }, submission.clinicianId ?? req.user.id);
+            continue;
+          }
           if (!toSync[domain]) continue;
           if (Array.isArray(value)) {
             toSync[domain].push(...value.filter(Boolean).map(String));

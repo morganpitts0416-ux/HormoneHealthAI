@@ -550,6 +550,11 @@ export const patients = pgTable("patients", {
   pharmacyFax: varchar("pharmacy_fax", { length: 50 }),
   pharmacyNcpdpId: varchar("pharmacy_ncpdp_id", { length: 30 }),
   pharmacyPlaceId: varchar("pharmacy_place_id", { length: 200 }),
+  // ── Additional demographics ───────────────────────────────────────────────
+  ssn: varchar("ssn", { length: 20 }),
+  driversLicense: varchar("drivers_license", { length: 50 }),
+  insuranceCarrier: varchar("insurance_carrier", { length: 150 }),
+  insuranceMemberId: varchar("insurance_member_id", { length: 100 }),
   // ── Multi-clinic foundation (nullable — populated by migration) ──────────
   clinicId: integer("clinic_id"),            // No FK constraint during initial rollout
   primaryProviderId: integer("primary_provider_id"), // No FK constraint during initial rollout
