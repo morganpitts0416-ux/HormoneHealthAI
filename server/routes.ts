@@ -11880,9 +11880,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         const address = smartValues["patient_address"] || "";
         const preferredPharmacy = smartValues["patient_preferred_pharmacy"] || "";
         const genderRaw = pick("patient_gender", /^gender$/, /^sex$/);
+        const formDefaultGender = (form.settingsJson as any)?.defaultGender as "male" | "female" | null | undefined;
         gender = genderRaw
           ? (genderRaw.toLowerCase().startsWith("f") ? "female" : "male")
-          : "male";
+          : (formDefaultGender ?? "male");
 
         if (firstName && lastName) {
           // Match priority: email > (firstName + lastName + DOB) > create new
