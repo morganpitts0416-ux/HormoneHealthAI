@@ -116,7 +116,7 @@ function extractFamilyHistoryEntries(field: any, value: Record<string, any>): st
         continue;
       }
       const member = noteCol ? String(cellData[noteCol.id] ?? "").trim() : "";
-      const entry = member ? `${row.label} (${member})` : row.label;
+      const entry = member ? `${member} - ${row.label}` : row.label;
       console.log(`${tag} row ${row.id} (${row.label}): pushing "${entry}"`);
       entries.push(entry);
     }
