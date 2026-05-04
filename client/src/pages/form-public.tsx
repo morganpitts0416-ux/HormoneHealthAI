@@ -738,11 +738,11 @@ function FieldRenderer({ field, value, onChange, error }: {
         const matrixVal = (typeof value === "object" && value !== null && !Array.isArray(value))
           ? value as Record<string, Record<string, any>>
           : {};
-        const setCell = (rid: string, cid: string, v: any) => {
-          onChange({ ...matrixVal, [rid]: { ...(matrixVal[rid] ?? {}), [cid]: v } });
+        const setCell = (rid: string, cid: string, v: any, rowLabel?: string) => {
+          onChange({ ...matrixVal, [rid]: { ...(matrixVal[rid] ?? {}), [cid]: v, ...(rowLabel ? { _rowLabel: rowLabel } : {}) } });
         };
-        const setRowCells = (rid: string, patch: Record<string, any>) => {
-          onChange({ ...matrixVal, [rid]: { ...(matrixVal[rid] ?? {}), ...patch } });
+        const setRowCells = (rid: string, patch: Record<string, any>, rowLabel?: string) => {
+          onChange({ ...matrixVal, [rid]: { ...(matrixVal[rid] ?? {}), ...patch, ...(rowLabel ? { _rowLabel: rowLabel } : {}) } });
         };
         return (
           <div className="border rounded-md overflow-x-auto">
@@ -765,7 +765,7 @@ function FieldRenderer({ field, value, onChange, error }: {
                       return (
                         <td key={c.id} className="px-2 py-1 border-l text-center align-middle">
                           {c.fieldType === "checkbox" ? (
-                            <input type="checkbox" className="h-4 w-4 cursor-pointer" checked={!!cellVal} onChange={e => setCell(r.id, c.id, e.target.checked)} data-testid={testId} />
+                            <input type="checkbox" className="h-4 w-4 cursor-pointer" checked={!!cellVal} onChange={e => setCell(r.id, c.id, e.target.checked, r.label)} data-testid={testId} />
                           ) : c.fieldType === "radio" ? (
                             (() => {
                               const selectedColId = cols.find((cc: any) => cc.fieldType === "radio" && matrixVal?.[r.id]?.[cc.id] === true)?.id;
@@ -773,18 +773,18 @@ function FieldRenderer({ field, value, onChange, error }: {
                                 <input type="radio" name={`matrix-${field.fieldKey}-${r.id}`} className="h-4 w-4 cursor-pointer" checked={selectedColId === c.id} onChange={() => {
                                   const patch: Record<string, any> = {};
                                   cols.forEach((cc: any) => { if (cc.fieldType === "radio") patch[cc.id] = cc.id === c.id; });
-                                  setRowCells(r.id, patch);
+                                  setRowCells(r.id, patch, r.label);
                                 }} data-testid={testId} />
                               );
                             })()
                           ) : c.fieldType === "textarea" ? (
-                            <textarea value={cellVal ?? ""} rows={2} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value)} className="w-full text-sm border rounded px-1.5 py-1 resize-y" data-testid={testId} />
+                            <textarea value={cellVal ?? ""} rows={2} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value, r.label)} className="w-full text-sm border rounded px-1.5 py-1 resize-y" data-testid={testId} />
                           ) : c.fieldType === "number" ? (
-                            <input type="number" value={cellVal ?? ""} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value)} className="w-full text-sm border rounded px-1.5 py-1" data-testid={testId} />
+                            <input type="number" value={cellVal ?? ""} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value, r.label)} className="w-full text-sm border rounded px-1.5 py-1" data-testid={testId} />
                           ) : c.fieldType === "date" ? (
-                            <input type="date" value={cellVal ?? ""} onChange={e => setCell(r.id, c.id, e.target.value)} className="w-full text-sm border rounded px-1.5 py-1" data-testid={testId} />
+                            <input type="date" value={cellVal ?? ""} onChange={e => setCell(r.id, c.id, e.target.value, r.label)} className="w-full text-sm border rounded px-1.5 py-1" data-testid={testId} />
                           ) : (
-                            <input type="text" value={cellVal ?? ""} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value)} className="w-full text-sm border rounded px-1.5 py-1 text-left" data-testid={testId} />
+                            <input type="text" value={cellVal ?? ""} placeholder={c.placeholder} onChange={e => setCell(r.id, c.id, e.target.value, r.label)} className="w-full text-sm border rounded px-1.5 py-1 text-left" data-testid={testId} />
                           )}
                         </td>
                       );

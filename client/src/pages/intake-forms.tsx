@@ -1975,7 +1975,12 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
                   {SYNC_DOMAINS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
                 </SelectContent>
               </Select>
-              {syncDomain !== "none" && (
+              {syncDomain === "gender" && (
+                <p className="text-[11px] text-blue-600 dark:text-blue-400 leading-snug bg-blue-50 dark:bg-blue-950/30 rounded px-2 py-1.5">
+                  To assign a default sex for <em>all</em> patients on this form (e.g. a women-only clinic), open the <strong>Settings</strong> tab above and set "Default Patient Sex".
+                </p>
+              )}
+              {syncDomain !== "none" && syncDomain !== "gender" && (
                 <label className="flex items-start gap-2 cursor-pointer">
                   <input
                     type="checkbox"

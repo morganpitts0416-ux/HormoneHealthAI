@@ -121,9 +121,34 @@ function extractFamilyHistoryEntries(field: any, value: Record<string, any>): st
       entries.push(entry);
     }
   } else if (appearsToBeMatrix) {
-    // optionsJson missing or incomplete — we can't resolve row labels.
-    // Silently discard rather than writing "[object Object]" to the chart.
-    console.log(`${tag} appearsToBeMatrix but no valid config — discarding to avoid [object Object]`);
+    // optionsJson missing or incomplete — try _rowLabel injected by the form renderer.
+    // If that's also absent we discard rather than write raw row IDs to the chart.
+    console.log(`${tag} appearsToBeMatrix but no valid config — attempting _rowLabel fallback`);
+    let extractedAny = false;
+    for (const [rowId, cellData] of Object.entries(value)) {
+      if (!cellData || typeof cellData !== "object") continue;
+      const cd = cellData as Record<string, any>;
+      // Only process rows that have at least one truthy boolean (i.e. checked).
+      const hasChecked = Object.values(cd).some(v => v === true);
+      if (!hasChecked) continue;
+      const rowLabel = typeof cd._rowLabel === "string" ? cd._rowLabel.trim() : "";
+      if (!rowLabel) {
+        console.log(`${tag} row ${rowId}: checked but no _rowLabel, skipping`);
+        continue;
+      }
+      // Find note text: first non-boolean, non-_rowLabel string value.
+      const note = Object.entries(cd)
+        .filter(([k, v]) => k !== "_rowLabel" && typeof v === "string" && (v as string).trim())
+        .map(([, v]) => (v as string).trim())
+        .join(", ");
+      const entry = note ? `${note} - ${rowLabel}` : rowLabel;
+      console.log(`${tag} _rowLabel fallback: pushing "${entry}"`);
+      entries.push(entry);
+      extractedAny = true;
+    }
+    if (!extractedAny) {
+      console.log(`${tag} _rowLabel fallback found nothing — discarding`);
+    }
   } else {
     // family_history_chart: { memberName: "conditions text" }
     // Skip any entries whose value is an object (guard against stray matrix data).
