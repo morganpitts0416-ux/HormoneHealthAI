@@ -1136,7 +1136,7 @@ export default function PatientProfiles() {
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
-  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", primaryProvider: "" });
+  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", gender: "female" as "male" | "female", primaryProvider: "", ssn: "", driversLicense: "", insuranceCarrier: "", insuranceMemberId: "" });
   const [editPatientPharmacy, setEditPatientPharmacy] = useState<PharmacyLookupValue>({ text: "", details: null });
   const [showNewPatientDialog, setShowNewPatientDialog] = useState(false);
   const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", gender: "female" as "male" | "female", email: "", phone: "" });
@@ -1657,7 +1657,7 @@ export default function PatientProfiles() {
   });
 
   const updatePatientMutation = useMutation({
-    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; primaryProvider: string; pharmacy: PharmacyLookupValue }) => {
+    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; gender: string; primaryProvider: string; ssn: string; driversLicense: string; insuranceCarrier: string; insuranceMemberId: string; pharmacy: PharmacyLookupValue }) => {
       const { id, pharmacy, ...fields } = data;
       const body: Record<string, string | null> = {
         firstName: fields.firstName,
@@ -1665,7 +1665,12 @@ export default function PatientProfiles() {
         email: fields.email || null,
         phone: fields.phone || null,
         dateOfBirth: fields.dateOfBirth || null,
+        gender: fields.gender,
         primaryProvider: fields.primaryProvider || null,
+        ssn: fields.ssn || null,
+        driversLicense: fields.driversLicense || null,
+        insuranceCarrier: fields.insuranceCarrier || null,
+        insuranceMemberId: fields.insuranceMemberId || null,
         ...pharmacyValueToPatch(pharmacy),
       };
       const res = await apiRequest("PATCH", `/api/patients/${id}`, body);
@@ -1753,7 +1758,12 @@ export default function PatientProfiles() {
       email: (selectedPatient as any).email ?? "",
       dateOfBirth: dob,
       phone: (selectedPatient as any).phone ?? "",
+      gender: (selectedPatient.gender === "male" ? "male" : "female") as "male" | "female",
       primaryProvider: defaultProvider,
+      ssn: (selectedPatient as any).ssn ?? "",
+      driversLicense: (selectedPatient as any).driversLicense ?? "",
+      insuranceCarrier: (selectedPatient as any).insuranceCarrier ?? "",
+      insuranceMemberId: (selectedPatient as any).insuranceMemberId ?? "",
     });
     setEditPatientPharmacy(pharmacyValueFromRecord(selectedPatient as any));
     setShowEditPatient(true);
@@ -2077,6 +2087,17 @@ export default function PatientProfiles() {
                         )}
                         {selectedPatient.mrn && (
                           <span className="text-xs text-muted-foreground">MRN: {selectedPatient.mrn}</span>
+                        )}
+                        {(selectedPatient as any).insuranceCarrier && (
+                          <span className="text-xs text-muted-foreground">
+                            Ins: <span className="font-medium text-foreground">{(selectedPatient as any).insuranceCarrier}</span>
+                            {(selectedPatient as any).insuranceMemberId && <span className="text-foreground"> #{(selectedPatient as any).insuranceMemberId}</span>}
+                          </span>
+                        )}
+                        {(selectedPatient as any).driversLicense && (
+                          <span className="text-xs text-muted-foreground">
+                            DL: <span className="font-medium text-foreground">{(selectedPatient as any).driversLicense}</span>
+                          </span>
                         )}
                         {((selectedPatient as any).pharmacyName || (selectedPatient as any).preferredPharmacy) && (
                           <PharmacyDisplay
@@ -3942,6 +3963,64 @@ export default function PatientProfiles() {
                   onChange={e => setEditPatientForm(f => ({ ...f, phone: e.target.value }))}
                   data-testid="input-edit-patient-phone"
                 />
+              </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-gender">Sex</Label>
+              <Select value={editPatientForm.gender} onValueChange={v => setEditPatientForm(f => ({ ...f, gender: v as "male" | "female" }))}>
+                <SelectTrigger id="edit-gender" data-testid="select-edit-patient-gender"><SelectValue /></SelectTrigger>
+                <SelectContent>
+                  <SelectItem value="female">Female</SelectItem>
+                  <SelectItem value="male">Male</SelectItem>
+                </SelectContent>
+              </Select>
+              <p className="text-xs text-muted-foreground">Determines which clinical reference ranges are used for lab panels</p>
+            </div>
+            <div className="border-t pt-3 space-y-3">
+              <p className="text-xs font-medium text-muted-foreground uppercase tracking-wide">Insurance & ID</p>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-insurance-carrier">Insurance Carrier</Label>
+                  <Input
+                    id="edit-insurance-carrier"
+                    placeholder="e.g. Blue Cross"
+                    value={editPatientForm.insuranceCarrier}
+                    onChange={e => setEditPatientForm(f => ({ ...f, insuranceCarrier: e.target.value }))}
+                    data-testid="input-edit-patient-insurance-carrier"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-insurance-member-id">Member ID</Label>
+                  <Input
+                    id="edit-insurance-member-id"
+                    placeholder="Member / Policy #"
+                    value={editPatientForm.insuranceMemberId}
+                    onChange={e => setEditPatientForm(f => ({ ...f, insuranceMemberId: e.target.value }))}
+                    data-testid="input-edit-patient-insurance-member-id"
+                  />
+                </div>
+              </div>
+              <div className="grid grid-cols-2 gap-3">
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-drivers-license">Driver's License</Label>
+                  <Input
+                    id="edit-drivers-license"
+                    placeholder="DL number"
+                    value={editPatientForm.driversLicense}
+                    onChange={e => setEditPatientForm(f => ({ ...f, driversLicense: e.target.value }))}
+                    data-testid="input-edit-patient-drivers-license"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="edit-ssn">SSN</Label>
+                  <Input
+                    id="edit-ssn"
+                    placeholder="XXX-XX-XXXX"
+                    value={editPatientForm.ssn}
+                    onChange={e => setEditPatientForm(f => ({ ...f, ssn: e.target.value }))}
+                    data-testid="input-edit-patient-ssn"
+                  />
+                </div>
               </div>
             </div>
             <div className="space-y-1.5">

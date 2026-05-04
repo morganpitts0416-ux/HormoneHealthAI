@@ -141,6 +141,7 @@ function defaultMatrixConfig() {
 
 const SYNC_DOMAINS = [
   { value: "none", label: "Do not sync" },
+  { value: "gender", label: "Patient Sex / Gender" },
   { value: "medications", label: "Medications" },
   { value: "allergies", label: "Allergies" },
   { value: "medical_history", label: "Medical History" },
