@@ -1482,6 +1482,9 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
   const [syncDomain, setSyncDomain] = useState(
     (field.syncConfigJson as any)?.domain ?? "none"
   );
+  const [syncLabelPrefix, setSyncLabelPrefix] = useState<boolean>(
+    (field.syncConfigJson as any)?.labelPrefix ?? false
+  );
   const [columnWidth, setColumnWidth] = useState<string>(
     (field.layoutJson as any)?.columnWidth ?? "full"
   );
@@ -1514,6 +1517,7 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
     setLocal({ ...field });
     setOptionsText(Array.isArray(field.optionsJson) ? field.optionsJson.join("\n") : "");
     setSyncDomain((field.syncConfigJson as any)?.domain ?? "none");
+    setSyncLabelPrefix((field.syncConfigJson as any)?.labelPrefix ?? false);
     setColumnWidth((field.layoutJson as any)?.columnWidth ?? "full");
     setOptionColumns((field.layoutJson as any)?.optionColumns ?? 1);
     const lg = (field.conditionalLogicJson as any) ?? null;
@@ -1611,7 +1615,7 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
     }
     if (!isSmart) {
       if (syncDomain && syncDomain !== "none") {
-        data.syncConfigJson = { domain: syncDomain, mode: "append" };
+        data.syncConfigJson = { domain: syncDomain, mode: "append", ...(syncLabelPrefix ? { labelPrefix: true } : {}) };
       } else {
         data.syncConfigJson = null;
       }
@@ -1960,9 +1964,9 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
         {!isSmart && (
           <>
             <Separator />
-            <div className="space-y-1">
+            <div className="space-y-2">
               <Label className="text-xs">Sync to Patient Chart</Label>
-              <Select value={syncDomain} onValueChange={setSyncDomain}>
+              <Select value={syncDomain} onValueChange={v => { setSyncDomain(v); if (v === "none") setSyncLabelPrefix(false); }}>
                 <SelectTrigger className="text-xs" data-testid="select-sync-domain">
                   <SelectValue />
                 </SelectTrigger>
@@ -1970,6 +1974,24 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
                   {SYNC_DOMAINS.map(d => <SelectItem key={d.value} value={d.value}>{d.label}</SelectItem>)}
                 </SelectContent>
               </Select>
+              {syncDomain !== "none" && (
+                <label className="flex items-start gap-2 cursor-pointer">
+                  <input
+                    type="checkbox"
+                    checked={syncLabelPrefix}
+                    onChange={e => setSyncLabelPrefix(e.target.checked)}
+                    className="mt-0.5 h-3.5 w-3.5 flex-shrink-0"
+                    data-testid="checkbox-sync-label-prefix"
+                  />
+                  <span className="text-[11px] text-muted-foreground leading-snug">
+                    Prefix with field label<br />
+                    <span className="text-[10px] opacity-75">e.g. "Occupation: Software Engineer"</span>
+                  </span>
+                </label>
+              )}
+              <p className="text-[10px] text-muted-foreground leading-relaxed">
+                Multiple fields can sync to the same section — each adds a separate entry to the chart.
+              </p>
             </div>
           </>
         )}

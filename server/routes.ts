@@ -4430,7 +4430,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
                 }
               }
             } else {
-              toSync[domain].push(String(value));
+              const scalar = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+              const entry = sync.labelPrefix && field.label ? `${field.label}: ${scalar}` : scalar;
+              toSync[domain].push(entry);
             }
           }
           const normalize = (s: string) => s.toLowerCase().replace(/[^a-z0-9]/g, "").trim();
@@ -12056,7 +12058,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
                   }
                 }
               } else {
-                toSync[domain].push(String(value));
+                const scalar = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+                const entry = sync.labelPrefix && field.label ? `${field.label}: ${scalar}` : scalar;
+                toSync[domain].push(entry);
               }
             }
             {
@@ -12329,7 +12333,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             }
           }
         } else {
-          extracted[domain].push(String(value));
+          const scalar = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+          const entry = sync.labelPrefix && field.label ? `${field.label}: ${scalar}` : scalar;
+          extracted[domain].push(entry);
         }
       }
 
@@ -12422,7 +12428,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               }
             }
           } else {
-            toSync[domain].push(String(value));
+            const scalar = typeof value === "boolean" ? (value ? "Yes" : "No") : String(value);
+            const entry = sync.labelPrefix && field.label ? `${field.label}: ${scalar}` : scalar;
+            toSync[domain].push(entry);
           }
         }
       }
