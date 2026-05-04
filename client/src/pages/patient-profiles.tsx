@@ -2044,7 +2044,7 @@ export default function PatientProfiles() {
                       <h2 className="text-lg font-semibold leading-tight">
                         {selectedPatient.firstName} {selectedPatient.lastName}
                       </h2>
-                      <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-0 group-hover:opacity-70 transition-opacity" />
+                      <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-50" />
                     </button>
 
                     {/* Always-visible: clinic type badge + DOB + phone + provider */}
