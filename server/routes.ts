@@ -62,7 +62,14 @@ import { storage, chartReviewStorage, db as storageDb, setupClinicForNewUser, up
 function extractFamilyHistoryEntries(field: any, value: Record<string, any>): string[] {
   const entries: string[] = [];
 
-  const cfg = field.optionsJson;
+  // Defensively parse optionsJson — it's jsonb in PG and should arrive as an
+  // object, but guard against a stringified value just in case.
+  let cfg = field.optionsJson;
+  if (typeof cfg === "string") {
+    try { cfg = JSON.parse(cfg); } catch { cfg = null; }
+  }
+
+  const tag = `[FamHx sync field=${field.fieldKey} type=${field.fieldType}]`;
 
   // Prefer a fully-specified matrix config when available.
   const hasMatrixConfig =
@@ -74,27 +81,49 @@ function extractFamilyHistoryEntries(field: any, value: Record<string, any>): st
   // entry is an object (not a string/number) this is a matrix cell map.
   const appearsToBeMatrix =
     field.fieldType === "matrix" ||
-    Object.values(value).every(v => v !== null && typeof v === "object" && !Array.isArray(v));
+    (Object.keys(value).length > 0 && Object.values(value).every(v => v !== null && typeof v === "object" && !Array.isArray(v)));
+
+  console.log(`${tag} hasMatrixConfig=${hasMatrixConfig} appearsToBeMatrix=${appearsToBeMatrix} cfgType=${typeof cfg} valueKeys=${JSON.stringify(Object.keys(value))}`);
 
   if (hasMatrixConfig) {
     const rows: Array<{ id: string; label: string }> = (cfg as any).rows;
     const cols: Array<{ id: string; header: string; fieldType: string }> = (cfg as any).columns;
-    // The "checked" column is the checkbox (or first boolean-like col).
-    const yesCol  = cols.find(c => c.fieldType === "checkbox") ?? cols.find(c => c.fieldType === "boolean");
-    // The "label/member" column is any non-checkbox text-style column.
-    const noteCol = cols.find(c => c.fieldType !== "checkbox" && c.fieldType !== "boolean");
+
+    console.log(`${tag} rows=${JSON.stringify(rows.map(r => ({ id: r.id, label: r.label })))} cols=${JSON.stringify(cols.map(c => ({ id: c.id, header: c.header, fieldType: c.fieldType })))}`);
+
+    // When multiple checkbox columns exist (e.g. YES + NO), prefer the one
+    // whose header is "yes" / "y" / "positive".  Fall back to the first
+    // checkbox column, then the first boolean column.
+    const checkboxCols = cols.filter(c => c.fieldType === "checkbox" || c.fieldType === "boolean");
+    const yesCol =
+      checkboxCols.find(c => /^(yes|y|positive|affirm)/i.test(c.header.trim())) ??
+      checkboxCols[0];
+
+    // The "label/member" column is the first text-style column (not checkbox/boolean/radio).
+    const noteCol = cols.find(c => !["checkbox", "boolean", "radio"].includes(c.fieldType));
+
+    console.log(`${tag} yesCol=${JSON.stringify(yesCol)} noteCol=${JSON.stringify(noteCol)}`);
 
     for (const row of rows) {
       const cellData = value[row.id];
-      if (!cellData || typeof cellData !== "object") continue;
-      // Skip unchecked rows when a checkbox column exists.
-      if (yesCol && !cellData[yesCol.id]) continue;
-      const member = noteCol ? String(cellData[noteCol.id] || "").trim() : "";
-      entries.push(member ? `${row.label} (${member})` : row.label);
+      if (!cellData || typeof cellData !== "object") {
+        console.log(`${tag} row ${row.id} (${row.label}): no cellData, skipping`);
+        continue;
+      }
+      // Skip unchecked rows when a positive-indicator (checkbox) column exists.
+      if (yesCol && !cellData[yesCol.id]) {
+        console.log(`${tag} row ${row.id} (${row.label}): yesCol unchecked, skipping`);
+        continue;
+      }
+      const member = noteCol ? String(cellData[noteCol.id] ?? "").trim() : "";
+      const entry = member ? `${row.label} (${member})` : row.label;
+      console.log(`${tag} row ${row.id} (${row.label}): pushing "${entry}"`);
+      entries.push(entry);
     }
   } else if (appearsToBeMatrix) {
     // optionsJson missing or incomplete — we can't resolve row labels.
     // Silently discard rather than writing "[object Object]" to the chart.
+    console.log(`${tag} appearsToBeMatrix but no valid config — discarding to avoid [object Object]`);
   } else {
     // family_history_chart: { memberName: "conditions text" }
     // Skip any entries whose value is an object (guard against stray matrix data).
@@ -107,6 +136,7 @@ function extractFamilyHistoryEntries(field: any, value: Record<string, any>): st
     }
   }
 
+  console.log(`${tag} final entries=${JSON.stringify(entries)}`);
   return entries;
 }
 import { getClinicPlanState, getActiveProviderCount, calculateRequiredSeatQuantity, SUITE_BASE_PROVIDER_LIMIT, EXTRA_SEAT_MONTHLY_PRICE } from "./clinic-plan";

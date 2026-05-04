@@ -10,6 +10,50 @@ import { log } from "./logger";
 import { serveStatic } from "./static-serve";
 import { externalReviewerDenyList } from "./external-reviewer";
 
+/**
+ * One-time cleanup: remove any "[object Object]" strings that were written
+ * into patient chart list columns by a previous bug in the matrix-field sync.
+ * Safe to run on every startup — it's a no-op when nothing needs cleaning.
+ */
+async function cleanupObjectObjectChartEntries(): Promise<void> {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  try {
+    const COLS = [
+      "family_history",
+      "medical_history",
+      "surgical_history",
+      "allergies",
+      "social_history",
+      "current_medications",
+    ];
+    let totalCleaned = 0;
+    for (const col of COLS) {
+      const res = await pool.query(`
+        UPDATE patient_charts
+        SET ${col} = (
+          SELECT jsonb_agg(elem)
+          FROM jsonb_array_elements_text(${col}) AS elem
+          WHERE elem <> '[object Object]'
+        )
+        WHERE ${col}::text LIKE '%[object Object]%'
+          AND jsonb_typeof(${col}) = 'array'
+        RETURNING id
+      `);
+      if (res.rowCount && res.rowCount > 0) {
+        console.log(`[startup] cleaned "[object Object]" from ${res.rowCount} chart(s) in ${col}`);
+        totalCleaned += res.rowCount;
+      }
+    }
+    if (totalCleaned === 0) {
+      console.log("[startup] chart cleanup: no [object Object] entries found");
+    }
+  } catch (err: any) {
+    console.error("[startup] chart cleanup error:", err?.message ?? err);
+  } finally {
+    await pool.end().catch(() => {});
+  }
+}
+
 async function ensureSchema(): Promise<void> {
   const candidates = [
     path.resolve(import.meta.dirname ?? __dirname, "prod-migrate.sql"),
@@ -155,6 +199,8 @@ app.use((req, res, next) => {
   try {
     console.log("[startup] running ensureSchema…");
     await ensureSchema();
+    console.log("[startup] cleaning up bad chart entries…");
+    await cleanupObjectObjectChartEntries();
     console.log("[startup] registering routes…");
     const server = await registerRoutes(app);
 
