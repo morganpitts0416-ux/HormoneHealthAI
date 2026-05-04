@@ -54,32 +54,52 @@ import { storage, chartReviewStorage, db as storageDb, setupClinicForNewUser, up
  *     optionsJson: { rows: [{id, label}], columns: [{id, header, fieldType}] }
  *     value:       { rowId: { checkboxColId: true, notesColId: "Mother" } }
  *     Output: ["Cancer- Breast (Mother)", "Diabetes (Father)"]   ← only checked rows
+ *
+ *  3. matrix field with missing/incomplete optionsJson → structural fallback:
+ *     any entry whose value is an object rather than a string is treated as a
+ *     matrix cell and skipped if there is no row label to resolve it against.
  */
 function extractFamilyHistoryEntries(field: any, value: Record<string, any>): string[] {
   const entries: string[] = [];
 
   const cfg = field.optionsJson;
-  const isMatrix =
+
+  // Prefer a fully-specified matrix config when available.
+  const hasMatrixConfig =
     field.fieldType === "matrix" &&
     cfg && typeof cfg === "object" && !Array.isArray(cfg) &&
-    Array.isArray(cfg.rows) && Array.isArray(cfg.columns);
+    Array.isArray((cfg as any).rows) && Array.isArray((cfg as any).columns);
 
-  if (isMatrix) {
-    const rows: Array<{ id: string; label: string }> = cfg.rows;
-    const cols: Array<{ id: string; header: string; fieldType: string }> = cfg.columns;
-    const yesCol  = cols.find(c => c.fieldType === "checkbox");
-    const noteCol = cols.find(c => c.fieldType !== "checkbox");
+  // Structural detection: even if optionsJson is incomplete, if every value
+  // entry is an object (not a string/number) this is a matrix cell map.
+  const appearsToBeMatrix =
+    field.fieldType === "matrix" ||
+    Object.values(value).every(v => v !== null && typeof v === "object" && !Array.isArray(v));
+
+  if (hasMatrixConfig) {
+    const rows: Array<{ id: string; label: string }> = (cfg as any).rows;
+    const cols: Array<{ id: string; header: string; fieldType: string }> = (cfg as any).columns;
+    // The "checked" column is the checkbox (or first boolean-like col).
+    const yesCol  = cols.find(c => c.fieldType === "checkbox") ?? cols.find(c => c.fieldType === "boolean");
+    // The "label/member" column is any non-checkbox text-style column.
+    const noteCol = cols.find(c => c.fieldType !== "checkbox" && c.fieldType !== "boolean");
 
     for (const row of rows) {
       const cellData = value[row.id];
       if (!cellData || typeof cellData !== "object") continue;
+      // Skip unchecked rows when a checkbox column exists.
       if (yesCol && !cellData[yesCol.id]) continue;
       const member = noteCol ? String(cellData[noteCol.id] || "").trim() : "";
       entries.push(member ? `${row.label} (${member})` : row.label);
     }
+  } else if (appearsToBeMatrix) {
+    // optionsJson missing or incomplete — we can't resolve row labels.
+    // Silently discard rather than writing "[object Object]" to the chart.
   } else {
     // family_history_chart: { memberName: "conditions text" }
+    // Skip any entries whose value is an object (guard against stray matrix data).
     for (const [member, conditions] of Object.entries(value)) {
+      if (conditions !== null && typeof conditions === "object") continue;
       const cond = String(conditions || "").trim();
       if (cond && cond.toLowerCase() !== "none" && cond.toLowerCase() !== "n/a") {
         entries.push(`${member}: ${cond}`);
@@ -4371,10 +4391,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
             if (Array.isArray(value)) {
               toSync[domain].push(...value.filter(Boolean).map(String));
             } else if (typeof value === "object" && value !== null) {
-              if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
+              if (domain === "family_history") {
                 extractFamilyHistoryEntries(field, value).forEach(e => toSync[domain].push(e));
               } else {
-                const rows = value.rows ?? value;
+                const rows = (value as any).rows ?? value;
                 if (Array.isArray(rows)) {
                   toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
                 }
@@ -11969,10 +11989,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               if (Array.isArray(value)) {
                 toSync[domain].push(...value.filter(Boolean).map(String));
               } else if (typeof value === "object" && value !== null) {
-                if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
+                if (domain === "family_history") {
                   extractFamilyHistoryEntries(field, value).forEach(e => toSync[domain].push(e));
                 } else {
-                  const rows = value.rows ?? value;
+                  const rows = (value as any).rows ?? value;
                   if (Array.isArray(rows)) {
                     toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
                   }
@@ -12241,11 +12261,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         if (!extracted[domain]) continue;
         if (Array.isArray(value)) {
           extracted[domain].push(...value.filter(Boolean).map(String));
-        } else if (typeof value === "object") {
-          if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
+        } else if (typeof value === "object" && value !== null) {
+          if (domain === "family_history") {
             extractFamilyHistoryEntries(field, value).forEach(e => extracted[domain].push(e));
           } else {
-            const rows = value.rows ?? value;
+            const rows = (value as any).rows ?? value;
             if (Array.isArray(rows)) {
               extracted[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
             }
@@ -12334,11 +12354,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           if (!toSync[domain]) continue;
           if (Array.isArray(value)) {
             toSync[domain].push(...value.filter(Boolean).map(String));
-          } else if (typeof value === "object") {
-            if (domain === "family_history" && !Array.isArray(value) && !(value.rows)) {
+          } else if (typeof value === "object" && value !== null) {
+            if (domain === "family_history") {
               extractFamilyHistoryEntries(field, value).forEach(e => toSync[domain].push(e));
             } else {
-              const rows = value.rows ?? value;
+              const rows = (value as any).rows ?? value;
               if (Array.isArray(rows)) {
                 toSync[domain].push(...rows.map((r: any) => typeof r === "string" ? r : JSON.stringify(r)));
               }
