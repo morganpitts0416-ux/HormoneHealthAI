@@ -13,7 +13,7 @@ import {
   Plus, X, GripVertical, ChevronDown, ChevronUp, Save, FileText,
   Stethoscope, Pill, Heart, Brain, ClipboardList, Activity, Users,
   Scissors, AlertTriangle, ListChecks, CalendarCheck, ToggleLeft, ToggleRight,
-  Search, Loader2, Download,
+  Search, Loader2, Download, Upload,
 } from "lucide-react";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { usePhraseSearch } from "@/components/phrase-search";
@@ -28,6 +28,7 @@ import {
   resolveDefaultFindings,
   resolveSystemList,
   type ClinicalBlockOverrides,
+  buildBulletSection, buildParagraphSection,
 } from "@shared/note-builtin-blocks";
 
 const BLOCK_TYPES = [
@@ -536,6 +537,31 @@ function BlockEditor({
   const chartItemsForBlock: string[] = canPullFromChart && chartKey
     ? ((patientChart![chartKey] as string[] | undefined) ?? [])
     : [];
+  // Eligible to push edits BACK to the chart? Same set as the list-style
+  // chart-key blocks (Med Hx, Surg Hx, Soc Hx, Allergies, Meds, Family Hx).
+  const canSaveToChart = !!patientId && !!chartKey;
+  const { toast } = useToast();
+  const saveToChartMutation = useMutation({
+    mutationFn: async (items: string[]) => {
+      if (!patientId || !chartKey) throw new Error("No patient context");
+      await apiRequest("PUT", `/api/patients/${patientId}/chart`, {
+        [chartKey]: items,
+      });
+      return items;
+    },
+    onSuccess: (items) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "chart"] });
+      toast({
+        title: "Chart updated",
+        description: items.length === 0
+          ? `${blockDef.label} cleared on the patient's chart.`
+          : `${items.length} item${items.length === 1 ? "" : "s"} saved to ${blockDef.label}.`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Save to chart failed", description: err.message });
+    },
+  });
 
   // Bullet/free-text toggle defaults: list blocks start in bullet mode; HPI
   // starts in free text. Templates can override via tb.bulletMode.
@@ -562,6 +588,31 @@ function BlockEditor({
       const ends = merged.length > 0 ? "." : "";
       onUpdate({ content: merged.join(", ") + ends });
     }
+  };
+
+  // Parse the items currently shown in this block for the chart-save action.
+  // Bullet mode: prefer the typed listItems; free-text mode: split the
+  // textarea on newlines/commas/semicolons (the inverse of `pullFromChart`).
+  const collectItemsForChart = (): string[] => {
+    let raw: string[] = [];
+    if (bulletMode) {
+      raw = block.listItems ?? (block.content
+        ? block.content.split("\n")
+        : []);
+    } else {
+      raw = block.content ? block.content.split(/[\n,;]+/) : [];
+    }
+    const cleaned = raw
+      .map(s => s.replace(/^[-*•]\s*/, "").trim().replace(/\.$/, "").trim())
+      .filter(Boolean);
+    // De-dupe case-insensitively, preserving first-seen order.
+    const seen = new Set<string>();
+    return cleaned.filter(i => {
+      const k = i.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   };
 
   return (
@@ -607,6 +658,22 @@ function BlockEditor({
             <Download className="w-3 h-3 opacity-60" />
             No chart data
           </span>
+        )}
+        {canSaveToChart && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px] gap-1"
+            onClick={() => saveToChartMutation.mutate(collectItemsForChart())}
+            disabled={saveToChartMutation.isPending}
+            data-testid={`button-save-to-chart-${block.uid}`}
+            title={`Overwrite the patient's chart ${blockDef.label} with the items currently in this block`}
+          >
+            {saveToChartMutation.isPending
+              ? <Loader2 className="w-3 h-3 animate-spin" />
+              : <Upload className="w-3 h-3" />}
+            Save edits to chart
+          </Button>
         )}
         {supportsBulletToggle && (
           <Button
@@ -871,6 +938,17 @@ function blocksToFullNote(
     if (!content) continue;
     if (sectionId === "hpi") {
       lines.push(content);
+    } else if (isListBlock(sectionId)) {
+      // List blocks (PMH/PSH/SH/FH/Meds/Allergies): render as proper bullets
+      // when in bullet mode, paragraph otherwise. Both formats are recognised
+      // by `parseChartSectionItems` so the chart-save toolbar round-trips.
+      const bulletMode = block.bulletMode ?? true;
+      const items = (block.listItems ?? content.split(/\r?\n/))
+        .map(s => s.replace(/^[-*•]\s*/, "").trim())
+        .filter(Boolean);
+      lines.push(bulletMode
+        ? buildBulletSection(sectionLabels[sectionId], items)
+        : buildParagraphSection(sectionLabels[sectionId], items));
     } else {
       lines.push(`${sectionLabels[sectionId]}: ${content}`);
     }

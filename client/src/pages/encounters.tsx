@@ -34,6 +34,10 @@ import { usePhraseSearch } from "@/components/phrase-search";
 import { useSlashMenu } from "@/components/slash-menu";
 import { SlashShortcutsHelp } from "@/components/slash-shortcuts-help";
 import { useRecording } from "@/contexts/recording-context";
+import {
+  parseChartSectionItems, BUILTIN_BY_ID,
+  type ChartDomainKey,
+} from "@shared/note-builtin-blocks";
 
 export type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -557,6 +561,94 @@ function initSoap(raw: any): SoapNote {
   if (raw.fullNote !== undefined) return raw as SoapNote;
   // Legacy: convert old multi-field format to fullNote
   return { fullNote: legacySoapToText(raw) };
+}
+
+// ── Save-edits-to-chart toolbar ──────────────────────────────────────────────
+// Scans the SOAP edit textarea for the canonical history-section labels and
+// surfaces a "Save edits to chart" action per detected section. The parser
+// (`parseChartSectionItems`) is the inverse of the renderers in
+// `note-builtin-blocks.ts`, so bullet- and paragraph-style sections both
+// round-trip correctly.
+const CHART_SAVE_KEYS: { key: ChartDomainKey; builtinId: keyof typeof BUILTIN_BY_ID }[] = [
+  { key: "medicalHistory",     builtinId: "medical_history" },
+  { key: "surgicalHistory",    builtinId: "surgical_history" },
+  { key: "socialHistory",      builtinId: "social_history" },
+  { key: "familyHistory",      builtinId: "family_history" },
+  { key: "currentMedications", builtinId: "current_medications" },
+  { key: "allergies",          builtinId: "allergies" },
+];
+
+function SoapChartSaveBar({
+  soapText,
+  patientId,
+}: {
+  soapText: string;
+  patientId: number;
+}) {
+  const { toast } = useToast();
+  const [pendingKey, setPendingKey] = useState<ChartDomainKey | null>(null);
+
+  const sections = CHART_SAVE_KEYS
+    .map(({ key, builtinId }) => {
+      const items = parseChartSectionItems(soapText, key);
+      if (items === null) return null;
+      return { key, builtinId, label: BUILTIN_BY_ID[builtinId].shortLabel, items };
+    })
+    .filter((s): s is { key: ChartDomainKey; builtinId: keyof typeof BUILTIN_BY_ID; label: string; items: string[] } => s !== null);
+
+  const save = async (key: ChartDomainKey, items: string[], label: string) => {
+    setPendingKey(key);
+    try {
+      await apiRequest("PUT", `/api/patients/${patientId}/chart`, { [key]: items });
+      qc.invalidateQueries({ queryKey: ["/api/patients", patientId, "chart"] });
+      toast({
+        title: "Chart updated",
+        description: items.length === 0
+          ? `${label} cleared on the patient's chart.`
+          : `${items.length} item${items.length === 1 ? "" : "s"} saved to ${label}.`,
+      });
+    } catch (err) {
+      toast({
+        variant: "destructive",
+        title: "Save to chart failed",
+        description: err instanceof Error ? err.message : "Unknown error",
+      });
+    } finally {
+      setPendingKey(null);
+    }
+  };
+
+  if (sections.length === 0) return null;
+
+  return (
+    <div
+      className="rounded-md border border-border/60 bg-muted/30 px-3 py-2 flex flex-wrap items-center gap-2"
+      data-testid="soap-chart-save-bar"
+    >
+      <span className="text-[10px] uppercase tracking-wide text-muted-foreground font-semibold">
+        Save edits to chart:
+      </span>
+      {sections.map(({ key, label, items }) => (
+        <Button
+          key={key}
+          size="sm"
+          variant="outline"
+          className="h-6 px-2 text-[10px] gap-1"
+          onClick={() => save(key, items, label)}
+          disabled={pendingKey !== null}
+          data-testid={`button-save-soap-chart-${key}`}
+          title={items.length === 0
+            ? `Clear the patient's chart ${label} (the section is empty in the note).`
+            : `Overwrite the patient's chart ${label} with the ${items.length} item${items.length === 1 ? "" : "s"} parsed from this section.`}
+        >
+          {pendingKey === key
+            ? <RefreshCw className="w-3 h-3 animate-spin" />
+            : <Upload className="w-3 h-3" />}
+          {label} ({items.length})
+        </Button>
+      ))}
+    </div>
+  );
 }
 
 // ── Main Encounter Editor ─────────────────────────────────────────────────────
@@ -3245,29 +3337,37 @@ export function EncounterEditor({
                     )}
                   </div>
                 ) : (
-                  <div className="relative">
-                    <Textarea
-                      ref={soapTextareaRef}
-                      value={soapNoteValue}
-                      onChange={e => {
-                        setSoap({ fullNote: e.target.value });
-                        dxSearch.handleInput(e);
-                        soapPhraseSearch.handleInput(e);
-                        soapSlashMenu.handleInput(e);
-                      }}
-                      onKeyDown={(e) => {
-                        soapSlashMenu.handleKeyDown(e);
-                        if (!e.defaultPrevented) soapPhraseSearch.handleKeyDown(e);
-                        if (!e.defaultPrevented) dxSearch.handleKeyDown(e);
-                      }}
-                      rows={32}
-                      className="text-sm font-mono resize-y leading-relaxed"
-                      data-testid="soap-full-note"
-                      spellCheck
-                    />
-                    {dxSearch.dropdown}
-                    {soapPhraseSearch.dropdown}
-                    {soapSlashMenu.dropdown}
+                  <div className="space-y-2">
+                    {encounter?.patientId && (
+                      <SoapChartSaveBar
+                        soapText={soapNoteValue}
+                        patientId={encounter.patientId}
+                      />
+                    )}
+                    <div className="relative">
+                      <Textarea
+                        ref={soapTextareaRef}
+                        value={soapNoteValue}
+                        onChange={e => {
+                          setSoap({ fullNote: e.target.value });
+                          dxSearch.handleInput(e);
+                          soapPhraseSearch.handleInput(e);
+                          soapSlashMenu.handleInput(e);
+                        }}
+                        onKeyDown={(e) => {
+                          soapSlashMenu.handleKeyDown(e);
+                          if (!e.defaultPrevented) soapPhraseSearch.handleKeyDown(e);
+                          if (!e.defaultPrevented) dxSearch.handleKeyDown(e);
+                        }}
+                        rows={32}
+                        className="text-sm font-mono resize-y leading-relaxed"
+                        data-testid="soap-full-note"
+                        spellCheck
+                      />
+                      {dxSearch.dropdown}
+                      {soapPhraseSearch.dropdown}
+                      {soapSlashMenu.dropdown}
+                    </div>
                   </div>
                 )}
 

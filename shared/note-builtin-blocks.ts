@@ -429,6 +429,103 @@ export function parseAutoInsertTrigger(
   return { slashIndex, word };
 }
 
+/** Canonical chart-section labels written into notes by the slash menu,
+ *  templates, and the manual SOAP builder. The reverse-direction parser
+ *  below uses these to find a section in a free-text note. */
+export const CHART_SECTION_LABELS: Record<ChartDomainKey, string[]> = {
+  medicalHistory:     ["Past Medical History", "Medical History", "PMH"],
+  surgicalHistory:    ["Past Surgical History", "Surgical History", "PSH"],
+  socialHistory:      ["Social History", "SH"],
+  familyHistory:      ["Family History", "FH"],
+  currentMedications: ["Current Medications", "Medications", "Meds"],
+  allergies:          ["Allergies", "Allergy"],
+};
+
+/** Parse the bullet/paragraph items written under a labelled chart section.
+ *
+ *  Supports both renderings produced by `buildBulletSection`
+ *  ("Label:\n  - a\n  - b") and `buildParagraphSection`
+ *  ("Label: a, b, c."). Reads until a blank line, the next labelled section
+ *  (a non-indented "Word:"), or end of text — whichever comes first.
+ *
+ *  Returns null when no matching section header is present so callers can
+ *  distinguish "section missing" from "section explicitly empty". */
+export function parseChartSectionItems(
+  text: string,
+  chartKey: ChartDomainKey,
+): string[] | null {
+  if (!text) return null;
+  const labels = CHART_SECTION_LABELS[chartKey] ?? [];
+  if (labels.length === 0) return null;
+  const lines = text.split(/\r?\n/);
+
+  // Build a single label-matching regex (case-insensitive, anchored at start
+  // of line). Longer aliases come first so "Past Medical History" beats the
+  // bare "Medical History" partial.
+  const labelPattern = labels
+    .slice()
+    .sort((a, b) => b.length - a.length)
+    .map(l => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  const headerRe = new RegExp(`^\\s*(?:${labelPattern})\\s*:\\s*(.*)$`, "i");
+  // Sentinel for "the next labelled section" — any non-indented Title-cased
+  // run of words ending in `:`. Used to stop reading bullets early.
+  const nextSectionRe = /^[A-Z][A-Za-z /-]{0,60}:\s*$/;
+
+  let headerIdx = -1;
+  let inlineRest = "";
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(headerRe);
+    if (m) { headerIdx = i; inlineRest = (m[1] ?? "").trim(); break; }
+  }
+  if (headerIdx === -1) return null;
+
+  const items: string[] = [];
+  const pushItem = (raw: string) => {
+    // Strip optional leading whitespace + bullet marker (`-`, `*`, `•`) and a
+    // trailing period so paragraph and bullet renderings normalise the same.
+    const cleaned = raw.replace(/^\s*[-*•]\s*/, "").trim().replace(/\.$/, "").trim();
+    if (cleaned) items.push(cleaned);
+  };
+
+  // Inline content after "Label:" — a comma/semicolon list (paragraph mode)
+  // or a single inline bullet. Split conservatively.
+  if (inlineRest) {
+    inlineRest
+      .split(/[,;]+/)
+      .forEach(pushItem);
+  }
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const ln = lines[i];
+    if (!ln.trim()) {
+      // Allow one blank line iff the next non-blank line is still bullets
+      // belonging to this section; otherwise the section ends.
+      let next = "";
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim()) { next = lines[j]; break; }
+      }
+      if (/^\s+[-*•]/.test(next)) continue;
+      break;
+    }
+    if (/^\s+[-*•]/.test(ln)) { pushItem(ln); continue; }
+    // Non-indented line that isn't a bullet — must be the next section or
+    // free text outside our list. Stop here either way.
+    if (nextSectionRe.test(ln) || /^\S/.test(ln)) break;
+    pushItem(ln);
+  }
+
+  // De-dupe case-insensitively while preserving first-seen order so
+  // round-tripping is stable.
+  const seen = new Set<string>();
+  return items.filter(it => {
+    const k = it.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
+}
+
 /** Merge chart items into an existing list, preserving order and
  *  de-duplicating case-insensitively (so "Pull from chart" is idempotent). */
 export function mergeChartItems(existing: string[], chartItems: string[]): string[] {
