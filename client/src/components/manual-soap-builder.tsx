@@ -13,7 +13,7 @@ import {
   Plus, X, GripVertical, ChevronDown, ChevronUp, Save, FileText,
   Stethoscope, Pill, Heart, Brain, ClipboardList, Activity, Users,
   Scissors, AlertTriangle, ListChecks, CalendarCheck, ToggleLeft, ToggleRight,
-  Search, Loader2, Download,
+  Search, Loader2, Download, Upload,
 } from "lucide-react";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { usePhraseSearch } from "@/components/phrase-search";
@@ -25,6 +25,10 @@ import {
   createChartData,
   chartDataToText as sharedChartDataToText,
   mergeChartItems,
+  resolveDefaultFindings,
+  resolveSystemList,
+  type ClinicalBlockOverrides,
+  buildBulletSection, buildParagraphSection,
 } from "@shared/note-builtin-blocks";
 
 const BLOCK_TYPES = [
@@ -451,6 +455,7 @@ function BlockEditor({
   onDrop,
   patientId,
   patientChart,
+  blockDefaults,
 }: {
   block: SoapBlock;
   onUpdate: (updates: Partial<SoapBlock>) => void;
@@ -465,13 +470,38 @@ function BlockEditor({
   onDrop?: () => void;
   patientId?: number;
   patientChart?: PatientChart | null;
+  blockDefaults?: ClinicalBlockOverrides | null;
 }) {
   const blockDef = BLOCK_TYPES.find(b => b.id === block.type)!;
   const Icon = blockDef.icon;
   const supportsChart = block.type === "ros" || block.type === "physical_exam";
+  const chartKind: "ros" | "physical_exam" | null = supportsChart ? (block.type as "ros" | "physical_exam") : null;
+  const resolvedSystems = chartKind ? resolveSystemList(chartKind, blockDefaults ?? null) : [];
   const isAssessment = block.type === "assessment_plan";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isDraggable, setIsDraggable] = useState(false);
+
+  // Keep chartData in sync with the resolved system list. If overrides arrive
+  // *after* a chart-mode block was initialized (e.g. from a template apply),
+  // chartData may carry stale shipped-system keys that would otherwise leak
+  // into the rendered note via `chartDataToText`. Add any missing rows and
+  // drop rows whose system is no longer in the resolved list.
+  useEffect(() => {
+    if (!chartKind || block.mode !== "chart") return;
+    const cd = block.chartData ?? {};
+    const desired = new Set(resolvedSystems);
+    const existing = Object.keys(cd);
+    const missing = resolvedSystems.filter(s => !cd[s]);
+    const stale = existing.filter(s => !desired.has(s));
+    if (missing.length === 0 && stale.length === 0) return;
+    const next: Record<string, { status: string; notes: string; visible: boolean }> = {};
+    for (const sys of resolvedSystems) {
+      next[sys] = cd[sys] ?? { status: "normal", notes: "", visible: true };
+    }
+    onUpdate({ chartData: next });
+    // Intentionally exclude `onUpdate` from deps to avoid re-firing on every parent render.
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [chartKind, block.mode, resolvedSystems.join("|")]);
 
   const dxSearch = useDiagnosisSearch({
     textareaRef,
@@ -507,6 +537,31 @@ function BlockEditor({
   const chartItemsForBlock: string[] = canPullFromChart && chartKey
     ? ((patientChart![chartKey] as string[] | undefined) ?? [])
     : [];
+  // Eligible to push edits BACK to the chart? Same set as the list-style
+  // chart-key blocks (Med Hx, Surg Hx, Soc Hx, Allergies, Meds, Family Hx).
+  const canSaveToChart = !!patientId && !!chartKey;
+  const { toast } = useToast();
+  const saveToChartMutation = useMutation({
+    mutationFn: async (items: string[]) => {
+      if (!patientId || !chartKey) throw new Error("No patient context");
+      await apiRequest("PUT", `/api/patients/${patientId}/chart`, {
+        [chartKey]: items,
+      });
+      return items;
+    },
+    onSuccess: (items) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "chart"] });
+      toast({
+        title: "Chart updated",
+        description: items.length === 0
+          ? `${blockDef.label} cleared on the patient's chart.`
+          : `${items.length} item${items.length === 1 ? "" : "s"} saved to ${blockDef.label}.`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Save to chart failed", description: err.message });
+    },
+  });
 
   // Bullet/free-text toggle defaults: list blocks start in bullet mode; HPI
   // starts in free text. Templates can override via tb.bulletMode.
@@ -533,6 +588,31 @@ function BlockEditor({
       const ends = merged.length > 0 ? "." : "";
       onUpdate({ content: merged.join(", ") + ends });
     }
+  };
+
+  // Parse the items currently shown in this block for the chart-save action.
+  // Bullet mode: prefer the typed listItems; free-text mode: split the
+  // textarea on newlines/commas/semicolons (the inverse of `pullFromChart`).
+  const collectItemsForChart = (): string[] => {
+    let raw: string[] = [];
+    if (bulletMode) {
+      raw = block.listItems ?? (block.content
+        ? block.content.split("\n")
+        : []);
+    } else {
+      raw = block.content ? block.content.split(/[\n,;]+/) : [];
+    }
+    const cleaned = raw
+      .map(s => s.replace(/^[-*•]\s*/, "").trim().replace(/\.$/, "").trim())
+      .filter(Boolean);
+    // De-dupe case-insensitively, preserving first-seen order.
+    const seen = new Set<string>();
+    return cleaned.filter(i => {
+      const k = i.toLowerCase();
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
   };
 
   return (
@@ -579,6 +659,22 @@ function BlockEditor({
             No chart data
           </span>
         )}
+        {canSaveToChart && (
+          <Button
+            size="sm"
+            variant="ghost"
+            className="h-6 px-2 text-[10px] gap-1"
+            onClick={() => saveToChartMutation.mutate(collectItemsForChart())}
+            disabled={saveToChartMutation.isPending}
+            data-testid={`button-save-to-chart-${block.uid}`}
+            title={`Overwrite the patient's chart ${blockDef.label} with the items currently in this block`}
+          >
+            {saveToChartMutation.isPending
+              ? <Loader2 className="w-3 h-3 animate-spin" />
+              : <Upload className="w-3 h-3" />}
+            Save edits to chart
+          </Button>
+        )}
         {supportsBulletToggle && (
           <Button
             size="sm"
@@ -598,7 +694,7 @@ function BlockEditor({
             variant="ghost"
             className="h-6 px-2 text-[10px] gap-1"
             onClick={() => {
-              const systems = block.type === "ros" ? ROS_SYSTEMS : PE_SYSTEMS;
+              const systems = resolvedSystems;
               if (block.mode === "freetext") {
                 onUpdate({ mode: "chart", chartData: block.chartData ?? createChartData(systems) });
               } else {
@@ -648,8 +744,8 @@ function BlockEditor({
             />
           ) : supportsChart && block.mode === "chart" ? (
             <ChartModeEditor
-              systems={block.type === "ros" ? ROS_SYSTEMS : PE_SYSTEMS}
-              chartData={block.chartData ?? createChartData(block.type === "ros" ? ROS_SYSTEMS : PE_SYSTEMS)}
+              systems={resolvedSystems}
+              chartData={block.chartData ?? createChartData(resolvedSystems)}
               onChange={chartData => onUpdate({ chartData })}
             />
           ) : (
@@ -808,7 +904,10 @@ function blocksToFullNote(
   blocks: SoapBlock[],
   visitDate: string,
   patientName: string,
+  overrides?: ClinicalBlockOverrides | null,
 ): string {
+  const rosFindings = resolveDefaultFindings("ros", overrides);
+  const peFindings = resolveDefaultFindings("physical_exam", overrides);
   const lines: string[] = [];
   lines.push("SUBJECTIVE");
   lines.push("");
@@ -839,6 +938,17 @@ function blocksToFullNote(
     if (!content) continue;
     if (sectionId === "hpi") {
       lines.push(content);
+    } else if (isListBlock(sectionId)) {
+      // List blocks (PMH/PSH/SH/FH/Meds/Allergies): render as proper bullets
+      // when in bullet mode, paragraph otherwise. Both formats are recognised
+      // by `parseChartSectionItems` so the chart-save toolbar round-trips.
+      const bulletMode = block.bulletMode ?? true;
+      const items = (block.listItems ?? content.split(/\r?\n/))
+        .map(s => s.replace(/^[-*•]\s*/, "").trim())
+        .filter(Boolean);
+      lines.push(bulletMode
+        ? buildBulletSection(sectionLabels[sectionId], items)
+        : buildParagraphSection(sectionLabels[sectionId], items));
     } else {
       lines.push(`${sectionLabels[sectionId]}: ${content}`);
     }
@@ -851,7 +961,7 @@ function blocksToFullNote(
   const rosBlock = blocks.find(b => b.type === "ros");
   if (rosBlock) {
     if (rosBlock.mode === "chart" && rosBlock.chartData) {
-      lines.push(chartDataToText("Review of Systems", rosBlock.chartData));
+      lines.push(chartDataToText("Review of Systems", rosBlock.chartData, rosFindings));
     } else if (rosBlock.content.trim()) {
       lines.push(`Review of Systems: ${rosBlock.content.trim()}`);
     }
@@ -861,7 +971,7 @@ function blocksToFullNote(
   const peBlock = blocks.find(b => b.type === "physical_exam");
   if (peBlock) {
     if (peBlock.mode === "chart" && peBlock.chartData) {
-      lines.push(chartDataToText("Physical Examination", peBlock.chartData));
+      lines.push(chartDataToText("Physical Examination", peBlock.chartData, peFindings));
     } else if (peBlock.content.trim()) {
       lines.push(`Physical Examination: ${peBlock.content.trim()}`);
     }
@@ -960,6 +1070,13 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     staleTime: 60_000,
   });
 
+  // Per-clinician ROS / PE overrides drive default chart text formatting
+  // (replacing "Normal/Negative" with the clinician's preferred finding).
+  const { data: blockDefaults = null } = useQuery<ClinicalBlockOverrides | null>({
+    queryKey: ["/api/clinical-block-defaults"],
+    staleTime: 60_000,
+  });
+
   const applyTemplate = useCallback((templateId: string) => {
     setSelectedTemplateId(templateId);
     if (!templateId) return;
@@ -1034,7 +1151,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
           // subset of systems if set; otherwise fall back to the canonical
           // full list.
           if (tb.type.startsWith("clinical_")) {
-            const fallback = mapped === "ros" ? ROS_SYSTEMS : PE_SYSTEMS;
+            const fallback = resolveSystemList(mapped === "ros" ? "ros" : "physical_exam", blockDefaults);
             const systems = tb.systems && tb.systems.length > 0 ? tb.systems : fallback;
             block.mode = "chart";
             block.chartData = createChartData(systems);
@@ -1171,7 +1288,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
 
   const saveMutation = useMutation({
     mutationFn: async () => {
-      const fullNote = blocksToFullNote(chiefComplaint, blocks, visitDate, patientName);
+      const fullNote = blocksToFullNote(chiefComplaint, blocks, visitDate, patientName, blockDefaults);
       if (!fullNote.trim()) throw new Error("Note is empty");
 
       let encId = savedEncounterId;
@@ -1396,6 +1513,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
               onDrop={() => { if (dragUid) reorderBlocks(dragUid, block.uid); setDragUid(null); setDragOverUid(null); }}
               patientId={patientId}
               patientChart={patientChart}
+              blockDefaults={blockDefaults}
             />
           ))}
         </div>

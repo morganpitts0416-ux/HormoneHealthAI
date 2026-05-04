@@ -181,6 +181,49 @@ export const PE_SYSTEMS = [
   "Psychiatric", "Lymphatic",
 ];
 
+/** Per-clinician override of one ROS / PE system: a custom display name and
+ *  an optional default-finding string used when the row is left at "normal"
+ *  with no extra notes. */
+export interface ClinicalSystemOverride {
+  name: string;
+  defaultFinding: string;
+}
+
+/** Bundle of per-clinician overrides resolved server-side. Either or both
+ *  lists may be null/missing; missing means "use shipped defaults". */
+export interface ClinicalBlockOverrides {
+  rosSystems?: ClinicalSystemOverride[] | null;
+  peSystems?: ClinicalSystemOverride[] | null;
+}
+
+/** Resolve the effective system list for a chart kind, honoring overrides. */
+export function resolveSystemList(
+  kind: "ros" | "physical_exam",
+  overrides?: ClinicalBlockOverrides | null,
+): string[] {
+  const list = kind === "ros" ? overrides?.rosSystems : overrides?.peSystems;
+  if (list && list.length > 0) {
+    return list.map(s => s.name).filter(Boolean);
+  }
+  return kind === "ros" ? [...ROS_SYSTEMS] : [...PE_SYSTEMS];
+}
+
+/** Map of system-name → default normal-finding text for a chart kind. */
+export function resolveDefaultFindings(
+  kind: "ros" | "physical_exam",
+  overrides?: ClinicalBlockOverrides | null,
+): Record<string, string> {
+  const list = kind === "ros" ? overrides?.rosSystems : overrides?.peSystems;
+  if (!list || list.length === 0) return {};
+  const out: Record<string, string> = {};
+  for (const s of list) {
+    if (s?.name && (s.defaultFinding ?? "").trim()) {
+      out[s.name] = s.defaultFinding.trim();
+    }
+  }
+  return out;
+}
+
 export type ChartRow = { status: string; notes: string; visible: boolean };
 export type ChartData = Record<string, ChartRow>;
 
@@ -191,13 +234,26 @@ export function createChartData(systems: string[]): ChartData {
 }
 
 /** Render chart-mode ROS / PE data. Hidden rows and "not examined" rows with
- *  no notes are stripped on save (no clinical signal). */
-export function chartDataToText(label: string, chartData: ChartData): string {
+ *  no notes are stripped on save (no clinical signal). When `defaultFindings`
+ *  has an entry for a system AND that row is at status="normal" with no
+ *  user-typed notes, the default finding text replaces the canonical
+ *  "Normal/Negative" label so the rendered note reads naturally
+ *  (e.g. "Cardiovascular: RRR, no murmurs"). */
+export function chartDataToText(
+  label: string,
+  chartData: ChartData,
+  defaultFindings?: Record<string, string>,
+): string {
   const lines: string[] = [`${label}:`];
   Object.entries(chartData).forEach(([system, data]) => {
     if (!data || data.visible === false) return;
     const notes = (data.notes ?? "").trim();
     if (data.status === "not-examined" && !notes) return;
+    const customDefault = defaultFindings?.[system]?.trim();
+    if (data.status === "normal" && !notes && customDefault) {
+      lines.push(`  ${system}: ${customDefault}`);
+      return;
+    }
     const statusLabel =
       data.status === "normal"   ? "Normal/Negative" :
       data.status === "abnormal" ? "Abnormal/Positive" :
@@ -209,12 +265,18 @@ export function chartDataToText(label: string, chartData: ChartData): string {
 }
 
 /** Pre-filled chart text for a `/ros` or `/pe` insertion. Templates may pass
- *  a `systems` subset; otherwise the full canonical list is used. */
-export function buildDefaultChartText(kind: "ros" | "physical_exam", systems?: string[]): string {
-  const fallback = kind === "ros" ? ROS_SYSTEMS : PE_SYSTEMS;
-  const list = systems && systems.length > 0 ? systems : fallback;
+ *  a `systems` subset; otherwise the resolved (override or shipped) list is
+ *  used. Per-system normal-finding overrides flow through `chartDataToText`. */
+export function buildDefaultChartText(
+  kind: "ros" | "physical_exam",
+  systems?: string[],
+  overrides?: ClinicalBlockOverrides | null,
+): string {
+  const resolved = resolveSystemList(kind, overrides);
+  const list = systems && systems.length > 0 ? systems : resolved;
   const def = BUILTIN_BY_ID[kind];
-  return chartDataToText(def.shortLabel, createChartData(list));
+  const findings = resolveDefaultFindings(kind, overrides);
+  return chartDataToText(def.shortLabel, createChartData(list), findings);
 }
 
 /** Labelled bullet list for a history block. */
@@ -260,6 +322,7 @@ export interface TemplateRenderChart {
 export function renderTemplateBlocks(
   blocks: TemplateBlockRender[],
   chart?: TemplateRenderChart | null,
+  overrides?: ClinicalBlockOverrides | null,
 ): string {
   const out: string[] = [];
   for (const tb of blocks) {
@@ -276,8 +339,9 @@ export function renderTemplateBlocks(
       if (!def) continue;
 
       if (def.chart) {
-        // ROS / PE → chart text, honoring template-chosen systems subset.
-        out.push(buildDefaultChartText(def.id as "ros" | "physical_exam", tb.systems));
+        // ROS / PE → chart text, honoring template-chosen systems subset
+        // and clinician overrides for default findings.
+        out.push(buildDefaultChartText(def.id as "ros" | "physical_exam", tb.systems, overrides));
         continue;
       }
 
@@ -363,6 +427,103 @@ export function parseAutoInsertTrigger(
   // index of `/` = end - word length - 2 (one for `/`, one for trailing space)
   const slashIndex = textBefore.length - word.length - 2;
   return { slashIndex, word };
+}
+
+/** Canonical chart-section labels written into notes by the slash menu,
+ *  templates, and the manual SOAP builder. The reverse-direction parser
+ *  below uses these to find a section in a free-text note. */
+export const CHART_SECTION_LABELS: Record<ChartDomainKey, string[]> = {
+  medicalHistory:     ["Past Medical History", "Medical History", "PMH"],
+  surgicalHistory:    ["Past Surgical History", "Surgical History", "PSH"],
+  socialHistory:      ["Social History", "SH"],
+  familyHistory:      ["Family History", "FH"],
+  currentMedications: ["Current Medications", "Medications", "Meds"],
+  allergies:          ["Allergies", "Allergy"],
+};
+
+/** Parse the bullet/paragraph items written under a labelled chart section.
+ *
+ *  Supports both renderings produced by `buildBulletSection`
+ *  ("Label:\n  - a\n  - b") and `buildParagraphSection`
+ *  ("Label: a, b, c."). Reads until a blank line, the next labelled section
+ *  (a non-indented "Word:"), or end of text — whichever comes first.
+ *
+ *  Returns null when no matching section header is present so callers can
+ *  distinguish "section missing" from "section explicitly empty". */
+export function parseChartSectionItems(
+  text: string,
+  chartKey: ChartDomainKey,
+): string[] | null {
+  if (!text) return null;
+  const labels = CHART_SECTION_LABELS[chartKey] ?? [];
+  if (labels.length === 0) return null;
+  const lines = text.split(/\r?\n/);
+
+  // Build a single label-matching regex (case-insensitive, anchored at start
+  // of line). Longer aliases come first so "Past Medical History" beats the
+  // bare "Medical History" partial.
+  const labelPattern = labels
+    .slice()
+    .sort((a, b) => b.length - a.length)
+    .map(l => l.replace(/[.*+?^${}()|[\]\\]/g, "\\$&"))
+    .join("|");
+  const headerRe = new RegExp(`^\\s*(?:${labelPattern})\\s*:\\s*(.*)$`, "i");
+  // Sentinel for "the next labelled section" — any non-indented Title-cased
+  // run of words ending in `:`. Used to stop reading bullets early.
+  const nextSectionRe = /^[A-Z][A-Za-z /-]{0,60}:\s*$/;
+
+  let headerIdx = -1;
+  let inlineRest = "";
+  for (let i = 0; i < lines.length; i++) {
+    const m = lines[i].match(headerRe);
+    if (m) { headerIdx = i; inlineRest = (m[1] ?? "").trim(); break; }
+  }
+  if (headerIdx === -1) return null;
+
+  const items: string[] = [];
+  const pushItem = (raw: string) => {
+    // Strip optional leading whitespace + bullet marker (`-`, `*`, `•`) and a
+    // trailing period so paragraph and bullet renderings normalise the same.
+    const cleaned = raw.replace(/^\s*[-*•]\s*/, "").trim().replace(/\.$/, "").trim();
+    if (cleaned) items.push(cleaned);
+  };
+
+  // Inline content after "Label:" — a comma/semicolon list (paragraph mode)
+  // or a single inline bullet. Split conservatively.
+  if (inlineRest) {
+    inlineRest
+      .split(/[,;]+/)
+      .forEach(pushItem);
+  }
+
+  for (let i = headerIdx + 1; i < lines.length; i++) {
+    const ln = lines[i];
+    if (!ln.trim()) {
+      // Allow one blank line iff the next non-blank line is still bullets
+      // belonging to this section; otherwise the section ends.
+      let next = "";
+      for (let j = i + 1; j < lines.length; j++) {
+        if (lines[j].trim()) { next = lines[j]; break; }
+      }
+      if (/^\s+[-*•]/.test(next)) continue;
+      break;
+    }
+    if (/^\s+[-*•]/.test(ln)) { pushItem(ln); continue; }
+    // Non-indented line that isn't a bullet — must be the next section or
+    // free text outside our list. Stop here either way.
+    if (nextSectionRe.test(ln) || /^\S/.test(ln)) break;
+    pushItem(ln);
+  }
+
+  // De-dupe case-insensitively while preserving first-seen order so
+  // round-tripping is stable.
+  const seen = new Set<string>();
+  return items.filter(it => {
+    const k = it.toLowerCase();
+    if (seen.has(k)) return false;
+    seen.add(k);
+    return true;
+  });
 }
 
 /** Merge chart items into an existing list, preserving order and
