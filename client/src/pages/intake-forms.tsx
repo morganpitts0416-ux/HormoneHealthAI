@@ -2137,6 +2137,7 @@ function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (da
   const [description, setDescription] = useState(form.description ?? "");
   const [category, setCategory] = useState(form.category);
   const [requiresSig, setRequiresSig] = useState(form.requiresPatientSignature);
+  const [defaultGender, setDefaultGender] = useState<"" | "female" | "male">((form.settingsJson as any)?.defaultGender ?? "");
   const [ghlEnabled, setGhlEnabled] = useState((form as any).ghlWebhookEnabled ?? false);
   const [ghlUrl, setGhlUrl] = useState((form as any).ghlWebhookUrl ?? "");
   const { toast } = useToast();
@@ -2152,6 +2153,7 @@ function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (da
       description: description || null,
       category,
       requiresPatientSignature: requiresSig,
+      settingsJson: { ...((form.settingsJson as any) ?? {}), defaultGender: defaultGender || null },
       ghlWebhookUrl: trimmedUrl || null,
       ghlWebhookEnabled: ghlEnabled && !!trimmedUrl,
     });
@@ -2188,6 +2190,23 @@ function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (da
             {CATEGORIES.map(c => <SelectItem key={c.value} value={c.value}>{c.label}</SelectItem>)}
           </SelectContent>
         </Select>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Default Patient Sex</Label>
+        <Select value={defaultGender} onValueChange={v => setDefaultGender(v as "" | "female" | "male")}>
+          <SelectTrigger data-testid="select-form-default-gender">
+            <SelectValue placeholder="No default — ask on each form" />
+          </SelectTrigger>
+          <SelectContent>
+            <SelectItem value="">No default</SelectItem>
+            <SelectItem value="female">Female</SelectItem>
+            <SelectItem value="male">Male</SelectItem>
+          </SelectContent>
+        </Select>
+        <p className="text-xs text-muted-foreground">
+          When set, new patients created from this form are automatically assigned this sex — useful for single-gender clinics. A gender field on the form always takes precedence.
+        </p>
       </div>
 
       <div className="flex items-center justify-between py-2 border-t">
