@@ -304,27 +304,31 @@ export async function generateMalePatientWellnessPDF(
   clinicName?: string,
   /** Clinic-level brand colors. Falls back to historic male-clinic navy if null. */
   branding?: PartialBranding | null,
+  /** Clinic logo as a base64 data URL. Shown in the PDF header instead of the default logo. */
+  clinicLogo?: string | null,
 ): Promise<void> {
-  // Load ReAlign logo for PDF branding — composite over white to avoid jsPDF alpha-channel corruption
+  // Load clinic logo — composite over white to avoid jsPDF alpha-channel corruption.
+  // Uses the clinic's own logo when provided; shows no image if absent.
   let logoData: string | null = null;
-  try {
-    logoData = await new Promise<string>((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', 0.95));
-      };
-      img.onerror = reject;
-      img.src = '/realign-health-logo.png';
-    });
-  } catch {}
+  if (clinicLogo) {
+    try {
+      logoData = await new Promise<string>((resolve, reject) => {
+        const img = new Image();
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth || 400;
+          canvas.height = img.naturalHeight || 200;
+          const ctx = canvas.getContext('2d')!;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/jpeg', 0.95));
+        };
+        img.onerror = reject;
+        img.src = clinicLogo;
+      });
+    } catch {}
+  }
 
   const doc = new jsPDF({
     orientation: 'portrait',
@@ -358,30 +362,27 @@ export async function generateMalePatientWellnessPDF(
     doc.setFillColor(...brandColor);
     doc.rect(0, 0, pageWidth, 38, 'F');
 
-    // ReAlign Health logo on white inset
+    // Left side: clinic logo on white inset when available, else clinic name text
     if (logoData) {
       doc.setFillColor(255, 255, 255);
       doc.rect(margin - 2, 4, 58, 28, 'F');
       doc.addImage(logoData, 'JPEG', margin, 6, 54, 24);
     } else {
       doc.setTextColor(255, 255, 255);
-      doc.setFontSize(14);
+      doc.setFontSize(12);
       doc.setFont('helvetica', 'bold');
-      doc.text('ReAlign Health', margin, 18);
+      doc.text(sanitizeForPdf(displayClinic), margin, 18);
     }
 
-    // Right side: clinic co-branding
+    // Right side: clinic name + report title + date
     doc.setTextColor(255, 255, 255);
-    doc.setFontSize(7.5);
-    doc.setFont('helvetica', 'normal');
-    doc.text('Prepared in partnership with', pageWidth - margin, 12, { align: 'right' });
-    doc.setFontSize(11);
+    doc.setFontSize(10);
     doc.setFont('helvetica', 'bold');
-    doc.text(sanitizeForPdf(displayClinic), pageWidth - margin, 20, { align: 'right' });
+    doc.text(sanitizeForPdf(displayClinic), pageWidth - margin, 14, { align: 'right' });
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text('Your Personal Wellness Report', pageWidth - margin, 28, { align: 'right' });
-    doc.text(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), pageWidth - margin, 34, { align: 'right' });
+    doc.text('Your Personal Wellness Report', pageWidth - margin, 22, { align: 'right' });
+    doc.text(new Date().toLocaleDateString('en-US', { year: 'numeric', month: 'long', day: 'numeric' }), pageWidth - margin, 30, { align: 'right' });
   };
 
   const addFooter = (pageNum: number, totalPages: number) => {
@@ -390,7 +391,7 @@ export async function generateMalePatientWellnessPDF(
     doc.setTextColor(...brandColor);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text(`A ReAlign Health Report | ${sanitizeForPdf(displayClinic)}`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+    doc.text(`${sanitizeForPdf(displayClinic)} | Powered by ClinIQ`, pageWidth / 2, pageHeight - 8, { align: 'center' });
     doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
   };
 
@@ -555,7 +556,8 @@ export async function generateMalePatientWellnessPDF(
     yPosition += 10;
   }
 
-  if (interpretation.preventRisk) {
+  // PREVENT cardiovascular risk section is shown in the provider lab report only — not in the patient wellness report
+  if (false && interpretation.preventRisk) {
     const preventRisk = interpretation.preventRisk;
     yPosition = ensureSpace(90, yPosition);
     yPosition = addSectionHeader('YOUR HEART HEALTH ASSESSMENT', yPosition);

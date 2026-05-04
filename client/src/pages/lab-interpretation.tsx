@@ -378,7 +378,7 @@ export default function LabInterpretation() {
           })),
           ...customSupplements.map(c => ({ name: c.name, dose: c.dose, indication: c.indication })),
         ];
-        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName);
+        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, undefined, (user as any)?.clinicLogo ?? null);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",
