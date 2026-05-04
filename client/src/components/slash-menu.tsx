@@ -7,6 +7,7 @@ import {
   buildDefaultChartText, buildBulletSection,
   parseSlashTrigger, parseAutoInsertTrigger,
   renderTemplateBlocks, type TemplateBlockRender,
+  type ClinicalBlockOverrides,
 } from "@shared/note-builtin-blocks";
 
 interface SlashMenuProps {
@@ -57,6 +58,11 @@ export function useSlashMenu({ textareaRef, value, onChange, patientId, noteType
       return res.json();
     },
     enabled: isOpen && !!patientId,
+    staleTime: 60_000,
+  });
+  // Per-clinician ROS / PE overrides. Falls back to shipped defaults when null.
+  const { data: blockDefaults = null } = useQuery<ClinicalBlockOverrides | null>({
+    queryKey: ["/api/clinical-block-defaults"],
     staleTime: 60_000,
   });
 
@@ -177,7 +183,7 @@ export function useSlashMenu({ textareaRef, value, onChange, patientId, noteType
     if (item.kind === "builtin") {
       const b = item.def;
       if (b.chart) {
-        insertText(buildDefaultChartText(b.id as "ros" | "physical_exam"));
+        insertText(buildDefaultChartText(b.id as "ros" | "physical_exam", undefined, blockDefaults));
         return;
       }
       if (b.list) {
@@ -192,14 +198,14 @@ export function useSlashMenu({ textareaRef, value, onChange, patientId, noteType
     }
     if (item.kind === "template") {
       const tplBlocks = (item.tpl.blocks ?? []) as TemplateBlockRender[];
-      insertText(renderTemplateBlocks(tplBlocks, chart));
+      insertText(renderTemplateBlocks(tplBlocks, chart, blockDefaults));
       return;
     }
     if (item.kind === "phrase") {
       insertText(item.phrase.content);
       return;
     }
-  }, [insertText, chart]);
+  }, [insertText, chart, blockDefaults]);
 
   // ── unique-shortcut direct insert ───────────────────────────────────
   // Used by the keystroke-driven path: the user types `/uri` and we insert
@@ -237,14 +243,14 @@ export function useSlashMenu({ textareaRef, value, onChange, patientId, noteType
     let payload = "";
     if (item.kind === "builtin") {
       const b = item.def;
-      if (b.chart) payload = buildDefaultChartText(b.id as "ros" | "physical_exam");
+      if (b.chart) payload = buildDefaultChartText(b.id as "ros" | "physical_exam", undefined, blockDefaults);
       else if (b.list) {
         const items = chart && b.chartKey ? ((chart[b.chartKey] as string[] | undefined) ?? []) : [];
         payload = buildBulletSection(b.shortLabel, items);
       } else payload = `${b.shortLabel}:\n`;
     } else if (item.kind === "template") {
       const tplBlocks = (item.tpl.blocks ?? []) as TemplateBlockRender[];
-      payload = renderTemplateBlocks(tplBlocks, chart);
+      payload = renderTemplateBlocks(tplBlocks, chart, blockDefaults);
     } else {
       payload = item.phrase.content;
     }

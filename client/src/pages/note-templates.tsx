@@ -15,7 +15,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Plus, Edit, Trash2, FileText, MessageSquare, Lock, Users, Save, X, GripVertical, Stethoscope } from "lucide-react";
 import type { NoteTemplate, NotePhrase } from "@shared/schema";
-import { BUILTIN_BLOCKS, ROS_SYSTEMS, PE_SYSTEMS, type BuiltinBlockId } from "@shared/note-builtin-blocks";
+import {
+  BUILTIN_BLOCKS, ROS_SYSTEMS, PE_SYSTEMS, type BuiltinBlockId,
+  resolveSystemList, type ClinicalBlockOverrides,
+} from "@shared/note-builtin-blocks";
 
 const NOTE_TYPES = [
   { value: "soap_provider", label: "Provider SOAP Note" },
@@ -164,6 +167,12 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
   const [blocks, setBlocks] = useState<TemplateBlock[]>(
     (template?.blocks as TemplateBlock[] | undefined) ?? [],
   );
+  // Per-clinician ROS / PE overrides drive the template builder's default
+  // system list and the picker order.
+  const { data: blockDefaults = null } = useQuery<ClinicalBlockOverrides | null>({
+    queryKey: ["/api/clinical-block-defaults"],
+    staleTime: 60_000,
+  });
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -197,8 +206,12 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
     };
     if (opt.chart) {
       // Default ROS/PE charts ship with every canonical system selected.
-      // Providers can untick the ones their specialty doesn't need.
-      block.systems = opt.builtinId === "ros" ? [...ROS_SYSTEMS] : [...PE_SYSTEMS];
+      // When the clinician has saved overrides, use those system names so
+      // their custom labels become the picker's defaults.
+      block.systems = resolveSystemList(
+        opt.builtinId === "ros" ? "ros" : "physical_exam",
+        blockDefaults,
+      );
     }
     setBlocks([...blocks, block]);
   };
@@ -338,9 +351,13 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
                     {clinicalDef?.chart && (
                       <ChartSystemPicker
                         kind={clinicalDef.builtinId as "ros" | "physical_exam"}
-                        selected={b.systems ?? (clinicalDef.builtinId === "ros" ? ROS_SYSTEMS : PE_SYSTEMS)}
+                        selected={b.systems ?? resolveSystemList(
+                          clinicalDef.builtinId === "ros" ? "ros" : "physical_exam",
+                          blockDefaults,
+                        )}
                         onChange={(systems) => updateBlock(i, { systems })}
                         blockIndex={i}
+                        overrides={blockDefaults}
                       />
                     )}
                     {clinicalDef && !clinicalDef.chart && (
@@ -403,14 +420,17 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
  * preserves the canonical system order regardless of click order.
  */
 function ChartSystemPicker({
-  kind, selected, onChange, blockIndex,
+  kind, selected, onChange, blockIndex, overrides,
 }: {
   kind: "ros" | "physical_exam";
   selected: string[];
   onChange: (systems: string[]) => void;
   blockIndex: number;
+  overrides?: ClinicalBlockOverrides | null;
 }) {
-  const all = kind === "ros" ? ROS_SYSTEMS : PE_SYSTEMS;
+  // Resolve the available system list from clinician overrides first, then
+  // fall back to the shipped defaults so legacy templates still work.
+  const all = resolveSystemList(kind, overrides);
   const selectedSet = new Set(selected);
   const toggle = (s: string) => {
     const next = selectedSet.has(s)

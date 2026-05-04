@@ -7,7 +7,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema } from "@shared/schema";
 import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -11087,6 +11087,34 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       res.json(updated);
     } catch (e: any) { res.status(400).json({ message: e.message }); }
   });
+  // ── Clinical Block Defaults ─────────────────────────────────────────────
+  // Per-clinician overrides for ROS / PE system lists and default findings.
+  // Returns { rosSystems: null, peSystems: null } when no override has been
+  // saved (UI renders shipped defaults in that case).
+  app.get("/api/clinical-block-defaults", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const row = await storage.getClinicalBlockDefaults(clinicId, req.user.id);
+      res.json({
+        rosSystems: row?.rosSystems ?? null,
+        peSystems: row?.peSystems ?? null,
+      });
+    } catch (e: any) { res.status(500).json({ message: e.message }); }
+  });
+  app.put("/api/clinical-block-defaults", requireAuth, async (req: any, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const body = updateClinicalBlockDefaultsSchema.parse(req.body);
+      const row = await storage.upsertClinicalBlockDefaults(clinicId, req.user.id, body);
+      res.json({
+        rosSystems: row.rosSystems ?? null,
+        peSystems: row.peSystems ?? null,
+      });
+    } catch (e: any) { res.status(400).json({ message: e.message }); }
+  });
+
   app.delete("/api/note-templates/:id", requireAuth, async (req: any, res) => {
     try {
       const clinicId = getEffectiveClinicId(req);

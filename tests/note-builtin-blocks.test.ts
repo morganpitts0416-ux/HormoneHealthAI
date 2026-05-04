@@ -23,7 +23,10 @@ import {
   RESERVED_SLASH_PREFIXES,
   buildParagraphSection,
   renderTemplateBlocks,
+  resolveSystemList,
+  resolveDefaultFindings,
   type TemplateBlockRender,
+  type ClinicalBlockOverrides,
 } from "../shared/note-builtin-blocks";
 
 test("BUILTIN_BLOCKS exposes all 9 required clinical sections", () => {
@@ -608,4 +611,153 @@ test("integration: pull-from-chart populates a history block via mergeChartItems
     rendered,
     "Past Medical History:\n  - Hypertension\n  - Diabetes Type 2\n  - Hyperlipidemia",
   );
+});
+
+// ──────────────────────────────────────────────────────────────────────────
+// Per-clinician overrides (Task #16): resolveSystemList /
+// resolveDefaultFindings, plus override threading through chartDataToText,
+// buildDefaultChartText, and renderTemplateBlocks.
+// ──────────────────────────────────────────────────────────────────────────
+
+test("resolveSystemList: returns shipped defaults when no overrides", () => {
+  assert.deepEqual(resolveSystemList("ros", null), [...ROS_SYSTEMS]);
+  assert.deepEqual(resolveSystemList("physical_exam", undefined), [...PE_SYSTEMS]);
+  assert.deepEqual(resolveSystemList("ros", { rosSystems: null, peSystems: null }),
+    [...ROS_SYSTEMS]);
+  // Empty list ALSO falls back (treated as "no preference").
+  assert.deepEqual(resolveSystemList("ros", { rosSystems: [] }), [...ROS_SYSTEMS]);
+});
+
+test("resolveSystemList: returns the clinician's custom system list and order", () => {
+  const overrides: ClinicalBlockOverrides = {
+    rosSystems: [
+      { name: "Cardiovascular", defaultFinding: "" },
+      { name: "Respiratory",    defaultFinding: "" },
+      { name: "Skin",           defaultFinding: "" },
+    ],
+  };
+  assert.deepEqual(
+    resolveSystemList("ros", overrides),
+    ["Cardiovascular", "Respiratory", "Skin"],
+  );
+  // PE side untouched → falls back to shipped defaults.
+  assert.deepEqual(resolveSystemList("physical_exam", overrides), [...PE_SYSTEMS]);
+});
+
+test("resolveDefaultFindings: empty when no overrides or no findings set", () => {
+  assert.deepEqual(resolveDefaultFindings("ros", null), {});
+  assert.deepEqual(resolveDefaultFindings("ros", { rosSystems: [] }), {});
+  // Override exists but no defaultFinding strings.
+  assert.deepEqual(
+    resolveDefaultFindings("ros", { rosSystems: [{ name: "Cardiovascular", defaultFinding: "" }] }),
+    {},
+  );
+});
+
+test("resolveDefaultFindings: maps system→trimmed finding and skips blanks", () => {
+  const overrides: ClinicalBlockOverrides = {
+    peSystems: [
+      { name: "Cardiovascular", defaultFinding: "  RRR, no murmurs  " },
+      { name: "Respiratory",    defaultFinding: "" },
+      { name: "Skin",           defaultFinding: "Warm, dry, intact" },
+    ],
+  };
+  assert.deepEqual(resolveDefaultFindings("physical_exam", overrides), {
+    Cardiovascular: "RRR, no murmurs",
+    Skin: "Warm, dry, intact",
+  });
+});
+
+test("chartDataToText: replaces 'Normal/Negative' with the override finding", () => {
+  const data = createChartData(["Cardiovascular", "Respiratory"]);
+  const findings = { Cardiovascular: "RRR, no murmurs" };
+  const out = chartDataToText("Physical Examination", data, findings);
+  assert.match(out, /Cardiovascular: RRR, no murmurs/);
+  // Untouched systems still get the canonical label.
+  assert.match(out, /Respiratory: Normal\/Negative/);
+});
+
+test("chartDataToText: override does NOT clobber user notes or non-normal status", () => {
+  const data = createChartData(["Cardiovascular", "Respiratory"]);
+  data.Cardiovascular.notes = "S1S2 normal, no murmur today";
+  data.Respiratory.status = "abnormal";
+  data.Respiratory.notes = "wheezing bilaterally";
+  const findings = {
+    Cardiovascular: "RRR, no murmurs",
+    Respiratory: "CTAB",
+  };
+  const out = chartDataToText("Physical Examination", data, findings);
+  // Normal + has notes → keep canonical Normal/Negative + the user's notes,
+  // do NOT swap in the default finding.
+  assert.match(out, /Cardiovascular: Normal\/Negative — S1S2 normal, no murmur today/);
+  // Abnormal row never picks up the override.
+  assert.match(out, /Respiratory: Abnormal\/Positive — wheezing bilaterally/);
+});
+
+test("buildDefaultChartText: uses overridden system list and findings end-to-end", () => {
+  const overrides: ClinicalBlockOverrides = {
+    rosSystems: [
+      { name: "Cardiovascular", defaultFinding: "Denies chest pain or palpitations" },
+      { name: "Respiratory",    defaultFinding: "Denies cough, SOB, or wheezing" },
+    ],
+  };
+  const out = buildDefaultChartText("ros", undefined, overrides);
+  assert.match(out, /^Review of Systems:/);
+  assert.match(out, /Cardiovascular: Denies chest pain or palpitations/);
+  assert.match(out, /Respiratory: Denies cough, SOB, or wheezing/);
+  // Systems not in the override are dropped (custom list replaces canonical).
+  assert.ok(!out.includes("Eyes:"));
+  assert.ok(!out.includes("Endocrine:"));
+});
+
+test("buildDefaultChartText: explicit `systems` subset still wins, but overrides supply findings", () => {
+  // The template builder may pass a curated subset of the clinician's
+  // override list. The chart text must use that subset BUT still pick up the
+  // clinician's per-system default findings for those systems.
+  const overrides: ClinicalBlockOverrides = {
+    peSystems: [
+      { name: "Cardiovascular", defaultFinding: "RRR" },
+      { name: "Respiratory",    defaultFinding: "CTAB" },
+      { name: "Skin",           defaultFinding: "Warm/dry/intact" },
+    ],
+  };
+  const out = buildDefaultChartText("physical_exam", ["Cardiovascular", "Skin"], overrides);
+  assert.match(out, /Cardiovascular: RRR/);
+  assert.match(out, /Skin: Warm\/dry\/intact/);
+  assert.ok(!out.includes("Respiratory:"), "subset should exclude Respiratory");
+});
+
+test("renderTemplateBlocks: clinical_ros without `systems` uses clinician override list+findings", () => {
+  const overrides: ClinicalBlockOverrides = {
+    rosSystems: [
+      { name: "Constitutional", defaultFinding: "Denies fever/chills/weight loss" },
+      { name: "Cardiovascular", defaultFinding: "Denies CP, palpitations" },
+    ],
+  };
+  const blocks: TemplateBlockRender[] = [{
+    type: "clinical_ros",
+    builtinId: "ros",
+  }];
+  const out = renderTemplateBlocks(blocks, undefined, overrides);
+  assert.match(out, /Review of Systems:/);
+  assert.match(out, /Constitutional: Denies fever\/chills\/weight loss/);
+  assert.match(out, /Cardiovascular: Denies CP, palpitations/);
+  assert.ok(!out.includes("Eyes:"), "non-overridden system must not appear");
+});
+
+test("renderTemplateBlocks: explicit template `systems` subset is preserved with override findings", () => {
+  const overrides: ClinicalBlockOverrides = {
+    peSystems: [
+      { name: "Cardiovascular", defaultFinding: "RRR" },
+      { name: "Respiratory",    defaultFinding: "CTAB" },
+    ],
+  };
+  const blocks: TemplateBlockRender[] = [{
+    type: "clinical_physical_exam",
+    builtinId: "physical_exam",
+    systems: ["Cardiovascular"],
+  }];
+  const out = renderTemplateBlocks(blocks, undefined, overrides);
+  assert.match(out, /Cardiovascular: RRR/);
+  assert.ok(!out.includes("Respiratory:"));
 });

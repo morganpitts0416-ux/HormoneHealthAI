@@ -336,6 +336,10 @@ export interface IStorage {
   markAllInboxNotificationsRead(clinicId: number, providerId: number | null, userId: number): Promise<number>;
   dismissInboxNotification(id: number, clinicId: number, userId: number): Promise<boolean>;
 
+  // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
+  getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
+  upsertClinicalBlockDefaults(clinicId: number, providerId: number, data: schema.UpdateClinicalBlockDefaults): Promise<schema.ClinicalBlockDefaultsRow>;
+
   // ── Collaborating Physician Chart Review ─────────────────────────────────
   getChartReviewAgreementForMidLevel(midLevelUserId: number, clinicId: number): Promise<schema.ChartReviewAgreement | undefined>;
   getChartReviewAgreementById(id: number, clinicId: number): Promise<schema.ChartReviewAgreement | undefined>;
@@ -1937,6 +1941,40 @@ export class DbStorage implements IStorage {
       .where(and(eq(schema.notePhrases.id, id), eq(schema.notePhrases.clinicId, clinicId)))
       .returning();
     return result.length > 0;
+  }
+
+  // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
+  async getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null> {
+    const [row] = await db.select().from(schema.clinicalBlockDefaults)
+      .where(and(
+        eq(schema.clinicalBlockDefaults.clinicId, clinicId),
+        eq(schema.clinicalBlockDefaults.providerId, providerId),
+      ));
+    return row ?? null;
+  }
+  async upsertClinicalBlockDefaults(
+    clinicId: number,
+    providerId: number,
+    data: schema.UpdateClinicalBlockDefaults,
+  ): Promise<schema.ClinicalBlockDefaultsRow> {
+    const existing = await this.getClinicalBlockDefaults(clinicId, providerId);
+    const payload = {
+      rosSystems: data.rosSystems ?? null,
+      peSystems: data.peSystems ?? null,
+    };
+    if (existing) {
+      const [row] = await db.update(schema.clinicalBlockDefaults)
+        .set({ ...payload, updatedAt: new Date() })
+        .where(eq(schema.clinicalBlockDefaults.id, existing.id))
+        .returning();
+      return row;
+    }
+    const [row] = await db.insert(schema.clinicalBlockDefaults).values({
+      clinicId,
+      providerId,
+      ...payload,
+    }).returning();
+    return row;
   }
 
   // ── Medication Dictionary ────────────────────────────────────────────────────

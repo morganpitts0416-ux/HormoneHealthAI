@@ -181,6 +181,49 @@ export const PE_SYSTEMS = [
   "Psychiatric", "Lymphatic",
 ];
 
+/** Per-clinician override of one ROS / PE system: a custom display name and
+ *  an optional default-finding string used when the row is left at "normal"
+ *  with no extra notes. */
+export interface ClinicalSystemOverride {
+  name: string;
+  defaultFinding: string;
+}
+
+/** Bundle of per-clinician overrides resolved server-side. Either or both
+ *  lists may be null/missing; missing means "use shipped defaults". */
+export interface ClinicalBlockOverrides {
+  rosSystems?: ClinicalSystemOverride[] | null;
+  peSystems?: ClinicalSystemOverride[] | null;
+}
+
+/** Resolve the effective system list for a chart kind, honoring overrides. */
+export function resolveSystemList(
+  kind: "ros" | "physical_exam",
+  overrides?: ClinicalBlockOverrides | null,
+): string[] {
+  const list = kind === "ros" ? overrides?.rosSystems : overrides?.peSystems;
+  if (list && list.length > 0) {
+    return list.map(s => s.name).filter(Boolean);
+  }
+  return kind === "ros" ? [...ROS_SYSTEMS] : [...PE_SYSTEMS];
+}
+
+/** Map of system-name → default normal-finding text for a chart kind. */
+export function resolveDefaultFindings(
+  kind: "ros" | "physical_exam",
+  overrides?: ClinicalBlockOverrides | null,
+): Record<string, string> {
+  const list = kind === "ros" ? overrides?.rosSystems : overrides?.peSystems;
+  if (!list || list.length === 0) return {};
+  const out: Record<string, string> = {};
+  for (const s of list) {
+    if (s?.name && (s.defaultFinding ?? "").trim()) {
+      out[s.name] = s.defaultFinding.trim();
+    }
+  }
+  return out;
+}
+
 export type ChartRow = { status: string; notes: string; visible: boolean };
 export type ChartData = Record<string, ChartRow>;
 
@@ -191,13 +234,26 @@ export function createChartData(systems: string[]): ChartData {
 }
 
 /** Render chart-mode ROS / PE data. Hidden rows and "not examined" rows with
- *  no notes are stripped on save (no clinical signal). */
-export function chartDataToText(label: string, chartData: ChartData): string {
+ *  no notes are stripped on save (no clinical signal). When `defaultFindings`
+ *  has an entry for a system AND that row is at status="normal" with no
+ *  user-typed notes, the default finding text replaces the canonical
+ *  "Normal/Negative" label so the rendered note reads naturally
+ *  (e.g. "Cardiovascular: RRR, no murmurs"). */
+export function chartDataToText(
+  label: string,
+  chartData: ChartData,
+  defaultFindings?: Record<string, string>,
+): string {
   const lines: string[] = [`${label}:`];
   Object.entries(chartData).forEach(([system, data]) => {
     if (!data || data.visible === false) return;
     const notes = (data.notes ?? "").trim();
     if (data.status === "not-examined" && !notes) return;
+    const customDefault = defaultFindings?.[system]?.trim();
+    if (data.status === "normal" && !notes && customDefault) {
+      lines.push(`  ${system}: ${customDefault}`);
+      return;
+    }
     const statusLabel =
       data.status === "normal"   ? "Normal/Negative" :
       data.status === "abnormal" ? "Abnormal/Positive" :
@@ -209,12 +265,18 @@ export function chartDataToText(label: string, chartData: ChartData): string {
 }
 
 /** Pre-filled chart text for a `/ros` or `/pe` insertion. Templates may pass
- *  a `systems` subset; otherwise the full canonical list is used. */
-export function buildDefaultChartText(kind: "ros" | "physical_exam", systems?: string[]): string {
-  const fallback = kind === "ros" ? ROS_SYSTEMS : PE_SYSTEMS;
-  const list = systems && systems.length > 0 ? systems : fallback;
+ *  a `systems` subset; otherwise the resolved (override or shipped) list is
+ *  used. Per-system normal-finding overrides flow through `chartDataToText`. */
+export function buildDefaultChartText(
+  kind: "ros" | "physical_exam",
+  systems?: string[],
+  overrides?: ClinicalBlockOverrides | null,
+): string {
+  const resolved = resolveSystemList(kind, overrides);
+  const list = systems && systems.length > 0 ? systems : resolved;
   const def = BUILTIN_BY_ID[kind];
-  return chartDataToText(def.shortLabel, createChartData(list));
+  const findings = resolveDefaultFindings(kind, overrides);
+  return chartDataToText(def.shortLabel, createChartData(list), findings);
 }
 
 /** Labelled bullet list for a history block. */
@@ -260,6 +322,7 @@ export interface TemplateRenderChart {
 export function renderTemplateBlocks(
   blocks: TemplateBlockRender[],
   chart?: TemplateRenderChart | null,
+  overrides?: ClinicalBlockOverrides | null,
 ): string {
   const out: string[] = [];
   for (const tb of blocks) {
@@ -276,8 +339,9 @@ export function renderTemplateBlocks(
       if (!def) continue;
 
       if (def.chart) {
-        // ROS / PE → chart text, honoring template-chosen systems subset.
-        out.push(buildDefaultChartText(def.id as "ros" | "physical_exam", tb.systems));
+        // ROS / PE → chart text, honoring template-chosen systems subset
+        // and clinician overrides for default findings.
+        out.push(buildDefaultChartText(def.id as "ros" | "physical_exam", tb.systems, overrides));
         continue;
       }
 

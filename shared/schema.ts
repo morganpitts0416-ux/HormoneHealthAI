@@ -2122,3 +2122,40 @@ export const insertChartReviewCommentSchema = createInsertSchema(chartReviewComm
   id: true, createdAt: true,
 });
 export type InsertChartReviewComment = z.infer<typeof insertChartReviewCommentSchema>;
+
+// ─── Clinical Block Defaults (per-clinician overrides for ROS / PE) ────────
+// Each clinician (provider) can override the shipped ROS / PE system lists and
+// per-system "normal-finding" text used by the slash menu, manual SOAP
+// builder, and template builder. When no row exists for a provider the
+// shipped defaults in `shared/note-builtin-blocks.ts` are used.
+export const clinicalSystemDefaultSchema = z.object({
+  name: z.string().trim().min(1).max(80),
+  defaultFinding: z.string().trim().max(500).default(""),
+});
+export type ClinicalSystemDefault = z.infer<typeof clinicalSystemDefaultSchema>;
+
+export const clinicalBlockDefaults = pgTable("clinical_block_defaults", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  providerId: integer("provider_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  rosSystems: jsonb("ros_systems").$type<ClinicalSystemDefault[]>(),
+  peSystems: jsonb("pe_systems").$type<ClinicalSystemDefault[]>(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  uqClinicProvider: uniqueIndex("clinical_block_defaults_clinic_provider_uq").on(t.clinicId, t.providerId),
+}));
+export type ClinicalBlockDefaultsRow = typeof clinicalBlockDefaults.$inferSelect;
+export const insertClinicalBlockDefaultsSchema = createInsertSchema(clinicalBlockDefaults).omit({
+  id: true, createdAt: true, updatedAt: true,
+}).extend({
+  rosSystems: z.array(clinicalSystemDefaultSchema).max(40).nullable().optional(),
+  peSystems: z.array(clinicalSystemDefaultSchema).max(40).nullable().optional(),
+});
+export type InsertClinicalBlockDefaults = z.infer<typeof insertClinicalBlockDefaultsSchema>;
+
+export const updateClinicalBlockDefaultsSchema = z.object({
+  rosSystems: z.array(clinicalSystemDefaultSchema).max(40).nullable().optional(),
+  peSystems: z.array(clinicalSystemDefaultSchema).max(40).nullable().optional(),
+});
+export type UpdateClinicalBlockDefaults = z.infer<typeof updateClinicalBlockDefaultsSchema>;
