@@ -15,7 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import { Badge } from "@/components/ui/badge";
 import {
   ArrowLeft, Save, CheckCircle, MessageSquare, Phone, BanIcon, Smartphone,
-  Zap, Copy, Eye, EyeOff, Key, Globe, Info,
+  Zap, Copy, Eye, EyeOff, Key, Info,
   Users, UserPlus, Trash2, ShieldAlert, Mail, Pencil, RotateCw,
   CreditCard, Clock, AlertTriangle, AlertCircle, XCircle,
   ImagePlus, PenLine, X, Search,
@@ -126,8 +126,6 @@ interface MessagingSettings {
   externalMessagingProvider: ExternalProvider | null;
   externalMessagingApiKeySet: boolean;
   externalMessagingChannelId: string | null;
-  externalMessagingWebhookSecret: string | null;
-  webhookUrl: string | null;
 }
 
 type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "baa" | "billing";
@@ -721,7 +719,6 @@ export default function Account() {
   const [saved, setSaved] = useState(false);
   const [messagingSaved, setMessagingSaved] = useState(false);
   const [showApiKey, setShowApiKey] = useState(false);
-  const [showWebhookSecret, setShowWebhookSecret] = useState(false);
   const [search, setSearch] = useState("");
 
   const [clinicLogoPreview, setClinicLogoPreview] = useState<string | null>((user as any)?.clinicLogo ?? null);
@@ -1080,67 +1077,6 @@ export default function Account() {
     },
     onError: () => {
       toast({ title: "Save failed", description: "Could not save messaging settings.", variant: "destructive" });
-    },
-  });
-
-  const [spruceInboxes, setSpruceInboxes] = useState<Array<{ id: string; label: string; phone: string | null }>>([]);
-  const loadSpruceInboxesMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("GET", "/api/auth/messaging/spruce-inboxes");
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.message || "Failed to load Spruce inboxes.");
-      return body as { inboxes: Array<{ id: string; label: string; phone: string | null }> };
-    },
-    onSuccess: (data) => {
-      setSpruceInboxes(data.inboxes || []);
-      if (!data.inboxes?.length) {
-        toast({ title: "No inboxes returned", description: "Spruce returned no inboxes for this API key.", variant: "destructive" });
-      } else {
-        toast({ title: `Loaded ${data.inboxes.length} Spruce inbox${data.inboxes.length === 1 ? "" : "es"}` });
-      }
-    },
-    onError: (e: Error) => {
-      toast({ title: "Could not load inboxes", description: e.message, variant: "destructive" });
-    },
-  });
-
-  const registerSpruceWebhookMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/auth/messaging/register-spruce-webhook", {});
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.message || "Spruce rejected the request.");
-      return body;
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/messaging-settings"] });
-      toast({
-        title: "Webhook registered with Spruce",
-        description: data?.endpointId
-          ? `Endpoint ID: ${data.endpointId}`
-          : "Spruce will now forward incoming messages to ClinIQ.",
-      });
-    },
-    onError: (e: Error) => {
-      toast({ title: "Could not register webhook", description: e.message, variant: "destructive" });
-    },
-  });
-
-  const resyncSpruceSecretMutation = useMutation({
-    mutationFn: async () => {
-      const res = await apiRequest("POST", "/api/auth/messaging/resync-spruce-secret", {});
-      const body = await res.json();
-      if (!res.ok) throw new Error(body?.message || "Resync failed.");
-      return body;
-    },
-    onSuccess: (data: any) => {
-      queryClient.invalidateQueries({ queryKey: ["/api/auth/messaging-settings"] });
-      toast({
-        title: "Signing secret resynced from Spruce",
-        description: `Found ${data?.secretCount ?? 0} secret(s); now using one starting with ${data?.secretPrefix ?? "—"}.`,
-      });
-    },
-    onError: (e: Error) => {
-      toast({ title: "Could not resync signing secret", description: e.message, variant: "destructive" });
     },
   });
 
@@ -1693,152 +1629,8 @@ export default function Account() {
                     </div>
                     <div className="space-y-1.5">
                       <label className="text-sm font-medium text-foreground">{channelMeta.label}</label>
-                      {externalProvider === "spruce" ? (
-                        <>
-                          <div className="flex gap-2 items-start">
-                            <div className="flex-1 min-w-0">
-                              {spruceInboxes.length > 0 ? (
-                                <Select
-                                  value={externalChannelId || undefined}
-                                  onValueChange={(v) => setExternalChannelId(v)}
-                                >
-                                  <SelectTrigger data-testid="select-spruce-inbox">
-                                    <SelectValue placeholder="Choose a Spruce inbox" />
-                                  </SelectTrigger>
-                                  <SelectContent>
-                                    {spruceInboxes.map((inbox) => (
-                                      <SelectItem key={inbox.id} value={inbox.id}>
-                                        {inbox.label}
-                                        {inbox.phone ? ` — ${inbox.phone}` : ""}
-                                      </SelectItem>
-                                    ))}
-                                  </SelectContent>
-                                </Select>
-                              ) : (
-                                <Input
-                                  placeholder={channelMeta.placeholder}
-                                  value={externalChannelId}
-                                  onChange={(e) => setExternalChannelId(e.target.value)}
-                                  data-testid="input-external-channel-id"
-                                />
-                              )}
-                            </div>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="default"
-                              onClick={() => loadSpruceInboxesMutation.mutate()}
-                              disabled={
-                                !messagingSettings?.externalMessagingApiKeySet ||
-                                loadSpruceInboxesMutation.isPending
-                              }
-                              data-testid="button-load-spruce-inboxes"
-                            >
-                              {loadSpruceInboxesMutation.isPending ? "Loading…" : "Load my inboxes"}
-                            </Button>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            Click "Load my inboxes" to pull your Spruce phone lines using your saved API key, then pick the one ClinIQ should send and receive messages through.
-                          </p>
-                        </>
-                      ) : (
-                        <>
-                          <Input placeholder={channelMeta.placeholder} value={externalChannelId} onChange={(e) => setExternalChannelId(e.target.value)} data-testid="input-external-channel-id" />
-                          <p className="text-xs text-muted-foreground">{channelMeta.hint}</p>
-                        </>
-                      )}
-                    </div>
-                    <Separator />
-                    <div className="space-y-3">
-                      <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Webhook configuration</p>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-foreground flex items-center gap-1">
-                          <Globe className="w-3 h-3 text-muted-foreground" />Webhook URL
-                        </label>
-                        <div className="flex gap-2 items-center">
-                          <Input readOnly value={messagingSettings?.webhookUrl || "Save settings to generate"} className="font-mono text-xs bg-muted" data-testid="display-webhook-url" />
-                          {messagingSettings?.webhookUrl && (
-                            <Button type="button" variant="ghost" size="icon" onClick={() => copyToClipboard(messagingSettings.webhookUrl!, "Webhook URL")} data-testid="button-copy-webhook-url">
-                              <Copy className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-                      <div className="space-y-1.5">
-                        <label className="text-xs font-medium text-foreground flex items-center gap-1">
-                          <Key className="w-3 h-3 text-muted-foreground" />Webhook Secret
-                        </label>
-                        <div className="flex gap-2 items-center">
-                          <Input
-                            readOnly
-                            type={showWebhookSecret ? "text" : "password"}
-                            value={messagingSettings?.externalMessagingWebhookSecret || (messagingSettings ? "(save to generate)" : "—")}
-                            className="font-mono text-xs bg-muted"
-                            data-testid="display-webhook-secret"
-                          />
-                          <Button type="button" variant="ghost" size="icon" onClick={() => setShowWebhookSecret(!showWebhookSecret)}>
-                            {showWebhookSecret ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
-                          </Button>
-                          {messagingSettings?.externalMessagingWebhookSecret && (
-                            <Button type="button" variant="ghost" size="icon" onClick={() => copyToClipboard(messagingSettings.externalMessagingWebhookSecret!, "Webhook secret")} data-testid="button-copy-webhook-secret">
-                              <Copy className="w-4 h-4" />
-                            </Button>
-                          )}
-                        </div>
-                      </div>
-
-                      {messagingSettings?.externalMessagingProvider === "spruce" && (
-                        <div className="rounded-md border bg-muted/30 px-3 py-3 space-y-2">
-                          <div>
-                            <p className="text-xs font-semibold text-foreground">One-click Spruce setup</p>
-                            <p className="text-xs text-muted-foreground mt-0.5">
-                              We'll register the webhook above with Spruce automatically using your saved API key.
-                              No terminal commands needed.
-                            </p>
-                          </div>
-                          <div className="flex flex-wrap gap-2">
-                            <Button
-                              type="button"
-                              variant="default"
-                              size="sm"
-                              onClick={() => registerSpruceWebhookMutation.mutate()}
-                              disabled={
-                                !messagingSettings?.externalMessagingApiKeySet ||
-                                registerSpruceWebhookMutation.isPending
-                              }
-                              data-testid="button-register-spruce-webhook"
-                            >
-                              {registerSpruceWebhookMutation.isPending
-                                ? "Registering..."
-                                : "Register webhook with Spruce"}
-                            </Button>
-                            <Button
-                              type="button"
-                              variant="outline"
-                              size="sm"
-                              onClick={() => resyncSpruceSecretMutation.mutate()}
-                              disabled={
-                                !messagingSettings?.externalMessagingApiKeySet ||
-                                resyncSpruceSecretMutation.isPending
-                              }
-                              data-testid="button-resync-spruce-secret"
-                            >
-                              {resyncSpruceSecretMutation.isPending
-                                ? "Resyncing..."
-                                : "Resync signing secret from Spruce"}
-                            </Button>
-                          </div>
-                          <p className="text-xs text-muted-foreground">
-                            If inbound texts show "Invalid signature" errors, click Resync to pull
-                            the current signing secret directly from Spruce.
-                          </p>
-                          {!messagingSettings?.externalMessagingApiKeySet && (
-                            <p className="text-xs text-amber-700">
-                              Save your Spruce API key first, then click this button.
-                            </p>
-                          )}
-                        </div>
-                      )}
+                      <Input placeholder={channelMeta.placeholder} value={externalChannelId} onChange={(e) => setExternalChannelId(e.target.value)} data-testid="input-external-channel-id" />
+                      <p className="text-xs text-muted-foreground">{channelMeta.hint}</p>
                     </div>
                   </div>
                 )}

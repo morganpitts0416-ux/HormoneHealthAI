@@ -36,8 +36,6 @@ import { screenInsulinResistance } from "./insulin-resistance";
 import { normalizeTranscript, parseCSV, parseArrayField } from "./medication-normalizer";
 import {
   forwardMessageToExternalProvider,
-  parseInboundWebhook,
-  generateWebhookSecret,
   type ExternalProvider,
 } from "./external-messaging";
 import { storage, chartReviewStorage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership, updateClinicPlanFromStripe } from "./storage";
@@ -941,15 +939,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         return res.status(400).json({ message: "Signature image file is too large (max 2MB)" });
       }
 
-      // Auto-generate a webhook secret the first time external_api is enabled
-      let webhookSecretUpdate: { externalMessagingWebhookSecret?: string } = {};
-      if (messagingPreference === 'external_api') {
-        const current = await storage.getUserById(userId);
-        if (!current?.externalMessagingWebhookSecret) {
-          webhookSecretUpdate = { externalMessagingWebhookSecret: generateWebhookSecret() };
-        }
-      }
-
       const updated = await storage.updateUser(userId, {
         ...(firstName !== undefined ? { firstName } : {}),
         ...(lastName !== undefined ? { lastName } : {}),
@@ -966,7 +955,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
         ...(externalMessagingChannelId !== undefined ? { externalMessagingChannelId } : {}),
         ...(clinicLogo !== undefined ? { clinicLogo: clinicLogo || null } : {}),
         ...(signatureImage !== undefined ? { signatureImage: signatureImage || null } : {}),
-        ...webhookSecretUpdate,
       });
       if (!updated) return res.status(404).json({ message: "User not found" });
       // Never expose the raw API key to the client — only confirm it's set
@@ -5056,131 +5044,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  // ── External Messaging Webhook ────────────────────────────────────────────────
-  // POST /api/webhooks/messaging/:clinicianId
-  //   Called by Spruce, Klara, or any configured external system when a provider
-  //   replies to a patient message. No session auth — verified via webhook secret.
-  //
-  // The clinician must configure their external system to POST to:
-  //   https://<your-domain>/api/webhooks/messaging/<clinicianId>
-  // with the webhook secret in the X-Webhook-Secret header (or as the signature).
-  //
-  // The body must include enough information to identify the patient. We look for:
-  //   patient_id  (ReAlign internal patient ID, most reliable)
-  //   patient_email  (portal account email, fallback)
-  //   content / body / message / text  (the reply text)
-  app.post("/api/webhooks/messaging/:clinicianId", async (req, res) => {
-    try {
-      const clinicianId = parseInt(req.params.clinicianId);
-      if (isNaN(clinicianId)) return res.status(400).json({ ok: false, error: "Invalid clinician ID" });
-
-      const clinician = await storage.getUserById(clinicianId);
-      if (!clinician || clinician.messagingPreference !== 'external_api') {
-        // Return 200 so external services (Spruce, Klara, etc.) stop retrying.
-        // 404/5xx responses trigger aggressive retry loops from these platforms.
-        return res.status(200).json({ ok: false, error: "Webhook not configured" });
-      }
-
-      if (!clinician.externalMessagingWebhookSecret) {
-        // Same — acknowledge receipt to prevent retry storms.
-        return res.status(200).json({ ok: false, error: "Webhook secret not set" });
-      }
-
-      // Verify the shared secret — external systems should send it in one of these headers
-      const signatureHeader =
-        req.headers['x-webhook-secret'] as string ||
-        req.headers['x-spruce-signature'] as string ||
-        req.headers['x-signature'] as string ||
-        req.headers['authorization']?.replace('Bearer ', '') as string;
-
-      const parsed = parseInboundWebhook({
-        provider: (clinician.externalMessagingProvider || 'custom') as ExternalProvider,
-        rawBody: req.body,
-        rawBodyBuffer: (req as any).rawBody,
-        expectedSecret: clinician.externalMessagingWebhookSecret,
-        signatureHeader,
-        allHeaders: req.headers,
-      });
-
-      if (!parsed) {
-        return res.status(401).json({ ok: false, error: "Invalid signature or unrecognised payload" });
-      }
-
-      // Spruce inbox handling:
-      //   • If the clinician hasn't picked an inbox yet, auto-save the inbox ID
-      //     from the first inbound message — saves them looking it up manually.
-      //   • If they HAVE picked one, drop messages from any other inbox.
-      if (clinician.externalMessagingProvider === 'spruce' && parsed.channelId) {
-        if (!clinician.externalMessagingChannelId) {
-          await storage.updateUser(clinicianId, { externalMessagingChannelId: parsed.channelId });
-          clinician.externalMessagingChannelId = parsed.channelId;
-          console.log(`[Spruce] Auto-detected inbox ${parsed.channelId} for clinician ${clinicianId}`);
-        } else if (parsed.channelId !== clinician.externalMessagingChannelId) {
-          return res.json({ ok: true, skipped: true, reason: "Message from a different Spruce inbox" });
-        }
-      }
-
-      if (!parsed.isFromProvider) {
-        // Ignore messages not sent by the provider (e.g. patient-initiated copies)
-        return res.json({ ok: true, skipped: true, reason: "Not a provider message" });
-      }
-
-      // Identify which patient this reply belongs to
-      const body = req.body as Record<string, unknown>;
-      const rawPatientId = body.patient_id ?? body.patientId ?? body.realign_patient_id;
-      const patientEmail = body.patient_email ?? body.patientEmail;
-
-      let patient = null;
-      if (rawPatientId) {
-        patient = await storage.getPatientById(Number(rawPatientId));
-        // Verify the patient belongs to this clinician
-        if (patient && patient.userId !== clinicianId) patient = null;
-      }
-      if (!patient && patientEmail) {
-        const portalAccount = await storage.getPortalAccountByEmail(String(patientEmail));
-        if (portalAccount) {
-          patient = await storage.getPatientById(portalAccount.patientId);
-          if (patient && patient.userId !== clinicianId) patient = null;
-        }
-      }
-      // Fallback: match by phone number from the parsed payload (Spruce sends contact phone)
-      if (!patient && parsed.patientPhone) {
-        patient = await storage.getPatientByPhoneForClinician(parsed.patientPhone, clinicianId);
-      }
-
-      if (!patient) {
-        return res.status(404).json({ ok: false, error: "Could not identify patient. Include patient_id, patient_email, or a recognized phone number." });
-      }
-
-      // Deduplicate — if we already have this external message ID, skip it
-      if (parsed.externalMessageId) {
-        const existing = await storage.getPortalMessageByExternalId(parsed.externalMessageId);
-        if (existing) return res.json({ ok: true, skipped: true, reason: "Already processed" });
-      }
-
-      // Store the clinician reply as a portal message
-      await storage.createPortalMessage({
-        patientId: patient.id,
-        clinicianId,
-        senderType: 'clinician',
-        content: parsed.content,
-        readAt: null,
-        externalMessageId: parsed.externalMessageId || null,
-      });
-
-      return res.json({ ok: true });
-    } catch (error) {
-      console.error('[Webhook] Error processing inbound message:', error);
-      res.status(500).json({ ok: false, error: "Internal server error" });
-    }
-  });
-
-  // GET /api/auth/messaging-settings — clinician fetches their full external messaging config
-  // (separate from /api/auth/me to avoid sending sensitive data on every page load)
+  // GET /api/auth/messaging-settings — clinician fetches their external messaging config
   app.get("/api/auth/messaging-settings", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const clinicId = getEffectiveClinicId(req);
       const user = await storage.getUserById(clinicianId);
       if (!user) return res.status(404).json({ message: "User not found" });
       res.json({
@@ -5189,220 +5056,9 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         externalMessagingProvider: user.externalMessagingProvider,
         externalMessagingApiKeySet: !!(user.externalMessagingApiKey),
         externalMessagingChannelId: user.externalMessagingChannelId,
-        externalMessagingWebhookSecret: user.externalMessagingWebhookSecret,
-        webhookUrl: `${req.protocol}://${req.get('host')}/api/webhooks/messaging/${clinicianId}`,
       });
     } catch (error) {
       res.status(500).json({ message: "Failed to fetch messaging settings" });
-    }
-  });
-
-  // GET /api/auth/messaging/spruce-inboxes — list the org's Spruce inboxes/endpoints
-  app.get("/api/auth/messaging/spruce-inboxes", requireAuth, async (req, res) => {
-    try {
-      const clinicianId = getClinicianId(req);
-      const user = await storage.getUserById(clinicianId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      if (user.externalMessagingProvider !== "spruce") {
-        return res.status(400).json({ message: "Messaging provider must be set to Spruce." });
-      }
-      if (!user.externalMessagingApiKey) {
-        return res.status(400).json({ message: "Save your Spruce API key first." });
-      }
-
-      // Try the most likely Spruce paths in order. Different Spruce plans expose
-      // org phone lines under slightly different names; first 200 wins.
-      const candidatePaths = [
-        "/v1/endpoints",
-        "/v1/organization/endpoints",
-        "/v1/organizations/me/endpoints",
-        "/v1/conversation_endpoints",
-        "/v1/communication_endpoints",
-        "/v1/phone_numbers",
-        "/v1/inboxes",
-        "/v1/organizations",
-        "/v1/organization",
-        "/v1/me",
-      ];
-      const attempts: Array<{ path: string; status: number | string; preview?: string }> = [];
-      for (const path of candidatePaths) {
-        try {
-          const r = await fetch(`https://api.sprucehealth.com${path}`, {
-            headers: {
-              Authorization: `Bearer ${user.externalMessagingApiKey}`,
-              "Content-Type": "application/json",
-            },
-          });
-          const text = await r.text();
-          attempts.push({ path, status: r.status, preview: text.slice(0, 200) });
-          if (!r.ok) continue;
-          let body: any = null;
-          try { body = JSON.parse(text); } catch { continue; }
-          // Try a wide variety of shapes the inbox/endpoint list might take
-          const list: any[] =
-            body?.endpoints ||
-            body?.inboxes ||
-            body?.phone_numbers ||
-            body?.conversation_endpoints ||
-            body?.communication_endpoints ||
-            body?.data ||
-            body?.organization?.endpoints ||
-            body?.organizations?.[0]?.endpoints ||
-            (Array.isArray(body) ? body : []);
-          const inboxes = list
-            .map((e: any) => ({
-              id: String(e.id ?? e.endpoint_id ?? ""),
-              label: String(
-                e.name ?? e.display_name ?? e.label ?? e.phone ?? e.phone_number ?? e.number ?? e.id ?? "Inbox",
-              ),
-              phone: e.phone ?? e.phone_number ?? e.number ?? null,
-            }))
-            .filter((x) => x.id);
-          if (inboxes.length > 0) {
-            return res.json({ ok: true, inboxes, source: path });
-          }
-        } catch (e: any) {
-          attempts.push({ path, status: "fetch-error", preview: e?.message || String(e) });
-        }
-      }
-      res.status(502).json({
-        message: "Could not list Spruce inboxes from any known API path. Paste the inbox ID manually below, or share these results with support.",
-        attempts,
-      });
-    } catch (error: any) {
-      res.status(500).json({ message: error?.message || "Failed to list Spruce inboxes." });
-    }
-  });
-
-  // POST /api/auth/messaging/register-spruce-webhook — auto-register inbound webhook with Spruce
-  app.post("/api/auth/messaging/register-spruce-webhook", requireAuth, async (req, res) => {
-    try {
-      const clinicianId = getClinicianId(req);
-      const user = await storage.getUserById(clinicianId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-
-      if (user.externalMessagingProvider !== "spruce") {
-        return res.status(400).json({ message: "Messaging provider must be set to Spruce." });
-      }
-      if (!user.externalMessagingApiKey) {
-        return res.status(400).json({ message: "Save your Spruce API key first." });
-      }
-
-      // Ensure we have a signing secret to share with Spruce
-      let signingSecret = user.externalMessagingWebhookSecret;
-      if (!signingSecret) {
-        signingSecret = generateWebhookSecret();
-        await storage.updateUser(clinicianId, { externalMessagingWebhookSecret: signingSecret });
-      }
-
-      const webhookUrl = `${req.protocol}://${req.get('host')}/api/webhooks/messaging/${clinicianId}`;
-      const clinicName = (user as any).clinicName || "ClinIQ";
-
-      const sprResp = await fetch("https://api.sprucehealth.com/v1/webhooks/endpoints", {
-        method: "POST",
-        headers: {
-          "Authorization": `Bearer ${user.externalMessagingApiKey}`,
-          "Content-Type": "application/json",
-        },
-        body: JSON.stringify({
-          url: webhookUrl,
-          name: `ClinIQ – ${clinicName}`,
-          signingSecret,
-        }),
-      });
-
-      const bodyText = await sprResp.text();
-      let body: any = null;
-      try { body = JSON.parse(bodyText); } catch { /* not JSON */ }
-
-      if (!sprResp.ok) {
-        return res.status(sprResp.status).json({
-          message: body?.message || "Spruce rejected the request.",
-          sprucePayload: body || bodyText,
-        });
-      }
-
-      // If Spruce generated its own signing secret, persist that instead
-      const sprSecret: string | undefined = body?.signingSecrets?.[0]?.value;
-      if (sprSecret && sprSecret !== signingSecret) {
-        await storage.updateUser(clinicianId, { externalMessagingWebhookSecret: sprSecret });
-        signingSecret = sprSecret;
-      }
-
-      res.json({
-        ok: true,
-        endpointId: body?.id,
-        url: body?.url || webhookUrl,
-        webhookSecret: signingSecret,
-      });
-    } catch (error: any) {
-      console.error("Spruce webhook registration failed:", error);
-      res.status(500).json({ message: error?.message || "Failed to register webhook with Spruce." });
-    }
-  });
-
-  // POST /api/auth/messaging/resync-spruce-secret — pull current signing secret from Spruce
-  app.post("/api/auth/messaging/resync-spruce-secret", requireAuth, async (req, res) => {
-    try {
-      const clinicianId = getClinicianId(req);
-      const user = await storage.getUserById(clinicianId);
-      if (!user) return res.status(404).json({ message: "User not found" });
-      if (user.externalMessagingProvider !== "spruce") {
-        return res.status(400).json({ message: "Messaging provider must be set to Spruce." });
-      }
-      if (!user.externalMessagingApiKey) {
-        return res.status(400).json({ message: "Save your Spruce API key first." });
-      }
-
-      const expectedUrl = `${req.protocol}://${req.get('host')}/api/webhooks/messaging/${clinicianId}`;
-
-      const listResp = await fetch("https://api.sprucehealth.com/v1/webhooks/endpoints", {
-        method: "GET",
-        headers: { "Authorization": `Bearer ${user.externalMessagingApiKey}` },
-      });
-      const listText = await listResp.text();
-      let listBody: any = null;
-      try { listBody = JSON.parse(listText); } catch {}
-
-      if (!listResp.ok) {
-        return res.status(listResp.status).json({ message: listBody?.message || "Spruce GET failed", sprucePayload: listBody || listText });
-      }
-
-      const endpoints: any[] = Array.isArray(listBody) ? listBody : (listBody?.endpoints || listBody?.data || []);
-      const match = endpoints.find((e: any) =>
-        e.url === expectedUrl ||
-        (typeof e.url === 'string' && e.url.endsWith(`/api/webhooks/messaging/${clinicianId}`))
-      );
-
-      if (!match) {
-        return res.status(404).json({
-          message: `No webhook endpoint in Spruce points to ${expectedUrl}. Click "Register webhook with Spruce" first.`,
-          urls: endpoints.map((e: any) => e.url),
-        });
-      }
-
-      const secrets: string[] = (match.signingSecrets || match.signing_secrets || [])
-        .map((s: any) => s?.value || s)
-        .filter((v: any) => typeof v === 'string' && v.length > 0);
-
-      if (!secrets.length) {
-        return res.status(404).json({ message: "Spruce did not return any signing secrets for that endpoint.", endpoint: match });
-      }
-
-      // Use the most recent (last) secret
-      const newSecret = secrets[secrets.length - 1];
-      await storage.updateUser(clinicianId, { externalMessagingWebhookSecret: newSecret });
-
-      res.json({
-        ok: true,
-        endpointId: match.id,
-        url: match.url,
-        secretCount: secrets.length,
-        secretPrefix: newSecret.slice(0, 6),
-      });
-    } catch (error: any) {
-      console.error("Spruce resync failed:", error);
-      res.status(500).json({ message: error?.message || "Failed to resync signing secret from Spruce." });
     }
   });
 
