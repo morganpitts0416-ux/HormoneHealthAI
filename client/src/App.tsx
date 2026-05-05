@@ -13,6 +13,7 @@ import Dashboard from "@/pages/dashboard";
 import Account from "@/pages/account";
 import LabInterpretation from "@/pages/lab-interpretation";
 import FemaleLabInterpretation from "@/pages/female-lab-interpretation";
+import SimpleLabUpload from "@/pages/simple-lab-upload";
 import PatientProfiles from "@/pages/patient-profiles";
 import AdminDashboard from "@/pages/admin";
 import Bootstrap from "@/pages/bootstrap";
@@ -275,6 +276,9 @@ function Router() {
       </Route>
       <Route path="/female">
         {() => <ProtectedRoute component={FemaleLabInterpretation} />}
+      </Route>
+      <Route path="/simple-labs">
+        {() => <ProtectedRoute component={SimpleLabUpload} />}
       </Route>
       <Route path="/patients">
         {() => <ProtectedRoute component={PatientProfiles} />}

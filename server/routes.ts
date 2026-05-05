@@ -2701,6 +2701,111 @@ Return ONLY this JSON structure:
     }
   });
 
+  // ── Simple Lab Uploads ────────────────────────────────────────────────────
+  app.get("/api/patients/:id/simple-labs", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      const patient = await storage.getPatient(id, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+      const labs = await storage.getSimpleLabsByPatient(id);
+      res.json(labs);
+    } catch (error) {
+      console.error("Error fetching simple labs:", error);
+      res.status(500).json({ error: "Failed to fetch simple labs" });
+    }
+  });
+
+  app.post("/api/patients/:id/simple-labs", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      const patient = await storage.getPatient(id, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ error: "Patient not found" });
+
+      const { labDate, entries, notes } = req.body;
+      if (!labDate || !Array.isArray(entries) || entries.length === 0) {
+        return res.status(400).json({ error: "labDate and entries are required" });
+      }
+
+      // Generate brief AI insight comparing to previous uploads
+      let aiInsight: string | null = null;
+      try {
+        const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+        const previous = await storage.getSimpleLabsByPatient(id);
+        const recentPrev = previous.slice(0, 3);
+
+        const entrySummary = entries
+          .map((e: any) =>
+            `${e.name}: ${e.value}${e.unit ? " " + e.unit : ""}${e.referenceRange ? " (ref: " + e.referenceRange + ")" : ""}`
+          )
+          .join("\n");
+
+        const prevSummary =
+          recentPrev.length > 0
+            ? "\n\nPrevious uploads:\n" +
+              recentPrev
+                .map((p) => {
+                  const date = new Date(p.labDate).toLocaleDateString();
+                  const pEntries = (p.entries as any[])
+                    .map((e: any) => `${e.name}: ${e.value}${e.unit ? " " + e.unit : ""}`)
+                    .join(", ");
+                  return `${date}: ${pEntries}`;
+                })
+                .join("\n")
+            : "\n\nNo previous values on file for comparison.";
+
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o-mini",
+          messages: [
+            {
+              role: "system",
+              content:
+                "You are a clinical assistant. Provide a concise 2–4 sentence insight about these lab values: note any values outside their reference range, any notable changes from previous uploads, and any trends worth monitoring. Be factual and clinically focused. Do not recommend specific medications or treatments.",
+            },
+            {
+              role: "user",
+              content: `New labs dated ${new Date(labDate).toLocaleDateString()}:\n${entrySummary}${prevSummary}`,
+            },
+          ],
+          max_tokens: 220,
+        });
+        aiInsight = completion.choices[0]?.message?.content ?? null;
+      } catch (aiErr) {
+        console.error("Simple lab AI insight error:", aiErr);
+      }
+
+      const created = await storage.createSimpleLabUpload({
+        patientId: id,
+        clinicId: clinicId ?? null,
+        providerId: clinicianId,
+        labDate: new Date(labDate),
+        entries,
+        notes: notes ?? null,
+        aiInsight,
+      });
+
+      res.json(created);
+    } catch (error) {
+      console.error("Error saving simple lab upload:", error);
+      res.status(500).json({ error: "Failed to save lab upload" });
+    }
+  });
+
+  app.delete("/api/simple-labs/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const deleted = await storage.deleteSimpleLabUpload(id);
+      if (!deleted) return res.status(404).json({ error: "Not found" });
+      res.json({ success: true });
+    } catch (error) {
+      console.error("Error deleting simple lab:", error);
+      res.status(500).json({ error: "Failed to delete" });
+    }
+  });
+
   app.delete("/api/lab-results/:id", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);

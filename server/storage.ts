@@ -8,6 +8,7 @@ import { detectControlledSubstances, detectNewDiagnoses, computeQuotaPeriodKey, 
 import type {
   Patient, InsertPatient,
   LabResult, InsertLabResult,
+  SimpleLabUpload, InsertSimpleLabUpload,
   SavedInterpretation, InsertSavedInterpretation,
   User, InsertUser,
   ClinicianStaff, InsertClinicianStaff,
@@ -108,6 +109,11 @@ export interface IStorage {
   createLabResult(labResult: InsertLabResult): Promise<LabResult>;
   updateLabResult(id: number, labResult: Partial<InsertLabResult>): Promise<LabResult | undefined>;
   deleteLabResult(id: number): Promise<boolean>;
+
+  // Simple lab upload operations
+  getSimpleLabsByPatient(patientId: number): Promise<SimpleLabUpload[]>;
+  createSimpleLabUpload(data: InsertSimpleLabUpload): Promise<SimpleLabUpload>;
+  deleteSimpleLabUpload(id: number): Promise<boolean>;
 
   // Saved interpretation operations (scoped by userId)
   getSavedInterpretation(id: number, userId: number): Promise<SavedInterpretation | undefined>;
@@ -823,6 +829,28 @@ export class DbStorage implements IStorage {
     const result = await db
       .delete(schema.labResults)
       .where(eq(schema.labResults.id, id))
+      .returning();
+    return result.length > 0;
+  }
+
+  // ── Simple lab upload operations ─────────────────────────────────────────────
+  async getSimpleLabsByPatient(patientId: number): Promise<SimpleLabUpload[]> {
+    return await db
+      .select()
+      .from(schema.simpleLabUploads)
+      .where(eq(schema.simpleLabUploads.patientId, patientId))
+      .orderBy(desc(schema.simpleLabUploads.labDate));
+  }
+
+  async createSimpleLabUpload(data: InsertSimpleLabUpload): Promise<SimpleLabUpload> {
+    const result = await db.insert(schema.simpleLabUploads).values(data as any).returning();
+    return result[0];
+  }
+
+  async deleteSimpleLabUpload(id: number): Promise<boolean> {
+    const result = await db
+      .delete(schema.simpleLabUploads)
+      .where(eq(schema.simpleLabUploads.id, id))
       .returning();
     return result.length > 0;
   }

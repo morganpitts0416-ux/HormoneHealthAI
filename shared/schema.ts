@@ -614,6 +614,27 @@ export const insertLabResultSchema = createInsertSchema(labResults).omit({
 export type InsertLabResult = z.infer<typeof insertLabResultSchema>;
 export type LabResult = typeof labResults.$inferSelect;
 
+// Simple Lab Uploads — lightweight chart entries for trending without full evaluation
+export const simpleLabUploads = pgTable("simple_lab_uploads", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: 'cascade' }),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: 'cascade' }),
+  providerId: integer("provider_id").references(() => users.id, { onDelete: 'set null' }),
+  labDate: timestamp("lab_date").notNull(),
+  entries: jsonb("entries").$type<Array<{ name: string; value: string; unit: string; referenceRange?: string }>>().notNull(),
+  notes: text("notes"),
+  aiInsight: text("ai_insight"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export const insertSimpleLabUploadSchema = createInsertSchema(simpleLabUploads).omit({
+  id: true,
+  createdAt: true,
+});
+
+export type InsertSimpleLabUpload = z.infer<typeof insertSimpleLabUploadSchema>;
+export type SimpleLabUpload = typeof simpleLabUploads.$inferSelect;
+
 // Saved Lab Interpretations - simple table for storing and retrieving past interpretations
 export const savedInterpretations = pgTable("saved_interpretations", {
   id: serial("id").primaryKey(),

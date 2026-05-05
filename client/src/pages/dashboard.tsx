@@ -29,6 +29,7 @@ import {
   Clock,
   Loader2,
   UserPlus,
+  Upload,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
@@ -906,6 +907,24 @@ export default function Dashboard() {
               <div className="flex-1 min-w-0">
                 <p className="font-semibold text-sm" style={{ color: "#1c2414" }}>Female Lab Evaluation</p>
                 <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Hormonal, AMH, thyroid, metabolic</p>
+              </div>
+            </button>
+
+            {/* Quick Upload */}
+            <button
+              data-testid="card-quick-lab-upload"
+              className="flex items-center gap-4 p-4 rounded-xl border text-left transition-all"
+              style={{ backgroundColor: "#ffffff", borderColor: "#d4c9b5" }}
+              onMouseEnter={e => { (e.currentTarget as HTMLElement).style.borderColor = "#4a72b8"; (e.currentTarget as HTMLElement).style.backgroundColor = "#f0f4fd"; }}
+              onMouseLeave={e => { (e.currentTarget as HTMLElement).style.borderColor = "#d4c9b5"; (e.currentTarget as HTMLElement).style.backgroundColor = "#ffffff"; }}
+              onClick={() => setLocation("/simple-labs")}
+            >
+              <div className="w-12 h-12 rounded-xl flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#e8eef8" }}>
+                <Upload className="w-6 h-6" style={{ color: "#4a72b8" }} />
+              </div>
+              <div className="flex-1 min-w-0">
+                <p className="font-semibold text-sm" style={{ color: "#1c2414" }}>Quick Lab Upload</p>
+                <p className="text-xs mt-0.5 leading-relaxed" style={{ color: "#7a8a64" }}>Chart any labs for trending — no full eval</p>
               </div>
             </button>
 

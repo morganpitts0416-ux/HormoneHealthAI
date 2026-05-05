@@ -36,7 +36,7 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment } from "@shared/schema";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment, SimpleLabUpload } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { PatientSummary } from "@/components/patient-summary";
 import PatientDocumentsCard from "@/components/patient-documents-card";
@@ -1289,6 +1289,32 @@ export default function PatientProfiles() {
       return res.json();
     },
     enabled: !!selectedPatient,
+  });
+
+  const { data: simpleLabs = [] } = useQuery<SimpleLabUpload[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'simple-labs'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/simple-labs`, { credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to fetch quick lab uploads');
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const deleteSimpleLabMutation = useMutation({
+    mutationFn: async (id: number) => {
+      const res = await fetch(`/api/simple-labs/${id}`, { method: 'DELETE', credentials: 'include' });
+      if (!res.ok) throw new Error('Failed to delete');
+      return res.json();
+    },
+    onSuccess: () => {
+      if (selectedPatient) {
+        queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient.id, 'simple-labs'] });
+      }
+      toast({ title: "Quick upload deleted" });
+    },
+    onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
   });
 
   const { data: portalStatus } = useQuery<{
@@ -3103,6 +3129,69 @@ export default function PatientProfiles() {
                     />
                   )}
                   {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
+
+                  {/* ── Quick Lab Uploads ─────────────────────────────── */}
+                  {simpleLabs.length > 0 && (
+                    <Card data-testid="card-simple-lab-history">
+                      <CardHeader className="pb-3">
+                        <CardTitle className="text-lg flex items-center gap-2">
+                          <FlaskConical className="h-5 w-5 text-blue-500" />
+                          Quick Lab Uploads
+                          <Badge variant="secondary" className="text-xs ml-auto">
+                            {simpleLabs.length} upload{simpleLabs.length !== 1 ? 's' : ''}
+                          </Badge>
+                        </CardTitle>
+                      </CardHeader>
+                      <CardContent className="space-y-3">
+                        {simpleLabs.map((upload) => (
+                          <div
+                            key={upload.id}
+                            className="rounded-md border p-3 space-y-2"
+                            data-testid={`simple-lab-upload-${upload.id}`}
+                          >
+                            <div className="flex items-center justify-between gap-2 flex-wrap">
+                              <div className="flex items-center gap-2">
+                                <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                                <span className="text-sm font-medium">
+                                  {new Date(upload.labDate).toLocaleDateString()}
+                                </span>
+                                <Badge variant="outline" className="text-xs">Quick Upload</Badge>
+                              </div>
+                              <Button
+                                size="icon"
+                                variant="ghost"
+                                className="text-muted-foreground"
+                                onClick={() => deleteSimpleLabMutation.mutate(upload.id)}
+                                disabled={deleteSimpleLabMutation.isPending}
+                                data-testid={`button-delete-simple-lab-${upload.id}`}
+                              >
+                                <Trash2 className="h-4 w-4" />
+                              </Button>
+                            </div>
+                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">
+                              {(upload.entries as Array<{ name: string; value: string; unit: string; referenceRange?: string }>).map((e, i) => (
+                                <div key={i} className="flex items-baseline gap-1.5 text-sm">
+                                  <span className="text-muted-foreground truncate">{e.name}</span>
+                                  <span className="font-mono font-medium flex-shrink-0">
+                                    {e.value}{e.unit ? ` ${e.unit}` : ''}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                            {upload.aiInsight && (
+                              <div className="flex gap-2 pt-1 border-t">
+                                <Sparkles className="h-3.5 w-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
+                                <p className="text-xs text-muted-foreground leading-relaxed">{upload.aiInsight}</p>
+                              </div>
+                            )}
+                            {upload.notes && (
+                              <p className="text-xs text-muted-foreground italic border-t pt-1">{upload.notes}</p>
+                            )}
+                          </div>
+                        ))}
+                      </CardContent>
+                    </Card>
+                  )}
                 </>
               )}
 
