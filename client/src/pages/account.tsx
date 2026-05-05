@@ -616,6 +616,8 @@ export default function Account() {
   const [providerInviteEmail, setProviderInviteEmail] = useState("");
   const [providerInviteFirstName, setProviderInviteFirstName] = useState("");
   const [providerInviteLastName, setProviderInviteLastName] = useState("");
+  const [providerInviteCredentials, setProviderInviteCredentials] = useState("");
+  const [providerInviteNpi, setProviderInviteNpi] = useState("");
   const [providerInviteClinicalRole, setProviderInviteClinicalRole] = useState("provider");
   const [providerInviteAdminRole, setProviderInviteAdminRole] = useState("standard");
   const [seatConfirmDialog, setSeatConfirmDialog] = useState<{ open: boolean; seatPrice: number; message: string }>({ open: false, seatPrice: 0, message: "" });
@@ -712,6 +714,8 @@ export default function Account() {
         email: providerInviteEmail.trim(),
         firstName: providerInviteFirstName.trim(),
         lastName: providerInviteLastName.trim(),
+        credentials: providerInviteCredentials || null,
+        npi: providerInviteNpi.trim() || null,
         clinicalRole: providerInviteClinicalRole,
         adminRole: providerInviteAdminRole,
         confirmExtraSeat: opts?.confirmExtraSeat ?? false,
@@ -732,6 +736,8 @@ export default function Account() {
       setProviderInviteEmail("");
       setProviderInviteFirstName("");
       setProviderInviteLastName("");
+      setProviderInviteCredentials("");
+      setProviderInviteNpi("");
       setProviderInviteClinicalRole("provider");
       setProviderInviteAdminRole("standard");
       setShowProviderInviteForm(false);
@@ -1524,6 +1530,27 @@ export default function Account() {
                           <Input type="email" placeholder="jane@clinic.com" value={providerInviteEmail} onChange={e => setProviderInviteEmail(e.target.value)} data-testid="input-provider-email" />
                         </div>
                         <div className="space-y-1">
+                          <label className="text-xs font-medium text-muted-foreground">Credentials / Title</label>
+                          <Select value={providerInviteCredentials} onValueChange={setProviderInviteCredentials}>
+                            <SelectTrigger data-testid="select-provider-credentials"><SelectValue placeholder="Select…" /></SelectTrigger>
+                            <SelectContent>
+                              <SelectItem value="MD">MD</SelectItem>
+                              <SelectItem value="DO">DO</SelectItem>
+                              <SelectItem value="NP">NP</SelectItem>
+                              <SelectItem value="FNP">FNP</SelectItem>
+                              <SelectItem value="FNP-C">FNP-C</SelectItem>
+                              <SelectItem value="APRN">APRN</SelectItem>
+                              <SelectItem value="PA">PA</SelectItem>
+                              <SelectItem value="PA-C">PA-C</SelectItem>
+                              <SelectItem value="RN">RN</SelectItem>
+                              <SelectItem value="LPN">LPN</SelectItem>
+                              <SelectItem value="MA">MA</SelectItem>
+                              <SelectItem value="PharmD">PharmD</SelectItem>
+                              <SelectItem value="Other">Other</SelectItem>
+                            </SelectContent>
+                          </Select>
+                        </div>
+                        <div className="space-y-1">
                           <label className="text-xs font-medium text-muted-foreground">Clinical Role</label>
                           <Select value={providerInviteClinicalRole} onValueChange={setProviderInviteClinicalRole}>
                             <SelectTrigger data-testid="select-provider-clinical-role"><SelectValue /></SelectTrigger>
@@ -1546,8 +1573,30 @@ export default function Account() {
                             </SelectContent>
                           </Select>
                         </div>
+                        <div className="space-y-1 sm:col-span-2">
+                          <label className="text-xs font-medium text-muted-foreground">NPI Number <span className="font-normal opacity-60">(optional)</span></label>
+                          <Input
+                            placeholder="10-digit NPI"
+                            value={providerInviteNpi}
+                            onChange={e => setProviderInviteNpi(e.target.value.replace(/\D/g, "").slice(0, 10))}
+                            data-testid="input-provider-npi"
+                          />
+                          {providerInviteNpi && providerInviteNpi.length !== 10 && (
+                            <p className="text-xs text-destructive">NPI must be exactly 10 digits</p>
+                          )}
+                        </div>
                       </div>
-                      <Button onClick={() => inviteProviderMutation.mutate({})} disabled={inviteProviderMutation.isPending || !providerInviteEmail || !providerInviteFirstName || !providerInviteLastName} data-testid="button-send-provider-invite">
+                      <Button
+                        onClick={() => inviteProviderMutation.mutate({})}
+                        disabled={
+                          inviteProviderMutation.isPending ||
+                          !providerInviteEmail ||
+                          !providerInviteFirstName ||
+                          !providerInviteLastName ||
+                          (!!providerInviteNpi && providerInviteNpi.length !== 10)
+                        }
+                        data-testid="button-send-provider-invite"
+                      >
                         <Mail className="w-4 h-4 mr-2" />
                         {inviteProviderMutation.isPending ? "Sending..." : "Send Provider Invite"}
                       </Button>
