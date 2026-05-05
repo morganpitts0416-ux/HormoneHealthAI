@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, useSearch } from "wouter";
@@ -15,6 +15,7 @@ import { Separator } from "@/components/ui/separator";
 import {
   FlaskConical, Plus, Trash2, ChevronDown, ChevronUp,
   Sparkles, CheckCircle2, ArrowLeft, User, CalendarDays, Loader2,
+  Upload, FileText, X,
 } from "lucide-react";
 import type { Patient, SimpleLabUpload } from "@shared/schema";
 
@@ -33,6 +34,63 @@ const COMMON_LABS = [
   "IGF-1", "Uric Acid", "Vitamin A", "Zinc", "Copper",
 ];
 
+// Maps the camelCase keys returned by /api/extract-pdf-labs to
+// human-readable lab names + default units for the entry table.
+const EXTRACTED_FIELD_MAP: Record<string, { name: string; unit: string }> = {
+  hemoglobin:          { name: "Hemoglobin",         unit: "g/dL" },
+  hematocrit:          { name: "Hematocrit",          unit: "%" },
+  rbc:                 { name: "RBC",                 unit: "M/µL" },
+  wbc:                 { name: "WBC",                 unit: "K/µL" },
+  platelets:           { name: "Platelets",           unit: "K/µL" },
+  mcv:                 { name: "MCV",                 unit: "fL" },
+  ast:                 { name: "AST",                 unit: "U/L" },
+  alt:                 { name: "ALT",                 unit: "U/L" },
+  bilirubin:           { name: "Total Bilirubin",     unit: "mg/dL" },
+  alkalinePhosphatase: { name: "ALP",                 unit: "U/L" },
+  creatinine:          { name: "Creatinine",          unit: "mg/dL" },
+  egfr:                { name: "eGFR",                unit: "mL/min/1.73m²" },
+  bun:                 { name: "BUN",                 unit: "mg/dL" },
+  sodium:              { name: "Sodium",              unit: "mEq/L" },
+  potassium:           { name: "Potassium",           unit: "mEq/L" },
+  chloride:            { name: "Chloride",            unit: "mEq/L" },
+  co2:                 { name: "CO2",                 unit: "mEq/L" },
+  glucose:             { name: "Fasting Glucose",     unit: "mg/dL" },
+  calcium:             { name: "Calcium",             unit: "mg/dL" },
+  magnesium:           { name: "Magnesium",           unit: "mg/dL" },
+  albumin:             { name: "Albumin",             unit: "g/dL" },
+  totalProtein:        { name: "Total Protein",       unit: "g/dL" },
+  ldl:                 { name: "LDL",                 unit: "mg/dL" },
+  hdl:                 { name: "HDL",                 unit: "mg/dL" },
+  totalCholesterol:    { name: "Total Cholesterol",   unit: "mg/dL" },
+  triglycerides:       { name: "Triglycerides",       unit: "mg/dL" },
+  apoB:                { name: "ApoB",                unit: "mg/dL" },
+  lpa:                 { name: "Lp(a)",               unit: "nmol/L" },
+  testosterone:        { name: "Testosterone Total",  unit: "ng/dL" },
+  freeTestosterone:    { name: "Testosterone Free",   unit: "pg/mL" },
+  estradiol:           { name: "Estradiol",           unit: "pg/mL" },
+  progesterone:        { name: "Progesterone",        unit: "ng/mL" },
+  lh:                  { name: "LH",                  unit: "mIU/mL" },
+  fsh:                 { name: "FSH",                 unit: "mIU/mL" },
+  prolactin:           { name: "Prolactin",           unit: "ng/mL" },
+  shbg:                { name: "SHBG",                unit: "nmol/L" },
+  dheas:               { name: "DHEA-S",              unit: "µg/dL" },
+  amh:                 { name: "AMH",                 unit: "ng/mL" },
+  tsh:                 { name: "TSH",                 unit: "mIU/L" },
+  freeT4:              { name: "Free T4",             unit: "ng/dL" },
+  freeT3:              { name: "Free T3",             unit: "pg/mL" },
+  tpoAntibodies:       { name: "Anti-TPO",            unit: "IU/mL" },
+  iron:                { name: "Iron",                unit: "µg/dL" },
+  tibc:                { name: "TIBC",                unit: "µg/dL" },
+  ironSaturation:      { name: "Iron Saturation",     unit: "%" },
+  ferritin:            { name: "Ferritin",            unit: "ng/mL" },
+  vitaminD:            { name: "Vitamin D (25-OH)",   unit: "ng/mL" },
+  vitaminB12:          { name: "Vitamin B12",         unit: "pg/mL" },
+  folate:              { name: "Folate",              unit: "ng/mL" },
+  hsCRP:               { name: "hs-CRP",             unit: "mg/L" },
+  a1c:                 { name: "HbA1c",              unit: "%" },
+  psa:                 { name: "PSA",                 unit: "ng/mL" },
+};
+
 type LabEntry = { name: string; value: string; unit: string; referenceRange: string };
 const emptyEntry = (): LabEntry => ({ name: "", value: "", unit: "", referenceRange: "" });
 
@@ -49,7 +107,15 @@ export default function SimpleLabUpload() {
   const [entries, setEntries] = useState<LabEntry[]>([emptyEntry()]);
   const [notes, setNotes] = useState("");
   const [showCommonLabs, setShowCommonLabs] = useState(false);
+  const [showUploadZone, setShowUploadZone] = useState(false);
   const [savedResult, setSavedResult] = useState<SimpleLabUpload | null>(null);
+
+  // PDF upload state
+  const [isDragging, setIsDragging] = useState(false);
+  const [pdfFile, setPdfFile] = useState<File | null>(null);
+  const [extracting, setExtracting] = useState(false);
+  const [extractedCount, setExtractedCount] = useState<number | null>(null);
+  const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: patients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients"],
@@ -112,8 +178,93 @@ export default function SimpleLabUpload() {
     setSavedResult(null);
     setEntries([emptyEntry()]);
     setNotes("");
+    setExtractedCount(null);
+    setPdfFile(null);
   };
 
+  // ── PDF extraction ──────────────────────────────────────────────────────────
+  const handlePdfFile = async (file: File) => {
+    if (file.type !== "application/pdf") {
+      toast({ title: "PDF only", description: "Please upload a PDF file.", variant: "destructive" });
+      return;
+    }
+    if (file.size > 10 * 1024 * 1024) {
+      toast({ title: "File too large", description: "Maximum file size is 10 MB.", variant: "destructive" });
+      return;
+    }
+    setPdfFile(file);
+    setExtracting(true);
+    setExtractedCount(null);
+
+    try {
+      const fd = new FormData();
+      fd.append("pdf", file);
+      const res = await fetch("/api/extract-pdf-labs", { method: "POST", body: fd, credentials: "include" });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error ?? "Extraction failed");
+      }
+      const { data } = await res.json();
+
+      // Map extracted values → LabEntry rows
+      const extracted: LabEntry[] = Object.entries(data as Record<string, unknown>)
+        .filter(([key, val]) =>
+          typeof val === "number" &&
+          !["patientName", "dateOfBirth", "collectionDate"].includes(key) &&
+          EXTRACTED_FIELD_MAP[key]
+        )
+        .map(([key, val]) => ({
+          name: EXTRACTED_FIELD_MAP[key].name,
+          value: String(val),
+          unit: EXTRACTED_FIELD_MAP[key].unit,
+          referenceRange: "",
+        }));
+
+      if (extracted.length === 0) {
+        toast({ title: "No values found", description: "The AI couldn't identify lab values in this PDF. Try entering them manually.", variant: "destructive" });
+        setExtracting(false);
+        return;
+      }
+
+      // Auto-fill lab date if the PDF contained a collection date
+      if (data.collectionDate) {
+        const d = new Date(data.collectionDate);
+        if (!isNaN(d.getTime())) {
+          setLabDate(d.toISOString().split("T")[0]);
+        }
+      }
+
+      // Merge with any existing manually-entered rows (keep non-blank ones)
+      setEntries((prev) => {
+        const manual = prev.filter((e) => e.name.trim());
+        const names = new Set(manual.map((e) => e.name));
+        const fresh = extracted.filter((e) => !names.has(e.name));
+        return manual.length > 0 ? [...manual, ...fresh] : fresh;
+      });
+
+      setExtractedCount(extracted.length);
+      setShowUploadZone(false);
+      toast({ title: `${extracted.length} values extracted`, description: "Review and edit below, then save." });
+    } catch (err: any) {
+      toast({ title: "Extraction failed", description: err.message, variant: "destructive" });
+    } finally {
+      setExtracting(false);
+    }
+  };
+
+  const onFileInputChange = (e: React.ChangeEvent<HTMLInputElement>) => {
+    const file = e.target.files?.[0];
+    if (file) handlePdfFile(file);
+  };
+
+  const onDrop = (e: React.DragEvent) => {
+    e.preventDefault();
+    setIsDragging(false);
+    const file = e.dataTransfer.files?.[0];
+    if (file) handlePdfFile(file);
+  };
+
+  // ── Success screen ──────────────────────────────────────────────────────────
   if (savedResult) {
     const patientName = selectedPatient
       ? `${selectedPatient.firstName} ${selectedPatient.lastName}`
@@ -164,7 +315,7 @@ export default function SimpleLabUpload() {
         <div className="flex gap-3 flex-wrap">
           <Button onClick={handleAddAnother} variant="outline" data-testid="button-add-another-upload">
             <Plus className="h-4 w-4 mr-2" />
-            Upload More Labs
+            Add More Labs
           </Button>
           <Button
             onClick={() => setLocation(`/patients?patientId=${selectedPatientId}`)}
@@ -178,6 +329,7 @@ export default function SimpleLabUpload() {
     );
   }
 
+  // ── Main form ───────────────────────────────────────────────────────────────
   return (
     <div className="max-w-3xl mx-auto p-4 sm:p-6 space-y-5">
       {/* Header */}
@@ -188,10 +340,10 @@ export default function SimpleLabUpload() {
         <div>
           <h1 className="text-xl font-semibold flex items-center gap-2">
             <FlaskConical className="h-5 w-5 text-primary" />
-            Quick Lab Upload
+            Point of Care Lab Entry
           </h1>
           <p className="text-sm text-muted-foreground">
-            Add labs to a patient's chart for trending — no full evaluation needed
+            Enter labs manually or upload a PDF report to extract values automatically
           </p>
         </div>
       </div>
@@ -230,6 +382,92 @@ export default function SimpleLabUpload() {
             />
           </div>
         </div>
+      </div>
+
+      {/* Extracted-from-PDF banner */}
+      {extractedCount !== null && (
+        <div className="flex items-center gap-2 rounded-md border border-blue-200 bg-blue-50 dark:border-blue-800 dark:bg-blue-950/30 px-3 py-2">
+          <FileText className="h-4 w-4 text-blue-600 dark:text-blue-400 flex-shrink-0" />
+          <p className="text-sm text-blue-700 dark:text-blue-300 flex-1">
+            <span className="font-medium">{extractedCount} values extracted</span> from {pdfFile?.name ?? "PDF"} — review and edit below before saving.
+          </p>
+          <button
+            onClick={() => { setExtractedCount(null); setPdfFile(null); }}
+            className="text-blue-500 hover:text-blue-700"
+            data-testid="button-dismiss-extract-banner"
+          >
+            <X className="h-3.5 w-3.5" />
+          </button>
+        </div>
+      )}
+
+      {/* Upload PDF section */}
+      <div className="rounded-md border">
+        <button
+          className="w-full flex items-center justify-between px-4 py-3 text-sm font-medium text-left hover:bg-muted/40 transition-colors"
+          onClick={() => setShowUploadZone((v) => !v)}
+          data-testid="button-toggle-upload-zone"
+        >
+          <span className="flex items-center gap-2">
+            <Upload className="h-4 w-4 text-muted-foreground" />
+            Upload lab report PDF
+            <span className="text-xs font-normal text-muted-foreground">— AI extracts values automatically</span>
+          </span>
+          {showUploadZone ? <ChevronUp className="h-4 w-4" /> : <ChevronDown className="h-4 w-4" />}
+        </button>
+
+        {showUploadZone && (
+          <div className="px-4 pb-4 border-t pt-4">
+            <input
+              ref={fileInputRef}
+              type="file"
+              accept="application/pdf"
+              className="sr-only"
+              onChange={onFileInputChange}
+              data-testid="input-pdf-file"
+            />
+            <div
+              onDragOver={(e) => { e.preventDefault(); setIsDragging(true); }}
+              onDragLeave={() => setIsDragging(false)}
+              onDrop={onDrop}
+              onClick={() => !extracting && fileInputRef.current?.click()}
+              data-testid="dropzone-pdf"
+              className={`
+                flex flex-col items-center justify-center gap-3 rounded-md border-2 border-dashed
+                p-8 text-center cursor-pointer transition-colors
+                ${isDragging
+                  ? "border-primary bg-primary/5"
+                  : "border-muted-foreground/25 hover:border-muted-foreground/50 hover:bg-muted/30"
+                }
+                ${extracting ? "pointer-events-none opacity-70" : ""}
+              `}
+            >
+              {extracting ? (
+                <>
+                  <Loader2 className="h-8 w-8 text-primary animate-spin" />
+                  <p className="text-sm font-medium">Extracting lab values…</p>
+                  <p className="text-xs text-muted-foreground">AI is reading the report — this takes a few seconds</p>
+                </>
+              ) : (
+                <>
+                  <Upload className="h-8 w-8 text-muted-foreground" />
+                  <div>
+                    <p className="text-sm font-medium">Drop a PDF here or click to browse</p>
+                    <p className="text-xs text-muted-foreground mt-1">
+                      Supports standard lab report PDFs from LabCorp, Quest, and most reference labs · Max 10 MB
+                    </p>
+                  </div>
+                  {pdfFile && (
+                    <Badge variant="outline" className="gap-1.5">
+                      <FileText className="h-3 w-3" />
+                      {pdfFile.name}
+                    </Badge>
+                  )}
+                </>
+              )}
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Common labs quick-add */}
@@ -274,12 +512,14 @@ export default function SimpleLabUpload() {
 
       {/* Lab entry table */}
       <div className="space-y-2">
-        <div className="grid grid-cols-12 gap-2 px-1">
-          <span className="col-span-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Lab Name</span>
-          <span className="col-span-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Value</span>
-          <span className="col-span-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Unit</span>
-          <span className="col-span-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">Ref Range</span>
-          <span className="col-span-1" />
+        <div className="flex items-center justify-between gap-2 px-1">
+          <div className="grid grid-cols-12 gap-2 flex-1">
+            <span className="col-span-4 text-xs font-medium text-muted-foreground uppercase tracking-wide">Lab Name</span>
+            <span className="col-span-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Value</span>
+            <span className="col-span-2 text-xs font-medium text-muted-foreground uppercase tracking-wide">Unit</span>
+            <span className="col-span-3 text-xs font-medium text-muted-foreground uppercase tracking-wide">Ref Range</span>
+            <span className="col-span-1" />
+          </div>
         </div>
         <div className="space-y-2">
           {entries.map((entry, i) => (
@@ -338,7 +578,7 @@ export default function SimpleLabUpload() {
         <Label htmlFor="notes">Notes <span className="text-muted-foreground font-normal">(optional)</span></Label>
         <Textarea
           id="notes"
-          placeholder="Context about these labs — e.g. follow-up after supplementation, fasting sample, etc."
+          placeholder="Context about these labs — e.g. follow-up after supplementation, fasting sample, point-of-care, etc."
           value={notes}
           onChange={(e) => setNotes(e.target.value)}
           className="resize-none"
@@ -351,7 +591,7 @@ export default function SimpleLabUpload() {
       <div className="flex items-center gap-3 flex-wrap">
         <Button
           onClick={handleSave}
-          disabled={saveMutation.isPending}
+          disabled={saveMutation.isPending || !selectedPatientId}
           data-testid="button-save-quick-labs"
         >
           {saveMutation.isPending ? (
