@@ -762,3 +762,377 @@ CREATE INDEX IF NOT EXISTS simple_lab_uploads_patient_idx
   ON simple_lab_uploads (patient_id, lab_date DESC);
 CREATE INDEX IF NOT EXISTS simple_lab_uploads_clinic_idx
   ON simple_lab_uploads (clinic_id);
+
+-- ═══════════════════════════════════════════════════════════════════════════
+-- COMPREHENSIVE SCHEMA SYNC
+-- All tables below use CREATE TABLE IF NOT EXISTS / ADD COLUMN IF NOT EXISTS
+-- so this block is fully idempotent and safe on both existing and fresh DBs.
+-- ═══════════════════════════════════════════════════════════════════════════
+
+-- ── users (core — created at initial deploy; ALTER for columns added later) ─
+CREATE TABLE IF NOT EXISTS users (
+  id SERIAL PRIMARY KEY,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  username VARCHAR(100) NOT NULL UNIQUE,
+  password_hash VARCHAR(255) NOT NULL,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  title VARCHAR(50) NOT NULL,
+  npi VARCHAR(20),
+  clinic_name VARCHAR(200) NOT NULL,
+  phone VARCHAR(30),
+  address TEXT,
+  role VARCHAR(20) NOT NULL DEFAULT 'clinician',
+  subscription_status VARCHAR(30) NOT NULL DEFAULT 'active',
+  stripe_customer_id VARCHAR(100),
+  stripe_subscription_id VARCHAR(100),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_current_period_end TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS stripe_cancel_at_period_end BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS free_account BOOLEAN NOT NULL DEFAULT false;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS notes TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR(255);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS password_reset_expires TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS login_attempts INTEGER NOT NULL DEFAULT 0;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS messaging_preference VARCHAR(20) NOT NULL DEFAULT 'none';
+ALTER TABLE users ADD COLUMN IF NOT EXISTS messaging_phone VARCHAR(30);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS external_messaging_provider VARCHAR(30);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS external_messaging_api_key TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS external_messaging_channel_id VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS external_messaging_webhook_secret VARCHAR(100);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS default_clinic_id INTEGER;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS user_type VARCHAR(30);
+ALTER TABLE users ADD COLUMN IF NOT EXISTS clinic_logo TEXT;
+ALTER TABLE users ADD COLUMN IF NOT EXISTS signature_image TEXT;
+
+-- ── patients (core — created at initial deploy; ALTER for columns added later) ─
+CREATE TABLE IF NOT EXISTS patients (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  date_of_birth TIMESTAMP,
+  gender VARCHAR(10) NOT NULL DEFAULT 'male',
+  mrn VARCHAR(50),
+  email VARCHAR(255),
+  phone VARCHAR(30),
+  preferred_pharmacy TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_name TEXT;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_address TEXT;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_phone VARCHAR(50);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_fax VARCHAR(50);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_ncpdp_id VARCHAR(30);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS pharmacy_place_id VARCHAR(200);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS ssn VARCHAR(20);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS drivers_license VARCHAR(50);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS insurance_carrier VARCHAR(150);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS insurance_member_id VARCHAR(100);
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS clinic_id INTEGER;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS primary_provider_id INTEGER;
+ALTER TABLE patients ADD COLUMN IF NOT EXISTS primary_provider VARCHAR(100);
+
+-- ── lab_results (core — created at initial deploy) ───────────────────────
+CREATE TABLE IF NOT EXISTS lab_results (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  lab_date TIMESTAMP NOT NULL,
+  lab_values JSONB NOT NULL,
+  interpretation_result JSONB,
+  notes TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── saved_interpretations ────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS saved_interpretations (
+  id SERIAL PRIMARY KEY,
+  user_id INTEGER REFERENCES users(id) ON DELETE CASCADE,
+  patient_name VARCHAR(200) NOT NULL,
+  gender VARCHAR(10) NOT NULL,
+  lab_date TIMESTAMP NOT NULL DEFAULT NOW(),
+  lab_values JSONB NOT NULL,
+  interpretation JSONB NOT NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── clinician_staff ──────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clinician_staff (
+  id SERIAL PRIMARY KEY,
+  clinician_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email VARCHAR(255) NOT NULL UNIQUE,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  role VARCHAR(50) NOT NULL DEFAULT 'staff',
+  admin_role VARCHAR(30) NOT NULL DEFAULT 'standard',
+  password_hash VARCHAR(255),
+  invite_token VARCHAR(255),
+  invite_expires TIMESTAMP,
+  password_reset_token VARCHAR(255),
+  password_reset_expires TIMESTAMP,
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  login_attempts INTEGER NOT NULL DEFAULT 0,
+  locked_until TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── audit_logs ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS audit_logs (
+  id SERIAL PRIMARY KEY,
+  clinician_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  staff_id INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL,
+  action VARCHAR(100) NOT NULL,
+  resource_type VARCHAR(50),
+  resource_id INTEGER,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  ip_address VARCHAR(45),
+  user_agent TEXT,
+  details JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── providers ────────────────────────────────────────────────────────────
+-- CRITICAL: queried by getActiveProviderCount() in every invite attempt.
+CREATE TABLE IF NOT EXISTS providers (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  staff_id INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL,
+  display_name VARCHAR(200) NOT NULL,
+  credentials VARCHAR(100),
+  specialty VARCHAR(100),
+  npi VARCHAR(20),
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS providers_clinic_idx ON providers (clinic_id);
+
+-- ── patient_assignments ──────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS patient_assignments (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  provider_id INTEGER NOT NULL REFERENCES providers(id) ON DELETE CASCADE,
+  assignment_type VARCHAR(30) NOT NULL DEFAULT 'primary',
+  is_active BOOLEAN NOT NULL DEFAULT true,
+  assigned_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  assigned_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── internal_messages ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS internal_messages (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  sender_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  recipient_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  subject VARCHAR(255),
+  body TEXT NOT NULL,
+  thread_id INTEGER,
+  message_type VARCHAR(30) NOT NULL DEFAULT 'direct',
+  is_read BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── internal_message_participants ────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS internal_message_participants (
+  id SERIAL PRIMARY KEY,
+  message_thread_id INTEGER NOT NULL REFERENCES internal_messages(id) ON DELETE CASCADE,
+  user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  last_read_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── intake_forms (created at initial deploy; ADD COLUMN for newer fields) ─
+CREATE TABLE IF NOT EXISTS intake_forms (
+  id SERIAL PRIMARY KEY,
+  clinician_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  clinic_id INTEGER REFERENCES clinics(id) ON DELETE CASCADE,
+  name TEXT NOT NULL,
+  slug VARCHAR(120),
+  description TEXT,
+  category VARCHAR(60) NOT NULL DEFAULT 'custom',
+  version INTEGER NOT NULL DEFAULT 1,
+  status VARCHAR(20) NOT NULL DEFAULT 'draft',
+  branding_json JSONB,
+  settings_json JSONB,
+  requires_patient_signature BOOLEAN NOT NULL DEFAULT false,
+  requires_staff_signature BOOLEAN NOT NULL DEFAULT false,
+  allow_link BOOLEAN NOT NULL DEFAULT true,
+  allow_embed BOOLEAN NOT NULL DEFAULT true,
+  allow_tablet BOOLEAN NOT NULL DEFAULT true,
+  is_public BOOLEAN NOT NULL DEFAULT false,
+  expiration_type VARCHAR(20) NOT NULL DEFAULT 'none',
+  expiration_interval_days INTEGER,
+  ghl_webhook_url TEXT,
+  ghl_webhook_enabled BOOLEAN NOT NULL DEFAULT false,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── form_sections ────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS form_sections (
+  id SERIAL PRIMARY KEY,
+  form_id INTEGER NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
+  title TEXT NOT NULL,
+  description TEXT,
+  order_index INTEGER NOT NULL DEFAULT 0,
+  is_repeatable BOOLEAN NOT NULL DEFAULT false,
+  conditional_logic_json JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── form_fields ──────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS form_fields (
+  id SERIAL PRIMARY KEY,
+  form_id INTEGER NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
+  section_id INTEGER REFERENCES form_sections(id) ON DELETE SET NULL,
+  field_key VARCHAR(120) NOT NULL,
+  smart_field_key VARCHAR(60),
+  label TEXT NOT NULL,
+  field_type VARCHAR(40) NOT NULL,
+  help_text TEXT,
+  placeholder TEXT,
+  is_required BOOLEAN NOT NULL DEFAULT false,
+  is_hidden BOOLEAN NOT NULL DEFAULT false,
+  default_value_json JSONB,
+  options_json JSONB,
+  validation_json JSONB,
+  conditional_logic_json JSONB,
+  layout_json JSONB,
+  sync_config_json JSONB,
+  duplicate_handling_json JSONB,
+  order_index INTEGER NOT NULL DEFAULT 0,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── form_publications ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS form_publications (
+  id SERIAL PRIMARY KEY,
+  form_id INTEGER NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
+  public_token VARCHAR(80) NOT NULL UNIQUE,
+  mode VARCHAR(20) NOT NULL DEFAULT 'link',
+  status VARCHAR(20) NOT NULL DEFAULT 'active',
+  embed_settings_json JSONB,
+  link_settings_json JSONB,
+  expires_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── patient_form_assignments ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS patient_form_assignments (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  form_id INTEGER NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
+  assigned_by INTEGER NOT NULL REFERENCES users(id),
+  assigned_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  due_at TIMESTAMP,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  completion_required BOOLEAN NOT NULL DEFAULT false,
+  delivery_mode VARCHAR(20) NOT NULL DEFAULT 'portal',
+  notes TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── form_submissions ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS form_submissions (
+  id SERIAL PRIMARY KEY,
+  form_id INTEGER NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
+  form_version INTEGER NOT NULL DEFAULT 1,
+  clinician_id INTEGER REFERENCES users(id),
+  clinic_id INTEGER REFERENCES clinics(id) ON DELETE CASCADE,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  assignment_id INTEGER REFERENCES patient_form_assignments(id) ON DELETE SET NULL,
+  submitted_by_patient BOOLEAN NOT NULL DEFAULT false,
+  submitted_by_staff BOOLEAN NOT NULL DEFAULT false,
+  submission_source VARCHAR(20) NOT NULL DEFAULT 'link',
+  status VARCHAR(20) NOT NULL DEFAULT 'submitted',
+  submitted_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  expires_at TIMESTAMP,
+  raw_submission_json JSONB NOT NULL,
+  normalized_submission_json JSONB,
+  signature_json JSONB,
+  review_status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  sync_status VARCHAR(20) NOT NULL DEFAULT 'not_synced',
+  sync_summary_json JSONB,
+  submitter_name TEXT,
+  submitter_email TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── form_sync_events ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS form_sync_events (
+  id SERIAL PRIMARY KEY,
+  submission_id INTEGER NOT NULL REFERENCES form_submissions(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  target_domain VARCHAR(40) NOT NULL,
+  target_record_id INTEGER,
+  action_type VARCHAR(30) NOT NULL,
+  result_status VARCHAR(20) NOT NULL DEFAULT 'success',
+  review_required BOOLEAN NOT NULL DEFAULT false,
+  duplicate_detected BOOLEAN NOT NULL DEFAULT false,
+  details_json JSONB,
+  created_by INTEGER REFERENCES users(id),
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── form_expiration_tracking ─────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS form_expiration_tracking (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  form_id INTEGER NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
+  latest_submission_id INTEGER REFERENCES form_submissions(id) ON DELETE SET NULL,
+  expires_at TIMESTAMP,
+  renewal_status VARCHAR(20) NOT NULL DEFAULT 'current',
+  notified_at TIMESTAMP,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── encounter_drafts ─────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS encounter_drafts (
+  id SERIAL PRIMARY KEY,
+  clinician_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  transcription TEXT NOT NULL,
+  visit_date VARCHAR(20) NOT NULL,
+  visit_type VARCHAR(50) NOT NULL DEFAULT 'follow-up',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── diagnosis_presets ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS diagnosis_presets (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  created_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  title TEXT NOT NULL,
+  codes JSONB NOT NULL,
+  aliases TEXT[] NOT NULL DEFAULT '{}',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- ── clinical_block_defaults ──────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clinical_block_defaults (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL,
+  provider_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  ros_systems JSONB,
+  pe_systems JSONB,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  CONSTRAINT clinical_block_defaults_clinic_provider_uq UNIQUE (clinic_id, provider_id)
+);
