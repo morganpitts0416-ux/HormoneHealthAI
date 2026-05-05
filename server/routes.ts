@@ -5721,7 +5721,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (callerAdminRole !== "owner" && callerAdminRole !== "admin") {
         return res.status(403).json({ message: "Only clinic owners or admins can invite providers." });
       }
-      const { email, firstName, lastName, clinicalRole, adminRole, confirmExtraSeat } = req.body;
+      const { email, firstName, lastName, credentials, clinicalRole, adminRole, confirmExtraSeat } = req.body;
       if (!email || !firstName || !lastName) {
         return res.status(400).json({ message: "email, firstName, and lastName are required" });
       }
@@ -5785,6 +5785,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         lastName: lastName.trim(),
         clinicalRole: validClinicalRoles.includes(clinicalRole) ? clinicalRole : "provider",
         adminRole: validAdminRoles.includes(adminRole) ? adminRole : "standard",
+        credentials: credentials?.trim() || null,
         inviteToken,
         inviteExpires,
         status: "pending",

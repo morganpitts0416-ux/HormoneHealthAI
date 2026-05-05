@@ -20,6 +20,13 @@ export default function JoinClinicPage() {
   const [confirmPassword, setConfirmPassword] = useState("");
   const [title, setTitle] = useState("");
   const [npi, setNpi] = useState("");
+
+  // Pre-populate title from invite credentials when data loads
+  useEffect(() => {
+    if (data?.invite?.credentials && !title) {
+      setTitle(data.invite.credentials);
+    }
+  }, [data?.invite?.credentials]);
   const [phone, setPhone] = useState("");
   const [showPassword, setShowPassword] = useState(false);
   const [success, setSuccess] = useState(false);
