@@ -207,22 +207,7 @@ function SmartFieldPalette({ existingSmartKeys, onAdd }: {
   existingSmartKeys: string[];
   onAdd: (sf: SmartFieldDef) => void;
 }) {
-  const [open, setOpen] = useState(false);
-
-  if (!open) {
-    return (
-      <Button
-        size="sm"
-        variant="outline"
-        className="w-full text-xs"
-        onClick={() => setOpen(true)}
-        data-testid="button-open-smart-fields"
-      >
-        <Zap className="h-3.5 w-3.5 mr-1.5 text-blue-500" />
-        Add Smart Field
-      </Button>
-    );
-  }
+  const [open, setOpen] = useState(true);
 
   return (
     <div className="rounded-md border bg-blue-50/50 dark:bg-blue-950/20 p-2 space-y-2">

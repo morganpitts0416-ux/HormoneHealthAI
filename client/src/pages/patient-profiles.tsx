@@ -2047,11 +2047,14 @@ export default function PatientProfiles() {
                       <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-50" />
                     </button>
 
-                    {/* Always-visible: clinic type badge + DOB + phone + provider */}
+                    {/* Always-visible: clinic type badge + sex + DOB + phone + provider */}
                     <div className="flex items-center gap-2 flex-wrap mt-1">
                       <Badge variant="secondary" className="text-xs">
                         {selectedPatient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
                       </Badge>
+                      <span className="text-xs text-muted-foreground">
+                        Sex: <span className="font-medium text-foreground capitalize">{selectedPatient.gender}</span>
+                      </span>
                       {selectedPatient.dateOfBirth && (
                         <span className="text-xs text-muted-foreground">
                           DOB: <span className="font-medium text-foreground">{safeDate(selectedPatient.dateOfBirth as unknown as string)}</span>
