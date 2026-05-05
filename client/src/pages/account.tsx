@@ -616,7 +616,6 @@ export default function Account() {
   const [providerInviteEmail, setProviderInviteEmail] = useState("");
   const [providerInviteFirstName, setProviderInviteFirstName] = useState("");
   const [providerInviteLastName, setProviderInviteLastName] = useState("");
-  const [providerInviteCredentials, setProviderInviteCredentials] = useState("");
   const [providerInviteClinicalRole, setProviderInviteClinicalRole] = useState("provider");
   const [providerInviteAdminRole, setProviderInviteAdminRole] = useState("standard");
   const [seatConfirmDialog, setSeatConfirmDialog] = useState<{ open: boolean; seatPrice: number; message: string }>({ open: false, seatPrice: 0, message: "" });
@@ -713,7 +712,6 @@ export default function Account() {
         email: providerInviteEmail.trim(),
         firstName: providerInviteFirstName.trim(),
         lastName: providerInviteLastName.trim(),
-        credentials: providerInviteCredentials || null,
         clinicalRole: providerInviteClinicalRole,
         adminRole: providerInviteAdminRole,
         confirmExtraSeat: opts?.confirmExtraSeat ?? false,
@@ -734,7 +732,6 @@ export default function Account() {
       setProviderInviteEmail("");
       setProviderInviteFirstName("");
       setProviderInviteLastName("");
-      setProviderInviteCredentials("");
       setProviderInviteClinicalRole("provider");
       setProviderInviteAdminRole("standard");
       setShowProviderInviteForm(false);
@@ -1527,27 +1524,6 @@ export default function Account() {
                           <Input type="email" placeholder="jane@clinic.com" value={providerInviteEmail} onChange={e => setProviderInviteEmail(e.target.value)} data-testid="input-provider-email" />
                         </div>
                         <div className="space-y-1">
-                          <label className="text-xs font-medium text-muted-foreground">Credentials / Title</label>
-                          <Select value={providerInviteCredentials} onValueChange={setProviderInviteCredentials}>
-                            <SelectTrigger data-testid="select-provider-credentials"><SelectValue placeholder="Select…" /></SelectTrigger>
-                            <SelectContent>
-                              <SelectItem value="MD">MD</SelectItem>
-                              <SelectItem value="DO">DO</SelectItem>
-                              <SelectItem value="NP">NP</SelectItem>
-                              <SelectItem value="FNP">FNP</SelectItem>
-                              <SelectItem value="FNP-C">FNP-C</SelectItem>
-                              <SelectItem value="APRN">APRN</SelectItem>
-                              <SelectItem value="PA">PA</SelectItem>
-                              <SelectItem value="PA-C">PA-C</SelectItem>
-                              <SelectItem value="RN">RN</SelectItem>
-                              <SelectItem value="LPN">LPN</SelectItem>
-                              <SelectItem value="MA">MA</SelectItem>
-                              <SelectItem value="PharmD">PharmD</SelectItem>
-                              <SelectItem value="Other">Other</SelectItem>
-                            </SelectContent>
-                          </Select>
-                        </div>
-                        <div className="space-y-1">
                           <label className="text-xs font-medium text-muted-foreground">Clinical Role</label>
                           <Select value={providerInviteClinicalRole} onValueChange={setProviderInviteClinicalRole}>
                             <SelectTrigger data-testid="select-provider-clinical-role"><SelectValue /></SelectTrigger>
@@ -1559,7 +1535,7 @@ export default function Account() {
                             </SelectContent>
                           </Select>
                         </div>
-                        <div className="space-y-1 sm:col-span-2">
+                        <div className="space-y-1">
                           <label className="text-xs font-medium text-muted-foreground">Administrative Role</label>
                           <Select value={providerInviteAdminRole} onValueChange={setProviderInviteAdminRole}>
                             <SelectTrigger data-testid="select-provider-admin-role"><SelectValue /></SelectTrigger>

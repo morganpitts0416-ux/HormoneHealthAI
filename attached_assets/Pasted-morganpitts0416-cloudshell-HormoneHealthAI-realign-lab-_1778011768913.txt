@@ -1,0 +1,126 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ cd ~/HormoneHealthAI
+
+grep -R "NPI\|credentials\|Credentials\|invite-provider" -n client/src server shared \
+  --exclude-dir=node_modules \
+  --exclude-dir=dist \
+  | head -120
+client/src/contexts/recording-context.tsx:246:        credentials: "include",
+client/src/components/baa-gate.tsx:64:4.6 Maintain appropriate controls over user accounts and access credentials.`,
+client/src/components/portal/portal-data.tsx:234:      credentials: "include",
+client/src/components/portal/portal-data.tsx:251:        credentials: "include",
+client/src/components/portal/portal-data.tsx:319:                    credentials: "include",
+client/src/components/vital-trends-dialog.tsx:63:      const r = await fetch(`/api/patients/${patientId}/vitals`, { credentials: "include" });
+client/src/components/billing-gate.tsx:19:  fetch("/api/auth/logout", { method: "POST", credentials: "include" })
+client/src/components/chart-review/chart-review-section.tsx:118:    credentials: 'MD' | 'DO' | null;
+client/src/components/chart-review/chart-review-section.tsx:931:    credentials: 'MD' | 'DO' | null;
+client/src/components/chart-review/chart-review-section.tsx:1235:                      {p.credentials && (
+client/src/components/chart-review/chart-review-section.tsx:1236:                        <Badge variant="outline" className="text-xs" data-testid={`badge-pending-invite-credentials-${p.id}`}>
+client/src/components/chart-review/chart-review-section.tsx:1237:                          {p.credentials}
+client/src/components/chart-review/chart-review-section.tsx:1362:  const [credentials, setCredentials] = useState<"MD" | "DO">("MD");
+client/src/components/chart-review/chart-review-section.tsx:1376:    setCredentials("MD"); setNpi(""); setDea(""); setPhone("");
+client/src/components/chart-review/chart-review-section.tsx:1387:        credentials,
+client/src/components/chart-review/chart-review-section.tsx:1388:        // NPI is REQUIRED for outside MD/DO invites — server enforces, but
+client/src/components/chart-review/chart-review-section.tsx:1447:  // NPI is required for outside collaborating physicians — it's how identity
+client/src/components/chart-review/chart-review-section.tsx:1448:  // is unified across clinics (email+NPI) and how the signed-note credential
+client/src/components/chart-review/chart-review-section.tsx:1530:            <Label className="text-xs">Credentials</Label>
+client/src/components/chart-review/chart-review-section.tsx:1531:            <Select value={credentials} onValueChange={(v) => setCredentials(v === "DO" ? "DO" : "MD")}>
+client/src/components/chart-review/chart-review-section.tsx:1532:              <SelectTrigger data-testid="select-external-credentials"><SelectValue /></SelectTrigger>
+client/src/components/chart-review/chart-review-section.tsx:1550:            <Label className="text-xs">NPI (required, 10 digits)</Label>
+client/src/components/chart-review/chart-review-section.tsx:1559:                {npi.trim() ? "NPI must be 10 digits." : "NPI is required."}
+client/src/components/pharmacy-lookup.tsx:82:          { credentials: "include", signal: ctrl.signal },
+client/src/components/vitals-dialog.tsx:286:      const res = await fetch(`/api/patients/${patientId}/vitals`, { credentials: "include" });
+client/src/components/vitals-dialog.tsx:297:      const res = await fetch(`/api/patients/${patientId}/vitals-monitoring`, { credentials: "include" });
+client/src/components/patient-documents-card.tsx:104:        credentials: "include",
+client/src/components/patient-documents-card.tsx:129:        credentials: "include",
+client/src/components/session-timeout-modal.tsx:39:      await fetch("/api/auth/me", { credentials: "include" });
+client/src/pages/patient-profiles.tsx:1347:      const res = await fetch('/api/patients/search', { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1383:      const res = await fetch(`/api/patients/${selectedPatient.id}/labs`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1394:      const res = await fetch(`/api/patients/${selectedPatient.id}/simple-labs`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1403:      const res = await fetch(`/api/simple-labs/${id}`, { method: 'DELETE', credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1430:      const res = await fetch(`/api/portal/status/${selectedPatient!.id}`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1454:      const res = await fetch(`/api/patients/${selectedPatient.id}/messages`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1466:      const res = await fetch(`/api/patients/${selectedPatient.id}/messages/unread`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1490:      const res = await fetch(`/api/patients/${selectedPatient.id}/supplement-orders`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1501:      const res = await fetch(`/api/patients/${selectedPatient.id}/form-submissions`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1521:      const res = await fetch(`/api/patients/${selectedPatient.id}/form-assignments`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1627:      const res = await fetch(`/api/encounters?patientId=${selectedPatient.id}`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1638:      const res = await fetch(`/api/patients/${selectedPatient.id}/chart`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1746:      const res = await fetch(`/api/lab-results/${labId}`, { method: 'DELETE', credentials: 'include' });
+client/src/pages/patient-profiles.tsx:1765:      const res = await fetch(`/api/patients/${patientId}`, { method: 'DELETE', credentials: 'include' });
+client/src/pages/patient-profiles.tsx:4503:        credentials: "include",
+client/src/pages/patient-profiles.tsx:4733:      const res = await fetch(`/api/patients/${patientId}/tracking-summary`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:4742:        method: 'POST', credentials: 'include',
+client/src/pages/patient-profiles.tsx:4752:      const res = await fetch(`/api/patients/${patientId}/vitals`, { credentials: 'include' });
+client/src/pages/patient-profiles.tsx:4775:      const res = await fetch(`/api/patients/${patientId}/vitals-monitoring`, { credentials: 'include' });
+client/src/pages/dashboard.tsx:171:      const res = await fetch("/api/patients/search", { credentials: "include" });
+client/src/pages/dashboard.tsx:266:      const res = await fetch(url, { credentials: "include" });
+client/src/pages/dashboard.tsx:962:      const r = await fetch(`/api/appointments/range?${params}`, { credentials: "include" });
+client/src/pages/medication-dictionary.tsx:123:      const res = await fetch("/api/medication-dictionary/upload", { method: "POST", body: fd, credentials: "include" });
+client/src/pages/baa.tsx:95:            <p><strong>4.6</strong> Maintain appropriate controls over user accounts and access credentials.</p>
+client/src/pages/account.tsx:619:  const [providerInviteCredentials, setProviderInviteCredentials] = useState("");
+client/src/pages/account.tsx:712:      const res = await apiRequest("POST", "/api/clinic/invite-provider", {
+client/src/pages/account.tsx:716:        credentials: providerInviteCredentials || null,
+client/src/pages/account.tsx:737:      setProviderInviteCredentials("");
+client/src/pages/account.tsx:1033:              <p className="text-sm text-muted-foreground mt-1">Your professional credentials and personal information</p>
+client/src/pages/account.tsx:1058:                          <FormLabel>Title / Credentials</FormLabel>
+client/src/pages/account.tsx:1074:                          <FormLabel>NPI Number</FormLabel>
+client/src/pages/account.tsx:1506:                    <Button variant="outline" size="sm" onClick={() => setShowProviderInviteForm(v => !v)} data-testid="button-invite-provider">
+client/src/pages/account.tsx:1530:                          <label className="text-xs font-medium text-muted-foreground">Credentials / Title</label>
+client/src/pages/account.tsx:1531:                          <Select value={providerInviteCredentials} onValueChange={setProviderInviteCredentials}>
+client/src/pages/account.tsx:1532:                            <SelectTrigger data-testid="select-provider-credentials"><SelectValue placeholder="Select…" /></SelectTrigger>
+client/src/pages/scheduling.tsx:84:      const r = await fetch(`/api/appointments/range?${params}`, { credentials: "include" });
+client/src/pages/scheduling.tsx:95:      const r = await fetch(`/api/calendar-blocks?${params}`, { credentials: "include" });
+client/src/pages/scheduling.tsx:197:      const r = await fetch(`/api/patients/search?q=${encodeURIComponent(debouncedPq)}`, { credentials: "include" });
+client/src/pages/scheduling.tsx:470:      const r = await fetch(`/api/patients/${patient.id}/appointments-summary`, { credentials: "include" });
+client/src/pages/admin.tsx:145:      const res = await fetch("/api/admin/clinicians", { credentials: "include" });
+client/src/pages/admin.tsx:159:      const res = await fetch("/api/admin/usage-report", { credentials: "include" });
+client/src/pages/admin.tsx:172:        credentials: "include",
+client/src/pages/admin.tsx:197:        credentials: "include",
+client/src/pages/admin.tsx:215:        credentials: "include",
+client/src/pages/admin.tsx:233:        credentials: "include",
+client/src/pages/admin.tsx:265:      const res = await fetch("/api/admin/clinics", { credentials: "include" });
+client/src/pages/admin.tsx:287:        credentials: "include",
+client/src/pages/admin.tsx:314:        credentials: "include",
+client/src/pages/admin.tsx:337:        credentials: "include",
+client/src/pages/admin.tsx:573:                          {c.npi && <p className="text-xs text-muted-foreground">NPI: {c.npi}</p>}
+client/src/pages/admin.tsx:931:                    <FormLabel>NPI <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
+client/src/pages/admin.tsx:1015:                <p className="text-xs font-medium text-muted-foreground mb-3 uppercase tracking-wide">Login Credentials</p>
+client/src/pages/admin.tsx:1113:                      <FormLabel>NPI <span className="text-muted-foreground font-normal text-xs">(optional)</span></FormLabel>
+client/src/pages/account-scheduling.tsx:194:      const r = await fetch(`/api/provider-availability${params}`, { credentials: "include" });
+client/src/pages/account-scheduling.tsx:301:      const r = await fetch(`/api/calendar-blocks?${params}`, { credentials: "include" });
+client/src/pages/join-clinic.tsx:24:  // Pre-populate title from invite credentials when data loads
+client/src/pages/join-clinic.tsx:26:    if (data?.invite?.credentials && !title) {
+client/src/pages/join-clinic.tsx:27:      setTitle(data.invite.credentials);
+client/src/pages/join-clinic.tsx:29:  }, [data?.invite?.credentials]);
+client/src/pages/join-clinic.tsx:37:      const res = await fetch(`/api/join-clinic/${token}`, { credentials: "include" });
+client/src/pages/join-clinic.tsx:227:                <label className="text-xs font-medium text-muted-foreground">Title / Credentials</label>
+client/src/pages/join-clinic.tsx:231:                <label className="text-xs font-medium text-muted-foreground">NPI Number</label>
+client/src/pages/privacy.tsx:55:            <p><strong>Clinician Account Information:</strong> When you register, we collect your name, professional credentials (title, NPI), clinic name, email address, phone number, billing address, and payment method information. Payment card data is processed and stored by Stripe, Inc. — we do not store raw card numbers on our systems.</p>
+client/src/pages/register.tsx:32:  npi: z.string().min(10, "NPI must be 10 digits").max(10, "NPI must be 10 digits").regex(/^\d{10}$/, "NPI must be exactly 10 digits"),
+client/src/pages/register.tsx:56:  { label: "Clinic Details", description: "Your clinical credentials and clinic information" },
+client/src/pages/register.tsx:57:  { label: "Account Setup", description: "Create your login credentials" },
+client/src/pages/register.tsx:693:                        <FormLabel>NPI Number <span className="text-destructive">*</span></FormLabel>
+client/src/pages/terms.tsx:56:            <p>You agree to use the Platform only for lawful clinical purposes, to maintain the confidentiality of your login credentials, and to ensure that any individual accessing the Platform through your account is appropriately licensed and authorized. You are responsible for all activity that occurs under your account.</p>
+client/src/pages/terms.tsx:85:            <p>You agree not to: (a) share your login credentials with unauthorized individuals; (b) use the Platform for any unlawful purpose or in violation of professional regulations; (c) attempt to gain unauthorized access to any Platform systems; (d) upload malicious code or interfere with Platform operations; (e) use the Platform to harm, defraud, or deceive patients; or (f) misrepresent your professional credentials or licensure status.</p>
+client/src/pages/simple-lab-upload.tsx:57:      const res = await fetch("/api/patients", { credentials: "include" });
+client/src/pages/encounters.tsx:382:          method: "POST", body: formData, credentials: "include",
+client/src/pages/encounters.tsx:861:      const res = await fetch(`/api/patients/${selectedPatientId}/labs`, { credentials: "include" });
+client/src/pages/encounters.tsx:3544:      const res = await fetch(`/api/encounters/${selectedId}`, { credentials: "include" });
+client/src/pages/encounters.tsx:3555:      const res = await fetch("/api/patients/search", { credentials: "include" });
+client/src/pages/portal/forms.tsx:957:      const res = await fetch(`/api/portal/forms/submission/${viewingSubmissionId}`, { credentials: "include" });
+client/src/pages/portal/forms.tsx:969:      const res = await fetch("/api/portal/forms", { credentials: "include" });
+client/src/pages/portal/forms.tsx:979:      const res = await fetch(`/api/portal/forms/${fillingAssignmentId}`, { credentials: "include" });
+client/src/pages/portal/supplements.tsx:296:        credentials: "include",
+client/src/pages/portal/visits.tsx:14:      const res = await fetch("/api/portal/encounters", { credentials: "include" });
+client/src/pages/portal/check-in.tsx:244:      const res = await fetch(`/api/portal/tracking/med-adherence?from=${date}&to=${date}`, { credentials: "include" });
+client/src/pages/lab-interpretation.tsx:118:          const searchRes = await fetch(`/api/patients/search?q=${encodeURIComponent(labValues.patientName)}`, { credentials: 'include' });
+client/src/pages/lab-interpretation.tsx:333:            const searchRes = await fetch(`/api/patients/search?q=${encodeURIComponent(patientName)}`, { credentials: 'include' });
+client/src/pages/lab-interpretation.tsx:359:            const res = await fetch(`/api/patients/${patientId}/labs`, { credentials: 'include' });
+client/src/pages/bootstrap.tsx:50:        credentials: "include",
+client/src/pages/female-lab-interpretation.tsx:118:          const searchRes = await fetch(`/api/patients/search?q=${encodeURIComponent(labValues.patientName)}`, { credentials: 'include' });
+client/src/pages/female-lab-interpretation.tsx:240:            const searchRes = await fetch(`/api/patients/search?q=${encodeURIComponent(patientName)}`, { credentials: 'include' });
+client/src/pages/female-lab-interpretation.tsx:266:            const res = await fetch(`/api/patients/${patientId}/labs`, { credentials: 'include' });
+client/src/lib/queryClient.ts:26:    credentials: "include",
+client/src/lib/queryClient.ts:41:      credentials: "include",
+client/src/lib/soap-pdf-export.ts:116:    opts.providerNpi ? `NPI: ${opts.providerNpi}` : null,
+client/src/hooks/use-auth.tsx:43:    mutationFn: async (credentials: { username: string; password: string }) => {
