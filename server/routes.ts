@@ -5076,11 +5076,14 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       const clinician = await storage.getUserById(clinicianId);
       if (!clinician || clinician.messagingPreference !== 'external_api') {
-        return res.status(404).json({ ok: false, error: "Webhook not configured" });
+        // Return 200 so external services (Spruce, Klara, etc.) stop retrying.
+        // 404/5xx responses trigger aggressive retry loops from these platforms.
+        return res.status(200).json({ ok: false, error: "Webhook not configured" });
       }
 
       if (!clinician.externalMessagingWebhookSecret) {
-        return res.status(503).json({ ok: false, error: "Webhook secret not set" });
+        // Same — acknowledge receipt to prevent retry storms.
+        return res.status(200).json({ ok: false, error: "Webhook secret not set" });
       }
 
       // Verify the shared secret — external systems should send it in one of these headers
