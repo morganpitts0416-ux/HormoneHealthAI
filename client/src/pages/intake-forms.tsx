@@ -890,6 +890,8 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
   const [dragOverIdx, setDragOverIdx] = useState<number | null>(null);
   const [showFieldPalette, setShowFieldPalette] = useState(false);
   const [mobilePanel, setMobilePanel] = useState<"preview" | "fields" | "editor">("preview");
+  const [lastSaved, setLastSaved] = useState<Date | null>(null);
+  const markSaved = () => setLastSaved(new Date());
 
   const { data: form, isLoading } = useQuery<IntakeForm>({
     queryKey: ["/api/intake-forms", formId],
@@ -898,7 +900,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
 
   const updateFormMutation = useMutation({
     mutationFn: (data: any) => apiRequest("PUT", `/api/intake-forms/${formId}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }); markSaved(); },
   });
 
   const addFieldMutation = useMutation({
@@ -914,6 +916,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] });
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms"] });
       if (newField?.id) setSelectedFieldId(newField.id);
+      markSaved();
     },
     onError: (err: any) => toast({ title: "Failed to add field", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
@@ -921,7 +924,7 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
   const updateFieldMutation = useMutation({
     mutationFn: ({ fieldId, data }: { fieldId: number; data: any }) =>
       apiRequest("PUT", `/api/intake-forms/${formId}/fields/${fieldId}`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }); markSaved(); },
     onError: (err: any) => toast({ title: "Failed to update field", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
@@ -930,19 +933,20 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] });
       setSelectedFieldId(null);
+      markSaved();
     },
     onError: (err: any) => toast({ title: "Failed to delete field", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   const reorderMutation = useMutation({
     mutationFn: (fieldIds: number[]) => apiRequest("PUT", `/api/intake-forms/${formId}/fields/reorder`, { fieldIds }),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }); markSaved(); },
     onError: (err: any) => toast({ title: "Failed to reorder fields", description: err?.message ?? "Unknown error", variant: "destructive" }),
   });
 
   const addSectionMutation = useMutation({
     mutationFn: (data: any) => apiRequest("POST", `/api/intake-forms/${formId}/sections`, data),
-    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/intake-forms", formId] }); markSaved(); },
   });
 
   const publishMutation = useMutation({
@@ -1092,6 +1096,10 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
     });
   };
 
+  const isSaving = addFieldMutation.isPending || updateFieldMutation.isPending ||
+    deleteFieldMutation.isPending || reorderMutation.isPending ||
+    addSectionMutation.isPending || updateFormMutation.isPending;
+
   return (
     <div className="flex flex-col flex-1 min-h-0 overflow-hidden">
       {/* Header */}
@@ -1112,6 +1120,15 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
                 <span className={`text-xs px-2 py-0.5 rounded-full font-medium flex-shrink-0 ${STATUS_COLORS[form.status] ?? ""}`}>
                   {form.status}
                 </span>
+                {isSaving ? (
+                  <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">
+                    <RefreshCw className="h-3 w-3 animate-spin" /> Saving…
+                  </span>
+                ) : lastSaved ? (
+                  <span className="hidden sm:flex items-center gap-1 text-xs text-muted-foreground">
+                    <CheckCircle2 className="h-3 w-3 text-green-500" /> Saved
+                  </span>
+                ) : null}
               </div>
             </div>
           </div>
