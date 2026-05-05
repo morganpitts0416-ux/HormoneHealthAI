@@ -713,3 +713,52 @@ CREATE INDEX IF NOT EXISTS patient_documents_clinic_idx
 
 -- ── note_templates: optional /shortcut field (mirrors note_phrases) ─────
 ALTER TABLE note_templates ADD COLUMN IF NOT EXISTS shortcut VARCHAR(50);
+
+-- ── clinic_memberships: columns added after initial table creation ───────
+ALTER TABLE clinic_memberships ADD COLUMN IF NOT EXISTS clinical_role VARCHAR(30) NOT NULL DEFAULT 'provider';
+ALTER TABLE clinic_memberships ADD COLUMN IF NOT EXISTS admin_role VARCHAR(30) NOT NULL DEFAULT 'standard';
+ALTER TABLE clinic_memberships ADD COLUMN IF NOT EXISTS access_scope VARCHAR(30) NOT NULL DEFAULT 'full';
+ALTER TABLE clinic_memberships ADD COLUMN IF NOT EXISTS acceptance_status VARCHAR(30) NOT NULL DEFAULT 'active';
+ALTER TABLE clinic_memberships ADD COLUMN IF NOT EXISTS is_primary_clinic BOOLEAN NOT NULL DEFAULT true;
+ALTER TABLE clinic_memberships ADD COLUMN IF NOT EXISTS updated_at TIMESTAMP DEFAULT NOW();
+
+-- ── clinic_provider_invites ──────────────────────────────────────────────
+-- Full table creation for fresh deployments.
+CREATE TABLE IF NOT EXISTS clinic_provider_invites (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  invited_by_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  email VARCHAR(255) NOT NULL,
+  first_name VARCHAR(100) NOT NULL,
+  last_name VARCHAR(100) NOT NULL,
+  clinical_role VARCHAR(50) NOT NULL DEFAULT 'provider',
+  admin_role VARCHAR(30) NOT NULL DEFAULT 'standard',
+  invite_token VARCHAR(255) NOT NULL UNIQUE,
+  invite_expires TIMESTAMP NOT NULL,
+  status VARCHAR(20) NOT NULL DEFAULT 'pending',
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+-- Columns added after initial table creation (safe to run on existing tables).
+ALTER TABLE clinic_provider_invites ADD COLUMN IF NOT EXISTS access_scope VARCHAR(30) NOT NULL DEFAULT 'full';
+ALTER TABLE clinic_provider_invites ADD COLUMN IF NOT EXISTS credentials VARCHAR(20);
+ALTER TABLE clinic_provider_invites ADD COLUMN IF NOT EXISTS npi VARCHAR(20);
+ALTER TABLE clinic_provider_invites ADD COLUMN IF NOT EXISTS dea VARCHAR(30);
+ALTER TABLE clinic_provider_invites ADD COLUMN IF NOT EXISTS phone VARCHAR(30);
+ALTER TABLE clinic_provider_invites ADD COLUMN IF NOT EXISTS agreement_id INTEGER;
+
+-- ── simple_lab_uploads ───────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS simple_lab_uploads (
+  id SERIAL PRIMARY KEY,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  clinic_id INTEGER REFERENCES clinics(id) ON DELETE CASCADE,
+  provider_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  lab_date TIMESTAMP NOT NULL,
+  entries JSONB NOT NULL,
+  notes TEXT,
+  ai_insight TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS simple_lab_uploads_patient_idx
+  ON simple_lab_uploads (patient_id, lab_date DESC);
+CREATE INDEX IF NOT EXISTS simple_lab_uploads_clinic_idx
+  ON simple_lab_uploads (clinic_id);
