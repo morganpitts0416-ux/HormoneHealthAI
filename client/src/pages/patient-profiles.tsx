@@ -208,130 +208,226 @@ function ClinicalSnapshot({ labs, patient }: { labs: LabResult[]; patient: Patie
   );
 }
 
-function LabHistoryList({ labs, onViewLab, onDeleteLab, deletingId, onPublishLab, hasPortalAccount, publishingId, publishedLabResultIds }: {
+// Maps common free-text lab names (used in Quick Uploads) to the structured keys
+// used by PatientTrendCharts and generateTrendInsights.
+const SIMPLE_LAB_KEY_MAP: Record<string, string> = {
+  'LDL': 'ldl',
+  'HDL': 'hdl',
+  'Triglycerides': 'triglycerides',
+  'Total Cholesterol': 'totalCholesterol',
+  'ApoB': 'apoB',
+  'HbA1c': 'a1c', 'A1c': 'a1c',
+  'Fasting Glucose': 'fastingGlucose',
+  'Fasting Insulin': 'fastingInsulin',
+  'Testosterone Total': 'testosterone',
+  'Testosterone Free': 'freeTestosterone',
+  'Free Testosterone': 'freeTestosterone',
+  'Estradiol': 'estradiol',
+  'SHBG': 'shbg',
+  'LH': 'lh', 'FSH': 'fsh',
+  'DHEA-S': 'dheas', 'DHEA': 'dheas',
+  'Prolactin': 'prolactin',
+  'TSH': 'tsh',
+  'Free T4': 'freeT4',
+  'Free T3': 'freeT3',
+  'Reverse T3': 'reverseT3',
+  'hs-CRP': 'hsCRP', 'CRP': 'hsCRP',
+  'PSA': 'psa',
+  'Hemoglobin': 'hemoglobin',
+  'Hematocrit': 'hematocrit',
+  'Vitamin D (25-OH)': 'vitaminD', 'Vitamin D': 'vitaminD',
+  'Ferritin': 'ferritin',
+  'Vitamin B12': 'vitaminB12',
+  'Homocysteine': 'homocysteine',
+  'IGF-1': 'igf1',
+  'Cortisol (AM)': 'cortisol', 'Cortisol': 'cortisol',
+};
+
+// Convert quick lab uploads into synthetic LabResult-shaped objects so they
+// can be fed into PatientTrendCharts and generateTrendInsights.
+function simpleLabsToSynthetic(uploads: SimpleLabUpload[]): LabResult[] {
+  return uploads.map(u => {
+    const labValues: Record<string, string> = {};
+    for (const e of (u.entries as Array<{ name: string; value: string; unit: string }>) ) {
+      const key = SIMPLE_LAB_KEY_MAP[e.name];
+      if (key && e.value) labValues[key] = e.value;
+    }
+    return {
+      id: -(u.id),
+      patientId: u.patientId,
+      labDate: u.labDate,
+      labValues,
+      interpretationResult: null,
+      notes: u.notes ?? null,
+    } as unknown as LabResult;
+  });
+}
+
+type CombinedLabItem =
+  | { kind: 'full'; lab: LabResult; sortMs: number }
+  | { kind: 'quick'; upload: SimpleLabUpload; sortMs: number };
+
+function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, deletingId, onDeleteSimpleUpload, deletingSimpleUploadId, onPublishLab, hasPortalAccount, publishingId, publishedLabResultIds }: {
   labs: LabResult[];
+  simpleUploads?: SimpleLabUpload[];
   onViewLab: (lab: LabResult) => void;
   onDeleteLab: (lab: LabResult) => void;
   deletingId: number | null;
+  onDeleteSimpleUpload?: (id: number) => void;
+  deletingSimpleUploadId?: number | null;
   onPublishLab?: (lab: LabResult) => void;
   hasPortalAccount?: boolean;
   publishingId?: number | null;
   publishedLabResultIds?: number[];
 }) {
+  const combined: CombinedLabItem[] = [
+    ...labs.map(lab => ({ kind: 'full' as const, lab, sortMs: new Date(lab.labDate).getTime() })),
+    ...simpleUploads.map(u => ({ kind: 'quick' as const, upload: u, sortMs: new Date(u.labDate).getTime() })),
+  ].sort((a, b) => b.sortMs - a.sortMs);
+
+  const totalCount = combined.length;
+
   return (
     <Card data-testid="lab-history-list">
       <CardHeader className="pb-3">
         <CardTitle className="text-lg flex items-center gap-2">
           <ClipboardList className="h-5 w-5 text-primary dark:text-primary" />
           Lab History
-          <Badge variant="secondary" className="text-xs ml-auto">{labs.length} result{labs.length !== 1 ? 's' : ''}</Badge>
+          <Badge variant="secondary" className="text-xs ml-auto">{totalCount} record{totalCount !== 1 ? 's' : ''}</Badge>
         </CardTitle>
       </CardHeader>
       <CardContent>
-        {labs.length === 0 ? (
+        {totalCount === 0 ? (
           <p className="text-sm text-muted-foreground">No lab results on file yet.</p>
         ) : (
           <div className="space-y-2">
-            {labs.map((lab, idx) => {
-              const interp = lab.interpretationResult as InterpretationResult | null;
-              const redFlagCount = interp?.redFlags?.length || 0;
-              const abnormalCount = interp?.interpretations?.filter(
-                (i: any) => i.status === 'abnormal' || i.status === 'critical'
-              ).length || 0;
-
-              return (
-                <div
-                  key={lab.id}
-                  className="flex items-center justify-between gap-3 p-3 rounded-md border hover-elevate flex-wrap"
-                  data-testid={`lab-history-item-${lab.id}`}
-                >
-                  <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                      <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <span className="text-sm font-medium">
-                        {safeDate(lab.labDate)}
-                      </span>
-                      {idx === 0 && <Badge variant="default" className="text-xs">Latest</Badge>}
+            {combined.map((item, idx) => {
+              if (item.kind === 'full') {
+                const lab = item.lab;
+                const interp = lab.interpretationResult as InterpretationResult | null;
+                const redFlagCount = interp?.redFlags?.length || 0;
+                const abnormalCount = interp?.interpretations?.filter(
+                  (i: any) => i.status === 'abnormal' || i.status === 'critical'
+                ).length || 0;
+                return (
+                  <div
+                    key={`full-${lab.id}`}
+                    className="flex items-center justify-between gap-3 p-3 rounded-md border hover-elevate flex-wrap"
+                    data-testid={`lab-history-item-${lab.id}`}
+                  >
+                    <div className="flex items-center gap-3">
+                      <div className="flex items-center gap-2">
+                        <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                        <span className="text-sm font-medium">{safeDate(lab.labDate)}</span>
+                        {idx === 0 && <Badge variant="default" className="text-xs">Latest</Badge>}
+                      </div>
                     </div>
-                  </div>
-                  <div className="flex items-center gap-2 flex-wrap">
-                    {redFlagCount > 0 && (
-                      <Badge variant="destructive" className="text-xs">
-                        <AlertTriangle className="h-3 w-3 mr-1" />
-                        {redFlagCount} Red Flag{redFlagCount > 1 ? 's' : ''}
-                      </Badge>
-                    )}
-                    {abnormalCount > 0 && !redFlagCount && (
-                      <Badge variant="secondary" className="text-xs">
-                        {abnormalCount} Abnormal
-                      </Badge>
-                    )}
-                    {!redFlagCount && !abnormalCount && interp && (
-                      <Badge variant="secondary" className="text-xs">
-                        <CheckCircle2 className="h-3 w-3 mr-1" />
-                        Normal
-                      </Badge>
-                    )}
-                    {hasPortalAccount && onPublishLab && (() => {
-                      const alreadyPublished = publishedLabResultIds?.includes(lab.id) ?? false;
-                      return alreadyPublished ? (
-                        <div className="flex items-center gap-1.5">
-                          <Badge
-                            variant="secondary"
-                            className="text-xs gap-1 no-default-active-elevate"
-                            style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d9b0" }}
-                            data-testid={`badge-published-${lab.id}`}
-                          >
-                            <CheckCircle2 className="h-3 w-3" />
-                            Published
-                          </Badge>
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {redFlagCount > 0 && (
+                        <Badge variant="destructive" className="text-xs">
+                          <AlertTriangle className="h-3 w-3 mr-1" />
+                          {redFlagCount} Red Flag{redFlagCount > 1 ? 's' : ''}
+                        </Badge>
+                      )}
+                      {abnormalCount > 0 && !redFlagCount && (
+                        <Badge variant="secondary" className="text-xs">{abnormalCount} Abnormal</Badge>
+                      )}
+                      {!redFlagCount && !abnormalCount && interp && (
+                        <Badge variant="secondary" className="text-xs">
+                          <CheckCircle2 className="h-3 w-3 mr-1" />Normal
+                        </Badge>
+                      )}
+                      {hasPortalAccount && onPublishLab && (() => {
+                        const alreadyPublished = publishedLabResultIds?.includes(lab.id) ?? false;
+                        return alreadyPublished ? (
+                          <div className="flex items-center gap-1.5">
+                            <Badge
+                              variant="secondary"
+                              className="text-xs gap-1 no-default-active-elevate"
+                              style={{ backgroundColor: "#edf2e6", color: "#2e3a20", border: "1px solid #c4d9b0" }}
+                              data-testid={`badge-published-${lab.id}`}
+                            >
+                              <CheckCircle2 className="h-3 w-3" />Published
+                            </Badge>
+                            <Button
+                              variant="outline" size="sm"
+                              onClick={(e) => { e.stopPropagation(); onPublishLab(lab); }}
+                              disabled={publishingId === lab.id}
+                              data-testid={`button-republish-protocol-${lab.id}`}
+                              className="text-xs gap-1.5 text-amber-700 border-amber-300"
+                            >
+                              <RefreshCw className="h-3 w-3" />
+                              {publishingId === lab.id ? "Publishing…" : "Re-publish"}
+                            </Button>
+                          </div>
+                        ) : (
                           <Button
-                            variant="outline"
-                            size="sm"
+                            variant="outline" size="sm"
                             onClick={(e) => { e.stopPropagation(); onPublishLab(lab); }}
                             disabled={publishingId === lab.id}
-                            data-testid={`button-republish-protocol-${lab.id}`}
-                            className="text-xs gap-1.5 text-amber-700 border-amber-300"
+                            data-testid={`button-publish-protocol-${lab.id}`}
+                            className="text-xs gap-1.5"
+                            style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
                           >
-                            <RefreshCw className="h-3 w-3" />
-                            {publishingId === lab.id ? "Publishing…" : "Re-publish"}
+                            <Leaf className="h-3 w-3" />
+                            {publishingId === lab.id ? "Publishing…" : "Publish to Portal"}
                           </Button>
-                        </div>
-                      ) : (
-                        <Button
-                          variant="outline"
-                          size="sm"
-                          onClick={(e) => { e.stopPropagation(); onPublishLab(lab); }}
-                          disabled={publishingId === lab.id}
-                          data-testid={`button-publish-protocol-${lab.id}`}
-                          className="text-xs gap-1.5"
-                          style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
-                        >
-                          <Leaf className="h-3 w-3" />
-                          {publishingId === lab.id ? "Publishing…" : "Publish to Portal"}
-                        </Button>
-                      );
-                    })()}
+                        );
+                      })()}
+                      <Button variant="outline" size="sm" onClick={() => onViewLab(lab)} data-testid={`button-view-lab-${lab.id}`}>
+                        <FileText className="h-3.5 w-3.5 mr-1" />View Details
+                      </Button>
+                      <Button
+                        variant="outline" size="icon"
+                        onClick={(e) => { e.stopPropagation(); onDeleteLab(lab); }}
+                        disabled={deletingId === lab.id}
+                        data-testid={`button-delete-lab-${lab.id}`}
+                        className="text-muted-foreground"
+                      >
+                        <Trash2 className="h-3.5 w-3.5" />
+                      </Button>
+                    </div>
+                  </div>
+                );
+              }
+
+              // Quick upload row
+              const upload = item.upload;
+              const entries = upload.entries as Array<{ name: string; value: string; unit: string; referenceRange?: string }>;
+              const valueSummary = entries.map(e => `${e.name}: ${e.value}${e.unit ? ' ' + e.unit : ''}`).join(' · ');
+              return (
+                <div
+                  key={`quick-${upload.id}`}
+                  className="p-3 rounded-md border space-y-1.5"
+                  data-testid={`lab-history-item-quick-${upload.id}`}
+                >
+                  <div className="flex items-center justify-between gap-2 flex-wrap">
+                    <div className="flex items-center gap-2">
+                      <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
+                      <span className="text-sm font-medium">{safeDate(upload.labDate)}</span>
+                      {idx === 0 && <Badge variant="default" className="text-xs">Latest</Badge>}
+                      <Badge variant="outline" className="text-xs">Quick Upload</Badge>
+                    </div>
                     <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => onViewLab(lab)}
-                      data-testid={`button-view-lab-${lab.id}`}
-                    >
-                      <FileText className="h-3.5 w-3.5 mr-1" />
-                      View Details
-                    </Button>
-                    <Button
-                      variant="outline"
-                      size="icon"
-                      onClick={(e) => { e.stopPropagation(); onDeleteLab(lab); }}
-                      disabled={deletingId === lab.id}
-                      data-testid={`button-delete-lab-${lab.id}`}
+                      variant="outline" size="icon"
+                      onClick={() => onDeleteSimpleUpload?.(upload.id)}
+                      disabled={deletingSimpleUploadId === upload.id}
+                      data-testid={`button-delete-simple-lab-${upload.id}`}
                       className="text-muted-foreground"
                     >
                       <Trash2 className="h-3.5 w-3.5" />
                     </Button>
                   </div>
+                  <p className="text-xs text-muted-foreground font-mono leading-relaxed">{valueSummary}</p>
+                  {upload.aiInsight && (
+                    <div className="flex gap-1.5 pt-1 border-t">
+                      <Sparkles className="h-3 w-3 text-blue-400 flex-shrink-0 mt-0.5" />
+                      <p className="text-xs text-muted-foreground leading-relaxed">{upload.aiInsight}</p>
+                    </div>
+                  )}
+                  {upload.notes && (
+                    <p className="text-xs text-muted-foreground italic">{upload.notes}</p>
+                  )}
                 </div>
               );
             })}
@@ -1796,7 +1892,11 @@ export default function PatientProfiles() {
   };
 
   const handleDeleteLab = (lab: LabResult) => setConfirmDelete(lab);
-  const insights = labs.length >= 2 ? generateTrendInsights(labs, selectedPatient?.gender as 'male' | 'female') : [];
+  const syntheticFromSimple = simpleLabsToSynthetic(simpleLabs);
+  const allLabsForTrending = [...labs, ...syntheticFromSimple].sort(
+    (a, b) => new Date(b.labDate).getTime() - new Date(a.labDate).getTime()
+  );
+  const insights = allLabsForTrending.length >= 2 ? generateTrendInsights(allLabsForTrending, selectedPatient?.gender as 'male' | 'female') : [];
   const maleCount = allPatients.filter(p => p.gender === 'male').length;
   const femaleCount = allPatients.filter(p => p.gender === 'female').length;
 
@@ -3112,86 +3212,26 @@ export default function PatientProfiles() {
                 <>
                   <LabHistoryList
                     labs={labs}
+                    simpleUploads={simpleLabs}
                     onViewLab={setViewingLab}
                     onDeleteLab={handleDeleteLab}
                     deletingId={deleteMutation.isPending && confirmDelete ? confirmDelete.id : null}
+                    onDeleteSimpleUpload={(id) => deleteSimpleLabMutation.mutate(id)}
+                    deletingSimpleUploadId={deleteSimpleLabMutation.isPending ? (deleteSimpleLabMutation.variables as number) : null}
                     onPublishLab={handlePublishLab}
                     hasPortalAccount={portalStatus?.hasPortalAccount}
                     publishingId={publishingLabId}
                     publishedLabResultIds={portalStatus?.publishedLabResultIds}
                   />
-                  {labs.length >= 2 && (
+                  {allLabsForTrending.length >= 2 && (
                     <PatientTrendCharts
-                      labs={labs}
+                      labs={allLabsForTrending}
                       patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
                       patientId={selectedPatient.id}
                       gender={selectedPatient.gender === 'female' ? 'female' : 'male'}
                     />
                   )}
                   {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
-
-                  {/* ── Quick Lab Uploads ─────────────────────────────── */}
-                  {simpleLabs.length > 0 && (
-                    <Card data-testid="card-simple-lab-history">
-                      <CardHeader className="pb-3">
-                        <CardTitle className="text-lg flex items-center gap-2">
-                          <FlaskConical className="h-5 w-5 text-blue-500" />
-                          Quick Lab Uploads
-                          <Badge variant="secondary" className="text-xs ml-auto">
-                            {simpleLabs.length} upload{simpleLabs.length !== 1 ? 's' : ''}
-                          </Badge>
-                        </CardTitle>
-                      </CardHeader>
-                      <CardContent className="space-y-3">
-                        {simpleLabs.map((upload) => (
-                          <div
-                            key={upload.id}
-                            className="rounded-md border p-3 space-y-2"
-                            data-testid={`simple-lab-upload-${upload.id}`}
-                          >
-                            <div className="flex items-center justify-between gap-2 flex-wrap">
-                              <div className="flex items-center gap-2">
-                                <Calendar className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                                <span className="text-sm font-medium">
-                                  {new Date(upload.labDate).toLocaleDateString()}
-                                </span>
-                                <Badge variant="outline" className="text-xs">Quick Upload</Badge>
-                              </div>
-                              <Button
-                                size="icon"
-                                variant="ghost"
-                                className="text-muted-foreground"
-                                onClick={() => deleteSimpleLabMutation.mutate(upload.id)}
-                                disabled={deleteSimpleLabMutation.isPending}
-                                data-testid={`button-delete-simple-lab-${upload.id}`}
-                              >
-                                <Trash2 className="h-4 w-4" />
-                              </Button>
-                            </div>
-                            <div className="grid grid-cols-2 sm:grid-cols-3 gap-x-4 gap-y-1">
-                              {(upload.entries as Array<{ name: string; value: string; unit: string; referenceRange?: string }>).map((e, i) => (
-                                <div key={i} className="flex items-baseline gap-1.5 text-sm">
-                                  <span className="text-muted-foreground truncate">{e.name}</span>
-                                  <span className="font-mono font-medium flex-shrink-0">
-                                    {e.value}{e.unit ? ` ${e.unit}` : ''}
-                                  </span>
-                                </div>
-                              ))}
-                            </div>
-                            {upload.aiInsight && (
-                              <div className="flex gap-2 pt-1 border-t">
-                                <Sparkles className="h-3.5 w-3.5 text-blue-400 flex-shrink-0 mt-0.5" />
-                                <p className="text-xs text-muted-foreground leading-relaxed">{upload.aiInsight}</p>
-                              </div>
-                            )}
-                            {upload.notes && (
-                              <p className="text-xs text-muted-foreground italic border-t pt-1">{upload.notes}</p>
-                            )}
-                          </div>
-                        ))}
-                      </CardContent>
-                    </Card>
-                  )}
                 </>
               )}
 
