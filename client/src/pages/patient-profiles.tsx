@@ -2269,19 +2269,47 @@ export default function PatientProfiles() {
 
                 {/* Action buttons — always below name, wraps on mobile */}
                 <div className="flex flex-wrap gap-2">
-                  <Button
-                    size="sm"
-                    onClick={() => {
-                      const route = selectedPatient.gender === 'female' ? '/female' : '/male';
-                      setLocation(`${route}?patientId=${selectedPatient.id}`);
-                    }}
-                    data-testid="button-new-lab-interpretation"
-                    className="text-xs gap-1.5"
-                    style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
-                  >
-                    <Activity className="h-3 w-3" />
-                    New Lab Interpretation
-                  </Button>
+                  <Popover>
+                    <PopoverTrigger asChild>
+                      <Button
+                        size="sm"
+                        data-testid="button-lab-entry-dropdown"
+                        className="text-xs gap-1.5"
+                        style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                      >
+                        <FlaskConical className="h-3 w-3" />
+                        Lab Entry
+                        <ChevronDown className="h-3 w-3" />
+                      </Button>
+                    </PopoverTrigger>
+                    <PopoverContent className="w-52 p-1" align="start">
+                      <button
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-sm hover:bg-muted transition-colors text-left"
+                        onClick={() => {
+                          const route = selectedPatient.gender === 'female' ? '/female' : '/male';
+                          setLocation(`${route}?patientId=${selectedPatient.id}`);
+                        }}
+                        data-testid="button-new-lab-interpretation"
+                      >
+                        <Activity className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                        <div>
+                          <div className="font-medium">Lab Evaluation</div>
+                          <div className="text-xs text-muted-foreground">Full panel interpretation + AI</div>
+                        </div>
+                      </button>
+                      <button
+                        className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-sm hover:bg-muted transition-colors text-left"
+                        onClick={() => setLocation(`/simple-lab-upload?patientId=${selectedPatient.id}`)}
+                        data-testid="button-quick-lab-entry"
+                      >
+                        <FlaskConical className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
+                        <div>
+                          <div className="font-medium">Quick Entry</div>
+                          <div className="text-xs text-muted-foreground">Manual entry or PDF upload</div>
+                        </div>
+                      </button>
+                    </PopoverContent>
+                  </Popover>
                   <Button
                     size="sm"
                     variant="outline"
