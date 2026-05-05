@@ -389,7 +389,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const handleProviderPDF = () => {
     if (interp) {
       const historyForPdf = allLabs.length >= 2 ? allLabs : undefined;
-      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf, clinicBranding);
+      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf, clinicBranding, (user as any)?.clinicLogo ?? null);
       toast({ title: "Provider Report Generated", description: "The provider report has been downloaded." });
     }
   };
@@ -419,7 +419,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
             <h2 className="text-base font-semibold">
               Full Evaluation — {safeDate(lab.labDate)}
             </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">{patientName} · {isFemale ? "Women's Clinic" : "Men's Clinic"}</p>
+            <p className="text-xs text-muted-foreground mt-0.5">{patientName}{user?.clinicName ? ` · ${user.clinicName}` : ''}</p>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {interp && (
@@ -2047,11 +2047,8 @@ export default function PatientProfiles() {
                       <Pencil className="w-3.5 h-3.5 text-muted-foreground opacity-50" />
                     </button>
 
-                    {/* Always-visible: clinic type badge + sex + DOB + phone + provider */}
+                    {/* Always-visible: sex + DOB + phone + provider */}
                     <div className="flex items-center gap-2 flex-wrap mt-1">
-                      <Badge variant="secondary" className="text-xs">
-                        {selectedPatient.gender === 'male' ? "Men's Clinic" : "Women's Clinic"}
-                      </Badge>
                       <span className="text-xs text-muted-foreground">
                         Sex: <span className="font-medium text-foreground capitalize">{selectedPatient.gender}</span>
                       </span>

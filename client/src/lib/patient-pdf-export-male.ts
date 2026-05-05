@@ -356,7 +356,7 @@ export async function generateMalePatientWellnessPDF(
   const lightBg: [number, number, number] = branding?.formBackgroundColor
     ? hexToRgb(effectiveBranding.formBackgroundColor)
     : hexToRgb(MALE_DEFAULT.formBackgroundColor);
-  const displayClinic = clinicName || "Men's Hormone & Primary Care Clinic";
+  const displayClinic = clinicName || "Your Health Clinic";
 
   const addHeader = () => {
     doc.setFillColor(...brandColor);
@@ -1402,7 +1402,7 @@ export async function generateMalePatientWellnessPDF(
     'Optimize your sleep environment for 7-8 hours quality rest',
     'Track your progress - energy, mood, libido, workout performance',
     'Schedule your follow-up lab work in 60-90 days to monitor progress',
-    'Contact MVP Men\'s Clinic with any questions - we\'re here to optimize your health!',
+    `Contact ${displayClinic} with any questions — we're here to support your health!`,
   ];
 
   checklistItems.forEach((item, index) => {
@@ -1440,7 +1440,7 @@ export async function generateMalePatientWellnessPDF(
   doc.setTextColor(...textColor);
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
-  const supportText = "At MVP Men's Clinic, your health optimization is our mission. This report is just the beginning of your journey. Our team is here to answer questions, adjust your protocol, and ensure you achieve your health goals. Don't hesitate to reach out!";
+  const supportText = `At ${displayClinic}, your health optimization is our mission. This report is just the beginning of your journey. Our team is here to answer questions, adjust your protocol, and ensure you achieve your health goals. Don't hesitate to reach out!`;
   const supportLines = doc.splitTextToSize(supportText, contentWidth - 8);
   doc.text(supportLines, margin + 4, yPosition + 14);
 
@@ -1450,9 +1450,9 @@ export async function generateMalePatientWellnessPDF(
     addFooter(i, totalPages);
   }
 
-  const fileName = patientName 
-    ? `MVP_Mens_Clinic_Wellness_Report_${sanitizeForPdf(patientName).replace(/\s+/g, '_')}.pdf`
-    : `MVP_Mens_Clinic_Wellness_Report_${new Date().toISOString().split('T')[0]}.pdf`;
+  const fileName = patientName
+    ? `Patient_Wellness_Report_${sanitizeForPdf(patientName).replace(/\s+/g, '_')}.pdf`
+    : `Patient_Wellness_Report_${new Date().toISOString().split('T')[0]}.pdf`;
   
   doc.save(fileName);
 }

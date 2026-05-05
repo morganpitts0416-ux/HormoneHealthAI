@@ -461,7 +461,7 @@ export async function generatePatientWellnessPDF(
   const lightBg: [number, number, number] = branding?.formBackgroundColor
     ? hexToRgb(effectiveBranding.formBackgroundColor)
     : hexToRgb(FEMALE_DEFAULT.formBackgroundColor);
-  const displayClinic = clinicName || "Women's Hormone & Primary Care Clinic";
+  const displayClinic = clinicName || "Your Health Clinic";
 
   const addHeader = () => {
     doc.setFillColor(...brandColor);
@@ -1877,8 +1877,8 @@ export async function generatePatientWellnessPDF(
 
   const dateStr = new Date().toISOString().split('T')[0];
   const fileName = patientName
-    ? `WomensWellness_${sanitizeForPdf(patientName).replace(/\s+/g, '_')}_${dateStr}.pdf`
-    : `WomensWellness_Report_${dateStr}.pdf`;
+    ? `Patient_Wellness_Report_${sanitizeForPdf(patientName).replace(/\s+/g, '_')}_${dateStr}.pdf`
+    : `Patient_Wellness_Report_${dateStr}.pdf`;
 
   doc.save(fileName);
 }

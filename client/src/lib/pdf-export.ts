@@ -41,34 +41,40 @@ export async function generateLabReportPDF(
   labValues: LabValues,
   interpretation: InterpretationResult,
   patientName?: string,
-  clinicName: string = "Men's Hormone & Primary Care Clinic",
+  clinicName?: string,
   labHistory?: LabResult[],
   /** Clinic-level brand colors. Falls back to historic navy if null. */
   branding?: PartialBranding | null,
+  /** Clinic logo data URL or remote URL; shown top-left when provided. */
+  clinicLogo?: string | null,
 ): Promise<void> {
+  const displayClinicName = clinicName || "Your Health Clinic";
   // Effective heading color: clinic primary if set, else historic navy.
   const HEADING_RGB: [number, number, number] = branding?.primaryColor
     ? hexToRgb(resolveBranding(null, branding).primaryColor)
     : [31, 78, 121];
-  // Load ReAlign logo for PDF branding — composite over white to avoid jsPDF alpha-channel corruption
+  // Load clinic logo for PDF — composite over white to avoid jsPDF alpha-channel corruption
   let logoData: string | null = null;
   try {
-    logoData = await new Promise<string>((resolve, reject) => {
-      const img = new Image();
-      img.crossOrigin = 'anonymous';
-      img.onload = () => {
-        const canvas = document.createElement('canvas');
-        canvas.width = img.naturalWidth;
-        canvas.height = img.naturalHeight;
-        const ctx = canvas.getContext('2d')!;
-        ctx.fillStyle = '#ffffff';
-        ctx.fillRect(0, 0, canvas.width, canvas.height);
-        ctx.drawImage(img, 0, 0);
-        resolve(canvas.toDataURL('image/jpeg', 0.95));
-      };
-      img.onerror = reject;
-      img.src = '/realign-health-logo.png';
-    });
+    const src = clinicLogo || null;
+    if (src) {
+      logoData = await new Promise<string>((resolve, reject) => {
+        const img = new Image();
+        img.crossOrigin = 'anonymous';
+        img.onload = () => {
+          const canvas = document.createElement('canvas');
+          canvas.width = img.naturalWidth;
+          canvas.height = img.naturalHeight;
+          const ctx = canvas.getContext('2d')!;
+          ctx.fillStyle = '#ffffff';
+          ctx.fillRect(0, 0, canvas.width, canvas.height);
+          ctx.drawImage(img, 0, 0);
+          resolve(canvas.toDataURL('image/jpeg', 0.95));
+        };
+        img.onerror = reject;
+        img.src = src;
+      });
+    }
   } catch {}
 
   const doc = new jsPDF({
@@ -81,7 +87,7 @@ export async function generateLabReportPDF(
   const pageWidth = doc.internal.pageSize.getWidth();
   let yPosition = 20;
 
-  // Header: ReAlign logo on left, clinic info on right
+  // Clinic logo on left, report title and clinic info on right
   if (logoData) {
     doc.addImage(logoData, 'JPEG', 14, 8, 52, 22);
   }
@@ -92,8 +98,8 @@ export async function generateLabReportPDF(
   doc.setFontSize(9);
   doc.setFont('helvetica', 'normal');
   doc.setTextColor(80, 80, 80);
-  doc.text(sanitizeForPdf(clinicName), pageWidth - 14, 20, { align: 'right' });
-  doc.text(`Powered by ReAlign Health`, pageWidth - 14, 26, { align: 'right' });
+  doc.text(sanitizeForPdf(displayClinicName), pageWidth - 14, 20, { align: 'right' });
+  doc.text('Powered by ClinIQ', pageWidth - 14, 26, { align: 'right' });
   doc.setTextColor(0, 0, 0);
 
   // Horizontal rule under header
