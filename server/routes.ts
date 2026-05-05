@@ -824,8 +824,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       // Re-use the same seat-availability logic as the regular invite flow.
       const ownerSub = await resolveClinicOwnerSubscription(clinicId);
       const planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
-      if (planState.isSoloPlan) {
-        return res.status(403).json({ message: "Solo plan supports only 1 provider. Upgrade to ClinIQ Suite first." });
+      if (planState.isSoloPlan && ownerSub.stripeSubscriptionId) {
+        return res.status(403).json({ message: "Your Solo plan supports 1 provider. Upgrade to ClinIQ Suite first." });
       }
       const requiresPaidSeat =
         !planState.isFreeAccount && planState.isSuitePlan && planState.activeProviderCount >= planState.maxProviders;
@@ -5393,8 +5393,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       // Resolve the clinic owner's subscription for billing operations
       const ownerSub = await resolveClinicOwnerSubscription(clinicId);
       const planState = await getClinicPlanState(clinicId, ownerSub.freeAccount, ownerSub.stripeSubscriptionId);
-      if (planState.isSoloPlan) {
-        return res.status(403).json({ message: "Solo plan supports only 1 provider. Upgrade to ClinIQ Suite to add additional providers." });
+      // Block only when the clinic is explicitly on a paid Solo subscription.
+      // null / unset plan = not yet configured → allow invite so setup can proceed.
+      if (planState.isSoloPlan && ownerSub.stripeSubscriptionId) {
+        return res.status(403).json({ message: "Your Solo plan supports 1 provider. Upgrade to ClinIQ Suite to add additional providers." });
       }
       const pendingInvites = await storageDb
         .select({ id: clinicProviderInvites.id })

@@ -83,8 +83,8 @@ export async function getClinicPlanState(
   const maxProviders = clinic.maxProviders ?? 1;
   const baseProviderLimit = clinic.baseProviderLimit ?? 1;
   const extraProviderSeats = clinic.extraProviderSeats ?? 0;
-  const plan = clinic.subscriptionPlan ?? "solo";
-  const isSoloPlan = plan === "solo" || plan === null;
+  const plan = clinic.subscriptionPlan ?? null;
+  const isSoloPlan = plan === "solo";
   const isSuitePlan = plan === "suite";
   const isFreeAccount = ownerFreeAccount;
 
