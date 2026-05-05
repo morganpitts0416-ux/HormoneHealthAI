@@ -217,6 +217,7 @@ function SmartFieldPalette({ existingSmartKeys, onAdd }: {
         </span>
         <button onClick={() => setOpen(false)} className="text-xs text-muted-foreground hover:text-foreground">Close</button>
       </div>
+      <div className="overflow-y-auto max-h-56">
       {SMART_FIELD_CATEGORIES.map(cat => {
         const fields = SMART_FIELDS.filter(f => f.category === cat.key);
         return (
@@ -247,6 +248,7 @@ function SmartFieldPalette({ existingSmartKeys, onAdd }: {
           </div>
         );
       })}
+      </div>
     </div>
   );
 }

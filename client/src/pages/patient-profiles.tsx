@@ -4038,7 +4038,7 @@ export default function PatientProfiles() {
               Edit Patient Profile
             </DialogTitle>
           </DialogHeader>
-          <div className="space-y-4 py-2">
+          <div className="space-y-4 py-2 overflow-y-auto max-h-[calc(100vh-14rem)]">
             <div className="grid grid-cols-2 gap-3">
               <div className="space-y-1.5">
                 <Label htmlFor="edit-first-name">First Name</Label>
