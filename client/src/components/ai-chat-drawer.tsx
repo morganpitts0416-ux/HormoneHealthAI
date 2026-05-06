@@ -6,6 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   MessageCircle, X, Send, User, Bot, Loader2, Trash2, UserCheck,
   Mic, MicOff, FileText, CheckCheck, ChevronDown, ChevronUp, PenLine,
+  Volume2, VolumeX, Square,
 } from "lucide-react";
 import { useSoapNoteContext } from "@/contexts/soap-note-context";
 import { useToast } from "@/hooks/use-toast";
@@ -52,6 +53,21 @@ const SpeechRecognitionAPI =
     ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     : null;
 
+// Strip markdown formatting so TTS reads clean text
+function stripMarkdownForSpeech(text: string): string {
+  return text
+    .replace(/\*\*([^*]+)\*\*/g, "$1")   // bold
+    .replace(/\*([^*]+)\*/g, "$1")        // italic
+    .replace(/^#{1,3} /gm, "")            // headings
+    .replace(/^- /gm, "")                 // bullets
+    .replace(/^\d+\. /gm, "")            // numbered lists
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links
+    .replace(/`[^`]+`/g, "")             // inline code
+    .trim();
+}
+
+const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+
 export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
@@ -61,6 +77,9 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const [isListening, setIsListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [showNotePreview, setShowNotePreview] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [isSpeaking, setIsSpeaking] = useState(false);
+  const speakingMsgIdxRef = useRef<number | null>(null);
 
   const { toast } = useToast();
   const { activeSoapNote, onApplySoapEdit } = useSoapNoteContext();
@@ -75,13 +94,46 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [silenceCountdown, setSilenceCountdown] = useState(false);
   const shouldBeListeningRef = useRef(false);
-  // Diagnostic log — records the last few speech-recognition lifecycle events
-  // so we can see exactly what's stopping the session without needing devtools.
-  const [voiceLog, setVoiceLog] = useState<string[]>([]);
-  function vlog(msg: string) {
-    const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
-    setVoiceLog(prev => [`${ts} ${msg}`, ...prev].slice(0, 8));
-  }
+  // ── Text-to-speech ────────────────────────────────────────────────────────
+  const speakText = useCallback((text: string, msgIdx?: number) => {
+    if (!ttsSupported) return;
+    window.speechSynthesis.cancel();
+    const clean = stripMarkdownForSpeech(text);
+    if (!clean) return;
+    const utter = new SpeechSynthesisUtterance(clean);
+    utter.rate = 0.95;
+    utter.pitch = 1.0;
+    // Prefer a natural-sounding voice if available
+    const voices = window.speechSynthesis.getVoices();
+    const preferred = voices.find(v =>
+      /samantha|karen|daniel|moira|fiona|Google US English/i.test(v.name)
+    ) ?? voices.find(v => v.lang.startsWith("en"));
+    if (preferred) utter.voice = preferred;
+    utter.onstart = () => {
+      setIsSpeaking(true);
+      if (msgIdx !== undefined) speakingMsgIdxRef.current = msgIdx;
+    };
+    utter.onend = () => { setIsSpeaking(false); speakingMsgIdxRef.current = null; };
+    utter.onerror = () => { setIsSpeaking(false); speakingMsgIdxRef.current = null; };
+    window.speechSynthesis.speak(utter);
+  }, []);
+
+  const stopSpeaking = useCallback(() => {
+    if (ttsSupported) window.speechSynthesis.cancel();
+    setIsSpeaking(false);
+    speakingMsgIdxRef.current = null;
+  }, []);
+
+  // Stop TTS when drawer closes or component unmounts
+  useEffect(() => { if (!isOpen) stopSpeaking(); }, [isOpen, stopSpeaking]);
+  useEffect(() => () => stopSpeaking(), [stopSpeaking]);
+
+  // Voices load asynchronously on some browsers — prime them early
+  useEffect(() => {
+    if (ttsSupported) window.speechSynthesis.getVoices();
+  }, []);
+
+  function vlog(_msg: string) { /* diagnostic logging removed */ }
 
   // PATIENT-SAFETY: Clear conversation + stop recording when patient changes.
   useEffect(() => {
@@ -271,12 +323,19 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       const reply: string = data.reply ?? "I wasn't able to generate a response.";
       const editedNote: string | null = data.editedNote ?? null;
 
-      setMessages(prev => [...prev, {
-        role: "assistant",
-        content: reply,
-        proposedEdit: editedNote ?? undefined,
-        editApplied: false,
-      }]);
+      setMessages(prev => {
+        const next = [...prev, {
+          role: "assistant" as const,
+          content: reply,
+          proposedEdit: editedNote ?? undefined,
+          editApplied: false,
+        }];
+        // Auto-speak when TTS is enabled (read after state settles)
+        if (ttsEnabled) {
+          setTimeout(() => speakText(reply, next.length - 1), 80);
+        }
+        return next;
+      });
     },
     onError: (err: Error) => {
       const issuedForPatientId = requestPatientIdRef.current;
@@ -342,6 +401,25 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
+              {/* Stop speaking button — visible only while TTS is active */}
+              {isSpeaking && (
+                <Button size="icon" variant="ghost" onClick={stopSpeaking} className="text-amber-300 no-default-hover-elevate hover:bg-white/10" title="Stop speaking" data-testid="button-tts-stop">
+                  <Square className="w-4 h-4 fill-amber-300" />
+                </Button>
+              )}
+              {/* TTS toggle */}
+              {ttsSupported && (
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => { setTtsEnabled(v => !v); if (isSpeaking) stopSpeaking(); }}
+                  className={`no-default-hover-elevate hover:bg-white/10 ${ttsEnabled ? "text-emerald-300" : "text-white/60"}`}
+                  title={ttsEnabled ? "Voice replies on — click to mute" : "Voice replies off — click to enable"}
+                  data-testid="button-tts-toggle"
+                >
+                  {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+                </Button>
+              )}
               {messages.length > 0 && (
                 <Button size="icon" variant="ghost" onClick={handleClearChat} className="text-white/80 hover:text-white no-default-hover-elevate hover:bg-white/10" data-testid="button-clear-chat">
                   <Trash2 className="w-4 h-4" />
@@ -484,25 +562,43 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                     )}
                   </div>
 
-                  {/* Apply-to-note button — shown when AI proposed an edit */}
-                  {msg.role === "assistant" && msg.proposedEdit && (
-                    <div className="flex items-center gap-2">
-                      {msg.editApplied ? (
-                        <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 px-1">
-                          <CheckCheck className="w-3.5 h-3.5" />
-                          Applied to note
-                        </div>
-                      ) : (
+                  {/* Action row for assistant messages */}
+                  {msg.role === "assistant" && (
+                    <div className="flex items-center gap-2 flex-wrap">
+                      {/* Replay TTS for this message */}
+                      {ttsSupported && (
                         <Button
-                          size="sm"
-                          className="h-7 text-xs gap-1.5"
-                          style={{ backgroundColor: "#2e3a20", color: "#fff" }}
-                          onClick={() => handleApplyEdit(i, msg.proposedEdit!)}
-                          data-testid={`button-apply-soap-edit-${i}`}
+                          size="icon"
+                          variant="ghost"
+                          className={`h-6 w-6 ${speakingMsgIdxRef.current === i && isSpeaking ? "text-amber-500" : "text-muted-foreground"}`}
+                          onClick={() => speakingMsgIdxRef.current === i && isSpeaking ? stopSpeaking() : speakText(msg.content, i)}
+                          title={speakingMsgIdxRef.current === i && isSpeaking ? "Stop" : "Read aloud"}
+                          data-testid={`button-speak-msg-${i}`}
                         >
-                          <FileText className="w-3 h-3" />
-                          Apply to note
+                          {speakingMsgIdxRef.current === i && isSpeaking
+                            ? <Square className="w-3 h-3 fill-current" />
+                            : <Volume2 className="w-3 h-3" />}
                         </Button>
+                      )}
+                      {/* Apply-to-note button — shown when AI proposed an edit */}
+                      {msg.proposedEdit && (
+                        msg.editApplied ? (
+                          <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 px-1">
+                            <CheckCheck className="w-3.5 h-3.5" />
+                            Applied to note
+                          </div>
+                        ) : (
+                          <Button
+                            size="sm"
+                            className="h-7 text-xs gap-1.5"
+                            style={{ backgroundColor: "#2e3a20", color: "#fff" }}
+                            onClick={() => handleApplyEdit(i, msg.proposedEdit!)}
+                            data-testid={`button-apply-soap-edit-${i}`}
+                          >
+                            <FileText className="w-3 h-3" />
+                            Apply to note
+                          </Button>
+                        )
                       )}
                     </div>
                   )}
@@ -563,15 +659,6 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                 {silenceCountdown && (
                   <div className="h-0.5 w-full rounded-full bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
                     <div className="h-full bg-amber-400 dark:bg-amber-500 animate-[shrink_2.5s_linear_forwards] rounded-full" />
-                  </div>
-                )}
-                {/* ── Voice diagnostics ── */}
-                {voiceLog.length > 0 && (
-                  <div className="mt-1 rounded border border-border bg-muted/60 px-2 py-1 space-y-0.5">
-                    <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Voice event log</p>
-                    {voiceLog.map((line, i) => (
-                      <p key={i} className="text-[10px] font-mono text-muted-foreground leading-tight">{line}</p>
-                    ))}
                   </div>
                 )}
               </div>
