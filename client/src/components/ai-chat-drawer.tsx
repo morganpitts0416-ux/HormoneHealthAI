@@ -74,6 +74,9 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const baseInputRef = useRef<string>("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [silenceCountdown, setSilenceCountdown] = useState(false);
+  // Tracks whether the USER intends to be listening. When Chrome's engine
+  // times out and fires onend on its own, we use this to auto-restart.
+  const shouldBeListeningRef = useRef(false);
 
   // PATIENT-SAFETY: Clear conversation + stop recording when patient changes.
   useEffect(() => {
@@ -118,6 +121,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   }
 
   function stopListening() {
+    shouldBeListeningRef.current = false;
     clearSilenceTimer();
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
@@ -131,7 +135,6 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     setSilenceCountdown(true);
     silenceTimerRef.current = setTimeout(() => {
       setSilenceCountdown(false);
-      // Grab whatever was captured and send it
       const text = baseInputRef.current.trim();
       stopListening();
       if (text && !chatMutation.isPending) {
@@ -140,20 +143,17 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }, SILENCE_MS);
   }
 
-  function startListening() {
-    if (!SpeechRecognitionAPI) {
-      setMicError("Voice input isn't supported in this browser. Try Chrome.");
-      setTimeout(() => setMicError(null), 4000);
-      return;
-    }
-    setMicError(null);
-    baseInputRef.current = input;
+  // Spawns a single SpeechRecognition instance and attaches all handlers.
+  // Called both by startListening() and by the auto-restart path in onend.
+  function spawnRecognition() {
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognitionRef.current = recognition;
+
     recognition.onstart = () => setIsListening(true);
+
     recognition.onresult = (event: any) => {
       let interim = "";
       let final = "";
@@ -168,31 +168,63 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       setInput(combined);
       if (final) {
         baseInputRef.current = combined;
-        // Every time a final chunk lands, restart the silence countdown
         startSilenceTimer();
       } else {
-        // While actively speaking (interim results), clear any pending timer
+        // Actively speaking — keep the timer reset
         clearSilenceTimer();
       }
     };
+
     recognition.onerror = (event: any) => {
       if (event.error === "not-allowed") {
         setMicError("Microphone access denied. Check your browser permissions.");
         setTimeout(() => setMicError(null), 5000);
+        // Permission error is fatal — really stop
+        shouldBeListeningRef.current = false;
+        clearSilenceTimer();
+        setIsListening(false);
+        recognitionRef.current = null;
       }
-      stopListening();
+      // For "no-speech", "audio-capture", network errors etc. let onend
+      // fire naturally — the auto-restart below will pick it back up.
     };
+
     recognition.onend = () => {
-      clearSilenceTimer();
-      setIsListening(false);
       recognitionRef.current = null;
-      setTimeout(() => inputRef.current?.focus(), 50);
+      // If the user still wants to be listening (browser killed it on its own),
+      // restart immediately. Otherwise fully stop.
+      if (shouldBeListeningRef.current) {
+        // Small delay avoids a tight restart loop on rapid consecutive errors
+        setTimeout(() => {
+          if (shouldBeListeningRef.current) spawnRecognition();
+        }, 150);
+      } else {
+        clearSilenceTimer();
+        setIsListening(false);
+        setTimeout(() => inputRef.current?.focus(), 50);
+      }
     };
-    try { recognition.start(); } catch {
+
+    try {
+      recognition.start();
+    } catch {
       setMicError("Could not start microphone. Please try again.");
       setTimeout(() => setMicError(null), 4000);
-      stopListening();
+      shouldBeListeningRef.current = false;
+      setIsListening(false);
     }
+  }
+
+  function startListening() {
+    if (!SpeechRecognitionAPI) {
+      setMicError("Voice input isn't supported in this browser. Try Chrome.");
+      setTimeout(() => setMicError(null), 4000);
+      return;
+    }
+    setMicError(null);
+    baseInputRef.current = input;
+    shouldBeListeningRef.current = true;
+    spawnRecognition();
   }
 
   function toggleListening() { isListening ? stopListening() : startListening(); }
