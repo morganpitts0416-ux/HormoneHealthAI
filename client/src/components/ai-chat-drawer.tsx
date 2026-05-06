@@ -3,7 +3,7 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MessageCircle, X, Send, User, Bot, Loader2, Trash2, UserCheck } from "lucide-react";
+import { MessageCircle, X, Send, User, Bot, Loader2, Trash2, UserCheck, Mic, MicOff } from "lucide-react";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -39,39 +39,40 @@ function formatMarkdown(text: string): string {
   return `<p class="text-sm leading-relaxed">${html}</p>`;
 }
 
+// Detect Speech Recognition support
+const SpeechRecognitionAPI =
+  typeof window !== "undefined"
+    ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+    : null;
+
 export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [messages, setMessages] = useState<ChatMessage[]>([]);
   const [input, setInput] = useState("");
   const [usePatient, setUsePatient] = useState(true);
   const [hasOfferedPatient, setHasOfferedPatient] = useState(false);
+  const [isListening, setIsListening] = useState(false);
+  const [micError, setMicError] = useState<string | null>(null);
+
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
   const prevPatientIdRef = useRef<number | null>(null);
-  // PATIENT-SAFETY: Tag every in-flight chat request with the patientId it
-  // was issued under. If the patient context changes while a request is in
-  // flight, its onSuccess handler will detect the mismatch and discard the
-  // late response instead of appending it to the new patient's conversation.
   const requestPatientIdRef = useRef<number | null>(null);
-  // Allow aborting in-flight requests outright when the patient changes.
   const abortControllerRef = useRef<AbortController | null>(null);
+  const recognitionRef = useRef<any>(null);
+  // Tracks the text that was in the box before the current voice session started,
+  // so interim results can be appended cleanly without duplicating it.
+  const baseInputRef = useRef<string>("");
 
-  // PATIENT-SAFETY: Clear conversation history whenever the patient context
-  // changes (including set → null and patient → different patient). Without
-  // this, prior messages about a previous patient remain in the `messages`
-  // array and are sent back to the LLM on the next /api/ai-chat call,
-  // causing the model to fuse the new patient's chart with stale transcript
-  // about an unrelated patient. This was reproduced as a cross-patient leak
-  // in production and is now an explicit guard.
+  // PATIENT-SAFETY: Clear conversation history whenever the patient context changes.
   useEffect(() => {
     const nextId = patientContext?.id ?? null;
     if (nextId !== prevPatientIdRef.current) {
-      // Abort any in-flight request bound to the previous patient so its
-      // late response cannot leak into the new conversation.
       if (abortControllerRef.current) {
         abortControllerRef.current.abort();
         abortControllerRef.current = null;
       }
+      stopListening();
       setMessages([]);
       setInput("");
       setUsePatient(true);
@@ -80,18 +81,24 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
   }, [patientContext?.id]);
 
+  // Clean up recognition when the drawer closes.
+  useEffect(() => {
+    if (!isOpen) stopListening();
+  }, [isOpen]);
+
+  // Cleanup on unmount.
+  useEffect(() => {
+    return () => stopListening();
+  }, []);
+
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }, []);
 
-  useEffect(() => {
-    scrollToBottom();
-  }, [messages, scrollToBottom]);
+  useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
 
   useEffect(() => {
-    if (isOpen && inputRef.current) {
-      inputRef.current.focus();
-    }
+    if (isOpen && inputRef.current) inputRef.current.focus();
   }, [isOpen]);
 
   useEffect(() => {
@@ -100,18 +107,98 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
   }, [isOpen, patientContext, hasOfferedPatient, messages.length]);
 
+  // ── Voice recognition ──────────────────────────────────────────────────────
+  function stopListening() {
+    if (recognitionRef.current) {
+      try { recognitionRef.current.stop(); } catch (_) {}
+      recognitionRef.current = null;
+    }
+    setIsListening(false);
+  }
+
+  function startListening() {
+    if (!SpeechRecognitionAPI) {
+      setMicError("Voice input isn't supported in this browser. Try Chrome.");
+      setTimeout(() => setMicError(null), 4000);
+      return;
+    }
+
+    setMicError(null);
+    baseInputRef.current = input; // snapshot current text before voice starts
+
+    const recognition = new SpeechRecognitionAPI();
+    recognition.continuous = false;
+    recognition.interimResults = true;
+    recognition.lang = "en-US";
+    recognitionRef.current = recognition;
+
+    recognition.onstart = () => setIsListening(true);
+
+    recognition.onresult = (event: any) => {
+      let interim = "";
+      let final = "";
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const transcript = event.results[i][0].transcript;
+        if (event.results[i].isFinal) {
+          final += transcript;
+        } else {
+          interim += transcript;
+        }
+      }
+      // Show interim results immediately; finalise on isFinal
+      const combined = baseInputRef.current
+        ? `${baseInputRef.current.trimEnd()} ${final || interim}`.trim()
+        : (final || interim).trim();
+      setInput(combined);
+
+      // When we get a final result, update the base so a follow-up session appends correctly
+      if (final) {
+        baseInputRef.current = combined;
+      }
+    };
+
+    recognition.onerror = (event: any) => {
+      if (event.error === "not-allowed") {
+        setMicError("Microphone access denied. Check your browser permissions.");
+        setTimeout(() => setMicError(null), 5000);
+      }
+      stopListening();
+    };
+
+    recognition.onend = () => {
+      setIsListening(false);
+      recognitionRef.current = null;
+      // Re-focus textarea so the provider can immediately edit or send
+      setTimeout(() => inputRef.current?.focus(), 50);
+    };
+
+    try {
+      recognition.start();
+    } catch (err) {
+      setMicError("Could not start microphone. Please try again.");
+      setTimeout(() => setMicError(null), 4000);
+      stopListening();
+    }
+  }
+
+  function toggleListening() {
+    if (isListening) {
+      stopListening();
+    } else {
+      startListening();
+    }
+  }
+
+  // ── Chat mutation ──────────────────────────────────────────────────────────
   const chatMutation = useMutation({
     mutationFn: async (userMessage: string) => {
       const newMessages = [...messages, { role: "user" as const, content: userMessage }];
       setMessages(newMessages);
       setInput("");
+      baseInputRef.current = "";
 
-      // PATIENT-SAFETY: Tag this request with the patient it was issued for.
-      // If the patient changes mid-flight, onSuccess/onError will detect the
-      // mismatch and discard the response instead of leaking it across patients.
       const issuedForPatientId = usePatient && patientContext ? patientContext.id : null;
       requestPatientIdRef.current = issuedForPatientId;
-      // Replace any prior in-flight controller (will be aborted on patient switch).
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
@@ -120,29 +207,17 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         patientId: issuedForPatientId ?? undefined,
       }, { signal: controller.signal });
       const data = await res.json();
-      // Stamp the response with the patient it was issued for so downstream
-      // handlers can verify it still belongs to the active conversation.
       return { data, issuedForPatientId };
     },
     onSuccess: ({ data, issuedForPatientId }: { data: any; issuedForPatientId: number | null }) => {
-      // PATIENT-SAFETY: Discard the response if the active patient context
-      // has changed since this request was issued. The conversation history
-      // has already been cleared in the patient-change effect; appending now
-      // would re-introduce cross-patient contamination.
       const currentPatientId = patientContext?.id ?? null;
-      if (issuedForPatientId !== currentPatientId) {
-        return;
-      }
+      if (issuedForPatientId !== currentPatientId) return;
       setMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
     },
     onError: (err: Error) => {
-      // Same guard for errors — don't surface a stale-patient error in the
-      // current patient's conversation.
       const issuedForPatientId = requestPatientIdRef.current;
       const currentPatientId = patientContext?.id ?? null;
-      if (issuedForPatientId !== currentPatientId) {
-        return;
-      }
+      if (issuedForPatientId !== currentPatientId) return;
       const cleanMsg = err.message?.includes("{") ? "Something went wrong reaching the AI service." : err.message;
       setMessages(prev => [...prev, { role: "assistant", content: `I apologize — ${cleanMsg || "something went wrong"}. Please try again.` }]);
     },
@@ -151,6 +226,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed || chatMutation.isPending) return;
+    stopListening();
     chatMutation.mutate(trimmed);
   };
 
@@ -166,6 +242,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     setHasOfferedPatient(false);
   };
 
+  // ── Render ─────────────────────────────────────────────────────────────────
   return (
     <>
       {!isOpen && (
@@ -181,7 +258,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       )}
 
       {isOpen && (
-        <div className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 flex flex-col w-full sm:w-[420px] h-[100dvh] sm:h-[600px] sm:max-h-[80vh] bg-background border border-border sm:rounded-lg shadow-2xl overflow-hidden" data-testid="panel-ai-chat">
+        <div
+          className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 flex flex-col w-full sm:w-[420px] h-[100dvh] sm:h-[600px] sm:max-h-[80vh] bg-background border border-border sm:rounded-lg shadow-2xl overflow-hidden"
+          data-testid="panel-ai-chat"
+        >
+          {/* Header */}
           <div className="flex items-center justify-between gap-2 px-4 py-3 border-b" style={{ backgroundColor: "#2e3a20" }}>
             <div className="flex items-center gap-2 min-w-0">
               <Bot className="w-5 h-5 text-white flex-shrink-0" />
@@ -202,6 +283,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
             </div>
           </div>
 
+          {/* Patient context bar */}
           {patientContext && (
             <div className="flex items-center justify-between gap-2 px-4 py-2 border-b bg-emerald-50/60 dark:bg-emerald-950/20">
               <div className="flex items-center gap-2 min-w-0">
@@ -222,6 +304,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
             </div>
           )}
 
+          {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center px-4 space-y-4">
@@ -284,9 +367,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                   </div>
                 )}
                 <div className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                  msg.role === "user"
-                    ? "text-white text-sm"
-                    : "bg-muted"
+                  msg.role === "user" ? "text-white text-sm" : "bg-muted"
                 }`} style={msg.role === "user" ? { backgroundColor: "#2e3a20" } : undefined}>
                   {msg.role === "user" ? (
                     <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
@@ -322,20 +403,56 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
             <div ref={messagesEndRef} />
           </div>
 
+          {/* Input area */}
           <div className="border-t px-3 py-2 bg-background">
-            <p className="text-[10px] text-muted-foreground text-center mb-2">AI assistant — clinical decisions are yours. Always verify recommendations.</p>
+            <p className="text-[10px] text-muted-foreground text-center mb-2">
+              AI assistant — clinical decisions are yours. Always verify recommendations.
+            </p>
+
+            {/* Listening indicator */}
+            {isListening && (
+              <div className="flex items-center gap-1.5 mb-2 px-1">
+                <span className="relative flex h-2 w-2">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                </span>
+                <span className="text-xs text-red-600 dark:text-red-400 font-medium">Listening… speak now</span>
+              </div>
+            )}
+
+            {/* Mic permission / support error */}
+            {micError && (
+              <p className="text-xs text-destructive mb-2 px-1">{micError}</p>
+            )}
+
             <div className="flex items-end gap-2">
               <textarea
                 ref={inputRef}
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder="Ask a clinical question..."
+                placeholder={isListening ? "Listening…" : "Ask a clinical question, or speak using the mic"}
                 rows={1}
                 className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 max-h-24 min-h-[36px]"
                 style={{ lineHeight: "1.5" }}
                 data-testid="input-ai-chat"
               />
+
+              {/* Mic button — hidden when browser doesn't support it */}
+              {SpeechRecognitionAPI && (
+                <Button
+                  size="icon"
+                  variant="outline"
+                  onClick={toggleListening}
+                  disabled={chatMutation.isPending}
+                  data-testid="button-mic-ai-chat"
+                  className={isListening ? "border-red-400 text-red-500 bg-red-50 dark:bg-red-950/30 no-default-hover-elevate" : ""}
+                  title={isListening ? "Stop listening" : "Speak to ClinIQ"}
+                >
+                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                </Button>
+              )}
+
               <Button
                 size="icon"
                 onClick={handleSend}
