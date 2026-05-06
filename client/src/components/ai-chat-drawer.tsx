@@ -122,7 +122,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     setMicError(null);
     baseInputRef.current = input;
     const recognition = new SpeechRecognitionAPI();
-    recognition.continuous = false;
+    recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognitionRef.current = recognition;
