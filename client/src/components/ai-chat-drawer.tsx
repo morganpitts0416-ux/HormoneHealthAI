@@ -112,6 +112,9 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const shouldWakeRef = useRef(false);
   const isOpenRef = useRef(false);
   const [isWakeActive, setIsWakeActive] = useState(false);
+  // When the wake phrase fires we store the seed here so onend can hand off
+  // to the main listener only after the wake session is fully closed.
+  const wakeTransitionRef = useRef<string | null>(null);
   // ── Text-to-speech (OpenAI Nova via /api/tts, browser fallback) ──────────
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -260,13 +263,14 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const t = event.results[i][0].transcript;
         if (WAKE_PATTERN.test(t)) {
-          // Strip the wake phrase; any words after it become the initial input.
-          // Pass the seed directly to startListening so it is never overwritten
-          // by the stale React `input` state (which hasn't committed yet).
+          // Store the seed so onend can hand off AFTER this session fully closes.
+          // Never launch startListening here via setTimeout — Chrome only allows
+          // one SpeechRecognition at a time and the overlap causes a silent drop.
           const afterWake = t.replace(WAKE_STRIP, "").trim();
-          stopWakeListener();
+          wakeTransitionRef.current = afterWake; // "" is a valid seed (no words after wake)
           if (afterWake) setInput(afterWake);
-          setTimeout(() => startListening(afterWake || undefined), 200);
+          // stopWakeListener triggers wr.stop() → onend fires → we hand off there
+          stopWakeListener();
           return;
         }
       }
@@ -276,6 +280,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       if (event.error === "not-allowed") {
         // Hard stop — permission denied, don't retry
         shouldWakeRef.current = false;
+        wakeTransitionRef.current = null;
         setIsWakeActive(false);
         setMicError("Microphone access denied. Enable it in your browser settings to use 'Hey June'.");
         setTimeout(() => setMicError(null), 6000);
@@ -286,8 +291,19 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     wr.onend = () => {
       wakeRecognitionRef.current = null;
       setIsWakeActive(false);
+
+      // Wake phrase was detected — hand off to main listener now that this
+      // session is fully torn down (no overlap, no silent drop).
+      if (wakeTransitionRef.current !== null) {
+        const seed = wakeTransitionRef.current;
+        wakeTransitionRef.current = null;
+        // Small delay so Chrome fully releases the audio device before re-acquiring
+        setTimeout(() => startListening(seed || undefined), 150);
+        return;
+      }
+
       if (shouldWakeRef.current) {
-        // Restart after Chrome's session timeout (~60 s of silence)
+        // Normal restart after Chrome's ~60 s inactivity timeout
         setTimeout(() => spawnWakeListener(), 300);
       }
     };
