@@ -74,9 +74,14 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const baseInputRef = useRef<string>("");
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [silenceCountdown, setSilenceCountdown] = useState(false);
-  // Tracks whether the USER intends to be listening. When Chrome's engine
-  // times out and fires onend on its own, we use this to auto-restart.
   const shouldBeListeningRef = useRef(false);
+  // Diagnostic log — records the last few speech-recognition lifecycle events
+  // so we can see exactly what's stopping the session without needing devtools.
+  const [voiceLog, setVoiceLog] = useState<string[]>([]);
+  function vlog(msg: string) {
+    const ts = new Date().toLocaleTimeString("en-US", { hour12: false, hour: "2-digit", minute: "2-digit", second: "2-digit" });
+    setVoiceLog(prev => [`${ts} ${msg}`, ...prev].slice(0, 8));
+  }
 
   // PATIENT-SAFETY: Clear conversation + stop recording when patient changes.
   useEffect(() => {
@@ -121,6 +126,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   }
 
   function stopListening() {
+    vlog("⏹ stopListening() called");
     shouldBeListeningRef.current = false;
     clearSilenceTimer();
     if (recognitionRef.current) {
@@ -134,6 +140,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     clearSilenceTimer();
     setSilenceCountdown(true);
     silenceTimerRef.current = setTimeout(() => {
+      vlog("⏱ silence timer fired → auto-send");
       setSilenceCountdown(false);
       const text = baseInputRef.current.trim();
       stopListening();
@@ -143,16 +150,18 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }, SILENCE_MS);
   }
 
-  // Spawns a single SpeechRecognition instance and attaches all handlers.
-  // Called both by startListening() and by the auto-restart path in onend.
   function spawnRecognition() {
+    vlog("🎙 spawnRecognition()");
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = true;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognitionRef.current = recognition;
 
-    recognition.onstart = () => setIsListening(true);
+    recognition.onstart = () => { vlog("✅ onstart"); setIsListening(true); };
+
+    recognition.onspeechstart = () => { vlog("🗣 onspeechstart"); clearSilenceTimer(); };
+    recognition.onspeechend  = () => { vlog("🔇 onspeechend → starting silence timer"); startSilenceTimer(); };
 
     recognition.onresult = (event: any) => {
       let interim = "";
@@ -167,37 +176,38 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         : (final || interim).trim();
       setInput(combined);
       if (final) {
+        vlog(`📝 final: "${final.slice(0, 40)}${final.length > 40 ? "…" : ""}"`);
         baseInputRef.current = combined;
-        startSilenceTimer();
+        // onspeechend drives the silence timer; onresult only clears it
+        // on interim results so a final chunk mid-sentence doesn't trigger it
       } else {
-        // Actively speaking — keep the timer reset
         clearSilenceTimer();
       }
     };
 
     recognition.onerror = (event: any) => {
+      vlog(`❌ onerror: ${event.error}`);
       if (event.error === "not-allowed") {
         setMicError("Microphone access denied. Check your browser permissions.");
         setTimeout(() => setMicError(null), 5000);
-        // Permission error is fatal — really stop
         shouldBeListeningRef.current = false;
         clearSilenceTimer();
         setIsListening(false);
         recognitionRef.current = null;
       }
-      // For "no-speech", "audio-capture", network errors etc. let onend
-      // fire naturally — the auto-restart below will pick it back up.
+      // non-fatal errors: let onend fire and auto-restart
     };
 
     recognition.onend = () => {
+      vlog(`🔚 onend (shouldBe=${shouldBeListeningRef.current})`);
       recognitionRef.current = null;
-      // If the user still wants to be listening (browser killed it on its own),
-      // restart immediately. Otherwise fully stop.
       if (shouldBeListeningRef.current) {
-        // Small delay avoids a tight restart loop on rapid consecutive errors
         setTimeout(() => {
-          if (shouldBeListeningRef.current) spawnRecognition();
-        }, 150);
+          if (shouldBeListeningRef.current) {
+            vlog("♻️ auto-restarting…");
+            spawnRecognition();
+          }
+        }, 300);
       } else {
         clearSilenceTimer();
         setIsListening(false);
@@ -208,6 +218,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     try {
       recognition.start();
     } catch {
+      vlog("💥 recognition.start() threw");
       setMicError("Could not start microphone. Please try again.");
       setTimeout(() => setMicError(null), 4000);
       shouldBeListeningRef.current = false;
@@ -222,6 +233,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       return;
     }
     setMicError(null);
+    setVoiceLog([]);
     baseInputRef.current = input;
     shouldBeListeningRef.current = true;
     spawnRecognition();
@@ -551,6 +563,15 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                 {silenceCountdown && (
                   <div className="h-0.5 w-full rounded-full bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
                     <div className="h-full bg-amber-400 dark:bg-amber-500 animate-[shrink_2.5s_linear_forwards] rounded-full" />
+                  </div>
+                )}
+                {/* ── Voice diagnostics ── */}
+                {voiceLog.length > 0 && (
+                  <div className="mt-1 rounded border border-border bg-muted/60 px-2 py-1 space-y-0.5">
+                    <p className="text-[9px] font-semibold text-muted-foreground uppercase tracking-wide">Voice event log</p>
+                    {voiceLog.map((line, i) => (
+                      <p key={i} className="text-[10px] font-mono text-muted-foreground leading-tight">{line}</p>
+                    ))}
                   </div>
                 )}
               </div>
