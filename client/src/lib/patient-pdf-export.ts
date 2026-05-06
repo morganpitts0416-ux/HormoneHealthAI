@@ -670,8 +670,8 @@ export async function generatePatientWellnessPDF(
     yPosition += 10;
   }
 
-  // PREVENT cardiovascular risk section is shown in the provider lab report only — not in the patient wellness report
-  if (false && interpretation.preventRisk) {
+  // PREVENT cardiovascular risk section
+  if (interpretation.preventRisk) {
     const preventRisk = interpretation.preventRisk;
     yPosition = ensureSpace(90, yPosition);
     yPosition = addSectionHeader('YOUR HEART HEALTH ASSESSMENT', yPosition);
