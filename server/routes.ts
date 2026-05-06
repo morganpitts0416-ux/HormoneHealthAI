@@ -12782,14 +12782,26 @@ Review of Systems:
   Hematologic/Lymphatic: <status>
   Allergic/Immunologic: <status>
 
-Status rules (use ONLY these exact strings):
-- Normal findings → Normal/Negative
-- Abnormal findings → Abnormal/Positive — <brief description>
+Status rules:
+- Normal findings → write a concise clinical description of what a normal exam finding sounds like for that system. Do NOT write "Normal/Negative" — use the real clinical language a clinician would dictate. Examples:
+    Cardiovascular: Regular rate and rhythm, no murmurs, rubs, or gallops, peripheral pulses 2+ and symmetric.
+    Respiratory: Clear to auscultation bilaterally, no wheezes, rhonchi, or crackles, good air movement.
+    Abdomen: Soft, non-tender, non-distended, normal bowel sounds, no hepatosplenomegaly.
+    Neurological: Alert and oriented x4, cranial nerves II-XII intact, no focal deficits.
+    General Appearance: Alert, well-appearing, in no acute distress.
+    Skin: Warm, dry, intact, no rashes or lesions.
+    Eyes: Conjunctivae clear, no icterus, PERRL, EOMs intact.
+    ENT: Oropharynx clear, TMs intact bilaterally, no lymphadenopathy.
+    Neck: Supple, full ROM, no JVD, no thyromegaly or nodules.
+    Head: Normocephalic, atraumatic.
+    Musculoskeletal: Normal gait, full ROM of major joints, no edema, no tenderness.
+    Psychiatric: Cooperative, appropriate affect, normal mood.
+    Lymphatic: No cervical, axillary, or inguinal lymphadenopathy.
+    (Use equivalent clinical language for ROS systems — e.g., "Denies chest pain, palpitations, or dyspnea" for Cardiovascular ROS.)
+- Abnormal findings → Abnormal/Positive — <specific clinical description>
 - Not assessed → Not examined
-Example: "  Cardiovascular: Normal/Negative"
-Example: "  Respiratory: Abnormal/Positive — diminished breath sounds at left base"
 
-When the provider specifies findings for certain systems (e.g. "normal cardio and respiratory"), set those systems to Normal/Negative and include ALL remaining standard systems as Normal/Negative unless told otherwise. Do NOT omit systems unless the provider explicitly asks to.
+When the provider specifies findings for certain systems, use those exact descriptions. For all other standard systems include them with appropriate normal clinical language. Do NOT omit systems unless the provider explicitly asks to.
 
 - PATIENT CHART DATA — USE IT DIRECTLY: When the provider asks you to add or populate any of the following from the patient's chart, pull the exact values from the CURRENT PATIENT CONTEXT block above (do NOT paraphrase, invent, or summarize from the SOAP note itself):
   • Medical History → use the "Medical History" list from patient context verbatim
