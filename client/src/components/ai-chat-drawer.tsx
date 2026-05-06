@@ -94,44 +94,72 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [silenceCountdown, setSilenceCountdown] = useState(false);
   const shouldBeListeningRef = useRef(false);
-  // ── Text-to-speech ────────────────────────────────────────────────────────
-  const speakText = useCallback((text: string, msgIdx?: number) => {
-    if (!ttsSupported) return;
-    window.speechSynthesis.cancel();
-    const clean = stripMarkdownForSpeech(text);
-    if (!clean) return;
-    const utter = new SpeechSynthesisUtterance(clean);
-    utter.rate = 0.95;
-    utter.pitch = 1.0;
-    // Prefer a natural-sounding voice if available
-    const voices = window.speechSynthesis.getVoices();
-    const preferred = voices.find(v =>
-      /samantha|karen|daniel|moira|fiona|Google US English/i.test(v.name)
-    ) ?? voices.find(v => v.lang.startsWith("en"));
-    if (preferred) utter.voice = preferred;
-    utter.onstart = () => {
-      setIsSpeaking(true);
-      if (msgIdx !== undefined) speakingMsgIdxRef.current = msgIdx;
-    };
-    utter.onend = () => { setIsSpeaking(false); speakingMsgIdxRef.current = null; };
-    utter.onerror = () => { setIsSpeaking(false); speakingMsgIdxRef.current = null; };
-    window.speechSynthesis.speak(utter);
-  }, []);
+  // ── Text-to-speech (OpenAI Nova via /api/tts, browser fallback) ──────────
+  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
   const stopSpeaking = useCallback(() => {
+    if (currentAudioRef.current) {
+      currentAudioRef.current.pause();
+      currentAudioRef.current.src = "";
+      currentAudioRef.current = null;
+    }
     if (ttsSupported) window.speechSynthesis.cancel();
     setIsSpeaking(false);
     speakingMsgIdxRef.current = null;
   }, []);
 
+  const speakText = useCallback(async (text: string, msgIdx?: number) => {
+    stopSpeaking();
+    const clean = stripMarkdownForSpeech(text);
+    if (!clean) return;
+
+    setIsSpeaking(true);
+    if (msgIdx !== undefined) speakingMsgIdxRef.current = msgIdx;
+
+    try {
+      // Use OpenAI Nova voice via server
+      const res = await fetch("/api/tts", {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ text: clean }),
+        credentials: "include",
+      });
+      if (!res.ok) throw new Error("TTS request failed");
+      const blob = await res.blob();
+      const url = URL.createObjectURL(blob);
+      const audio = new Audio(url);
+      currentAudioRef.current = audio;
+      audio.onended = () => {
+        URL.revokeObjectURL(url);
+        setIsSpeaking(false);
+        speakingMsgIdxRef.current = null;
+        currentAudioRef.current = null;
+      };
+      audio.onerror = () => {
+        URL.revokeObjectURL(url);
+        setIsSpeaking(false);
+        speakingMsgIdxRef.current = null;
+        currentAudioRef.current = null;
+      };
+      await audio.play();
+    } catch {
+      // Fallback to browser TTS if OpenAI TTS fails
+      if (!ttsSupported) { setIsSpeaking(false); speakingMsgIdxRef.current = null; return; }
+      const utter = new SpeechSynthesisUtterance(clean);
+      utter.rate = 0.95;
+      const voices = window.speechSynthesis.getVoices();
+      const preferred = voices.find(v => /samantha|karen|Google US English/i.test(v.name))
+        ?? voices.find(v => v.lang.startsWith("en"));
+      if (preferred) utter.voice = preferred;
+      utter.onend = () => { setIsSpeaking(false); speakingMsgIdxRef.current = null; };
+      utter.onerror = () => { setIsSpeaking(false); speakingMsgIdxRef.current = null; };
+      window.speechSynthesis.speak(utter);
+    }
+  }, [stopSpeaking]);
+
   // Stop TTS when drawer closes or component unmounts
   useEffect(() => { if (!isOpen) stopSpeaking(); }, [isOpen, stopSpeaking]);
   useEffect(() => () => stopSpeaking(), [stopSpeaking]);
-
-  // Voices load asynchronously on some browsers — prime them early
-  useEffect(() => {
-    if (ttsSupported) window.speechSynthesis.getVoices();
-  }, []);
 
   function vlog(_msg: string) { /* diagnostic logging removed */ }
 
@@ -366,7 +394,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
     onApplySoapEdit(newNote);
     setMessages(prev => prev.map((m, i) => i === msgIdx ? { ...m, editApplied: true } : m));
-    toast({ title: "Note updated", description: "The co-pilot's changes were applied. Review and save when ready." });
+    toast({ title: "Note updated", description: "June's changes were applied. Review and save when ready." });
   };
 
   const soapNoteActive = !!activeSoapNote && !!onApplySoapEdit;
@@ -382,7 +410,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           data-testid="button-open-ai-chat"
         >
           <MessageCircle className="w-5 h-5" />
-          <span className="text-sm font-medium hidden sm:inline">Ask ClinIQ</span>
+          <span className="text-sm font-medium hidden sm:inline">Ask June</span>
         </button>
       )}
 
@@ -396,8 +424,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
             <div className="flex items-center gap-2 min-w-0">
               <Bot className="w-5 h-5 text-white flex-shrink-0" />
               <div className="min-w-0">
-                <h3 className="text-sm font-semibold text-white truncate">Ask ClinIQ</h3>
-                <p className="text-xs text-white/70 truncate">Your Clinical Co-Pilot</p>
+                <h3 className="text-sm font-semibold text-white truncate">June</h3>
+                <p className="text-xs text-white/70 truncate">Clinical AI · ClinIQ</p>
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -485,27 +513,26 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                 <div className="space-y-2">
                   {soapNoteActive ? (
                     <>
-                      <p className="text-sm font-medium">SOAP note is loaded and ready.</p>
+                      <p className="text-sm font-medium">Hey, June here. Note is loaded.</p>
                       <p className="text-xs text-muted-foreground">
-                        Ask me to add, edit, or refine any section — or ask a clinical question. I'll tell you exactly what I changed before applying anything.
+                        Ask me to add, edit, or refine any section — or a clinical question. I'll walk you through exactly what I changed before applying anything.
                       </p>
                     </>
                   ) : patientContext && usePatient ? (
                     <>
-                      <p className="text-sm text-muted-foreground">
-                        Built on real-world protocols, optimized lab ranges, and clinical pattern recognition.
-                      </p>
+                      <p className="text-sm font-medium">Hey, I'm June.</p>
                       <p className="text-xs text-muted-foreground">
-                        I have <span className="font-medium text-foreground">{patientContext.name}</span>'s chart and labs loaded — ask me anything about their case, or we can discuss something else entirely.
+                        I have <span className="font-medium text-foreground">{patientContext.name}</span>'s chart and labs loaded. Ask me anything about their case, or let's discuss something else entirely.
                       </p>
                     </>
                   ) : (
                     <>
-                      <p className="text-sm text-muted-foreground">
-                        Built on real-world protocols, optimized lab ranges, and clinical pattern recognition.
+                      <p className="text-sm font-medium">Hey, I'm June.</p>
+                      <p className="text-xs text-muted-foreground">
+                        Your AI clinical colleague — built on real-world protocols, optimized lab ranges, and clinical pattern recognition.
                       </p>
                       <div className="text-left text-xs text-muted-foreground space-y-1">
-                        <p className="font-medium text-foreground text-xs">Use me to:</p>
+                        <p className="font-medium text-foreground text-xs">Ask me to:</p>
                         <ul className="space-y-0.5 ml-1">
                           <li className="flex gap-1.5 items-start"><span>&#8226;</span> Interpret labs with context</li>
                           <li className="flex gap-1.5 items-start"><span>&#8226;</span> Identify hormone & metabolic patterns</li>
@@ -675,8 +702,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                 onKeyDown={handleKeyDown}
                 placeholder={
                   isListening ? "Listening…"
-                    : soapNoteActive ? "Ask me to edit the note, or ask a clinical question…"
-                    : "Ask a clinical question, or speak using the mic"
+                    : soapNoteActive ? "Hey June, edit the note… or ask a clinical question"
+                    : "Hey June… or ask a clinical question"
                 }
                 rows={1}
                 className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 max-h-24 min-h-[36px]"

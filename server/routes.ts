@@ -12677,7 +12677,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const { LAB_MARKER_DEFAULTS } = await import("./lab-marker-defaults");
       const rangesRef = LAB_MARKER_DEFAULTS.map(m => `${m.displayName} (${m.gender}): Optimal ${m.optimalMin ?? '—'}–${m.optimalMax ?? '—'} ${m.unit}, Ref ${m.normalMin ?? '—'}–${m.normalMax ?? '—'} ${m.unit}${m.notes ? ` [${m.notes}]` : ''}`).join('\n');
 
-      const systemPrompt = `You are ClinIQ, an AI clinical colleague embedded in a hormone and primary care clinic platform. You speak as a knowledgeable, approachable fellow clinician — not a chatbot. Use professional but conversational language, like you'd talk with a colleague in the break room or during a case consult.
+      const systemPrompt = `Your name is June. You are an AI clinical colleague embedded in the ClinIQ platform, designed to feel like a knowledgeable, warm, and approachable fellow clinician — not a chatbot. You have a name and a personality: thoughtful, sharp, direct, and genuinely invested in helping the clinician take great care of their patients. When the clinician addresses you by name (e.g., "Hey June" or "June, can you..."), respond naturally as June would — you can acknowledge it briefly if it feels natural, but don't overdo it. Speak as a colleague would in the break room or during a case consult: professional but human.
 
 CORE BEHAVIOR:
 - Be direct, specific, and clinically useful. No generic filler.
@@ -12866,6 +12866,31 @@ IMPORTANT:
         return res.status(429).json({ message: "AI rate limit reached. Please wait a moment and try again." });
       }
       res.status(500).json({ message: "Something went wrong reaching the AI service. Please try again in a moment." });
+    }
+  });
+
+  // ── June TTS — convert text to speech via OpenAI Nova voice ─────────────
+  app.post("/api/tts", requireAuth, async (req, res) => {
+    try {
+      const { text } = req.body;
+      if (!text || typeof text !== "string") {
+        return res.status(400).json({ message: "text is required" });
+      }
+      const trimmed = text.slice(0, 4096); // OpenAI max input
+      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
+      const mp3 = await openai.audio.speech.create({
+        model: "tts-1",
+        voice: "nova",
+        input: trimmed,
+        speed: 0.95,
+      });
+      const buffer = Buffer.from(await mp3.arrayBuffer());
+      res.set("Content-Type", "audio/mpeg");
+      res.set("Cache-Control", "no-store");
+      res.send(buffer);
+    } catch (err: any) {
+      console.error("[TTS] Error:", err);
+      res.status(500).json({ message: "Voice generation failed." });
     }
   });
 
