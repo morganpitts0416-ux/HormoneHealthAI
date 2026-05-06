@@ -4,12 +4,17 @@ import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import {
-  MessageCircle, X, Send, User, Bot, Loader2, Trash2, UserCheck,
+  X, Send, User, Loader2, Trash2, UserCheck,
   Mic, MicOff, FileText, CheckCheck, ChevronDown, ChevronUp, PenLine,
   Volume2, VolumeX, Square,
 } from "lucide-react";
 import { useSoapNoteContext } from "@/contexts/soap-note-context";
 import { useToast } from "@/hooks/use-toast";
+import juneWaving from "@assets/2_1778104720670.png";
+import juneListening from "@assets/3_1778104720670.png";
+import juneIdle from "@assets/7_1778104720672.png";
+import juneSoap from "@assets/8_1778104720672.png";
+import juneAnalyzing from "@assets/12_1778104720673.png";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -505,18 +510,45 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
   const soapNoteActive = !!activeSoapNote && !!onApplySoapEdit;
 
+  // ── June avatar state ─────────────────────────────────────────────────────
+  const juneState = chatMutation.isPending
+    ? (soapNoteActive ? "soap" : "analyzing")
+    : isListening || isWakeActive
+    ? "listening"
+    : isSpeaking
+    ? "waving"
+    : "idle";
+
+  const juneImage = {
+    idle:      juneIdle,
+    listening: juneListening,
+    analyzing: juneAnalyzing,
+    soap:      juneSoap,
+    waving:    juneWaving,
+  }[juneState];
+
+  const juneStateLabel = isWakeActive && !isListening
+    ? 'Say "Hey June"'
+    : isListening
+    ? "Listening…"
+    : chatMutation.isPending
+    ? (soapNoteActive ? "Updating note…" : "Thinking…")
+    : isSpeaking
+    ? "Speaking…"
+    : null;
+
   // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
       {!isOpen && (
         <button
           onClick={() => setIsOpen(true)}
-          className="fixed bottom-6 right-6 z-50 flex items-center gap-2 rounded-full px-4 py-3 text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
+          className="fixed bottom-6 right-6 z-50 flex items-center gap-1 rounded-full pl-1 pr-4 py-1 text-white shadow-lg transition-transform hover:scale-105 active:scale-95"
           style={{ backgroundColor: "#2e3a20" }}
           data-testid="button-open-ai-chat"
         >
-          <MessageCircle className="w-5 h-5" />
-          <span className="text-sm font-medium hidden sm:inline">Ask June</span>
+          <img src={juneWaving} alt="June" className="h-9 w-auto object-contain drop-shadow-sm" />
+          <span className="text-sm font-medium">Ask June</span>
         </button>
       )}
 
@@ -526,12 +558,12 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           data-testid="panel-ai-chat"
         >
           {/* Header */}
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
+          <div className="flex items-center justify-between gap-2 px-3 py-1 border-b flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
             <div className="flex items-center gap-2 min-w-0">
-              <Bot className="w-5 h-5 text-white flex-shrink-0" />
+              <img src={juneWaving} alt="June" className="h-10 w-auto object-contain flex-shrink-0 drop-shadow-sm" />
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-white truncate">June</h3>
-                <p className="text-xs text-white/70 truncate">Clinical AI · ClinIQ</p>
+                <p className="text-xs text-white/70 truncate">AI Clinical Colleague · ClinIQ</p>
               </div>
             </div>
             <div className="flex items-center gap-1 flex-shrink-0">
@@ -612,10 +644,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           {/* Messages */}
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
             {messages.length === 0 && (
-              <div className="flex flex-col items-center justify-center h-full text-center px-4 space-y-4">
-                <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: "#f4f8f0" }}>
-                  <Bot className="w-7 h-7" style={{ color: "#2e3a20" }} />
-                </div>
+              <div className="flex flex-col items-center justify-center h-full text-center px-4 space-y-3">
+                <img src={juneWaving} alt="June" className="h-28 w-auto object-contain drop-shadow-sm" />
                 <div className="space-y-2">
                   {soapNoteActive ? (
                     <>
@@ -678,9 +708,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
             {messages.map((msg, i) => (
               <div key={i} className={`flex gap-2 ${msg.role === "user" ? "justify-end" : "justify-start"}`} data-testid={`chat-message-${i}`}>
                 {msg.role === "assistant" && (
-                  <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: "#f4f8f0" }}>
-                    <Bot className="w-4 h-4" style={{ color: "#2e3a20" }} />
-                  </div>
+                  <img src={juneIdle} alt="June" className="w-8 h-8 object-contain flex-shrink-0 mt-0.5" />
                 )}
                 <div className="max-w-[82%] space-y-1.5">
                   <div className={`rounded-lg px-3 py-2 ${msg.role === "user" ? "text-white text-sm" : "bg-muted"}`}
@@ -747,9 +775,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
             {chatMutation.isPending && (
               <div className="flex gap-2 items-start" data-testid="chat-loading">
-                <div className="w-7 h-7 rounded-full flex items-center justify-center flex-shrink-0" style={{ backgroundColor: "#f4f8f0" }}>
-                  <Bot className="w-4 h-4" style={{ color: "#2e3a20" }} />
-                </div>
+                <img src={juneAnalyzing} alt="June" className="w-8 h-8 object-contain flex-shrink-0" />
                 <div className="bg-muted rounded-lg px-3 py-2">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="w-3 h-3 animate-spin" />
@@ -763,102 +789,92 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           </div>
 
           {/* Input area */}
-          <div className="border-t px-3 py-2 bg-background flex-shrink-0">
-            <p className="text-[10px] text-muted-foreground text-center mb-2">
+          <div className="border-t px-3 pt-1 pb-2 bg-background flex-shrink-0">
+            <p className="text-[10px] text-muted-foreground text-center mb-1">
               AI assistant — clinical decisions are yours. Always verify recommendations.
             </p>
 
-            {/* Wake-word indicator — shown when wake listener is running but not yet activated */}
-            {isWakeActive && !isListening && (
-              <div className="mb-2 px-1 flex items-center gap-1.5">
-                <span className="relative flex h-2 w-2 flex-shrink-0">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
-                </span>
-                <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Say "Hey June" to speak</span>
-              </div>
-            )}
+            {/* Mic error */}
+            {micError && <p className="text-xs text-destructive mb-1 px-1">{micError}</p>}
 
-            {/* iOS fallback — continuous wake listening isn't supported; prompt mic button instead */}
-            {isIOS && SpeechRecognitionAPI && !isListening && (
-              <div className="mb-2 px-1 flex items-center gap-1.5">
-                <Mic className="w-3 h-3 text-muted-foreground flex-shrink-0" />
-                <span className="text-[11px] text-muted-foreground">Tap the mic to speak to June</span>
+            <div className="flex items-end gap-2">
+              {/* June state avatar — swaps image based on what she's doing */}
+              <div className="flex-shrink-0 flex flex-col items-center justify-end" style={{ width: 44 }}>
+                <img
+                  key={juneState}
+                  src={juneImage}
+                  alt="June"
+                  className="w-full object-contain"
+                  style={{ height: 60 }}
+                />
+                {juneStateLabel && (
+                  <span
+                    className={`text-[9px] leading-tight text-center mt-0.5 font-medium ${
+                      isListening && !silenceCountdown
+                        ? "text-red-500 animate-pulse"
+                        : isListening && silenceCountdown
+                        ? "text-amber-500"
+                        : isWakeActive
+                        ? "text-emerald-600 dark:text-emerald-400"
+                        : "text-muted-foreground"
+                    }`}
+                  >
+                    {silenceCountdown ? "Pause…" : juneStateLabel}
+                  </span>
+                )}
               </div>
-            )}
 
-            {/* Listening indicator */}
-            {isListening && (
-              <div className="mb-2 px-1 space-y-1">
-                <div className="flex items-center gap-1.5">
-                  {silenceCountdown ? (
-                    <>
-                      <span className="relative flex h-2 w-2 flex-shrink-0">
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
-                      </span>
-                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Pause detected — keep speaking or it will send…</span>
-                    </>
-                  ) : (
-                    <>
-                      <span className="relative flex h-2 w-2 flex-shrink-0">
-                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-                      </span>
-                      <span className="text-xs text-red-600 dark:text-red-400 font-medium">Listening… speak now</span>
-                    </>
-                  )}
-                </div>
-                {silenceCountdown && (
+              <div className="flex-1 flex flex-col gap-1 min-w-0">
+                {/* Silence countdown bar */}
+                {isListening && silenceCountdown && (
                   <div className="h-0.5 w-full rounded-full bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
                     <div className="h-full bg-amber-400 dark:bg-amber-500 animate-[shrink_2.5s_linear_forwards] rounded-full" />
                   </div>
                 )}
+                {/* iOS tap-to-speak hint (no wake-word support) */}
+                {isIOS && SpeechRecognitionAPI && !isListening && (
+                  <p className="text-[10px] text-muted-foreground px-1">Tap the mic to speak</p>
+                )}
+                <div className="flex items-end gap-2">
+                  <textarea
+                    ref={inputRef}
+                    value={input}
+                    onChange={e => setInput(e.target.value)}
+                    onKeyDown={handleKeyDown}
+                    placeholder={
+                      isListening ? "Listening…"
+                        : soapNoteActive ? "Hey June, edit the note… or ask a clinical question"
+                        : "Hey June… or ask a clinical question"
+                    }
+                    rows={1}
+                    className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 max-h-24 min-h-[36px]"
+                    style={{ lineHeight: "1.5" }}
+                    data-testid="input-ai-chat"
+                  />
+                  {SpeechRecognitionAPI && (
+                    <Button
+                      size="icon"
+                      variant="outline"
+                      onClick={toggleListening}
+                      disabled={chatMutation.isPending}
+                      data-testid="button-mic-ai-chat"
+                      className={isListening ? "border-red-400 text-red-500 bg-red-50 dark:bg-red-950/30 no-default-hover-elevate" : ""}
+                      title={isListening ? "Stop listening" : "Speak to June"}
+                    >
+                      {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
+                    </Button>
+                  )}
+                  <Button
+                    size="icon"
+                    onClick={handleSend}
+                    disabled={!input.trim() || chatMutation.isPending}
+                    style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}
+                    data-testid="button-send-ai-chat"
+                  >
+                    <Send className="w-4 h-4" />
+                  </Button>
+                </div>
               </div>
-            )}
-
-            {/* Mic error */}
-            {micError && <p className="text-xs text-destructive mb-2 px-1">{micError}</p>}
-
-            <div className="flex items-end gap-2">
-              <textarea
-                ref={inputRef}
-                value={input}
-                onChange={e => setInput(e.target.value)}
-                onKeyDown={handleKeyDown}
-                placeholder={
-                  isListening ? "Listening…"
-                    : soapNoteActive ? "Hey June, edit the note… or ask a clinical question"
-                    : "Hey June… or ask a clinical question"
-                }
-                rows={1}
-                className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 max-h-24 min-h-[36px]"
-                style={{ lineHeight: "1.5" }}
-                data-testid="input-ai-chat"
-              />
-
-              {SpeechRecognitionAPI && (
-                <Button
-                  size="icon"
-                  variant="outline"
-                  onClick={toggleListening}
-                  disabled={chatMutation.isPending}
-                  data-testid="button-mic-ai-chat"
-                  className={isListening ? "border-red-400 text-red-500 bg-red-50 dark:bg-red-950/30 no-default-hover-elevate" : ""}
-                  title={isListening ? "Stop listening" : "Speak to ClinIQ"}
-                >
-                  {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
-                </Button>
-              )}
-
-              <Button
-                size="icon"
-                onClick={handleSend}
-                disabled={!input.trim() || chatMutation.isPending}
-                style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}
-                data-testid="button-send-ai-chat"
-              >
-                <Send className="w-4 h-4" />
-              </Button>
             </div>
           </div>
         </div>
