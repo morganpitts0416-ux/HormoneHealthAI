@@ -1250,6 +1250,14 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
         newBlock.assessmentItems = [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }];
         newBlock.assessmentSummary = "";
       }
+      // ROS and Physical Exam open in chart mode by default — the body-systems
+      // grid is the primary way clinicians fill these out.
+      if (type === "ros" || type === "physical_exam") {
+        const kind = type === "ros" ? "ros" : "physical_exam";
+        const systems = resolveSystemList(kind, blockDefaults ?? null);
+        newBlock.mode = "chart";
+        newBlock.chartData = createChartData(systems);
+      }
       return [...prev, newBlock];
     });
     setShowAddMenu(false);
