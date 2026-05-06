@@ -10,11 +10,11 @@ import {
 } from "lucide-react";
 import { useSoapNoteContext } from "@/contexts/soap-note-context";
 import { useToast } from "@/hooks/use-toast";
-import juneWaving from "@assets/2_1778104720670.png";
-import juneListening from "@assets/3_1778104720670.png";
-import juneIdle from "@assets/7_1778104720672.png";
-import juneSoap from "@assets/8_1778104720672.png";
-import juneAnalyzing from "@assets/12_1778104720673.png";
+const juneWaving = "/assets/june/june-waving.png";
+const juneListening = "/assets/june/june-listening.png";
+const juneIdle = "/assets/june/june-idle.png";
+const juneSoap = "/assets/june/june-soap.png";
+const juneAnalyzing = "/assets/june/june-analyzing.png";
 
 interface ChatMessage {
   role: "user" | "assistant";
