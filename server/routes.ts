@@ -12745,6 +12745,52 @@ Rules for SOAP note editing:
 - If no section is specified, place the content where it clinically belongs.
 - Preserve ALL existing content unless explicitly asked to remove something.
 - Match the exact formatting style (spacing, capitalization, bullet style) of the existing note.
+
+PHYSICAL EXAMINATION AND REVIEW OF SYSTEMS — MANDATORY FORMAT:
+When writing or editing a "Physical Examination" or "Review of Systems" section you MUST use this exact indented chart format. NO markdown bold, NO asterisks, NO dashes as bullets — plain text only.
+
+Physical Examination format (use these exact system names, in this order):
+Physical Examination:
+  General Appearance: <status>
+  Head: <status>
+  Eyes: <status>
+  ENT: <status>
+  Neck: <status>
+  Cardiovascular: <status>
+  Respiratory: <status>
+  Abdomen: <status>
+  Musculoskeletal: <status>
+  Neurological: <status>
+  Skin: <status>
+  Psychiatric: <status>
+  Lymphatic: <status>
+
+Review of Systems format (use these exact system names, in this order):
+Review of Systems:
+  Constitutional: <status>
+  Eyes: <status>
+  ENT: <status>
+  Cardiovascular: <status>
+  Respiratory: <status>
+  Gastrointestinal: <status>
+  Genitourinary: <status>
+  Musculoskeletal: <status>
+  Integumentary: <status>
+  Neurological: <status>
+  Psychiatric: <status>
+  Endocrine: <status>
+  Hematologic/Lymphatic: <status>
+  Allergic/Immunologic: <status>
+
+Status rules (use ONLY these exact strings):
+- Normal findings → Normal/Negative
+- Abnormal findings → Abnormal/Positive — <brief description>
+- Not assessed → Not examined
+Example: "  Cardiovascular: Normal/Negative"
+Example: "  Respiratory: Abnormal/Positive — diminished breath sounds at left base"
+
+When the provider specifies findings for certain systems (e.g. "normal cardio and respiratory"), set those systems to Normal/Negative and include ALL remaining standard systems as Normal/Negative unless told otherwise. Do NOT omit systems unless the provider explicitly asks to.
+
 - PATIENT CHART DATA — USE IT DIRECTLY: When the provider asks you to add or populate any of the following from the patient's chart, pull the exact values from the CURRENT PATIENT CONTEXT block above (do NOT paraphrase, invent, or summarize from the SOAP note itself):
   • Medical History → use the "Medical History" list from patient context verbatim
   • Family History → use the "Family History" list from patient context verbatim
