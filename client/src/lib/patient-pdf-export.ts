@@ -1160,6 +1160,8 @@ export async function generatePatientWellnessPDF(
     if (ir.phenotypes.length > 0) {
       for (const phenotype of ir.phenotypes) {
         const explanationText = sanitizeForPdf(phenotype.patientExplanation);
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
         const expLines = doc.splitTextToSize(explanationText, contentWidth - 10);
         const blockHeight = 10 + (expLines.length * 4);
         yPosition = ensureSpace(blockHeight, yPosition);
@@ -1182,6 +1184,8 @@ export async function generatePatientWellnessPDF(
       }
     } else {
       const defaultText = sanitizeForPdf('Some of your metabolic markers suggest your body may not be processing insulin as efficiently as it should. We recommend confirmation testing with fasting insulin and fasting glucose to guide next steps.');
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'normal');
       const defaultLines = doc.splitTextToSize(defaultText, contentWidth - 10);
       for (let i = 0; i < defaultLines.length; i++) {
         yPosition = ensureSpace(4, yPosition);
