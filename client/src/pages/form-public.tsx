@@ -645,6 +645,108 @@ function SignatureField({ value, onChange, fieldKey }: { value: string; onChange
   );
 }
 
+// ─── Google Places Autocomplete ───────────────────────────────────────────────
+// Activates when VITE_GOOGLE_MAPS_API_KEY is set. Falls back to a plain Input
+// so the form still works without a key configured.
+
+function PlacesAutocompleteInput({
+  value,
+  onChange,
+  placeholder,
+  fieldKey,
+  placesType,
+}: {
+  value: string;
+  onChange: (v: string) => void;
+  placeholder?: string;
+  fieldKey: string;
+  placesType: "address" | "pharmacy";
+}) {
+  const inputRef = useRef<HTMLInputElement>(null);
+  const onChangeRef = useRef(onChange);
+  onChangeRef.current = onChange;
+  const isInitialized = useRef(false);
+  const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+
+  useEffect(() => {
+    if (!apiKey || !inputRef.current || isInitialized.current) return;
+
+    const initAutocomplete = () => {
+      if (!inputRef.current || !(window as any).google?.maps?.places || isInitialized.current) return;
+      isInitialized.current = true;
+
+      const types = placesType === "pharmacy" ? ["pharmacy"] : ["address"];
+      const ac = new (window as any).google.maps.places.Autocomplete(inputRef.current, { types });
+
+      ac.addListener("place_changed", () => {
+        const place = ac.getPlace();
+        let text = "";
+        if (placesType === "pharmacy" && place.name) {
+          text = place.formatted_address
+            ? `${place.name}, ${place.formatted_address}`
+            : place.name;
+        } else {
+          text = place.formatted_address || place.name || "";
+        }
+        if (text) onChangeRef.current(text);
+      });
+    };
+
+    const scriptId = "google-maps-places-api";
+    const existing = document.getElementById(scriptId);
+    if (existing) {
+      if ((window as any).google?.maps?.places) {
+        initAutocomplete();
+      } else {
+        existing.addEventListener("load", initAutocomplete, { once: true });
+      }
+      return;
+    }
+
+    const script = document.createElement("script");
+    script.id = scriptId;
+    script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
+    script.async = true;
+    script.onload = initAutocomplete;
+    document.head.appendChild(script);
+  }, [apiKey, placesType]);
+
+  // No API key — plain controlled input
+  if (!apiKey) {
+    return (
+      <Input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder ?? ""}
+        data-testid={`input-${fieldKey}`}
+      />
+    );
+  }
+
+  // With API key — uncontrolled input driven by Google widget; manual typing
+  // is captured on blur so the response state stays in sync.
+  return (
+    <div className="relative">
+      <Input
+        ref={inputRef}
+        defaultValue={value}
+        onBlur={e => onChange(e.target.value)}
+        placeholder={placeholder ?? (placesType === "pharmacy" ? "Start typing a pharmacy name…" : "Start typing your address…")}
+        data-testid={`input-${fieldKey}`}
+        autoComplete="off"
+      />
+      <div className="flex items-center gap-1 mt-1">
+        <svg className="h-3 w-3 text-blue-500 flex-shrink-0" viewBox="0 0 24 24" fill="currentColor">
+          <path d="M12 2C8.13 2 5 5.13 5 9c0 5.25 7 13 7 13s7-7.75 7-13c0-3.87-3.13-7-7-7zm0 9.5c-1.38 0-2.5-1.12-2.5-2.5s1.12-2.5 2.5-2.5 2.5 1.12 2.5 2.5-1.12 2.5-2.5 2.5z"/>
+        </svg>
+        <span className="text-[10px] text-blue-500">
+          {placesType === "pharmacy" ? "Pharmacy suggestions from Google" : "Address suggestions from Google"}
+        </span>
+      </div>
+    </div>
+  );
+}
+
 function FieldRenderer({ field, value, onChange, error }: {
   field: FormField;
   value: any;
@@ -680,12 +782,22 @@ function FieldRenderer({ field, value, onChange, error }: {
       {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
 
       {field.fieldType === "short_text" && (
-        <Input
-          value={value ?? ""}
-          onChange={e => onChange(e.target.value)}
-          placeholder={field.placeholder ?? ""}
-          data-testid={`input-${field.fieldKey}`}
-        />
+        (field.smartFieldKey === "patient_address" || field.smartFieldKey === "patient_preferred_pharmacy") ? (
+          <PlacesAutocompleteInput
+            value={value ?? ""}
+            onChange={onChange}
+            placeholder={field.placeholder ?? ""}
+            fieldKey={field.fieldKey}
+            placesType={field.smartFieldKey === "patient_preferred_pharmacy" ? "pharmacy" : "address"}
+          />
+        ) : (
+          <Input
+            value={value ?? ""}
+            onChange={e => onChange(e.target.value)}
+            placeholder={field.placeholder ?? ""}
+            data-testid={`input-${field.fieldKey}`}
+          />
+        )
       )}
 
       {field.fieldType === "long_text" && (

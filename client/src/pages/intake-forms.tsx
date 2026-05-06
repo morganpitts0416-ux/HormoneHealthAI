@@ -22,7 +22,7 @@ import {
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
   Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft,
-  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users, Upload
+  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users, Upload, MapPin
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -612,6 +612,21 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
       case "short_text":
       case "email":
       case "phone":
+        if (field.smartFieldKey === "patient_address" || field.smartFieldKey === "patient_preferred_pharmacy") {
+          return (
+            <div className="space-y-1">
+              <Input disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" />
+              <div className="flex items-center gap-1.5">
+                <MapPin className="h-3 w-3 text-blue-500 flex-shrink-0" />
+                <span className="text-xs text-blue-600 dark:text-blue-400">
+                  {field.smartFieldKey === "patient_preferred_pharmacy"
+                    ? "Google Places pharmacy autocomplete active on patient form"
+                    : "Google Places address autocomplete active on patient form"}
+                </span>
+              </div>
+            </div>
+          );
+        }
         return <Input disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" />;
       case "long_text":
         return <Textarea disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" rows={3} />;
@@ -2146,7 +2161,7 @@ function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (da
   const [description, setDescription] = useState(form.description ?? "");
   const [category, setCategory] = useState(form.category);
   const [requiresSig, setRequiresSig] = useState(form.requiresPatientSignature);
-  const [defaultGender, setDefaultGender] = useState<"" | "female" | "male">((form.settingsJson as any)?.defaultGender ?? "");
+  const [defaultGender, setDefaultGender] = useState<"_none" | "female" | "male">((form.settingsJson as any)?.defaultGender || "_none");
   const [ghlEnabled, setGhlEnabled] = useState((form as any).ghlWebhookEnabled ?? false);
   const [ghlUrl, setGhlUrl] = useState((form as any).ghlWebhookUrl ?? "");
   const { toast } = useToast();
@@ -2162,7 +2177,7 @@ function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (da
       description: description || null,
       category,
       requiresPatientSignature: requiresSig,
-      settingsJson: { ...((form.settingsJson as any) ?? {}), defaultGender: defaultGender || null },
+      settingsJson: { ...((form.settingsJson as any) ?? {}), defaultGender: defaultGender === "_none" ? null : defaultGender },
       ghlWebhookUrl: trimmedUrl || null,
       ghlWebhookEnabled: ghlEnabled && !!trimmedUrl,
     });
@@ -2203,12 +2218,12 @@ function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (da
 
       <div className="space-y-1.5">
         <Label>Default Patient Sex</Label>
-        <Select value={defaultGender} onValueChange={v => setDefaultGender(v as "" | "female" | "male")}>
+        <Select value={defaultGender} onValueChange={v => setDefaultGender(v as "_none" | "female" | "male")}>
           <SelectTrigger data-testid="select-form-default-gender">
             <SelectValue placeholder="No default — ask on each form" />
           </SelectTrigger>
           <SelectContent>
-            <SelectItem value="">No default</SelectItem>
+            <SelectItem value="_none">No default</SelectItem>
             <SelectItem value="female">Female</SelectItem>
             <SelectItem value="male">Male</SelectItem>
           </SelectContent>
