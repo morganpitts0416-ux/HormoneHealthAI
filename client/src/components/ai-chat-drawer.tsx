@@ -225,9 +225,13 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   }, [isOpen, patientContext, hasOfferedPatient, messages.length]);
 
   // ── Wake-word listener ────────────────────────────────────────────────────
-  // Listens silently in the background for "Hey June" (or "Okay June").
+  // Listens silently in the background for "Hey June" / "OK June" / "Okay June".
   // Mutually exclusive with the main mic session — browser allows only one at a time.
-  const WAKE_PATTERN = /\b(?:hey|okay?)[,\s]+june\b/i;
+  //
+  // Accepts:  "hey june"  "okay june"  "ok june"  "hey, june"  etc.
+  const WAKE_PATTERN = /\b(?:hey|ok(?:ay)?)[,.\s]+june\b/i;
+  // Strip clause used when extracting words spoken after the wake phrase.
+  const WAKE_STRIP   = /.*\b(?:hey|ok(?:ay)?)[,.\s]+june[,.\s]*/i;
 
   function stopWakeListener() {
     shouldWakeRef.current = false;
@@ -258,8 +262,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         if (WAKE_PATTERN.test(t)) {
           // Strip the wake phrase; any words after it become the initial input.
           // Pass the seed directly to startListening so it is never overwritten
-          // by the stale React `input` state (which hasn't updated yet).
-          const afterWake = t.replace(/.*\b(?:hey|okay?)[,\s]+june[,\s]*/i, "").trim();
+          // by the stale React `input` state (which hasn't committed yet).
+          const afterWake = t.replace(WAKE_STRIP, "").trim();
           stopWakeListener();
           if (afterWake) setInput(afterWake);
           setTimeout(() => startListening(afterWake || undefined), 200);
@@ -270,33 +274,64 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
     wr.onerror = (event: any) => {
       if (event.error === "not-allowed") {
+        // Hard stop — permission denied, don't retry
         shouldWakeRef.current = false;
         setIsWakeActive(false);
+        setMicError("Microphone access denied. Enable it in your browser settings to use 'Hey June'.");
+        setTimeout(() => setMicError(null), 6000);
       }
-      // Non-fatal errors: let onend restart
+      // Non-fatal errors (network, audio-capture, no-speech): let onend restart
     };
 
     wr.onend = () => {
       wakeRecognitionRef.current = null;
       setIsWakeActive(false);
       if (shouldWakeRef.current) {
+        // Restart after Chrome's session timeout (~60 s of silence)
         setTimeout(() => spawnWakeListener(), 300);
       }
     };
 
     try { wr.start(); } catch {
-      shouldWakeRef.current = false;
-      setIsWakeActive(false);
+      // wr.start() threw synchronously — usually means already started; retry later
+      wakeRecognitionRef.current = null;
+      if (shouldWakeRef.current) setTimeout(() => spawnWakeListener(), 800);
     }
   }
 
   function startWakeListener() {
-    // iOS does not support continuous SpeechRecognition — skip the wake listener
-    // entirely and rely on the manual mic button instead.
+    // iOS does not support continuous SpeechRecognition — skip entirely.
     if (!SpeechRecognitionAPI || isIOS || shouldBeListeningRef.current) return;
-    stopWakeListener();
-    shouldWakeRef.current = true;
-    spawnWakeListener();
+
+    const doSpawn = () => {
+      stopWakeListener();
+      shouldWakeRef.current = true;
+      spawnWakeListener();
+    };
+
+    // Pre-check mic permission so the background listener doesn't silently die.
+    // If permission is already 'granted' we skip getUserMedia to avoid the
+    // pop-up appearing again. If it's 'prompt' we warm it up first.
+    if (navigator.permissions) {
+      navigator.permissions
+        .query({ name: "microphone" as PermissionName })
+        .then(result => {
+          if (result.state === "denied") return; // can't do anything
+          if (result.state === "granted") { doSpawn(); return; }
+          // state === "prompt" — trigger the native dialog via getUserMedia,
+          // then immediately release the track and start the wake listener.
+          navigator.mediaDevices
+            ?.getUserMedia({ audio: true })
+            .then(stream => { stream.getTracks().forEach(t => t.stop()); doSpawn(); })
+            .catch(() => {
+              setMicError("Microphone access denied. Enable it to use 'Hey June'.");
+              setTimeout(() => setMicError(null), 6000);
+            });
+        })
+        .catch(() => doSpawn()); // Permissions API unavailable — just try
+    } else {
+      doSpawn();
+    }
   }
 
   // ── Main voice recognition ─────────────────────────────────────────────────
