@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Sparkles, User } from "lucide-react";
+import { Sparkles, User, Thermometer, Activity } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface LabInputFormProps {
@@ -116,7 +116,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Accordion type="multiple" defaultValue={["demographics", "cbc", "hormones", "lipids", "other"]} className="space-y-4">
+        <Accordion type="multiple" defaultValue={["demographics", "symptoms", "cbc", "hormones", "lipids", "other"]} className="space-y-4">
           {/* Patient Demographics & ASCVD Risk Factors */}
           <AccordionItem value="demographics" className="border rounded-md px-4">
             <AccordionTrigger className="hover:no-underline" data-testid="accordion-demographics">
@@ -221,27 +221,6 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
                   )}
                 />
 
-                <FormField
-                  control={form.control}
-                  name="demographics.sex"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Sex</FormLabel>
-                      <Select onValueChange={field.onChange} value={field.value}>
-                        <FormControl>
-                          <SelectTrigger data-testid="select-sex">
-                            <SelectValue placeholder="Select sex" />
-                          </SelectTrigger>
-                        </FormControl>
-                        <SelectContent>
-                          <SelectItem value="male">Male</SelectItem>
-                          <SelectItem value="female">Female</SelectItem>
-                        </SelectContent>
-                      </Select>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
 
                 <FormField
                   control={form.control}
@@ -368,18 +347,35 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
                   render={({ field }) => (
                     <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
                       <FormControl>
-                        <Checkbox
-                          checked={field.value ?? false}
-                          onCheckedChange={field.onChange}
-                          data-testid="checkbox-smoker"
-                        />
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-smoker" />
                       </FormControl>
-                      <div className="space-y-1 leading-none">
-                        <FormLabel className="text-xs font-medium uppercase">
-                          Current Smoker
-                        </FormLabel>
-                        <p className="text-xs text-muted-foreground">Leave unchecked if non-smoker</p>
-                      </div>
+                      <FormLabel className="text-xs font-medium uppercase">Current Smoker</FormLabel>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.familyHistory"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-family-history" />
+                      </FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Family History of Premature CVD</FormLabel>
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="demographics.onStatins"
+                  render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl>
+                        <Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-on-statins" />
+                      </FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Currently on Statin Therapy</FormLabel>
                     </FormItem>
                   )}
                 />
@@ -388,121 +384,149 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
               {/* STOP-BANG Sleep Apnea Screening */}
               <div className="mt-6 pt-6 border-t">
                 <h4 className="text-sm font-semibold mb-4 text-primary">STOP-BANG Sleep Apnea Screening</h4>
-                <p className="text-xs text-muted-foreground mb-4">
-                  Optional screening for obstructive sleep apnea risk. Age, sex, and blood pressure are already captured above.
-                </p>
-                
-                <div className="grid grid-cols-1 gap-4">
-                  <FormField
-                    control={form.control}
-                    name="demographics.snoring"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-snoring"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">
-                            Snoring (loud enough to be heard through closed door)
-                          </FormLabel>
-                          <p className="text-xs text-muted-foreground">Leave unchecked if no loud snoring</p>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="demographics.tiredness"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-tiredness"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">
-                            Tiredness (excessive daytime sleepiness or fatigue)
-                          </FormLabel>
-                          <p className="text-xs text-muted-foreground">Leave unchecked if no excessive tiredness</p>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="demographics.observedApnea"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-observed-apnea"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">
-                            Observed Apnea (witnessed breathing pauses during sleep)
-                          </FormLabel>
-                          <p className="text-xs text-muted-foreground">Leave unchecked if no witnessed apneas</p>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="demographics.bmiOver35"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-bmi-over-35"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">
-                            BMI Greater Than 35 kg/m²
-                          </FormLabel>
-                          <p className="text-xs text-muted-foreground">Leave unchecked if BMI ≤35</p>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
-
-                  <FormField
-                    control={form.control}
-                    name="demographics.neckCircOver40cm"
-                    render={({ field }) => (
-                      <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
-                        <FormControl>
-                          <Checkbox
-                            checked={field.value ?? false}
-                            onCheckedChange={field.onChange}
-                            data-testid="checkbox-neck-circ-over-40"
-                          />
-                        </FormControl>
-                        <div className="space-y-1 leading-none">
-                          <FormLabel className="text-xs font-medium uppercase">
-                            Neck Circumference Greater Than 40cm (16 inches)
-                          </FormLabel>
-                          <p className="text-xs text-muted-foreground">Leave unchecked if neck circumference ≤40cm</p>
-                        </div>
-                      </FormItem>
-                    )}
-                  />
+                <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                  <FormField control={form.control} name="demographics.snoring" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-snoring" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Snoring (loud)</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="demographics.tiredness" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-tiredness" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Excessive Daytime Tiredness</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="demographics.observedApnea" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-observed-apnea" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Observed Breathing Pauses</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="demographics.bmiOver35" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-bmi-over-35" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">BMI &gt; 35 kg/m²</FormLabel>
+                    </FormItem>
+                  )} />
+                  <FormField control={form.control} name="demographics.neckCircOver40cm" render={({ field }) => (
+                    <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-4">
+                      <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-neck-circ-over-40" /></FormControl>
+                      <FormLabel className="text-xs font-medium uppercase">Neck Circumference &gt; 40 cm</FormLabel>
+                    </FormItem>
+                  )} />
                 </div>
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Symptom Assessment */}
+          <AccordionItem value="symptoms" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-symptoms">
+              <div className="flex items-center gap-2">
+                <Thermometer className="w-4 h-4 text-orange-500" />
+                <span className="font-semibold">Symptom Assessment</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-2">
+              <p className="text-xs text-muted-foreground mb-4">Check any symptoms the patient is currently experiencing. These drive clinical phenotype detection and personalized recommendations.</p>
+              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+                <FormField control={form.control} name="lowLibido" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-low-libido" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Low Libido</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="lowEnergy" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-low-energy" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Low Energy / Fatigue</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="lowMotivation" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-low-motivation" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Low Motivation</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="brainFog" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-brain-fog" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Brain Fog</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="moodChanges" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-mood-changes" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Mood Changes</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="irritability" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-irritability" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Irritability</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="anxiety" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-anxiety" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Anxiety</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="sleepDisruption" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-sleep-disruption" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Sleep Disruption</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="nightSweats" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-night-sweats" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Night Sweats</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="hairLoss" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-hair-loss" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Hair Loss / Thinning</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="weightGain" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-weight-gain" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Weight Gain / Central Adiposity</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="jointAches" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-joint-aches" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Joint Aches</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="headaches" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-headaches" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Headaches</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="acne" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-acne" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Acne</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="bloating" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-bloating" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Bloating / GI Issues</FormLabel>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="restlessLegs" render={({ field }) => (
+                  <FormItem className="flex flex-row items-center space-x-3 space-y-0 rounded-md border p-3">
+                    <FormControl><Checkbox checked={field.value ?? false} onCheckedChange={field.onChange} data-testid="checkbox-restless-legs" /></FormControl>
+                    <FormLabel className="text-xs font-medium">Restless Legs</FormLabel>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>
@@ -1290,6 +1314,45 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
                         </FormControl>
                         <span className="text-sm text-muted-foreground whitespace-nowrap">mg/dL</span>
                       </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Inflammation Markers */}
+          <AccordionItem value="inflammation" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-inflammation">
+              <div className="flex items-center gap-2">
+                <Activity className="w-4 h-4 text-yellow-500" />
+                <span className="font-semibold">Inflammation Markers</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 gap-4">
+                <FormField
+                  control={form.control}
+                  name="hsCRP"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">hs-CRP (High-Sensitivity CRP)</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="1.0"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-hscrp"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">mg/L</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">&lt;1 low risk, 1–3 moderate, &gt;3 high risk</p>
                       <FormMessage />
                     </FormItem>
                   )}

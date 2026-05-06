@@ -159,6 +159,24 @@ export const labValuesSchema = z.object({
 
   // Clinical context
   onTRT: z.boolean().optional(), // Patient is currently on Testosterone Replacement Therapy
+
+  // Male symptom assessment (drives phenotype detection and personalized recommendations)
+  lowLibido: z.boolean().optional(),
+  lowEnergy: z.boolean().optional(),
+  lowMotivation: z.boolean().optional(),
+  brainFog: z.boolean().optional(),
+  moodChanges: z.boolean().optional(),
+  irritability: z.boolean().optional(),
+  anxiety: z.boolean().optional(),
+  sleepDisruption: z.boolean().optional(),
+  nightSweats: z.boolean().optional(),
+  hairLoss: z.boolean().optional(),
+  weightGain: z.boolean().optional(),
+  jointAches: z.boolean().optional(),
+  headaches: z.boolean().optional(),
+  acne: z.boolean().optional(),
+  bloating: z.boolean().optional(),
+  restlessLegs: z.boolean().optional(),
 });
 
 // Female-specific Lab Values Schema

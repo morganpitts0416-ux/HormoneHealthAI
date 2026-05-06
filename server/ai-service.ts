@@ -528,6 +528,45 @@ MEDICATION NAME RULE — NON-NEGOTIABLE: You must NEVER invent, fabricate, or ap
       if (vitalsBlock) prompt += vitalsBlock;
     } catch { /* non-fatal */ }
 
+    // Add ASCVD risk modifiers (family history, statin use)
+    if (gender === 'male') {
+      const dem = (labs as any).demographics ?? {};
+      const riskModifiers: string[] = [];
+      if (dem.familyHistory) riskModifiers.push('premature family CVD history');
+      if (dem.onStatins) riskModifiers.push('currently on statin therapy');
+      if (riskModifiers.length) {
+        prompt += `CARDIOVASCULAR RISK MODIFIERS: ${riskModifiers.join(', ')}.\n\n`;
+      }
+    }
+
+    // Add patient-reported symptoms block for male patients
+    if (gender === 'male') {
+      const MALE_SYMPTOM_LABELS: Record<string, string> = {
+        lowLibido: 'Low libido',
+        lowEnergy: 'Low energy / fatigue',
+        lowMotivation: 'Low motivation',
+        brainFog: 'Brain fog',
+        moodChanges: 'Mood changes',
+        irritability: 'Irritability',
+        anxiety: 'Anxiety',
+        sleepDisruption: 'Sleep disruption',
+        nightSweats: 'Night sweats',
+        hairLoss: 'Hair loss / thinning',
+        weightGain: 'Weight gain / central adiposity',
+        jointAches: 'Joint aches',
+        headaches: 'Headaches',
+        acne: 'Acne',
+        bloating: 'Bloating / GI issues',
+        restlessLegs: 'Restless legs',
+      };
+      const activeSymptoms = Object.entries(MALE_SYMPTOM_LABELS)
+        .filter(([key]) => (labs as any)[key] === true)
+        .map(([, label]) => label);
+      if (activeSymptoms.length > 0) {
+        prompt += `PATIENT-REPORTED SYMPTOMS: ${activeSymptoms.join(', ')}.\nFactor these into your clinical assessment and recommendations — correlate with lab findings where applicable.\n\n`;
+      }
+    }
+
     // Add red flags if any
     if (redFlags.length > 0) {
       prompt += "RED FLAGS (Physician Notification Required):\n";
