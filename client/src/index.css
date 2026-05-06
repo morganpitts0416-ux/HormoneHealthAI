@@ -379,6 +379,11 @@
 }
 
 /* ── ReAlign Global Loading Overlay Animations ───────────────────────────── */
+@keyframes shrink {
+  from { width: 100%; }
+  to   { width: 0%; }
+}
+
 @keyframes realign-breathe {
   0%, 100% { transform: scale(1); opacity: 0.88; }
   50%       { transform: scale(1.07); opacity: 1; }

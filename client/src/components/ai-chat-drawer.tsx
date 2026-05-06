@@ -72,6 +72,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const abortControllerRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<any>(null);
   const baseInputRef = useRef<string>("");
+  const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [silenceCountdown, setSilenceCountdown] = useState(false);
 
   // PATIENT-SAFETY: Clear conversation + stop recording when patient changes.
   useEffect(() => {
@@ -105,12 +107,37 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   }, [isOpen, patientContext, hasOfferedPatient, messages.length]);
 
   // ── Voice recognition ─────────────────────────────────────────────────────
+  const SILENCE_MS = 2500; // ms of silence after last final chunk → auto-send
+
+  function clearSilenceTimer() {
+    if (silenceTimerRef.current) {
+      clearTimeout(silenceTimerRef.current);
+      silenceTimerRef.current = null;
+    }
+    setSilenceCountdown(false);
+  }
+
   function stopListening() {
+    clearSilenceTimer();
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
       recognitionRef.current = null;
     }
     setIsListening(false);
+  }
+
+  function startSilenceTimer() {
+    clearSilenceTimer();
+    setSilenceCountdown(true);
+    silenceTimerRef.current = setTimeout(() => {
+      setSilenceCountdown(false);
+      // Grab whatever was captured and send it
+      const text = baseInputRef.current.trim();
+      stopListening();
+      if (text && !chatMutation.isPending) {
+        chatMutation.mutate(text);
+      }
+    }, SILENCE_MS);
   }
 
   function startListening() {
@@ -139,7 +166,14 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         ? `${baseInputRef.current.trimEnd()} ${final || interim}`.trim()
         : (final || interim).trim();
       setInput(combined);
-      if (final) baseInputRef.current = combined;
+      if (final) {
+        baseInputRef.current = combined;
+        // Every time a final chunk lands, restart the silence countdown
+        startSilenceTimer();
+      } else {
+        // While actively speaking (interim results), clear any pending timer
+        clearSilenceTimer();
+      }
     };
     recognition.onerror = (event: any) => {
       if (event.error === "not-allowed") {
@@ -149,6 +183,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       stopListening();
     };
     recognition.onend = () => {
+      clearSilenceTimer();
       setIsListening(false);
       recognitionRef.current = null;
       setTimeout(() => inputRef.current?.focus(), 50);
@@ -462,12 +497,30 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
             {/* Listening indicator */}
             {isListening && (
-              <div className="flex items-center gap-1.5 mb-2 px-1">
-                <span className="relative flex h-2 w-2">
-                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
-                  <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
-                </span>
-                <span className="text-xs text-red-600 dark:text-red-400 font-medium">Listening… speak now</span>
+              <div className="mb-2 px-1 space-y-1">
+                <div className="flex items-center gap-1.5">
+                  {silenceCountdown ? (
+                    <>
+                      <span className="relative flex h-2 w-2 flex-shrink-0">
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-amber-500" />
+                      </span>
+                      <span className="text-xs text-amber-600 dark:text-amber-400 font-medium">Pause detected — keep speaking or it will send…</span>
+                    </>
+                  ) : (
+                    <>
+                      <span className="relative flex h-2 w-2 flex-shrink-0">
+                        <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-red-400 opacity-75" />
+                        <span className="relative inline-flex rounded-full h-2 w-2 bg-red-500" />
+                      </span>
+                      <span className="text-xs text-red-600 dark:text-red-400 font-medium">Listening… speak now</span>
+                    </>
+                  )}
+                </div>
+                {silenceCountdown && (
+                  <div className="h-0.5 w-full rounded-full bg-amber-100 dark:bg-amber-900/30 overflow-hidden">
+                    <div className="h-full bg-amber-400 dark:bg-amber-500 animate-[shrink_2.5s_linear_forwards] rounded-full" />
+                  </div>
+                )}
               </div>
             )}
 
