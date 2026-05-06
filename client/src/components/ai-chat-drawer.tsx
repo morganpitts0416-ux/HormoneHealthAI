@@ -94,6 +94,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [silenceCountdown, setSilenceCountdown] = useState(false);
   const shouldBeListeningRef = useRef(false);
+  // Wake-word listener
+  const wakeRecognitionRef = useRef<any>(null);
+  const shouldWakeRef = useRef(false);
+  const isOpenRef = useRef(false);
+  const [isWakeActive, setIsWakeActive] = useState(false);
   // ── Text-to-speech (OpenAI Nova via /api/tts, browser fallback) ──────────
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
 
@@ -180,8 +185,20 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
   }, [patientContext?.id]);
 
-  useEffect(() => { if (!isOpen) stopListening(); }, [isOpen]);
-  useEffect(() => () => stopListening(), []);
+  // Keep isOpenRef in sync so wake-listener callbacks can read it without stale closure
+  useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
+
+  useEffect(() => {
+    if (!isOpen) {
+      stopListening();
+      stopWakeListener();
+    } else if (SpeechRecognitionAPI) {
+      startWakeListener();
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isOpen]);
+
+  useEffect(() => () => { stopListening(); stopWakeListener(); }, []);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -194,7 +211,78 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
   }, [isOpen, patientContext, hasOfferedPatient, messages.length]);
 
-  // ── Voice recognition ─────────────────────────────────────────────────────
+  // ── Wake-word listener ────────────────────────────────────────────────────
+  // Listens silently in the background for "Hey June" (or "Okay June").
+  // Mutually exclusive with the main mic session — browser allows only one at a time.
+  const WAKE_PATTERN = /\b(?:hey|okay?)[,\s]+june\b/i;
+
+  function stopWakeListener() {
+    shouldWakeRef.current = false;
+    if (wakeRecognitionRef.current) {
+      try { wakeRecognitionRef.current.stop(); } catch (_) {}
+      wakeRecognitionRef.current = null;
+    }
+    setIsWakeActive(false);
+  }
+
+  function spawnWakeListener() {
+    if (!SpeechRecognitionAPI || !shouldWakeRef.current) return;
+    if (wakeRecognitionRef.current) {
+      try { wakeRecognitionRef.current.stop(); } catch (_) {}
+      wakeRecognitionRef.current = null;
+    }
+    const wr = new SpeechRecognitionAPI();
+    wr.continuous = true;
+    wr.interimResults = true;
+    wr.lang = "en-US";
+    wakeRecognitionRef.current = wr;
+
+    wr.onstart = () => setIsWakeActive(true);
+
+    wr.onresult = (event: any) => {
+      for (let i = event.resultIndex; i < event.results.length; i++) {
+        const t = event.results[i][0].transcript;
+        if (WAKE_PATTERN.test(t)) {
+          // Strip the wake phrase; any words after it become the initial input
+          const afterWake = t.replace(/.*\b(?:hey|okay?)[,\s]+june[,\s]*/i, "").trim();
+          stopWakeListener();
+          if (afterWake) { baseInputRef.current = afterWake; setInput(afterWake); }
+          setTimeout(() => startListening(), 200);
+          return;
+        }
+      }
+    };
+
+    wr.onerror = (event: any) => {
+      if (event.error === "not-allowed") {
+        shouldWakeRef.current = false;
+        setIsWakeActive(false);
+      }
+      // Non-fatal errors: let onend restart
+    };
+
+    wr.onend = () => {
+      wakeRecognitionRef.current = null;
+      setIsWakeActive(false);
+      if (shouldWakeRef.current) {
+        setTimeout(() => spawnWakeListener(), 300);
+      }
+    };
+
+    try { wr.start(); } catch {
+      shouldWakeRef.current = false;
+      setIsWakeActive(false);
+    }
+  }
+
+  function startWakeListener() {
+    if (!SpeechRecognitionAPI || shouldBeListeningRef.current) return;
+    stopWakeListener();
+    shouldWakeRef.current = true;
+    spawnWakeListener();
+  }
+
+  // ── Main voice recognition ─────────────────────────────────────────────────
   const SILENCE_MS = 2500; // ms of silence after last final chunk → auto-send
 
   function clearSilenceTimer() {
@@ -292,6 +380,10 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         clearSilenceTimer();
         setIsListening(false);
         setTimeout(() => inputRef.current?.focus(), 50);
+        // Resume wake-word listener once main session fully ends
+        if (isOpenRef.current && SpeechRecognitionAPI) {
+          setTimeout(() => startWakeListener(), 400);
+        }
       }
     };
 
@@ -312,8 +404,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       setTimeout(() => setMicError(null), 4000);
       return;
     }
+    stopWakeListener(); // wake and main are mutually exclusive
     setMicError(null);
-    setVoiceLog([]);
     baseInputRef.current = input;
     shouldBeListeningRef.current = true;
     spawnRecognition();
@@ -661,6 +753,17 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
             <p className="text-[10px] text-muted-foreground text-center mb-2">
               AI assistant — clinical decisions are yours. Always verify recommendations.
             </p>
+
+            {/* Wake-word indicator — shown when wake listener is running but not yet activated */}
+            {isWakeActive && !isListening && (
+              <div className="mb-2 px-1 flex items-center gap-1.5">
+                <span className="relative flex h-2 w-2 flex-shrink-0">
+                  <span className="animate-ping absolute inline-flex h-full w-full rounded-full bg-emerald-400 opacity-60" />
+                  <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
+                </span>
+                <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Say "Hey June" to speak</span>
+              </div>
+            )}
 
             {/* Listening indicator */}
             {isListening && (
