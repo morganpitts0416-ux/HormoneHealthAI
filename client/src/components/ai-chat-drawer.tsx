@@ -3,11 +3,18 @@ import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
-import { MessageCircle, X, Send, User, Bot, Loader2, Trash2, UserCheck, Mic, MicOff } from "lucide-react";
+import {
+  MessageCircle, X, Send, User, Bot, Loader2, Trash2, UserCheck,
+  Mic, MicOff, FileText, CheckCheck, ChevronDown, ChevronUp, PenLine,
+} from "lucide-react";
+import { useSoapNoteContext } from "@/contexts/soap-note-context";
+import { useToast } from "@/hooks/use-toast";
 
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  proposedEdit?: string;   // full edited note text proposed by the AI
+  editApplied?: boolean;   // true once the provider clicks "Apply"
 }
 
 interface PatientContext {
@@ -53,6 +60,10 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const [hasOfferedPatient, setHasOfferedPatient] = useState(false);
   const [isListening, setIsListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
+  const [showNotePreview, setShowNotePreview] = useState(false);
+
+  const { toast } = useToast();
+  const { activeSoapNote, onApplySoapEdit } = useSoapNoteContext();
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -60,11 +71,9 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const requestPatientIdRef = useRef<number | null>(null);
   const abortControllerRef = useRef<AbortController | null>(null);
   const recognitionRef = useRef<any>(null);
-  // Tracks the text that was in the box before the current voice session started,
-  // so interim results can be appended cleanly without duplicating it.
   const baseInputRef = useRef<string>("");
 
-  // PATIENT-SAFETY: Clear conversation history whenever the patient context changes.
+  // PATIENT-SAFETY: Clear conversation + stop recording when patient changes.
   useEffect(() => {
     const nextId = patientContext?.id ?? null;
     if (nextId !== prevPatientIdRef.current) {
@@ -81,33 +90,21 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
   }, [patientContext?.id]);
 
-  // Clean up recognition when the drawer closes.
-  useEffect(() => {
-    if (!isOpen) stopListening();
-  }, [isOpen]);
-
-  // Cleanup on unmount.
-  useEffect(() => {
-    return () => stopListening();
-  }, []);
+  useEffect(() => { if (!isOpen) stopListening(); }, [isOpen]);
+  useEffect(() => () => stopListening(), []);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
   }, []);
-
   useEffect(() => { scrollToBottom(); }, [messages, scrollToBottom]);
-
-  useEffect(() => {
-    if (isOpen && inputRef.current) inputRef.current.focus();
-  }, [isOpen]);
-
+  useEffect(() => { if (isOpen && inputRef.current) inputRef.current.focus(); }, [isOpen]);
   useEffect(() => {
     if (isOpen && patientContext && !hasOfferedPatient && messages.length === 0) {
       setHasOfferedPatient(true);
     }
   }, [isOpen, patientContext, hasOfferedPatient, messages.length]);
 
-  // ── Voice recognition ──────────────────────────────────────────────────────
+  // ── Voice recognition ─────────────────────────────────────────────────────
   function stopListening() {
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
@@ -122,41 +119,28 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       setTimeout(() => setMicError(null), 4000);
       return;
     }
-
     setMicError(null);
-    baseInputRef.current = input; // snapshot current text before voice starts
-
+    baseInputRef.current = input;
     const recognition = new SpeechRecognitionAPI();
     recognition.continuous = false;
     recognition.interimResults = true;
     recognition.lang = "en-US";
     recognitionRef.current = recognition;
-
     recognition.onstart = () => setIsListening(true);
-
     recognition.onresult = (event: any) => {
       let interim = "";
       let final = "";
       for (let i = event.resultIndex; i < event.results.length; i++) {
-        const transcript = event.results[i][0].transcript;
-        if (event.results[i].isFinal) {
-          final += transcript;
-        } else {
-          interim += transcript;
-        }
+        const t = event.results[i][0].transcript;
+        if (event.results[i].isFinal) final += t;
+        else interim += t;
       }
-      // Show interim results immediately; finalise on isFinal
       const combined = baseInputRef.current
         ? `${baseInputRef.current.trimEnd()} ${final || interim}`.trim()
         : (final || interim).trim();
       setInput(combined);
-
-      // When we get a final result, update the base so a follow-up session appends correctly
-      if (final) {
-        baseInputRef.current = combined;
-      }
+      if (final) baseInputRef.current = combined;
     };
-
     recognition.onerror = (event: any) => {
       if (event.error === "not-allowed") {
         setMicError("Microphone access denied. Check your browser permissions.");
@@ -164,35 +148,24 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       }
       stopListening();
     };
-
     recognition.onend = () => {
       setIsListening(false);
       recognitionRef.current = null;
-      // Re-focus textarea so the provider can immediately edit or send
       setTimeout(() => inputRef.current?.focus(), 50);
     };
-
-    try {
-      recognition.start();
-    } catch (err) {
+    try { recognition.start(); } catch {
       setMicError("Could not start microphone. Please try again.");
       setTimeout(() => setMicError(null), 4000);
       stopListening();
     }
   }
 
-  function toggleListening() {
-    if (isListening) {
-      stopListening();
-    } else {
-      startListening();
-    }
-  }
+  function toggleListening() { isListening ? stopListening() : startListening(); }
 
-  // ── Chat mutation ──────────────────────────────────────────────────────────
+  // ── Chat mutation ─────────────────────────────────────────────────────────
   const chatMutation = useMutation({
     mutationFn: async (userMessage: string) => {
-      const newMessages = [...messages, { role: "user" as const, content: userMessage }];
+      const newMessages: ChatMessage[] = [...messages, { role: "user", content: userMessage }];
       setMessages(newMessages);
       setInput("");
       baseInputRef.current = "";
@@ -203,16 +176,28 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       abortControllerRef.current = controller;
 
       const res = await apiRequest("POST", "/api/ai-chat", {
-        messages: newMessages,
+        messages: newMessages.map(m => ({ role: m.role, content: m.content })),
         patientId: issuedForPatientId ?? undefined,
+        // Send the active SOAP note when one is open so the AI can read + edit it
+        soapNote: activeSoapNote ?? undefined,
       }, { signal: controller.signal });
+
       const data = await res.json();
       return { data, issuedForPatientId };
     },
     onSuccess: ({ data, issuedForPatientId }: { data: any; issuedForPatientId: number | null }) => {
       const currentPatientId = patientContext?.id ?? null;
       if (issuedForPatientId !== currentPatientId) return;
-      setMessages(prev => [...prev, { role: "assistant", content: data.reply }]);
+
+      const reply: string = data.reply ?? "I wasn't able to generate a response.";
+      const editedNote: string | null = data.editedNote ?? null;
+
+      setMessages(prev => [...prev, {
+        role: "assistant",
+        content: reply,
+        proposedEdit: editedNote ?? undefined,
+        editApplied: false,
+      }]);
     },
     onError: (err: Error) => {
       const issuedForPatientId = requestPatientIdRef.current;
@@ -231,18 +216,24 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   };
 
   const handleKeyDown = (e: React.KeyboardEvent) => {
-    if (e.key === "Enter" && !e.shiftKey) {
-      e.preventDefault();
-      handleSend();
+    if (e.key === "Enter" && !e.shiftKey) { e.preventDefault(); handleSend(); }
+  };
+
+  const handleClearChat = () => { setMessages([]); setHasOfferedPatient(false); };
+
+  const handleApplyEdit = (msgIdx: number, newNote: string) => {
+    if (!onApplySoapEdit) {
+      toast({ title: "No note open", description: "Open a SOAP note in the encounter editor first.", variant: "destructive" });
+      return;
     }
+    onApplySoapEdit(newNote);
+    setMessages(prev => prev.map((m, i) => i === msgIdx ? { ...m, editApplied: true } : m));
+    toast({ title: "Note updated", description: "The co-pilot's changes were applied. Review and save when ready." });
   };
 
-  const handleClearChat = () => {
-    setMessages([]);
-    setHasOfferedPatient(false);
-  };
+  const soapNoteActive = !!activeSoapNote && !!onApplySoapEdit;
 
-  // ── Render ─────────────────────────────────────────────────────────────────
+  // ── Render ────────────────────────────────────────────────────────────────
   return (
     <>
       {!isOpen && (
@@ -259,11 +250,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
       {isOpen && (
         <div
-          className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 flex flex-col w-full sm:w-[420px] h-[100dvh] sm:h-[600px] sm:max-h-[80vh] bg-background border border-border sm:rounded-lg shadow-2xl overflow-hidden"
+          className="fixed bottom-0 right-0 sm:bottom-6 sm:right-6 z-50 flex flex-col w-full sm:w-[430px] h-[100dvh] sm:h-[640px] sm:max-h-[85vh] bg-background border border-border sm:rounded-lg shadow-2xl overflow-hidden"
           data-testid="panel-ai-chat"
         >
           {/* Header */}
-          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b" style={{ backgroundColor: "#2e3a20" }}>
+          <div className="flex items-center justify-between gap-2 px-4 py-3 border-b flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
             <div className="flex items-center gap-2 min-w-0">
               <Bot className="w-5 h-5 text-white flex-shrink-0" />
               <div className="min-w-0">
@@ -285,34 +276,64 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
           {/* Patient context bar */}
           {patientContext && (
-            <div className="flex items-center justify-between gap-2 px-4 py-2 border-b bg-emerald-50/60 dark:bg-emerald-950/20">
+            <div className="flex items-center justify-between gap-2 px-4 py-2 border-b bg-emerald-50/60 dark:bg-emerald-950/20 flex-shrink-0">
               <div className="flex items-center gap-2 min-w-0">
                 <UserCheck className="w-4 h-4 text-emerald-700 dark:text-emerald-400 flex-shrink-0" />
                 <span className="text-xs text-emerald-800 dark:text-emerald-300 truncate">
                   {usePatient ? `Discussing: ${patientContext.name}` : "Patient context off"}
                 </span>
               </div>
-              <Button
-                variant="ghost"
-                size="sm"
-                onClick={() => setUsePatient(!usePatient)}
-                className="text-xs h-6 px-2 flex-shrink-0"
-                data-testid="button-toggle-patient-context"
-              >
+              <Button variant="ghost" size="sm" onClick={() => setUsePatient(!usePatient)} className="text-xs h-6 px-2 flex-shrink-0" data-testid="button-toggle-patient-context">
                 {usePatient ? "Disconnect" : "Connect"}
               </Button>
             </div>
           )}
 
+          {/* SOAP note active bar */}
+          {soapNoteActive && (
+            <div className="flex items-center justify-between gap-2 px-4 py-2 border-b bg-blue-50/60 dark:bg-blue-950/20 flex-shrink-0">
+              <div className="flex items-center gap-2 min-w-0">
+                <PenLine className="w-4 h-4 text-blue-700 dark:text-blue-400 flex-shrink-0" />
+                <span className="text-xs text-blue-800 dark:text-blue-300 truncate">
+                  SOAP note loaded — I can read and edit it
+                </span>
+              </div>
+              <button
+                onClick={() => setShowNotePreview(v => !v)}
+                className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 flex-shrink-0"
+                data-testid="button-toggle-note-preview"
+              >
+                Preview
+                {showNotePreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+              </button>
+            </div>
+          )}
+
+          {/* SOAP note preview (collapsed by default) */}
+          {soapNoteActive && showNotePreview && (
+            <div className="border-b bg-blue-50/30 dark:bg-blue-950/10 px-4 py-2 flex-shrink-0 max-h-36 overflow-y-auto">
+              <pre className="text-[10px] text-muted-foreground whitespace-pre-wrap font-mono leading-relaxed">
+                {activeSoapNote!.slice(0, 800)}{activeSoapNote!.length > 800 ? "\n…(truncated)" : ""}
+              </pre>
+            </div>
+          )}
+
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4">
+          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center px-4 space-y-4">
                 <div className="w-14 h-14 rounded-full flex items-center justify-center" style={{ backgroundColor: "#f4f8f0" }}>
                   <Bot className="w-7 h-7" style={{ color: "#2e3a20" }} />
                 </div>
                 <div className="space-y-2">
-                  {patientContext && usePatient ? (
+                  {soapNoteActive ? (
+                    <>
+                      <p className="text-sm font-medium">SOAP note is loaded and ready.</p>
+                      <p className="text-xs text-muted-foreground">
+                        Ask me to add, edit, or refine any section — or ask a clinical question. I'll tell you exactly what I changed before applying anything.
+                      </p>
+                    </>
+                  ) : patientContext && usePatient ? (
                     <>
                       <p className="text-sm text-muted-foreground">
                         Built on real-world protocols, optimized lab ranges, and clinical pattern recognition.
@@ -329,20 +350,25 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                       <div className="text-left text-xs text-muted-foreground space-y-1">
                         <p className="font-medium text-foreground text-xs">Use me to:</p>
                         <ul className="space-y-0.5 ml-1">
-                          <li className="flex gap-1.5 items-start"><span className="text-muted-foreground/80">&#8226;</span> Interpret labs with context (not just "normal ranges")</li>
-                          <li className="flex gap-1.5 items-start"><span className="text-muted-foreground/80">&#8226;</span> Identify hormone & metabolic patterns</li>
-                          <li className="flex gap-1.5 items-start"><span className="text-muted-foreground/80">&#8226;</span> Pressure-test treatment plans</li>
-                          <li className="flex gap-1.5 items-start"><span className="text-muted-foreground/80">&#8226;</span> Think through complex patients</li>
+                          <li className="flex gap-1.5 items-start"><span>&#8226;</span> Interpret labs with context</li>
+                          <li className="flex gap-1.5 items-start"><span>&#8226;</span> Identify hormone & metabolic patterns</li>
+                          <li className="flex gap-1.5 items-start"><span>&#8226;</span> Edit and refine open SOAP notes</li>
+                          <li className="flex gap-1.5 items-start"><span>&#8226;</span> Pressure-test treatment plans</li>
                         </ul>
                       </div>
-                      <p className="text-xs text-muted-foreground italic">
-                        Ask anything — from quick confirmations to full case breakdowns.
-                      </p>
                     </>
                   )}
                 </div>
+
+                {/* Quick-prompt chips */}
                 <div className="flex flex-wrap justify-center gap-2">
-                  {patientContext && usePatient ? (
+                  {soapNoteActive ? (
+                    <>
+                      <Badge variant="outline" className="cursor-pointer text-xs" onClick={() => { setInput("Add a GLP-1 differential statement to the assessment."); inputRef.current?.focus(); }}>Add GLP-1 differential</Badge>
+                      <Badge variant="outline" className="cursor-pointer text-xs" onClick={() => { setInput("Make the assessment section more detailed."); inputRef.current?.focus(); }}>Expand assessment</Badge>
+                      <Badge variant="outline" className="cursor-pointer text-xs" onClick={() => { setInput("Add a follow-up plan to the plan section."); inputRef.current?.focus(); }}>Add follow-up plan</Badge>
+                    </>
+                  ) : patientContext && usePatient ? (
                     <>
                       <Badge variant="outline" className="cursor-pointer text-xs" onClick={() => { setInput("What patterns do you see in this patient's latest labs?"); inputRef.current?.focus(); }} data-testid="badge-quick-labs">Lab patterns</Badge>
                       <Badge variant="outline" className="cursor-pointer text-xs" onClick={() => { setInput("Any red flags or concerns I should address?"); inputRef.current?.focus(); }} data-testid="badge-quick-flags">Red flags</Badge>
@@ -366,18 +392,43 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                     <Bot className="w-4 h-4" style={{ color: "#2e3a20" }} />
                   </div>
                 )}
-                <div className={`max-w-[80%] rounded-lg px-3 py-2 ${
-                  msg.role === "user" ? "text-white text-sm" : "bg-muted"
-                }`} style={msg.role === "user" ? { backgroundColor: "#2e3a20" } : undefined}>
-                  {msg.role === "user" ? (
-                    <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
-                  ) : (
-                    <div
-                      className="prose prose-sm dark:prose-invert max-w-none [&_li]:list-disc [&_strong]:font-semibold"
-                      dangerouslySetInnerHTML={{ __html: formatMarkdown(msg.content) }}
-                    />
+                <div className="max-w-[82%] space-y-1.5">
+                  <div className={`rounded-lg px-3 py-2 ${msg.role === "user" ? "text-white text-sm" : "bg-muted"}`}
+                    style={msg.role === "user" ? { backgroundColor: "#2e3a20" } : undefined}>
+                    {msg.role === "user" ? (
+                      <p className="text-sm whitespace-pre-wrap">{msg.content}</p>
+                    ) : (
+                      <div
+                        className="prose prose-sm dark:prose-invert max-w-none [&_li]:list-disc [&_strong]:font-semibold"
+                        dangerouslySetInnerHTML={{ __html: formatMarkdown(msg.content) }}
+                      />
+                    )}
+                  </div>
+
+                  {/* Apply-to-note button — shown when AI proposed an edit */}
+                  {msg.role === "assistant" && msg.proposedEdit && (
+                    <div className="flex items-center gap-2">
+                      {msg.editApplied ? (
+                        <div className="flex items-center gap-1.5 text-xs text-emerald-600 dark:text-emerald-400 px-1">
+                          <CheckCheck className="w-3.5 h-3.5" />
+                          Applied to note
+                        </div>
+                      ) : (
+                        <Button
+                          size="sm"
+                          className="h-7 text-xs gap-1.5"
+                          style={{ backgroundColor: "#2e3a20", color: "#fff" }}
+                          onClick={() => handleApplyEdit(i, msg.proposedEdit!)}
+                          data-testid={`button-apply-soap-edit-${i}`}
+                        >
+                          <FileText className="w-3 h-3" />
+                          Apply to note
+                        </Button>
+                      )}
+                    </div>
                   )}
                 </div>
+
                 {msg.role === "user" && (
                   <div className="w-7 h-7 rounded-full bg-muted flex items-center justify-center flex-shrink-0 mt-0.5">
                     <User className="w-4 h-4 text-muted-foreground" />
@@ -394,7 +445,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                 <div className="bg-muted rounded-lg px-3 py-2">
                   <div className="flex items-center gap-2 text-xs text-muted-foreground">
                     <Loader2 className="w-3 h-3 animate-spin" />
-                    <span>Thinking...</span>
+                    <span>{soapNoteActive ? "Reading note and thinking…" : "Thinking…"}</span>
                   </div>
                 </div>
               </div>
@@ -404,7 +455,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           </div>
 
           {/* Input area */}
-          <div className="border-t px-3 py-2 bg-background">
+          <div className="border-t px-3 py-2 bg-background flex-shrink-0">
             <p className="text-[10px] text-muted-foreground text-center mb-2">
               AI assistant — clinical decisions are yours. Always verify recommendations.
             </p>
@@ -420,10 +471,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
               </div>
             )}
 
-            {/* Mic permission / support error */}
-            {micError && (
-              <p className="text-xs text-destructive mb-2 px-1">{micError}</p>
-            )}
+            {/* Mic error */}
+            {micError && <p className="text-xs text-destructive mb-2 px-1">{micError}</p>}
 
             <div className="flex items-end gap-2">
               <textarea
@@ -431,14 +480,17 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                 value={input}
                 onChange={e => setInput(e.target.value)}
                 onKeyDown={handleKeyDown}
-                placeholder={isListening ? "Listening…" : "Ask a clinical question, or speak using the mic"}
+                placeholder={
+                  isListening ? "Listening…"
+                    : soapNoteActive ? "Ask me to edit the note, or ask a clinical question…"
+                    : "Ask a clinical question, or speak using the mic"
+                }
                 rows={1}
                 className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 max-h-24 min-h-[36px]"
                 style={{ lineHeight: "1.5" }}
                 data-testid="input-ai-chat"
               />
 
-              {/* Mic button — hidden when browser doesn't support it */}
               {SpeechRecognitionAPI && (
                 <Button
                   size="icon"

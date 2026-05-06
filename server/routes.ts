@@ -12612,7 +12612,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const { messages, patientId } = req.body;
+      const { messages, patientId, soapNote } = req.body;
       if (!messages || !Array.isArray(messages) || messages.length === 0) {
         return res.status(400).json({ message: "messages array is required" });
       }
@@ -12623,6 +12623,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         if (!m.content || typeof m.content !== "string" || m.content.length > 10000) {
           return res.status(400).json({ message: "Each message must be a string under 10,000 characters." });
         }
+      }
+      if (soapNote !== undefined && (typeof soapNote !== "string" || soapNote.length > 30000)) {
+        return res.status(400).json({ message: "soapNote must be a string under 30,000 characters." });
       }
 
       let patientContext = "";
@@ -12716,7 +12719,33 @@ RESPONSE FORMAT:
 - Bold key clinical values and recommendations
 - When citing evidence, format as: **[Guideline/Study Name, Year]** — brief description
 - Include a "References" section at the end of detailed clinical discussions
-- For patient-specific discussions, structure your response with clear sections${patientContext}
+- For patient-specific discussions, structure your response with clear sections${patientContext}${soapNote ? `
+
+--- ACTIVE SOAP NOTE (open in provider's editor) ---
+${soapNote}
+--- END SOAP NOTE ---
+
+SOAP NOTE EDITING MODE — CRITICAL INSTRUCTIONS:
+The provider has a SOAP note open. You can read it and propose edits to it.
+You MUST always respond in this exact JSON format (no markdown wrapper, raw JSON only):
+{
+  "reply": "Your conversational response — explanation of changes made, clinical reasoning, or answer to the question. Markdown is allowed here.",
+  "editedNote": "The COMPLETE updated SOAP note text, or omit this field entirely if no edit was requested."
+}
+
+Rules for SOAP note editing:
+- When asked to edit, add to, modify, or change the note: include "editedNote" with the FULL note text (all sections), incorporating your changes.
+- When NOT editing (general questions, explanations, clinical discussion): omit "editedNote" entirely — just return "reply".
+- Section placement logic — be smart about WHERE to add content:
+  • Clinical history, chief complaint, HPI → SUBJECTIVE
+  • Vitals, exam findings, lab results, review of systems → OBJECTIVE
+  • Diagnoses, differentials, clinical reasoning, assessments → ASSESSMENT
+  • Medications, orders, instructions, referrals, follow-up → PLAN
+- If the provider specifies a section (e.g. "add this to the plan"), honor that.
+- If no section is specified, place the content where it clinically belongs.
+- Preserve ALL existing content unless explicitly asked to remove something.
+- Match the exact formatting style (spacing, capitalization, bullet style) of the existing note.
+- Never invent clinical information — only add what the provider instructs or what is clinically supported by the conversation context.` : ""}
 
 IMPORTANT:
 - You are an AI assistant. Always remind the provider that clinical decisions are theirs — you're here to support, not replace their judgment.
@@ -12740,12 +12769,31 @@ IMPORTANT:
         model: "gpt-4o-mini",
         messages: chatMessages,
         temperature: 0.4,
-        max_tokens: 2000,
+        max_tokens: 3000,
+        ...(soapNote ? { response_format: { type: "json_object" } } : {}),
       });
 
-      const reply = completion.choices[0]?.message?.content || "I'm sorry, I wasn't able to generate a response. Please try rephrasing your question.";
+      const raw = completion.choices[0]?.message?.content || "";
 
-      res.json({ reply, patientName: patientName || null });
+      // When soapNote was in the request the model returns structured JSON.
+      // Parse it and forward both fields so the client can render the reply
+      // and optionally surface an "Apply to note" button.
+      if (soapNote) {
+        try {
+          const parsed = JSON.parse(raw);
+          const reply = parsed.reply || "I wasn't able to generate a response. Please try again.";
+          const editedNote: string | undefined = typeof parsed.editedNote === "string" && parsed.editedNote.trim()
+            ? parsed.editedNote.trim()
+            : undefined;
+          return res.json({ reply, editedNote: editedNote ?? null, patientName: patientName || null });
+        } catch {
+          // Malformed JSON fallback — treat the whole thing as a plain reply
+          return res.json({ reply: raw || "Something went wrong. Please try again.", editedNote: null, patientName: patientName || null });
+        }
+      }
+
+      const reply = raw || "I'm sorry, I wasn't able to generate a response. Please try rephrasing your question.";
+      res.json({ reply, editedNote: null, patientName: patientName || null });
     } catch (err: any) {
       console.error("[AI-Chat] Error:", err);
       if (err.status === 429) {

@@ -63,6 +63,7 @@ import { PatientContextProvider, usePatientContext } from "@/hooks/use-patient-c
 import { AppHeader } from "@/components/app-header";
 import { RecordingProvider } from "@/contexts/recording-context";
 import { FloatingRecorderDock } from "@/components/recording/floating-recorder-dock";
+import { SoapNoteContextProvider } from "@/contexts/soap-note-context";
 
 function ProtectedRoute({ component: Component }: { component: React.ComponentType }) {
   const { user, isLoading } = useAuth();
@@ -359,14 +360,16 @@ function App() {
     <QueryClientProvider client={queryClient}>
       <GlobalLoadingProvider>
         <PatientContextProvider>
-          <TooltipProvider>
-            <TourProvider>
-              <FaviconSpinner />
-              <GlobalLoadingOverlay />
-              <Toaster />
-              <Router />
-            </TourProvider>
-          </TooltipProvider>
+          <SoapNoteContextProvider>
+            <TooltipProvider>
+              <TourProvider>
+                <FaviconSpinner />
+                <GlobalLoadingOverlay />
+                <Toaster />
+                <Router />
+              </TourProvider>
+            </TooltipProvider>
+          </SoapNoteContextProvider>
         </PatientContextProvider>
       </GlobalLoadingProvider>
     </QueryClientProvider>

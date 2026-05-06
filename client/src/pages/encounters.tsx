@@ -34,6 +34,7 @@ import { usePhraseSearch } from "@/components/phrase-search";
 import { useSlashMenu } from "@/components/slash-menu";
 import { SlashShortcutsHelp } from "@/components/slash-shortcuts-help";
 import { useRecording } from "@/contexts/recording-context";
+import { useSoapNoteContext } from "@/contexts/soap-note-context";
 import {
   parseChartSectionItems, BUILTIN_BY_ID,
   type ChartDomainKey,
@@ -771,6 +772,38 @@ export function EncounterEditor({
   const [signedByLocal, setSignedByLocal] = useState<string | null>(encounter?.signedBy ?? null);
   const [isAmendedLocal, setIsAmendedLocal] = useState<boolean>(encounter?.isAmended ?? false);
   const isSigned = !!(signedAtLocal);
+
+  // ── Co-pilot SOAP editing integration ────────────────────────────────────
+  // Register this encounter's setSoap callback with the global SoapNoteContext
+  // so the AiChatDrawer can propose edits and apply them directly into the
+  // editor without any copy-paste. Refs keep the callbacks stable across
+  // re-renders without adding them to the effect dependency array.
+  const { setActiveSoapNote, registerSoapEditor, unregisterSoapEditor } = useSoapNoteContext();
+  const setSoapRef = useRef(setSoap);
+  setSoapRef.current = setSoap;
+  const setSoapViewModeRef = useRef(setSoapViewMode);
+  setSoapViewModeRef.current = setSoapViewMode;
+
+  useEffect(() => {
+    if (!isSigned) {
+      registerSoapEditor((newNote: string) => {
+        setSoapRef.current({ fullNote: newNote });
+        setSoapViewModeRef.current("edit");
+      });
+    } else {
+      unregisterSoapEditor();
+    }
+    return () => unregisterSoapEditor();
+  }, [isSigned, registerSoapEditor, unregisterSoapEditor]);
+
+  // Keep the co-pilot's copy of the note text in sync as the provider types.
+  useEffect(() => {
+    if (!isSigned && soapNoteValue.trim()) {
+      setActiveSoapNote(soapNoteValue);
+    } else if (isSigned) {
+      setActiveSoapNote(null);
+    }
+  }, [soapNoteValue, isSigned, setActiveSoapNote]);
 
   // For signed encounters: hide raw transcript/details, always land on SOAP
   useEffect(() => {
