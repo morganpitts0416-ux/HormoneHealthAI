@@ -53,6 +53,14 @@ const SpeechRecognitionAPI =
     ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
     : null;
 
+// iOS Safari has webkitSpeechRecognition but does NOT support continuous:true —
+// the session ends immediately, so the wake-word listener never stays alive.
+// Detect iOS to gracefully degrade to mic-button-only mode.
+const isIOS =
+  typeof navigator !== "undefined" &&
+  (/iPad|iPhone|iPod/.test(navigator.userAgent) ||
+    (navigator.platform === "MacIntel" && navigator.maxTouchPoints > 1));
+
 // Strip markdown formatting so TTS reads clean text
 function stripMarkdownForSpeech(text: string): string {
   return text
@@ -243,11 +251,13 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       for (let i = event.resultIndex; i < event.results.length; i++) {
         const t = event.results[i][0].transcript;
         if (WAKE_PATTERN.test(t)) {
-          // Strip the wake phrase; any words after it become the initial input
+          // Strip the wake phrase; any words after it become the initial input.
+          // Pass the seed directly to startListening so it is never overwritten
+          // by the stale React `input` state (which hasn't updated yet).
           const afterWake = t.replace(/.*\b(?:hey|okay?)[,\s]+june[,\s]*/i, "").trim();
           stopWakeListener();
-          if (afterWake) { baseInputRef.current = afterWake; setInput(afterWake); }
-          setTimeout(() => startListening(), 200);
+          if (afterWake) setInput(afterWake);
+          setTimeout(() => startListening(afterWake || undefined), 200);
           return;
         }
       }
@@ -276,7 +286,9 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   }
 
   function startWakeListener() {
-    if (!SpeechRecognitionAPI || shouldBeListeningRef.current) return;
+    // iOS does not support continuous SpeechRecognition — skip the wake listener
+    // entirely and rely on the manual mic button instead.
+    if (!SpeechRecognitionAPI || isIOS || shouldBeListeningRef.current) return;
     stopWakeListener();
     shouldWakeRef.current = true;
     spawnWakeListener();
@@ -398,7 +410,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
   }
 
-  function startListening() {
+  function startListening(preSeed?: string) {
     if (!SpeechRecognitionAPI) {
       setMicError("Voice input isn't supported in this browser. Try Chrome.");
       setTimeout(() => setMicError(null), 4000);
@@ -406,7 +418,9 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
     stopWakeListener(); // wake and main are mutually exclusive
     setMicError(null);
-    baseInputRef.current = input;
+    // When triggered by the wake-word path a preSeed is supplied so we never
+    // overwrite it with the stale React `input` state (which hasn't committed yet).
+    baseInputRef.current = preSeed !== undefined ? preSeed : input;
     shouldBeListeningRef.current = true;
     spawnRecognition();
   }
@@ -762,6 +776,14 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                   <span className="relative inline-flex rounded-full h-2 w-2 bg-emerald-500" />
                 </span>
                 <span className="text-[11px] text-emerald-600 dark:text-emerald-400">Say "Hey June" to speak</span>
+              </div>
+            )}
+
+            {/* iOS fallback — continuous wake listening isn't supported; prompt mic button instead */}
+            {isIOS && SpeechRecognitionAPI && !isListening && (
+              <div className="mb-2 px-1 flex items-center gap-1.5">
+                <Mic className="w-3 h-3 text-muted-foreground flex-shrink-0" />
+                <span className="text-[11px] text-muted-foreground">Tap the mic to speak to June</span>
               </div>
             )}
 
