@@ -1,0 +1,462 @@
+import { useState } from "react";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
+import { Button } from "@/components/ui/button";
+import { Input } from "@/components/ui/input";
+import { Textarea } from "@/components/ui/textarea";
+import { Badge } from "@/components/ui/badge";
+import { Card, CardContent } from "@/components/ui/card";
+import {
+  Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
+} from "@/components/ui/select";
+import {
+  Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
+} from "@/components/ui/dialog";
+import {
+  BrainCircuit, Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
+  Zap, BookOpen, MessageSquare, Sparkles,
+} from "lucide-react";
+
+type Category = "instruction" | "trigger" | "snippet";
+
+interface JunePreference {
+  id: number;
+  category: Category;
+  label: string;
+  instruction: string;
+  triggerPhrases: string | null;
+  isActive: boolean;
+  createdAt: string;
+}
+
+const CATEGORY_META: Record<Category, { label: string; icon: React.ComponentType<{ className?: string }>; color: string; description: string }> = {
+  instruction: {
+    label: "Always-on",
+    icon: MessageSquare,
+    color: "bg-blue-100 text-blue-800 dark:bg-blue-950 dark:text-blue-300",
+    description: "June follows this rule in every response",
+  },
+  trigger: {
+    label: "Trigger",
+    icon: Zap,
+    color: "bg-amber-100 text-amber-800 dark:bg-amber-950 dark:text-amber-300",
+    description: "Activates when you use specific phrases",
+  },
+  snippet: {
+    label: "Snippet",
+    icon: BookOpen,
+    color: "bg-emerald-100 text-emerald-800 dark:bg-emerald-950 dark:text-emerald-300",
+    description: "Saved text block — triggers can reference this",
+  },
+};
+
+const EXAMPLES: { category: Category; label: string; instruction: string; triggerPhrases?: string }[] = [
+  {
+    category: "instruction",
+    label: "No note summarizing",
+    instruction: "Never summarize or repeat my SOAP note content back to me. Jump straight to your point.",
+  },
+  {
+    category: "instruction",
+    label: "Always include patient education",
+    instruction: "Always include a patient education section in the Plan when you draft or suggest A/P language.",
+  },
+  {
+    category: "instruction",
+    label: "Show drug dosing",
+    instruction: "Always include dose, frequency, and monitoring parameters when recommending a medication.",
+  },
+  {
+    category: "trigger",
+    label: "GLP-1 start trigger",
+    instruction: "Include my GLP Education snippet in the A/P. Also add standard monitoring: baseline HbA1c, LFTs, lipase, and 3-month follow-up.",
+    triggerPhrases: "start GLP, let's begin semaglutide, let's start tirzepatide, start sema, start tirz, start Ozempic, start Wegovy, start Mounjaro, start Zepbound",
+  },
+  {
+    category: "trigger",
+    label: "TRT start trigger",
+    instruction: "Include TRT baseline labs (total T, free T, SHBG, hematocrit, PSA, estradiol) and note my TRT education snippet in the plan.",
+    triggerPhrases: "start TRT, start testosterone, initiate testosterone, let's start T, begin TRT",
+  },
+  {
+    category: "snippet",
+    label: "GLP Education",
+    instruction: "GLP-1 receptor agonists like semaglutide and tirzepatide work by mimicking the hormone GLP-1, which helps control blood sugar and appetite. Common side effects include nausea, vomiting, and constipation — these usually improve over time. Take the injection once weekly on the same day. Do not increase the dose faster than instructed. Contact us if you experience severe abdominal pain.",
+  },
+];
+
+interface PrefFormState {
+  category: Category;
+  label: string;
+  instruction: string;
+  triggerPhrases: string;
+}
+
+const DEFAULT_FORM: PrefFormState = {
+  category: "instruction",
+  label: "",
+  instruction: "",
+  triggerPhrases: "",
+};
+
+export function JuneSettingsSection() {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [dialogOpen, setDialogOpen] = useState(false);
+  const [editingId, setEditingId] = useState<number | null>(null);
+  const [form, setForm] = useState<PrefFormState>(DEFAULT_FORM);
+  const [showExamples, setShowExamples] = useState(false);
+
+  const { data: prefs = [], isLoading } = useQuery<JunePreference[]>({
+    queryKey: ["/api/june-preferences"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: Omit<PrefFormState, "triggerPhrases"> & { triggerPhrases?: string | null }) =>
+      apiRequest("POST", "/api/june-preferences", data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/june-preferences"] });
+      setDialogOpen(false);
+      setForm(DEFAULT_FORM);
+      toast({ title: "Preference saved", description: "June will follow this from now on." });
+    },
+    onError: () => toast({ title: "Save failed", description: "Something went wrong.", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: Partial<PrefFormState> & { isActive?: boolean } }) =>
+      apiRequest("PATCH", `/api/june-preferences/${id}`, data),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/june-preferences"] });
+      setDialogOpen(false);
+      setEditingId(null);
+      setForm(DEFAULT_FORM);
+      toast({ title: "Preference updated" });
+    },
+    onError: () => toast({ title: "Update failed", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/june-preferences/${id}`),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/june-preferences"] });
+      toast({ title: "Preference removed" });
+    },
+    onError: () => toast({ title: "Delete failed", variant: "destructive" }),
+  });
+
+  const toggleActive = (pref: JunePreference) => {
+    updateMutation.mutate({ id: pref.id, data: { isActive: !pref.isActive } });
+  };
+
+  const openNew = (prefill?: typeof EXAMPLES[0]) => {
+    setEditingId(null);
+    setForm(prefill
+      ? { category: prefill.category, label: prefill.label, instruction: prefill.instruction, triggerPhrases: prefill.triggerPhrases ?? "" }
+      : DEFAULT_FORM
+    );
+    setShowExamples(false);
+    setDialogOpen(true);
+  };
+
+  const openEdit = (pref: JunePreference) => {
+    setEditingId(pref.id);
+    setForm({
+      category: pref.category,
+      label: pref.label,
+      instruction: pref.instruction,
+      triggerPhrases: pref.triggerPhrases ?? "",
+    });
+    setShowExamples(false);
+    setDialogOpen(true);
+  };
+
+  const handleSubmit = () => {
+    if (!form.label.trim() || !form.instruction.trim()) {
+      toast({ title: "Fill in all required fields", variant: "destructive" });
+      return;
+    }
+    const payload = {
+      category: form.category,
+      label: form.label.trim(),
+      instruction: form.instruction.trim(),
+      triggerPhrases: form.category === "trigger" && form.triggerPhrases.trim() ? form.triggerPhrases.trim() : null,
+    };
+    if (editingId !== null) {
+      updateMutation.mutate({ id: editingId, data: payload });
+    } else {
+      createMutation.mutate(payload);
+    }
+  };
+
+  const grouped = {
+    instruction: prefs.filter(p => p.category === "instruction"),
+    trigger: prefs.filter(p => p.category === "trigger"),
+    snippet: prefs.filter(p => p.category === "snippet"),
+  };
+
+  const isPending = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <div className="space-y-6">
+      {/* Header */}
+      <div className="flex items-start justify-between gap-4 flex-wrap">
+        <div className="flex items-start gap-3">
+          <div className="w-10 h-10 rounded-full flex items-center justify-center flex-shrink-0 mt-0.5" style={{ backgroundColor: "#2e3a20" }}>
+            <BrainCircuit className="w-5 h-5 text-white" />
+          </div>
+          <div>
+            <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>Teach June</h3>
+            <p className="text-sm text-muted-foreground mt-0.5 max-w-lg">
+              Tell June how you like to work. These preferences are saved and injected into every conversation — she'll follow them automatically without you having to repeat yourself.
+            </p>
+          </div>
+        </div>
+        <div className="flex items-center gap-2 flex-shrink-0">
+          <Button variant="outline" size="sm" onClick={() => { setShowExamples(true); setEditingId(null); setForm(DEFAULT_FORM); setDialogOpen(true); }} data-testid="button-june-examples">
+            <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+            Examples
+          </Button>
+          <Button size="sm" onClick={() => openNew()} data-testid="button-june-add-pref" style={{ backgroundColor: "#2e3a20", color: "white" }}>
+            <Plus className="w-3.5 h-3.5 mr-1.5" />
+            Add preference
+          </Button>
+        </div>
+      </div>
+
+      {isLoading ? (
+        <div className="text-sm text-muted-foreground py-4">Loading your preferences…</div>
+      ) : prefs.length === 0 ? (
+        <Card>
+          <CardContent className="py-10 flex flex-col items-center text-center gap-3">
+            <BrainCircuit className="w-8 h-8 text-muted-foreground/40" />
+            <div>
+              <p className="text-sm font-medium text-foreground">June doesn't know your preferences yet</p>
+              <p className="text-xs text-muted-foreground mt-1 max-w-sm">
+                Add an always-on instruction, a trigger rule, or a snippet — and she'll follow them in every future conversation.
+              </p>
+            </div>
+            <div className="flex gap-2 mt-1">
+              <Button variant="outline" size="sm" onClick={() => { setShowExamples(true); setDialogOpen(true); }} data-testid="button-june-see-examples">
+                <Sparkles className="w-3.5 h-3.5 mr-1.5" />
+                See examples
+              </Button>
+              <Button size="sm" onClick={() => openNew()} style={{ backgroundColor: "#2e3a20", color: "white" }} data-testid="button-june-add-first">
+                <Plus className="w-3.5 h-3.5 mr-1.5" />
+                Add first preference
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      ) : (
+        <div className="space-y-5">
+          {(["instruction", "trigger", "snippet"] as Category[]).map(cat => {
+            const items = grouped[cat];
+            if (items.length === 0) return null;
+            const meta = CATEGORY_META[cat];
+            const Icon = meta.icon;
+            return (
+              <div key={cat} className="space-y-2">
+                <div className="flex items-center gap-2">
+                  <Icon className="w-3.5 h-3.5 text-muted-foreground" />
+                  <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">{meta.label} · {meta.description}</span>
+                </div>
+                <div className="space-y-2">
+                  {items.map(pref => (
+                    <Card key={pref.id} className={pref.isActive ? "" : "opacity-50"} data-testid={`card-june-pref-${pref.id}`}>
+                      <CardContent className="py-3 px-4 flex items-start gap-3">
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-2 flex-wrap">
+                            <span className="text-sm font-medium text-foreground">{pref.label}</span>
+                            <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${meta.color} border-0`}>
+                              {meta.label}
+                            </Badge>
+                            {!pref.isActive && <Badge variant="outline" className="text-[10px] px-1.5 py-0">Paused</Badge>}
+                          </div>
+                          <p className="text-xs text-muted-foreground mt-1 line-clamp-2">{pref.instruction}</p>
+                          {pref.triggerPhrases && (
+                            <p className="text-[11px] text-amber-700 dark:text-amber-400 mt-1">
+                              <span className="font-medium">Triggers on:</span> {pref.triggerPhrases}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex items-center gap-1 flex-shrink-0">
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => toggleActive(pref)}
+                            title={pref.isActive ? "Pause this preference" : "Resume this preference"}
+                            data-testid={`button-june-toggle-${pref.id}`}
+                          >
+                            {pref.isActive
+                              ? <ToggleRight className="w-4 h-4 text-emerald-600" />
+                              : <ToggleLeft className="w-4 h-4 text-muted-foreground" />
+                            }
+                          </Button>
+                          <Button size="icon" variant="ghost" onClick={() => openEdit(pref)} data-testid={`button-june-edit-${pref.id}`}>
+                            <Pencil className="w-3.5 h-3.5" />
+                          </Button>
+                          <Button
+                            size="icon"
+                            variant="ghost"
+                            onClick={() => deleteMutation.mutate(pref.id)}
+                            className="text-destructive"
+                            data-testid={`button-june-delete-${pref.id}`}
+                          >
+                            <Trash2 className="w-3.5 h-3.5" />
+                          </Button>
+                        </div>
+                      </CardContent>
+                    </Card>
+                  ))}
+                </div>
+              </div>
+            );
+          })}
+        </div>
+      )}
+
+      {/* Add / Edit / Examples Dialog */}
+      <Dialog open={dialogOpen} onOpenChange={open => { setDialogOpen(open); if (!open) { setEditingId(null); setForm(DEFAULT_FORM); setShowExamples(false); } }}>
+        <DialogContent className="max-w-lg">
+          {showExamples ? (
+            <>
+              <DialogHeader>
+                <DialogTitle>Example preferences</DialogTitle>
+              </DialogHeader>
+              <p className="text-xs text-muted-foreground -mt-1 mb-2">Click any example to pre-fill the form, then customise it for your practice.</p>
+              <div className="space-y-2 max-h-[400px] overflow-y-auto pr-1">
+                {EXAMPLES.map((ex, i) => {
+                  const meta = CATEGORY_META[ex.category];
+                  const Icon = meta.icon;
+                  return (
+                    <button
+                      key={i}
+                      onClick={() => openNew(ex)}
+                      className="w-full text-left rounded-md border p-3 hover-elevate transition-colors"
+                      data-testid={`button-june-example-${i}`}
+                    >
+                      <div className="flex items-center gap-2 mb-1">
+                        <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                        <span className="text-sm font-medium">{ex.label}</span>
+                        <Badge variant="outline" className={`text-[10px] px-1.5 py-0 ${meta.color} border-0`}>
+                          {meta.label}
+                        </Badge>
+                      </div>
+                      <p className="text-xs text-muted-foreground line-clamp-2">{ex.instruction}</p>
+                      {ex.triggerPhrases && (
+                        <p className="text-[11px] text-amber-700 mt-1"><span className="font-medium">Triggers on:</span> {ex.triggerPhrases}</p>
+                      )}
+                    </button>
+                  );
+                })}
+              </div>
+            </>
+          ) : (
+            <>
+              <DialogHeader>
+                <DialogTitle>{editingId !== null ? "Edit preference" : "Add preference"}</DialogTitle>
+              </DialogHeader>
+              <div className="space-y-4 py-1">
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Type</label>
+                  <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v as Category }))}>
+                    <SelectTrigger data-testid="select-june-category">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="instruction">
+                        <div className="flex items-center gap-2">
+                          <MessageSquare className="w-3.5 h-3.5" />
+                          <span>Always-on instruction</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="trigger">
+                        <div className="flex items-center gap-2">
+                          <Zap className="w-3.5 h-3.5" />
+                          <span>Trigger rule</span>
+                        </div>
+                      </SelectItem>
+                      <SelectItem value="snippet">
+                        <div className="flex items-center gap-2">
+                          <BookOpen className="w-3.5 h-3.5" />
+                          <span>Context snippet</span>
+                        </div>
+                      </SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <p className="text-xs text-muted-foreground">{CATEGORY_META[form.category].description}</p>
+                </div>
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">Label <span className="text-destructive">*</span></label>
+                  <Input
+                    placeholder={
+                      form.category === "instruction" ? "e.g. No note summarizing"
+                      : form.category === "trigger" ? "e.g. GLP-1 start trigger"
+                      : "e.g. GLP Education"
+                    }
+                    value={form.label}
+                    onChange={e => setForm(f => ({ ...f, label: e.target.value }))}
+                    data-testid="input-june-label"
+                    maxLength={120}
+                  />
+                </div>
+
+                {form.category === "trigger" && (
+                  <div className="space-y-1.5">
+                    <label className="text-sm font-medium">Trigger phrases</label>
+                    <Input
+                      placeholder="e.g. start GLP, let's begin semaglutide, start tirz"
+                      value={form.triggerPhrases}
+                      onChange={e => setForm(f => ({ ...f, triggerPhrases: e.target.value }))}
+                      data-testid="input-june-triggers"
+                      maxLength={500}
+                    />
+                    <p className="text-xs text-muted-foreground">Comma-separated. June activates this rule when you use any of these phrases.</p>
+                  </div>
+                )}
+
+                <div className="space-y-1.5">
+                  <label className="text-sm font-medium">
+                    {form.category === "snippet" ? "Content" : "Instruction"} <span className="text-destructive">*</span>
+                  </label>
+                  <Textarea
+                    placeholder={
+                      form.category === "instruction"
+                        ? "e.g. Never summarize my SOAP note back to me. Jump straight to your point."
+                        : form.category === "trigger"
+                        ? "e.g. Include my GLP Education snippet in the A/P and add standard monitoring labs."
+                        : "e.g. GLP-1 receptor agonists like semaglutide work by mimicking GLP-1..."
+                    }
+                    value={form.instruction}
+                    onChange={e => setForm(f => ({ ...f, instruction: e.target.value }))}
+                    rows={form.category === "snippet" ? 5 : 3}
+                    data-testid="textarea-june-instruction"
+                    maxLength={4000}
+                    className="resize-none"
+                  />
+                  <p className="text-xs text-muted-foreground text-right">{form.instruction.length}/4000</p>
+                </div>
+              </div>
+              <DialogFooter>
+                <Button variant="outline" onClick={() => { setDialogOpen(false); setShowExamples(false); setEditingId(null); setForm(DEFAULT_FORM); }}>
+                  Cancel
+                </Button>
+                <Button
+                  onClick={handleSubmit}
+                  disabled={isPending || !form.label.trim() || !form.instruction.trim()}
+                  data-testid="button-june-pref-save"
+                  style={{ backgroundColor: "#2e3a20", color: "white" }}
+                >
+                  {isPending ? "Saving…" : editingId !== null ? "Save changes" : "Add to June"}
+                </Button>
+              </DialogFooter>
+            </>
+          )}
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}

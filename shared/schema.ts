@@ -2167,6 +2167,29 @@ export const insertChartReviewCommentSchema = createInsertSchema(chartReviewComm
 });
 export type InsertChartReviewComment = z.infer<typeof insertChartReviewCommentSchema>;
 
+// ─── June AI Preference Memory (per-clinician) ───────────────────────────────
+// Providers teach June how they like to work. Three categories:
+//   "instruction" — always-on rule (e.g. "always include patient education in the plan")
+//   "trigger"     — fires when provider's message matches triggerPhrases
+//   "snippet"     — named text block a trigger can reference (e.g. GLP education text)
+export const junePreferences = pgTable("june_preferences", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id"),
+  category: text("category").notNull().default("instruction"),
+  label: text("label").notNull(),
+  instruction: text("instruction").notNull(),
+  triggerPhrases: text("trigger_phrases"),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type JunePreference = typeof junePreferences.$inferSelect;
+export const insertJunePreferenceSchema = createInsertSchema(junePreferences).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertJunePreference = z.infer<typeof insertJunePreferenceSchema>;
+
 // ─── Clinical Block Defaults (per-clinician overrides for ROS / PE) ────────
 // Each clinician (provider) can override the shipped ROS / PE system lists and
 // per-system "normal-finding" text used by the slash menu, manual SOAP

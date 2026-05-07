@@ -1136,3 +1136,17 @@ CREATE TABLE IF NOT EXISTS clinical_block_defaults (
   updated_at TIMESTAMP NOT NULL DEFAULT NOW(),
   CONSTRAINT clinical_block_defaults_clinic_provider_uq UNIQUE (clinic_id, provider_id)
 );
+
+-- ── june_preferences ─────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS june_preferences (
+  id SERIAL PRIMARY KEY,
+  clinician_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  clinic_id INTEGER,
+  category TEXT NOT NULL DEFAULT 'instruction',
+  label TEXT NOT NULL,
+  instruction TEXT NOT NULL,
+  trigger_phrases TEXT,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

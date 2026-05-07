@@ -346,6 +346,12 @@ export interface IStorage {
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
   upsertClinicalBlockDefaults(clinicId: number, providerId: number, data: schema.UpdateClinicalBlockDefaults): Promise<schema.ClinicalBlockDefaultsRow>;
 
+  // ── June AI Preference Memory ────────────────────────────────────────────
+  getJunePreferences(clinicianId: number): Promise<schema.JunePreference[]>;
+  createJunePreference(data: schema.InsertJunePreference): Promise<schema.JunePreference>;
+  updateJunePreference(id: number, clinicianId: number, data: Partial<Pick<schema.JunePreference, 'label' | 'instruction' | 'triggerPhrases' | 'isActive' | 'category'>>): Promise<schema.JunePreference | undefined>;
+  deleteJunePreference(id: number, clinicianId: number): Promise<boolean>;
+
   // ── Collaborating Physician Chart Review ─────────────────────────────────
   getChartReviewAgreementForMidLevel(midLevelUserId: number, clinicId: number): Promise<schema.ChartReviewAgreement | undefined>;
   getChartReviewAgreementById(id: number, clinicId: number): Promise<schema.ChartReviewAgreement | undefined>;
@@ -2003,6 +2009,33 @@ export class DbStorage implements IStorage {
       ...payload,
     }).returning();
     return row;
+  }
+
+  // ── June AI Preference Memory ────────────────────────────────────────────
+  async getJunePreferences(clinicianId: number): Promise<schema.JunePreference[]> {
+    return db.select().from(schema.junePreferences)
+      .where(eq(schema.junePreferences.clinicianId, clinicianId))
+      .orderBy(schema.junePreferences.createdAt);
+  }
+  async createJunePreference(data: schema.InsertJunePreference): Promise<schema.JunePreference> {
+    const [row] = await db.insert(schema.junePreferences).values(data).returning();
+    return row;
+  }
+  async updateJunePreference(
+    id: number,
+    clinicianId: number,
+    data: Partial<Pick<schema.JunePreference, 'label' | 'instruction' | 'triggerPhrases' | 'isActive' | 'category'>>,
+  ): Promise<schema.JunePreference | undefined> {
+    const [row] = await db.update(schema.junePreferences)
+      .set({ ...data, updatedAt: new Date() })
+      .where(and(eq(schema.junePreferences.id, id), eq(schema.junePreferences.clinicianId, clinicianId)))
+      .returning();
+    return row;
+  }
+  async deleteJunePreference(id: number, clinicianId: number): Promise<boolean> {
+    const result = await db.delete(schema.junePreferences)
+      .where(and(eq(schema.junePreferences.id, id), eq(schema.junePreferences.clinicianId, clinicianId)));
+    return (result.rowCount ?? 0) > 0;
   }
 
   // ── Medication Dictionary ────────────────────────────────────────────────────

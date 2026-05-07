@@ -20,7 +20,7 @@ import {
   CreditCard, Clock, AlertTriangle, AlertCircle, XCircle,
   ImagePlus, PenLine, X, Search,
   Building2, User, SlidersHorizontal, FileText, ClipboardList, Shield, ShieldCheck,
-  Bell, Inbox, Stethoscope,
+  Bell, Inbox, Stethoscope, BrainCircuit,
 } from "lucide-react";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PreferencesPanel } from "@/components/preferences-panel";
@@ -28,6 +28,7 @@ import { DiagnosisPresetsSection } from "@/components/diagnosis-presets-section"
 import { NoteTemplatesContent } from "@/pages/note-templates";
 import { ChartReviewSection } from "@/components/chart-review/chart-review-section";
 import { ClinicalBlockDefaultsSection } from "@/components/clinical-block-defaults-section";
+import { JuneSettingsSection } from "@/components/june-settings-section";
 import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { PLATFORM_DEFAULT_BRANDING, resolveBranding } from "@/lib/branding";
 import { useToast } from "@/hooks/use-toast";
@@ -128,7 +129,7 @@ interface MessagingSettings {
   externalMessagingChannelId: string | null;
 }
 
-type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "baa" | "billing";
+type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "baa" | "billing";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
@@ -141,6 +142,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "notes", label: "Note Templates", icon: FileText, clinicianOnly: true, providerVisible: true },
   { id: "blockDefaults", label: "Clinical Block Defaults", icon: Stethoscope, clinicianOnly: true, providerVisible: true },
   { id: "chartReview", label: "Chart Review", icon: ShieldCheck, clinicianOnly: true, providerVisible: true },
+  { id: "juneSettings", label: "Teach June", icon: BrainCircuit, clinicianOnly: true, providerVisible: true },
   { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true, ownerOnly: true },
   { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true, ownerOnly: true },
   { id: "baa", label: "BAA / HIPAA", icon: Shield, clinicianOnly: true, ownerOnly: true },
@@ -595,7 +597,7 @@ export default function Account() {
     // Suite providers (non-admin clinicians on a paid suite plan) can only see
     // the provider-visible sections. Keep this list in sync with
     // `providerVisible: true` entries in SECTIONS above.
-    const providerAllowed: SectionId[] = ["provider", "branding", "diagnoses", "notes", "blockDefaults", "chartReview"];
+    const providerAllowed: SectionId[] = ["provider", "branding", "diagnoses", "notes", "blockDefaults", "chartReview", "juneSettings"];
     if (isSuiteProvider && !providerAllowed.includes(activeSection)) {
       setActiveSection("provider");
     }
@@ -1868,6 +1870,13 @@ export default function Account() {
 
       case "chartReview":
         return <ChartReviewSection />;
+
+      case "juneSettings":
+        return (
+          <div className="space-y-4">
+            <JuneSettingsSection />
+          </div>
+        );
 
       case "preferences":
         return (

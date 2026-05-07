@@ -6,8 +6,9 @@ import { Badge } from "@/components/ui/badge";
 import {
   X, Send, User, Loader2, Trash2, UserCheck,
   Mic, MicOff, FileText, CheckCheck, ChevronDown, ChevronUp, PenLine,
-  Volume2, VolumeX, Square,
+  Volume2, VolumeX, Square, Settings2,
 } from "lucide-react";
+import { useLocation } from "wouter";
 import { useSoapNoteContext } from "@/contexts/soap-note-context";
 import { useToast } from "@/hooks/use-toast";
 const juneWaving = "/assets/june/june-waving.png";
@@ -674,6 +675,16 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                   <Trash2 className="w-4 h-4" />
                 </Button>
               )}
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={() => { setIsOpen(false); setLocation("/account?section=juneSettings"); }}
+                className="text-white/60 hover:text-white no-default-hover-elevate hover:bg-white/10"
+                title="Teach June — manage your preferences"
+                data-testid="button-june-settings"
+              >
+                <Settings2 className="w-4 h-4" />
+              </Button>
               <Button size="icon" variant="ghost" onClick={() => setIsOpen(false)} className="text-white/80 hover:text-white no-default-hover-elevate hover:bg-white/10" data-testid="button-close-ai-chat">
                 <X className="w-4 h-4" />
               </Button>

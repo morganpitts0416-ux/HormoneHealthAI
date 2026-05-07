@@ -12607,6 +12607,81 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // ── June Preference Memory — CRUD ────────────────────────────────────────
+  app.get("/api/june-preferences", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const prefs = await storage.getJunePreferences(clinicianId);
+      res.json(prefs);
+    } catch (err: any) {
+      console.error("[June Prefs] GET error:", err);
+      res.status(500).json({ message: "Failed to load preferences" });
+    }
+  });
+
+  app.post("/api/june-preferences", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const schema_z = (await import("zod")).z;
+      const body = schema_z.object({
+        category: schema_z.enum(["instruction", "trigger", "snippet"]).default("instruction"),
+        label: schema_z.string().trim().min(1).max(120),
+        instruction: schema_z.string().trim().min(1).max(4000),
+        triggerPhrases: schema_z.string().trim().max(500).nullable().optional(),
+        isActive: schema_z.boolean().default(true),
+      }).safeParse(req.body);
+      if (!body.success) return res.status(400).json({ message: "Invalid preference data", errors: body.error.flatten() });
+      const pref = await storage.createJunePreference({
+        clinicianId,
+        clinicId: clinicId ?? null,
+        ...body.data,
+        triggerPhrases: body.data.triggerPhrases ?? null,
+      });
+      res.status(201).json(pref);
+    } catch (err: any) {
+      console.error("[June Prefs] POST error:", err);
+      res.status(500).json({ message: "Failed to create preference" });
+    }
+  });
+
+  app.patch("/api/june-preferences/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const schema_z = (await import("zod")).z;
+      const body = schema_z.object({
+        category: schema_z.enum(["instruction", "trigger", "snippet"]).optional(),
+        label: schema_z.string().trim().min(1).max(120).optional(),
+        instruction: schema_z.string().trim().min(1).max(4000).optional(),
+        triggerPhrases: schema_z.string().trim().max(500).nullable().optional(),
+        isActive: schema_z.boolean().optional(),
+      }).safeParse(req.body);
+      if (!body.success) return res.status(400).json({ message: "Invalid update data", errors: body.error.flatten() });
+      const updated = await storage.updateJunePreference(id, clinicianId, body.data);
+      if (!updated) return res.status(404).json({ message: "Preference not found" });
+      res.json(updated);
+    } catch (err: any) {
+      console.error("[June Prefs] PATCH error:", err);
+      res.status(500).json({ message: "Failed to update preference" });
+    }
+  });
+
+  app.delete("/api/june-preferences/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = Number(req.params.id);
+      if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
+      const ok = await storage.deleteJunePreference(id, clinicianId);
+      if (!ok) return res.status(404).json({ message: "Preference not found" });
+      res.json({ success: true });
+    } catch (err: any) {
+      console.error("[June Prefs] DELETE error:", err);
+      res.status(500).json({ message: "Failed to delete preference" });
+    }
+  });
+
   // ── Ask ClinIQ — AI Clinical Colleague Chat ─────────────────────────────
   app.post("/api/ai-chat", requireAuth, async (req, res) => {
     try {
@@ -12737,6 +12812,41 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
       const { LAB_MARKER_DEFAULTS } = await import("./lab-marker-defaults");
       const rangesRef = LAB_MARKER_DEFAULTS.map(m => `${m.displayName} (${m.gender}): Optimal ${m.optimalMin ?? '—'}–${m.optimalMax ?? '—'} ${m.unit}, Ref ${m.normalMin ?? '—'}–${m.normalMax ?? '—'} ${m.unit}${m.notes ? ` [${m.notes}]` : ''}`).join('\n');
+
+      // ── Load provider preferences for June ────────────────────────────────
+      let junePrefsBlock = "";
+      try {
+        const junePrefs = await storage.getJunePreferences(clinicianId);
+        const activePrefs = junePrefs.filter(p => p.isActive);
+        if (activePrefs.length > 0) {
+          const instructions = activePrefs.filter(p => p.category === "instruction");
+          const triggers = activePrefs.filter(p => p.category === "trigger");
+          const snippets = activePrefs.filter(p => p.category === "snippet");
+          const lines: string[] = [
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "PROVIDER PREFERENCES — FOLLOW THESE PRECISELY",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "This provider has saved preferences. These override your defaults and must be followed in every response.",
+          ];
+          if (instructions.length > 0) {
+            lines.push("\nAlways-on instructions:");
+            instructions.forEach(p => lines.push(`• ${p.instruction}`));
+          }
+          if (triggers.length > 0) {
+            lines.push("\nTrigger rules — activate when the provider's message contains any of the listed phrases:");
+            triggers.forEach(p => {
+              const phrases = p.triggerPhrases ? p.triggerPhrases.split(",").map(s => s.trim()).filter(Boolean).map(s => `"${s}"`).join(", ") : "(any message)";
+              lines.push(`• Trigger phrases: ${phrases}`);
+              lines.push(`  → Action: ${p.instruction}`);
+            });
+          }
+          if (snippets.length > 0) {
+            lines.push("\nContext snippets (reference these when a trigger or instruction calls for them):");
+            snippets.forEach(p => lines.push(`• ${p.label}: ${p.instruction}`));
+          }
+          junePrefsBlock = "\n\n" + lines.join("\n");
+        }
+      } catch (_) { /* non-fatal — proceed without preferences */ }
 
       const systemPrompt = `Your name is June. You are a clinical documentation and reasoning assistant embedded in the ClinIQ platform. You are NOT a diagnostic authority. You do NOT make autonomous clinical decisions or diagnoses. Your role is to help the provider think more clearly, document more efficiently, and act more confidently — while keeping them firmly in the driver's seat at all times.
 
@@ -12905,7 +13015,7 @@ Don't list all four every time. Pick one. If nothing fits, skip it entirely.
 FORMATTING:
 - Plain prose by default. No headers, no bullet lists unless the content genuinely needs them.
 - Bold a key value or recommendation only when it helps the provider scan quickly.
-- Never use section headers like "My Read" or "Watch-outs" unless the provider asked for a structured breakdown.${patientContext}${soapNote ? `
+- Never use section headers like "My Read" or "Watch-outs" unless the provider asked for a structured breakdown.${junePrefsBlock}${patientContext}${soapNote ? `
 
 --- ACTIVE SOAP NOTE (open in provider's editor) ---
 ${soapNote}
