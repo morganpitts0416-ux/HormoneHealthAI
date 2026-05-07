@@ -45,6 +45,7 @@ function formatMarkdown(text: string): string {
     .replace(/^### (.+)$/gm, '<h4 class="font-semibold text-sm mt-3 mb-1">$1</h4>')
     .replace(/^## (.+)$/gm, '<h3 class="font-semibold text-base mt-3 mb-1">$1</h3>')
     .replace(/^# (.+)$/gm, '<h2 class="font-bold text-base mt-3 mb-1">$1</h2>')
+    .replace(/^&gt; (.+)$/gm, '<div class="border-l-2 border-primary/40 pl-3 py-0.5 my-0.5 text-sm text-muted-foreground italic">$1</div>')
     .replace(/^- (.+)$/gm, '<li class="ml-4 text-sm">$1</li>')
     .replace(/^(\d+)\. (.+)$/gm, '<li class="ml-4 text-sm">$1. $2</li>')
     .replace(/\n{2,}/g, '</p><p class="text-sm leading-relaxed mt-2">')
@@ -117,6 +118,26 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const wakeTransitionRef = useRef<string | null>(null);
   // ── Text-to-speech (OpenAI Nova via /api/tts, browser fallback) ──────────
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // iOS Safari blocks audio.play() unless the audio context was first unlocked
+  // by a synchronous user gesture. We unlock it on the first send/mic tap.
+  const audioUnlockedRef = useRef(false);
+  // When iOS blocks auto-play we store the text here so the user can tap to hear
+  const [pendingTts, setPendingTts] = useState<{ text: string; msgIdx: number } | null>(null);
+
+  const unlockAudioContext = useCallback(() => {
+    if (audioUnlockedRef.current) return;
+    try {
+      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+      if (!AudioCtx) return;
+      const ctx = new AudioCtx();
+      const buf = ctx.createBuffer(1, 1, 22050);
+      const src = ctx.createBufferSource();
+      src.buffer = buf;
+      src.connect(ctx.destination);
+      src.start(0);
+      src.onended = () => { audioUnlockedRef.current = true; try { ctx.close(); } catch (_) {} };
+    } catch (_) {}
+  }, []);
 
   const stopSpeaking = useCallback(() => {
     if (currentAudioRef.current) {
@@ -131,6 +152,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
   const speakText = useCallback(async (text: string, msgIdx?: number) => {
     stopSpeaking();
+    setPendingTts(null);
     const clean = stripMarkdownForSpeech(text);
     if (!clean) return;
 
@@ -163,7 +185,14 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         currentAudioRef.current = null;
       };
       await audio.play();
-    } catch {
+    } catch (err: any) {
+      // On iOS, if play() was blocked by autoplay policy, surface a tap-to-play button
+      if (isIOS && err?.name === "NotAllowedError" && msgIdx !== undefined) {
+        setIsSpeaking(false);
+        speakingMsgIdxRef.current = null;
+        setPendingTts({ text, msgIdx });
+        return;
+      }
       // Fallback to browser TTS if OpenAI TTS fails
       if (!ttsSupported) { setIsSpeaking(false); speakingMsgIdxRef.current = null; return; }
       const utter = new SpeechSynthesisUtterance(clean);
@@ -541,6 +570,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const handleSend = () => {
     const trimmed = input.trim();
     if (!trimmed || chatMutation.isPending) return;
+    unlockAudioContext();
     stopListening();
     chatMutation.mutate(trimmed);
   };
@@ -779,8 +809,25 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                   {/* Action row for assistant messages */}
                   {msg.role === "assistant" && (
                     <div className="flex items-center gap-2 flex-wrap">
+                      {/* iOS: tap-to-hear button when autoplay was blocked */}
+                      {isIOS && pendingTts?.msgIdx === i && (
+                        <Button
+                          size="sm"
+                          variant="outline"
+                          className="h-6 text-xs gap-1.5 border-amber-400 text-amber-700 dark:text-amber-400"
+                          onClick={() => {
+                            const { text, msgIdx } = pendingTts;
+                            setPendingTts(null);
+                            speakText(text, msgIdx);
+                          }}
+                          data-testid={`button-tap-to-hear-${i}`}
+                        >
+                          <Volume2 className="w-3 h-3" />
+                          Tap to hear June
+                        </Button>
+                      )}
                       {/* Replay TTS for this message */}
-                      {ttsSupported && (
+                      {ttsSupported && !(isIOS && pendingTts?.msgIdx === i) && (
                         <Button
                           size="icon"
                           variant="ghost"
@@ -908,7 +955,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                     <Button
                       size="icon"
                       variant="outline"
-                      onClick={toggleListening}
+                      onClick={() => { unlockAudioContext(); toggleListening(); }}
                       disabled={chatMutation.isPending}
                       data-testid="button-mic-ai-chat"
                       className={isListening ? "border-red-400 text-red-500 bg-red-50 dark:bg-red-950/30 no-default-hover-elevate" : ""}
