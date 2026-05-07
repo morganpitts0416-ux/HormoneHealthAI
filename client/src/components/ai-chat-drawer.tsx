@@ -115,14 +115,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const silenceTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const [silenceCountdown, setSilenceCountdown] = useState(false);
   const shouldBeListeningRef = useRef(false);
-  // Wake-word listener
-  const wakeRecognitionRef = useRef<any>(null);
-  const shouldWakeRef = useRef(false);
   const isOpenRef = useRef(false);
-  const [isWakeActive, setIsWakeActive] = useState(false);
-  // When the wake phrase fires we store the seed here so onend can hand off
-  // to the main listener only after the wake session is fully closed.
-  const wakeTransitionRef = useRef<string | null>(null);
   // ── Text-to-speech (OpenAI Nova via /api/tts, browser fallback) ──────────
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   // iOS Safari blocks audio.play() unless the audio context was first unlocked
@@ -299,34 +292,19 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
 
   useEffect(() => {
-    if (!isOpen) {
-      stopListening();
-      stopWakeListener();
-    } else if (SpeechRecognitionAPI) {
-      startWakeListener();
-    }
+    if (!isOpen) stopListening();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
   // ── Encounter recorder interlock ──────────────────────────────────────────
-  // When the encounter transcription recorder goes active, kill both of June's
-  // listeners immediately.  When it stops, restart the wake listener if the
-  // drawer is still open.  This ensures June never captures patient encounter
-  // audio and never races with the MediaRecorder for the microphone.
+  // When the encounter transcription recorder goes active, stop June's mic
+  // listener immediately so she never captures patient encounter audio.
   useEffect(() => {
-    if (encounterRecordingActive) {
-      stopListening();
-      stopWakeListener();
-    } else if (isOpenRef.current && SpeechRecognitionAPI) {
-      // Small delay so any in-flight SpeechRecognition session fully closes first
-      setTimeout(() => {
-        if (isOpenRef.current && !encounterRecordingActive) startWakeListener();
-      }, 400);
-    }
+    if (encounterRecordingActive) stopListening();
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterRecordingActive]);
 
-  useEffect(() => () => { stopListening(); stopWakeListener(); }, []);
+  useEffect(() => () => { stopListening(); }, []);
 
   const scrollToBottom = useCallback(() => {
     setTimeout(() => messagesEndRef.current?.scrollIntoView({ behavior: "smooth" }), 50);
@@ -338,132 +316,6 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       setHasOfferedPatient(true);
     }
   }, [isOpen, patientContext, hasOfferedPatient, messages.length]);
-
-  // ── Wake-word listener ────────────────────────────────────────────────────
-  // Listens silently in the background for "Hey June" / "OK June" / "Okay June".
-  // Mutually exclusive with the main mic session — browser allows only one at a time.
-  //
-  // Accepts:  "hey june"  "okay june"  "ok june"  "hey, june"  etc.
-  const WAKE_PATTERN = /\b(?:hey|ok(?:ay)?)[,.\s]+june\b/i;
-  // Strip clause used when extracting words spoken after the wake phrase.
-  const WAKE_STRIP   = /.*\b(?:hey|ok(?:ay)?)[,.\s]+june[,.\s]*/i;
-
-  function stopWakeListener() {
-    shouldWakeRef.current = false;
-    if (wakeRecognitionRef.current) {
-      try { wakeRecognitionRef.current.stop(); } catch (_) {}
-      wakeRecognitionRef.current = null;
-    }
-    setIsWakeActive(false);
-  }
-
-  function spawnWakeListener() {
-    if (!SpeechRecognitionAPI || !shouldWakeRef.current) return;
-    if (wakeRecognitionRef.current) {
-      try { wakeRecognitionRef.current.stop(); } catch (_) {}
-      wakeRecognitionRef.current = null;
-    }
-    const wr = new SpeechRecognitionAPI();
-    wr.continuous = true;
-    wr.interimResults = true;
-    wr.lang = "en-US";
-    wakeRecognitionRef.current = wr;
-
-    wr.onstart = () => setIsWakeActive(true);
-
-    wr.onresult = (event: any) => {
-      for (let i = event.resultIndex; i < event.results.length; i++) {
-        const t = event.results[i][0].transcript;
-        if (WAKE_PATTERN.test(t)) {
-          // Store the seed so onend can hand off AFTER this session fully closes.
-          // Never launch startListening here via setTimeout — Chrome only allows
-          // one SpeechRecognition at a time and the overlap causes a silent drop.
-          const afterWake = t.replace(WAKE_STRIP, "").trim();
-          wakeTransitionRef.current = afterWake; // "" is a valid seed (no words after wake)
-          if (afterWake) setInput(afterWake);
-          // stopWakeListener triggers wr.stop() → onend fires → we hand off there
-          stopWakeListener();
-          return;
-        }
-      }
-    };
-
-    wr.onerror = (event: any) => {
-      if (event.error === "not-allowed") {
-        // Hard stop — permission denied, don't retry
-        shouldWakeRef.current = false;
-        wakeTransitionRef.current = null;
-        setIsWakeActive(false);
-        setMicError("Microphone access denied. Enable it in your browser settings to use 'Hey June'.");
-        setTimeout(() => setMicError(null), 6000);
-      }
-      // Non-fatal errors (network, audio-capture, no-speech): let onend restart
-    };
-
-    wr.onend = () => {
-      wakeRecognitionRef.current = null;
-      setIsWakeActive(false);
-
-      // Wake phrase was detected — hand off to main listener now that this
-      // session is fully torn down (no overlap, no silent drop).
-      if (wakeTransitionRef.current !== null) {
-        const seed = wakeTransitionRef.current;
-        wakeTransitionRef.current = null;
-        // Small delay so Chrome fully releases the audio device before re-acquiring
-        setTimeout(() => startListening(seed || undefined), 150);
-        return;
-      }
-
-      if (shouldWakeRef.current) {
-        // Normal restart after Chrome's ~60 s inactivity timeout
-        setTimeout(() => spawnWakeListener(), 300);
-      }
-    };
-
-    try { wr.start(); } catch {
-      // wr.start() threw synchronously — usually means already started; retry later
-      wakeRecognitionRef.current = null;
-      if (shouldWakeRef.current) setTimeout(() => spawnWakeListener(), 800);
-    }
-  }
-
-  function startWakeListener() {
-    // iOS does not support continuous SpeechRecognition — skip entirely.
-    // Also skip if the encounter recorder is actively capturing — we don't want
-    // June to accidentally wake and capture patient encounter audio.
-    if (!SpeechRecognitionAPI || isIOS || shouldBeListeningRef.current) return;
-    if (encounterRecordingActive) return;
-
-    const doSpawn = () => {
-      stopWakeListener();
-      shouldWakeRef.current = true;
-      spawnWakeListener();
-    };
-
-    // Pre-check mic permission so the background listener doesn't silently die.
-    // If permission is already 'granted' we skip getUserMedia to avoid the
-    // pop-up appearing again. If it's 'prompt' we warm it up first.
-    if (navigator.permissions) {
-      navigator.permissions
-        .query({ name: "microphone" as PermissionName })
-        .then(result => {
-          if (result.state === "denied") return; // can't do anything
-          if (result.state === "granted") { doSpawn(); return; }
-          // state === "prompt" — trigger the native dialog via getUserMedia,
-          // then immediately release the track and start the wake listener.
-          navigator.mediaDevices
-            ?.getUserMedia({ audio: true })
-            .then(stream => { stream.getTracks().forEach(t => t.stop()); doSpawn(); })
-            .catch(() => {
-              setMicError("Microphone access denied. Enable it to use 'Hey June'.");
-              setTimeout(() => setMicError(null), 6000);
-            });
-        })
-        .catch(() => doSpawn()); // Permissions API unavailable — just try
-    } else {
-      doSpawn();
-    }
-  }
 
   // ── Main voice recognition ─────────────────────────────────────────────────
   const SILENCE_MS = 2500; // ms of silence after last final chunk → auto-send
@@ -563,10 +415,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         clearSilenceTimer();
         setIsListening(false);
         setTimeout(() => inputRef.current?.focus(), 50);
-        // Resume wake-word listener once main session fully ends
-        if (isOpenRef.current && SpeechRecognitionAPI) {
-          setTimeout(() => startWakeListener(), 400);
-        }
+              // nothing to restart — tap-to-speak only
       }
     };
 
@@ -581,17 +430,14 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     }
   }
 
-  function startListening(preSeed?: string) {
+  function startListening() {
     if (!SpeechRecognitionAPI) {
       setMicError("Voice input isn't supported in this browser. Try Chrome.");
       setTimeout(() => setMicError(null), 4000);
       return;
     }
-    stopWakeListener(); // wake and main are mutually exclusive
     setMicError(null);
-    // When triggered by the wake-word path a preSeed is supplied so we never
-    // overwrite it with the stale React `input` state (which hasn't committed yet).
-    baseInputRef.current = preSeed !== undefined ? preSeed : input;
+    baseInputRef.current = input;
     shouldBeListeningRef.current = true;
     spawnRecognition();
   }
@@ -682,7 +528,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   // ── June avatar state ─────────────────────────────────────────────────────
   const juneState = chatMutation.isPending
     ? (soapNoteActive ? "soap" : "analyzing")
-    : isListening || isWakeActive
+    : isListening
     ? "listening"
     : isSpeaking
     ? "waving"
@@ -696,9 +542,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     waving:    juneWaving,
   }[juneState];
 
-  const juneStateLabel = isWakeActive && !isListening
-    ? 'Say "Hey June"'
-    : isListening
+  const juneStateLabel = isListening
     ? "Listening…"
     : chatMutation.isPending
     ? (soapNoteActive ? "Updating note…" : "Thinking…")
@@ -1019,8 +863,6 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                         ? "text-red-500 animate-pulse"
                         : isListening && silenceCountdown
                         ? "text-amber-500"
-                        : isWakeActive
-                        ? "text-emerald-600 dark:text-emerald-400"
                         : "text-muted-foreground"
                     }`}
                   >
@@ -1036,10 +878,6 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                     <div className="h-full bg-amber-400 dark:bg-amber-500 animate-[shrink_2.5s_linear_forwards] rounded-full" />
                   </div>
                 )}
-                {/* iOS tap-to-speak hint (no wake-word support) */}
-                {isIOS && SpeechRecognitionAPI && !isListening && (
-                  <p className="text-[10px] text-muted-foreground px-1">Tap the mic to speak</p>
-                )}
                 <div className="flex items-end gap-2">
                   <textarea
                     ref={inputRef}
@@ -1048,8 +886,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                     onKeyDown={handleKeyDown}
                     placeholder={
                       isListening ? "Listening…"
-                        : soapNoteActive ? "Hey June, edit the note… or ask a clinical question"
-                        : "Hey June… or ask a clinical question"
+                        : soapNoteActive ? "Edit the note… or ask a clinical question"
+                        : "Ask June a clinical question"
                     }
                     rows={1}
                     className="flex-1 resize-none rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-1 max-h-24 min-h-[36px]"
