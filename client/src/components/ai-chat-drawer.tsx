@@ -116,6 +116,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const [silenceCountdown, setSilenceCountdown] = useState(false);
   const shouldBeListeningRef = useRef(false);
   const isOpenRef = useRef(false);
+  // ── Voice Session Mode ────────────────────────────────────────────────────
+  // When true the immersive voice panel overlays the chat content area.
+  const [voiceSessionMode, setVoiceSessionMode] = useState(false);
+  const voiceSessionRef = useRef(false);   // readable inside mutation callbacks
+  const [speechDetected, setSpeechDetected] = useState(false);
   // ── Text-to-speech (OpenAI Nova via /api/tts, browser fallback) ──────────
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
   // Each speakText() call gets a unique session number. The catch block checks
@@ -306,9 +311,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
   // Keep isOpenRef in sync so wake-listener callbacks can read it without stale closure
   useEffect(() => { isOpenRef.current = isOpen; }, [isOpen]);
+  // Keep voiceSessionRef in sync so mutation callbacks can read it without stale closures
+  useEffect(() => { voiceSessionRef.current = voiceSessionMode; }, [voiceSessionMode]);
 
   useEffect(() => {
-    if (!isOpen) stopListening();
+    if (!isOpen) { stopListening(); setVoiceSessionMode(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
@@ -316,7 +323,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   // When the encounter transcription recorder goes active, stop June's mic
   // listener immediately so she never captures patient encounter audio.
   useEffect(() => {
-    if (encounterRecordingActive) stopListening();
+    if (encounterRecordingActive) { stopListening(); setVoiceSessionMode(false); }
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [encounterRecordingActive]);
 
@@ -348,6 +355,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     vlog("⏹ stopListening() called");
     shouldBeListeningRef.current = false;
     clearSilenceTimer();
+    setSpeechDetected(false);
     if (recognitionRef.current) {
       try { recognitionRef.current.stop(); } catch (_) {}
       recognitionRef.current = null;
@@ -363,8 +371,12 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       setSilenceCountdown(false);
       const text = baseInputRef.current.trim();
       stopListening();
+      // Keep voiceSessionMode open — it will switch to "thinking" state
       if (text && !chatMutation.isPending) {
         chatMutation.mutate(text);
+      } else if (!text) {
+        // Nothing to send, close voice session gracefully
+        setVoiceSessionMode(false);
       }
     }, SILENCE_MS);
   }
@@ -379,8 +391,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
     recognition.onstart = () => { vlog("✅ onstart"); setIsListening(true); };
 
-    recognition.onspeechstart = () => { vlog("🗣 onspeechstart"); clearSilenceTimer(); };
-    recognition.onspeechend  = () => { vlog("🔇 onspeechend → starting silence timer"); startSilenceTimer(); };
+    recognition.onspeechstart = () => { vlog("🗣 onspeechstart"); setSpeechDetected(true); clearSilenceTimer(); };
+    recognition.onspeechend  = () => { vlog("🔇 onspeechend → starting silence timer"); setSpeechDetected(false); startSilenceTimer(); };
 
     recognition.onresult = (event: any) => {
       let interim = "";
@@ -458,7 +470,38 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     spawnRecognition();
   }
 
-  function toggleListening() { isListening ? stopListening() : startListening(); }
+  function openVoiceSession() {
+    if (encounterRecordingActive) return;
+    setVoiceSessionMode(true);
+    startListening();
+  }
+
+  function handleVoiceDone() {
+    const text = baseInputRef.current.trim() || input.trim();
+    stopListening();
+    if (text && !chatMutation.isPending) {
+      // Keep voiceSessionMode true — panel switches to "thinking" view
+      chatMutation.mutate(text);
+    } else {
+      setVoiceSessionMode(false);
+    }
+  }
+
+  function handleVoiceCancel() {
+    stopListening();
+    setInput("");
+    baseInputRef.current = "";
+    setVoiceSessionMode(false);
+  }
+
+  function toggleListening() {
+    if (isListening) {
+      stopListening();
+      setVoiceSessionMode(false);
+    } else {
+      openVoiceSession();
+    }
+  }
 
   // ── Chat mutation ─────────────────────────────────────────────────────────
   const chatMutation = useMutation({
@@ -491,6 +534,9 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       const spoken: string | null = data.spoken ?? null;
       const editedNote: string | null = data.editedNote ?? null;
 
+      // Close the voice session overlay so the reply appears in the chat
+      if (voiceSessionRef.current) setVoiceSessionMode(false);
+
       setMessages(prev => {
         const next = [...prev, {
           role: "assistant" as const,
@@ -510,6 +556,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       const issuedForPatientId = requestPatientIdRef.current;
       const currentPatientId = patientContext?.id ?? null;
       if (issuedForPatientId !== currentPatientId) return;
+      if (voiceSessionRef.current) setVoiceSessionMode(false);
       const cleanMsg = err.message?.includes("{") ? "Something went wrong reaching the AI service." : err.message;
       setMessages(prev => [...prev, { role: "assistant", content: `I apologize — ${cleanMsg || "something went wrong"}. Please try again.` }]);
     },
@@ -680,8 +727,149 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
             </div>
           )}
 
+          {/* ── Voice Session Overlay ────────────────────────────────────── */}
+          {voiceSessionMode && (
+            <div
+              className="flex-1 flex flex-col items-center justify-between py-8 px-6 min-h-0 overflow-hidden"
+              style={{ background: "linear-gradient(160deg, #1b2813 0%, #0e1609 100%)" }}
+              data-testid="panel-voice-session"
+            >
+              {/* Centre: glow + avatar + status + waveform */}
+              <div className="flex-1 flex flex-col items-center justify-center gap-5 w-full">
+
+                {/* Layered breathing glow behind June */}
+                <div className="relative flex items-center justify-center">
+                  {/* Outer ring */}
+                  <div
+                    className="voice-breathe-ring absolute rounded-full pointer-events-none"
+                    style={{
+                      width: 220, height: 220,
+                      background: "radial-gradient(circle, rgba(74,145,32,0.18) 0%, transparent 72%)",
+                    }}
+                  />
+                  {/* Inner glow */}
+                  <div
+                    className="voice-breathe absolute rounded-full pointer-events-none"
+                    style={{
+                      width: 160, height: 160,
+                      background: "radial-gradient(circle, rgba(90,175,40,0.32) 0%, transparent 70%)",
+                    }}
+                  />
+                  {/* June avatar */}
+                  <img
+                    src={chatMutation.isPending ? juneAnalyzing : juneListening}
+                    alt="June"
+                    className="voice-avatar-float relative z-10 object-contain"
+                    style={{ width: 128, height: 128 }}
+                  />
+                </div>
+
+                {/* Status text */}
+                <div className="text-center space-y-1.5 px-2">
+                  {chatMutation.isPending ? (
+                    <>
+                      <p className="text-white font-semibold text-base">Got it — thinking through that…</p>
+                      <p className="text-white/50 text-sm">I'll have something for you in a moment.</p>
+                    </>
+                  ) : silenceCountdown ? (
+                    <>
+                      <p className="text-amber-300 font-semibold text-base">Still listening…</p>
+                      <p className="text-white/50 text-sm">I'll send when you're done — or keep going.</p>
+                    </>
+                  ) : speechDetected ? (
+                    <>
+                      <p className="text-emerald-300 font-semibold text-base">I'm listening…</p>
+                      <p className="text-white/50 text-sm">Go ahead — I've got you.</p>
+                    </>
+                  ) : (
+                    <>
+                      <p className="text-white font-semibold text-base">I'm listening…</p>
+                      <p className="text-white/50 text-sm">Take your time — I'll wait for a pause.</p>
+                    </>
+                  )}
+                </div>
+
+                {/* Animated waveform — hidden during thinking */}
+                {!chatMutation.isPending && (
+                  <div className="flex items-end gap-1.5" style={{ height: 40 }}>
+                    {[0.7, 1.0, 0.5, 1.0, 0.8, 1.0, 0.6].map((maxScale, i) => (
+                      <div
+                        key={i}
+                        className={`rounded-full origin-bottom ${speechDetected ? "voice-bar-active" : "voice-bar-idle"}`}
+                        style={{
+                          width: 4,
+                          height: 36,
+                          backgroundColor: speechDetected
+                            ? `rgba(134,239,172,${0.55 + maxScale * 0.35})`
+                            : `rgba(255,255,255,${0.18 + maxScale * 0.12})`,
+                          animationDelay: `${i * 0.12}s`,
+                          animationDuration: speechDetected ? `${0.38 + (i % 3) * 0.08}s` : `${1.4 + (i % 3) * 0.25}s`,
+                          transform: "scaleY(0.25)",
+                        }}
+                      />
+                    ))}
+                  </div>
+                )}
+
+                {/* Thinking spinner */}
+                {chatMutation.isPending && (
+                  <Loader2 className="w-5 h-5 text-emerald-400 animate-spin" />
+                )}
+
+                {/* Live transcript preview */}
+                {input && !chatMutation.isPending && (
+                  <div className="max-w-xs w-full px-4 py-2.5 rounded-lg"
+                    style={{ backgroundColor: "rgba(255,255,255,0.06)" }}>
+                    <p className="text-white/75 text-sm text-center italic leading-relaxed line-clamp-3">
+                      "{input}"
+                    </p>
+                  </div>
+                )}
+
+                {/* Silence countdown bar */}
+                {silenceCountdown && !chatMutation.isPending && (
+                  <div className="w-48 h-0.5 rounded-full overflow-hidden"
+                    style={{ backgroundColor: "rgba(255,255,255,0.12)" }}>
+                    <div
+                      className="h-full rounded-full bg-amber-400"
+                      style={{ animation: `shrink ${SILENCE_MS}ms linear forwards` }}
+                    />
+                  </div>
+                )}
+              </div>
+
+              {/* Bottom action area */}
+              {!chatMutation.isPending && (
+                <div className="flex flex-col items-center gap-3 w-full pt-4">
+                  <Button
+                    onClick={handleVoiceDone}
+                    disabled={!input.trim()}
+                    className="w-full font-medium"
+                    style={{ backgroundColor: "#4a8c22", color: "#fff" }}
+                    data-testid="button-voice-done"
+                  >
+                    Done speaking
+                  </Button>
+                  <Button
+                    variant="ghost"
+                    onClick={handleVoiceCancel}
+                    className="text-white/55 hover:text-white w-full no-default-hover-elevate hover:bg-white/8"
+                    data-testid="button-voice-cancel"
+                  >
+                    Cancel
+                  </Button>
+                  {isIOS && (
+                    <p className="text-[10px] text-white/30 text-center leading-relaxed px-2">
+                      Tip: In Safari tap the "aA" icon in the address bar → Website Settings → Microphone → Allow to skip the permission prompt each time.
+                    </p>
+                  )}
+                </div>
+              )}
+            </div>
+          )}
+
           {/* Messages */}
-          <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
+          <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0 ${voiceSessionMode ? "hidden" : ""}`}>
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center px-4 space-y-3">
                 <img src={juneWaving} alt="June" className="h-28 w-auto object-contain" />
@@ -844,8 +1032,8 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
             <div ref={messagesEndRef} />
           </div>
 
-          {/* Input area */}
-          <div className="border-t px-3 pt-1 pb-2 bg-background flex-shrink-0">
+          {/* Input area — hidden during voice session */}
+          <div className={`border-t px-3 pt-1 pb-2 bg-background flex-shrink-0 ${voiceSessionMode ? "hidden" : ""}`}>
             <p className="text-[10px] text-muted-foreground text-center mb-1">
               AI assistant — clinical decisions are yours. Always verify recommendations.
             </p>

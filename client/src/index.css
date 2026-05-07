@@ -384,6 +384,44 @@
   to   { width: 0%; }
 }
 
+/* ── June Voice Session Mode ─────────────────────────────────────────────── */
+@keyframes voice-breathe {
+  0%, 100% { transform: scale(1);    opacity: 0.22; }
+  50%       { transform: scale(1.38); opacity: 0.46; }
+}
+@keyframes voice-breathe-ring {
+  0%, 100% { transform: scale(1);    opacity: 0.10; }
+  50%       { transform: scale(1.55); opacity: 0.22; }
+}
+@keyframes voice-bar-idle {
+  0%, 100% { transform: scaleY(0.18); }
+  50%       { transform: scaleY(0.55); }
+}
+@keyframes voice-bar-active {
+  0%, 100% { transform: scaleY(0.25); }
+  50%       { transform: scaleY(1);   }
+}
+@keyframes voice-avatar-float {
+  0%, 100% { transform: translateY(0px);  }
+  50%       { transform: translateY(-5px); }
+}
+
+/* Only apply motion-heavy animations when the user hasn't asked for reduced motion */
+@media (prefers-reduced-motion: no-preference) {
+  .voice-breathe      { animation: voice-breathe      3.2s ease-in-out infinite; }
+  .voice-breathe-ring { animation: voice-breathe-ring 3.2s ease-in-out infinite 0.6s; }
+  .voice-avatar-float { animation: voice-avatar-float 4s   ease-in-out infinite; }
+  .voice-bar-idle     { animation: voice-bar-idle     1.6s ease-in-out infinite; }
+  .voice-bar-active   { animation: voice-bar-active   0.45s ease-in-out infinite; }
+}
+/* Reduced-motion: keep static but still visible */
+@media (prefers-reduced-motion: reduce) {
+  .voice-breathe,
+  .voice-breathe-ring { opacity: 0.28; transform: none; }
+  .voice-bar-idle,
+  .voice-bar-active   { transform: scaleY(0.5); }
+}
+
 @keyframes realign-breathe {
   0%, 100% { transform: scale(1); opacity: 0.88; }
   50%       { transform: scale(1.07); opacity: 1; }
