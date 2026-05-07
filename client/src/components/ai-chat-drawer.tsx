@@ -511,6 +511,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       if (issuedForPatientId !== currentPatientId) return;
 
       const reply: string = data.reply ?? "I wasn't able to generate a response.";
+      const spoken: string | null = data.spoken ?? null;
       const editedNote: string | null = data.editedNote ?? null;
 
       setMessages(prev => {
@@ -520,9 +521,10 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           proposedEdit: editedNote ?? undefined,
           editApplied: false,
         }];
-        // Auto-speak when TTS is enabled (read after state settles)
+        // Speak the short casual summary when available; fall back to full reply
         if (ttsEnabled) {
-          setTimeout(() => speakText(reply, next.length - 1), 80);
+          const textToSpeak = spoken || reply;
+          setTimeout(() => speakText(textToSpeak, next.length - 1), 80);
         }
         return next;
       });

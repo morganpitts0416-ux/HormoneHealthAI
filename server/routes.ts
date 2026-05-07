@@ -12714,7 +12714,18 @@ CLINICAL ALGORITHMS AVAILABLE:
 SUPPLEMENT PROTOCOLS:
 The clinic uses Metagenics supplement protocols based on lab values and symptoms. Reference these when discussing supplement recommendations — always with the clinical rationale.
 
-RESPONSE FORMAT:
+SPOKEN SUMMARY — MANDATORY FOR EVERY RESPONSE:
+Before your written response, include a [SPOKEN]...[/SPOKEN] block. This is June's out-loud reply — casual, conversational, spoken like a colleague in the hallway. Rules:
+- Plain English only. No markdown, no asterisks, no bullet points, no numbers, no "slash" or "mmHg" written out.
+- 1–2 sentences max, under 35 words.
+- Natural spoken phrasing — contractions are fine. Sound human, not robotic.
+- Capture the single most important takeaway, not everything in the written response.
+- Examples:
+  [SPOKEN]Yeah, that's a normal blood pressure — anything under 120 over 80 is what we're shooting for.[/SPOKEN]
+  [SPOKEN]His testosterone is low but his free testosterone is actually the more important number here, and that's what I'd focus on adjusting.[/SPOKEN]
+  [SPOKEN]That LDL is borderline — I'd look at adding a statin given his cardiovascular risk profile.[/SPOKEN]
+
+WRITTEN RESPONSE FORMAT:
 - Use markdown formatting for readability
 - Bold key clinical values and recommendations
 - When citing evidence, format as: **[Guideline/Study Name, Year]** — brief description
@@ -12729,6 +12740,7 @@ SOAP NOTE EDITING MODE — CRITICAL INSTRUCTIONS:
 The provider has a SOAP note open. You can read it and propose edits to it.
 You MUST always respond in this exact JSON format (no markdown wrapper, raw JSON only):
 {
+  "spoken": "1–2 sentence casual spoken summary, plain English, no markdown (same rules as the [SPOKEN] block above).",
   "reply": "Your conversational response — explanation of changes made, clinical reasoning, or answer to the question. Markdown is allowed here.",
   "editedNote": "The COMPLETE updated SOAP note text, or omit this field entirely if no edit was requested."
 }
@@ -12841,6 +12853,15 @@ IMPORTANT:
 
       const raw = completion.choices[0]?.message?.content || "";
 
+      // Helper: extract and strip [SPOKEN]...[/SPOKEN] from plain-text responses
+      const extractSpoken = (text: string): { spoken: string | null; clean: string } => {
+        const match = text.match(/\[SPOKEN\]([\s\S]*?)\[\/SPOKEN\]/i);
+        if (!match) return { spoken: null, clean: text.trim() };
+        const spoken = match[1].trim();
+        const clean = text.replace(/\[SPOKEN\][\s\S]*?\[\/SPOKEN\]\n?/i, "").trim();
+        return { spoken, clean };
+      };
+
       // When soapNote was in the request the model returns structured JSON.
       // Parse it and forward both fields so the client can render the reply
       // and optionally surface an "Apply to note" button.
@@ -12848,18 +12869,20 @@ IMPORTANT:
         try {
           const parsed = JSON.parse(raw);
           const reply = parsed.reply || "I wasn't able to generate a response. Please try again.";
+          const spoken: string | null = typeof parsed.spoken === "string" && parsed.spoken.trim()
+            ? parsed.spoken.trim() : null;
           const editedNote: string | undefined = typeof parsed.editedNote === "string" && parsed.editedNote.trim()
             ? parsed.editedNote.trim()
             : undefined;
-          return res.json({ reply, editedNote: editedNote ?? null, patientName: patientName || null });
+          return res.json({ reply, spoken, editedNote: editedNote ?? null, patientName: patientName || null });
         } catch {
           // Malformed JSON fallback — treat the whole thing as a plain reply
-          return res.json({ reply: raw || "Something went wrong. Please try again.", editedNote: null, patientName: patientName || null });
+          return res.json({ reply: raw || "Something went wrong. Please try again.", spoken: null, editedNote: null, patientName: patientName || null });
         }
       }
 
-      const reply = raw || "I'm sorry, I wasn't able to generate a response. Please try rephrasing your question.";
-      res.json({ reply, editedNote: null, patientName: patientName || null });
+      const { spoken, clean: reply } = extractSpoken(raw || "I'm sorry, I wasn't able to generate a response. Please try rephrasing your question.");
+      res.json({ reply, spoken, editedNote: null, patientName: patientName || null });
     } catch (err: any) {
       console.error("[AI-Chat] Error:", err);
       if (err.status === 429) {
