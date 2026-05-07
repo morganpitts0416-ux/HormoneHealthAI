@@ -13379,41 +13379,68 @@ IMPORTANT:
       const trimmed = text.slice(0, 4096);
       const { Readable } = await import("stream");
 
-      // ── ElevenLabs via Replit connector (primary) ──────────────────────────
-      // Voice: Jessica — cgSgspJ2msm6clMCkdW9 (Playful, Bright, Warm / conversational)
-      // Backup voice: Matilda — XrExE9yKIg1WjnnlVkGX (Knowledgeable, upbeat)
-      // Uses streaming endpoint so the browser starts playing on the first chunk.
+      // ── ElevenLabs (primary) ───────────────────────────────────────────────
+      // Amy voice — y3H6zY6KvCH2pEuQjmv8
+      // Strategy: try direct API key first (works everywhere including Cloud Run),
+      // then fall back to Replit connector proxy (dev-only), then OpenAI shimmer.
+      const JUNE_VOICE_ID = "y3H6zY6KvCH2pEuQjmv8"; // Amy
+      const ELEVEN_BODY = JSON.stringify({
+        text: trimmed,
+        model_id: "eleven_multilingual_v2",
+        voice_settings: {
+          stability: 0.50,
+          similarity_boost: 0.75,
+          style: 0.12,
+          speed: 0.94,
+          use_speaker_boost: true,
+        },
+      });
+      const ELEVEN_ENDPOINT = `https://api.elevenlabs.io/v1/text-to-speech/${JUNE_VOICE_ID}/stream`;
+
+      // Path 1: Direct API key — works in production (Cloud Run) and dev
+      const elevenApiKey = process.env.ELEVENLABS_API_KEY;
+      if (elevenApiKey) {
+        try {
+          const elResp = await fetch(ELEVEN_ENDPOINT, {
+            method: "POST",
+            headers: {
+              "Content-Type": "application/json",
+              "xi-api-key": elevenApiKey,
+            },
+            body: ELEVEN_BODY,
+          });
+          if (!elResp.ok) throw new Error(`ElevenLabs direct ${elResp.status}`);
+          res.set("Content-Type", "audio/mpeg");
+          res.set("Cache-Control", "no-store");
+          res.set("X-Accel-Buffering", "no");
+          Readable.fromWeb(elResp.body as any).pipe(res);
+          return;
+        } catch (elErr) {
+          console.warn("[TTS] ElevenLabs direct API failed, trying connector:", elErr);
+        }
+      }
+
+      // Path 2: Replit connector proxy — works in Replit dev environment only
       try {
         const { ReplitConnectors } = await import("@replit/connectors-sdk");
         const connectors = new ReplitConnectors();
-        const JUNE_VOICE_ID = "y3H6zY6KvCH2pEuQjmv8"; // Amy
         const elResp = await connectors.proxy(
           "elevenlabs",
           `/v1/text-to-speech/${JUNE_VOICE_ID}/stream`,
           {
             method: "POST",
             headers: { "Content-Type": "application/json" },
-            body: JSON.stringify({
-              text: trimmed,
-              model_id: "eleven_multilingual_v2",
-              voice_settings: {
-                stability: 0.50,
-                similarity_boost: 0.75,
-                style: 0.12,
-                speed: 0.94,
-                use_speaker_boost: true,
-              },
-            }),
+            body: ELEVEN_BODY,
           }
         );
-        if (!elResp.ok) throw new Error(`ElevenLabs ${elResp.status}`);
+        if (!elResp.ok) throw new Error(`ElevenLabs connector ${elResp.status}`);
         res.set("Content-Type", "audio/mpeg");
         res.set("Cache-Control", "no-store");
         res.set("X-Accel-Buffering", "no");
         Readable.fromWeb(elResp.body as any).pipe(res);
         return;
       } catch (elErr) {
-        console.warn("[TTS] ElevenLabs failed, falling back to OpenAI:", elErr);
+        console.warn("[TTS] ElevenLabs connector failed, falling back to OpenAI:", elErr);
       }
 
       // ── OpenAI fallback (shimmer / gpt-4o-mini-tts) ───────────────────────
