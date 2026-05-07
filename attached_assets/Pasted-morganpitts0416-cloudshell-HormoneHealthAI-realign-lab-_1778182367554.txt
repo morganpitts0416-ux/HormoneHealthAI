@@ -1,0 +1,278 @@
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ find . -type f \( -name "*.ts" -o -name "*.tsx" -o -name "*.js" -o -name "*.jsx" \) \
+  -not -path "*/node_modules/*" \
+  -not -path "*/dist/*" \
+  -not -path "*/.git/*" \
+  -print | xargs grep -i "speech\|voice\|audio\|tts\|eleven"
+./server/soap-pipeline.ts:NARRATIVE VOICE — CRITICAL:
+./server/soap-pipeline.ts:VOICE VARIETY — IMPORTANT:
+./server/soap-pipeline.ts:3. PATIENT VOICE: Include the patient's perspective using clinical paraphrase: "She reports that...", "She describes...", "She notes improvement in...". The patient's story matters — convey it through provider-owned documentation language.
+./server/soap-pipeline.ts:4. PROVIDER REASONING: When clinical reasoning, counseling, or data interpretation occurred — document it in provider voice: "We reviewed her labs and noted...", "I discussed treatment options including...", "Labs were reviewed showing..."
+./server/soap-pipeline.ts:9. EDUCATION & DECISIONS: Document what was discussed and decided in provider voice: "We discussed the mechanism of GLP-1 therapy including appetite regulation and metabolic effects. She verbalized understanding and elected to continue current regimen."
+./server/storage.ts:        audioProcessed: schema.clinicalEncounters.audioProcessed,
+./server/ai-service.ts:VOICE
+./server/ai-service.ts:- Whenever two or more findings point in the same direction, connect them in one sentence as a pattern. Examples of the voice we want:
+./server/ai-service.ts:   * cross-domain pattern observation in a warm coach voice.
+./server/ai-service.ts:- 2-3 sentences, warm coach voice, second person ("you", "your"). No headings, no bullets.
+./server/ai-service.ts:- Connect AT LEAST TWO different signals into a single pattern observation. Example voices we want:
+./server/routes.ts:          invoice_settings: { default_payment_method: paymentMethodId },
+./server/routes.ts:          expand: ["latest_invoice.payment_intent"],
+./server/routes.ts:  // Audio multer — disk storage in /tmp, deleted immediately after Whisper processing
+./server/routes.ts:  const audioUpload = multer({
+./server/routes.ts:      if (file.mimetype.startsWith('audio/') || /\.(mp3|wav|ogg|m4a|webm|mp4|flac)$/i.test(file.originalname)) {
+./server/routes.ts:        cb(new Error('Invalid audio file type'));
+./server/routes.ts:  // Helper: split audio into 20-min segments via ffmpeg, returns list of temp file paths
+./server/routes.ts:  function splitAudioSegments(inputPath: string, ext: string): Promise<string[]> {
+./server/routes.ts:  // POST /api/encounters/transcribe — upload audio → raw segments + text (no diarization here)
+./server/routes.ts:  app.post("/api/encounters/transcribe", requireAuth, audioUpload.single('audio'), async (req, res) => {
+./server/routes.ts:    if (!filePath) return res.status(400).json({ message: "No audio file provided" });
+./server/routes.ts:      // Audio transcription requires a direct OpenAI key — the AI Integration proxy
+./server/routes.ts:      // does not support the /audio/transcriptions endpoint. Fall back gracefully.
+./server/routes.ts:      const audioApiKey = process.env.OPENAI_API_KEY || process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+./server/routes.ts:        apiKey: audioApiKey,
+./server/routes.ts:      let audioSegments: string[] = [];
+./server/routes.ts:        audioSegments = await splitAudioSegments(filePath, ext);
+./server/routes.ts:        audioSegments = [filePath];
+./server/routes.ts:      for (const seg of audioSegments) {
+./server/routes.ts:          const result = await openai.audio.transcriptions.create({
+./server/routes.ts:          verboseResult = await openai.audio.transcriptions.create({
+./server/routes.ts:      cleanupFiles(splitUsed ? [filePath, ...audioSegments] : [filePath]);
+./server/routes.ts:        audioProcessed: false,
+./server/routes.ts:      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, diarizedTranscript, clinicalExtraction, evidenceSuggestions, expectedPatientId } = req.body;
+./server/routes.ts:        ...(audioProcessed !== undefined && { audioProcessed }),
+./server/routes.ts:Correct speech-to-text errors for medical terminology. Rules:
+./server/routes.ts:- Only correct obvious speech-to-text errors, not clinical content
+./server/routes.ts:Correct speech-to-text errors for medical terminology. Rules:
+./server/routes.ts:- Only correct obvious speech-to-text errors, not clinical content
+./server/routes.ts:VOICE & TONE
+./server/routes.ts:6. Your Preferences & Our Decisions Together: if the patient expressed a preference (for example compounded vs. brand-name, oral vs. injectable, dosing schedule, cost considerations) or if risks and benefits were discussed, reflect that in 1–3 plain-language sentences so the patient sees their voice in the plan.
+./server/routes.ts:        invoice_settings: { default_payment_method: paymentMethodId },
+./server/routes.ts:        expand: ["latest_invoice.payment_intent"],
+./server/routes.ts:        invoice_settings: { default_payment_method: paymentMethodId },
+./server/routes.ts:        expand: ["latest_invoice.payment_intent"],
+./server/routes.ts:        case "invoice.payment_failed": {
+./server/routes.ts:        case "invoice.payment_succeeded": {
+./server/routes.ts:Before your written response, include a [SPOKEN]...[/SPOKEN] block. This is June's voice — what she says out loud to the provider. It must sound like a real person talking, not a report being read.
+./server/routes.ts:VOICE RULES (read these carefully — they define June's personality):
+./server/routes.ts:- Do NOT use markdown, bullet points, asterisks, or special characters — this is spoken audio.
+./server/routes.ts:- CRITICAL — [SPOKEN] IS MANDATORY: If you omit the [SPOKEN] block, the entire written response gets read aloud verbatim — headers, asterisks, and all. This completely breaks the voice experience. Every single response must open with [SPOKEN]...[/SPOKEN], no exceptions, even for short replies.
+./server/routes.ts:- Write in provider voice — first-person narrative, not observer summary
+./server/routes.ts:  // ── June TTS — convert text to speech via OpenAI ─────────────────────────
+./server/routes.ts:  app.post("/api/tts", requireAuth, async (req, res) => {
+./server/routes.ts:      // ── ElevenLabs (primary) ───────────────────────────────────────────────
+./server/routes.ts:      // Amy voice — y3H6zY6KvCH2pEuQjmv8
+./server/routes.ts:      const JUNE_VOICE_ID = "y3H6zY6KvCH2pEuQjmv8"; // Amy
+./server/routes.ts:      const ELEVEN_BODY = JSON.stringify({
+./server/routes.ts:        model_id: "eleven_multilingual_v2",
+./server/routes.ts:        voice_settings: {
+./server/routes.ts:      const ELEVEN_ENDPOINT = `https://api.elevenlabs.io/v1/text-to-speech/${JUNE_VOICE_ID}/stream`;
+./server/routes.ts:      const elevenApiKey = process.env.ELEVENLABS_API_KEY;
+./server/routes.ts:      if (elevenApiKey) {
+./server/routes.ts:          const elResp = await fetch(ELEVEN_ENDPOINT, {
+./server/routes.ts:              "xi-api-key": elevenApiKey,
+./server/routes.ts:            body: ELEVEN_BODY,
+./server/routes.ts:          if (!elResp.ok) throw new Error(`ElevenLabs direct ${elResp.status}`);
+./server/routes.ts:          res.set("Content-Type", "audio/mpeg");
+./server/routes.ts:          console.warn("[TTS] ElevenLabs direct API failed, trying connector:", elErr);
+./server/routes.ts:          "elevenlabs",
+./server/routes.ts:          `/v1/text-to-speech/${JUNE_VOICE_ID}/stream`,
+./server/routes.ts:            body: ELEVEN_BODY,
+./server/routes.ts:        if (!elResp.ok) throw new Error(`ElevenLabs connector ${elResp.status}`);
+./server/routes.ts:        res.set("Content-Type", "audio/mpeg");
+./server/routes.ts:        console.warn("[TTS] ElevenLabs connector failed, falling back to OpenAI:", elErr);
+./server/routes.ts:      // ── OpenAI fallback (shimmer / gpt-4o-mini-tts) ───────────────────────
+./server/routes.ts:      res.set("Content-Type", "audio/mpeg");
+./server/routes.ts:        mp3 = await (openai.audio.speech.create as any)({
+./server/routes.ts:          model: "gpt-4o-mini-tts",
+./server/routes.ts:          voice: "shimmer",
+./server/routes.ts:        mp3 = await openai.audio.speech.create({
+./server/routes.ts:          model: "tts-1-hd",
+./server/routes.ts:          voice: "shimmer",
+./server/routes.ts:      console.error("[TTS] Error:", err);
+./server/routes.ts:      res.status(500).json({ message: "Voice generation failed." });
+./server/clinical-lexicon.ts: * Whisper treats the prompt as "prior context" — the text that came just before the audio.
+./server/clinical-lexicon.ts:Examples of speech-to-text errors to correct:
+./client/src/contexts/recording-context.tsx:    const ext = (blob.type || "audio/webm").includes("ogg") ? "ogg" : "webm";
+./client/src/contexts/recording-context.tsx:    const file = new File([blob], `seg-${segIdx}.${ext}`, { type: blob.type || "audio/webm" });
+./client/src/contexts/recording-context.tsx:      formData.append("audio", file);
+./client/src/contexts/recording-context.tsx:      audioBitsPerSecond: 16000,
+./client/src/contexts/recording-context.tsx:      const blob = new Blob(localChunks, { type: mimeType || "audio/webm" });
+./client/src/contexts/recording-context.tsx:      stream = await navigator.mediaDevices.getUserMedia({ audio: true });
+./client/src/contexts/recording-context.tsx:    mimeTypeRef.current = MediaRecorder.isTypeSupported("audio/webm;codecs=opus")
+./client/src/contexts/recording-context.tsx:      ? "audio/webm;codecs=opus"
+./client/src/contexts/recording-context.tsx:      : MediaRecorder.isTypeSupported("audio/webm") ? "audio/webm" : "";
+./client/src/components/ai-chat-drawer.tsx:// Detect Speech Recognition support
+./client/src/components/ai-chat-drawer.tsx:const SpeechRecognitionAPI =
+./client/src/components/ai-chat-drawer.tsx:    ? (window as any).SpeechRecognition || (window as any).webkitSpeechRecognition
+./client/src/components/ai-chat-drawer.tsx:// iOS Safari has webkitSpeechRecognition but does NOT support continuous:true —
+./client/src/components/ai-chat-drawer.tsx:// Strip markdown formatting so TTS reads clean text
+./client/src/components/ai-chat-drawer.tsx:function stripMarkdownForSpeech(text: string): string {
+./client/src/components/ai-chat-drawer.tsx:  const clean = stripMarkdownForSpeech(reply);
+./client/src/components/ai-chat-drawer.tsx:const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
+./client/src/components/ai-chat-drawer.tsx:  const [ttsEnabled, setTtsEnabled] = useState(true);
+./client/src/components/ai-chat-drawer.tsx:  // True while the encounter transcription recorder is actively capturing audio.
+./client/src/components/ai-chat-drawer.tsx:  // so she cannot accidentally capture and forward patient encounter audio.
+./client/src/components/ai-chat-drawer.tsx:  // ── Voice Session Mode ────────────────────────────────────────────────────
+./client/src/components/ai-chat-drawer.tsx:  // When true the immersive voice panel overlays the chat content area.
+./client/src/components/ai-chat-drawer.tsx:  const [voiceSessionMode, setVoiceSessionMode] = useState(false);
+./client/src/components/ai-chat-drawer.tsx:  const voiceSessionRef = useRef(false);   // readable inside mutation callbacks
+./client/src/components/ai-chat-drawer.tsx:  const [speechDetected, setSpeechDetected] = useState(false);
+./client/src/components/ai-chat-drawer.tsx:  // ── Text-to-speech (OpenAI Nova via /api/tts, browser fallback) ──────────
+./client/src/components/ai-chat-drawer.tsx:  const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+./client/src/components/ai-chat-drawer.tsx:  // this before running the browser-speech fallback — if the session no longer
+./client/src/components/ai-chat-drawer.tsx:  // (otherwise clearing audio.src triggers onerror → catch → double voice).
+./client/src/components/ai-chat-drawer.tsx:  const ttsSessionRef = useRef(0);
+./client/src/components/ai-chat-drawer.tsx:  // iOS Safari blocks audio.play() unless the audio context was first unlocked
+./client/src/components/ai-chat-drawer.tsx:  const audioUnlockedRef = useRef(false);
+./client/src/components/ai-chat-drawer.tsx:  const [pendingTts, setPendingTts] = useState<{ text: string; msgIdx: number } | null>(null);
+./client/src/components/ai-chat-drawer.tsx:  const unlockAudioContext = useCallback(() => {
+./client/src/components/ai-chat-drawer.tsx:    if (audioUnlockedRef.current) return;
+./client/src/components/ai-chat-drawer.tsx:      const AudioCtx = (window as any).AudioContext || (window as any).webkitAudioContext;
+./client/src/components/ai-chat-drawer.tsx:      if (!AudioCtx) return;
+./client/src/components/ai-chat-drawer.tsx:      const ctx = new AudioCtx();
+./client/src/components/ai-chat-drawer.tsx:      src.onended = () => { audioUnlockedRef.current = true; try { ctx.close(); } catch (_) {} };
+./client/src/components/ai-chat-drawer.tsx:    if (currentAudioRef.current) {
+./client/src/components/ai-chat-drawer.tsx:      currentAudioRef.current.pause();
+./client/src/components/ai-chat-drawer.tsx:      currentAudioRef.current.src = "";
+./client/src/components/ai-chat-drawer.tsx:      currentAudioRef.current = null;
+./client/src/components/ai-chat-drawer.tsx:    if (ttsSupported) window.speechSynthesis.cancel();
+./client/src/components/ai-chat-drawer.tsx:    // detect it was superseded and skip the browser-speech fallback.
+./client/src/components/ai-chat-drawer.tsx:    ttsSessionRef.current += 1;
+./client/src/components/ai-chat-drawer.tsx:    const thisSession = ttsSessionRef.current;
+./client/src/components/ai-chat-drawer.tsx:    setPendingTts(null);
+./client/src/components/ai-chat-drawer.tsx:    const clean = stripMarkdownForSpeech(text);
+./client/src/components/ai-chat-drawer.tsx:      const res = await fetch("/api/tts", {
+./client/src/components/ai-chat-drawer.tsx:      if (!res.ok) throw new Error("TTS request failed");
+./client/src/components/ai-chat-drawer.tsx:      // Streaming playback — start audio on first chunk instead of waiting for the full file.
+./client/src/components/ai-chat-drawer.tsx:        MediaSource.isTypeSupported("audio/mpeg") &&
+./client/src/components/ai-chat-drawer.tsx:          const audioUrl = URL.createObjectURL(ms);
+./client/src/components/ai-chat-drawer.tsx:          const audio = new Audio(audioUrl);
+./client/src/components/ai-chat-drawer.tsx:          currentAudioRef.current = audio;
+./client/src/components/ai-chat-drawer.tsx:            URL.revokeObjectURL(audioUrl);
+./client/src/components/ai-chat-drawer.tsx:            currentAudioRef.current = null;
+./client/src/components/ai-chat-drawer.tsx:          audio.onended = () => cleanup();
+./client/src/components/ai-chat-drawer.tsx:          audio.onerror = () => cleanup(new Error("audio error"));
+./client/src/components/ai-chat-drawer.tsx:              const sb = ms.addSourceBuffer("audio/mpeg");
+./client/src/components/ai-chat-drawer.tsx:                if (!started) { started = true; audio.play().catch(reject); }
+./client/src/components/ai-chat-drawer.tsx:        const audio = new Audio(url);
+./client/src/components/ai-chat-drawer.tsx:        currentAudioRef.current = audio;
+./client/src/components/ai-chat-drawer.tsx:        audio.onended = () => {
+./client/src/components/ai-chat-drawer.tsx:          currentAudioRef.current = null;
+./client/src/components/ai-chat-drawer.tsx:        audio.onerror = () => {
+./client/src/components/ai-chat-drawer.tsx:          currentAudioRef.current = null;
+./client/src/components/ai-chat-drawer.tsx:        await audio.play();
+./client/src/components/ai-chat-drawer.tsx:      // If stopSpeaking() cleared audio.src it triggers onerror → reject → here.
+./client/src/components/ai-chat-drawer.tsx:      // running the browser-speech fallback here would cause two voices at once.
+./client/src/components/ai-chat-drawer.tsx:      if (thisSession !== ttsSessionRef.current) {
+./client/src/components/ai-chat-drawer.tsx:        setPendingTts({ text, msgIdx });
+./client/src/components/ai-chat-drawer.tsx:      // Fallback to browser TTS only when the /api/tts request itself genuinely failed
+./client/src/components/ai-chat-drawer.tsx:      if (!ttsSupported) { setIsSpeaking(false); speakingMsgIdxRef.current = null; return; }
+./client/src/components/ai-chat-drawer.tsx:      const utter = new SpeechSynthesisUtterance(clean);
+./client/src/components/ai-chat-drawer.tsx:      const voices = window.speechSynthesis.getVoices();
+./client/src/components/ai-chat-drawer.tsx:      const preferred = voices.find(v => /samantha|karen|Google US English/i.test(v.name))
+./client/src/components/ai-chat-drawer.tsx:        ?? voices.find(v => v.lang.startsWith("en"));
+./client/src/components/ai-chat-drawer.tsx:      if (preferred) utter.voice = preferred;
+./client/src/components/ai-chat-drawer.tsx:      window.speechSynthesis.speak(utter);
+./client/src/components/ai-chat-drawer.tsx:  // Stop TTS when drawer closes or component unmounts
+./client/src/components/ai-chat-drawer.tsx:  // Keep voiceSessionRef in sync so mutation callbacks can read it without stale closures
+./client/src/components/ai-chat-drawer.tsx:  useEffect(() => { voiceSessionRef.current = voiceSessionMode; }, [voiceSessionMode]);
+./client/src/components/ai-chat-drawer.tsx:    if (!isOpen) { stopListening(); setVoiceSessionMode(false); }
+./client/src/components/ai-chat-drawer.tsx:  // listener immediately so she never captures patient encounter audio.
+./client/src/components/ai-chat-drawer.tsx:    if (encounterRecordingActive) { stopListening(); setVoiceSessionMode(false); }
+./client/src/components/ai-chat-drawer.tsx:  // ── Main voice recognition ─────────────────────────────────────────────────
+./client/src/components/ai-chat-drawer.tsx:    setSpeechDetected(false);
+./client/src/components/ai-chat-drawer.tsx:      // Keep voiceSessionMode open — it will switch to "thinking" state
+./client/src/components/ai-chat-drawer.tsx:        // Nothing to send, close voice session gracefully
+./client/src/components/ai-chat-drawer.tsx:        setVoiceSessionMode(false);
+./client/src/components/ai-chat-drawer.tsx:    const recognition = new SpeechRecognitionAPI();
+./client/src/components/ai-chat-drawer.tsx:    recognition.onspeechstart = () => { vlog("🗣 onspeechstart"); setSpeechDetected(true); clearSilenceTimer(); };
+./client/src/components/ai-chat-drawer.tsx:    recognition.onspeechend  = () => { vlog("🔇 onspeechend → starting silence timer"); setSpeechDetected(false); startSilenceTimer(); };
+./client/src/components/ai-chat-drawer.tsx:        // onspeechend drives the silence timer; onresult only clears it
+./client/src/components/ai-chat-drawer.tsx:    if (!SpeechRecognitionAPI) {
+./client/src/components/ai-chat-drawer.tsx:      setMicError("Voice input isn't supported in this browser. Try Chrome.");
+./client/src/components/ai-chat-drawer.tsx:  function openVoiceSession() {
+./client/src/components/ai-chat-drawer.tsx:    setVoiceSessionMode(true);
+./client/src/components/ai-chat-drawer.tsx:  function handleVoiceDone() {
+./client/src/components/ai-chat-drawer.tsx:      // Keep voiceSessionMode true — panel switches to "thinking" view
+./client/src/components/ai-chat-drawer.tsx:      setVoiceSessionMode(false);
+./client/src/components/ai-chat-drawer.tsx:  function handleVoiceCancel() {
+./client/src/components/ai-chat-drawer.tsx:    setVoiceSessionMode(false);
+./client/src/components/ai-chat-drawer.tsx:      setVoiceSessionMode(false);
+./client/src/components/ai-chat-drawer.tsx:      openVoiceSession();
+./client/src/components/ai-chat-drawer.tsx:      // Close the voice session overlay so the reply appears in the chat
+./client/src/components/ai-chat-drawer.tsx:      if (voiceSessionRef.current) setVoiceSessionMode(false);
+./client/src/components/ai-chat-drawer.tsx:        if (ttsEnabled) {
+./client/src/components/ai-chat-drawer.tsx:      if (voiceSessionRef.current) setVoiceSessionMode(false);
+./client/src/components/ai-chat-drawer.tsx:    unlockAudioContext();
+./client/src/components/ai-chat-drawer.tsx:              {/* Stop speaking button — visible only while TTS is active */}
+./client/src/components/ai-chat-drawer.tsx:                <Button size="icon" variant="ghost" onClick={stopSpeaking} className="text-amber-300 no-default-hover-elevate hover:bg-white/10" title="Stop speaking" data-testid="button-tts-stop">
+./client/src/components/ai-chat-drawer.tsx:              {/* TTS toggle */}
+./client/src/components/ai-chat-drawer.tsx:              {ttsSupported && (
+./client/src/components/ai-chat-drawer.tsx:                  onClick={() => { setTtsEnabled(v => !v); if (isSpeaking) stopSpeaking(); }}
+./client/src/components/ai-chat-drawer.tsx:                  className={`no-default-hover-elevate hover:bg-white/10 ${ttsEnabled ? "text-emerald-300" : "text-white/60"}`}
+./client/src/components/ai-chat-drawer.tsx:                  title={ttsEnabled ? "Voice replies on — click to mute" : "Voice replies off — click to enable"}
+./client/src/components/ai-chat-drawer.tsx:                  data-testid="button-tts-toggle"
+./client/src/components/ai-chat-drawer.tsx:                  {ttsEnabled ? <Volume2 className="w-4 h-4" /> : <VolumeX className="w-4 h-4" />}
+./client/src/components/ai-chat-drawer.tsx:          {/* ── Voice Session Overlay ────────────────────────────────────── */}
+./client/src/components/ai-chat-drawer.tsx:          {voiceSessionMode && (
+./client/src/components/ai-chat-drawer.tsx:              data-testid="panel-voice-session"
+./client/src/components/ai-chat-drawer.tsx:                    className="voice-breathe-ring absolute rounded-full pointer-events-none"
+./client/src/components/ai-chat-drawer.tsx:                    className="voice-breathe absolute rounded-full pointer-events-none"
+./client/src/components/ai-chat-drawer.tsx:                    className="voice-avatar-float relative z-10 object-contain"
+./client/src/components/ai-chat-drawer.tsx:                  ) : speechDetected ? (
+./client/src/components/ai-chat-drawer.tsx:                        className={`rounded-full origin-bottom ${speechDetected ? "voice-bar-active" : "voice-bar-idle"}`}
+./client/src/components/ai-chat-drawer.tsx:                          backgroundColor: speechDetected
+./client/src/components/ai-chat-drawer.tsx:                          animationDuration: speechDetected ? `${0.38 + (i % 3) * 0.08}s` : `${1.4 + (i % 3) * 0.25}s`,
+./client/src/components/ai-chat-drawer.tsx:                    onClick={handleVoiceDone}
+./client/src/components/ai-chat-drawer.tsx:                    data-testid="button-voice-done"
+./client/src/components/ai-chat-drawer.tsx:                    onClick={handleVoiceCancel}
+./client/src/components/ai-chat-drawer.tsx:                    data-testid="button-voice-cancel"
+./client/src/components/ai-chat-drawer.tsx:          <div className={`flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0 ${voiceSessionMode ? "hidden" : ""}`}>
+./client/src/components/ai-chat-drawer.tsx:                      {isIOS && pendingTts?.msgIdx === i && (
+./client/src/components/ai-chat-drawer.tsx:                            const { text, msgIdx } = pendingTts;
+./client/src/components/ai-chat-drawer.tsx:                            setPendingTts(null);
+./client/src/components/ai-chat-drawer.tsx:                      {/* Replay TTS for this message */}
+./client/src/components/ai-chat-drawer.tsx:                      {ttsSupported && !(isIOS && pendingTts?.msgIdx === i) && (
+./client/src/components/ai-chat-drawer.tsx:          {/* Input area — hidden during voice session */}
+./client/src/components/ai-chat-drawer.tsx:          <div className={`border-t px-3 pt-1 pb-2 bg-background flex-shrink-0 ${voiceSessionMode ? "hidden" : ""}`}>
+./client/src/components/ai-chat-drawer.tsx:                Voice input paused — encounter recording in progress.
+./client/src/components/ai-chat-drawer.tsx:                  {SpeechRecognitionAPI && (
+./client/src/components/ai-chat-drawer.tsx:                      onClick={() => { unlockAudioContext(); toggleListening(); }}
+./client/src/components/ai-chat-drawer.tsx:                      title={encounterRecordingActive ? "Voice input paused — encounter recording in progress" : isListening ? "Stop listening" : "Speak to June"}
+./client/src/components/demo-modal.tsx:    text: "Record directly in the browser or upload an existing audio file — no external tools, no integrations required.",
+./client/src/components/demo-modal.tsx:    text: "Audio is transcribed, diarized by speaker, and normalized for medical terminology — all in seconds.",
+./client/src/components/product-tour.tsx:    description: "Click the 'New Encounter' button on the left to open a visit. Record live audio directly in the browser, or upload an existing recording. ClinIQ runs a 6-stage AI pipeline automatically: transcription → normalization & diarization → medication detection → clinical fact extraction → SOAP note → patient summary.",
+./client/src/components/recording/floating-recorder-dock.tsx:              {recording.errorMessage || "We couldn't save the transcript. Your audio was captured — please open the encounter and try again."}
+./client/src/pages/patient-profiles.tsx:                    <p className="text-sm text-muted-foreground">No encounters documented yet. Start one above to create an audio-transcribed SOAP note for this patient.</p>
+./client/src/pages/privacy.tsx:            <p><strong>Audio Recordings:</strong> When using the clinical encounter documentation feature, audio files are transmitted to OpenAI's Whisper API for transcription and are immediately and permanently deleted from our systems upon transcription completion. Audio is never stored in our database.</p>
+./client/src/pages/privacy.tsx:            <p><strong>OpenAI:</strong> Transcription and AI-generated content (SOAP notes, recommendations, evidence analysis) are processed via the OpenAI API. Audio files are deleted immediately after transcription. Text data sent to OpenAI is subject to OpenAI's API data usage policies.</p>
+./client/src/pages/encounters.tsx:// ── Audio Recorder + Upload Component ────────────────────────────────────────
+./client/src/pages/encounters.tsx:  // AudioCapture is now a thin shell that owns ONLY upload mode locally.
+./client/src/pages/encounters.tsx:  function AudioCapture({
+./client/src/pages/encounters.tsx:        formData.append("audio", file);
+./client/src/pages/encounters.tsx:      if (!f.type.startsWith("audio/") && !f.name.match(/\.(mp3|wav|ogg|m4a|webm|mp4|flac)$/i)) {
+./client/src/pages/encounters.tsx:        toast({ variant: "destructive", title: "Invalid file", description: "Please upload an audio file (MP3, WAV, M4A, WebM, etc.)" });
+./client/src/pages/encounters.tsx:        toast({ variant: "destructive", title: "File too large", description: "Audio files must be under 200 MB." });
+./client/src/pages/encounters.tsx:                    : "Transcribing session audio — notes will appear below…"}
+./client/src/pages/encounters.tsx:              data-testid="audio-drop-zone"
+./client/src/pages/encounters.tsx:              <input ref={fileRef} type="file" accept="audio/*,.mp3,.wav,.ogg,.m4a,.webm,.mp4,.flac" className="hidden"
+./client/src/pages/encounters.tsx:                data-testid="input-audio-file"
+./client/src/pages/encounters.tsx:              <p className="text-sm font-medium">Drop audio file or click to browse</p>
+./client/src/pages/encounters.tsx:                <Button size="icon" variant="ghost" onClick={() => setUploadFile(null)} data-testid="button-remove-audio">
+./client/src/pages/encounters.tsx:          Audio is processed by OpenAI Whisper and never stored
+./client/src/pages/encounters.tsx:      setGlobalLoading("Transcribing audio…");
+./client/src/pages/encounters.tsx:  // Hide Transcript tab once the note is signed — raw audio/text is not part of the locked record
+./client/src/pages/encounters.tsx:                        </span>{" "}does not move the recording. To capture audio for{" "}
+./client/src/pages/encounters.tsx:              <AudioCapture
+./client/src/pages/encounters.tsx:                  No transcript yet. Record or upload audio in the Details tab, then run Normalize.
+./client/src/pages/landing.tsx:            ClinIQ is built with HIPAA technical controls including audit logging, session management, password enforcement, and audio deletion after transcription. A Business Associate Agreement is provided at registration.
+./client/src/pages/billing.tsx:                    Your existing card on file will be used. A prorated adjustment will be applied to your next invoice.
+./client/src/pages/help.tsx:          <Bullet label="Clinical Documentation" desc="Launches Encounter Documentation for audio transcription and SOAP note generation." />
+./client/src/pages/help.tsx:      <Guide title="Creating an Encounter & Recording Audio">
+./client/src/pages/help.tsx:          { src: "/help-shots/encounter-details.png", caption: "New Encounter — Details tab. Select the patient, visit type, and chief complaint. Optionally link lab results for AI context. Then record or upload the session audio." },
+./client/src/pages/help.tsx:          { src: "/help-shots/encounter-transcript.png", caption: "After recording or uploading, the raw transcription appears in the Session Notes area. ClinIQ shows a word count and the HIPAA notice confirming audio is never stored." },
+./client/src/pages/help.tsx:          "In Session Notes, click Record to capture live audio, or Upload File to upload a pre-recorded audio file.",
+./client/src/pages/help.tsx:            { stage: "1", label: "Transcribe", desc: "Converts audio to raw text using OpenAI Whisper. Audio is deleted immediately — never stored." },
+./client/src/pages/help.tsx:          ClinIQ will not invent physical exam findings, vitals, or clinical observations that are not supported by the audio transcript or linked lab data. Items with insufficient evidence are flagged with a review indicator rather than stated as fact. The SOAP note is a starting point — always review before copying to your EHR.
+./client/src/hooks/use-global-loading.tsx:  | "Transcribing audio…"
+./shared/schema.ts:  audioProcessed: boolean("audio_processed").notNull().default(false),
+morganpitts0416@cloudshell:~/HormoneHealthAI (realign-lab-app)$ 
