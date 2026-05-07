@@ -13369,6 +13369,28 @@ IMPORTANT:
     }
   });
 
+  // ── June TTS diagnostic — shows active voice config (no key values exposed) ─
+  app.get("/api/tts/config", requireAuth, (req, res) => {
+    const hasDirectKey = !!process.env.ELEVENLABS_API_KEY;
+    res.json({
+      provider: hasDirectKey ? "elevenlabs_direct" : "elevenlabs_connector_or_openai_fallback",
+      voice_id: "y3H6zY6KvCH2pEuQjmv8",
+      voice_name: "Amy",
+      model: "eleven_multilingual_v2",
+      voice_settings: {
+        stability: 0.50,
+        similarity_boost: 0.75,
+        style: 0.12,
+        speed: 0.94,
+        use_speaker_boost: true,
+      },
+      elevenlabs_api_key_present: hasDirectKey,
+      note: hasDirectKey
+        ? "ElevenLabs direct API key is set — Amy voice will be used in all environments including production."
+        : "No direct API key found. Will attempt Replit connector (dev only), then fall back to OpenAI shimmer.",
+    });
+  });
+
   // ── June TTS — convert text to speech via OpenAI ─────────────────────────
   app.post("/api/tts", requireAuth, async (req, res) => {
     try {
