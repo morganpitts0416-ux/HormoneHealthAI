@@ -12896,6 +12896,19 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
                 if (enc.clinicianNotes) {
                   patientContext += `    Clinician Notes: ${enc.clinicianNotes.slice(0, 300)}\n`;
                 }
+                // ── Raw encounter transcript ─────────────────────────────────
+                // This is the verbatim transcription of the recorded visit.
+                // CRITICAL: Include this so June has access to everything said
+                // during the encounter — patient disclosures, history, context
+                // that may not have made it into the SOAP note yet.
+                if (enc.transcription) {
+                  const tx = enc.transcription.trim();
+                  const TX_LEN = 3000;
+                  const snippet = tx.length <= TX_LEN
+                    ? tx
+                    : tx.slice(0, TX_LEN) + `\n    [...transcript continues — ${tx.length - TX_LEN} chars omitted]`;
+                  patientContext += `    Encounter Transcript (verbatim recording):\n${snippet.split('\n').map((l: string) => `      ${l}`).join('\n')}\n`;
+                }
               });
             }
 
