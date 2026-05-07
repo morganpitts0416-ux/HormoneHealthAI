@@ -12,11 +12,11 @@ import { useLocation } from "wouter";
 import { useSoapNoteContext } from "@/contexts/soap-note-context";
 import { useToast } from "@/hooks/use-toast";
 import { useRecording } from "@/contexts/recording-context";
-const juneWaving = "/assets/june/june-waving.png";
-const juneListening = "/assets/june/june-listening.png";
-const juneIdle = "/assets/june/june-idle.png";
-const juneSoap = "/assets/june/june-soap.png";
-const juneAnalyzing = "/assets/june/june-analyzing.png";
+import juneWaving from "../assets/june/june-waving.webp";
+import juneListening from "../assets/june/june-listening.webp";
+import juneIdle from "../assets/june/june-idle.webp";
+import juneSoap from "../assets/june/june-soap.webp";
+import juneAnalyzing from "../assets/june/june-analyzing.webp";
 
 interface ChatMessage {
   role: "user" | "assistant";
@@ -576,7 +576,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           style={{ backgroundColor: "#2e3a20" }}
           data-testid="button-open-ai-chat"
         >
-          <img src={juneWaving} alt="June" className="h-9 w-auto object-contain drop-shadow-sm" />
+          <img src={juneWaving} alt="June" className="h-9 w-auto object-contain" />
           <span className="text-sm font-medium">Ask June</span>
         </button>
       )}
@@ -589,7 +589,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           {/* Header */}
           <div className="flex items-center justify-between gap-2 px-3 py-1 border-b flex-shrink-0" style={{ backgroundColor: "#2e3a20" }}>
             <div className="flex items-center gap-2 min-w-0">
-              <img src={juneWaving} alt="June" className="h-10 w-auto object-contain flex-shrink-0 drop-shadow-sm" />
+              <img src={juneWaving} alt="June" className="h-10 w-auto object-contain flex-shrink-0" />
               <div className="min-w-0">
                 <h3 className="text-sm font-semibold text-white truncate">June</h3>
                 <p className="text-xs text-white/70 truncate">AI Clinical Colleague · ClinIQ</p>
@@ -684,7 +684,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           <div className="flex-1 overflow-y-auto px-4 py-3 space-y-4 min-h-0">
             {messages.length === 0 && (
               <div className="flex flex-col items-center justify-center h-full text-center px-4 space-y-3">
-                <img src={juneWaving} alt="June" className="h-28 w-auto object-contain drop-shadow-sm" />
+                <img src={juneWaving} alt="June" className="h-28 w-auto object-contain" />
                 <div className="space-y-2">
                   {soapNoteActive ? (
                     <>
