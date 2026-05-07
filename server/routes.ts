@@ -13303,22 +13303,23 @@ IMPORTANT:
       try {
         mp3 = await (openai.audio.speech.create as any)({
           model: "gpt-4o-mini-tts",
-          voice: "nova",
+          voice: "shimmer",
           input: trimmed,
           instructions:
-            "You are June — a warm, confident, and knowledgeable clinical colleague. " +
-            "Speak naturally and conversationally, like you're talking to a fellow clinician in the hallway. " +
-            "Vary your pacing and tone to sound genuinely engaged. Use natural contractions and a friendly cadence. " +
-            "Never sound robotic, stiff, or overly formal. Be warm but efficient — you respect their time.",
-          speed: 1.0,
+            "You are June — a warm, sweet, and genuinely enthusiastic clinical colleague. " +
+            "Speak with a light, upbeat energy — like a knowledgeable friend who's excited to help. " +
+            "Be conversational and natural, with a touch of warmth and brightness in your tone. " +
+            "Use natural contractions, vary your pacing, and let a little personality come through. " +
+            "Never sound stiff or robotic. You're friendly, caring, and a pleasure to talk to.",
+          speed: 1.1,
         });
       } catch {
         // Fallback: tts-1-hd sounds notably better than tts-1
         mp3 = await openai.audio.speech.create({
           model: "tts-1-hd",
-          voice: "nova",
+          voice: "shimmer",
           input: trimmed,
-          speed: 0.97,
+          speed: 1.08,
         });
       }
 
