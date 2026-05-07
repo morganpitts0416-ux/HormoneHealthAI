@@ -72,14 +72,42 @@ const isIOS =
 // Strip markdown formatting so TTS reads clean text
 function stripMarkdownForSpeech(text: string): string {
   return text
-    .replace(/\*\*([^*]+)\*\*/g, "$1")   // bold
-    .replace(/\*([^*]+)\*/g, "$1")        // italic
-    .replace(/^#{1,3} /gm, "")            // headings
-    .replace(/^- /gm, "")                 // bullets
-    .replace(/^\d+\. /gm, "")            // numbered lists
-    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links
-    .replace(/`[^`]+`/g, "")             // inline code
+    // Remove third-person self-references that slip through (**June's X:** or June's X:)
+    .replace(/\*{1,2}June'?s?\s+[^:*\n]+:\*{1,2}\s*/gi, "")
+    .replace(/^June'?s?\s+[^:\n]+:\s*/gim, "")
+    // Remove any bold/italic section headers (e.g. **Observations:**)
+    .replace(/\*{1,2}[A-Z][^:*\n]{1,40}:\*{1,2}\s*/g, "")
+    // Strip remaining markdown
+    .replace(/\*\*([^*]+)\*\*/g, "$1")       // bold → plain
+    .replace(/\*([^*]+)\*/g, "$1")           // italic → plain
+    .replace(/^#{1,3} .+$/gm, "")           // headings
+    .replace(/^[•\-\*] /gm, "")             // bullets
+    .replace(/^\d+\.\s+/gm, "")            // numbered lists
+    .replace(/\[([^\]]+)\]\([^)]+\)/g, "$1") // links → text
+    .replace(/`[^`]+`/g, "")               // inline code
+    .replace(/\n{2,}/g, " ")               // paragraph breaks → space
+    .replace(/\n/g, " ")                   // line breaks → space
+    .replace(/\s{2,}/g, " ")              // collapse whitespace
     .trim();
+}
+
+// When the server doesn't send a [SPOKEN] block, build a natural 2-sentence
+// spoken intro from the reply rather than reading the whole thing verbatim.
+function makeFallbackSpoken(reply: string): string {
+  const clean = stripMarkdownForSpeech(reply);
+  if (!clean) return "";
+  // Split on sentence boundaries and take up to 2 sentences / ~55 words
+  const sentences = clean.match(/[^.!?]+[.!?]+/g) ?? [];
+  const result: string[] = [];
+  let wordCount = 0;
+  for (const s of sentences) {
+    const words = s.trim().split(/\s+/).length;
+    if (result.length > 0 && wordCount + words > 55) break;
+    result.push(s.trim());
+    wordCount += words;
+    if (result.length >= 2) break;
+  }
+  return result.join(" ") || clean.slice(0, 240);
 }
 
 const ttsSupported = typeof window !== "undefined" && "speechSynthesis" in window;
@@ -544,9 +572,12 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
           proposedEdit: editedNote ?? undefined,
           editApplied: false,
         }];
-        // Speak the short casual summary when available; fall back to full reply
+        // Speak the short spoken summary when available.
+        // When absent, use a smart 2-sentence fallback instead of reading
+        // the entire formatted reply verbatim (which sounds robotic and reads
+        // things like "June's Observations:" out loud).
         if (ttsEnabled) {
-          const textToSpeak = spoken || reply;
+          const textToSpeak = spoken ? spoken : makeFallbackSpoken(reply);
           setTimeout(() => speakText(textToSpeak, next.length - 1), 80);
         }
         return next;
