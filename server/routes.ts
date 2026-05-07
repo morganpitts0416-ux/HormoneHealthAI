@@ -12968,6 +12968,33 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         }
       } catch (_) { /* non-fatal — proceed without preferences */ }
 
+      // ── Load clinic's custom diagnosis presets for June ───────────────────
+      let diagnosisPresetsBlock = "";
+      try {
+        if (clinicId) {
+          const presets = await storage.getDiagnosisPresets(clinicId);
+          if (presets.length > 0) {
+            const lines: string[] = [
+              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+              "CLINIC CUSTOM DIAGNOSIS PRESETS",
+              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+              "These are this clinic's saved diagnosis presets with their preferred ICD-10 codes.",
+              "When drafting or editing a SOAP note Assessment, ALWAYS use these presets for matching diagnoses — use the exact title and codes listed here rather than generic alternatives.",
+              "",
+            ];
+            presets.forEach(p => {
+              const codeStr = (p.codes as { code: string; name: string }[])
+                .map(c => `${c.code} — ${c.name}`).join(", ");
+              const aliasStr = p.aliases && p.aliases.length > 0
+                ? ` (also: ${p.aliases.join(", ")})`
+                : "";
+              lines.push(`• ${p.title}${aliasStr}: ${codeStr}`);
+            });
+            diagnosisPresetsBlock = "\n\n" + lines.join("\n");
+          }
+        }
+      } catch (_) { /* non-fatal */ }
+
       const systemPrompt = `Your name is June. You are a clinical documentation and reasoning assistant embedded in the ClinIQ platform. You are NOT a diagnostic authority. You do NOT make autonomous clinical decisions or diagnoses. Your role is to help the provider think more clearly, document more efficiently, and act more confidently — while keeping them firmly in the driver's seat at all times.
 
 You reason like an experienced NP or physician, but you speak like a calm, warm colleague — not a report generator. When you're unsure about something, you say so plainly. When something could go either way, you present the considerations and ask the provider what they think. You surface patterns. You draft language. You catch things that might have been missed. But every clinical decision belongs to the provider.
@@ -13070,7 +13097,7 @@ SLEEP APNEA (STOP-BANG ≥3 = high risk):
 - Note: CPAP compliance improves testosterone by an average of 50–75 ng/dL per **Luboshitzky et al., J Sleep Res 2002**
 
 CLINIC PROTOCOLS & FUNCTIONAL RANGES:
-${rangesRef}
+${rangesRef}${diagnosisPresetsBlock}
 
 RED FLAG THRESHOLDS (immediate clinical action):
 🔴 Hematocrit ≥54% (on TRT): HOLD testosterone, order therapeutic phlebotomy same day
