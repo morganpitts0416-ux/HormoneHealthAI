@@ -183,6 +183,16 @@ function getClinicianId(req: Request): number {
   return (req.user as any).id;
 }
 
+// Safely parse a date-only string (YYYY-MM-DD) as local noon so that no
+// timezone offset shifts the date into the previous day. Full ISO timestamps
+// are passed through to the normal Date constructor unchanged.
+function parseDateOnly(value: string): Date {
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return new Date(value.trim() + 'T12:00:00');
+  }
+  return new Date(value);
+}
+
 // Returns the actor's own identity ID for personal features (June prefs,
 // note templates, block defaults, note phrases).
 // For staff: returns -(staffId) — a stable negative integer that never
@@ -2184,7 +2194,7 @@ Rules:
       const clinicId = getEffectiveClinicId(req);
       const body = { ...req.body, userId: clinicianId, ...(clinicId ? { clinicId } : {}) };
       if (body.dateOfBirth && typeof body.dateOfBirth === "string") {
-        body.dateOfBirth = new Date(body.dateOfBirth);
+        body.dateOfBirth = parseDateOnly(body.dateOfBirth);
       }
       const parseResult = insertPatientSchema.safeParse(body);
       if (!parseResult.success) {
@@ -2295,7 +2305,7 @@ Rules:
       if (firstName !== undefined) updates.firstName = (firstName ?? "").trim();
       if (lastName !== undefined) updates.lastName = (lastName ?? "").trim();
       if (email !== undefined) updates.email = (email ?? "").trim().toLowerCase() || null;
-      if (dateOfBirth !== undefined) updates.dateOfBirth = dateOfBirth ? new Date(dateOfBirth) : null;
+      if (dateOfBirth !== undefined) updates.dateOfBirth = dateOfBirth ? parseDateOnly(dateOfBirth) : null;
       if (phone !== undefined) updates.phone = (phone ?? "").trim() || null;
       if (gender !== undefined) updates.gender = gender;
       if (ssn !== undefined) updates.ssn = ssn?.trim() || null;
@@ -11726,7 +11736,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           if (existing) {
             resolvedPatientId = existing.id;
             const updates: Record<string, any> = {};
-            if (!existing.dateOfBirth && dobRaw) updates.dateOfBirth = new Date(dobRaw);
+            if (!existing.dateOfBirth && dobRaw) updates.dateOfBirth = parseDateOnly(dobRaw);
             if (!existing.email && email) updates.email = email;
             if (!existing.phone && phone) updates.phone = phone;
             if (!existing.preferredPharmacy && preferredPharmacy) updates.preferredPharmacy = preferredPharmacy;
@@ -11739,7 +11749,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               ...(formClinicId ? { clinicId: formClinicId } : {}),
               firstName,
               lastName,
-              dateOfBirth: dobRaw ? new Date(dobRaw) : null,
+              dateOfBirth: dobRaw ? parseDateOnly(dobRaw) : null,
               gender,
               email: email || null,
               phone: phone || null,

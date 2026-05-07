@@ -25,6 +25,17 @@ const MARGIN = 20;
 const CONTENT_W = PAGE_W - MARGIN * 2;
 const SOAP_DEFAULT_PRIMARY = '#2e3a20'; // Historic ReAlign green letterhead
 
+// Parse a date string safely — treats date-only strings (YYYY-MM-DD) as local
+// noon so no timezone shift pushes them into the previous day.
+function parseDateOnly(value: string | null | undefined): Date {
+  if (!value) return new Date();
+  // ISO date-only: "2026-05-07" → parse as local noon to avoid UTC shift
+  if (/^\d{4}-\d{2}-\d{2}$/.test(value.trim())) {
+    return new Date(value.trim() + 'T12:00:00');
+  }
+  return new Date(value);
+}
+
 function sanitizeForPdf(text: string): string {
   return text
     .replace(/\u2013/g, '-')
@@ -131,7 +142,10 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   doc.setFontSize(8.5);
   doc.setTextColor('#444444');
   try {
-    const dateStr = new Date(opts.visitDate).toLocaleDateString('en-US', {
+    // Signed notes: use the signing date as the official note date.
+    // Unsigned drafts: fall back to the encounter visit date.
+    const dateSource = opts.signedAt ? new Date(opts.signedAt) : parseDateOnly(opts.visitDate);
+    const dateStr = dateSource.toLocaleDateString('en-US', {
       month: 'long', day: 'numeric', year: 'numeric',
     });
     doc.text(`Date: ${dateStr}`, PAGE_W - MARGIN, y, { align: 'right' });
