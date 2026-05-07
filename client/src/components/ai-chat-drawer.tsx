@@ -161,7 +161,6 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
     if (msgIdx !== undefined) speakingMsgIdxRef.current = msgIdx;
 
     try {
-      // Use OpenAI Nova voice via server
       const res = await fetch("/api/tts", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
@@ -169,23 +168,82 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         credentials: "include",
       });
       if (!res.ok) throw new Error("TTS request failed");
-      const blob = await res.blob();
-      const url = URL.createObjectURL(blob);
-      const audio = new Audio(url);
-      currentAudioRef.current = audio;
-      audio.onended = () => {
-        URL.revokeObjectURL(url);
-        setIsSpeaking(false);
-        speakingMsgIdxRef.current = null;
-        currentAudioRef.current = null;
-      };
-      audio.onerror = () => {
-        URL.revokeObjectURL(url);
-        setIsSpeaking(false);
-        speakingMsgIdxRef.current = null;
-        currentAudioRef.current = null;
-      };
-      await audio.play();
+
+      // Streaming playback — start audio on first chunk instead of waiting for the full file.
+      // MediaSource is supported on Chrome/Edge/Firefox. iOS Safari falls back to full-blob.
+      const supportsStreaming =
+        typeof MediaSource !== "undefined" &&
+        MediaSource.isTypeSupported("audio/mpeg") &&
+        !!res.body;
+
+      if (supportsStreaming) {
+        await new Promise<void>((resolve, reject) => {
+          const ms = new MediaSource();
+          const audioUrl = URL.createObjectURL(ms);
+          const audio = new Audio(audioUrl);
+          currentAudioRef.current = audio;
+
+          const cleanup = (err?: any) => {
+            URL.revokeObjectURL(audioUrl);
+            setIsSpeaking(false);
+            speakingMsgIdxRef.current = null;
+            currentAudioRef.current = null;
+            if (err) reject(err); else resolve();
+          };
+          audio.onended = () => cleanup();
+          audio.onerror = () => cleanup(new Error("audio error"));
+
+          ms.addEventListener("sourceopen", async () => {
+            try {
+              const sb = ms.addSourceBuffer("audio/mpeg");
+              const reader = res.body!.getReader();
+              let started = false;
+
+              const pump = async (): Promise<void> => {
+                const { done, value } = await reader.read();
+                if (done) {
+                  await new Promise<void>(r => {
+                    if (sb.updating) sb.addEventListener("updateend", () => { try { ms.endOfStream(); } catch {} r(); }, { once: true });
+                    else { try { ms.endOfStream(); } catch {} r(); }
+                  });
+                  return;
+                }
+                if (!value?.byteLength) { await pump(); return; }
+                if (sb.updating) {
+                  await new Promise(r => sb.addEventListener("updateend", r, { once: true }));
+                }
+                sb.appendBuffer(value);
+                await new Promise(r => sb.addEventListener("updateend", r, { once: true }));
+                if (!started) { started = true; audio.play().catch(reject); }
+                await pump();
+              };
+
+              await pump();
+            } catch (e) {
+              cleanup(e);
+            }
+          });
+        });
+      } else {
+        // iOS Safari / fallback: full blob
+        const blob = await res.blob();
+        const url = URL.createObjectURL(blob);
+        const audio = new Audio(url);
+        currentAudioRef.current = audio;
+        audio.onended = () => {
+          URL.revokeObjectURL(url);
+          setIsSpeaking(false);
+          speakingMsgIdxRef.current = null;
+          currentAudioRef.current = null;
+        };
+        audio.onerror = () => {
+          URL.revokeObjectURL(url);
+          setIsSpeaking(false);
+          speakingMsgIdxRef.current = null;
+          currentAudioRef.current = null;
+        };
+        await audio.play();
+      }
     } catch (err: any) {
       // On iOS, if play() was blocked by autoplay policy, surface a tap-to-play button
       if (isIOS && err?.name === "NotAllowedError" && msgIdx !== undefined) {

@@ -13299,6 +13299,13 @@ IMPORTANT:
 
       // gpt-4o-mini-tts supports voice instructions for natural, expressive speech.
       // Falls back to tts-1-hd/nova if the model isn't available on this key.
+      // Stream audio directly to client — pipe OpenAI's output as it generates
+      // so the browser can start playing the first chunk immediately.
+      res.set("Content-Type", "audio/mpeg");
+      res.set("Cache-Control", "no-store");
+      res.set("X-Accel-Buffering", "no"); // prevent nginx from re-buffering
+      const { Readable } = await import("stream");
+
       let mp3: any;
       try {
         mp3 = await (openai.audio.speech.create as any)({
@@ -13314,7 +13321,6 @@ IMPORTANT:
           speed: 1.1,
         });
       } catch {
-        // Fallback: tts-1-hd sounds notably better than tts-1
         mp3 = await openai.audio.speech.create({
           model: "tts-1-hd",
           voice: "shimmer",
@@ -13323,10 +13329,7 @@ IMPORTANT:
         });
       }
 
-      const buffer = Buffer.from(await mp3.arrayBuffer());
-      res.set("Content-Type", "audio/mpeg");
-      res.set("Cache-Control", "no-store");
-      res.send(buffer);
+      Readable.fromWeb(mp3.body as any).pipe(res);
     } catch (err: any) {
       console.error("[TTS] Error:", err);
       res.status(500).json({ message: "Voice generation failed." });
