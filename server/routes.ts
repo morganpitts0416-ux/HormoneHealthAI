@@ -12705,18 +12705,24 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
       let patientContext = "";
       let patientName = "";
+      // Keys from the patient's actual lab panels — used below to filter rangesRef
+      let patientLabKeys = new Set<string>();
+      let patientGender = "";
+
       if (patientId) {
         try {
-          const [patient, chart, labResults, encounters, vitals] = await Promise.all([
+          const [patient, chart, labResults, encounters, vitals, suppOrders] = await Promise.all([
             storage.getPatient(patientId, clinicianId, clinicId),
             storage.getPatientChart(patientId, clinicianId),
             storage.getLabResultsByPatient(patientId),
             storage.getEncountersByClinicianId(clinicianId, patientId, clinicId),
             storage.getPatientVitals(patientId, clinicianId),
+            storage.getSupplementOrdersByClinicianPatient(clinicianId, patientId),
           ]);
 
           if (patient) {
             patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
+            patientGender = patient.gender || "";
             const gender = patient.gender || "unknown";
             const dob = patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : "unknown";
             const age = patient.dateOfBirth
@@ -12737,6 +12743,21 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               patientContext += `\nSocial History: ${formatList(chart.socialHistory)}`;
             }
 
+            // ── Active supplement orders ───────────────────────────────────
+            if (suppOrders && suppOrders.length > 0) {
+              const pendingSupps = suppOrders.filter((s: any) => s.status === 'pending' || s.status === 'ordered');
+              if (pendingSupps.length > 0) {
+                const suppLines = pendingSupps.flatMap((s: any) =>
+                  (Array.isArray(s.items) ? s.items : []).map((item: any) =>
+                    `${item.name}${item.dose ? ` ${item.dose}` : ''}`
+                  )
+                );
+                if (suppLines.length > 0) {
+                  patientContext += `\nActive Supplement Orders: ${suppLines.join(', ')}`;
+                }
+              }
+            }
+
             // ── Vitals (last 5 readings) ───────────────────────────────────
             if (vitals && vitals.length > 0) {
               patientContext += `\n\nVitals History (most recent first, up to 5):\n`;
@@ -12747,41 +12768,100 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
                 if (v.heartRate) parts.push(`HR ${v.heartRate} bpm`);
                 if (v.weightLbs) parts.push(`Weight ${v.weightLbs} lbs`);
                 if (v.bmi) parts.push(`BMI ${v.bmi}`);
+                if (v.temperature) parts.push(`Temp ${v.temperature}°F`);
                 if (parts.length) patientContext += `  ${date}: ${parts.join(' | ')}\n`;
               });
             }
 
-            // ── Lab history (all panels, newest first) ─────────────────────
+            // ── Lab history — with interpretation data ─────────────────────
+            // Each panel includes: raw values + computed status from interpretationResult,
+            // red flags flagged by the clinical engine, and (most recent panel) phenotypes
+            // and high-priority supplement recs from the platform's own logic engine.
             if (labResults && labResults.length > 0) {
-              patientContext += `\n\nLab History (${labResults.length} panel${labResults.length > 1 ? 's' : ''} on file — all shown for trend analysis):\n`;
-              // Collect all unique marker keys across all panels so we can show trends
-              const allKeys = new Set<string>();
-              labResults.forEach((lr: any) => {
-                const vals = lr.labValues as any;
-                if (vals && typeof vals === 'object') Object.keys(vals).forEach(k => allKeys.add(k));
-              });
+              patientContext += `\n\nLab History (${labResults.length} panel${labResults.length > 1 ? 's' : ''} on file):\n`;
+
               labResults.slice(0, 8).forEach((lr: any, idx: number) => {
                 const date = (lr.labDate || lr.createdAt)
                   ? new Date(lr.labDate || lr.createdAt).toLocaleDateString()
                   : `Panel ${idx + 1}`;
-                patientContext += `\n  Panel ${idx + 1} — ${date}${lr.patientType ? ` (${lr.patientType})` : ""}:\n`;
+                patientContext += `\n  Panel ${idx + 1} — ${date}${idx === 0 ? ' [MOST RECENT]' : ''}:\n`;
+
                 const vals = lr.labValues as any;
+                const interp = lr.interpretationResult as any;
+
+                // Collect keys for targeted rangesRef below
                 if (vals && typeof vals === 'object') {
+                  Object.keys(vals).forEach((k: string) => patientLabKeys.add(k));
+                }
+
+                // Red flags first — highest priority for June
+                if (interp?.redFlags?.length > 0) {
+                  patientContext += `    ⚠ RED FLAGS (flagged by clinical engine):\n`;
+                  (interp.redFlags as any[]).forEach((rf: any) => {
+                    patientContext += `      [${(rf.severity ?? 'flag').toUpperCase()}] ${rf.message} → ${rf.action}\n`;
+                  });
+                }
+
+                // Lab values with computed interpretation status
+                if (vals && typeof vals === 'object') {
+                  // Build lookup: normalised category string → interpretation entry
+                  const interpByKey: Record<string, any> = {};
+                  if (interp?.interpretations) {
+                    (interp.interpretations as any[]).forEach((i: any) => {
+                      const norm = (i.category ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                      interpByKey[norm] = i;
+                    });
+                  }
+
                   for (const [key, val] of Object.entries(vals)) {
-                    if (val !== null && val !== undefined && val !== "") {
+                    if (val === null || val === undefined || val === '') continue;
+                    const keyNorm = key.toLowerCase().replace(/[^a-z0-9]/g, '');
+                    // Try exact match first, then partial
+                    const ie = interpByKey[keyNorm]
+                      ?? Object.values(interpByKey).find((i: any) => {
+                        const c = (i.category ?? '').toLowerCase().replace(/[^a-z0-9]/g, '');
+                        return c.includes(keyNorm) || keyNorm.includes(c);
+                      });
+
+                    if (ie?.status) {
+                      const icon = { normal: '✓', borderline: '△', abnormal: '✗', critical: '🔴' }[ie.status as string] ?? '';
+                      patientContext += `    ${key}: ${val}${ie.unit ? ` ${ie.unit}` : ''} [${icon} ${ie.status.toUpperCase()}]`;
+                      // For non-normal values include the platform's interpretation text (truncated)
+                      if (ie.status !== 'normal' && ie.interpretation) {
+                        patientContext += ` — ${(ie.interpretation as string).slice(0, 110)}`;
+                      }
+                      patientContext += '\n';
+                    } else {
                       patientContext += `    ${key}: ${val}\n`;
                     }
                   }
                 }
+
+                // Most-recent panel extras: clinical phenotypes + high-priority supplements
+                if (idx === 0) {
+                  if (interp?.clinicalPhenotypes?.length > 0) {
+                    patientContext += `    Clinical phenotypes (platform): ${(interp.clinicalPhenotypes as any[])
+                      .map((p: any) => p.name || p.label || JSON.stringify(p)).join(', ')}\n`;
+                  }
+                  const highSupps = (interp?.supplements as any[] ?? []).filter((s: any) => s.priority === 'high').slice(0, 4);
+                  if (highSupps.length > 0) {
+                    patientContext += `    High-priority supplement recs (platform): ${highSupps
+                      .map((s: any) => `${s.name} ${s.dose}`).join('; ')}\n`;
+                  }
+                }
               });
+
               if (labResults.length > 8) {
                 patientContext += `  (${labResults.length - 8} older panel(s) not shown)\n`;
               }
             }
 
             // ── Encounter / SOAP note history (last 6) ─────────────────────
+            // Prioritise A/P section — show up to 1500 chars anchored to the
+            // Assessment / Plan heading so the most actionable content is never cut.
             if (encounters && encounters.length > 0) {
               patientContext += `\n\nEncounter History (${encounters.length} total — most recent ${Math.min(encounters.length, 6)} shown):\n`;
+              const SOAP_LEN = 1500;
               encounters.slice(0, 6).forEach((enc: any, idx: number) => {
                 const date = enc.visitDate
                   ? new Date(enc.visitDate).toLocaleDateString()
@@ -12791,11 +12871,27 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
                 if (enc.chiefComplaint) patientContext += ` | CC: ${enc.chiefComplaint}`;
                 patientContext += `\n`;
                 if (enc.soapNote) {
-                  // Include up to 800 chars of SOAP note so June can recall clinical details
-                  const noteSnippet = enc.soapNote.trim().slice(0, 800);
-                  patientContext += `    SOAP Note:\n${noteSnippet.split('\n').map((l: string) => `      ${l}`).join('\n')}`;
-                  if (enc.soapNote.length > 800) patientContext += `\n      [... note continues ...]`;
-                  patientContext += `\n`;
+                  const note = enc.soapNote.trim();
+                  let snippet: string;
+                  if (note.length <= SOAP_LEN) {
+                    snippet = note;
+                  } else {
+                    // Find start of Assessment or Plan to anchor the snippet there
+                    const apIdx = Math.max(
+                      note.search(/^(ASSESSMENT|Assessment|A\/P|PLAN|Plan)\b/m),
+                      note.lastIndexOf('\nASSESSMENT'),
+                      note.lastIndexOf('\nAssessment'),
+                      note.lastIndexOf('\nPLAN'),
+                      note.lastIndexOf('\nPlan'),
+                      note.lastIndexOf('\nA/P'),
+                    );
+                    if (apIdx > 0 && apIdx < note.length - 80) {
+                      snippet = `[...]\n${note.slice(apIdx).slice(0, SOAP_LEN)}`;
+                    } else {
+                      snippet = `[...]\n${note.slice(-SOAP_LEN)}`;
+                    }
+                  }
+                  patientContext += `    SOAP Note:\n${snippet.split('\n').map((l: string) => `      ${l}`).join('\n')}\n`;
                 }
                 if (enc.clinicianNotes) {
                   patientContext += `    Clinician Notes: ${enc.clinicianNotes.slice(0, 300)}\n`;
@@ -12810,8 +12906,19 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         }
       }
 
-      const { LAB_MARKER_DEFAULTS } = await import("./lab-marker-defaults");
-      const rangesRef = LAB_MARKER_DEFAULTS.map(m => `${m.displayName} (${m.gender}): Optimal ${m.optimalMin ?? '—'}–${m.optimalMax ?? '—'} ${m.unit}, Ref ${m.normalMin ?? '—'}–${m.normalMax ?? '—'} ${m.unit}${m.notes ? ` [${m.notes}]` : ''}`).join('\n');
+      // ── Functional ranges — filtered to this patient's actual markers ──────
+      // When patient labs are present, only inject ranges for markers we actually
+      // have values for (+ same gender). This avoids dumping 100+ irrelevant range
+      // entries into every request and saves ~600–1000 tokens.
+      const markersToShow = patientLabKeys.size > 0
+        ? LAB_MARKER_DEFAULTS.filter(m =>
+            patientLabKeys.has(m.key) &&
+            (m.gender === 'both' || !patientGender || m.gender === patientGender)
+          )
+        : LAB_MARKER_DEFAULTS;
+      const rangesRef = markersToShow
+        .map(m => `${m.displayName} (${m.gender}): Optimal ${m.optimalMin ?? '—'}–${m.optimalMax ?? '—'} ${m.unit}, Ref ${m.normalMin ?? '—'}–${m.normalMax ?? '—'} ${m.unit}${m.notes ? ` [${m.notes}]` : ''}`)
+        .join('\n');
 
       // ── Load provider preferences for June ────────────────────────────────
       let junePrefsBlock = "";
