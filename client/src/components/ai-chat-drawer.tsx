@@ -118,6 +118,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const isOpenRef = useRef(false);
   // ── Text-to-speech (OpenAI Nova via /api/tts, browser fallback) ──────────
   const currentAudioRef = useRef<HTMLAudioElement | null>(null);
+  // Each speakText() call gets a unique session number. The catch block checks
+  // this before running the browser-speech fallback — if the session no longer
+  // matches, stopSpeaking() superseded this call and we must NOT fire the fallback
+  // (otherwise clearing audio.src triggers onerror → catch → double voice).
+  const ttsSessionRef = useRef(0);
   // iOS Safari blocks audio.play() unless the audio context was first unlocked
   // by a synchronous user gesture. We unlock it on the first send/mic tap.
   const audioUnlockedRef = useRef(false);
@@ -151,6 +156,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   }, []);
 
   const speakText = useCallback(async (text: string, msgIdx?: number) => {
+    // Bump session BEFORE stopSpeaking so the old call's onerror/catch can
+    // detect it was superseded and skip the browser-speech fallback.
+    ttsSessionRef.current += 1;
+    const thisSession = ttsSessionRef.current;
+
     stopSpeaking();
     setPendingTts(null);
     const clean = stripMarkdownForSpeech(text);
@@ -244,6 +254,12 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         await audio.play();
       }
     } catch (err: any) {
+      // If stopSpeaking() cleared audio.src it triggers onerror → reject → here.
+      // Guard: if another speakText() call has already taken over, exit silently —
+      // running the browser-speech fallback here would cause two voices at once.
+      if (thisSession !== ttsSessionRef.current) {
+        return;
+      }
       // On iOS, if play() was blocked by autoplay policy, surface a tap-to-play button
       if (isIOS && err?.name === "NotAllowedError" && msgIdx !== undefined) {
         setIsSpeaking(false);
@@ -251,7 +267,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         setPendingTts({ text, msgIdx });
         return;
       }
-      // Fallback to browser TTS if OpenAI TTS fails
+      // Fallback to browser TTS only when the /api/tts request itself genuinely failed
       if (!ttsSupported) { setIsSpeaking(false); speakingMsgIdxRef.current = null; return; }
       const utter = new SpeechSynthesisUtterance(clean);
       utter.rate = 0.95;
