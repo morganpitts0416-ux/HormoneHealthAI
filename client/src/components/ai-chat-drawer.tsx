@@ -11,6 +11,7 @@ import {
 import { useLocation } from "wouter";
 import { useSoapNoteContext } from "@/contexts/soap-note-context";
 import { useToast } from "@/hooks/use-toast";
+import { useRecording } from "@/contexts/recording-context";
 const juneWaving = "/assets/june/june-waving.png";
 const juneListening = "/assets/june/june-listening.png";
 const juneIdle = "/assets/june/june-idle.png";
@@ -98,6 +99,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
   const { toast } = useToast();
   const { activeSoapNote, onApplySoapEdit } = useSoapNoteContext();
+  const { state: recordingState } = useRecording();
+  // True while the encounter transcription recorder is actively capturing audio.
+  // June's wake-word listener and mic button are suppressed during this window
+  // so she cannot accidentally capture and forward patient encounter audio.
+  const encounterRecordingActive = recordingState === "recording";
 
   const messagesEndRef = useRef<HTMLDivElement>(null);
   const inputRef = useRef<HTMLTextAreaElement>(null);
@@ -302,6 +308,24 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isOpen]);
 
+  // ── Encounter recorder interlock ──────────────────────────────────────────
+  // When the encounter transcription recorder goes active, kill both of June's
+  // listeners immediately.  When it stops, restart the wake listener if the
+  // drawer is still open.  This ensures June never captures patient encounter
+  // audio and never races with the MediaRecorder for the microphone.
+  useEffect(() => {
+    if (encounterRecordingActive) {
+      stopListening();
+      stopWakeListener();
+    } else if (isOpenRef.current && SpeechRecognitionAPI) {
+      // Small delay so any in-flight SpeechRecognition session fully closes first
+      setTimeout(() => {
+        if (isOpenRef.current && !encounterRecordingActive) startWakeListener();
+      }, 400);
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [encounterRecordingActive]);
+
   useEffect(() => () => { stopListening(); stopWakeListener(); }, []);
 
   const scrollToBottom = useCallback(() => {
@@ -405,7 +429,10 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
   function startWakeListener() {
     // iOS does not support continuous SpeechRecognition — skip entirely.
+    // Also skip if the encounter recorder is actively capturing — we don't want
+    // June to accidentally wake and capture patient encounter audio.
     if (!SpeechRecognitionAPI || isIOS || shouldBeListeningRef.current) return;
+    if (encounterRecordingActive) return;
 
     const doSpawn = () => {
       stopWakeListener();
@@ -963,8 +990,17 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
               AI assistant — clinical decisions are yours. Always verify recommendations.
             </p>
 
+            {/* Encounter recorder interlock notice */}
+            {encounterRecordingActive && (
+              <p className="text-xs text-amber-600 dark:text-amber-400 mb-1 px-1">
+                Voice input paused — encounter recording in progress.
+              </p>
+            )}
+
             {/* Mic error */}
-            {micError && <p className="text-xs text-destructive mb-1 px-1">{micError}</p>}
+            {!encounterRecordingActive && micError && (
+              <p className="text-xs text-destructive mb-1 px-1">{micError}</p>
+            )}
 
             <div className="flex items-end gap-2">
               {/* June state avatar — swaps image based on what she's doing */}
@@ -1025,10 +1061,10 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                       size="icon"
                       variant="outline"
                       onClick={() => { unlockAudioContext(); toggleListening(); }}
-                      disabled={chatMutation.isPending}
+                      disabled={chatMutation.isPending || encounterRecordingActive}
                       data-testid="button-mic-ai-chat"
                       className={isListening ? "border-red-400 text-red-500 bg-red-50 dark:bg-red-950/30 no-default-hover-elevate" : ""}
-                      title={isListening ? "Stop listening" : "Speak to June"}
+                      title={encounterRecordingActive ? "Voice input paused — encounter recording in progress" : isListening ? "Stop listening" : "Speak to June"}
                     >
                       {isListening ? <MicOff className="w-4 h-4" /> : <Mic className="w-4 h-4" />}
                     </Button>
