@@ -29,6 +29,7 @@ import { NoteTemplatesContent } from "@/pages/note-templates";
 import { ChartReviewSection } from "@/components/chart-review/chart-review-section";
 import { ClinicalBlockDefaultsSection } from "@/components/clinical-block-defaults-section";
 import { JuneSettingsSection } from "@/components/june-settings-section";
+import { EncounterTemplatesSection } from "@/components/encounter-templates-section";
 import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { PLATFORM_DEFAULT_BRANDING, resolveBranding } from "@/lib/branding";
 import { useToast } from "@/hooks/use-toast";
@@ -129,7 +130,7 @@ interface MessagingSettings {
   externalMessagingChannelId: string | null;
 }
 
-type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "baa" | "billing";
+type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "baa" | "billing";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
@@ -143,6 +144,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "blockDefaults", label: "Clinical Block Defaults", icon: Stethoscope, clinicianOnly: true, providerVisible: true },
   { id: "chartReview", label: "Chart Review", icon: ShieldCheck, clinicianOnly: true, providerVisible: true },
   { id: "juneSettings", label: "Teach June", icon: BrainCircuit, clinicianOnly: true, providerVisible: true },
+  { id: "encounterTemplates", label: "Encounter Templates", icon: FileText, clinicianOnly: true, providerVisible: true },
   { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true, ownerOnly: true },
   { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true, ownerOnly: true },
   { id: "baa", label: "BAA / HIPAA", icon: Shield, clinicianOnly: true, ownerOnly: true },
@@ -1875,6 +1877,13 @@ export default function Account() {
         return (
           <div className="space-y-4">
             <JuneSettingsSection />
+          </div>
+        );
+
+      case "encounterTemplates":
+        return (
+          <div className="space-y-4">
+            <EncounterTemplatesSection />
           </div>
         );
 

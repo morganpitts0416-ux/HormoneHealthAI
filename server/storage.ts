@@ -132,6 +132,13 @@ export interface IStorage {
   updateClinicianStaff(id: number, data: Partial<ClinicianStaff>): Promise<ClinicianStaff | undefined>;
   deleteClinicianStaff(id: number): Promise<boolean>;
 
+  // Encounter Templates
+  getEncounterTemplates(clinicianId: number, clinicId?: number | null): Promise<schema.EncounterTemplate[]>;
+  getEncounterTemplateById(id: number): Promise<schema.EncounterTemplate | undefined>;
+  createEncounterTemplate(data: schema.InsertEncounterTemplate & { clinicianId: number }): Promise<schema.EncounterTemplate>;
+  updateEncounterTemplate(id: number, data: Partial<schema.EncounterTemplate>): Promise<schema.EncounterTemplate | undefined>;
+  deleteEncounterTemplate(id: number): Promise<boolean>;
+
   // Clinic provider invites
   createClinicProviderInvite(data: schema.InsertClinicProviderInvite): Promise<schema.ClinicProviderInvite>;
   getClinicProviderInviteByToken(token: string): Promise<schema.ClinicProviderInvite | undefined>;
@@ -1164,6 +1171,47 @@ export class DbStorage implements IStorage {
 
   async deleteClinicianStaff(id: number): Promise<boolean> {
     const result = await db.delete(schema.clinicianStaff).where(eq(schema.clinicianStaff.id, id)).returning();
+    return result.length > 0;
+  }
+
+  // ── Encounter Templates ───────────────────────────────────────────────────
+  // Returns templates visible to this actor: own personal templates + any
+  // clinic-wide templates from the same clinic.
+  async getEncounterTemplates(clinicianId: number, clinicId?: number | null): Promise<schema.EncounterTemplate[]> {
+    const conditions = [eq(schema.encounterTemplates.clinicianId, clinicianId)];
+    if (clinicId) {
+      conditions.push(
+        and(
+          eq(schema.encounterTemplates.clinicId, clinicId),
+          eq(schema.encounterTemplates.isClinicWide, true)
+        ) as any
+      );
+    }
+    return db.select().from(schema.encounterTemplates)
+      .where(or(...conditions))
+      .orderBy(schema.encounterTemplates.createdAt);
+  }
+
+  async getEncounterTemplateById(id: number): Promise<schema.EncounterTemplate | undefined> {
+    const result = await db.select().from(schema.encounterTemplates)
+      .where(eq(schema.encounterTemplates.id, id));
+    return result[0];
+  }
+
+  async createEncounterTemplate(data: schema.InsertEncounterTemplate & { clinicianId: number }): Promise<schema.EncounterTemplate> {
+    const result = await db.insert(schema.encounterTemplates).values(data).returning();
+    return result[0];
+  }
+
+  async updateEncounterTemplate(id: number, data: Partial<schema.EncounterTemplate>): Promise<schema.EncounterTemplate | undefined> {
+    const result = await db.update(schema.encounterTemplates).set(data)
+      .where(eq(schema.encounterTemplates.id, id)).returning();
+    return result[0];
+  }
+
+  async deleteEncounterTemplate(id: number): Promise<boolean> {
+    const result = await db.delete(schema.encounterTemplates)
+      .where(eq(schema.encounterTemplates.id, id)).returning();
     return result.length > 0;
   }
 

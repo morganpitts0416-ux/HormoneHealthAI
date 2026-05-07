@@ -745,6 +745,7 @@ export function EncounterEditor({
     encRecsKey ? localStorage.getItem(encRecsKey) === "1" : false
   );
   const [signDialogOpen, setSignDialogOpen] = useState(false);
+  const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
   const soapNoteValue = soap.fullNote ?? legacySoapToText(soap);
   const dxSearch = useDiagnosisSearch({
@@ -896,6 +897,52 @@ export function EncounterEditor({
       return res.json();
     },
     enabled: !!selectedPatientId,
+  });
+
+  // Encounter templates (for template-guided note generation)
+  const { data: encounterTemplates = [] } = useQuery<import("@shared/schema").EncounterTemplate[]>({
+    queryKey: ["/api/encounter-templates"],
+  });
+
+  // Generate note from template — separate from the generate-soap pipeline
+  const templateNoteMutation = useMutation({
+    mutationFn: async () => {
+      if (!patientId) throw new Error("Please select a patient first");
+      if (!selectedTemplateId) throw new Error("Please select a template first");
+
+      let encounterId = savedId;
+      if (!encounterId) {
+        const body = {
+          patientId: parseInt(patientId), visitDate, visitType,
+          chiefComplaint: chiefComplaint || null,
+          linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null,
+          clinicianNotes: clinicianNotes || null,
+          transcription: transcription || null,
+        };
+        const saveRes = await apiRequest("POST", "/api/encounters", body);
+        const saved = await saveRes.json();
+        setSavedId(saved.id);
+        encounterId = saved.id;
+      }
+      const expectedPatientId = parseInt(patientId);
+      await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, expectedPatientId });
+      const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-template-note`, {
+        templateId: parseInt(selectedTemplateId),
+        expectedPatientId,
+      });
+      return res.json();
+    },
+    onSuccess: (data) => {
+      setSoap(data.soapNote);
+      if (data.diarizedTranscript?.length) setDiarizedTranscript(data.diarizedTranscript);
+      invalidate();
+      setActiveTab("soap");
+      toast({
+        title: "Template note generated",
+        description: data.templateUsed ? `Generated using template: ${data.templateUsed}` : "Review and edit the note as needed.",
+      });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
   });
 
   // Create new patient inline from encounter form
@@ -1941,6 +1988,60 @@ export function EncounterEditor({
                 data-testid="textarea-clinician-notes"
               />
             </div>
+
+            {/* Template Selector — additive; existing generate buttons are untouched below */}
+            {encounterTemplates.length > 0 && (
+              <div className="rounded-md border bg-muted/30 p-3 space-y-2">
+                <div className="flex items-center gap-2">
+                  <Layers className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  <span className="text-xs font-medium text-muted-foreground">Generate with Template</span>
+                </div>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <Select
+                    value={selectedTemplateId}
+                    onValueChange={setSelectedTemplateId}
+                  >
+                    <SelectTrigger
+                      className="h-8 text-xs flex-1 min-w-36"
+                      data-testid="select-encounter-template"
+                    >
+                      <SelectValue placeholder="Choose a template…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {encounterTemplates.map(t => (
+                        <SelectItem key={t.id} value={String(t.id)} data-testid={`option-template-${t.id}`}>
+                          {t.name}
+                          <span className="ml-1.5 text-muted-foreground text-xs">
+                            {t.noteType === "soap" ? "· SOAP" : t.noteType === "nurses_note" ? "· Nurses" : "· Non-Visit"}
+                          </span>
+                        </SelectItem>
+                      ))}
+                    </SelectContent>
+                  </Select>
+                  {selectedTemplateId && (
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      onClick={() => templateNoteMutation.mutate()}
+                      disabled={
+                        templateNoteMutation.isPending
+                        || soapMutation.isPending
+                        || autoGenerating !== null
+                        || !hasTranscription
+                        || recorderState === "recording"
+                        || recorderState === "transcribing"
+                        || patientChangedDuringRecording !== null
+                      }
+                      data-testid="button-generate-with-template"
+                    >
+                      {templateNoteMutation.isPending
+                        ? <><RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />Generating…</>
+                        : <><FileText className="w-3 h-3 mr-1.5" />Generate Note</>}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            )}
 
             {/* Generate SOAP + Evidence in parallel */}
             {/* PATIENT-SAFETY: Disable SOAP generation while a recording or

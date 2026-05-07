@@ -5271,6 +5271,75 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // ── Encounter Templates ──────────────────────────────────────────────────
+  // Personal + clinic-wide templates that guide template-based note generation.
+  // These never touch the existing generate-soap pipeline.
+
+  app.get("/api/encounter-templates", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const templates = await storage.getEncounterTemplates(clinicianId, clinicId);
+      res.json(templates);
+    } catch (err) {
+      console.error("[EncounterTemplates] GET error:", err);
+      res.status(500).json({ message: "Failed to fetch templates" });
+    }
+  });
+
+  app.post("/api/encounter-templates", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const parsed = schema.insertEncounterTemplateSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ message: "Invalid template data", details: parsed.error.errors });
+      const template = await storage.createEncounterTemplate({
+        ...parsed.data,
+        clinicianId,
+        clinicId: clinicId ?? null,
+      });
+      res.status(201).json(template);
+    } catch (err) {
+      console.error("[EncounterTemplates] POST error:", err);
+      res.status(500).json({ message: "Failed to create template" });
+    }
+  });
+
+  app.patch("/api/encounter-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid template ID" });
+      const existing = await storage.getEncounterTemplateById(id);
+      if (!existing || existing.clinicianId !== clinicianId) return res.status(404).json({ message: "Template not found" });
+      const allowed = ["name", "noteType", "roleRestriction", "isClinicWide", "fields", "standingInstructions"];
+      const updates: Record<string, unknown> = {};
+      for (const key of allowed) {
+        if (key in req.body) updates[key] = req.body[key];
+      }
+      const updated = await storage.updateEncounterTemplate(id, updates);
+      res.json(updated);
+    } catch (err) {
+      console.error("[EncounterTemplates] PATCH error:", err);
+      res.status(500).json({ message: "Failed to update template" });
+    }
+  });
+
+  app.delete("/api/encounter-templates/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ message: "Invalid template ID" });
+      const existing = await storage.getEncounterTemplateById(id);
+      if (!existing || existing.clinicianId !== clinicianId) return res.status(404).json({ message: "Template not found" });
+      await storage.deleteEncounterTemplate(id);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[EncounterTemplates] DELETE error:", err);
+      res.status(500).json({ message: "Failed to delete template" });
+    }
+  });
+
   // ── Clinic Branding ──────────────────────────────────────────────────────
   // Universal brand colors that apply to patient-facing artifacts (PDFs and
   // public form pages). Layout is unchanged — only color tokens.
@@ -8823,6 +8892,211 @@ Return JSON matching EvidenceOverlay structure:
     } catch (err) {
       console.error('[SOAP] Generation error:', err);
       res.status(500).json({ message: "Failed to generate SOAP note. Please try again." });
+    }
+  });
+
+  // POST /api/encounters/:id/generate-template-note
+  // Template-based note generation. NEVER modifies the generate-soap pipeline.
+  // Routes to SOAP-enriched, Nurses Note, or Non-Visit generator by noteType.
+  app.post("/api/encounters/:id/generate-template-note", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      const { templateId, expectedPatientId } = req.body;
+
+      const encounter = await storage.getEncounter(id, clinicianId, clinicId);
+      if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+      if (!encounter.transcription && !encounter.diarizedTranscript) {
+        return res.status(400).json({ message: "No transcription available. Please record or add session notes first." });
+      }
+
+      if (expectedPatientId !== undefined && expectedPatientId !== null) {
+        const exp = parseInt(String(expectedPatientId));
+        if (!Number.isFinite(exp)) return res.status(400).json({ message: "Invalid expectedPatientId" });
+        if (encounter.patientId !== exp) {
+          return res.status(409).json({ message: "Patient mismatch — refresh and verify before generating." });
+        }
+      }
+
+      const template = templateId ? await storage.getEncounterTemplateById(parseInt(String(templateId))) : null;
+      if (!template) return res.status(400).json({ message: "Template not found" });
+
+      const openai = new OpenAI({
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+      });
+
+      // Build transcript text from diarized or raw
+      const diarized = (encounter.diarizedTranscript as any[]) ?? [];
+      const transcriptText = diarized.length > 0
+        ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+        : (encounter.transcription ?? "");
+
+      // ── Step 1: Field Extraction ─────────────────────────────────────────
+      // AI reads transcript + template field descriptions and returns extracted values.
+      // Staff never write trigger logic — AI infers from field label + description.
+      let extractedFields: Record<string, string> = {};
+      if (template.fields && (template.fields as any[]).length > 0) {
+        try {
+          const fieldList = (template.fields as any[]).map((f: any) =>
+            `- "${f.label}" (id: ${f.id}): ${f.description}${f.required ? ' [REQUIRED — document even if not spoken]' : ''}${f.conditional ? ' [CONDITIONAL — only include if mentioned]' : ''}`
+          ).join('\n');
+
+          const extractCompletion = await openai.chat.completions.create({
+            model: "gpt-4o",
+            messages: [
+              {
+                role: "system",
+                content: `You are a clinical documentation specialist. Extract values for specific template fields from a visit transcript.
+
+RULES:
+- For each field, find the relevant value spoken in the transcript (by clinician or patient)
+- Use formal clinical language appropriate for the note type
+- If a REQUIRED field has no spoken value, write "Not documented at this visit"
+- If a CONDITIONAL field has no spoken value, return an empty string "" for it
+- Never invent values not present in the transcript
+- For symptom/complaint fields, list all symptoms mentioned in formal clinical language
+
+Return JSON: { "fields": { "<field_id>": "<extracted value>" } }`,
+              },
+              {
+                role: "user",
+                content: `TEMPLATE FIELDS TO EXTRACT:\n${fieldList}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 8000)}`,
+              },
+            ],
+            response_format: { type: "json_object" },
+          });
+          const parsed = JSON.parse(extractCompletion.choices[0].message.content || "{}");
+          extractedFields = parsed.fields ?? {};
+        } catch (extractErr) {
+          console.warn("[Template Note] Field extraction failed, continuing without:", extractErr);
+        }
+      }
+
+      // Build the extracted fields block for the generator
+      const fieldsBlock = (template.fields as any[]).length > 0
+        ? '\n\nTEMPLATE FIELDS (extracted from this visit):\n' +
+          (template.fields as any[])
+            .filter((f: any) => !f.conditional || extractedFields[f.id])
+            .map((f: any) => `${f.label}: ${extractedFields[f.id] || (f.required ? 'Not documented at this visit' : '')}`)
+            .filter(Boolean)
+            .join('\n')
+        : '';
+
+      const standingBlock = template.standingInstructions
+        ? `\n\nSTANDING INSTRUCTIONS (always include verbatim in this note type):\n${template.standingInstructions}`
+        : '';
+
+      // Fetch patient context
+      let patientContext = "";
+      try {
+        const patient = await storage.getPatient(encounter.patientId, clinicianId, clinicId);
+        if (patient) {
+          patientContext = `Patient: ${patient.firstName} ${patient.lastName}, ${patient.gender ?? ""}`;
+          if (patient.dateOfBirth) {
+            const age = Math.floor((Date.now() - new Date(patient.dateOfBirth as any).getTime()) / 31557600000);
+            patientContext += `, ${age} y/o`;
+          }
+        }
+      } catch {}
+
+      let generatedNote = "";
+
+      // ── Step 2: Generate note by type ───────────────────────────────────
+      if (template.noteType === "soap") {
+        // SOAP-enriched: same structure as a SOAP note, with template fields woven in.
+        // The existing generate-soap endpoint is NEVER called — this is a separate path.
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are a clinical documentation specialist writing a SOAP note for a hormone and primary care clinic. This note is generated using the "${template.name}" template.
+
+FORMAT: Standard SOAP note with sections: SUBJECTIVE, OBJECTIVE, ASSESSMENT/PLAN, CARE PLAN (if applicable), FOLLOW-UP.
+
+RULES:
+- Only document facts from the transcript and extracted template fields
+- Incorporate all template fields naturally into the appropriate SOAP sections
+- Include all standing instructions exactly as written — do not paraphrase them
+- Write in professional clinical language
+- Never invent diagnoses, vitals, or medications not present in the transcript
+- Preserve all denials and negations exactly as stated`,
+            },
+            {
+              role: "user",
+              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${standingBlock}\n\nGenerate the complete SOAP note now.`,
+            },
+          ],
+        });
+        generatedNote = completion.choices[0].message.content ?? "";
+
+      } else if (template.noteType === "nurses_note") {
+        // Nurses Note: focused clinical nursing documentation format
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are a clinical documentation specialist writing a formal nursing note for a hormone and primary care clinic. This note is generated using the "${template.name}" template.
+
+FORMAT: Structured nursing note. Use clear section headers (no SOAP headers). Typical sections include:
+VISIT PURPOSE, VITAL SIGNS & MEASUREMENTS, CURRENT MEDICATIONS / DOSE REVIEW, PATIENT CONCERNS & SYMPTOMS, CLINICAL FINDINGS, PLAN & INTERVENTIONS, FOLLOW-UP.
+Adapt section headers to fit this specific template — only include sections that have content.
+
+RULES:
+- Write in formal nursing documentation language (first-person clinical, e.g., "Patient reports...", "Weight recorded as...", "Nurse discussed...")
+- Incorporate all extracted template fields under the most appropriate section header
+- Include all standing instructions exactly as written
+- Use concise, precise clinical language — no narrative padding
+- Only document what is in the transcript or extracted fields
+- Preserve all denials exactly`,
+            },
+            {
+              role: "user",
+              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${standingBlock}\n\nGenerate the complete nursing note now.`,
+            },
+          ],
+        });
+        generatedNote = completion.choices[0].message.content ?? "";
+
+      } else {
+        // non_visit: phone/portal/non-encounter documentation
+        const completion = await openai.chat.completions.create({
+          model: "gpt-4o",
+          messages: [
+            {
+              role: "system",
+              content: `You are a clinical documentation specialist writing a non-visit clinical note for a hormone and primary care clinic. This note is generated using the "${template.name}" template.
+
+FORMAT: Non-visit documentation. Use section headers appropriate to the interaction type (e.g., CONTACT TYPE, REASON FOR CONTACT, CLINICAL DISCUSSION, ACTIONS TAKEN, FOLLOW-UP). Adapt to what actually occurred.
+
+RULES:
+- Write in formal clinical language
+- Note the nature of the contact (phone call, portal message, etc.) if mentioned
+- Incorporate all template fields and standing instructions
+- Only document what is present in the transcript or notes
+- Be concise — non-visit notes should be brief and factual`,
+            },
+            {
+              role: "user",
+              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${standingBlock}\n\nGenerate the complete non-visit note now.`,
+            },
+          ],
+        });
+        generatedNote = completion.choices[0].message.content ?? "";
+      }
+
+      // Store in soapNote.fullNote — the existing viewer renders this format
+      const soapNote = { fullNote: generatedNote.trim() };
+      await storage.updateEncounter(id, clinicianId, { soapNote, soapGeneratedAt: new Date() }, clinicId);
+
+      const updated = await storage.getEncounter(id, clinicianId, clinicId);
+      res.json({ soapNote, diarizedTranscript: updated?.diarizedTranscript ?? null, templateUsed: template.name });
+    } catch (err) {
+      console.error("[Template Note] Generation error:", err);
+      res.status(500).json({ message: "Failed to generate template note. Please try again." });
     }
   });
 

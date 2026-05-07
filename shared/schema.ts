@@ -2201,6 +2201,51 @@ export const clinicalSystemDefaultSchema = z.object({
 });
 export type ClinicalSystemDefault = z.infer<typeof clinicalSystemDefaultSchema>;
 
+// ── Encounter Templates ───────────────────────────────────────────────────────
+// Structured templates that guide AI note generation for specific visit types.
+// noteType determines the output format; existing SOAP generation is untouched.
+export type TemplateField = {
+  id: string;          // nanoid — stable identifier
+  label: string;       // "Current Weight"
+  description: string; // "Patient's weight at today's visit" — AI uses this to find value in transcript
+  required: boolean;   // document even if not mentioned in transcript
+  conditional: boolean;// only include if AI finds evidence in transcript
+};
+
+export const encounterTemplates = pgTable("encounter_templates", {
+  id: serial("id").primaryKey(),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id"),
+  name: text("name").notNull(),
+  noteType: varchar("note_type", { length: 30 }).notNull().default("soap"),
+  // "soap" | "nurses_note" | "non_visit"
+  roleRestriction: varchar("role_restriction", { length: 20 }).notNull().default("any"),
+  // "any" | "nurse" | "provider"
+  isClinicWide: boolean("is_clinic_wide").notNull().default(false),
+  fields: jsonb("fields").$type<TemplateField[]>().default([]),
+  standingInstructions: text("standing_instructions"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+
+export type EncounterTemplate = typeof encounterTemplates.$inferSelect;
+export const insertEncounterTemplateSchema = createInsertSchema(encounterTemplates).omit({
+  id: true, createdAt: true,
+}).extend({
+  name: z.string().trim().min(1).max(120),
+  noteType: z.enum(["soap", "nurses_note", "non_visit"]),
+  roleRestriction: z.enum(["any", "nurse", "provider"]).default("any"),
+  fields: z.array(z.object({
+    id: z.string(),
+    label: z.string().trim().min(1).max(120),
+    description: z.string().trim().min(1).max(500),
+    required: z.boolean().default(false),
+    conditional: z.boolean().default(false),
+  })).max(30).default([]),
+  standingInstructions: z.string().max(5000).nullable().optional(),
+  isClinicWide: z.boolean().default(false),
+});
+export type InsertEncounterTemplate = z.infer<typeof insertEncounterTemplateSchema>;
+
 export const clinicalBlockDefaults = pgTable("clinical_block_defaults", {
   id: serial("id").primaryKey(),
   clinicId: integer("clinic_id").notNull(),
