@@ -13315,11 +13315,12 @@ IMPORTANT:
             headers: { "Content-Type": "application/json" },
             body: JSON.stringify({
               text: trimmed,
-              model_id: "eleven_turbo_v2_5", // lowest-latency ElevenLabs model
+              model_id: "eleven_multilingual_v2",
               voice_settings: {
-                stability: 0.22,        // lower = more expressive/energetic delivery
-                similarity_boost: 0.80,
-                style: 0.72,            // high style = enthusiasm and personality come through
+                stability: 0.50,
+                similarity_boost: 0.75,
+                style: 0.12,
+                speed: 0.94,
                 use_speaker_boost: true,
               },
             }),
