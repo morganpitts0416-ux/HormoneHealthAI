@@ -183,6 +183,19 @@ function getClinicianId(req: Request): number {
   return (req.user as any).id;
 }
 
+// Returns the actor's own identity ID for personal features (June prefs,
+// note templates, block defaults, note phrases).
+// For staff: returns -(staffId) — a stable negative integer that never
+// collides with any users.id (always positive). This gives each staff
+// member their own personal workspace while leaving all patient/encounter
+// data scoped to the clinic via getClinicianId / getEffectiveClinicId.
+// For providers: returns their users.id unchanged.
+function getActorId(req: Request): number {
+  const sess = req.session as any;
+  if (sess.staffId) return -(sess.staffId as number);
+  return (req.user as any).id;
+}
+
 // Returns the effective clinic ID for patient visibility queries.
 // For clinicians: sourced from the user's defaultClinicId (set by setupClinicForNewUser).
 // For staff: sourced from staffClinicianClinicId stamped at staff login time.
@@ -5064,11 +5077,15 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
   // ── Staff Management Routes ────────────────────────────────────────────────
 
-  // GET /api/staff — list all staff members for this clinician
+  // GET /api/staff — list all staff members for this clinic (clinic-wide)
   app.get("/api/staff", requireClinicianOnly, async (req, res) => {
     try {
+      const clinicId = (req.user as any).defaultClinicId as number | null;
       const clinicianId = (req.user as any).id;
-      const staff = await storage.getAllStaffForClinician(clinicianId);
+      // Prefer clinic-wide listing; fall back to per-clinician for legacy accounts
+      const staff = clinicId
+        ? await storage.getAllStaffForClinic(clinicId)
+        : await storage.getAllStaffForClinician(clinicianId);
       const safeStaff = staff.map(({ passwordHash, inviteToken: _it, ...s }) => ({
         ...s,
         hasSetPassword: !!passwordHash,
@@ -5080,7 +5097,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  // POST /api/staff — invite a new staff member
+  // POST /api/staff — invite a new staff member (linked to this clinician, visible clinic-wide)
   app.post("/api/staff", requireClinicianOnly, async (req, res) => {
     try {
       const clinicianId = (req.user as any).id;
@@ -5192,15 +5209,18 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   // DELETE /api/staff/:id — remove a staff member
   app.delete("/api/staff/:id", requireClinicianOnly, async (req, res) => {
     try {
+      const clinicId = (req.user as any).defaultClinicId as number | null;
       const clinicianId = (req.user as any).id;
       const staffId = parseInt(req.params.id);
       if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
 
-      // Verify the staff member belongs to this clinician
+      // Verify the staff member belongs to this clinic (or this clinician for legacy)
       const staffMember = await storage.getClinicianStaffById(staffId);
-      if (!staffMember || staffMember.clinicianId !== clinicianId) {
-        return res.status(404).json({ message: "Staff member not found" });
-      }
+      if (!staffMember) return res.status(404).json({ message: "Staff member not found" });
+      const allowed = clinicId
+        ? (await storage.getAllStaffForClinic(clinicId)).some(s => s.id === staffId)
+        : staffMember.clinicianId === clinicianId;
+      if (!allowed) return res.status(404).json({ message: "Staff member not found" });
 
       const deleted = await storage.deleteClinicianStaff(staffId);
       if (!deleted) return res.status(404).json({ message: "Staff member not found" });
@@ -5214,13 +5234,16 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   // PATCH /api/staff/:id — update staff clinical or admin role
   app.patch("/api/staff/:id", requireClinicianOnly, async (req, res) => {
     try {
+      const clinicId = (req.user as any).defaultClinicId as number | null;
       const clinicianId = (req.user as any).id;
       const staffId = parseInt(req.params.id);
       if (isNaN(staffId)) return res.status(400).json({ message: "Invalid staff ID" });
       const staffMember = await storage.getClinicianStaffById(staffId);
-      if (!staffMember || staffMember.clinicianId !== clinicianId) {
-        return res.status(404).json({ message: "Staff member not found" });
-      }
+      if (!staffMember) return res.status(404).json({ message: "Staff member not found" });
+      const allowed = clinicId
+        ? (await storage.getAllStaffForClinic(clinicId)).some(s => s.id === staffId)
+        : staffMember.clinicianId === clinicianId;
+      if (!allowed) return res.status(404).json({ message: "Staff member not found" });
       const { role, adminRole } = req.body;
       const updates: Record<string, string> = {};
       const validRoles = ["provider", "nurse", "assistant", "staff"];
@@ -10886,7 +10909,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
       const noteType = req.query.noteType as string | undefined;
-      const list = await storage.getNoteTemplates(clinicId, req.user.id, noteType);
+      const list = await storage.getNoteTemplates(clinicId, getActorId(req), noteType);
       res.json(list);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -10904,7 +10927,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       }).parse(req.body);
       const tpl = await storage.createNoteTemplate({
         clinicId,
-        providerId: req.user.id,
+        providerId: getActorId(req),
         name: body.name,
         description: body.description ?? null,
         noteType: body.noteType,
@@ -10942,7 +10965,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
-      const row = await storage.getClinicalBlockDefaults(clinicId, req.user.id);
+      const row = await storage.getClinicalBlockDefaults(clinicId, getActorId(req));
       res.json({
         rosSystems: row?.rosSystems ?? null,
         peSystems: row?.peSystems ?? null,
@@ -10954,7 +10977,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
       const body = updateClinicalBlockDefaultsSchema.parse(req.body);
-      const row = await storage.upsertClinicalBlockDefaults(clinicId, req.user.id, body);
+      const row = await storage.upsertClinicalBlockDefaults(clinicId, getActorId(req), body);
       res.json({
         rosSystems: row.rosSystems ?? null,
         peSystems: row.peSystems ?? null,
@@ -10966,7 +10989,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
-      const ok = await storage.deleteNoteTemplate(parseInt(req.params.id), clinicId, req.user.id);
+      const ok = await storage.deleteNoteTemplate(parseInt(req.params.id), clinicId, getActorId(req));
       if (!ok) return res.status(404).json({ message: "Not found or not allowed" });
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -10976,7 +10999,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
-      const list = await storage.getNotePhrases(clinicId, req.user.id);
+      const list = await storage.getNotePhrases(clinicId, getActorId(req));
       res.json(list);
     } catch (e: any) { res.status(500).json({ message: e.message }); }
   });
@@ -10992,7 +11015,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       }).parse(req.body);
       const ph = await storage.createNotePhrase({
         clinicId,
-        providerId: req.user.id,
+        providerId: getActorId(req),
         title: body.title,
         shortcut: body.shortcut ?? null,
         content: body.content,
@@ -11020,7 +11043,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ message: "No clinic context" });
-      const ok = await storage.deleteNotePhrase(parseInt(req.params.id), clinicId, req.user.id);
+      const ok = await storage.deleteNotePhrase(parseInt(req.params.id), clinicId, getActorId(req));
       if (!ok) return res.status(404).json({ message: "Not found or not allowed" });
       res.json({ success: true });
     } catch (e: any) { res.status(500).json({ message: e.message }); }
@@ -12610,8 +12633,8 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
   // ── June Preference Memory — CRUD ────────────────────────────────────────
   app.get("/api/june-preferences", requireAuth, async (req, res) => {
     try {
-      const clinicianId = getClinicianId(req);
-      const prefs = await storage.getJunePreferences(clinicianId);
+      const actorId = getActorId(req);
+      const prefs = await storage.getJunePreferences(actorId);
       res.json(prefs);
     } catch (err: any) {
       console.error("[June Prefs] GET error:", err);
@@ -12621,7 +12644,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   app.post("/api/june-preferences", requireAuth, async (req, res) => {
     try {
-      const clinicianId = getClinicianId(req);
+      const actorId = getActorId(req);
       const clinicId = getEffectiveClinicId(req);
       const schema_z = (await import("zod")).z;
       const body = schema_z.object({
@@ -12633,7 +12656,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       }).safeParse(req.body);
       if (!body.success) return res.status(400).json({ message: "Invalid preference data", errors: body.error.flatten() });
       const pref = await storage.createJunePreference({
-        clinicianId,
+        clinicianId: actorId,
         clinicId: clinicId ?? null,
         ...body.data,
         triggerPhrases: body.data.triggerPhrases ?? null,
@@ -12647,7 +12670,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   app.patch("/api/june-preferences/:id", requireAuth, async (req, res) => {
     try {
-      const clinicianId = getClinicianId(req);
+      const actorId = getActorId(req);
       const id = Number(req.params.id);
       if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
       const schema_z = (await import("zod")).z;
@@ -12659,7 +12682,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         isActive: schema_z.boolean().optional(),
       }).safeParse(req.body);
       if (!body.success) return res.status(400).json({ message: "Invalid update data", errors: body.error.flatten() });
-      const updated = await storage.updateJunePreference(id, clinicianId, body.data);
+      const updated = await storage.updateJunePreference(id, actorId, body.data);
       if (!updated) return res.status(404).json({ message: "Preference not found" });
       res.json(updated);
     } catch (err: any) {
@@ -12670,10 +12693,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   app.delete("/api/june-preferences/:id", requireAuth, async (req, res) => {
     try {
-      const clinicianId = getClinicianId(req);
+      const actorId = getActorId(req);
       const id = Number(req.params.id);
       if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
-      const ok = await storage.deleteJunePreference(id, clinicianId);
+      const ok = await storage.deleteJunePreference(id, actorId);
       if (!ok) return res.status(404).json({ message: "Preference not found" });
       res.json({ success: true });
     } catch (err: any) {
@@ -12933,10 +12956,12 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         .map(m => `${m.displayName} (${m.gender}): Optimal ${m.optimalMin ?? '—'}–${m.optimalMax ?? '—'} ${m.unit}, Ref ${m.normalMin ?? '—'}–${m.normalMax ?? '—'} ${m.unit}${m.notes ? ` [${m.notes}]` : ''}`)
         .join('\n');
 
-      // ── Load provider preferences for June ────────────────────────────────
+      // ── Load this actor's personal preferences for June ───────────────────
+      // Uses getActorId so staff get their own preferences, not the supervising
+      // clinician's — each team member can teach June to work their way.
       let junePrefsBlock = "";
       try {
-        const junePrefs = await storage.getJunePreferences(clinicianId);
+        const junePrefs = await storage.getJunePreferences(getActorId(req));
         const activePrefs = junePrefs.filter(p => p.isActive);
         if (activePrefs.length > 0) {
           const instructions = activePrefs.filter(p => p.category === "instruction");
@@ -12944,9 +12969,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           const snippets = activePrefs.filter(p => p.category === "snippet");
           const lines: string[] = [
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "PROVIDER PREFERENCES — FOLLOW THESE PRECISELY",
+            "USER PREFERENCES — FOLLOW THESE PRECISELY",
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-            "This provider has saved preferences. These override your defaults and must be followed in every response.",
+            "This user has saved preferences. These override your defaults and must be followed in every response.",
           ];
           if (instructions.length > 0) {
             lines.push("\nAlways-on instructions:");

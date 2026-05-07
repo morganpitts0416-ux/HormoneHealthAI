@@ -127,6 +127,7 @@ export interface IStorage {
   getClinicianStaffByEmail(email: string): Promise<ClinicianStaff | undefined>;
   getClinicianStaffByInviteToken(token: string): Promise<ClinicianStaff | undefined>;
   getAllStaffForClinician(clinicianId: number): Promise<ClinicianStaff[]>;
+  getAllStaffForClinic(clinicId: number): Promise<ClinicianStaff[]>;
   createClinicianStaff(data: Omit<InsertClinicianStaff, 'passwordHash'> & { passwordHash?: string | null }): Promise<ClinicianStaff>;
   updateClinicianStaff(id: number, data: Partial<ClinicianStaff>): Promise<ClinicianStaff | undefined>;
   deleteClinicianStaff(id: number): Promise<boolean>;
@@ -1116,6 +1117,35 @@ export class DbStorage implements IStorage {
     return db.select().from(schema.clinicianStaff)
       .where(eq(schema.clinicianStaff.clinicianId, clinicianId))
       .orderBy(schema.clinicianStaff.createdAt);
+  }
+
+  // Returns all staff across every provider in a clinic — used by clinic admins
+  // so any provider with admin rights can see and manage the full team.
+  async getAllStaffForClinic(clinicId: number): Promise<ClinicianStaff[]> {
+    // Join clinician_staff → users → check users.defaultClinicId = clinicId
+    const rows = await db.select({
+      id: schema.clinicianStaff.id,
+      clinicianId: schema.clinicianStaff.clinicianId,
+      email: schema.clinicianStaff.email,
+      firstName: schema.clinicianStaff.firstName,
+      lastName: schema.clinicianStaff.lastName,
+      role: schema.clinicianStaff.role,
+      adminRole: schema.clinicianStaff.adminRole,
+      passwordHash: schema.clinicianStaff.passwordHash,
+      inviteToken: schema.clinicianStaff.inviteToken,
+      inviteExpires: schema.clinicianStaff.inviteExpires,
+      passwordResetToken: schema.clinicianStaff.passwordResetToken,
+      passwordResetExpires: schema.clinicianStaff.passwordResetExpires,
+      isActive: schema.clinicianStaff.isActive,
+      loginAttempts: schema.clinicianStaff.loginAttempts,
+      lockedUntil: schema.clinicianStaff.lockedUntil,
+      createdAt: schema.clinicianStaff.createdAt,
+    })
+      .from(schema.clinicianStaff)
+      .innerJoin(schema.users, eq(schema.clinicianStaff.clinicianId, schema.users.id))
+      .where(eq(schema.users.defaultClinicId, clinicId))
+      .orderBy(schema.clinicianStaff.createdAt);
+    return rows as ClinicianStaff[];
   }
 
   async createClinicianStaff(data: Omit<InsertClinicianStaff, 'passwordHash'> & { passwordHash?: string | null }): Promise<ClinicianStaff> {
