@@ -13401,19 +13401,18 @@ IMPORTANT:
     const hasDirectKey = !!process.env.ELEVENLABS_API_KEY;
     res.json({
       provider: hasDirectKey ? "elevenlabs_direct" : "elevenlabs_connector_or_openai_fallback",
-      voice_id: "y3H6zY6KvCH2pEuQjmv8",
-      voice_name: "Amy",
+      voice_id: "uYXf8XasLslADfZ2MB4u",
       model: "eleven_multilingual_v2",
       voice_settings: {
-        stability: 0.50,
+        stability: 0.5,
         similarity_boost: 0.75,
-        style: 0.12,
-        speed: 0.94,
+        style: 0,
+        speed: 1,
         use_speaker_boost: true,
       },
       elevenlabs_api_key_present: hasDirectKey,
       note: hasDirectKey
-        ? "ElevenLabs direct API key is set — Amy voice will be used in all environments including production."
+        ? "ElevenLabs direct API key is set — voice will be used in all environments including production."
         : "No direct API key found. Will attempt Replit connector (dev only), then fall back to OpenAI shimmer.",
     });
   });
@@ -13429,18 +13428,17 @@ IMPORTANT:
       const { Readable } = await import("stream");
 
       // ── ElevenLabs (primary) ───────────────────────────────────────────────
-      // Amy voice — y3H6zY6KvCH2pEuQjmv8
       // Strategy: try direct API key first (works everywhere including Cloud Run),
       // then fall back to Replit connector proxy (dev-only), then OpenAI shimmer.
-      const JUNE_VOICE_ID = "y3H6zY6KvCH2pEuQjmv8"; // Amy
+      const JUNE_VOICE_ID = "uYXf8XasLslADfZ2MB4u";
       const ELEVEN_BODY = JSON.stringify({
         text: trimmed,
         model_id: "eleven_multilingual_v2",
         voice_settings: {
-          stability: 0.50,
+          stability: 0.5,
           similarity_boost: 0.75,
-          style: 0.12,
-          speed: 0.94,
+          style: 0,
+          speed: 1,
           use_speaker_boost: true,
         },
       });
