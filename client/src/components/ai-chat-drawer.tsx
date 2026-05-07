@@ -90,7 +90,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const [isListening, setIsListening] = useState(false);
   const [micError, setMicError] = useState<string | null>(null);
   const [showNotePreview, setShowNotePreview] = useState(false);
-  const [ttsEnabled, setTtsEnabled] = useState(false);
+  const [ttsEnabled, setTtsEnabled] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
   const speakingMsgIdxRef = useRef<number | null>(null);
 
