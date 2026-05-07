@@ -12632,16 +12632,28 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       let patientName = "";
       if (patientId) {
         try {
-          const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+          const [patient, chart, labResults, encounters, vitals] = await Promise.all([
+            storage.getPatient(patientId, clinicianId, clinicId),
+            storage.getPatientChart(patientId, clinicianId),
+            storage.getLabResultsByPatient(patientId),
+            storage.getEncountersByClinicianId(clinicianId, patientId, clinicId),
+            storage.getPatientVitals(patientId, clinicianId),
+          ]);
+
           if (patient) {
             patientName = `${patient.firstName ?? ""} ${patient.lastName ?? ""}`.trim();
             const gender = patient.gender || "unknown";
             const dob = patient.dateOfBirth ? new Date(patient.dateOfBirth).toLocaleDateString() : "unknown";
-            patientContext += `\n\n--- CURRENT PATIENT CONTEXT ---\nPatient: ${patientName}\nGender: ${gender}\nDOB: ${dob}\n`;
+            const age = patient.dateOfBirth
+              ? `${Math.floor((Date.now() - new Date(patient.dateOfBirth).getTime()) / 31557600000)} y/o`
+              : "";
+            patientContext += `\n\n--- CURRENT PATIENT CONTEXT ---\nPatient: ${patientName}${age ? ` (${age})` : ""}\nGender: ${gender}\nDOB: ${dob}\n`;
 
-            const chart = await storage.getPatientChart(patientId, clinicianId);
+            // ── Chart ──────────────────────────────────────────────────────
             if (chart) {
-              const formatList = (arr: any) => Array.isArray(arr) && arr.length > 0 ? arr.map((a: any) => typeof a === 'string' ? a : a.name || a.label || JSON.stringify(a)).join(', ') : 'None documented';
+              const formatList = (arr: any) => Array.isArray(arr) && arr.length > 0
+                ? arr.map((a: any) => typeof a === 'string' ? a : a.name || a.label || JSON.stringify(a)).join(', ')
+                : 'None documented';
               patientContext += `\nCurrent Medications: ${formatList(chart.currentMedications)}`;
               patientContext += `\nAllergies: ${formatList(chart.allergies)}`;
               patientContext += `\nMedical History: ${formatList(chart.medicalHistory)}`;
@@ -12650,23 +12662,72 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               patientContext += `\nSocial History: ${formatList(chart.socialHistory)}`;
             }
 
-            const labResults = await storage.getLabResultsByPatient(patientId);
+            // ── Vitals (last 5 readings) ───────────────────────────────────
+            if (vitals && vitals.length > 0) {
+              patientContext += `\n\nVitals History (most recent first, up to 5):\n`;
+              vitals.slice(0, 5).forEach((v: any) => {
+                const date = v.recordedAt ? new Date(v.recordedAt).toLocaleDateString() : "unknown";
+                const parts: string[] = [];
+                if (v.systolicBp && v.diastolicBp) parts.push(`BP ${v.systolicBp}/${v.diastolicBp} mmHg`);
+                if (v.heartRate) parts.push(`HR ${v.heartRate} bpm`);
+                if (v.weightLbs) parts.push(`Weight ${v.weightLbs} lbs`);
+                if (v.bmi) parts.push(`BMI ${v.bmi}`);
+                if (parts.length) patientContext += `  ${date}: ${parts.join(' | ')}\n`;
+              });
+            }
+
+            // ── Lab history (all panels, newest first) ─────────────────────
             if (labResults && labResults.length > 0) {
-              const latest = labResults[0];
-              const labDate = latest.createdAt ? new Date(latest.createdAt).toLocaleDateString() : "unknown date";
-              patientContext += `\n\nMost Recent Labs (${labDate}):\n`;
-              const vals = latest.labValues as any;
-              if (vals && typeof vals === 'object') {
-                for (const [key, val] of Object.entries(vals)) {
-                  if (val !== null && val !== undefined && val !== "") {
-                    patientContext += `  ${key}: ${val}\n`;
+              patientContext += `\n\nLab History (${labResults.length} panel${labResults.length > 1 ? 's' : ''} on file — all shown for trend analysis):\n`;
+              // Collect all unique marker keys across all panels so we can show trends
+              const allKeys = new Set<string>();
+              labResults.forEach((lr: any) => {
+                const vals = lr.labValues as any;
+                if (vals && typeof vals === 'object') Object.keys(vals).forEach(k => allKeys.add(k));
+              });
+              labResults.slice(0, 8).forEach((lr: any, idx: number) => {
+                const date = (lr.labDate || lr.createdAt)
+                  ? new Date(lr.labDate || lr.createdAt).toLocaleDateString()
+                  : `Panel ${idx + 1}`;
+                patientContext += `\n  Panel ${idx + 1} — ${date}${lr.patientType ? ` (${lr.patientType})` : ""}:\n`;
+                const vals = lr.labValues as any;
+                if (vals && typeof vals === 'object') {
+                  for (const [key, val] of Object.entries(vals)) {
+                    if (val !== null && val !== undefined && val !== "") {
+                      patientContext += `    ${key}: ${val}\n`;
+                    }
                   }
                 }
-              }
-              if (labResults.length > 1) {
-                patientContext += `\n(${labResults.length} total lab panels on file — most recent shown above)`;
+              });
+              if (labResults.length > 8) {
+                patientContext += `  (${labResults.length - 8} older panel(s) not shown)\n`;
               }
             }
+
+            // ── Encounter / SOAP note history (last 6) ─────────────────────
+            if (encounters && encounters.length > 0) {
+              patientContext += `\n\nEncounter History (${encounters.length} total — most recent ${Math.min(encounters.length, 6)} shown):\n`;
+              encounters.slice(0, 6).forEach((enc: any, idx: number) => {
+                const date = enc.visitDate
+                  ? new Date(enc.visitDate).toLocaleDateString()
+                  : enc.createdAt ? new Date(enc.createdAt).toLocaleDateString() : `Encounter ${idx + 1}`;
+                patientContext += `\n  Encounter ${idx + 1} — ${date}`;
+                if (enc.visitType) patientContext += ` | Type: ${enc.visitType}`;
+                if (enc.chiefComplaint) patientContext += ` | CC: ${enc.chiefComplaint}`;
+                patientContext += `\n`;
+                if (enc.soapNote) {
+                  // Include up to 800 chars of SOAP note so June can recall clinical details
+                  const noteSnippet = enc.soapNote.trim().slice(0, 800);
+                  patientContext += `    SOAP Note:\n${noteSnippet.split('\n').map((l: string) => `      ${l}`).join('\n')}`;
+                  if (enc.soapNote.length > 800) patientContext += `\n      [... note continues ...]`;
+                  patientContext += `\n`;
+                }
+                if (enc.clinicianNotes) {
+                  patientContext += `    Clinician Notes: ${enc.clinicianNotes.slice(0, 300)}\n`;
+                }
+              });
+            }
+
             patientContext += `\n--- END PATIENT CONTEXT ---`;
           }
         } catch (e) {
