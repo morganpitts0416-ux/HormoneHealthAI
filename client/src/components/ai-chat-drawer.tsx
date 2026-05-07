@@ -21,6 +21,7 @@ import juneAnalyzing from "../assets/june/june-analyzing.webp";
 interface ChatMessage {
   role: "user" | "assistant";
   content: string;
+  spoken?: string;         // short spoken summary — used for TTS replay
   proposedEdit?: string;   // full edited note text proposed by the AI
   editApplied?: boolean;   // true once the provider clicks "Apply"
 }
@@ -566,9 +567,11 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       if (voiceSessionRef.current) setVoiceSessionMode(false);
 
       setMessages(prev => {
+        const spokenForMsg = spoken ? spoken : makeFallbackSpoken(reply);
         const next = [...prev, {
           role: "assistant" as const,
           content: reply,
+          spoken: spokenForMsg,   // saved so replay button uses same short summary
           proposedEdit: editedNote ?? undefined,
           editApplied: false,
         }];
@@ -577,8 +580,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         // the entire formatted reply verbatim (which sounds robotic and reads
         // things like "June's Observations:" out loud).
         if (ttsEnabled) {
-          const textToSpeak = spoken ? spoken : makeFallbackSpoken(reply);
-          setTimeout(() => speakText(textToSpeak, next.length - 1), 80);
+          setTimeout(() => speakText(spokenForMsg, next.length - 1), 80);
         }
         return next;
       });
@@ -1007,7 +1009,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                           size="icon"
                           variant="ghost"
                           className={`h-6 w-6 ${speakingMsgIdxRef.current === i && isSpeaking ? "text-amber-500" : "text-muted-foreground"}`}
-                          onClick={() => speakingMsgIdxRef.current === i && isSpeaking ? stopSpeaking() : speakText(msg.content, i)}
+                          onClick={() => speakingMsgIdxRef.current === i && isSpeaking ? stopSpeaking() : speakText(msg.spoken ?? makeFallbackSpoken(msg.content), i)}
                           title={speakingMsgIdxRef.current === i && isSpeaking ? "Stop" : "Read aloud"}
                           data-testid={`button-speak-msg-${i}`}
                         >
