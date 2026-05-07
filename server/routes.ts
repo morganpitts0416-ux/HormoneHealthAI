@@ -13292,20 +13292,52 @@ IMPORTANT:
         return res.status(400).json({ message: "text is required" });
       }
       const trimmed = text.slice(0, 4096);
+      const { Readable } = await import("stream");
+
+      // ── ElevenLabs via Replit connector (primary) ──────────────────────────
+      // Voice: Jessica — cgSgspJ2msm6clMCkdW9 (Playful, Bright, Warm / conversational)
+      // Backup voice: Matilda — XrExE9yKIg1WjnnlVkGX (Knowledgeable, upbeat)
+      // Uses streaming endpoint so the browser starts playing on the first chunk.
+      try {
+        const { ReplitConnectors } = await import("@replit/connectors-sdk");
+        const connectors = new ReplitConnectors();
+        const JUNE_VOICE_ID = "cgSgspJ2msm6clMCkdW9"; // Jessica
+        const elResp = await connectors.proxy(
+          "elevenlabs",
+          `/v1/text-to-speech/${JUNE_VOICE_ID}/stream`,
+          {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({
+              text: trimmed,
+              model_id: "eleven_turbo_v2_5", // lowest-latency ElevenLabs model
+              voice_settings: {
+                stability: 0.40,        // lower = more expressive/varied
+                similarity_boost: 0.80,
+                style: 0.35,            // adds warmth and personality
+                use_speaker_boost: true,
+              },
+            }),
+          }
+        );
+        if (!elResp.ok) throw new Error(`ElevenLabs ${elResp.status}`);
+        res.set("Content-Type", "audio/mpeg");
+        res.set("Cache-Control", "no-store");
+        res.set("X-Accel-Buffering", "no");
+        Readable.fromWeb(elResp.body as any).pipe(res);
+        return;
+      } catch (elErr) {
+        console.warn("[TTS] ElevenLabs failed, falling back to OpenAI:", elErr);
+      }
+
+      // ── OpenAI fallback (shimmer / gpt-4o-mini-tts) ───────────────────────
       const openai = new OpenAI({
         baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
         apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
       });
-
-      // gpt-4o-mini-tts supports voice instructions for natural, expressive speech.
-      // Falls back to tts-1-hd/nova if the model isn't available on this key.
-      // Stream audio directly to client — pipe OpenAI's output as it generates
-      // so the browser can start playing the first chunk immediately.
       res.set("Content-Type", "audio/mpeg");
       res.set("Cache-Control", "no-store");
-      res.set("X-Accel-Buffering", "no"); // prevent nginx from re-buffering
-      const { Readable } = await import("stream");
-
+      res.set("X-Accel-Buffering", "no");
       let mp3: any;
       try {
         mp3 = await (openai.audio.speech.create as any)({
@@ -13328,7 +13360,6 @@ IMPORTANT:
           speed: 1.08,
         });
       }
-
       Readable.fromWeb(mp3.body as any).pipe(res);
     } catch (err: any) {
       console.error("[TTS] Error:", err);
