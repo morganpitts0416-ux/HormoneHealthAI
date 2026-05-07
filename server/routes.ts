@@ -12892,21 +12892,44 @@ IMPORTANT:
     }
   });
 
-  // ── June TTS — convert text to speech via OpenAI Nova voice ─────────────
+  // ── June TTS — convert text to speech via OpenAI ─────────────────────────
   app.post("/api/tts", requireAuth, async (req, res) => {
     try {
       const { text } = req.body;
       if (!text || typeof text !== "string") {
         return res.status(400).json({ message: "text is required" });
       }
-      const trimmed = text.slice(0, 4096); // OpenAI max input
-      const openai = new OpenAI({ apiKey: process.env.OPENAI_API_KEY });
-      const mp3 = await openai.audio.speech.create({
-        model: "tts-1",
-        voice: "nova",
-        input: trimmed,
-        speed: 0.95,
+      const trimmed = text.slice(0, 4096);
+      const openai = new OpenAI({
+        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
+        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
       });
+
+      // gpt-4o-mini-tts supports voice instructions for natural, expressive speech.
+      // Falls back to tts-1-hd/nova if the model isn't available on this key.
+      let mp3: any;
+      try {
+        mp3 = await (openai.audio.speech.create as any)({
+          model: "gpt-4o-mini-tts",
+          voice: "nova",
+          input: trimmed,
+          instructions:
+            "You are June — a warm, confident, and knowledgeable clinical colleague. " +
+            "Speak naturally and conversationally, like you're talking to a fellow clinician in the hallway. " +
+            "Vary your pacing and tone to sound genuinely engaged. Use natural contractions and a friendly cadence. " +
+            "Never sound robotic, stiff, or overly formal. Be warm but efficient — you respect their time.",
+          speed: 1.0,
+        });
+      } catch {
+        // Fallback: tts-1-hd sounds notably better than tts-1
+        mp3 = await openai.audio.speech.create({
+          model: "tts-1-hd",
+          voice: "nova",
+          input: trimmed,
+          speed: 0.97,
+        });
+      }
+
       const buffer = Buffer.from(await mp3.arrayBuffer());
       res.set("Content-Type", "audio/mpeg");
       res.set("Cache-Control", "no-store");
