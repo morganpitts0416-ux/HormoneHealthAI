@@ -13301,7 +13301,7 @@ IMPORTANT:
       try {
         const { ReplitConnectors } = await import("@replit/connectors-sdk");
         const connectors = new ReplitConnectors();
-        const JUNE_VOICE_ID = "cgSgspJ2msm6clMCkdW9"; // Jessica
+        const JUNE_VOICE_ID = "Ng8oJ3Hj1kURqJwllJll"; // Elise
         const elResp = await connectors.proxy(
           "elevenlabs",
           `/v1/text-to-speech/${JUNE_VOICE_ID}/stream`,
