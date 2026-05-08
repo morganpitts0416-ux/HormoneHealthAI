@@ -175,10 +175,35 @@ export async function generateLabReportPDF(
     doc.text('Lab Results Summary', 14, yPosition);
     yPosition += 7;
 
+    // Determine whether an abnormal value is HIGH or LOW by comparing against the
+    // reference range string (e.g. "20-60 nmol/L (optimal 25-50)") then falling
+    // back to keyword scanning of the interpretation text.
+    const getAbnormalDirection = (interp: { value?: number; referenceRange?: string; interpretation?: string }): 'HIGH' | 'LOW' => {
+      const val = interp.value;
+      if (val !== undefined && interp.referenceRange) {
+        const m = interp.referenceRange.match(/([\d.]+)\s*[-–]\s*([\d.]+)/);
+        if (m) {
+          const lo = parseFloat(m[1]);
+          const hi = parseFloat(m[2]);
+          if (val < lo) return 'LOW';
+          if (val > hi) return 'HIGH';
+        }
+        // Pattern like ">= 60" or "< 100"
+        const gtM = interp.referenceRange.match(/>=?\s*([\d.]+)/);
+        if (gtM && val < parseFloat(gtM[1])) return 'LOW';
+        const ltM = interp.referenceRange.match(/<=?\s*([\d.]+)/);
+        if (ltM && val > parseFloat(ltM[1])) return 'HIGH';
+      }
+      // Keyword fallback from interpretation text
+      const txt = (interp.interpretation ?? '').toLowerCase();
+      if (/\blow\b|deficien|suboptimal|suppressed|insufficien/.test(txt)) return 'LOW';
+      return 'HIGH';
+    };
+
     const tableData = interpretation.interpretations.map((interp) => {
       let statusText = '';
       if (interp.status === 'critical') statusText = '[!] ';
-      else if (interp.status === 'abnormal') statusText = '[HIGH] ';
+      else if (interp.status === 'abnormal') statusText = `[${getAbnormalDirection(interp)}] `;
       else if (interp.status === 'borderline') statusText = '[BORDERLINE] ';
       else statusText = '[NORMAL] ';
       

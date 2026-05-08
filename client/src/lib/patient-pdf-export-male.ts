@@ -67,7 +67,7 @@ function getMaleLabInsight(category: string, value: number | string, status: str
       alt: { low: 0, high: 45 },
       ast: { low: 0, high: 45 },
       testosterone: { low: 600, high: 1200 },
-      "free testosterone": { low: 15, high: 25 },
+      "free testosterone": { low: 120, high: 220 },
       estradiol: { low: 20, high: 50 },
       psa: { low: 0, high: 4 },
       "hs-crp": { low: 0, high: 1 },

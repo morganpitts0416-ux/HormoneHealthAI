@@ -1163,21 +1163,21 @@ export class ClinicalLogicEngine {
       let interpretation = '';
       let recommendation = '';
 
-      if (labs.freeTestosterone > 30) {
+      if (labs.freeTestosterone > 244) {
         status = 'abnormal';
-        interpretation = 'Free testosterone elevated (>30 pg/mL). May indicate supraphysiologic dosing.';
+        interpretation = 'Free testosterone elevated (>244 pg/mL). May indicate supraphysiologic dosing.';
         recommendation = 'Consider dose reduction 10-20% if symptomatic or SHBG very low.';
-      } else if (labs.freeTestosterone >= 12 && labs.freeTestosterone <= 30) {
+      } else if (labs.freeTestosterone >= 120 && labs.freeTestosterone <= 244) {
         status = 'normal';
-        interpretation = 'Free testosterone in optimal range (12-30 pg/mL).';
+        interpretation = 'Free testosterone in optimal range (120-220 pg/mL).';
         recommendation = 'Excellent bioavailable hormone level. Maintain current dose.';
-      } else if (labs.freeTestosterone >= 8 && labs.freeTestosterone < 12) {
+      } else if (labs.freeTestosterone >= 47 && labs.freeTestosterone < 120) {
         status = 'borderline';
-        interpretation = 'Free testosterone borderline low.';
+        interpretation = 'Free testosterone borderline low (within lab reference but below optimal).';
         recommendation = 'If symptomatic, consider dose increase or check SHBG. If asymptomatic, monitor.';
       } else {
         status = 'abnormal';
-        interpretation = 'Free testosterone suboptimal (<8 pg/mL).';
+        interpretation = 'Free testosterone low (<47 pg/mL). Below laboratory reference range.';
         recommendation = 'Increase dose 20-30% or address high SHBG if present.';
       }
 
@@ -1186,7 +1186,7 @@ export class ClinicalLogicEngine {
         value: labs.freeTestosterone,
         unit: 'pg/mL',
         status,
-        referenceRange: '12-30 pg/mL',
+        referenceRange: '47-244 pg/mL (optimal 120-220)',
         interpretation,
         recommendation,
       });

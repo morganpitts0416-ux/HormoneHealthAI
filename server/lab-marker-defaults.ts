@@ -16,7 +16,7 @@ export interface LabMarkerDefault {
 export const LAB_MARKER_DEFAULTS: LabMarkerDefault[] = [
   // ── HORMONES (Male) ───────────────────────────────────────────────────
   { key: 'testosterone', displayName: 'Total Testosterone', unit: 'ng/dL', gender: 'male', optimalMin: 600, optimalMax: 1200, normalMin: 300, normalMax: 1000, notes: 'Functional optimal range for TRT-managed patients' },
-  { key: 'freeTestosterone', displayName: 'Free Testosterone', unit: 'pg/mL', gender: 'male', optimalMin: 15, optimalMax: 25, normalMin: 9, normalMax: 30, notes: 'Optimal free T for symptom resolution' },
+  { key: 'freeTestosterone', displayName: 'Free Testosterone', unit: 'pg/mL', gender: 'male', optimalMin: 120, optimalMax: 220, normalMin: 47, normalMax: 244, notes: 'Lab reference 47-244 pg/mL; optimal 120-220 pg/mL for symptom resolution' },
   { key: 'shbg', displayName: 'SHBG', unit: 'nmol/L', gender: 'male', optimalMin: 20, optimalMax: 40, normalMin: 10, normalMax: 57 },
   { key: 'estradiol', displayName: 'Estradiol (Male)', unit: 'pg/mL', gender: 'male', optimalMin: 20, optimalMax: 40, normalMin: 10, normalMax: 50 },
   { key: 'psa', displayName: 'PSA', unit: 'ng/mL', gender: 'male', normalMin: 0, normalMax: 4.0, notes: 'Flag if >4.0 or velocity >1.4/year' },
