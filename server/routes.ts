@@ -8936,33 +8936,48 @@ Return JSON matching EvidenceOverlay structure:
       // ── Step 1: Field Extraction ─────────────────────────────────────────
       // AI reads transcript + template field descriptions and returns extracted values.
       // Staff never write trigger logic — AI infers from field label + description.
+      // Partition fields by type (graceful fallback for older "extract"-only templates)
+      const allFields = (template.fields as any[]) ?? [];
+      const extractFields = allFields.filter((f: any) => !f.fieldType || f.fieldType === "extract");
+      const checklistFields = allFields.filter((f: any) => f.fieldType === "checklist");
+      const instructionFields = allFields.filter((f: any) => f.fieldType === "instruction");
+      const aiFields = [...extractFields, ...checklistFields]; // fields that need AI processing
+
       let extractedFields: Record<string, string> = {};
-      if (template.fields && (template.fields as any[]).length > 0) {
+      if (aiFields.length > 0) {
         try {
-          const fieldList = (template.fields as any[]).map((f: any) =>
-            `- "${f.label}" (id: ${f.id}): ${f.description}${f.required ? ' [REQUIRED — document even if not spoken]' : ''}${f.conditional ? ' [CONDITIONAL — only include if mentioned]' : ''}`
-          ).join('\n');
+          const fieldList = aiFields.map((f: any) => {
+            const isChecklist = f.fieldType === "checklist";
+            if (isChecklist) {
+              const items = (f.checklistItems ?? []).map((it: string, i: number) => `  ${i + 1}. ${it}`).join('\n');
+              return `- CHECKLIST "${f.label}" (id: ${f.id}):\n${items}\n  → Return a comma-separated list of which items were addressed/discussed${f.conditional ? ' [CONDITIONAL — return empty string if none discussed]' : ''}${f.required ? ' [REQUIRED — document each item\'s status]' : ''}`;
+            }
+            return `- EXTRACT "${f.label}" (id: ${f.id}): ${f.description}${f.required ? ' [REQUIRED — document even if not spoken]' : ''}${f.conditional ? ' [CONDITIONAL — only include if mentioned]' : ''}`;
+          }).join('\n\n');
 
           const extractCompletion = await openai.chat.completions.create({
             model: "gpt-4o",
             messages: [
               {
                 role: "system",
-                content: `You are a clinical documentation specialist. Extract values for specific template fields from a visit transcript.
+                content: `You are a clinical documentation specialist. Process template fields from a visit transcript.
+
+FIELD TYPES:
+- EXTRACT: Find the specific value from the transcript. Use formal clinical language.
+- CHECKLIST: Return a comma-separated list of which checklist items were addressed or confirmed in the transcript.
 
 RULES:
-- For each field, find the relevant value spoken in the transcript (by clinician or patient)
-- Use formal clinical language appropriate for the note type
-- If a REQUIRED field has no spoken value, write "Not documented at this visit"
-- If a CONDITIONAL field has no spoken value, return an empty string "" for it
-- Never invent values not present in the transcript
-- For symptom/complaint fields, list all symptoms mentioned in formal clinical language
+- Only use information present in the transcript
+- For REQUIRED EXTRACT fields with no spoken value, write "Not documented at this visit"
+- For CONDITIONAL EXTRACT/CHECKLIST fields with no spoken evidence, return ""
+- For REQUIRED CHECKLIST fields, return the status of every item (addressed / not addressed)
+- Never invent values
 
-Return JSON: { "fields": { "<field_id>": "<extracted value>" } }`,
+Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist items>" } }`,
               },
               {
                 role: "user",
-                content: `TEMPLATE FIELDS TO EXTRACT:\n${fieldList}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 8000)}`,
+                content: `FIELDS:\n${fieldList}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 8000)}`,
               },
             ],
             response_format: { type: "json_object" },
@@ -8974,18 +8989,40 @@ Return JSON: { "fields": { "<field_id>": "<extracted value>" } }`,
         }
       }
 
-      // Build the extracted fields block for the generator
-      const fieldsBlock = (template.fields as any[]).length > 0
-        ? '\n\nTEMPLATE FIELDS (extracted from this visit):\n' +
-          (template.fields as any[])
-            .filter((f: any) => !f.conditional || extractedFields[f.id])
-            .map((f: any) => `${f.label}: ${extractedFields[f.id] || (f.required ? 'Not documented at this visit' : '')}`)
-            .filter(Boolean)
-            .join('\n')
+      // Build the context block that gets injected into the note generator prompt
+      const fieldLines: string[] = [];
+
+      // Section headings + extract fields + checklists in original field order
+      for (const f of allFields) {
+        const ft = f.fieldType ?? "extract";
+        if (ft === "heading") {
+          fieldLines.push(`\n── ${f.label.toUpperCase()} ──`);
+        } else if (ft === "extract") {
+          const val = extractedFields[f.id];
+          if (val || f.required) {
+            fieldLines.push(`${f.label}: ${val || 'Not documented at this visit'}`);
+          }
+        } else if (ft === "checklist") {
+          const val = extractedFields[f.id];
+          if (val || f.required) {
+            fieldLines.push(`${f.label}: ${val || 'Not documented at this visit'}`);
+          }
+        }
+        // instruction fields are handled separately below
+      }
+
+      const fieldsBlock = fieldLines.length > 0
+        ? `\n\nTEMPLATE STRUCTURE (extracted from this visit — preserve this organization):\n${fieldLines.join('\n')}`
+        : '';
+
+      // Instruction blocks: each one is a named section inserted verbatim
+      const instructionBlock = instructionFields.length > 0
+        ? '\n\nREQUIRED VERBATIM SECTIONS (include these exactly as written under the heading shown):\n' +
+          instructionFields.map((f: any) => `\n${f.label}:\n${f.description}`).join('\n')
         : '';
 
       const standingBlock = template.standingInstructions
-        ? `\n\nSTANDING INSTRUCTIONS (always include verbatim in this note type):\n${template.standingInstructions}`
+        ? `\n\nADDITIONAL STANDING INSTRUCTIONS:\n${template.standingInstructions}`
         : '';
 
       // Fetch patient context
@@ -9026,7 +9063,7 @@ RULES:
             },
             {
               role: "user",
-              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${standingBlock}\n\nGenerate the complete SOAP note now.`,
+              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${standingBlock}\n\nGenerate the complete SOAP note now.`,
             },
           ],
         });
@@ -9055,7 +9092,7 @@ RULES:
             },
             {
               role: "user",
-              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${standingBlock}\n\nGenerate the complete nursing note now.`,
+              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${standingBlock}\n\nGenerate the complete nursing note now.`,
             },
           ],
         });
@@ -9081,7 +9118,7 @@ RULES:
             },
             {
               role: "user",
-              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${standingBlock}\n\nGenerate the complete non-visit note now.`,
+              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${standingBlock}\n\nGenerate the complete non-visit note now.`,
             },
           ],
         });

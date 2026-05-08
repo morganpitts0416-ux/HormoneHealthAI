@@ -2204,12 +2204,16 @@ export type ClinicalSystemDefault = z.infer<typeof clinicalSystemDefaultSchema>;
 // ── Encounter Templates ───────────────────────────────────────────────────────
 // Structured templates that guide AI note generation for specific visit types.
 // noteType determines the output format; existing SOAP generation is untouched.
+export type TemplateFieldType = "extract" | "checklist" | "instruction" | "heading";
+
 export type TemplateField = {
-  id: string;          // nanoid — stable identifier
-  label: string;       // "Current Weight"
-  description: string; // "Patient's weight at today's visit" — AI uses this to find value in transcript
-  required: boolean;   // document even if not mentioned in transcript
-  conditional: boolean;// only include if AI finds evidence in transcript
+  id: string;                    // nanoid — stable identifier
+  fieldType: TemplateFieldType;  // how this field behaves
+  label: string;                 // "Current Weight" / section heading / instruction title
+  description: string;           // AI hint for extract; instruction text for instruction blocks; "" for headings
+  required: boolean;             // extract/checklist: document even if not mentioned
+  conditional: boolean;          // extract/checklist: only include if AI finds evidence
+  checklistItems?: string[];     // checklist only — ordered list of items AI checks off
 };
 
 export const encounterTemplates = pgTable("encounter_templates", {
@@ -2236,11 +2240,13 @@ export const insertEncounterTemplateSchema = createInsertSchema(encounterTemplat
   roleRestriction: z.enum(["any", "nurse", "provider"]).default("any"),
   fields: z.array(z.object({
     id: z.string(),
+    fieldType: z.enum(["extract", "checklist", "instruction", "heading"]).default("extract"),
     label: z.string().trim().min(1).max(120),
-    description: z.string().trim().min(1).max(500),
+    description: z.string().max(5000).default(""),
     required: z.boolean().default(false),
     conditional: z.boolean().default(false),
-  })).max(30).default([]),
+    checklistItems: z.array(z.string().trim().max(200)).max(50).optional(),
+  })).max(40).default([]),
   standingInstructions: z.string().max(5000).nullable().optional(),
   isClinicWide: z.boolean().default(false),
 });
