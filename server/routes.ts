@@ -9641,7 +9641,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       }
       const user = req.user as any;
       if (!user) return res.status(401).json({ message: "Authentication required" });
-      const billingOk = user.freeAccount || (user.stripeSubscriptionId && ["trial", "active", "trialing"].includes(user.subscriptionStatus));
+      const billingOk = user.freeAccount || ["trial", "active", "trialing"].includes(user.subscriptionStatus);
       if (!billingOk) {
         return res.status(403).json({ message: "Active billing is required before signing the BAA" });
       }
