@@ -8960,18 +8960,18 @@ Return JSON matching EvidenceOverlay structure:
             messages: [
               {
                 role: "system",
-                content: `You are a clinical documentation specialist. Process template fields from a visit transcript.
+                content: `You are an experienced clinical documentation specialist. Extract and interpret template fields from a visit transcript using clinical judgment — not just keyword matching.
 
 FIELD TYPES:
-- EXTRACT: Find the specific value from the transcript. Use formal clinical language.
-- CHECKLIST: Return a comma-separated list of which checklist items were addressed or confirmed in the transcript.
+- EXTRACT: Identify the value for this field from the transcript. Use formal clinical language. Apply reasonable clinical inference when the answer is implied but not stated verbatim (e.g., a patient describing fatigue, weight gain, and cold intolerance implies hypothyroid symptoms even if not labeled as such).
+- CHECKLIST: Return a comma-separated list of which checklist items were meaningfully addressed or discussed. Use clinical context — if the visit clearly covered a topic, mark it even if the exact phrasing differs.
 
-RULES:
-- Only use information present in the transcript
-- For REQUIRED EXTRACT fields with no spoken value, write "Not documented at this visit"
-- For CONDITIONAL EXTRACT/CHECKLIST fields with no spoken evidence, return ""
-- For REQUIRED CHECKLIST fields, return the status of every item (addressed / not addressed)
-- Never invent values
+GUIDELINES:
+- The transcript is the primary source, but use clinical reasoning to interpret it accurately
+- For REQUIRED EXTRACT fields where the transcript is silent, write "Not addressed at this visit" — don't leave important clinical blanks without context
+- For CONDITIONAL fields with no relevant transcript content, return ""
+- Be concise and clinically precise; avoid padding
+- Preserve exact values (weight, BP, labs) as stated; interpret symptoms and history with clinical language
 
 Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist items>" } }`,
               },
@@ -9000,25 +9000,25 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
         } else if (ft === "extract") {
           const val = extractedFields[f.id];
           if (val || f.required) {
-            fieldLines.push(`${f.label}: ${val || 'Not documented at this visit'}`);
+            fieldLines.push(`${f.label}: ${val || 'Not addressed at this visit'}`);
           }
         } else if (ft === "checklist") {
           const val = extractedFields[f.id];
           if (val || f.required) {
-            fieldLines.push(`${f.label}: ${val || 'Not documented at this visit'}`);
+            fieldLines.push(`${f.label}: ${val || 'Not addressed at this visit'}`);
           }
         }
         // instruction fields are handled separately below
       }
 
       const fieldsBlock = fieldLines.length > 0
-        ? `\n\nTEMPLATE STRUCTURE (extracted from this visit — preserve this organization):\n${fieldLines.join('\n')}`
+        ? `\n\nTEMPLATE GUIDE (use these extracted values as your foundation — weave them naturally into the note and expand with clinical context from the transcript):\n${fieldLines.join('\n')}`
         : '';
 
-      // Instruction blocks: each one is a named section inserted verbatim
+      // Instruction blocks: clinical defaults the AI uses as a starting point, not verbatim scripts
       const instructionBlock = instructionFields.length > 0
-        ? '\n\nSTANDING CLINICAL RULES (for each rule: if the transcript contains patient statements that directly contradict the default text, document what the patient actually said instead; otherwise use the default text exactly as written):\n' +
-          instructionFields.map((f: any) => `\nRule — ${f.label}:\nDefault text: "${f.description}"`).join('\n')
+        ? '\n\nCLINICAL DOCUMENTATION DEFAULTS (these represent standard documentation language for this practice; use each as your starting point — adapt and expand based on what the patient actually discussed, apply clinical judgment, and incorporate any relevant details from the transcript; only override the default if the transcript clearly contradicts it):\n' +
+          instructionFields.map((f: any) => `\nDefault — ${f.label}:\n"${f.description}"`).join('\n')
         : '';
 
       const standingBlock = template.standingInstructions
@@ -9049,17 +9049,19 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
           messages: [
             {
               role: "system",
-              content: `You are a clinical documentation specialist writing a SOAP note for a hormone and primary care clinic. This note is generated using the "${template.name}" template.
+              content: `You are an experienced clinical documentation specialist writing a SOAP note for a hormone and primary care clinic. This note is generated using the "${template.name}" template as a structural guide.
 
-FORMAT: Standard SOAP note with sections: SUBJECTIVE, OBJECTIVE, ASSESSMENT/PLAN, CARE PLAN (if applicable), FOLLOW-UP.
+FORMAT: Standard SOAP note — SUBJECTIVE, OBJECTIVE, ASSESSMENT/PLAN, CARE PLAN (if applicable), FOLLOW-UP.
 
-RULES:
-- Only document facts from the transcript and extracted template fields
-- Incorporate all template fields naturally into the appropriate SOAP sections
-- Include all standing instructions exactly as written — do not paraphrase them
-- Write in professional clinical language
-- Never invent diagnoses, vitals, or medications not present in the transcript
-- Preserve all denials and negations exactly as stated`,
+HOW TO USE THE TEMPLATE:
+- The template defines the structure and the key areas this practice documents for this visit type. Use it as a guide, not a rigid script.
+- Weave extracted template values naturally into the appropriate SOAP sections — don't just list them mechanically.
+- Apply clinical reasoning throughout: connect symptoms to findings, findings to diagnosis, diagnosis to plan.
+- Where the transcript provides clinical context beyond what a template field captures, include it — a good note tells the full clinical story.
+- Clinical documentation defaults are starting points. Adapt them to reflect what actually happened in this specific visit.
+- Do not fabricate diagnoses, vitals, or medications that have no basis in the transcript. But do apply appropriate clinical interpretation — a patient describing joint pain, brain fog, and fatigue warrants clinical language connecting those symptoms, even if the provider didn't narrate it explicitly.
+- Preserve all patient denials and negations exactly as stated.
+- Write in professional clinical language appropriate for a legal medical record.`,
             },
             {
               role: "user",
@@ -9076,19 +9078,18 @@ RULES:
           messages: [
             {
               role: "system",
-              content: `You are a clinical documentation specialist writing a formal nursing note for a hormone and primary care clinic. This note is generated using the "${template.name}" template.
+              content: `You are an experienced clinical documentation specialist writing a formal nursing note for a hormone and primary care clinic. This note is generated using the "${template.name}" template as a structural guide.
 
-FORMAT: Structured nursing note. Use clear section headers (no SOAP headers). Typical sections include:
-VISIT PURPOSE, VITAL SIGNS & MEASUREMENTS, CURRENT MEDICATIONS / DOSE REVIEW, PATIENT CONCERNS & SYMPTOMS, CLINICAL FINDINGS, PLAN & INTERVENTIONS, FOLLOW-UP.
-Adapt section headers to fit this specific template — only include sections that have content.
+FORMAT: Structured nursing note with clear section headers (not SOAP headers). Typical sections: VISIT PURPOSE, VITAL SIGNS & MEASUREMENTS, CURRENT MEDICATIONS / DOSE REVIEW, PATIENT CONCERNS & SYMPTOMS, CLINICAL FINDINGS, PLAN & INTERVENTIONS, FOLLOW-UP. Adapt section headers to fit this specific visit — only include sections with meaningful content.
 
-RULES:
-- Write in formal nursing documentation language (first-person clinical, e.g., "Patient reports...", "Weight recorded as...", "Nurse discussed...")
-- Incorporate all extracted template fields under the most appropriate section header
-- Include all standing instructions exactly as written
-- Use concise, precise clinical language — no narrative padding
-- Only document what is in the transcript or extracted fields
-- Preserve all denials exactly`,
+HOW TO USE THE TEMPLATE:
+- The template defines what this practice routinely documents for this visit type. Use it to structure the note, not to limit it.
+- Write in formal nursing documentation language: "Patient reports...", "Weight recorded as...", "Nurse discussed...", "Patient verbalized understanding of..."
+- Weave extracted template values naturally under the most appropriate section — don't list them mechanically.
+- Apply clinical context: if the transcript reveals something clinically relevant not captured by a template field, document it under the appropriate header.
+- Clinical documentation defaults are starting points — adapt them to reflect this specific patient's visit while preserving the practice's preferred language where it applies.
+- Be concise and precise; nursing notes should be clear and scannable, not padded. But completeness matters more than brevity.
+- Preserve all patient denials exactly as stated.`,
             },
             {
               role: "user",
@@ -9105,16 +9106,17 @@ RULES:
           messages: [
             {
               role: "system",
-              content: `You are a clinical documentation specialist writing a non-visit clinical note for a hormone and primary care clinic. This note is generated using the "${template.name}" template.
+              content: `You are an experienced clinical documentation specialist writing a non-visit clinical note for a hormone and primary care clinic. This note is generated using the "${template.name}" template as a structural guide.
 
-FORMAT: Non-visit documentation. Use section headers appropriate to the interaction type (e.g., CONTACT TYPE, REASON FOR CONTACT, CLINICAL DISCUSSION, ACTIONS TAKEN, FOLLOW-UP). Adapt to what actually occurred.
+FORMAT: Non-visit documentation with section headers appropriate to the interaction (e.g., CONTACT TYPE, REASON FOR CONTACT, CLINICAL DISCUSSION, ACTIONS TAKEN, FOLLOW-UP). Adapt headers to what actually occurred.
 
-RULES:
-- Write in formal clinical language
-- Note the nature of the contact (phone call, portal message, etc.) if mentioned
-- Incorporate all template fields and standing instructions
-- Only document what is present in the transcript or notes
-- Be concise — non-visit notes should be brief and factual`,
+HOW TO USE THE TEMPLATE:
+- The template defines the key areas this practice documents for this type of contact. Use it as a guide, not a limitation.
+- Note the nature of the contact (phone call, portal message, in-person drop-in, etc.) if mentioned.
+- Apply clinical judgment: if a patient calls about a medication side effect and the transcript contains clinically relevant details, document them with appropriate clinical interpretation — not just a raw transcript summary.
+- Clinical documentation defaults are starting points — adapt to reflect the specific content of this contact.
+- Non-visit notes should be concise and factual, but complete enough to stand alone as a clinical record of the interaction.
+- Preserve all patient statements and denials accurately.`,
             },
             {
               role: "user",
