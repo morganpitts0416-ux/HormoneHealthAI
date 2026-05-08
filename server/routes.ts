@@ -9681,6 +9681,13 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     res.json({ publishableKey: key, configured: key.startsWith("pk_") });
   });
 
+  // GET /api/config/google-maps — expose Google Maps API key to the browser (public — Maps JS keys
+  // are restricted by domain/referrer in the Google Console, not kept secret)
+  app.get("/api/config/google-maps", (_req, res) => {
+    const key = process.env.GOOGLE_PLACES_API_KEY || "";
+    res.json({ apiKey: key || null });
+  });
+
   function getStripe() {
     return new Stripe(process.env.STRIPE_SECRET_KEY!, { apiVersion: "2025-03-31.basil" });
   }

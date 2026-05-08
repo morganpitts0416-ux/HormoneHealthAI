@@ -646,8 +646,8 @@ function SignatureField({ value, onChange, fieldKey }: { value: string; onChange
 }
 
 // ─── Google Places Autocomplete ───────────────────────────────────────────────
-// Activates when VITE_GOOGLE_MAPS_API_KEY is set. Falls back to a plain Input
-// so the form still works without a key configured.
+// Fetches the Maps API key from /api/config/google-maps at runtime.
+// Falls back to a plain Input when no key is configured.
 
 function PlacesAutocompleteInput({
   value,
@@ -666,7 +666,15 @@ function PlacesAutocompleteInput({
   const onChangeRef = useRef(onChange);
   onChangeRef.current = onChange;
   const isInitialized = useRef(false);
-  const apiKey = (import.meta as any).env?.VITE_GOOGLE_MAPS_API_KEY as string | undefined;
+  const [apiKey, setApiKey] = useState<string | null | undefined>(undefined); // undefined = loading
+
+  // Fetch the key from the backend at runtime (avoids needing VITE_ build-time env var)
+  useEffect(() => {
+    fetch("/api/config/google-maps")
+      .then(r => r.json())
+      .then(d => setApiKey(d.apiKey || null))
+      .catch(() => setApiKey(null));
+  }, []);
 
   useEffect(() => {
     if (!apiKey || !inputRef.current || isInitialized.current) return;
@@ -711,7 +719,19 @@ function PlacesAutocompleteInput({
     document.head.appendChild(script);
   }, [apiKey, placesType]);
 
-  // No API key — plain controlled input
+  // Still fetching the key — render plain input to avoid flash
+  if (apiKey === undefined) {
+    return (
+      <Input
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        placeholder={placeholder ?? ""}
+        data-testid={`input-${fieldKey}`}
+      />
+    );
+  }
+
+  // No API key configured — plain controlled input
   if (!apiKey) {
     return (
       <Input
