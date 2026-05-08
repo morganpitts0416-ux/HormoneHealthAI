@@ -13311,17 +13311,42 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
                   }
                 }
 
-                // Most-recent panel extras: clinical phenotypes + high-priority supplements
-                if (idx === 0) {
-                  if (interp?.clinicalPhenotypes?.length > 0) {
-                    patientContext += `    Clinical phenotypes (platform): ${(interp.clinicalPhenotypes as any[])
-                      .map((p: any) => p.name || p.label || JSON.stringify(p)).join(', ')}\n`;
+                // Clinical phenotypes — all panels (not just most recent)
+                if (interp?.clinicalPhenotypes?.length > 0) {
+                  patientContext += `    Clinical phenotypes (platform engine): ${(interp.clinicalPhenotypes as any[])
+                    .map((p: any) => p.name || p.label || JSON.stringify(p)).join(', ')}\n`;
+                }
+                // Insulin resistance screening — surfaced for every panel so June sees trend
+                const irData = interp?.insulinResistance ?? (interp as any)?.irScreening;
+                if (irData && (irData.positiveCount >= 1 || (irData.likelihood && irData.likelihood !== 'none'))) {
+                  patientContext += `    IR Screening: ${irData.likelihoodLabel ?? irData.likelihood ?? 'assessed'} (${irData.positiveCount ?? 0} markers positive)`;
+                  if (irData.phenotypes?.length > 0) {
+                    patientContext += ` | Phenotypes: ${(irData.phenotypes as any[]).map((p: any) => p.name).join(', ')}`;
                   }
-                  const highSupps = (interp?.supplements as any[] ?? []).filter((s: any) => s.priority === 'high').slice(0, 4);
-                  if (highSupps.length > 0) {
-                    patientContext += `    High-priority supplement recs (platform): ${highSupps
-                      .map((s: any) => `${s.name} ${s.dose}`).join('; ')}\n`;
+                  patientContext += '\n';
+                  if (irData.providerSummary) {
+                    patientContext += `      IR clinical summary: ${(irData.providerSummary as string).slice(0, 200)}\n`;
                   }
+                  if (irData.confirmationTests) {
+                    patientContext += `      Recommended confirmation: ${(irData.confirmationTests as string).slice(0, 150)}\n`;
+                  }
+                }
+                // All supplement recommendations — every priority level, every panel (cap at 8)
+                const allPanelSupps = (interp?.supplements as any[] ?? []).slice(0, 8);
+                if (allPanelSupps.length > 0) {
+                  patientContext += `    Platform supplement recommendations:\n`;
+                  allPanelSupps.forEach((s: any) => {
+                    patientContext += `      [${(s.priority ?? 'med').toUpperCase()}] ${s.name} ${s.dose}`;
+                    if (s.indication) patientContext += ` — ${(s.indication as string).slice(0, 100)}`;
+                    patientContext += '\n';
+                  });
+                }
+                // Female testosterone pattern recognition and other advanced pattern flags
+                const femalePattern = interp?.femaleTestosteronePattern ?? (interp as any)?.testosteronePattern;
+                if (femalePattern?.detected) {
+                  patientContext += `    Female testosterone pattern: ${femalePattern.pattern ?? femalePattern.label ?? 'detected'}`;
+                  if (femalePattern.summary) patientContext += ` — ${(femalePattern.summary as string).slice(0, 120)}`;
+                  patientContext += '\n';
                 }
               });
 
@@ -13391,6 +13416,107 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         } catch (e) {
           console.error("[AI-Chat] Error loading patient context:", e);
         }
+      }
+
+      // ── Clinician-level clinical context ─────────────────────────────────────
+      // Loads: custom supplement library + trigger rules, note phrase library,
+      // and clinician lab range overrides.  All are non-fatal if unavailable.
+      let supplementLibraryBlock = "";
+      let notePhrasesBlock = "";
+      let clinicianLabRangesBlock = "";
+      try {
+        const actorIdForContext = getActorId(req);
+        const [clinicSupps, suppRules, notesPhrases, clinicianLabPrefs] = await Promise.all([
+          storage.getClinicianSupplements(clinicianId),
+          storage.getAllClinicianSupplementRules(clinicianId),
+          clinicId ? storage.getNotePhrases(clinicId, actorIdForContext) : Promise.resolve([]),
+          storage.getClinicianLabPreferences(clinicianId),
+        ]);
+
+        // ── Supplement library block ───────────────────────────────────────────
+        const activeSupps = clinicSupps.filter((s: any) => s.isActive);
+        if (activeSupps.length > 0) {
+          const rulesBySupp: Record<number, any[]> = {};
+          suppRules.forEach((r: any) => {
+            if (!rulesBySupp[r.supplementId]) rulesBySupp[r.supplementId] = [];
+            rulesBySupp[r.supplementId].push(r);
+          });
+          const lines: string[] = [
+            "",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            `CLINIC SUPPLEMENT LIBRARY (${activeSupps.length} active products)`,
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "IMPORTANT: When recommending supplements to this provider, ALWAYS use these clinic-approved products by exact name and dose instead of generic alternatives.",
+            "Match them to the patient's lab findings, clinical phenotypes, and symptoms using the trigger rules listed below each product.",
+            "",
+          ];
+          activeSupps.slice(0, 35).forEach((s: any) => {
+            const genderTag = s.gender !== 'both' ? ` [${s.gender} only]` : '';
+            lines.push(`• ${s.name} — ${s.dose} (${s.category}${genderTag})`);
+            if (s.clinicalRationale) lines.push(`  Clinical rationale: ${(s.clinicalRationale as string).slice(0, 160)}`);
+            const rules = rulesBySupp[s.id] ?? [];
+            if (rules.length > 0) {
+              const ruleSummaries = rules.slice(0, 4).map((r: any) => {
+                if (r.triggerType === 'lab' && r.labMarker) {
+                  const lo = r.labMin != null ? `≥${r.labMin}` : null;
+                  const hi = r.labMax != null ? `≤${r.labMax}` : null;
+                  const range = [lo, hi].filter(Boolean).join(' and ');
+                  return `lab:${r.labMarker}${range ? ' ' + range : ''}`;
+                }
+                if (r.triggerType === 'symptom' && r.symptomKey) return `symptom:${r.symptomKey}`;
+                if (r.triggerType === 'phenotype' && r.phenotypeKey) return `phenotype:${r.phenotypeKey}`;
+                return r.indicationText ? r.indicationText.slice(0, 60) : 'see rules';
+              });
+              lines.push(`  Triggers: ${ruleSummaries.join(' | ')}`);
+            }
+          });
+          if (activeSupps.length > 35) lines.push(`  (${activeSupps.length - 35} more products not shown)`);
+          supplementLibraryBlock = lines.join("\n");
+        }
+
+        // ── Note phrase library block ──────────────────────────────────────────
+        if (notesPhrases.length > 0) {
+          const lines: string[] = [
+            "",
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            `CLINICIAN PHRASE LIBRARY (${notesPhrases.length} saved phrases)`,
+            "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+            "These are this clinician's saved dot-phrases and note snippets. When drafting or editing SOAP note text, prefer these exact phrases when they fit the clinical context — they reflect the provider's preferred documentation style.",
+            "",
+          ];
+          (notesPhrases as any[]).slice(0, 50).forEach((p: any) => {
+            const shortcut = p.shortcut ? ` [.${p.shortcut}]` : '';
+            const preview = (p.content as string).length > 200
+              ? (p.content as string).slice(0, 200) + '…'
+              : p.content;
+            lines.push(`• ${p.title}${shortcut}:`);
+            lines.push(`  ${preview}`);
+          });
+          if (notesPhrases.length > 50) lines.push(`  (${notesPhrases.length - 50} more phrases not shown)`);
+          notePhrasesBlock = lines.join("\n");
+        }
+
+        // ── Clinician lab range overrides block ────────────────────────────────
+        if (clinicianLabPrefs.length > 0) {
+          const lines: string[] = [
+            "",
+            "CLINICIAN CUSTOM LAB RANGE OVERRIDES (use these instead of defaults for the matching markers):",
+          ];
+          (clinicianLabPrefs as any[]).forEach((p: any) => {
+            const genderTag = p.gender !== 'both' ? ` (${p.gender})` : '';
+            const parts: string[] = [];
+            if (p.optimalMin != null || p.optimalMax != null)
+              parts.push(`Optimal: ${p.optimalMin ?? '—'}–${p.optimalMax ?? '—'} ${p.unit ?? ''}`);
+            if (p.normalMin != null || p.normalMax != null)
+              parts.push(`Ref: ${p.normalMin ?? '—'}–${p.normalMax ?? '—'} ${p.unit ?? ''}`);
+            if (parts.length > 0) {
+              lines.push(`  ${p.displayName ?? p.markerKey}${genderTag}: ${parts.join(', ')}${p.notes ? ` [${(p.notes as string).slice(0, 80)}]` : ''}`);
+            }
+          });
+          if (lines.length > 2) clinicianLabRangesBlock = "\n" + lines.join("\n");
+        }
+      } catch (e) {
+        console.error("[AI-Chat] Error loading clinician context:", e);
       }
 
       // ── Functional ranges — filtered to this patient's actual markers ──────
@@ -13573,7 +13699,7 @@ SLEEP APNEA (STOP-BANG ≥3 = high risk):
 - Note: CPAP compliance improves testosterone by an average of 50–75 ng/dL per **Luboshitzky et al., J Sleep Res 2002**
 
 CLINIC PROTOCOLS & FUNCTIONAL RANGES:
-${rangesRef}${diagnosisPresetsBlock}
+${rangesRef}${clinicianLabRangesBlock}${diagnosisPresetsBlock}${supplementLibraryBlock}${notePhrasesBlock}
 
 RED FLAG THRESHOLDS (immediate clinical action):
 🔴 Hematocrit ≥54% (on TRT): HOLD testosterone, order therapeutic phlebotomy same day
