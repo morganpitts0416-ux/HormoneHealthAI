@@ -71,7 +71,7 @@ export function GlobalLoadingOverlay() {
           />
         </svg>
 
-        {/* ReAlign emblem — breathing */}
+        {/* ClinIQ emblem — breathing */}
         <div className="relative realign-breathe" style={{ width: 68, height: 68 }}>
           {/* Soft radial glow behind emblem */}
           <div

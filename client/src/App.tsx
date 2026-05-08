@@ -221,7 +221,7 @@ function RootRedirect() {
     if (user) {
       setLocation("/dashboard");
     } else if (appSubdomain) {
-      // app.realignlabeval.com — unauthenticated users go straight to login
+      // cliniqapp.ai — unauthenticated users go straight to login
       setLocation("/login");
     }
   }, [user, isLoading, appSubdomain, setLocation]);

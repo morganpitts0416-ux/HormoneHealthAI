@@ -1,7 +1,7 @@
 /**
  * External Messaging Bridge
  *
- * Provides a clean abstraction layer for forwarding ReAlign portal messages
+ * Provides a clean abstraction layer for forwarding ClinIQ portal messages
  * to external HIPAA-compliant messaging platforms (Spruce Health, Klara, etc.)
  */
 

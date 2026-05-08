@@ -169,7 +169,7 @@ export default function Landing() {
               className="flex-1 mx-3 rounded px-3 py-0.5 text-[11px]"
               style={{ backgroundColor: "rgba(255,255,255,0.08)", color: "rgba(255,255,255,0.45)" }}
             >
-              app.realignlabeval.com
+              cliniqapp.ai
             </div>
           </div>
           <img
@@ -539,7 +539,7 @@ export default function Landing() {
         <div className="max-w-6xl mx-auto px-4 sm:px-6 py-8 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <img src="/cliniq-logo.png?v=2" alt="ClinIQ" className="h-6 w-auto opacity-70" />
-            <span className="text-xs" style={{ color: "#9aaa84" }}>© {new Date().getFullYear()} ReAlign Health. All rights reserved.</span>
+            <span className="text-xs" style={{ color: "#9aaa84" }}>© {new Date().getFullYear()} ClinIQ. All rights reserved.</span>
           </div>
           <div className="flex items-center gap-5">
             <Link href="/privacy">

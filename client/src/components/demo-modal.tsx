@@ -293,7 +293,7 @@ export function DemoModal() {
                   style={{ backgroundColor: "rgba(255,255,255,0.07)", color: "rgba(255,255,255,0.40)" }}
                 >
                   <Sparkles className="w-2.5 h-2.5 flex-shrink-0" style={{ color: "#8fa870" }} />
-                  app.realignlabeval.com — ClinIQ by ReAlign Health
+                  cliniqapp.ai — ClinIQ Clinical Lab Interpretation
                 </div>
               </div>
 

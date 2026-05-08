@@ -64,11 +64,11 @@ function getBaseUrl(req?: { protocol?: string; get?: (h: string) => string | und
     const proto = req.get("x-forwarded-proto") || req.protocol || "https";
     return `${proto}://${host}`;
   }
-  return "https://realignhealth.com";
+  return "https://cliniqapp.ai";
 }
 
 // ── Platform-level emails (clinician-facing) ───────────────────────────────
-// These always brand as "ReAlign Health" — the clinician knows the platform.
+// These brand as "ClinIQ" — the clinician knows the platform.
 
 export async function sendInviteEmail(
   to: string,
@@ -81,17 +81,17 @@ export async function sendInviteEmail(
 
   await sendEmail({
     to,
-    subject: "You've been invited to ReAlign Health — set your password",
+    subject: "You've been invited to ClinIQ — set your password",
     html: `
       <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
         <div style="background: #2e3a20; padding: 28px 32px;">
-          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ReAlign Health</h1>
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ClinIQ</h1>
           <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Clinical Lab Interpretation Platform</p>
         </div>
         <div style="padding: 36px 32px;">
           <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hello ${firstName},</p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-            An administrator has created a ReAlign Health clinician account for you.
+            An administrator has created a ClinIQ clinician account for you.
             Click the button below to set your password and activate your account.
           </p>
           <div style="text-align: center; margin: 32px 0;">
@@ -107,7 +107,7 @@ export async function sendInviteEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; Clinician Lab Interpretation Platform</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ClinIQ &mdash; Clinical Lab Interpretation Platform</p>
         </div>
       </div>
     `,
@@ -125,17 +125,17 @@ export async function sendPasswordResetEmail(
 
   await sendEmail({
     to,
-    subject: "Reset your ReAlign Health password",
+    subject: "Reset your ClinIQ password",
     html: `
       <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
         <div style="background: #2e3a20; padding: 28px 32px;">
-          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ReAlign Health</h1>
+          <h1 style="color: #e8ddd0; margin: 0; font-size: 22px; font-weight: 700; letter-spacing: -0.3px;">ClinIQ</h1>
           <p style="color: #a8b88c; margin: 4px 0 0; font-size: 13px;">Clinical Lab Interpretation Platform</p>
         </div>
         <div style="padding: 36px 32px;">
           <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hello ${firstName},</p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-            We received a request to reset your ReAlign Health password. Click the button below to choose a new one.
+            We received a request to reset your ClinIQ password. Click the button below to choose a new one.
           </p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
@@ -150,7 +150,7 @@ export async function sendPasswordResetEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; Clinician Lab Interpretation Platform</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ClinIQ &mdash; Clinical Lab Interpretation Platform</p>
         </div>
       </div>
     `,
@@ -158,9 +158,8 @@ export async function sendPasswordResetEmail(
 }
 
 // ── Patient / portal-facing emails ─────────────────────────────────────────
-// These brand as the clinic — patients should never see "ReAlign Health" in
-// the header or the inbox display name.  "Powered by ReAlign Health" stays
-// in the footer as a platform credit only.
+// These brand as the clinic — patients see the clinic name in the header.
+// "Powered by ClinIQ" stays in the footer as a platform credit.
 
 export async function sendPatientPortalInviteEmail(
   to: string,
@@ -207,7 +206,7 @@ export async function sendPatientPortalInviteEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 20px 32px; text-align: center; background: #f5f0e8;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ClinIQ &mdash; Thoughtful Care, Personalized Wellness</p>
         </div>
       </div>
     `,
@@ -256,7 +255,7 @@ export async function sendStaffInviteEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Clinical Lab Interpretation Platform</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ClinIQ &mdash; Clinical Lab Interpretation Platform</p>
         </div>
       </div>
     `,
@@ -301,7 +300,7 @@ export async function sendProtocolPublishedEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 20px 32px; text-align: center; background: #f5f0e8;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ClinIQ &mdash; Thoughtful Care, Personalized Wellness</p>
         </div>
       </div>
     `,
@@ -350,7 +349,7 @@ export async function sendNewPortalMessageEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 20px 32px; text-align: center; background: #f5f0e8;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ClinIQ &mdash; Thoughtful Care, Personalized Wellness</p>
         </div>
       </div>
     `,
@@ -371,7 +370,7 @@ export async function sendProviderInviteEmail(
   await sendEmail({
     to,
     fromName: clinicName,
-    subject: `You're invited to join ${clinicName} on ReAlign ClinIQ`,
+    subject: `You're invited to join ${clinicName} on ClinIQ`,
     html: `
       <div style="font-family: 'Inter', Arial, sans-serif; max-width: 560px; margin: 0 auto; background: #fff;">
         <div style="background: #2e3a20; padding: 28px 32px;">
@@ -381,7 +380,7 @@ export async function sendProviderInviteEmail(
         <div style="padding: 36px 32px;">
           <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hi ${providerFirstName},</p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-            <strong>${inviterName}</strong> has invited you to join <strong>${clinicName}</strong> as a provider on the ReAlign ClinIQ platform.
+            <strong>${inviterName}</strong> has invited you to join <strong>${clinicName}</strong> as a provider on the ClinIQ platform.
           </p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
             As a clinic provider, you'll have your own full ClinIQ workspace including lab interpretation, AI-powered recommendations, patient profiles, encounter documentation, and more — all connected to the shared clinic.
@@ -399,7 +398,7 @@ export async function sendProviderInviteEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; ClinIQ Clinical Lab Interpretation Platform</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ClinIQ &mdash; Clinical Lab Interpretation Platform</p>
         </div>
       </div>
     `,
@@ -435,7 +434,7 @@ export async function sendExternalCollaboratorInviteEmail(
         <div style="padding: 36px 32px;">
           <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hi ${physicianFirstName},</p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 16px;">
-            <strong>${midLevelName}</strong> at <strong>${clinicName}</strong> has invited you to be their collaborating physician on ReAlign ClinIQ.
+            <strong>${midLevelName}</strong> at <strong>${clinicName}</strong> has invited you to be their collaborating physician on ClinIQ.
           </p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
             Access scope: <strong>${accessScopeLabel}</strong>.
@@ -453,7 +452,7 @@ export async function sendExternalCollaboratorInviteEmail(
           </p>
         </div>
         <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ReAlign Health &mdash; ClinIQ Clinical Lab Interpretation Platform</p>
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">ClinIQ &mdash; Clinical Lab Interpretation Platform</p>
         </div>
       </div>
     `,
@@ -486,7 +485,7 @@ export async function sendPortalPasswordResetEmail(
         <div style="padding: 36px 32px;">
           <p style="color: #1c2414; font-size: 16px; margin: 0 0 16px;">Hello ${patientFirstName},</p>
           <p style="color: #3d4a30; font-size: 15px; line-height: 1.6; margin: 0 0 24px;">
-            We received a request to reset your health portal password${clinicianName ? ` for your account with ${clinicianName}` : ''}. Click the button below to set a new one.
+            We received a request to reset your health portal password. Click the button below to choose a new one.
           </p>
           <div style="text-align: center; margin: 32px 0;">
             <a href="${link}" style="background: #2e3a20; color: #fff; padding: 14px 32px; border-radius: 6px; text-decoration: none; font-size: 15px; font-weight: 600; display: inline-block;">
@@ -494,16 +493,20 @@ export async function sendPortalPasswordResetEmail(
             </a>
           </div>
           <p style="color: #7a8a64; font-size: 13px; line-height: 1.6; margin: 24px 0 0;">
-            This link expires in <strong>1 hour</strong>. If you didn't request this, you can safely ignore this email.
+            This link expires in <strong>1 hour</strong>. If you didn't request a password reset, you can safely ignore this email.
           </p>
           <p style="color: #7a8a64; font-size: 12px; margin: 8px 0 0; word-break: break-all;">
             Or copy this link: ${link}
           </p>
         </div>
-        <div style="border-top: 1px solid #e8ddd0; padding: 16px 32px; text-align: center;">
-          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ReAlign Health &mdash; Thoughtful Care, Personalized Wellness</p>
+        <div style="border-top: 1px solid #e8ddd0; padding: 20px 32px; text-align: center; background: #f5f0e8;">
+          <p style="color: #7a8a64; font-size: 12px; margin: 0;">Powered by ClinIQ &mdash; Thoughtful Care, Personalized Wellness</p>
         </div>
       </div>
     `,
   });
+}
+
+export async function sendEmail_raw(opts: EmailOptions): Promise<void> {
+  return sendEmail(opts);
 }

@@ -21,7 +21,7 @@ const BAA_VERSION = "1.0";
 const BAA_SECTIONS = [
   {
     title: "Parties",
-    body: `This Business Associate Agreement ("BAA") is entered into between ReAlign Health ("Business Associate" or "BA") and the licensed clinician or healthcare organization creating an account on the ClinIQ platform ("Covered Entity" or "CE"), collectively the "Parties."
+    body: `This Business Associate Agreement ("BAA") is entered into between ClinIQ ("Business Associate" or "BA") and the licensed clinician or healthcare organization creating an account on the ClinIQ platform ("Covered Entity" or "CE"), collectively the "Parties."
 
 This BAA is incorporated by reference into and made part of the ClinIQ Terms of Service. By signing below, the CE agrees to the terms of this BAA.`,
   },
@@ -81,7 +81,7 @@ This BAA is incorporated by reference into and made part of the ClinIQ Terms of 
     title: "7. Electronic Acceptance",
     body: `By typing your full legal name and clicking "I Agree & Sign," you agree to be bound by the terms of this Business Associate Agreement. This electronic signature is legally binding under the Electronic Signatures in Global and National Commerce Act (ESIGN) and the Uniform Electronic Transactions Act (UETA).
 
-ReAlign Health maintains a permanent record of the date, time, IP address, and name associated with each BAA acceptance for HIPAA audit and compliance purposes. You will retain access to a copy of this agreement from your Account page.`,
+ClinIQ maintains a permanent record of the date, time, IP address, and name associated with each BAA acceptance for HIPAA audit and compliance purposes. You will retain access to a copy of this agreement from your Account page.`,
   },
 ];
 
@@ -213,7 +213,7 @@ export function BaaGate({ children }: { children: React.ReactNode }) {
           ))}
 
           <div className="pt-2 pb-1 border-t text-xs text-center" style={{ borderColor: "#e8ddd0", color: "#9aaa84" }}>
-            HIPAA Compliance Inquiries: hipaa@realignhealth.com
+            HIPAA Compliance Inquiries: hipaa@cliniqapp.ai
           </div>
         </div>
       </div>

@@ -40,14 +40,14 @@ export default function PrivacyPolicy() {
           <h1 className="text-2xl font-bold mb-1" style={{ color: "#1c2414", fontFamily: "Source Serif 4, Georgia, serif" }}>Privacy Policy</h1>
           <p className="text-xs" style={{ color: "#7a8a64" }}>Effective Date: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })} · Last Updated: {new Date().toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" })}</p>
           <div className="mt-4 rounded-lg px-4 py-3 text-xs leading-relaxed" style={{ backgroundColor: "#edf2e6", color: "#3d4a30", border: "1px solid #c8d8b0" }}>
-            <strong>Important Notice:</strong> This Privacy Policy is provided as a template and should be reviewed by qualified legal counsel before being relied upon. It is intended to describe the data practices of ReAlign Health with respect to the ClinIQ platform.
+            <strong>Important Notice:</strong> This Privacy Policy is provided as a template and should be reviewed by qualified legal counsel before being relied upon. It is intended to describe the data practices of ClinIQ with respect to the ClinIQ platform.
           </div>
         </div>
 
         <div className="rounded-xl px-6 sm:px-10 py-8" style={{ backgroundColor: "#ffffff", border: "1px solid #e8ddd0" }}>
 
           <Section title="1. Overview">
-            <p>ReAlign Health ("Company," "we," "us," or "our") operates the ClinIQ clinical intelligence platform ("Platform"). This Privacy Policy describes how we collect, use, store, disclose, and protect information about licensed healthcare professionals ("Clinicians") who use the Platform and their patients whose protected health information ("PHI") may be entered into the Platform.</p>
+            <p>ClinIQ ("Company," "we," "us," or "our") operates the ClinIQ clinical intelligence platform ("Platform"). This Privacy Policy describes how we collect, use, store, disclose, and protect information about licensed healthcare professionals ("Clinicians") who use the Platform and their patients whose protected health information ("PHI") may be entered into the Platform.</p>
             <p>By using ClinIQ, you acknowledge that you have read and understood this Privacy Policy and agree to its terms. If you do not agree, you must discontinue use of the Platform immediately.</p>
           </Section>
 
@@ -64,7 +64,7 @@ export default function PrivacyPolicy() {
           </Section>
 
           <Section title="4. HIPAA Compliance">
-            <p>ReAlign Health acts as a Business Associate under HIPAA with respect to PHI entered into the Platform by Clinicians who are Covered Entities or are themselves Business Associates of Covered Entities. We maintain appropriate administrative, physical, and technical safeguards to protect PHI.</p>
+            <p>ClinIQ acts as a Business Associate under HIPAA with respect to PHI entered into the Platform by Clinicians who are Covered Entities or are themselves Business Associates of Covered Entities. We maintain appropriate administrative, physical, and technical safeguards to protect PHI.</p>
             <p>A Business Associate Agreement (BAA) is provided and must be accepted at registration. The BAA governs our obligations with respect to PHI and is incorporated by reference into this Privacy Policy.</p>
             <p>Technical safeguards include: encrypted data transmission (TLS), audit logging of all PHI access, session timeouts with user warnings, login lockout after failed attempts, and strong password requirements.</p>
           </Section>
@@ -96,7 +96,7 @@ export default function PrivacyPolicy() {
           <Section title="10. Contact Us">
             <p>For questions about this Privacy Policy or our data practices, please contact:</p>
             <div className="rounded-lg px-4 py-3 mt-2" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
-              <p className="font-semibold" style={{ color: "#1c2414" }}>ReAlign Health</p>
+              <p className="font-semibold" style={{ color: "#1c2414" }}>ClinIQ</p>
               <p>ClinIQ Platform · Privacy Inquiries</p>
               <p>Email: privacy@cliniqapp.ai</p>
             </div>

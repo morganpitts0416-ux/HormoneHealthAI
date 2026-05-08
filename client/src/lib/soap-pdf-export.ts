@@ -16,14 +16,14 @@ interface SoapPdfOptions {
   signedBy?: string | null;
   signatureImage?: string | null;
   isAmended?: boolean;
-  /** Clinic-level brand colors. Falls back to historic ReAlign green if null. */
+  /** Clinic-level brand colors. Falls back to ClinIQ default green if null. */
   branding?: PartialBranding | null;
 }
 
 const PAGE_W = 215.9; // Letter width mm
 const MARGIN = 20;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const SOAP_DEFAULT_PRIMARY = '#2e3a20'; // Historic ReAlign green letterhead
+const SOAP_DEFAULT_PRIMARY = '#2e3a20'; // ClinIQ default letterhead green
 
 // Parse a date string safely — treats date-only strings (YYYY-MM-DD) as local
 // noon so no timezone shift pushes them into the previous day.
@@ -77,7 +77,7 @@ function drawHRule(doc: jsPDF, y: number, color = '#cccccc'): void {
 export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
 
-  // Effective brand color: clinic primary if set, else historic ReAlign green.
+  // Effective brand color: clinic primary if set, else ClinIQ default green.
   const HEADER_PRIMARY = opts.branding?.primaryColor
     ? resolveBranding(null, opts.branding).primaryColor
     : SOAP_DEFAULT_PRIMARY;

@@ -47,7 +47,7 @@ export default function TermsOfService() {
         <div className="rounded-xl px-6 sm:px-10 py-8" style={{ backgroundColor: "#ffffff", border: "1px solid #e8ddd0" }}>
 
           <Section title="1. Acceptance of Terms">
-            <p>These Terms of Service ("Terms") constitute a legally binding agreement between you ("Clinician," "you," or "your") and ReAlign Health ("Company," "we," "us," or "our") governing your access to and use of the ClinIQ clinical intelligence platform ("Platform").</p>
+            <p>These Terms of Service ("Terms") constitute a legally binding agreement between you ("Clinician," "you," or "your") and ClinIQ ("Company," "we," "us," or "our") governing your access to and use of the ClinIQ clinical intelligence platform ("Platform").</p>
             <p>By creating an account or using the Platform, you represent that you are a licensed healthcare professional authorized to practice in your jurisdiction and that you have read, understood, and agree to be bound by these Terms. If you are registering on behalf of a clinic or healthcare organization, you further represent that you have authority to bind that organization to these Terms.</p>
           </Section>
 
@@ -59,7 +59,7 @@ export default function TermsOfService() {
           <Section title="3. Clinical Decision Support — Disclaimer">
             <p><strong>ClinIQ is a clinical decision support tool, not a substitute for professional medical judgment.</strong> All AI-generated content, lab interpretations, SOAP notes, risk calculations, supplement recommendations, and clinical suggestions are informational and educational in nature. They do not constitute medical advice and must be independently evaluated and verified by a qualified clinician before being applied to any patient care decision.</p>
             <p>You acknowledge that: (a) clinical algorithms and AI outputs may contain errors; (b) no software tool can replace clinical assessment; (c) final diagnostic and treatment decisions are your sole professional responsibility; and (d) you will exercise independent clinical judgment in evaluating all platform outputs.</p>
-            <p>ReAlign Health shall not be liable for any clinical outcomes, patient harm, or professional consequences arising from reliance on platform outputs without independent clinical verification.</p>
+            <p>ClinIQ shall not be liable for any clinical outcomes, patient harm, or professional consequences arising from reliance on platform outputs without independent clinical verification.</p>
           </Section>
 
           <Section title="4. Subscription, Trial, and Billing">
@@ -72,13 +72,13 @@ export default function TermsOfService() {
 
           <Section title="5. Protected Health Information">
             <p>You are solely responsible for ensuring that any Protected Health Information (PHI) entered into the Platform is handled in compliance with HIPAA and all applicable federal and state privacy laws. You represent that you are authorized to access and input the patient data you submit, that you have obtained all necessary patient authorizations, and that you have implemented appropriate safeguards within your practice.</p>
-            <p>A Business Associate Agreement (BAA) is presented at registration and governs the handling of PHI by ReAlign Health. The BAA is incorporated by reference into these Terms.</p>
+            <p>A Business Associate Agreement (BAA) is presented at registration and governs the handling of PHI by ClinIQ. The BAA is incorporated by reference into these Terms.</p>
           </Section>
 
           <Section title="6. Intellectual Property">
-            <p>The Platform, including all software, algorithms, clinical content, design, and documentation, is the proprietary intellectual property of ReAlign Health and is protected by applicable copyright, trademark, and other laws. You are granted a limited, non-exclusive, non-transferable, revocable license to access and use the Platform solely for your authorized clinical practice during your active subscription period.</p>
+            <p>The Platform, including all software, algorithms, clinical content, design, and documentation, is the proprietary intellectual property of ClinIQ and is protected by applicable copyright, trademark, and other laws. You are granted a limited, non-exclusive, non-transferable, revocable license to access and use the Platform solely for your authorized clinical practice during your active subscription period.</p>
             <p>You may not reverse engineer, decompile, copy, reproduce, sell, resell, or create derivative works from the Platform or its content without our express written permission.</p>
-            <p>You retain ownership of clinical data and patient information you enter into the Platform. By entering data, you grant ReAlign Health a limited license to process and display that data solely for the purpose of providing the Platform services to you.</p>
+            <p>You retain ownership of clinical data and patient information you enter into the Platform. By entering data, you grant ClinIQ a limited license to process and display that data solely for the purpose of providing the Platform services to you.</p>
           </Section>
 
           <Section title="7. Prohibited Conduct">
@@ -90,16 +90,16 @@ export default function TermsOfService() {
           </Section>
 
           <Section title="9. Limitation of Liability">
-            <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, REALIGN HEALTH AND ITS OFFICERS, DIRECTORS, EMPLOYEES, AND AGENTS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO CLINICAL OUTCOMES, PATIENT HARM, LOST PROFITS, OR LOSS OF DATA, ARISING OUT OF OR RELATED TO YOUR USE OF THE PLATFORM, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</p>
+            <p>TO THE MAXIMUM EXTENT PERMITTED BY LAW, CLINIQ AND ITS OFFICERS, DIRECTORS, EMPLOYEES, AND AGENTS SHALL NOT BE LIABLE FOR ANY INDIRECT, INCIDENTAL, SPECIAL, CONSEQUENTIAL, OR PUNITIVE DAMAGES, INCLUDING BUT NOT LIMITED TO CLINICAL OUTCOMES, PATIENT HARM, LOST PROFITS, OR LOSS OF DATA, ARISING OUT OF OR RELATED TO YOUR USE OF THE PLATFORM, EVEN IF ADVISED OF THE POSSIBILITY OF SUCH DAMAGES.</p>
             <p>OUR TOTAL AGGREGATE LIABILITY TO YOU FOR ANY CLAIMS ARISING UNDER THESE TERMS SHALL NOT EXCEED THE AMOUNT YOU PAID TO US IN THE 12 MONTHS PRECEDING THE CLAIM.</p>
           </Section>
 
           <Section title="10. Indemnification">
-            <p>You agree to indemnify, defend, and hold harmless ReAlign Health and its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses (including reasonable attorneys' fees) arising out of or related to: (a) your use of the Platform; (b) your violation of these Terms; (c) your violation of any applicable law or professional regulation; or (d) any clinical decision made in reliance on Platform outputs.</p>
+            <p>You agree to indemnify, defend, and hold harmless ClinIQ and its officers, directors, employees, and agents from and against any claims, liabilities, damages, losses, and expenses (including reasonable attorneys' fees) arising out of or related to: (a) your use of the Platform; (b) your violation of these Terms; (c) your violation of any applicable law or professional regulation; or (d) any clinical decision made in reliance on Platform outputs.</p>
           </Section>
 
           <Section title="11. Governing Law and Disputes">
-            <p>These Terms shall be governed by and construed in accordance with the laws of the state in which ReAlign Health is incorporated, without regard to conflict of law principles. Any disputes shall be resolved by binding arbitration in accordance with the American Arbitration Association rules, except that either party may seek injunctive relief in a court of competent jurisdiction.</p>
+            <p>These Terms shall be governed by and construed in accordance with the laws of the state in which ClinIQ is incorporated, without regard to conflict of law principles. Any disputes shall be resolved by binding arbitration in accordance with the American Arbitration Association rules, except that either party may seek injunctive relief in a court of competent jurisdiction.</p>
           </Section>
 
           <Section title="12. Changes to Terms">
@@ -108,7 +108,7 @@ export default function TermsOfService() {
 
           <Section title="13. Contact">
             <div className="rounded-lg px-4 py-3" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
-              <p className="font-semibold" style={{ color: "#1c2414" }}>ReAlign Health</p>
+              <p className="font-semibold" style={{ color: "#1c2414" }}>ClinIQ</p>
               <p>ClinIQ Platform · Legal Inquiries</p>
               <p>Email: legal@cliniqapp.ai</p>
             </div>

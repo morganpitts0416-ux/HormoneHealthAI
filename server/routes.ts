@@ -3244,7 +3244,7 @@ Return ONLY this JSON structure:
 
   // ══════════════════════════════════════════════════════════════════════════
   // ADMIN — Clinic Management
-  // Tools for the ReAlign admin to create clinics, assign members, and run
+  // Tools for the ClinIQ admin to create clinics, assign members, and run
   // patient backfills without direct database access.
   // ══════════════════════════════════════════════════════════════════════════
 
@@ -4316,7 +4316,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         itemLines,
         `\nOrder Total: $${parseFloat(subtotal).toFixed(2)}`,
         patientNotes ? `\nNote: ${patientNotes}` : '',
-        `\n\n(Order #${order.id} placed via ReAlign patient portal)`,
+        `\n\n(Order #${order.id} placed via ClinIQ patient portal)`,
       ].join('');
 
       // Send as patient portal message to clinician

@@ -51,7 +51,7 @@ export default function BusinessAssociateAgreement() {
           <div className="mb-6 p-4 rounded-lg" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
             <p className="text-sm font-semibold mb-2" style={{ color: "#1c2414" }}>Parties</p>
             <p className="text-sm" style={{ color: "#3d4a30" }}>
-              This Business Associate Agreement ("BAA") is entered into between <strong>ReAlign Health</strong> ("Business Associate" or "BA") and the licensed clinician or healthcare organization creating an account on the ClinIQ platform ("Covered Entity" or "CE"), collectively the "Parties."
+              This Business Associate Agreement ("BAA") is entered into between <strong>ClinIQ</strong> ("Business Associate" or "BA") and the licensed clinician or healthcare organization creating an account on the ClinIQ platform ("Covered Entity" or "CE"), collectively the "Parties."
             </p>
             <p className="text-sm mt-2" style={{ color: "#3d4a30" }}>
               This BAA is incorporated by reference into and made part of the ClinIQ Terms of Service. By accepting the Terms of Service at registration, the CE agrees to the terms of this BAA.
@@ -111,14 +111,14 @@ export default function BusinessAssociateAgreement() {
 
           <Section title="7. Electronic Acceptance">
             <p>By checking the BAA acknowledgment checkbox during registration, the Covered Entity agrees to be bound by the terms of this Business Associate Agreement. This electronic acceptance shall be deemed a legally binding signature for purposes of this BAA.</p>
-            <p>ReAlign Health maintains a record of the date, time, and account associated with each BAA acceptance for audit and compliance purposes.</p>
+            <p>ClinIQ maintains a record of the date, time, and account associated with each BAA acceptance for audit and compliance purposes.</p>
           </Section>
 
           <Section title="Contact">
             <div className="rounded-lg px-4 py-3" style={{ backgroundColor: "#f9f6f0", border: "1px solid #e8ddd0" }}>
-              <p className="font-semibold" style={{ color: "#1c2414" }}>ReAlign Health</p>
+              <p className="font-semibold" style={{ color: "#1c2414" }}>ClinIQ</p>
               <p>ClinIQ Platform · HIPAA Compliance Inquiries</p>
-              <p>Email: hipaa@realignhealth.com</p>
+              <p>Email: hipaa@cliniqapp.ai</p>
             </div>
           </Section>
         </div>

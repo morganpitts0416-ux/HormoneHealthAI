@@ -51,7 +51,7 @@ interface ClinicBranding {
   formBackgroundColor?: string | null;
 }
 
-// Historic ReAlign Health green form palette — used when a clinic hasn't set custom colors.
+// ClinIQ default green form palette — used when a clinic hasn't set custom colors.
 const FORM_DEFAULT_PRIMARY = "#2e3a20";
 const FORM_DEFAULT_BG = "#f9f6f0";
 const FORM_DEFAULT_HEADER_BG = "#e8ddd0";
