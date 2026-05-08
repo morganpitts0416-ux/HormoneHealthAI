@@ -303,7 +303,7 @@ function InstructionFieldEditor({ field, idx, onChange }: {
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <Label className="text-xs">Section Name <span className="text-muted-foreground font-normal">(labels this section in the note)</span></Label>
+        <Label className="text-xs">Section Name <span className="text-muted-foreground font-normal">(tells the AI which section these instructions apply to — not printed as a heading in the note)</span></Label>
         <Input
           value={field.label}
           onChange={e => onChange({ label: e.target.value })}
@@ -316,7 +316,7 @@ function InstructionFieldEditor({ field, idx, onChange }: {
       <div className="space-y-1">
         <Label className="text-xs">
           Instructions for AI
-          <span className="text-muted-foreground font-normal ml-1">— tell the AI exactly what to document and what to always include</span>
+          <span className="text-muted-foreground font-normal ml-1">— tell the AI exactly what to document and what to always include in this section</span>
         </Label>
         <Textarea
           value={field.description}
@@ -329,7 +329,7 @@ function InstructionFieldEditor({ field, idx, onChange }: {
         />
       </div>
       <p className="text-xs text-muted-foreground">
-        The AI follows these instructions when writing this section — weaving in specifics from the transcript alongside anything you've told it to always include.
+        The AI follows these instructions when writing this section. To control what headings actually appear in the note, use a <strong>Section Heading</strong> field.
       </p>
     </div>
   );
