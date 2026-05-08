@@ -28,6 +28,7 @@ interface PipelineInput {
   encounter: any;
   openai: OpenAI;
   patientName?: string;
+  historicalContext?: string;
 }
 
 interface PipelineOutput {
@@ -404,7 +405,8 @@ async function generateSoapSections(
   patternContext: string,
   medicationContext: string,
   encounter: any,
-  patientName?: string
+  patientName?: string,
+  historicalContext?: string
 ): Promise<PipelineOutput> {
   const diarizedInput = diarized.length > 0
     ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
@@ -834,9 +836,12 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
 - If the transcript is narrated in first person by the clinician (e.g., "I told her...", "we discussed..."), the "I" is the CLINICIAN, not the patient.`;
 
   const patientLine = patientName ? `\nPatient Name: ${patientName}` : "";
+  const historicalBlock = historicalContext
+    ? `\n\n${historicalContext}`
+    : "";
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
 
 TRANSCRIPT:
 ${diarizedInput}
@@ -1021,7 +1026,7 @@ function buildExtractionSummary(extraction: any): string {
 }
 
 export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<PipelineOutput> {
-  const { openai, extraction, transcriptText, diarized, labContext, patternContext, medicationContext, encounter } = input;
+  const { openai, extraction, transcriptText, diarized, labContext, patternContext, medicationContext, encounter, historicalContext } = input;
 
   console.log("[SOAP Pipeline] Step 3c: Medical normalization + context inference...");
   let normalized: NormalizedExtraction;
@@ -1048,7 +1053,7 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
   try {
     soapOutput = await generateSoapSections(
       openai, extraction, normalized, transcriptText, diarized,
-      labContext, patternContext, medicationContext, encounter, input.patientName
+      labContext, patternContext, medicationContext, encounter, input.patientName, historicalContext
     );
   } catch (err) {
     console.error("[SOAP Pipeline] SOAP generation failed:", err);

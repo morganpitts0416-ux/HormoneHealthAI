@@ -8226,6 +8226,71 @@ RULES:
     }
   }
 
+  // ── Shared helper: build historical patient context for AI note generation ──
+  // Pulls last 3 prior completed notes + chart meds + recent vitals.
+  // Both generate-soap and generate-template-note use this.
+  async function buildPatientHistoricalContext(
+    patientId: number,
+    currentEncounterId: number,
+    clinicianId: number,
+    clinicId: number | null
+  ): Promise<string> {
+    const sections: string[] = [];
+    try {
+      // 1. Prior encounter notes (last 3, excluding current, with a completed fullNote)
+      const allEncounters = await storage.getEncountersByClinicianId(clinicianId, patientId, clinicId);
+      const priorNotes = allEncounters
+        .filter((e: any) => e.id !== currentEncounterId && (e.soapNote as any)?.fullNote)
+        .slice(0, 3);
+      if (priorNotes.length > 0) {
+        const noteLines = priorNotes.map((e: any, idx: number) => {
+          const date = e.visitDate ? new Date(e.visitDate).toLocaleDateString() : "Unknown date";
+          const type = e.visitType ?? "visit";
+          const noteText: string = ((e.soapNote as any)?.fullNote ?? "").slice(0, 2000);
+          return `--- Prior Note ${idx + 1} (${type}, ${date}) ---\n${noteText}${noteText.length >= 2000 ? "\n[note truncated]" : ""}`;
+        });
+        sections.push(`PRIOR VISIT NOTES (most recent first — use these to understand medication changes, dose adjustments, ongoing treatment plans, and prior clinical decisions; reference them when the current transcript alludes to prior visits):\n${noteLines.join("\n\n")}`);
+      }
+
+      // 2. Current medications & chart data
+      const chart = await storage.getPatientChart(patientId, clinicianId);
+      if (chart) {
+        const chartLines: string[] = [];
+        if ((chart.currentMedications as any[])?.length)
+          chartLines.push(`Current Medications: ${(chart.currentMedications as string[]).join(", ")}`);
+        if ((chart.allergies as any[])?.length)
+          chartLines.push(`Allergies: ${(chart.allergies as string[]).join(", ")}`);
+        if ((chart.medicalHistory as any[])?.length)
+          chartLines.push(`Medical History: ${(chart.medicalHistory as string[]).join(", ")}`);
+        if (chartLines.length)
+          sections.push(`PATIENT CHART:\n${chartLines.join("\n")}`);
+      }
+
+      // 3. Recent vitals (last 3 readings)
+      const vitals = await storage.getPatientVitals(patientId, clinicianId);
+      const recentVitals = vitals.slice(0, 3);
+      if (recentVitals.length > 0) {
+        const vitalLines = recentVitals.map((v: any) => {
+          const date = v.recordedAt ? new Date(v.recordedAt).toLocaleDateString() : "Unknown";
+          const parts: string[] = [];
+          if (v.systolicBp && v.diastolicBp) parts.push(`BP ${v.systolicBp}/${v.diastolicBp}`);
+          if (v.heartRate) parts.push(`HR ${v.heartRate}`);
+          if (v.weight) parts.push(`Wt ${v.weight} lbs`);
+          if (v.bmi) parts.push(`BMI ${v.bmi}`);
+          if (v.temperature) parts.push(`Temp ${v.temperature}°F`);
+          return parts.length ? `  ${date}: ${parts.join(" | ")}` : null;
+        }).filter(Boolean);
+        if (vitalLines.length)
+          sections.push(`RECENT VITALS:\n${vitalLines.join("\n")}`);
+      }
+    } catch (err) {
+      console.warn("[HistoricalContext] Failed to build historical context:", err);
+    }
+    return sections.length
+      ? `PATIENT HISTORICAL CONTEXT (use this to interpret references to prior visits, past medication changes, and ongoing treatment; do NOT copy verbatim — integrate contextually as clinically appropriate):\n${sections.join("\n\n")}`
+      : "";
+  }
+
   // POST /api/encounters/:id/generate-soap — Stage 4: Generate SOAP note
   // Uses clinical extraction when available. NEVER invents unsupported facts.
   app.post("/api/encounters/:id/generate-soap", requireAuth, async (req, res) => {
@@ -8875,6 +8940,14 @@ Return a JSON object:
         }
       }
 
+      // ── Build historical patient context (prior notes, chart, vitals) ────────
+      let historicalContext = "";
+      if (encounter.patientId) {
+        historicalContext = await buildPatientHistoricalContext(
+          encounter.patientId, id, clinicianId, clinicId
+        );
+      }
+
       // ── PIPELINE STEP 4+5: Enhanced multi-stage SOAP generation ─────────────
       // Uses the new enhanced pipeline: normalization+inference → section-specific generation → QA check
       let soapNote = await runEnhancedSoapPipeline({
@@ -8887,6 +8960,7 @@ Return a JSON object:
         encounter,
         openai,
         patientName,
+        historicalContext,
       });
 
       // ── June refinement pass (post-processing) ────────────────────────────
@@ -9143,7 +9217,7 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
         ? `\n\nADDITIONAL STANDING INSTRUCTIONS:\n${template.standingInstructions}`
         : '';
 
-      // Fetch patient context
+      // Fetch patient context + historical context
       let patientContext = "";
       try {
         const patient = await storage.getPatient(encounter.patientId, clinicianId, clinicId);
@@ -9154,6 +9228,12 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
             patientContext += `, ${age} y/o`;
           }
         }
+      } catch {}
+      try {
+        const histCtx = await buildPatientHistoricalContext(
+          encounter.patientId, encounter.id, clinicianId, clinicId
+        );
+        if (histCtx) patientContext += `\n\n${histCtx}`;
       } catch {}
 
       let generatedNote = "";
