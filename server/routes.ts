@@ -9127,8 +9127,8 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
 
       // Instruction blocks: clinical defaults the AI uses as a starting point, not verbatim scripts
       const instructionBlock = instructionFields.length > 0
-        ? '\n\nCLINICAL DOCUMENTATION DEFAULTS (these represent standard documentation language for this practice; use each as your starting point — adapt and expand based on what the patient actually discussed, apply clinical judgment, and incorporate any relevant details from the transcript; only override the default if the transcript clearly contradicts it):\n' +
-          instructionFields.map((f: any) => `\nDefault — ${f.label}:\n"${f.description}"`).join('\n')
+        ? '\n\nAI DOCUMENTATION INSTRUCTIONS (follow these directives precisely when writing each named section — they define what to include, what language to use, and what to never omit; weave in specifics from the transcript but always satisfy every requirement stated in the instruction):\n' +
+          instructionFields.map((f: any) => `\n${f.label}:\n${f.description}`).join('\n')
         : '';
 
       const standingBlock = template.standingInstructions

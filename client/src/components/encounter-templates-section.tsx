@@ -41,9 +41,9 @@ const FIELD_TYPES: {
   },
   {
     value: "instruction",
-    label: "AI Rule",
+    label: "AI Instruction",
     icon: ListChecks,
-    description: "A clinical rule the AI follows — define default documentation language the AI uses unless the transcript says otherwise",
+    description: "Direct instructions telling the AI what to document and how — what to always include, what language to use, what to never omit",
     color: "text-amber-600",
   },
   {
@@ -303,11 +303,11 @@ function InstructionFieldEditor({ field, idx, onChange }: {
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <Label className="text-xs">Rule Name <span className="text-muted-foreground font-normal">(used as the section label in the note)</span></Label>
+        <Label className="text-xs">Section Name <span className="text-muted-foreground font-normal">(labels this section in the note)</span></Label>
         <Input
           value={field.label}
           onChange={e => onChange({ label: e.target.value })}
-          placeholder="e.g. GI Review of Systems, Injection Site Report, Energy & Appetite"
+          placeholder="e.g. Plan, Review of Systems, Injection Site, Energy & Appetite"
           maxLength={120}
           className="h-8 text-sm"
           data-testid={`input-field-label-${idx}`}
@@ -315,21 +315,21 @@ function InstructionFieldEditor({ field, idx, onChange }: {
       </div>
       <div className="space-y-1">
         <Label className="text-xs">
-          Default documentation text
-          <span className="text-muted-foreground font-normal ml-1">— AI uses this unless the patient says something different</span>
+          Instructions for AI
+          <span className="text-muted-foreground font-normal ml-1">— tell the AI exactly what to document and what to always include</span>
         </Label>
         <Textarea
           value={field.description}
           onChange={e => onChange({ description: e.target.value })}
-          placeholder={`e.g. Denies significant nausea, vomiting, abdominal pain, constipation, diarrhea, reflux, dizziness, or injection site reactions. Reports appetite suppression is adequate. Energy level stable.`}
-          rows={4}
+          placeholder={`e.g. Document the current plan discussed with the patient at today's visit. Include the current medication and dose. Always include lifestyle and dietary plan: balanced diet, 80–100 oz of water intake daily, and a goal of 150 minutes per week of resistance training. Include any custom relevant details from the encounter that should be included in this patient's plan.`}
+          rows={5}
           maxLength={5000}
           className="text-sm resize-y"
           data-testid={`input-field-description-${idx}`}
         />
       </div>
       <p className="text-xs text-muted-foreground">
-        If the patient reports something different in the visit, the AI will document what they actually said instead of this default.
+        The AI follows these instructions when writing this section — weaving in specifics from the transcript alongside anything you've told it to always include.
       </p>
     </div>
   );
