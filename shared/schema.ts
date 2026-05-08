@@ -2233,7 +2233,7 @@ export const encounterTemplates = pgTable("encounter_templates", {
 
 export type EncounterTemplate = typeof encounterTemplates.$inferSelect;
 export const insertEncounterTemplateSchema = createInsertSchema(encounterTemplates).omit({
-  id: true, createdAt: true,
+  id: true, createdAt: true, clinicianId: true, clinicId: true,
 }).extend({
   name: z.string().trim().min(1).max(120),
   noteType: z.enum(["soap", "nurses_note", "non_visit"]),
