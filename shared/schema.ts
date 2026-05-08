@@ -2241,7 +2241,7 @@ export const insertEncounterTemplateSchema = createInsertSchema(encounterTemplat
   roleRestriction: z.enum(["any", "nurse", "provider"]).default("any"),
   fields: z.array(z.object({
     id: z.string(),
-    fieldType: z.enum(["extract", "checklist", "instruction", "heading"]).default("extract"),
+    fieldType: z.enum(["extract", "checklist", "instruction", "heading", "vitals"]).default("extract"),
     label: z.string().trim().min(1).max(120),
     description: z.string().max(5000).default(""),
     required: z.boolean().default(false),

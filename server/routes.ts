@@ -5781,17 +5781,19 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         }
       }
       // Create the new clinician account
+      // Generate a unique username from the email prefix + random suffix
+      const emailPrefix = invite.email.split("@")[0].toLowerCase().replace(/[^a-z0-9_]/g, "").slice(0, 60);
+      const username = `${emailPrefix}_${Math.random().toString(36).slice(2, 8)}`;
       const newUser = await storage.createUser({
         email: invite.email,
+        username,
         firstName: invite.firstName,
         lastName: invite.lastName,
-        password: passwordHash,
-        title: title?.trim() || null,
+        passwordHash,
+        title: title?.trim() || "",
         npi: npi?.trim() || null,
         phone: phone?.trim() || null,
         clinicName,
-        clinicPhone: clinicPhone?.trim() || null,
-        clinicAddress: clinicAddress?.trim() || null,
         subscriptionStatus: inheritedSubStatus,
         defaultClinicId: invite.clinicId,
       } as any);

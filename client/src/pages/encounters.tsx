@@ -910,6 +910,8 @@ export function EncounterEditor({
       if (!patientId) throw new Error("Please select a patient first");
       if (!selectedTemplateId) throw new Error("Please select a template first");
 
+      setGlobalLoading("June is reading the transcript…", { june: true, juneImage: "analyzing" });
+
       let encounterId = savedId;
       if (!encounterId) {
         const body = {
@@ -926,13 +928,16 @@ export function EncounterEditor({
       }
       const expectedPatientId = parseInt(patientId);
       await apiRequest("PUT", `/api/encounters/${encounterId}`, { transcription: transcription || null, expectedPatientId });
+      setGlobalLoading("June is extracting template fields…", { june: true, juneImage: "analyzing" });
       const res = await apiRequest("POST", `/api/encounters/${encounterId}/generate-template-note`, {
         templateId: parseInt(selectedTemplateId),
         expectedPatientId,
       });
+      setGlobalLoading("June is writing your note…", { june: true, juneImage: "soap" });
       return res.json();
     },
     onSuccess: (data) => {
+      clearGlobalLoading();
       setSoap(data.soapNote);
       if (data.diarizedTranscript?.length) setDiarizedTranscript(data.diarizedTranscript);
       invalidate();
@@ -946,7 +951,10 @@ export function EncounterEditor({
         toast({ title: "June refined this note", description: `Applied: ${juneApplied.join(", ")}` });
       }
     },
-    onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
+    onError: (e: any) => {
+      clearGlobalLoading();
+      toast({ variant: "destructive", title: "Generation failed", description: e.message });
+    },
   });
 
   // Create new patient inline from encounter form

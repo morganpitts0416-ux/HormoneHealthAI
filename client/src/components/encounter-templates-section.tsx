@@ -730,6 +730,25 @@ export function EncounterTemplatesSection() {
                 </div>
               )}
             </div>
+
+            {/* Standing Instructions */}
+            <div className="space-y-1.5">
+              <div>
+                <Label>Standing Instructions <span className="font-normal text-muted-foreground">(optional)</span></Label>
+                <p className="text-xs text-muted-foreground mt-0.5">
+                  Always appended to every note generated with this template — use for practice-wide language, disclaimers, or formatting rules that apply to every visit of this type.
+                </p>
+              </div>
+              <Textarea
+                value={form.standingInstructions ?? ""}
+                onChange={e => setForm(f => ({ ...f, standingInstructions: e.target.value || null }))}
+                placeholder="e.g. Always end the note with a follow-up recommendation. Never use abbreviations in the plan section."
+                rows={3}
+                maxLength={5000}
+                className="text-sm resize-y"
+                data-testid="textarea-standing-instructions"
+              />
+            </div>
           </div>
 
           <DialogFooter className="gap-2 flex-wrap">
