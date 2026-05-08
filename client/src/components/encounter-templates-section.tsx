@@ -41,9 +41,9 @@ const FIELD_TYPES: {
   },
   {
     value: "instruction",
-    label: "Instruction Block",
+    label: "AI Rule",
     icon: ListChecks,
-    description: "Text inserted verbatim into every note — standing orders, disclaimers, follow-up protocols",
+    description: "A clinical rule the AI follows — define default documentation language the AI uses unless the transcript says otherwise",
     color: "text-amber-600",
   },
   {
@@ -303,28 +303,34 @@ function InstructionFieldEditor({ field, idx, onChange }: {
   return (
     <div className="space-y-2">
       <div className="space-y-1">
-        <Label className="text-xs">Instruction Title <span className="text-muted-foreground font-normal">(used as a section header in the note)</span></Label>
+        <Label className="text-xs">Rule Name <span className="text-muted-foreground font-normal">(used as the section label in the note)</span></Label>
         <Input
           value={field.label}
           onChange={e => onChange({ label: e.target.value })}
-          placeholder="e.g. Patient Education, Follow-Up Instructions, Controlled Substance Disclosure"
+          placeholder="e.g. GI Review of Systems, Injection Site Report, Energy & Appetite"
           maxLength={120}
           className="h-8 text-sm"
           data-testid={`input-field-label-${idx}`}
         />
       </div>
       <div className="space-y-1">
-        <Label className="text-xs">Instruction Text <span className="text-muted-foreground font-normal">(inserted verbatim into every note)</span></Label>
+        <Label className="text-xs">
+          Default documentation text
+          <span className="text-muted-foreground font-normal ml-1">— AI uses this unless the patient says something different</span>
+        </Label>
         <Textarea
           value={field.description}
           onChange={e => onChange({ description: e.target.value })}
-          placeholder="Enter the exact text to include in this section of every note generated with this template…"
-          rows={3}
+          placeholder={`e.g. Denies significant nausea, vomiting, abdominal pain, constipation, diarrhea, reflux, dizziness, or injection site reactions. Reports appetite suppression is adequate. Energy level stable.`}
+          rows={4}
           maxLength={5000}
           className="text-sm resize-y"
           data-testid={`input-field-description-${idx}`}
         />
       </div>
+      <p className="text-xs text-muted-foreground">
+        If the patient reports something different in the visit, the AI will document what they actually said instead of this default.
+      </p>
     </div>
   );
 }

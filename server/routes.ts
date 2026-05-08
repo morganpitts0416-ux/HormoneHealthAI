@@ -9017,8 +9017,8 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
 
       // Instruction blocks: each one is a named section inserted verbatim
       const instructionBlock = instructionFields.length > 0
-        ? '\n\nREQUIRED VERBATIM SECTIONS (include these exactly as written under the heading shown):\n' +
-          instructionFields.map((f: any) => `\n${f.label}:\n${f.description}`).join('\n')
+        ? '\n\nSTANDING CLINICAL RULES (for each rule: if the transcript contains patient statements that directly contradict the default text, document what the patient actually said instead; otherwise use the default text exactly as written):\n' +
+          instructionFields.map((f: any) => `\nRule — ${f.label}:\nDefault text: "${f.description}"`).join('\n')
         : '';
 
       const standingBlock = template.standingInstructions
