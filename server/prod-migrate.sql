@@ -561,6 +561,10 @@ CREATE INDEX IF NOT EXISTS patient_vitals_source_idx
 CREATE INDEX IF NOT EXISTS patient_vitals_episode_idx
   ON patient_vitals (monitoring_episode_id);
 
+-- Add temperature column to patient_vitals for Vital Signs block (idempotent).
+ALTER TABLE patient_vitals
+  ADD COLUMN IF NOT EXISTS temperature REAL;
+
 -- Clinician-prescribed vital monitoring episodes.
 CREATE TABLE IF NOT EXISTS vitals_monitoring_episodes (
   id SERIAL PRIMARY KEY,
