@@ -13123,7 +13123,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const clinicId = getEffectiveClinicId(req);
       const schema_z = (await import("zod")).z;
       const body = schema_z.object({
-        category: schema_z.enum(["instruction", "trigger", "snippet"]).default("instruction"),
+        category: schema_z.enum(["instruction", "trigger", "snippet", "pronunciation"]).default("instruction"),
         label: schema_z.string().trim().min(1).max(120),
         instruction: schema_z.string().trim().min(1).max(4000),
         triggerPhrases: schema_z.string().trim().max(500).nullable().optional(),
@@ -13150,7 +13150,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
       const schema_z = (await import("zod")).z;
       const body = schema_z.object({
-        category: schema_z.enum(["instruction", "trigger", "snippet"]).optional(),
+        category: schema_z.enum(["instruction", "trigger", "snippet", "pronunciation"]).optional(),
         label: schema_z.string().trim().min(1).max(120).optional(),
         instruction: schema_z.string().trim().min(1).max(4000).optional(),
         triggerPhrases: schema_z.string().trim().max(500).nullable().optional(),
