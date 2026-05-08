@@ -5614,7 +5614,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const baseUrl = process.env.APP_URL
         || (process.env.REPLIT_DOMAINS ? `https://${process.env.REPLIT_DOMAINS.split(',')[0].trim()}` : null)
         || `${req.protocol}://${req.get('host')}`;
-      const inviteLink = `${baseUrl}/provider-set-password?token=${newToken}`;
+      const inviteLink = `${baseUrl}/join-clinic?token=${newToken}`;
 
       let emailSent = false;
       let emailError: string | null = null;
