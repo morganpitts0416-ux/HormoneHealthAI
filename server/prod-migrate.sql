@@ -1137,6 +1137,20 @@ CREATE TABLE IF NOT EXISTS clinical_block_defaults (
   CONSTRAINT clinical_block_defaults_clinic_provider_uq UNIQUE (clinic_id, provider_id)
 );
 
+-- ── encounter_templates ───────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS encounter_templates (
+  id SERIAL PRIMARY KEY,
+  clinician_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  clinic_id INTEGER,
+  name TEXT NOT NULL,
+  note_type VARCHAR(30) NOT NULL DEFAULT 'soap',
+  role_restriction VARCHAR(20) NOT NULL DEFAULT 'any',
+  is_clinic_wide BOOLEAN NOT NULL DEFAULT FALSE,
+  fields JSONB DEFAULT '[]',
+  standing_instructions TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 -- ── june_preferences ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS june_preferences (
   id SERIAL PRIMARY KEY,
