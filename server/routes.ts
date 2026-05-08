@@ -8131,6 +8131,101 @@ Validate the SOAP note against the transcript and extraction. Validate evidence 
     }
   });
 
+  // ── June refinement pass ─────────────────────────────────────────────────
+  // Runs after any note is generated. Loads the clinician's active June
+  // preferences (always-on instructions + applicable trigger rules + snippets)
+  // and asks the AI to review the finished note against them — only updating
+  // sections where a preference actually applies. Returns the note unchanged
+  // if there are no active prefs or the pass fails. Never touches the
+  // generate-soap pipeline directly — called as a post-processing step.
+  async function applyJuneRefinement(
+    noteText: string,
+    clinicianId: number,
+    transcriptText: string,
+    openai: OpenAI,
+  ): Promise<{ note: string; applied: string[] }> {
+    // Load active prefs (skip pronunciation entries — those are TTS-only)
+    let prefs: schema.JunePreference[] = [];
+    try {
+      const all = await storage.getJunePreferences(clinicianId);
+      prefs = all.filter(p => p.isActive && p.category !== "pronunciation");
+    } catch {
+      return { note: noteText, applied: [] };
+    }
+
+    if (prefs.length === 0) return { note: noteText, applied: [] };
+
+    const instructions = prefs.filter(p => p.category === "instruction");
+    const triggers = prefs.filter(p => p.category === "trigger");
+    const snippets = prefs.filter(p => p.category === "snippet");
+
+    // Evaluate which trigger rules fire against the transcript
+    const firedTriggers = triggers.filter(t => {
+      if (!t.triggerPhrases) return false;
+      const phrases = t.triggerPhrases.split(",").map(s => s.trim().toLowerCase()).filter(Boolean);
+      const haystack = transcriptText.toLowerCase();
+      return phrases.some(phrase => haystack.includes(phrase));
+    });
+
+    const activePrefCount = instructions.length + firedTriggers.length;
+    if (activePrefCount === 0) return { note: noteText, applied: [] };
+
+    // Build the preference block for the refinement prompt
+    const prefLines: string[] = [];
+    if (instructions.length > 0) {
+      prefLines.push("ALWAYS-ON DOCUMENTATION RULES (apply to every note):");
+      instructions.forEach(p => prefLines.push(`• ${p.instruction}`));
+    }
+    if (firedTriggers.length > 0) {
+      prefLines.push("\nTRIGGER RULES (activated because their trigger phrases appear in this transcript):");
+      firedTriggers.forEach(p => {
+        prefLines.push(`• ${p.label}: ${p.instruction}`);
+      });
+    }
+    if (snippets.length > 0) {
+      prefLines.push("\nAVAILABLE CONTEXT SNIPPETS (use when a rule above calls for them):");
+      snippets.forEach(p => prefLines.push(`• ${p.label}:\n  ${p.instruction}`));
+    }
+    const prefBlock = prefLines.join("\n");
+
+    const appliedLabels: string[] = [
+      ...instructions.map(p => p.label),
+      ...firedTriggers.map(p => p.label),
+    ];
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a clinical documentation specialist performing a final refinement pass on a completed clinical note.
+
+A clinician has trained you with personal documentation preferences. Your job is to review the finished note and apply any preferences that are relevant — modifying only the sections that need updating to satisfy those preferences. Do not rewrite or restructure sections that are already compliant.
+
+RULES:
+- Apply each preference precisely and surgically — do not alter unrelated content
+- Never remove clinically documented findings, diagnoses, or plan items already present
+- Never fabricate clinical facts not supported by the note or transcript
+- Preserve the note's existing format (section headers, structure, style)
+- If a preference is already satisfied in the note, leave that section untouched
+- Return the complete refined note text — all sections, not just the modified parts`,
+          },
+          {
+            role: "user",
+            content: `CLINICIAN PREFERENCES TO APPLY:\n${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (for context only — do not add facts not in the note unless a preference requires it):\n${transcriptText.slice(0, 6000)}\n\n---\nReturn the complete refined note now.`,
+          },
+        ],
+      });
+      const refined = completion.choices[0].message.content?.trim() ?? "";
+      if (!refined) return { note: noteText, applied: appliedLabels };
+      return { note: refined, applied: appliedLabels };
+    } catch (err) {
+      console.warn("[June Refinement] Pass failed, using original note:", err);
+      return { note: noteText, applied: [] };
+    }
+  }
+
   // POST /api/encounters/:id/generate-soap — Stage 4: Generate SOAP note
   // Uses clinical extraction when available. NEVER invents unsupported facts.
   app.post("/api/encounters/:id/generate-soap", requireAuth, async (req, res) => {
@@ -8782,7 +8877,7 @@ Return a JSON object:
 
       // ── PIPELINE STEP 4+5: Enhanced multi-stage SOAP generation ─────────────
       // Uses the new enhanced pipeline: normalization+inference → section-specific generation → QA check
-      const soapNote = await runEnhancedSoapPipeline({
+      let soapNote = await runEnhancedSoapPipeline({
         transcriptText,
         diarized,
         extraction: freshExtraction,
@@ -8794,12 +8889,27 @@ Return a JSON object:
         patientName,
       });
 
+      // ── June refinement pass (post-processing) ────────────────────────────
+      // Only runs when the clinician has active preferences set up.
+      // Applies always-on instructions and any trigger rules fired by the
+      // transcript. Skips silently if no active prefs or the pass fails.
+      const juneRefinement = await applyJuneRefinement(
+        soapNote.fullNote ?? "",
+        getClinicianId(req),
+        transcriptText,
+        openai,
+      );
+      if (juneRefinement.applied.length > 0) {
+        soapNote = { ...soapNote, fullNote: juneRefinement.note };
+        console.log(`[SOAP] June refinement applied (${juneRefinement.applied.join(", ")})`);
+      }
+
       const updated = await storage.updateEncounter(id, clinicianId, {
         soapNote,
         soapGeneratedAt: new Date(),
       }, clinicId);
 
-      res.json({ soapNote, encounter: updated, medicationMatches: autoMedMatches, diarizedTranscript: diarized, clinicalExtraction: freshExtraction });
+      res.json({ soapNote, encounter: updated, medicationMatches: autoMedMatches, diarizedTranscript: diarized, clinicalExtraction: freshExtraction, junePrefsApplied: juneRefinement.applied });
 
       // ── Stage 5: Evidence — fire-and-forget after SOAP response is sent ────
       // Runs in background so the clinician gets SOAP immediately.
@@ -9127,12 +9237,30 @@ HOW TO USE THE TEMPLATE:
         generatedNote = completion.choices[0].message.content ?? "";
       }
 
+      // ── June refinement pass (post-processing) ────────────────────────────
+      // Same pass as the regular SOAP pipeline. Only runs when the clinician
+      // has active preferences. Trigger rules are evaluated against the
+      // transcript — only fire if their phrases actually appear in the visit.
+      let finalNote = generatedNote.trim();
+      let junePrefsApplied: string[] = [];
+      const juneRefinement = await applyJuneRefinement(
+        finalNote,
+        getClinicianId(req),
+        transcriptText,
+        openai,
+      );
+      if (juneRefinement.applied.length > 0) {
+        finalNote = juneRefinement.note;
+        junePrefsApplied = juneRefinement.applied;
+        console.log(`[Template Note] June refinement applied (${junePrefsApplied.join(", ")})`);
+      }
+
       // Store in soapNote.fullNote — the existing viewer renders this format
-      const soapNote = { fullNote: generatedNote.trim() };
+      const soapNote = { fullNote: finalNote };
       await storage.updateEncounter(id, clinicianId, { soapNote, soapGeneratedAt: new Date() }, clinicId);
 
       const updated = await storage.getEncounter(id, clinicianId, clinicId);
-      res.json({ soapNote, diarizedTranscript: updated?.diarizedTranscript ?? null, templateUsed: template.name });
+      res.json({ soapNote, diarizedTranscript: updated?.diarizedTranscript ?? null, templateUsed: template.name, junePrefsApplied });
     } catch (err) {
       console.error("[Template Note] Generation error:", err);
       res.status(500).json({ message: "Failed to generate template note. Please try again." });

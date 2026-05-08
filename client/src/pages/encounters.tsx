@@ -937,10 +937,14 @@ export function EncounterEditor({
       if (data.diarizedTranscript?.length) setDiarizedTranscript(data.diarizedTranscript);
       invalidate();
       setActiveTab("soap");
+      const juneApplied: string[] = data.junePrefsApplied ?? [];
       toast({
         title: "Template note generated",
         description: data.templateUsed ? `Generated using template: ${data.templateUsed}` : "Review and edit the note as needed.",
       });
+      if (juneApplied.length > 0) {
+        toast({ title: "June refined this note", description: `Applied: ${juneApplied.join(", ")}` });
+      }
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
   });
@@ -1047,6 +1051,7 @@ export function EncounterEditor({
       if (data.clinicalExtraction) setClinicalExtraction(data.clinicalExtraction);
       invalidate();
       setActiveTab("soap");
+      const juneApplied: string[] = data.junePrefsApplied ?? [];
       if (data.medicationMatches?.length) {
         setMedMatches(data.medicationMatches);
         const needsReview = data.medicationMatches.filter((m: any) => m.needsReview).length;
@@ -1056,6 +1061,9 @@ export function EncounterEditor({
         });
       } else {
         toast({ title: "SOAP note generated", description: "Review and edit each section as needed." });
+      }
+      if (juneApplied.length > 0) {
+        toast({ title: "June refined this note", description: `Applied: ${juneApplied.join(", ")}` });
       }
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
@@ -1119,6 +1127,10 @@ export function EncounterEditor({
         if (soapResult.value.clinicalExtraction) setClinicalExtraction(soapResult.value.clinicalExtraction);
         if (soapResult.value.medicationMatches?.length) setMedMatches(soapResult.value.medicationMatches);
         setActiveTab("soap");
+        const juneApplied: string[] = soapResult.value.junePrefsApplied ?? [];
+        if (juneApplied.length > 0) {
+          toast({ title: "June refined this note", description: `Applied: ${juneApplied.join(", ")}` });
+        }
       } else {
         toast({ variant: "destructive", title: "SOAP generation failed", description: niceMessage(soapResult.reason) });
       }
