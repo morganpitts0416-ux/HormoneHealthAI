@@ -9051,6 +9051,9 @@ Return JSON matching EvidenceOverlay structure:
       const extractFields = allFields.filter((f: any) => !f.fieldType || f.fieldType === "extract");
       const checklistFields = allFields.filter((f: any) => f.fieldType === "checklist");
       const instructionFields = allFields.filter((f: any) => f.fieldType === "instruction");
+      const headingFields = allFields.filter((f: any) => f.fieldType === "heading");
+      const hasCustomStructure = headingFields.length > 0;
+      const customHeadingList = headingFields.map((f: any) => f.label.toUpperCase()).join(', ');
       const aiFields = [...extractFields, ...checklistFields]; // fields that need AI processing
 
       let extractedFields: Record<string, string> = {};
@@ -9159,16 +9162,17 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
           messages: [
             {
               role: "system",
-              content: `You are an experienced clinical documentation specialist writing a SOAP note for a hormone and primary care clinic. This note is generated using the "${template.name}" template as a structural guide.
+              content: `You are an experienced clinical documentation specialist writing a clinical note for a hormone and primary care clinic. This note is generated using the "${template.name}" template as a structural guide.
 
-FORMAT: Standard SOAP note — SUBJECTIVE, OBJECTIVE, ASSESSMENT/PLAN, CARE PLAN (if applicable), FOLLOW-UP.
+FORMAT: ${hasCustomStructure
+  ? `This template defines a custom note structure. Use these section headings in this exact order: ${customHeadingList}. Do not impose standard SOAP headings — the template's sections are the note's structure. Document the appropriate clinical content under each heading based on the transcript and template instructions.`
+  : 'Standard SOAP note — SUBJECTIVE, OBJECTIVE, ASSESSMENT/PLAN, CARE PLAN (if applicable), FOLLOW-UP.'}
 
 HOW TO USE THE TEMPLATE:
-- The template defines the structure and the key areas this practice documents for this visit type. Use it as a guide, not a rigid script.
-- Weave extracted template values naturally into the appropriate SOAP sections — don't just list them mechanically.
+- The template defines the structure and the key areas this practice documents for this visit type. Use it as the authoritative guide for what sections appear and in what order.
+- ${hasCustomStructure ? 'Document content under each template section heading — weave in extracted values, transcript context, and clinical interpretation together.' : 'Weave extracted template values naturally into the appropriate SOAP sections — don\'t just list them mechanically.'}
 - Apply clinical reasoning throughout: connect symptoms to findings, findings to diagnosis, diagnosis to plan.
 - Where the transcript provides clinical context beyond what a template field captures, include it — a good note tells the full clinical story.
-- Clinical documentation defaults are starting points. Adapt them to reflect what actually happened in this specific visit.
 - Do not fabricate diagnoses, vitals, or medications that have no basis in the transcript. But do apply appropriate clinical interpretation — a patient describing joint pain, brain fog, and fatigue warrants clinical language connecting those symptoms, even if the provider didn't narrate it explicitly.
 - Preserve all patient denials and negations exactly as stated.
 - Write in professional clinical language appropriate for a legal medical record.`,
@@ -9190,14 +9194,15 @@ HOW TO USE THE TEMPLATE:
               role: "system",
               content: `You are an experienced clinical documentation specialist writing a formal nursing note for a hormone and primary care clinic. This note is generated using the "${template.name}" template as a structural guide.
 
-FORMAT: Structured nursing note with clear section headers (not SOAP headers). Typical sections: VISIT PURPOSE, VITAL SIGNS & MEASUREMENTS, CURRENT MEDICATIONS / DOSE REVIEW, PATIENT CONCERNS & SYMPTOMS, CLINICAL FINDINGS, PLAN & INTERVENTIONS, FOLLOW-UP. Adapt section headers to fit this specific visit — only include sections with meaningful content.
+FORMAT: ${hasCustomStructure
+  ? `This template defines a custom note structure. Use these section headings in this exact order: ${customHeadingList}. Do not impose standard nursing note headings — the template's sections are the note's structure. Document the appropriate clinical content under each heading based on the transcript and template instructions.`
+  : 'Structured nursing note with clear section headers (not SOAP headers). Typical sections: VISIT PURPOSE, VITAL SIGNS & MEASUREMENTS, CURRENT MEDICATIONS / DOSE REVIEW, PATIENT CONCERNS & SYMPTOMS, CLINICAL FINDINGS, PLAN & INTERVENTIONS, FOLLOW-UP. Adapt section headers to fit this specific visit — only include sections with meaningful content.'}
 
 HOW TO USE THE TEMPLATE:
 - The template defines what this practice routinely documents for this visit type. Use it to structure the note, not to limit it.
 - Write in formal nursing documentation language: "Patient reports...", "Weight recorded as...", "Nurse discussed...", "Patient verbalized understanding of..."
-- Weave extracted template values naturally under the most appropriate section — don't list them mechanically.
+- ${hasCustomStructure ? 'Document content under each template section heading — weave in extracted values, transcript context, and clinical interpretation together.' : 'Weave extracted template values naturally under the most appropriate section — don\'t list them mechanically.'}
 - Apply clinical context: if the transcript reveals something clinically relevant not captured by a template field, document it under the appropriate header.
-- Clinical documentation defaults are starting points — adapt them to reflect this specific patient's visit while preserving the practice's preferred language where it applies.
 - Be concise and precise; nursing notes should be clear and scannable, not padded. But completeness matters more than brevity.
 - Preserve all patient denials exactly as stated.`,
             },
@@ -9218,13 +9223,14 @@ HOW TO USE THE TEMPLATE:
               role: "system",
               content: `You are an experienced clinical documentation specialist writing a non-visit clinical note for a hormone and primary care clinic. This note is generated using the "${template.name}" template as a structural guide.
 
-FORMAT: Non-visit documentation with section headers appropriate to the interaction (e.g., CONTACT TYPE, REASON FOR CONTACT, CLINICAL DISCUSSION, ACTIONS TAKEN, FOLLOW-UP). Adapt headers to what actually occurred.
+FORMAT: ${hasCustomStructure
+  ? `This template defines a custom note structure. Use these section headings in this exact order: ${customHeadingList}. Do not impose standard non-visit headings — the template's sections are the note's structure. Document the appropriate content under each heading based on the transcript and template instructions.`
+  : 'Non-visit documentation with section headers appropriate to the interaction (e.g., CONTACT TYPE, REASON FOR CONTACT, CLINICAL DISCUSSION, ACTIONS TAKEN, FOLLOW-UP). Adapt headers to what actually occurred.'}
 
 HOW TO USE THE TEMPLATE:
-- The template defines the key areas this practice documents for this type of contact. Use it as a guide, not a limitation.
+- The template defines the key areas this practice documents for this type of contact. Use it as the authoritative guide for what sections appear and in what order.
 - Note the nature of the contact (phone call, portal message, in-person drop-in, etc.) if mentioned.
 - Apply clinical judgment: if a patient calls about a medication side effect and the transcript contains clinically relevant details, document them with appropriate clinical interpretation — not just a raw transcript summary.
-- Clinical documentation defaults are starting points — adapt to reflect the specific content of this contact.
 - Non-visit notes should be concise and factual, but complete enough to stand alone as a clinical record of the interaction.
 - Preserve all patient statements and denials accurately.`,
             },
