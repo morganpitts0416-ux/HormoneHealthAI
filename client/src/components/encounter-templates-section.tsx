@@ -13,7 +13,7 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter, DialogDescription } from "@/components/ui/dialog";
 import {
   Plus, Pencil, Trash2, GripVertical, X, Save, FileText, Stethoscope, Phone,
-  CheckSquare, AlignLeft, Heading2, ChevronDown, ListChecks,
+  CheckSquare, AlignLeft, Heading2, ChevronDown, ListChecks, Activity,
 } from "lucide-react";
 import type { EncounterTemplate, TemplateField, TemplateFieldType } from "@shared/schema";
 
@@ -53,6 +53,13 @@ const FIELD_TYPES: {
     description: "A labeled divider that structures the note into named sections",
     color: "text-purple-600",
   },
+  {
+    value: "vitals",
+    label: "Vital Signs Block",
+    icon: Activity,
+    description: "Adds a Vital Signs section (BP, HR, Temp, Height, Weight, BMI) — AI extracts values from the transcript, blanks where not mentioned",
+    color: "text-red-600",
+  },
 ];
 
 const NOTE_TYPES: { value: EncounterTemplate["noteType"]; label: string; icon: typeof FileText; description: string }[] = [
@@ -82,7 +89,7 @@ function nanoid(len = 8) { return Math.random().toString(36).slice(2, 2 + len); 
 const makeField = (fieldType: TemplateFieldType): TemplateField => ({
   id: nanoid(),
   fieldType,
-  label: "",
+  label: fieldType === "vitals" ? "Vital Signs" : "",
   description: "",
   required: false,
   conditional: false,
@@ -100,13 +107,14 @@ const EMPTY_TEMPLATE = (): Omit<EncounterTemplate, "id" | "clinicianId" | "clini
 
 // ── Field summary counts for the template card ────────────────────────────────
 function fieldSummary(fields: TemplateField[]) {
-  const counts: Record<TemplateFieldType, number> = { extract: 0, checklist: 0, instruction: 0, heading: 0 };
+  const counts: Record<TemplateFieldType, number> = { extract: 0, checklist: 0, instruction: 0, heading: 0, vitals: 0 };
   (fields ?? []).forEach(f => { counts[f.fieldType ?? "extract"]++; });
   const parts: string[] = [];
   if (counts.extract) parts.push(`${counts.extract} extract`);
   if (counts.checklist) parts.push(`${counts.checklist} checklist`);
   if (counts.instruction) parts.push(`${counts.instruction} instruction`);
   if (counts.heading) parts.push(`${counts.heading} heading`);
+  if (counts.vitals) parts.push(`${counts.vitals} vitals`);
   return parts.length ? parts.join(" · ") : "no fields";
 }
 
@@ -356,6 +364,29 @@ function HeadingFieldEditor({ field, idx, onChange }: {
   );
 }
 
+function VitalsFieldEditor() {
+  return (
+    <div className="rounded-md border border-dashed border-border bg-muted/30 p-3 space-y-1.5">
+      <div className="flex items-center gap-2">
+        <Activity className="w-4 h-4 text-red-600 shrink-0" />
+        <span className="text-xs font-semibold">Vital Signs Block</span>
+      </div>
+      <p className="text-xs text-muted-foreground leading-snug">
+        A structured vitals section will be included in the generated note. The AI extracts any values
+        mentioned in the transcript (BP, HR, temperature, height, weight, BMI) and leaves blank placeholders
+        for values not mentioned. Clinicians can fill in missing values after generation.
+      </p>
+      <div className="grid grid-cols-3 gap-1.5 mt-1">
+        {["BP", "HR", "Temp °F", "Height in", "Weight lbs", "BMI"].map(label => (
+          <div key={label} className="text-[10px] font-mono bg-background border rounded px-2 py-1 text-center text-muted-foreground">
+            {label}: ___
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
 // ── Main component ─────────────────────────────────────────────────────────────
 export function EncounterTemplatesSection() {
   const { toast } = useToast();
@@ -437,9 +468,10 @@ export function EncounterTemplatesSection() {
     setDragging(null); setDragOver(null);
   };
 
-  // Validation: extract/checklist need label; instruction needs label + description; heading needs label
+  // Validation: extract/checklist need label; instruction needs label + description; heading needs label; vitals always valid
   const canSave = form.name.trim().length > 0 && (form.fields ?? []).every(f => {
     const ft = (f as any).fieldType ?? "extract";
+    if (ft === "vitals") return true;
     if (!f.label.trim()) return false;
     if (ft === "extract" && !f.description.trim()) return false;
     if (ft === "instruction" && !f.description.trim()) return false;
@@ -687,6 +719,9 @@ export function EncounterTemplatesSection() {
                           )}
                           {ft === "heading" && (
                             <HeadingFieldEditor field={field} idx={idx} onChange={p => updateField(idx, p)} />
+                          )}
+                          {ft === "vitals" && (
+                            <VitalsFieldEditor />
                           )}
                         </div>
                       </div>

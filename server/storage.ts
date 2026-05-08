@@ -1971,6 +1971,7 @@ export class DbStorage implements IStorage {
         weightLbs: data.weightLbs ?? null,
         heightInches: data.heightInches ?? null,
         bmi: data.bmi ?? null,
+        temperature: (data as any).temperature ?? null,
         notes: data.notes ?? null,
       })
       .returning();

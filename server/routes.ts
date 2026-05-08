@@ -9052,6 +9052,7 @@ Return JSON matching EvidenceOverlay structure:
       const checklistFields = allFields.filter((f: any) => f.fieldType === "checklist");
       const instructionFields = allFields.filter((f: any) => f.fieldType === "instruction");
       const headingFields = allFields.filter((f: any) => f.fieldType === "heading");
+      const vitalsFields = allFields.filter((f: any) => f.fieldType === "vitals");
       const hasCustomStructure = headingFields.length > 0;
       const customHeadingList = headingFields.map((f: any) => f.label.toUpperCase()).join(', ');
       const aiFields = [...extractFields, ...checklistFields]; // fields that need AI processing
@@ -9134,6 +9135,10 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
           instructionFields.map((f: any) => `\n${f.label}:\n${f.description}`).join('\n')
         : '';
 
+      const vitalsPromptBlock = vitalsFields.length > 0
+        ? '\n\nVITAL SIGNS SECTION REQUIRED: This template requires a VITAL SIGNS section in the OBJECTIVE. Extract any vital values mentioned in the transcript (blood pressure, heart rate, temperature, height, weight, BMI). Format as a single line: "Vital Signs: BP: ___/___ mmHg  |  HR: ___ bpm  |  Temp: ___°F  |  Ht: ___ in  |  Wt: ___ lbs  |  BMI: ___" — use transcript values where available, leave as "___" where not mentioned.'
+        : '';
+
       const standingBlock = template.standingInstructions
         ? `\n\nADDITIONAL STANDING INSTRUCTIONS:\n${template.standingInstructions}`
         : '';
@@ -9179,7 +9184,7 @@ HOW TO USE THE TEMPLATE:
             },
             {
               role: "user",
-              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${standingBlock}\n\nGenerate the complete SOAP note now.`,
+              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete SOAP note now.`,
             },
           ],
         });
@@ -9208,7 +9213,7 @@ HOW TO USE THE TEMPLATE:
             },
             {
               role: "user",
-              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${standingBlock}\n\nGenerate the complete nursing note now.`,
+              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete nursing note now.`,
             },
           ],
         });
@@ -9236,7 +9241,7 @@ HOW TO USE THE TEMPLATE:
             },
             {
               role: "user",
-              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${standingBlock}\n\nGenerate the complete non-visit note now.`,
+              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete non-visit note now.`,
             },
           ],
         });
@@ -11283,6 +11288,19 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     } catch (err: any) {
       console.error("[Vitals] create error:", err);
       res.status(500).json({ message: err.message || "Failed to save vitals" });
+    }
+  });
+
+  // GET /api/patients/:id/vitals/latest-height — most recent recorded height for BMI pre-fill
+  app.get("/api/patients/:id/vitals/latest-height", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const patientId = parseInt(req.params.id);
+      const vitals = await storage.getPatientVitals(patientId, clinicianId);
+      const latest = vitals.find(v => v.heightInches != null);
+      res.json({ heightInches: latest?.heightInches ?? null });
+    } catch (err: any) {
+      res.status(500).json({ message: err.message || "Failed to fetch latest height" });
     }
   });
 

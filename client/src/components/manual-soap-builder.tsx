@@ -8,6 +8,7 @@ import { Badge } from "@/components/ui/badge";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent } from "@/components/ui/card";
+import { Label } from "@/components/ui/label";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import {
   Plus, X, GripVertical, ChevronDown, ChevronUp, Save, FileText,
@@ -29,6 +30,7 @@ import {
   resolveSystemList,
   type ClinicalBlockOverrides,
   buildBulletSection, buildParagraphSection,
+  type VitalsData,
 } from "@shared/note-builtin-blocks";
 
 const BLOCK_TYPES = [
@@ -39,10 +41,11 @@ const BLOCK_TYPES = [
   { id: "social_history", label: "Social History", icon: Brain, category: "subjective" },
   { id: "current_medications", label: "Current Medications", icon: Pill, category: "subjective" },
   { id: "allergies", label: "Allergies", icon: AlertTriangle, category: "subjective" },
+  { id: "vitals", label: "Vital Signs", icon: Activity, category: "objective" },
   { id: "ros", label: "Review of Systems", icon: ClipboardList, category: "objective" },
   { id: "physical_exam", label: "Physical Assessment / Exam", icon: Stethoscope, category: "objective" },
   { id: "assessment_plan", label: "Assessment / Plan", icon: ListChecks, category: "assessment" },
-  { id: "care_plan", label: "Care Plan", icon: Activity, category: "plan" },
+  { id: "care_plan", label: "Care Plan", icon: CalendarCheck, category: "plan" },
   { id: "follow_up", label: "Follow-Up", icon: CalendarCheck, category: "plan" },
 ] as const;
 
@@ -64,6 +67,8 @@ interface SoapBlock {
    * block renders as a free-text textarea with full slash/dx/phrase support.
    */
   bulletMode?: boolean;
+  /** Structured vitals data for the vitals block type. */
+  vitalsData?: VitalsData;
 }
 
 interface AssessmentItem {
@@ -441,6 +446,164 @@ function DxSearchInput({
   );
 }
 
+function VitalsBlockEditor({
+  block,
+  patientId,
+  onChange,
+}: {
+  block: SoapBlock;
+  patientId?: number;
+  onChange: (patch: Partial<SoapBlock>) => void;
+}) {
+  const v: VitalsData = block.vitalsData ?? {};
+
+  const { data: latestHeightData } = useQuery<{ heightInches: number | null }>({
+    queryKey: ["/api/patients", patientId, "vitals", "latest-height"],
+    queryFn: async () => {
+      if (!patientId) return { heightInches: null };
+      const res = await fetch(`/api/patients/${patientId}/vitals/latest-height`);
+      if (!res.ok) return { heightInches: null };
+      return res.json();
+    },
+    enabled: !!patientId,
+    staleTime: 300_000,
+  });
+
+  useEffect(() => {
+    if (latestHeightData?.heightInches != null && !v.heightInches) {
+      const updated: VitalsData = { ...v, heightInches: latestHeightData.heightInches };
+      if (updated.weightLbs) {
+        updated.bmi = calcBmi(updated.heightInches, updated.weightLbs);
+      }
+      onChange({ vitalsData: updated });
+    }
+    // Only run when latestHeightData arrives, not on every render
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestHeightData?.heightInches]);
+
+  function calcBmi(h?: number | null, w?: number | null): number | null {
+    if (!h || !w || h <= 0) return null;
+    return Math.round(((w / (h * h)) * 703) * 10) / 10;
+  }
+
+  function setField(field: keyof VitalsData, rawValue: string) {
+    const value = rawValue === "" ? null : parseFloat(rawValue);
+    const updated: VitalsData = { ...v, [field]: isNaN(value as number) ? null : value };
+    if (field === "heightInches" || field === "weightLbs") {
+      const h = field === "heightInches" ? (value as number | null) : v.heightInches;
+      const w = field === "weightLbs" ? (value as number | null) : v.weightLbs;
+      updated.bmi = calcBmi(h, w);
+    }
+    onChange({ vitalsData: updated });
+  }
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <Label className="text-xs font-medium">
+            Blood Pressure <span className="text-muted-foreground font-normal">(mmHg)</span>
+          </Label>
+          <div className="flex items-center gap-1">
+            <Input
+              type="number"
+              step="1"
+              value={v.systolicBp ?? ""}
+              onChange={e => setField("systolicBp", e.target.value)}
+              placeholder="Sys"
+              className="h-8 text-sm"
+              data-testid="input-vitals-systolicBp"
+            />
+            <span className="text-muted-foreground text-sm font-medium shrink-0">/</span>
+            <Input
+              type="number"
+              step="1"
+              value={v.diastolicBp ?? ""}
+              onChange={e => setField("diastolicBp", e.target.value)}
+              placeholder="Dia"
+              className="h-8 text-sm"
+              data-testid="input-vitals-diastolicBp"
+            />
+          </div>
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Heart Rate <span className="text-muted-foreground font-normal">(bpm)</span>
+          </Label>
+          <Input
+            type="number"
+            step="1"
+            value={v.heartRate ?? ""}
+            onChange={e => setField("heartRate", e.target.value)}
+            placeholder="e.g. 72"
+            className="h-8 text-sm"
+            data-testid="input-vitals-heartRate"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Temp <span className="text-muted-foreground font-normal">(°F)</span>
+          </Label>
+          <Input
+            type="number"
+            step="0.1"
+            value={v.temperature ?? ""}
+            onChange={e => setField("temperature", e.target.value)}
+            placeholder="e.g. 98.6"
+            className="h-8 text-sm"
+            data-testid="input-vitals-temperature"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Height <span className="text-muted-foreground font-normal">(in)</span>
+          </Label>
+          <Input
+            type="number"
+            step="0.5"
+            value={v.heightInches ?? ""}
+            onChange={e => setField("heightInches", e.target.value)}
+            placeholder="e.g. 66"
+            className="h-8 text-sm"
+            data-testid="input-vitals-heightInches"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Weight <span className="text-muted-foreground font-normal">(lbs)</span>
+          </Label>
+          <Input
+            type="number"
+            step="0.1"
+            value={v.weightLbs ?? ""}
+            onChange={e => setField("weightLbs", e.target.value)}
+            placeholder="e.g. 165"
+            className="h-8 text-sm"
+            data-testid="input-vitals-weightLbs"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            BMI <span className="text-muted-foreground font-normal">(auto)</span>
+          </Label>
+          <Input
+            type="text"
+            value={v.bmi != null ? String(v.bmi) : ""}
+            readOnly
+            placeholder="Auto-calculated"
+            className="h-8 text-sm bg-muted/50 cursor-not-allowed"
+            data-testid="input-vitals-bmi"
+          />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Height pre-fills from this patient's most recent visit. BMI is auto-calculated from height + weight.
+        All values are saved to the patient's vitals record when the note is saved.
+      </p>
+    </div>
+  );
+}
+
 function BlockEditor({
   block,
   onUpdate,
@@ -478,6 +641,7 @@ function BlockEditor({
   const chartKind: "ros" | "physical_exam" | null = supportsChart ? (block.type as "ros" | "physical_exam") : null;
   const resolvedSystems = chartKind ? resolveSystemList(chartKind, blockDefaults ?? null) : [];
   const isAssessment = block.type === "assessment_plan";
+  const isVitals = block.type === "vitals";
   const textareaRef = useRef<HTMLTextAreaElement>(null);
   const [isDraggable, setIsDraggable] = useState(false);
 
@@ -736,6 +900,12 @@ function BlockEditor({
               onSummaryChange={s => onUpdate({ assessmentSummary: s })}
               patientId={patientId}
             />
+          ) : isVitals ? (
+            <VitalsBlockEditor
+              block={block}
+              patientId={patientId}
+              onChange={onUpdate}
+            />
           ) : supportsBulletToggle && bulletMode ? (
             <ListItemsEditor
               items={block.listItems ?? (block.content ? block.content.split("\n").map(s => s.replace(/^[-*•]\s*/, "").trim()).filter(Boolean) : [])}
@@ -957,6 +1127,23 @@ function blocksToFullNote(
 
   lines.push("OBJECTIVE");
   lines.push("");
+
+  const vitalsBlock = blocks.find(b => b.type === "vitals");
+  if (vitalsBlock?.vitalsData) {
+    const vd = vitalsBlock.vitalsData;
+    const parts: string[] = [];
+    if (vd.systolicBp != null && vd.diastolicBp != null) parts.push(`BP: ${vd.systolicBp}/${vd.diastolicBp} mmHg`);
+    else if (vd.systolicBp != null) parts.push(`BP: ${vd.systolicBp}/— mmHg`);
+    if (vd.heartRate != null) parts.push(`HR: ${vd.heartRate} bpm`);
+    if (vd.temperature != null) parts.push(`Temp: ${vd.temperature}°F`);
+    if (vd.heightInches != null) parts.push(`Ht: ${vd.heightInches} in`);
+    if (vd.weightLbs != null) parts.push(`Wt: ${vd.weightLbs} lbs`);
+    if (vd.bmi != null) parts.push(`BMI: ${vd.bmi}`);
+    if (parts.length > 0) {
+      lines.push(`Vital Signs: ${parts.join("  |  ")}`);
+      lines.push("");
+    }
+  }
 
   const rosBlock = blocks.find(b => b.type === "ros");
   if (rosBlock) {
@@ -1324,6 +1511,29 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
       await apiRequest("PUT", `/api/encounters/${encId}/soap`, {
         soapNote: { fullNote },
       });
+
+      // Save vitals block data to the patient's vitals record (non-fatal)
+      const vitalsBlk = blocks.find(b => b.type === "vitals");
+      if (vitalsBlk?.vitalsData) {
+        const vd = vitalsBlk.vitalsData;
+        const hasAny = [vd.systolicBp, vd.diastolicBp, vd.heartRate, vd.temperature, vd.heightInches, vd.weightLbs].some(x => x != null);
+        if (hasAny) {
+          try {
+            await apiRequest("POST", `/api/patients/${patientId}/vitals`, {
+              systolicBp: vd.systolicBp ?? null,
+              diastolicBp: vd.diastolicBp ?? null,
+              heartRate: vd.heartRate ?? null,
+              temperature: vd.temperature ?? null,
+              heightInches: vd.heightInches ?? null,
+              weightLbs: vd.weightLbs ?? null,
+              source: "clinic",
+            });
+            queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
+          } catch (ve) {
+            console.warn("[Manual SOAP] Vitals save failed (non-fatal):", ve);
+          }
+        }
+      }
 
       return encId;
     },

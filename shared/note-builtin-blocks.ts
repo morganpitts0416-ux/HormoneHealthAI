@@ -13,7 +13,8 @@ export type BuiltinBlockId =
   | "physical_exam"
   | "assessment_plan"
   | "care_plan"
-  | "follow_up";
+  | "follow_up"
+  | "vitals";
 
 export type ChartDomainKey =
   | "medicalHistory"
@@ -158,7 +159,40 @@ export const BUILTIN_BLOCKS: BuiltinBlockDef[] = [
     list: false,
     chart: false,
   },
+  {
+    id: "vitals",
+    label: "Vital Signs",
+    shortLabel: "Vital Signs",
+    triggers: ["vitals", "vs", "vital"],
+    category: "objective",
+    list: false,
+    chart: false,
+  },
 ];
+
+export interface VitalsData {
+  systolicBp?: number | null;
+  diastolicBp?: number | null;
+  heartRate?: number | null;
+  temperature?: number | null;
+  heightInches?: number | null;
+  weightLbs?: number | null;
+  bmi?: number | null;
+}
+
+/** Format a vitals data object into a single-line clinical string for note embedding. */
+export function buildVitalSignsText(v: VitalsData): string {
+  const parts: string[] = [];
+  if (v.systolicBp != null && v.diastolicBp != null) parts.push(`BP: ${v.systolicBp}/${v.diastolicBp} mmHg`);
+  else if (v.systolicBp != null) parts.push(`BP: ${v.systolicBp}/— mmHg`);
+  if (v.heartRate != null) parts.push(`HR: ${v.heartRate} bpm`);
+  if (v.temperature != null) parts.push(`Temp: ${v.temperature}°F`);
+  if (v.heightInches != null) parts.push(`Ht: ${v.heightInches} in`);
+  if (v.weightLbs != null) parts.push(`Wt: ${v.weightLbs} lbs`);
+  if (v.bmi != null) parts.push(`BMI: ${v.bmi}`);
+  if (parts.length === 0) return "";
+  return `Vital Signs: ${parts.join("  |  ")}`;
+}
 
 export const BUILTIN_BY_ID: Record<BuiltinBlockId, BuiltinBlockDef> =
   BUILTIN_BLOCKS.reduce((acc, b) => { acc[b.id] = b; return acc; }, {} as Record<BuiltinBlockId, BuiltinBlockDef>);

@@ -1286,6 +1286,7 @@ export const patientVitals = pgTable("patient_vitals", {
   weightLbs: real("weight_lbs"),
   heightInches: real("height_inches"),
   bmi: real("bmi"),
+  temperature: real("temperature"),
   notes: text("notes"),
   // 'clinic' | 'patient_logged' — defaults to 'clinic' so all existing rows are
   // backfilled correctly. Patient-logged vitals are color-coded distinctly.
@@ -2204,7 +2205,7 @@ export type ClinicalSystemDefault = z.infer<typeof clinicalSystemDefaultSchema>;
 // ── Encounter Templates ───────────────────────────────────────────────────────
 // Structured templates that guide AI note generation for specific visit types.
 // noteType determines the output format; existing SOAP generation is untouched.
-export type TemplateFieldType = "extract" | "checklist" | "instruction" | "heading";
+export type TemplateFieldType = "extract" | "checklist" | "instruction" | "heading" | "vitals";
 
 export type TemplateField = {
   id: string;                    // nanoid — stable identifier
