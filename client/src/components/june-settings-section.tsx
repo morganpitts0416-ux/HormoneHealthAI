@@ -6,7 +6,7 @@ import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
 import { Badge } from "@/components/ui/badge";
-import { Card, CardContent } from "@/components/ui/card";
+import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import {
   Select, SelectContent, SelectItem, SelectTrigger, SelectValue,
 } from "@/components/ui/select";
@@ -15,10 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   BrainCircuit, Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Zap, BookOpen, MessageSquare, Sparkles,
+  Zap, BookOpen, MessageSquare, Sparkles, Volume2, ArrowRight,
 } from "lucide-react";
 
-type Category = "instruction" | "trigger" | "snippet";
+type Category = "instruction" | "trigger" | "snippet" | "pronunciation";
 
 interface JunePreference {
   id: number;
@@ -30,7 +30,7 @@ interface JunePreference {
   createdAt: string;
 }
 
-const CATEGORY_META: Record<Category, { label: string; icon: React.ComponentType<{ className?: string }>; color: string; description: string }> = {
+const CATEGORY_META: Record<Exclude<Category, "pronunciation">, { label: string; icon: React.ComponentType<{ className?: string }>; color: string; description: string }> = {
   instruction: {
     label: "Always-on",
     icon: MessageSquare,
@@ -51,7 +51,7 @@ const CATEGORY_META: Record<Category, { label: string; icon: React.ComponentType
   },
 };
 
-const EXAMPLES: { category: Category; label: string; instruction: string; triggerPhrases?: string }[] = [
+const EXAMPLES: { category: Exclude<Category, "pronunciation">; label: string; instruction: string; triggerPhrases?: string }[] = [
   {
     category: "instruction",
     label: "No note summarizing",
@@ -87,7 +87,7 @@ const EXAMPLES: { category: Category; label: string; instruction: string; trigge
 ];
 
 interface PrefFormState {
-  category: Category;
+  category: Exclude<Category, "pronunciation">;
   label: string;
   instruction: string;
   triggerPhrases: string;
@@ -100,6 +100,140 @@ const DEFAULT_FORM: PrefFormState = {
   triggerPhrases: "",
 };
 
+// ── Pronunciation Guide sub-component ────────────────────────────────────────
+function PronunciationGuide({ prefs, onAdd, onDelete }: {
+  prefs: JunePreference[];
+  onAdd: (label: string, phonetic: string) => void;
+  onDelete: (id: number) => void;
+}) {
+  const [addOpen, setAddOpen] = useState(false);
+  const [word, setWord] = useState("");
+  const [phonetic, setPhonetic] = useState("");
+
+  const handleAdd = () => {
+    if (!word.trim() || !phonetic.trim()) return;
+    onAdd(word.trim(), phonetic.trim());
+    setWord(""); setPhonetic(""); setAddOpen(false);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="flex items-center justify-between gap-2">
+        <div className="flex items-center gap-2">
+          <Volume2 className="w-3.5 h-3.5 text-muted-foreground" />
+          <span className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">
+            Pronunciation Guide · How June says medication names out loud
+          </span>
+        </div>
+        <Button
+          size="sm"
+          variant="outline"
+          onClick={() => setAddOpen(true)}
+          data-testid="button-june-add-pronunciation"
+        >
+          <Plus className="w-3 h-3 mr-1" />
+          Add pronunciation
+        </Button>
+      </div>
+
+      {prefs.length === 0 ? (
+        <Card>
+          <CardContent className="py-5 flex flex-col items-center text-center gap-2">
+            <Volume2 className="w-6 h-6 text-muted-foreground/40" />
+            <p className="text-xs text-muted-foreground max-w-sm">
+              June already knows how to pronounce most common medications. Add an entry here to override how she says a specific name — useful for brand names, compounds, or anything she gets wrong.
+            </p>
+            <Button size="sm" variant="outline" onClick={() => setAddOpen(true)} data-testid="button-pronunciation-add-first">
+              <Plus className="w-3 h-3 mr-1" />
+              Add first pronunciation
+            </Button>
+          </CardContent>
+        </Card>
+      ) : (
+        <Card>
+          <CardContent className="pt-3 pb-3 px-4 space-y-0">
+            {prefs.map((p, i) => (
+              <div
+                key={p.id}
+                className={`flex items-center gap-3 py-2 ${i < prefs.length - 1 ? "border-b" : ""}`}
+                data-testid={`row-pronunciation-${p.id}`}
+              >
+                <span className="text-sm font-medium w-40 truncate shrink-0">{p.label}</span>
+                <ArrowRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                <span className="text-sm text-muted-foreground flex-1 font-mono">{p.instruction}</span>
+                <Button
+                  size="icon"
+                  variant="ghost"
+                  onClick={() => onDelete(p.id)}
+                  className="shrink-0"
+                  data-testid={`button-pronunciation-delete-${p.id}`}
+                >
+                  <Trash2 className="w-3.5 h-3.5" />
+                </Button>
+              </div>
+            ))}
+            <div className="pt-2">
+              <Button size="sm" variant="ghost" onClick={() => setAddOpen(true)} className="h-7 text-xs" data-testid="button-pronunciation-add-more">
+                <Plus className="w-3 h-3 mr-1" />
+                Add another
+              </Button>
+            </div>
+          </CardContent>
+        </Card>
+      )}
+
+      <Dialog open={addOpen} onOpenChange={setAddOpen}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Add pronunciation</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">Medication or term</label>
+              <Input
+                value={word}
+                onChange={e => setWord(e.target.value)}
+                placeholder="e.g. Levothyroxine"
+                maxLength={80}
+                data-testid="input-pronunciation-word"
+              />
+              <p className="text-xs text-muted-foreground">Exactly as it would appear in the text June speaks.</p>
+            </div>
+            <div className="space-y-1.5">
+              <label className="text-sm font-medium">How June should say it</label>
+              <Input
+                value={phonetic}
+                onChange={e => setPhonetic(e.target.value)}
+                placeholder="e.g. lee-vo-thy-ROX-een"
+                maxLength={200}
+                data-testid="input-pronunciation-phonetic"
+              />
+              <p className="text-xs text-muted-foreground">
+                Write it out phonetically — use hyphens between syllables and caps for the stressed syllable.
+                For acronyms, space out the letters: <span className="font-mono">T-S-H</span>.
+              </p>
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setAddOpen(false); setWord(""); setPhonetic(""); }}>
+              Cancel
+            </Button>
+            <Button
+              onClick={handleAdd}
+              disabled={!word.trim() || !phonetic.trim()}
+              data-testid="button-pronunciation-save"
+              style={{ backgroundColor: "#2e3a20", color: "white" }}
+            >
+              Add
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
+// ── Main component ────────────────────────────────────────────────────────────
 export function JuneSettingsSection() {
   const { toast } = useToast();
   const qc = useQueryClient();
@@ -113,8 +247,7 @@ export function JuneSettingsSection() {
   });
 
   const createMutation = useMutation({
-    mutationFn: (data: Omit<PrefFormState, "triggerPhrases"> & { triggerPhrases?: string | null }) =>
-      apiRequest("POST", "/api/june-preferences", data),
+    mutationFn: (data: object) => apiRequest("POST", "/api/june-preferences", data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/june-preferences"] });
       setDialogOpen(false);
@@ -125,7 +258,7 @@ export function JuneSettingsSection() {
   });
 
   const updateMutation = useMutation({
-    mutationFn: ({ id, data }: { id: number; data: Partial<PrefFormState> & { isActive?: boolean } }) =>
+    mutationFn: ({ id, data }: { id: number; data: object }) =>
       apiRequest("PATCH", `/api/june-preferences/${id}`, data),
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["/api/june-preferences"] });
@@ -163,7 +296,7 @@ export function JuneSettingsSection() {
   const openEdit = (pref: JunePreference) => {
     setEditingId(pref.id);
     setForm({
-      category: pref.category,
+      category: pref.category as Exclude<Category, "pronunciation">,
       label: pref.label,
       instruction: pref.instruction,
       triggerPhrases: pref.triggerPhrases ?? "",
@@ -190,10 +323,17 @@ export function JuneSettingsSection() {
     }
   };
 
+  const handleAddPronunciation = (label: string, phonetic: string) => {
+    createMutation.mutate({ category: "pronunciation", label, instruction: phonetic, isActive: true });
+  };
+
+  const nonPronunciationPrefs = prefs.filter(p => p.category !== "pronunciation");
+  const pronunciationPrefs = prefs.filter(p => p.category === "pronunciation");
+
   const grouped = {
-    instruction: prefs.filter(p => p.category === "instruction"),
-    trigger: prefs.filter(p => p.category === "trigger"),
-    snippet: prefs.filter(p => p.category === "snippet"),
+    instruction: nonPronunciationPrefs.filter(p => p.category === "instruction"),
+    trigger: nonPronunciationPrefs.filter(p => p.category === "trigger"),
+    snippet: nonPronunciationPrefs.filter(p => p.category === "snippet"),
   };
 
   const isPending = createMutation.isPending || updateMutation.isPending;
@@ -227,7 +367,7 @@ export function JuneSettingsSection() {
 
       {isLoading ? (
         <div className="text-sm text-muted-foreground py-4">Loading your preferences…</div>
-      ) : prefs.length === 0 ? (
+      ) : nonPronunciationPrefs.length === 0 && pronunciationPrefs.length === 0 ? (
         <Card>
           <CardContent className="py-10 flex flex-col items-center text-center gap-3">
             <BrainCircuit className="w-8 h-8 text-muted-foreground/40" />
@@ -251,7 +391,7 @@ export function JuneSettingsSection() {
         </Card>
       ) : (
         <div className="space-y-5">
-          {(["instruction", "trigger", "snippet"] as Category[]).map(cat => {
+          {(["instruction", "trigger", "snippet"] as Exclude<Category, "pronunciation">[]).map(cat => {
             const items = grouped[cat];
             if (items.length === 0) return null;
             const meta = CATEGORY_META[cat];
@@ -317,6 +457,15 @@ export function JuneSettingsSection() {
         </div>
       )}
 
+      {/* Pronunciation Guide — always visible below preferences */}
+      <div className="border-t pt-5">
+        <PronunciationGuide
+          prefs={pronunciationPrefs}
+          onAdd={handleAddPronunciation}
+          onDelete={(id) => deleteMutation.mutate(id)}
+        />
+      </div>
+
       {/* Add / Edit / Examples Dialog */}
       <Dialog open={dialogOpen} onOpenChange={open => { setDialogOpen(open); if (!open) { setEditingId(null); setForm(DEFAULT_FORM); setShowExamples(false); } }}>
         <DialogContent className="max-w-lg">
@@ -361,7 +510,7 @@ export function JuneSettingsSection() {
               <div className="space-y-4 py-1">
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">Type</label>
-                  <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v as Category }))}>
+                  <Select value={form.category} onValueChange={v => setForm(f => ({ ...f, category: v as Exclude<Category, "pronunciation"> }))}>
                     <SelectTrigger data-testid="select-june-category">
                       <SelectValue />
                     </SelectTrigger>

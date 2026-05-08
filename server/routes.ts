@@ -13470,7 +13470,7 @@ VOICE RULES (read these carefully — they define June's personality):
 - Do NOT use formal report-style wording. No "I have identified," no "it appears that," no "upon review of."
 - Do NOT use markdown, bullet points, asterisks, or special characters — this is spoken audio.
 - Be warm, enthusiastic, and real — like a brilliant colleague who genuinely loves what they do and cares deeply about helping patients feel better.
-- Max 2–3 sentences. Under 50 words. Pack in the energy, not the word count.
+- 3–4 sentences that land as a complete, well-rounded thought. Don't just state the headline finding and stop — tell the full story: what you found, why it matters clinically, and what you'd do about it. A response that cuts off before completing the idea is worse than one that runs a sentence long. Pack insight in, not word count.
 - Use natural pauses with commas and em-dashes — they guide the rhythm and let the enthusiasm land.
 - When uncertain, say it with confidence anyway: "I'm not 100% on this one, but here's my gut..." or "You'd know better than I would, but I'd be curious about..."
 - CRITICAL — FIRST PERSON ALWAYS: You ARE June. Never refer to yourself as "June" or write "June's [anything]." You speak as "I" at all times. Saying "June's take" or "June here" or "June's observations" in the spoken block is absolutely forbidden — it sounds absurd and robotic.
@@ -13523,7 +13523,7 @@ SOAP NOTE EDITING MODE — CRITICAL INSTRUCTIONS:
 The provider has a SOAP note open. You can read it and propose edits to it.
 You MUST always respond in this exact JSON format (no markdown wrapper, raw JSON only):
 {
-  "spoken": "1–2 sentence casual spoken summary, plain English, no markdown (same rules as the [SPOKEN] block above).",
+  "spoken": "3–4 sentence spoken summary that completes the full thought — key finding, why it matters clinically, and your recommendation. Plain English, no markdown. Same rules as the [SPOKEN] block above. Never cut off mid-idea.",
   "reply": "Your conversational response — explanation of changes made, clinical reasoning, or answer to the question. Markdown is allowed here.",
   "editedNote": "The COMPLETE updated SOAP note text, or omit this field entirely if no edit was requested."
 }
@@ -13764,13 +13764,87 @@ IMPORTANT:
   });
 
   // ── June TTS — convert text to speech via OpenAI ─────────────────────────
+  // Built-in phonetic substitutions for medications ElevenLabs commonly mispronounces.
+  // Keys are matched case-insensitively at word boundaries; values are what gets sent to TTS.
+  const BUILTIN_PHONETICS: Record<string, string> = {
+    "semaglutide":      "sem-ah-GLOO-tide",
+    "tirzepatide":      "ter-ZEP-ah-tide",
+    "levothyroxine":    "lee-vo-thy-ROX-een",
+    "liothyronine":     "ly-oh-THY-ro-neen",
+    "anastrozole":      "ah-NAS-tro-zole",
+    "exemestane":       "ex-EM-eh-stane",
+    "letrozole":        "LET-ro-zole",
+    "clomiphene":       "KLOH-mih-feen",
+    "enclomiphene":     "en-KLOH-mih-feen",
+    "gonadorelin":      "gon-ah-dor-EL-in",
+    "kisspeptin":       "KISS-pep-tin",
+    "tadalafil":        "tah-DAL-ah-fil",
+    "sildenafil":       "sil-DEN-ah-fil",
+    "finasteride":      "fih-NAS-ter-ide",
+    "dutasteride":      "doo-TAS-ter-ide",
+    "sermorelin":       "ser-mor-EL-in",
+    "ipamorelin":       "eye-pah-MOR-eh-lin",
+    "tesamorelin":      "tes-ah-mor-EL-in",
+    "bremelanotide":    "brem-eh-LAN-oh-tide",
+    "flibanserin":      "flih-BAN-ser-in",
+    "methyltestosterone": "meth-il-tes-TOS-ter-one",
+    "oxandrolone":      "ox-AN-dro-lone",
+    "nandrolone":       "NAN-dro-lone",
+    "dehydroepiandrosterone": "dee-HY-dro-ep-ee-an-DROS-ter-one",
+    "DHEA":             "dee-H-E-A",
+    "HCG":              "H-C-G",
+    "HGH":              "H-G-H",
+    "GLP-1":            "G-L-P one",
+    "GLP1":             "G-L-P one",
+    "HbA1c":            "hemoglobin A one C",
+    "SHBG":             "S-H-B-G",
+    "LH":               "L-H",
+    "FSH":              "F-S-H",
+    "PSA":              "P-S-A",
+    "T3":               "T three",
+    "T4":               "T four",
+    "TSH":              "T-S-H",
+    "BMI":              "B-M-I",
+  };
+
+  function applyPhoneticsToText(text: string, customMap: Record<string, string>): string {
+    // Merge: custom overrides built-in
+    const combined = { ...BUILTIN_PHONETICS, ...customMap };
+    let result = text;
+    for (const [original, phonetic] of Object.entries(combined)) {
+      // Word-boundary replacement, case-insensitive
+      const escaped = original.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+      const regex = new RegExp(`\\b${escaped}\\b`, "gi");
+      result = result.replace(regex, phonetic);
+    }
+    return result;
+  }
+
   app.post("/api/tts", requireAuth, async (req, res) => {
     try {
       const { text } = req.body;
       if (!text || typeof text !== "string") {
         return res.status(400).json({ message: "text is required" });
       }
-      const trimmed = text.slice(0, 4096);
+
+      // Load this clinician's custom pronunciation preferences and apply them
+      let phoneticsText = text;
+      try {
+        const actorId = getActorId(req);
+        const junePrefs = await storage.getJunePreferences(actorId);
+        const customMap: Record<string, string> = {};
+        for (const p of junePrefs) {
+          if (p.category === "pronunciation" && p.isActive && p.label.trim() && p.instruction.trim()) {
+            customMap[p.label.trim()] = p.instruction.trim();
+          }
+        }
+        phoneticsText = applyPhoneticsToText(text, customMap);
+      } catch {
+        // If pref lookup fails, still proceed with just built-in substitutions
+        phoneticsText = applyPhoneticsToText(text, {});
+      }
+
+      const trimmed = phoneticsText.slice(0, 4096);
       const { Readable } = await import("stream");
 
       // ── ElevenLabs (primary) ───────────────────────────────────────────────
