@@ -1207,21 +1207,21 @@ export function EncounterEditor({
     if (recorderState === "transcribing") {
       setGlobalLoading("Transcribing audio…");
     } else if (autoGenerating !== null) {
-      setGlobalLoading("Analyzing encounter…");
+      setGlobalLoading("June is reviewing your encounter…", { june: true, juneImage: "analyzing" });
     } else if (soapMutation.isPending) {
-      setGlobalLoading("Generating SOAP note…");
+      setGlobalLoading("June is writing your note…", { june: true, juneImage: "soap" });
     } else if (summaryMutation.isPending) {
       setGlobalLoading("Generating patient summary…");
     } else if (pipelineLoading === "normalizing") {
-      setGlobalLoading("Normalizing transcript…");
+      setGlobalLoading("June is reading the transcript…", { june: true, juneImage: "analyzing" });
     } else if (pipelineLoading === "extracting") {
-      setGlobalLoading("Extracting clinical facts…");
+      setGlobalLoading("June is identifying clinical facts…", { june: true, juneImage: "analyzing" });
     } else if (pipelineLoading === "matching") {
-      setGlobalLoading("Identifying clinical patterns…");
+      setGlobalLoading("June is identifying clinical patterns…", { june: true, juneImage: "analyzing" });
     } else if (pipelineLoading === "evidence") {
-      setGlobalLoading("Searching clinical evidence…");
+      setGlobalLoading("June is searching clinical evidence…", { june: true, juneImage: "analyzing" });
     } else if (pipelineLoading === "validating") {
-      setGlobalLoading("Validating SOAP note…");
+      setGlobalLoading("June is reviewing her note…", { june: true, juneImage: "soap" });
     } else {
       clearGlobalLoading();
     }

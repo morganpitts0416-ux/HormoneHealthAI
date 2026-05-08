@@ -1,9 +1,13 @@
 import { useGlobalLoading } from "@/hooks/use-global-loading";
+import juneAnalyzing from "../assets/june/june-analyzing.webp";
+import juneSoap from "../assets/june/june-soap.webp";
 
 export function GlobalLoadingOverlay() {
-  const { isLoading, message } = useGlobalLoading();
+  const { isLoading, message, juneMode, juneImage } = useGlobalLoading();
 
   if (!isLoading) return null;
+
+  const juneImg = juneImage === "soap" ? juneSoap : juneAnalyzing;
 
   return (
     <div
@@ -71,9 +75,9 @@ export function GlobalLoadingOverlay() {
           />
         </svg>
 
-        {/* ClinIQ emblem — breathing */}
+        {/* Center: June avatar (note generation) or ClinIQ logo (everything else) */}
         <div className="relative realign-breathe" style={{ width: 68, height: 68 }}>
-          {/* Soft radial glow behind emblem */}
+          {/* Soft radial glow */}
           <div
             className="absolute inset-0 rounded-full"
             style={{
@@ -81,21 +85,31 @@ export function GlobalLoadingOverlay() {
               transform: "scale(2.2)",
             }}
           />
-          <img
-            src="/cliniq-logo.png?v=2"
-            alt="ClinIQ"
-            width={120}
-            height={68}
-            style={{ objectFit: "contain", position: "relative", zIndex: 1, mixBlendMode: "multiply" }}
-          />
+          {juneMode ? (
+            <img
+              key={juneImage}
+              src={juneImg}
+              alt="June"
+              style={{ width: 68, height: 68, objectFit: "contain", position: "relative", zIndex: 1 }}
+            />
+          ) : (
+            <img
+              src="/cliniq-logo.png?v=2"
+              alt="ClinIQ"
+              width={120}
+              height={68}
+              style={{ objectFit: "contain", position: "relative", zIndex: 1, mixBlendMode: "multiply" }}
+            />
+          )}
         </div>
       </div>
 
       {/* Message */}
       <div className="mt-6 text-center space-y-1.5">
         <p className="text-sm font-medium text-foreground tracking-wide">{message}</p>
-        {/* Animated dot ellipsis */}
-        <p className="text-xs text-muted-foreground realign-dot-pulse">Processing</p>
+        <p className="text-xs text-muted-foreground realign-dot-pulse">
+          {juneMode ? "June is on it" : "Processing"}
+        </p>
       </div>
     </div>
   );
