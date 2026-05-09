@@ -590,8 +590,20 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       const currentPatientId = patientContext?.id ?? null;
       if (issuedForPatientId !== currentPatientId) return;
       if (voiceSessionRef.current) setVoiceSessionMode(false);
-      const cleanMsg = err.message?.includes("{") ? "Something went wrong reaching the AI service." : err.message;
-      setMessages(prev => [...prev, { role: "assistant", content: `I apologize — ${cleanMsg || "something went wrong"}. Please try again.` }]);
+      const msg = err.message ?? "";
+      // "Failed to fetch" (Android/Chrome) and "Load failed" (iOS Safari) are
+      // network-layer errors — the AI never failed, the connection did.
+      const isNetworkError = /failed to fetch|load failed|networkerror|network error|the internet connection appears to be offline|could not connect/i.test(msg);
+      // AbortError fires if the AbortController cancelled the request
+      const isAbort = err.name === "AbortError" || /aborted|abort/i.test(msg);
+      // 500 JSON body from the server gets forwarded as "500: {...}" — strip it
+      const isServerJson = msg.includes("{");
+      const displayMsg = isNetworkError || isAbort
+        ? "It looks like there was a connection hiccup — this can happen on mobile when signal is spotty or the screen locked mid-request. Please try again."
+        : isServerJson
+          ? "Something went wrong reaching the AI service. Please try again in a moment."
+          : (msg || "Something went wrong. Please try again.");
+      setMessages(prev => [...prev, { role: "assistant", content: displayMsg }]);
     },
   });
 
