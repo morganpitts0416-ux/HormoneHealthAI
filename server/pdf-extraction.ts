@@ -3,33 +3,33 @@ import OpenAI from 'openai';
 
 const openai = new OpenAI({
   baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
-  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY
+  apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
 });
 
 export interface ExtractedLabValues {
-  // Patient demographics extracted from report header
-  patientName?: string;      // e.g. "John Smith"
-  dateOfBirth?: string;      // ISO string or MM/DD/YYYY — used to calculate age
-  collectionDate?: string;   // Lab draw date — forwarded as labDrawDate
+  patientName?: string;
+  dateOfBirth?: string;
+  collectionDate?: string;
 
   // CBC
   hemoglobin?: number;
   hematocrit?: number;
+  mcv?: number;
   rbc?: number;
   wbc?: number;
   platelets?: number;
-  
+
   // CMP - Liver
   ast?: number;
   alt?: number;
   bilirubin?: number;
   alkalinePhosphatase?: number;
-  
+
   // CMP - Kidney
   creatinine?: number;
   egfr?: number;
   bun?: number;
-  
+
   // CMP - Electrolytes
   sodium?: number;
   potassium?: number;
@@ -37,12 +37,12 @@ export interface ExtractedLabValues {
   co2?: number;
   calcium?: number;
   magnesium?: number;
-  
+
   // CMP - Metabolic
   glucose?: number;
   albumin?: number;
   totalProtein?: number;
-  
+
   // Lipids
   ldl?: number;
   hdl?: number;
@@ -50,8 +50,8 @@ export interface ExtractedLabValues {
   triglycerides?: number;
   apoB?: number;
   lpa?: number;
-  
-  // Hormones - Male/Female
+
+  // Hormones
   testosterone?: number;
   freeTestosterone?: number;
   estradiol?: number;
@@ -62,113 +62,111 @@ export interface ExtractedLabValues {
   shbg?: number;
   dheas?: number;
   amh?: number;
-  
+
   // Thyroid
   tsh?: number;
   freeT4?: number;
   freeT3?: number;
   tpoAntibodies?: number;
-  
-  // Iron Studies
+
+  // Iron
   iron?: number;
   tibc?: number;
   ironSaturation?: number;
   ferritin?: number;
-  
+
   // Vitamins
   vitaminD?: number;
   vitaminB12?: number;
   folate?: number;
-  
-  // Inflammation
+
+  // Inflammation / Glycemic
   hsCRP?: number;
-  
-  // Glycemic
   a1c?: number;
-  
+
   // Male-specific
   psa?: number;
   previousPsa?: number;
   monthsSinceLastPsa?: number;
 }
 
-export class PDFExtractionService {
-  static async extractLabValues(pdfBuffer: Buffer): Promise<ExtractedLabValues> {
-    console.log('[PDF Extraction] Starting extraction, buffer size:', pdfBuffer.length);
-    
-    const parser = new PDFParse({ data: pdfBuffer });
-    const result = await parser.getText();
-    const extractedText = result.text;
-    
-    console.log('[PDF Extraction] Text extracted, length:', extractedText.length);
-    console.log('[PDF Extraction] First 500 chars:', extractedText.substring(0, 500));
-
-    const labValues = await this.parseLabValuesWithAI(extractedText);
-    
-    console.log('[PDF Extraction] Extracted values:', JSON.stringify(labValues, null, 2));
-    
-    return labValues;
-  }
-
-  private static async parseLabValuesWithAI(text: string): Promise<ExtractedLabValues> {
-    const prompt = `You are a medical lab report parser. Extract patient demographics and numerical lab values from this lab report text.
-
-LAB REPORT TEXT:
-${text}
+// ── Shared extraction prompt ──────────────────────────────────────────────────
+// Used for both text-based and vision-based extraction.  Written to be
+// lab-agnostic: works with Quest, LabCorp, BioReference, hospital labs,
+// specialty labs, and any other format.
+const SYSTEM_PROMPT = `You are a highly accurate medical lab report parser. \
+Your job is to extract patient demographics and numerical lab values from any \
+lab report, regardless of which laboratory produced it or how it is formatted.
 
 EXTRACTION RULES:
-1. Extract the patient's full name if present (look for "Patient:", "Patient Name:", "Name:", or the name printed at the top of the report)
-2. Extract the date of birth if present (look for "DOB:", "Date of Birth:", "Birth Date:") — return as MM/DD/YYYY or YYYY-MM-DD
-3. Extract the collection/draw date if present (look for "Collection Date:", "Date Collected:", "Specimen Date:", "Draw Date:", "Report Date:") — return as MM/DD/YYYY or YYYY-MM-DD
-4. Extract ONLY numeric lab values (e.g., 48, 165, 5.8)
-5. Match values to the correct lab test names
-6. For values like "<5" or ">20", extract the number (5 or 20)
-7. Common test name variations:
-   - Hematocrit: HCT, Hct, Hematocrit
-   - Hemoglobin: HGB, Hgb, Hemoglobin (NOT Hemoglobin A1C)
-   - MCV: Mean Corpuscular Volume, MCV (fL)
-   - LDL: LDL-C, LDL Cholesterol, LDL Cholesterol (Calculation)
-   - HDL: HDL-C, HDL Cholesterol
-   - Total Cholesterol: CHOL, Cholesterol Total
-   - Triglycerides: TRIG, TG
-   - Testosterone: Total Testosterone, Testosterone Total, Testosterone Total by LC/MS
-   - Free Testosterone: Free Testosterone (calculation), Free T
-   - A1c: HbA1c, Hemoglobin A1c, Hemoglobin A1C, Glycated Hemoglobin
-   - PSA: Prostate Specific Antigen
-   - TSH: Thyroid Stimulating Hormone
-   - Free T4: FT4, Free Thyroxine
-   - Free T3: FT3, Free Triiodothyronine
-   - TPO Antibodies: Thyroid Peroxidase Antibodies, TPO Ab
+1. Patient demographics
+   - patientName: patient's full name (look for "Patient:", "Name:", header area)
+   - dateOfBirth: DOB in MM/DD/YYYY or YYYY-MM-DD (look for "DOB:", "Date of Birth:", "Birth Date:")
+   - collectionDate: the specimen draw/collection date — NOT the report date
+     (look for "Collection Date:", "Date Collected:", "Collected:", "Draw Date:", "Specimen Date:")
+
+2. Lab values — extract the RESULT number only (not reference range numbers)
+   - For values like "<5" or ">20", extract just the number (5 or 20)
+   - For ranges like "72-100", this is a reference range — do NOT extract it
+   - Percentages like "48%" → extract as 48
+   - Only return values that are explicitly present; omit anything not found
+
+3. Handle any lab's naming conventions — the same test has many names:
+   - Hemoglobin: HGB, Hgb, Hb (NOT HbA1c or Hemoglobin A1C)
+   - Hematocrit: HCT, Hct, PCV
+   - MCV: Mean Corpuscular Volume
+   - WBC: White Blood Cell Count, Leukocytes
+   - RBC: Red Blood Cell Count, Erythrocytes
+   - Platelets: PLT, Thrombocytes
+   - Glucose: Blood Glucose, Fasting Glucose, Random Glucose
+   - Creatinine: Serum Creatinine, SCr
+   - eGFR: Estimated GFR, GFR (CKD-EPI), Glomerular Filtration Rate
+   - BUN: Blood Urea Nitrogen, Urea Nitrogen
    - AST: SGOT, Aspartate Aminotransferase
    - ALT: SGPT, Alanine Aminotransferase
-   - Alk Phos: Alkaline Phosphatase
-   - eGFR: Estimated GFR, GFR, eGFR by Creatinine
-   - Estradiol: E2
-   - Progesterone: Prog
+   - Alkaline Phosphatase: Alk Phos, ALP
+   - Total Bilirubin: T. Bilirubin, TBIL
+   - Total Protein: TP, Total Prot
+   - LDL: LDL-C, LDL Cholesterol, LDL Chol, LDL (Calc)
+   - HDL: HDL-C, HDL Cholesterol, HDL Chol
+   - Total Cholesterol: Cholesterol, Chol, CHOL, TC
+   - Triglycerides: TG, TRIG, Trigs
+   - ApoB: Apolipoprotein B, Apo B
+   - Lp(a): Lipoprotein (a), Lipoprotein A, LPA
+   - Testosterone: Total Testosterone, Testosterone Total, Serum Testosterone
+   - Free Testosterone: Free T, Free Testosterone (Direct), Free Testosterone (Calc)
+   - SHBG: Sex Hormone Binding Globulin
+   - Estradiol: E2, Oestradiol
+   - Progesterone: Prog, P4
    - LH: Luteinizing Hormone
    - FSH: Follicle Stimulating Hormone
    - Prolactin: PRL
-   - SHBG: Sex Hormone Binding Globulin
-   - DHEA-S: DHEAS, Dehydroepiandrosterone Sulfate
-   - AMH: Anti-Mullerian Hormone
-   - Iron: Serum Iron
-   - TIBC: Iron Binding Cap, Iron Binding Capacity, Total Iron Binding Capacity
-   - Iron Saturation: Percent Saturation, % Saturation, Transferrin Saturation
+   - DHEA-S: DHEAS, DHEA Sulfate, Dehydroepiandrosterone Sulfate
+   - AMH: Anti-Mullerian Hormone, MIS
+   - TSH: Thyroid Stimulating Hormone, Thyrotropin
+   - Free T4: FT4, Free Thyroxine, Free T4 (Direct)
+   - Free T3: FT3, Free Triiodothyronine, Free T3 (Direct)
+   - TPO Antibodies: Thyroid Peroxidase Ab, Anti-TPO, TPO Ab
+   - Iron: Serum Iron, Fe
+   - TIBC: Total Iron Binding Capacity, Iron Binding Cap
+   - Iron Saturation: % Saturation, Transferrin Saturation, Iron Sat
    - Ferritin: Serum Ferritin
-   - Vitamin D: Vitamin D 25-Hydroxy, 25-OH Vitamin D, 25-Hydroxyvitamin D
-   - Vitamin B12: B12, Cobalamin
-   - Folate: Folic Acid
-   - hs-CRP: C-Reactive Protein High Sensitivity, CRP High Sensitivity, hsCRP
-   - Apo B: Apolipoprotein B
-   - Lp(a): Lipoprotein (a), Lipoprotein A
-   - Magnesium: Mg
+   - Vitamin D: 25-OH Vitamin D, 25-Hydroxyvitamin D, Vitamin D 25-Hydroxy, Calcidiol
+   - Vitamin B12: B12, Cobalamin, Cyanocobalamin
+   - Folate: Folic Acid, Serum Folate
+   - hs-CRP: C-Reactive Protein (High Sensitivity), CRP-HS, hsCRP
+   - HbA1c: Hemoglobin A1c, A1C, Glycated Hemoglobin, HbA1C
+   - PSA: Prostate Specific Antigen, Total PSA
 
-5. Return ONLY values found in the report
-6. Omit any field that's not present
-7. Convert percentages to decimals where appropriate (e.g., Hct 48% → 48)
+Return ONLY a valid JSON object. Include only fields with extracted values. No explanation, no commentary, no markdown.`;
 
-Return a JSON object with these possible fields (use camelCase):
+const USER_PROMPT_SUFFIX = `
+
+Return this JSON structure (include ONLY fields you found):
 {
+  "patientName": "string",
+  "dateOfBirth": "string (MM/DD/YYYY or YYYY-MM-DD)",
+  "collectionDate": "string (MM/DD/YYYY or YYYY-MM-DD)",
   "hemoglobin": number,
   "hematocrit": number,
   "mcv": number,
@@ -221,42 +219,119 @@ Return a JSON object with these possible fields (use camelCase):
   "hsCRP": number,
   "a1c": number,
   "psa": number
-}
+}`;
 
-Extract now:`;
+export class PDFExtractionService {
+  static async extractLabValues(pdfBuffer: Buffer): Promise<ExtractedLabValues> {
+    console.log('[PDF Extraction] Starting extraction, buffer size:', pdfBuffer.length);
 
+    // ── Step 1: Attempt text extraction ──────────────────────────────────────
+    let extractedText = '';
     try {
-      console.log('[PDF Extraction] Calling OpenAI for value extraction');
-      
+      const parser = new PDFParse({ data: pdfBuffer });
+      const result = await parser.getText();
+      extractedText = (result?.text ?? '').trim();
+      console.log('[PDF Extraction] Text extracted, length:', extractedText.length);
+      if (extractedText.length > 0) {
+        console.log('[PDF Extraction] First 300 chars:', extractedText.substring(0, 300));
+      }
+    } catch (textErr) {
+      console.warn('[PDF Extraction] Text extraction failed:', textErr);
+    }
+
+    // ── Step 2: Route to text or vision path ─────────────────────────────────
+    // If we got meaningful text (>150 chars) use the text-based path.
+    // Otherwise fall back to vision — the PDF is likely scanned/image-based.
+    if (extractedText.length > 150) {
+      console.log('[PDF Extraction] Using text-based AI extraction');
+      return this.extractFromText(extractedText);
+    }
+
+    console.log('[PDF Extraction] Text too short — falling back to vision extraction');
+    return this.extractFromVision(pdfBuffer);
+  }
+
+  // ── Text-based extraction ─────────────────────────────────────────────────
+  private static async extractFromText(text: string): Promise<ExtractedLabValues> {
+    try {
       const response = await openai.chat.completions.create({
-        model: "gpt-5-mini",
+        model: 'gpt-4o-mini',
         messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
           {
-            role: "system",
-            content: "You are a medical lab report parser. Extract lab values accurately and return valid JSON only. For values with < or > symbols, extract just the number."
+            role: 'user',
+            content: `Extract all lab values from this report:\n\n${text.slice(0, 12000)}${USER_PROMPT_SUFFIX}`,
           },
-          {
-            role: "user",
-            content: prompt
-          }
         ],
-        response_format: { type: "json_object" },
+        response_format: { type: 'json_object' },
+        temperature: 0,
       });
 
-      const content = response.choices[0]?.message?.content;
-      console.log('[PDF Extraction] AI response:', content);
-      
-      if (!content) {
-        throw new Error('No content in AI response');
-      }
-
+      const content = response.choices[0]?.message?.content ?? '{}';
+      console.log('[PDF Extraction] Text AI response length:', content.length);
       const parsed = JSON.parse(content);
-      console.log('[PDF Extraction] Parsed values:', parsed);
-      
+      console.log('[PDF Extraction] Extracted fields:', Object.keys(parsed).join(', '));
       return parsed as ExtractedLabValues;
-    } catch (error) {
-      console.error('[PDF Extraction] Error parsing with AI:', error);
-      throw new Error('Failed to extract lab values from PDF');
+    } catch (err) {
+      console.error('[PDF Extraction] Text-based AI extraction failed:', err);
+      throw new Error('Failed to extract lab values from PDF text');
+    }
+  }
+
+  // ── Vision-based extraction (scanned / image-based PDFs) ─────────────────
+  private static async extractFromVision(pdfBuffer: Buffer): Promise<ExtractedLabValues> {
+    // Render PDF pages as PNG screenshots
+    let pageImages: { data: Buffer }[] = [];
+    try {
+      const parser = new PDFParse({ data: pdfBuffer });
+      const result = await parser.getScreenshot({ scale: 1.5, first: 6, imageDataUrl: false, imageBuffer: true });
+      pageImages = (result?.pages ?? []).filter((p: any) => p?.data) as { data: Buffer }[];
+      await parser.destroy();
+      console.log('[PDF Extraction] Got', pageImages.length, 'page screenshot(s)');
+    } catch (shotErr) {
+      console.error('[PDF Extraction] Screenshot extraction failed:', shotErr);
+      throw new Error('This PDF appears to be image-based and could not be rendered. Please enter lab values manually.');
+    }
+
+    if (pageImages.length === 0) {
+      throw new Error('No pages could be rendered from this PDF. Please enter lab values manually.');
+    }
+
+    // Build vision message — send up to 4 pages to stay within token limits
+    const imageContent: OpenAI.Chat.ChatCompletionContentPart[] = [
+      {
+        type: 'text',
+        text: `This is a lab report rendered as image(s). Extract all patient demographics and lab values.${USER_PROMPT_SUFFIX}`,
+      },
+      ...pageImages.slice(0, 4).map((p): OpenAI.Chat.ChatCompletionContentPart => ({
+        type: 'image_url',
+        image_url: {
+          url: `data:image/png;base64,${Buffer.from(p.data).toString('base64')}`,
+          detail: 'high',
+        },
+      })),
+    ];
+
+    try {
+      const response = await openai.chat.completions.create({
+        model: 'gpt-4o',
+        messages: [
+          { role: 'system', content: SYSTEM_PROMPT },
+          { role: 'user', content: imageContent },
+        ],
+        response_format: { type: 'json_object' },
+        temperature: 0,
+        max_tokens: 2000,
+      });
+
+      const content = response.choices[0]?.message?.content ?? '{}';
+      console.log('[PDF Extraction] Vision AI response length:', content.length);
+      const parsed = JSON.parse(content);
+      console.log('[PDF Extraction] Vision extracted fields:', Object.keys(parsed).join(', '));
+      return parsed as ExtractedLabValues;
+    } catch (err) {
+      console.error('[PDF Extraction] Vision-based AI extraction failed:', err);
+      throw new Error('Failed to extract lab values from PDF images');
     }
   }
 }
