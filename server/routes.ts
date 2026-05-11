@@ -21,6 +21,7 @@ import { ASCVDCalculator } from "./ascvd-calculator";
 import { runEnhancedSoapPipeline } from "./soap-pipeline";
 import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
+import { detectMaleHormonePatterns } from "./male-hormone-patterns";
 import { evaluateSupplements } from "./supplements-female";
 import { evaluateMaleSupplements } from "./supplements-male";
 import { applyCustomRangesToInterpretations } from "./lab-range-overrides";
@@ -1447,6 +1448,9 @@ export async function registerRoutes(app: Express): Promise<Server> {
         therapyContext,
       );
 
+      const maleHormonePatterns = detectMaleHormonePatterns(labs);
+      console.log('[API] Male hormone patterns detected:', maleHormonePatterns.map(p => p.name).join(', ') || 'None');
+
       const result: InterpretationResult = {
         redFlags,
         interpretations,
@@ -1457,6 +1461,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         adjustedRisk,
         supplements,
         insulinResistance,
+        maleHormonePatterns: maleHormonePatterns.length > 0 ? maleHormonePatterns : undefined,
+        stopBangRisk: stopBangRisk ?? undefined,
         soapNote,
       };
 
@@ -1848,6 +1854,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cacStatinRec,
         insulinResistance,
         clinicalPhenotypes,
+        stopBangRisk: stopBangRisk ?? undefined,
         soapNote,
       };
 

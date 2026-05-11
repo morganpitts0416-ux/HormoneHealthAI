@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History, Heart } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History, Heart, Dna } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LabInputForm } from "@/components/lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";

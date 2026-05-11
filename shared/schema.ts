@@ -437,6 +437,29 @@ export type InsulinResistanceMarker = z.infer<typeof insulinResistanceMarkerSche
 export type InsulinResistancePhenotype = z.infer<typeof insulinResistancePhenotypeSchema>;
 export type InsulinResistanceScreening = z.infer<typeof insulinResistanceScreeningSchema>;
 
+// Male Hormone Pattern (from male-hormone-patterns.ts detection engine)
+export const maleHormonePatternSchema = z.object({
+  id: z.string(),
+  name: z.string(),
+  confidence: z.enum(['high', 'moderate', 'low']),
+  typicalLabs: z.string(),
+  clinicalFeatures: z.string(),
+  interpretation: z.string(),
+  clinicalConsiderations: z.string(),
+  matchedFindings: z.array(z.string()),
+});
+export type MaleHormonePattern = z.infer<typeof maleHormonePatternSchema>;
+
+// STOP-BANG Result (mirrors StopBangResult from server/stopbang-calculator.ts)
+export const stopBangResultSchema = z.object({
+  score: z.number(),
+  riskCategory: z.enum(['low', 'intermediate', 'high']),
+  riskDescription: z.string(),
+  recommendations: z.string(),
+  clinicalGuidance: z.string(),
+});
+export type StopBangResult = z.infer<typeof stopBangResultSchema>;
+
 // Complete Interpretation Result
 export const interpretationResultSchema = z.object({
   redFlags: z.array(redFlagSchema),
@@ -452,6 +475,8 @@ export const interpretationResultSchema = z.object({
   cacStatinRec: cacStatinRecommendationSchema.optional(),
   insulinResistance: insulinResistanceScreeningSchema.optional(),
   clinicalPhenotypes: z.array(clinicalPhenotypeSchema).optional(),
+  maleHormonePatterns: z.array(maleHormonePatternSchema).optional(),
+  stopBangRisk: stopBangResultSchema.optional(),
   soapNote: z.string().optional(),
 });
 
