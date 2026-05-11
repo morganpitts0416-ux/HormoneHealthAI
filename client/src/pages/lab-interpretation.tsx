@@ -4,11 +4,18 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History, Heart, Dna } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History, Heart } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LabInputForm } from "@/components/lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
+import {
+  PreventAssessmentCard,
+  AdvancedLipidsCard,
+  StopBangCard,
+  MaleHormoneAssessmentCard,
+  InsulinResistanceCard,
+} from "@/components/lab-assessment-cards";
 import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
 import { SavedInterpretations } from "@/components/saved-interpretations";
@@ -610,24 +617,45 @@ export default function LabInterpretation() {
           <TabsContent value="results" className="space-y-6">
             {interpretationResult ? (
               <>
-                {/* Red Flags - Most Prominent */}
+                {/* 1. Red Flags */}
                 {interpretationResult.redFlags?.length > 0 && (
                   <RedFlagAlert redFlags={interpretationResult.redFlags} />
                 )}
 
-                {/* Lab Results */}
-                <ResultsDisplay 
+                {/* 2. Results Table + Detailed Clinical Assessment + AI Synthesis + Follow-up */}
+                <ResultsDisplay
                   interpretations={interpretationResult.interpretations || []}
                   aiRecommendations={interpretationResult.aiRecommendations || ''}
                   recheckWindow={interpretationResult.recheckWindow || ''}
                   redFlags={interpretationResult.redFlags || []}
-                  ascvdAssessment={interpretationResult.ascvdRisk || null}
-                  preventAssessment={interpretationResult.preventRisk}
-                  adjustedRiskAssessment={interpretationResult.adjustedRisk}
-                  insulinResistance={interpretationResult.insulinResistance}
                 />
 
-                {/* Supplement Protocol — Interactive Selector */}
+                {/* 3. PREVENT Cardiovascular Risk Assessment */}
+                {interpretationResult.preventRisk && (
+                  <PreventAssessmentCard preventAssessment={interpretationResult.preventRisk} />
+                )}
+
+                {/* 4. Advanced Lipid Marker Risk Adjustment */}
+                {interpretationResult.adjustedRisk && (
+                  <AdvancedLipidsCard adjustedRiskAssessment={interpretationResult.adjustedRisk} />
+                )}
+
+                {/* 5. STOP-BANG Sleep Apnea Screening (only when present) */}
+                {interpretationResult.stopBangRisk && (
+                  <StopBangCard stopBangRisk={interpretationResult.stopBangRisk} />
+                )}
+
+                {/* 6. Male Hormone Assessment */}
+                {interpretationResult.maleHormonePatterns && interpretationResult.maleHormonePatterns.length > 0 && (
+                  <MaleHormoneAssessmentCard patterns={interpretationResult.maleHormonePatterns} />
+                )}
+
+                {/* 7. Phenotype Assessment — Insulin Resistance Screening */}
+                {interpretationResult.insulinResistance && interpretationResult.insulinResistance.likelihood !== 'none' && (
+                  <InsulinResistanceCard insulinResistance={interpretationResult.insulinResistance} />
+                )}
+
+                {/* 8. Supplement Protocol */}
                 <SupplementModeBadge />
                 <SupplementSelector
                   supplements={interpretationResult.supplements || []}
@@ -637,20 +665,20 @@ export default function LabInterpretation() {
                   onCustomChange={setCustomSupplements}
                 />
 
-                {/* Patient Summary */}
+                {/* 9. Patient Summary */}
                 {interpretationResult.patientSummary && (
-                  <PatientSummary 
+                  <PatientSummary
                     summary={interpretationResult.patientSummary}
                     labValues={labValues}
                   />
                 )}
 
-                {/* SOAP Note */}
+                {/* 10. SOAP Note */}
                 {interpretationResult.soapNote && (
                   <SOAPNote soapNote={interpretationResult.soapNote} />
                 )}
 
-                {/* Lab Trend Charts with AI Narrative */}
+                {/* 11. Lab Trend Charts */}
                 {selectedPatient && patientLabs && patientLabs.length >= 2 && (
                   <PatientTrendCharts
                     labs={patientLabs}

@@ -9,6 +9,13 @@ import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { FemaleLabInputForm } from "@/components/female-lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
+import {
+  PreventAssessmentCard,
+  AdvancedLipidsCard,
+  StopBangCard,
+  FemaleHormoneAssessmentCard,
+  InsulinResistanceCard,
+} from "@/components/lab-assessment-cards";
 import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
 import { SavedInterpretations } from "@/components/saved-interpretations";
@@ -604,84 +611,47 @@ export default function FemaleLabInterpretation() {
           </TabsContent>
 
           <TabsContent value="results" className="space-y-6">
-            {interpretationResult && (
+            {interpretationResult ? (
               <>
-                {/* Red Flags */}
+                {/* 1. Red Flags */}
                 {interpretationResult.redFlags.length > 0 && (
                   <RedFlagAlert redFlags={interpretationResult.redFlags} />
                 )}
 
-                {/* Results Table */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Complete Lab Results Overview</CardTitle>
-                    <CardDescription>
-                      Detailed interpretation of all lab values with female-specific reference ranges
-                    </CardDescription>
-                  </CardHeader>
-                  <CardContent>
-                    <ResultsDisplay 
-                      interpretations={interpretationResult.interpretations}
-                      aiRecommendations={interpretationResult.aiRecommendations}
-                      recheckWindow={interpretationResult.recheckWindow}
-                      redFlags={interpretationResult.redFlags}
-                      preventAssessment={interpretationResult.preventRisk}
-                      adjustedRiskAssessment={interpretationResult.adjustedRisk}
-                      insulinResistance={interpretationResult.insulinResistance}
-                    />
-                  </CardContent>
-                </Card>
+                {/* 2. Results Table + Detailed Clinical Assessment + AI Synthesis + Follow-up */}
+                <ResultsDisplay
+                  interpretations={interpretationResult.interpretations}
+                  aiRecommendations={interpretationResult.aiRecommendations}
+                  recheckWindow={interpretationResult.recheckWindow}
+                  redFlags={interpretationResult.redFlags}
+                />
 
-                {/* Clinical Phenotypes */}
-                {interpretationResult.clinicalPhenotypes && interpretationResult.clinicalPhenotypes.length > 0 && (
-                  <Card>
-                    <CardHeader>
-                      <div className="flex items-center gap-2">
-                        <Activity className="w-5 h-5 text-purple-600" />
-                        <CardTitle>Clinical Phenotype Assessment</CardTitle>
-                      </div>
-                      <CardDescription>
-                        Detected clinical patterns driving supplement and treatment recommendations
-                      </CardDescription>
-                    </CardHeader>
-                    <CardContent>
-                      <div className="space-y-3">
-                        {interpretationResult.clinicalPhenotypes.map((phenotype, index) => (
-                          <div 
-                            key={index} 
-                            className={`p-4 rounded-lg border ${
-                              phenotype.confidence === 'high' ? 'border-purple-300 bg-purple-50/50 dark:bg-purple-950/20' :
-                              phenotype.confidence === 'moderate' ? 'border-indigo-200 bg-indigo-50/50 dark:bg-indigo-950/20' :
-                              'border-gray-200 bg-gray-50/50 dark:bg-gray-800/30'
-                            }`}
-                            data-testid={`clinical-phenotype-${index}`}
-                          >
-                            <div className="flex items-center gap-2 mb-2 flex-wrap">
-                              <h4 className="font-semibold text-sm">{phenotype.name}</h4>
-                              <span className={`px-2 py-0.5 text-xs rounded-full ${
-                                phenotype.confidence === 'high' ? 'bg-purple-100 text-purple-700 dark:bg-purple-900 dark:text-purple-200' :
-                                phenotype.confidence === 'moderate' ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200' :
-                                'bg-gray-100 text-gray-700 dark:bg-gray-700 dark:text-gray-200'
-                              }`}>
-                                {phenotype.confidence} confidence
-                              </span>
-                            </div>
-                            <p className="text-xs text-muted-foreground mb-2">{phenotype.description}</p>
-                            <div className="flex flex-wrap gap-1">
-                              {phenotype.supportingFindings.map((finding, fIdx) => (
-                                <span key={fIdx} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">
-                                  {finding}
-                                </span>
-                              ))}
-                            </div>
-                          </div>
-                        ))}
-                      </div>
-                    </CardContent>
-                  </Card>
+                {/* 3. PREVENT Cardiovascular Risk Assessment */}
+                {interpretationResult.preventRisk && (
+                  <PreventAssessmentCard preventAssessment={interpretationResult.preventRisk} />
                 )}
 
-                {/* Supplement Protocol — Interactive Selector */}
+                {/* 4. Advanced Lipid Marker Risk Adjustment */}
+                {interpretationResult.adjustedRisk && (
+                  <AdvancedLipidsCard adjustedRiskAssessment={interpretationResult.adjustedRisk} />
+                )}
+
+                {/* 5. STOP-BANG Sleep Apnea Screening (only when present) */}
+                {interpretationResult.stopBangRisk && (
+                  <StopBangCard stopBangRisk={interpretationResult.stopBangRisk} />
+                )}
+
+                {/* 6. Female Hormone Assessment */}
+                {interpretationResult.clinicalPhenotypes && interpretationResult.clinicalPhenotypes.length > 0 && (
+                  <FemaleHormoneAssessmentCard phenotypes={interpretationResult.clinicalPhenotypes} />
+                )}
+
+                {/* 7. Phenotype Assessment — Insulin Resistance Screening */}
+                {interpretationResult.insulinResistance && interpretationResult.insulinResistance.likelihood !== 'none' && (
+                  <InsulinResistanceCard insulinResistance={interpretationResult.insulinResistance} />
+                )}
+
+                {/* 8. Supplement Protocol */}
                 <FemaleSupplementModeBadge />
                 <SupplementSelector
                   supplements={interpretationResult.supplements || []}
@@ -691,15 +661,15 @@ export default function FemaleLabInterpretation() {
                   onCustomChange={setCustomSupplements}
                 />
 
-                {/* Patient Summary */}
+                {/* 9. Patient Summary */}
                 <PatientSummary summary={interpretationResult.patientSummary} labValues={labValues as any} />
 
-                {/* SOAP Note */}
+                {/* 10. SOAP Note */}
                 {interpretationResult.soapNote && (
                   <SOAPNote soapNote={interpretationResult.soapNote} />
                 )}
 
-                {/* Lab Trend Charts with AI Narrative */}
+                {/* 11. Lab Trend Charts */}
                 {selectedPatient && patientLabs && patientLabs.length >= 2 && (
                   <PatientTrendCharts
                     labs={patientLabs}
@@ -708,17 +678,13 @@ export default function FemaleLabInterpretation() {
                     gender="female"
                   />
                 )}
-
-                {/* Recheck Window */}
-                <Card>
-                  <CardHeader>
-                    <CardTitle>Recommended Recheck Window</CardTitle>
-                  </CardHeader>
-                  <CardContent>
-                    <p className="text-lg font-medium">{interpretationResult.recheckWindow}</p>
-                  </CardContent>
-                </Card>
               </>
+            ) : (
+              <Card>
+                <CardContent className="py-12 text-center text-muted-foreground">
+                  <p>No interpretation results yet. Enter lab values to get started.</p>
+                </CardContent>
+              </Card>
             )}
           </TabsContent>
 
