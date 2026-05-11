@@ -25,6 +25,12 @@ function sanitizeForPdf(text: string): string {
     .replace(/[^\x20-\x7E\n\r\t]/g, '');
 }
 
+const SCREENING_PREFIXES = ['PREVENT', 'Sleep Apnea Risk', 'Insulin Resistance Screening', '10-Year', '30-Year'];
+function isScreeningRow(category: string): boolean {
+  return SCREENING_PREFIXES.some(p => category.startsWith(p)) ||
+    category.includes('(PREVENT)') || category.includes('STOP-BANG');
+}
+
 interface WellnessPlan {
   dietPlan: string;
   supplementProtocol: string;
@@ -563,7 +569,9 @@ export async function generatePatientWellnessPDF(
   yPosition = addSectionHeader('YOUR LAB RESULTS AT A GLANCE', yPosition);
 
   if (interpretation.interpretations && interpretation.interpretations.length > 0) {
-    const tableData = interpretation.interpretations.map((interp: LabInterpretation) => {
+    const tableData = interpretation.interpretations
+      .filter((interp: LabInterpretation) => !isScreeningRow(interp.category))
+      .map((interp: LabInterpretation) => {
       let statusText = '';
       
       // Special handling for ferritin with clinical thresholds
@@ -834,6 +842,71 @@ export async function generatePatientWellnessPDF(
     yPosition += 28;
   }
 
+  // STOP-BANG Sleep Health Screening (only when completed)
+  if (interpretation.stopBangRisk) {
+    const sb = interpretation.stopBangRisk;
+    yPosition = ensureSpace(75, yPosition);
+    yPosition = addSectionHeader('SLEEP HEALTH SCREENING', yPosition);
+
+    const riskColors: Record<string, [number, number, number]> = {
+      low: [34, 139, 34],
+      intermediate: [180, 130, 20],
+      high: [220, 38, 38],
+    };
+    const riskLabels: Record<string, string> = {
+      low: 'Low Risk',
+      intermediate: 'Intermediate Risk',
+      high: 'High Risk',
+    };
+    const sbRiskColor = riskColors[sb.riskCategory] ?? [100, 100, 100] as [number, number, number];
+    const sbRiskLabel = riskLabels[sb.riskCategory] ?? sb.riskCategory;
+
+    yPosition = ensureSpace(22, yPosition);
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, 18, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('STOP-BANG Sleep Apnea Screening:', margin + 4, yPosition + 7);
+    doc.setTextColor(...sbRiskColor);
+    doc.setFontSize(12);
+    doc.text(sbRiskLabel, margin + 92, yPosition + 7);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    const sbScoreNote = `Score: ${sb.score}/8  |  ${sb.riskCategory === 'low' ? 'Low probability of sleep apnea (~7%)' : sb.riskCategory === 'intermediate' ? 'Moderate probability of sleep apnea (~25%)' : 'High probability of sleep apnea (~54%)'}`;
+    doc.text(sanitizeForPdf(sbScoreNote), margin + 4, yPosition + 14);
+    yPosition += 22;
+
+    const sbExplanation = 'Sleep apnea is a condition where breathing briefly stops during sleep, lowering oxygen levels and disrupting deep rest. It is very common and highly treatable. The STOP-BANG questionnaire is a validated tool used to estimate your risk based on physical traits and sleep symptoms.';
+    yPosition = ensureSpace(20, yPosition);
+    const sbExpLines = doc.splitTextToSize(sanitizeForPdf(sbExplanation), contentWidth);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...textColor);
+    doc.text(sbExpLines, margin, yPosition);
+    yPosition += sbExpLines.length * 4 + 4;
+
+    if (sb.recommendations) {
+      yPosition = ensureSpace(25, yPosition);
+      doc.setTextColor(...brandColor);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('What This Means For You:', margin, yPosition);
+      yPosition += 5;
+      doc.setTextColor(...textColor);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      const sbRecLines = doc.splitTextToSize(sanitizeForPdf(sb.recommendations), contentWidth);
+      for (const line of sbRecLines) {
+        yPosition = ensureSpace(5, yPosition);
+        doc.text(line, margin, yPosition);
+        yPosition += 4;
+      }
+      yPosition += 6;
+    }
+  }
+
   // Smoking Cessation Education Section (only for current smokers)
   if (labValues.demographics?.smoker === true) {
     yPosition = ensureSpace(55, yPosition);
@@ -1018,6 +1091,46 @@ export async function generatePatientWellnessPDF(
       doc.text(guidanceLines, margin + 4, yPosition + 13);
       yPosition += 30;
     }
+  }
+
+  // Female Hormone Health Assessment (clinical phenotypes - patient-friendly)
+  if ((interpretation as any).clinicalPhenotypes && (interpretation as any).clinicalPhenotypes.length > 0) {
+    const phenotypes = (interpretation as any).clinicalPhenotypes as Array<{
+      name: string;
+      confidence: string;
+      description: string;
+      supportingFindings: string[];
+    }>;
+    yPosition = ensureSpace(60, yPosition);
+    yPosition = addSectionHeader('YOUR HORMONE HEALTH ASSESSMENT', yPosition);
+
+    const hormoneIntro = 'Based on your lab results, your provider has identified the following hormone patterns. Understanding these patterns helps guide your personalized treatment, supplement, and lifestyle plan.';
+    yPosition = ensureSpace(20, yPosition);
+    const femHormoneIntroLines = doc.splitTextToSize(sanitizeForPdf(hormoneIntro), contentWidth);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...textColor);
+    doc.text(femHormoneIntroLines, margin, yPosition);
+    yPosition += femHormoneIntroLines.length * 4 + 6;
+
+    for (const phenotype of phenotypes) {
+      const descText = sanitizeForPdf(phenotype.description || 'Your provider will explain what this pattern means for your care.');
+      const descLines = doc.splitTextToSize(descText, contentWidth - 8);
+      const femBlockHeight = 14 + (descLines.length * 4);
+      yPosition = ensureSpace(femBlockHeight + 6, yPosition);
+      doc.setFillColor(...lightBg);
+      doc.roundedRect(margin, yPosition, contentWidth, femBlockHeight, 2, 2, 'F');
+      doc.setTextColor(...brandColor);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(sanitizeForPdf(phenotype.name), margin + 4, yPosition + 7);
+      doc.setTextColor(...textColor);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(descLines, margin + 4, yPosition + 13);
+      yPosition += femBlockHeight + 4;
+    }
+    yPosition += 4;
   }
 
   // Ensure space for nutrition plan section (~120 units)

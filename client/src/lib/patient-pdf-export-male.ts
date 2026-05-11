@@ -25,6 +25,12 @@ function sanitizeForPdf(text: string): string {
     .replace(/[^\x20-\x7E\n\r\t]/g, '');
 }
 
+const SCREENING_PREFIXES = ['PREVENT', 'Sleep Apnea Risk', 'Insulin Resistance Screening', '10-Year', '30-Year'];
+function isScreeningRow(category: string): boolean {
+  return SCREENING_PREFIXES.some(p => category.startsWith(p)) ||
+    category.includes('(PREVENT)') || category.includes('STOP-BANG');
+}
+
 export interface MaleWellnessPlan {
   dietPlan: string;
   supplementProtocol: string;
@@ -456,7 +462,9 @@ export async function generateMalePatientWellnessPDF(
   yPosition = addSectionHeader('YOUR LAB RESULTS AT A GLANCE', yPosition);
 
   if (interpretation.interpretations && interpretation.interpretations.length > 0) {
-    const tableData = interpretation.interpretations.map((interp: LabInterpretation) => {
+    const tableData = interpretation.interpretations
+      .filter((interp: LabInterpretation) => !isScreeningRow(interp.category))
+      .map((interp: LabInterpretation) => {
       let statusText = '';
       
       const catLower = interp.category.toLowerCase();
@@ -714,6 +722,71 @@ export async function generateMalePatientWellnessPDF(
     yPosition += 28;
   }
 
+  // STOP-BANG Sleep Health Screening (only when completed)
+  if (interpretation.stopBangRisk) {
+    const sb = interpretation.stopBangRisk;
+    yPosition = ensureSpace(75, yPosition);
+    yPosition = addSectionHeader('SLEEP HEALTH SCREENING', yPosition);
+
+    const riskColors: Record<string, [number, number, number]> = {
+      low: [34, 139, 34],
+      intermediate: [180, 130, 20],
+      high: [220, 38, 38],
+    };
+    const riskLabels: Record<string, string> = {
+      low: 'Low Risk',
+      intermediate: 'Intermediate Risk',
+      high: 'High Risk',
+    };
+    const sbRiskColor = riskColors[sb.riskCategory] ?? [100, 100, 100] as [number, number, number];
+    const sbRiskLabel = riskLabels[sb.riskCategory] ?? sb.riskCategory;
+
+    yPosition = ensureSpace(22, yPosition);
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, 18, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(10);
+    doc.setFont('helvetica', 'bold');
+    doc.text('STOP-BANG Sleep Apnea Screening:', margin + 4, yPosition + 7);
+    doc.setTextColor(...sbRiskColor);
+    doc.setFontSize(12);
+    doc.text(sbRiskLabel, margin + 92, yPosition + 7);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    const sbScoreNote = `Score: ${sb.score}/8  |  ${sb.riskCategory === 'low' ? 'Low probability of sleep apnea (~7%)' : sb.riskCategory === 'intermediate' ? 'Moderate probability of sleep apnea (~25%)' : 'High probability of sleep apnea (~54%)'}`;
+    doc.text(sanitizeForPdf(sbScoreNote), margin + 4, yPosition + 14);
+    yPosition += 22;
+
+    const sbExplanation = 'Sleep apnea is a condition where breathing briefly stops during sleep, lowering oxygen levels and disrupting deep rest. It is very common and highly treatable. The STOP-BANG questionnaire is a validated tool used to estimate your risk based on physical traits and sleep symptoms.';
+    yPosition = ensureSpace(20, yPosition);
+    const sbExpLines = doc.splitTextToSize(sanitizeForPdf(sbExplanation), contentWidth);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...textColor);
+    doc.text(sbExpLines, margin, yPosition);
+    yPosition += sbExpLines.length * 4 + 4;
+
+    if (sb.recommendations) {
+      yPosition = ensureSpace(25, yPosition);
+      doc.setTextColor(...brandColor);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text('What This Means For You:', margin, yPosition);
+      yPosition += 5;
+      doc.setTextColor(...textColor);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      const sbRecLines = doc.splitTextToSize(sanitizeForPdf(sb.recommendations), contentWidth);
+      for (const line of sbRecLines) {
+        yPosition = ensureSpace(5, yPosition);
+        doc.text(line, margin, yPosition);
+        yPosition += 4;
+      }
+      yPosition += 6;
+    }
+  }
+
   // Smoking Cessation Education Section (only for current smokers)
   if (labValues.demographics?.smoker === true) {
     yPosition = ensureSpace(55, yPosition);
@@ -860,6 +933,51 @@ export async function generateMalePatientWellnessPDF(
       yPosition = (doc as jsPDF & { lastAutoTable?: { finalY: number } }).lastAutoTable?.finalY ?? yPosition;
       yPosition += 6;
     }
+  }
+
+  // Male Hormone Health Assessment (patient-friendly pattern summary)
+  if (interpretation.maleHormonePatterns && interpretation.maleHormonePatterns.length > 0) {
+    yPosition = ensureSpace(60, yPosition);
+    yPosition = addSectionHeader('YOUR HORMONE HEALTH ASSESSMENT', yPosition);
+
+    const hormoneIntro = 'Your lab results reveal important information about your hormone balance. Below is a plain-language summary of what your testosterone and related hormones suggest about your health.';
+    yPosition = ensureSpace(20, yPosition);
+    const hormoneIntroLines = doc.splitTextToSize(sanitizeForPdf(hormoneIntro), contentWidth);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...textColor);
+    doc.text(hormoneIntroLines, margin, yPosition);
+    yPosition += hormoneIntroLines.length * 4 + 6;
+
+    const patientPatternDescriptions: Record<string, string> = {
+      'Primary Hypogonadism': 'Your brain is sending strong signals to produce testosterone (shown by elevated LH), but testosterone output is still lower than ideal. This pattern - called primary hypogonadism - suggests a limitation within the testes themselves. Your provider will discuss next steps, which may include testosterone optimization therapy.',
+      'Secondary (Central) Hypogonadism': 'Your testosterone is below the optimal range, and the brain\'s hormonal signal (LH) is also lower than expected. This pattern - called secondary or central hypogonadism - suggests the brain\'s hormone control center may not be sending a strong enough signal. Your provider will evaluate underlying causes and discuss treatment options.',
+      'TRT Optimization Pattern': 'Your testosterone levels are in a good range while on testosterone therapy, which suggests your current protocol is working well. Your provider will continue monitoring other markers like hematocrit, estradiol, and PSA to keep everything in optimal balance.',
+      'High SHBG / Low Bioavailable Testosterone': 'You have enough total testosterone, but a protein called SHBG may be "locking up" much of it, leaving less available for your body to actually use. This can cause symptoms of low testosterone - such as fatigue, low libido, or reduced muscle - even when your total level appears normal on paper. Lowering SHBG through targeted lifestyle changes and therapies can improve how you feel.',
+      'Estradiol Imbalance Pattern': 'Your estradiol (a form of estrogen that men naturally carry in small amounts) is outside the ideal range. In men, estradiol needs to be balanced - not too high and not too low. Imbalances can affect energy, mood, libido, and body composition. Your provider will discuss the best approach to bring this into balance.',
+      'Hematocrit Elevation Pattern (TRT)': 'Your red blood cell percentage is elevated, which is a common effect of testosterone therapy. A moderate increase can actually improve oxygen delivery and energy, but levels that are too high can increase cardiovascular risk. Your provider may recommend staying well-hydrated, periodic blood donation, or a dosing adjustment.',
+      'Subclinical Hypogonadism': 'Your testosterone is in the low-normal range - technically within the lab\'s reference range, but potentially below what is optimal for you as an individual. Many men feel their best when testosterone is in the upper third of the range. Your symptoms and overall clinical picture will guide next steps.',
+      'Androgen Optimization Pattern': 'Your hormone levels are trending in a positive direction. Your provider will review these results alongside how you feel and may make small adjustments to further optimize your energy, vitality, body composition, and performance.',
+    };
+
+    for (const pattern of interpretation.maleHormonePatterns) {
+      const patDesc = patientPatternDescriptions[pattern.name] ?? sanitizeForPdf(pattern.interpretation ?? 'Your provider will discuss what this pattern means for your care.');
+      const patDescLines = doc.splitTextToSize(sanitizeForPdf(patDesc), contentWidth - 8);
+      const patBlockHeight = 14 + (patDescLines.length * 4);
+      yPosition = ensureSpace(patBlockHeight + 6, yPosition);
+      doc.setFillColor(...lightBg);
+      doc.roundedRect(margin, yPosition, contentWidth, patBlockHeight, 2, 2, 'F');
+      doc.setTextColor(...brandColor);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.text(sanitizeForPdf(pattern.name), margin + 4, yPosition + 7);
+      doc.setTextColor(...textColor);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.text(patDescLines, margin + 4, yPosition + 13);
+      yPosition += patBlockHeight + 4;
+    }
+    yPosition += 4;
   }
 
   yPosition = ensureSpace(120, yPosition);
