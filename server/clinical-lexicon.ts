@@ -291,6 +291,11 @@ export const LEXICONS: Record<LexiconGroup, string[]> = {
     "fexofenadine", "Allegra",
     "diphenhydramine", "Benadryl",
 
+    // Iron supplements (specialty brands — commonly mangled by speech recognition)
+    "ferric maltol", "ACCRUFeR", "ferrous sulfate", "ferrous gluconate",
+    "ferric carboxymaltose", "Injectafer", "iron sucrose", "Venofer",
+    "ferumoxytol", "Feraheme", "heme iron polypeptide", "Proferrin",
+
     // Supplements and nutraceuticals
     "berberine", "myo-inositol", "inositol",
     "magnesium glycinate", "magnesium malate", "magnesium",
@@ -455,6 +460,9 @@ export function buildWhisperPrompt(visitType: string): string {
     "letrozole, DHEA, levothyroxine, liothyronine, Armour thyroid, metformin, " +
     "empagliflozin, dapagliflozin, rosuvastatin, atorvastatin, ezetimibe, " +
     "evolocumab, inclisiran, spironolactone, apixaban, rivaroxaban, " +
+    "losartan, Cozaar, lisinopril, amlodipine, metoprolol, carvedilol, " +
+    "hydrochlorothiazide, chlorthalidone, valsartan, olmesartan, telmisartan, " +
+    "ACCRUFeR, ferric maltol, ferric carboxymaltose, Injectafer, ferumoxytol, " +
     "naltrexone, low-dose naltrexone, trazodone, vortioxetine, Trintellix, " +
     "sertraline, escitalopram, citalopram, fluoxetine, bupropion, venlafaxine, " +
     "duloxetine, buspirone, alprazolam, lorazepam, clonazepam, hydroxyzine, " +
@@ -581,8 +589,13 @@ Examples of speech-to-text errors to correct:
 - "lie oh thy ro neen" or "lio thy ro neen" → "liothyronine"
 - "ar mour thyroid" or "arm er thyroid" or "armor thyroid" → "Armour thyroid"
 
+── Iron supplements ──
+- "acrofirm" or "acrufer" or "ak roo fer" or "a crew fer" or "accrufer" or "acrofer" or "a croo fur" → "ACCRUFeR (ferric maltol)"
+- "ferric carbox y maltose" or "ferric carbox maltose" or "inject a fur" or "inject afer" → "ferric carboxymaltose (Injectafer)"
+- "feru mox i tol" or "ferah heem" or "faira heem" → "ferumoxytol (Feraheme)"
+
 ── Cardiovascular ──
-- "Liz Sartan" or "liz artan" or "low sartan" or "losar tan" → "losartan"
+- "Liz Sartan" or "liz artan" or "lisartan" or "li sartan" or "low sartan" or "losar tan" or "loe sartan" → "losartan"
 - "val sartan" or "val zar tan" → "valsartan"
 - "olm e sartan" or "olm eh sartan" → "olmesartan"
 - "tel mee sartan" or "tel miss artan" or "tel mi sartan" → "telmisartan"

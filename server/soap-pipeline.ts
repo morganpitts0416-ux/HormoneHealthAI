@@ -735,8 +735,8 @@ Document in THREE places: HPI narrative, Assessment item reasoning, Plan for tha
 MEDICATION-IMPLIED PMH — MANDATORY:
 Psychiatric/sleep medications → corresponding conditions in PMH and Assessment. See medication list for specific mappings.
 
-MEDICATION NAMES:
-Use normalized medication list provided. Do NOT phonetically guess drug names.
+MEDICATION NAMES — PATIENT SAFETY RULE:
+Copy every medication and drug name EXACTLY as it appears in the NORMALIZED MEDICATION LIST or transcript. Character-for-character. Never phonetically approximate, respell, or paraphrase a drug name (e.g., do NOT write "lisartan" when the drug is "losartan", do NOT write "acrofirm" when the drug is "ACCRUFeR"). If a name in the transcript is genuinely unclear, write [unclear medication] — never guess at the spelling.
 LAB LEVEL TARGETS: "increase vitamin D to 60-80" = lab level target (ng/mL), NOT a dose.
 
 ═══════════════════════════════════════
