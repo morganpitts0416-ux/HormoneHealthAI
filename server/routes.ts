@@ -13700,8 +13700,14 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
               "CLINIC CUSTOM DIAGNOSIS PRESETS",
               "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
-              "These are this clinic's saved diagnosis presets with their preferred ICD-10 codes.",
-              "When drafting or editing a SOAP note Assessment, ALWAYS use these presets for matching diagnoses — use the exact title and codes listed here rather than generic alternatives.",
+              "These are this clinic's saved diagnosis bundles with preferred ICD-10 codes.",
+              "",
+              "MATCHING RULES — follow these precisely:",
+              "1. ALWAYS use these presets when drafting or editing a SOAP note Assessment — never write a generic diagnosis if a preset covers the same clinical territory.",
+              "2. PROACTIVE BUNDLE RECOGNITION: When a SOAP note is loaded, actively scan the Assessment/Plan for diagnoses that belong together under one of these bundles. Look at the aliases and codes — if you see testosterone management, perimenopause, estrogen/progesterone therapy, HSDD, or fatigue spread across separate entries, that is likely the clinical territory of one umbrella bundle. Flag this to the provider without being asked.",
+              "3. PATTERN-MATCH BROADLY: Do not require an exact name match. Match by clinical territory — if a preset covers 'early hormonal transition' and the note has separate entries for hypogonadism, perimenopause, and HRT management, that is a match. Suggest consolidation.",
+              "4. SUGGEST PROACTIVELY: When you load a note and spot a consolidation opportunity, mention it naturally at the end of your response: 'I also noticed the Assessment has three separate diagnoses that look like they fall under your [Bundle Name] preset — want me to consolidate those?'",
+              "5. ON CONSOLIDATION: Merge all supporting evidence, plan items, education, and monitoring from the individual diagnoses into the single bundle entry. Use the preset's exact title and ICD-10 codes. No clinical content gets dropped — it gets reorganized under the umbrella.",
               "",
             ];
             presets.forEach(p => {
