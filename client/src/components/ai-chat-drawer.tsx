@@ -6,7 +6,7 @@ import { Badge } from "@/components/ui/badge";
 import {
   X, Send, User, Loader2, Trash2, UserCheck,
   Mic, MicOff, FileText, CheckCheck, ChevronDown, ChevronUp, PenLine,
-  Volume2, VolumeX, Square, Settings2,
+  Volume2, VolumeX, Square, Settings2, RotateCcw,
 } from "lucide-react";
 import { useLocation } from "wouter";
 import { useSoapNoteContext } from "@/contexts/soap-note-context";
@@ -124,7 +124,10 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
   const [showNotePreview, setShowNotePreview] = useState(false);
   const [ttsEnabled, setTtsEnabled] = useState(true);
   const [isSpeaking, setIsSpeaking] = useState(false);
+  const [hasJuneEdits, setHasJuneEdits] = useState(false);
   const speakingMsgIdxRef = useRef<number | null>(null);
+  // Frozen snapshot of the note BEFORE any June edits — used by Revert
+  const originalNoteRef = useRef<string | null>(null);
 
   const { toast } = useToast();
   const { activeSoapNote, onApplySoapEdit } = useSoapNoteContext();
@@ -621,14 +624,37 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
 
   const handleClearChat = () => { setMessages([]); setHasOfferedPatient(false); };
 
+  // Capture a snapshot of the note the first time it becomes active so we can
+  // offer a true one-click Revert that bypasses June entirely.
+  useEffect(() => {
+    if (activeSoapNote && !originalNoteRef.current) {
+      originalNoteRef.current = activeSoapNote;
+      setHasJuneEdits(false);
+    }
+    if (!activeSoapNote) {
+      originalNoteRef.current = null;
+      setHasJuneEdits(false);
+    }
+  }, [activeSoapNote]);
+
   const handleApplyEdit = (msgIdx: number, newNote: string) => {
     if (!onApplySoapEdit) {
       toast({ title: "No note open", description: "Open a SOAP note in the encounter editor first.", variant: "destructive" });
       return;
     }
     onApplySoapEdit(newNote);
+    setHasJuneEdits(true);
     setMessages(prev => prev.map((m, i) => i === msgIdx ? { ...m, editApplied: true } : m));
     toast({ title: "Note updated", description: "June's changes were applied. Review and save when ready." });
+  };
+
+  const handleRevertNote = () => {
+    if (!originalNoteRef.current || !onApplySoapEdit) return;
+    onApplySoapEdit(originalNoteRef.current);
+    setHasJuneEdits(false);
+    // Mark all applied edits as un-applied so buttons appear again
+    setMessages(prev => prev.map(m => ({ ...m, editApplied: false })));
+    toast({ title: "Note reverted", description: "Restored to the original version before June's edits." });
   };
 
   const soapNoteActive = !!activeSoapNote && !!onApplySoapEdit;
@@ -752,14 +778,29 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                   SOAP note loaded — I can read and edit it
                 </span>
               </div>
-              <button
-                onClick={() => setShowNotePreview(v => !v)}
-                className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1 flex-shrink-0"
-                data-testid="button-toggle-note-preview"
-              >
-                Preview
-                {showNotePreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
-              </button>
+              <div className="flex items-center gap-1 flex-shrink-0">
+                {hasJuneEdits && originalNoteRef.current && (
+                  <Button
+                    variant="ghost"
+                    size="sm"
+                    className="h-6 px-2 text-xs text-amber-700 dark:text-amber-400 gap-1"
+                    onClick={handleRevertNote}
+                    data-testid="button-revert-soap-note"
+                    title="Restore the note to exactly how it was before June made any changes"
+                  >
+                    <RotateCcw className="w-3 h-3" />
+                    Revert
+                  </Button>
+                )}
+                <button
+                  onClick={() => setShowNotePreview(v => !v)}
+                  className="text-xs text-blue-600 dark:text-blue-400 flex items-center gap-1"
+                  data-testid="button-toggle-note-preview"
+                >
+                  Preview
+                  {showNotePreview ? <ChevronUp className="w-3 h-3" /> : <ChevronDown className="w-3 h-3" />}
+                </button>
+              </div>
             </div>
           )}
 
