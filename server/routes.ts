@@ -13912,8 +13912,9 @@ When you return an editedNote, you are returning a LEGAL MEDICAL DOCUMENT. These
 1. COPY EVERY UNCHANGED SECTION VERBATIM — CHARACTER FOR CHARACTER.
    If the provider asked you to change only the Assessment/Plan, you MUST reproduce the HPI, HISTORY, REVIEW OF SYSTEMS, PHYSICAL EXAM, and every other section EXACTLY as they appear in the original — not paraphrased, not summarized, not condensed. Copy them word-for-word, line-for-line, punctuation-for-punctuation.
 
-2. NEVER SHRINK THE NOTE.
-   Count the sections in the original note. Your editedNote must contain the same number of sections. If the original has HPI + History + ROS + Physical Exam + Assessment/Plan, your output must have all five. If your editedNote is materially shorter than the original, you deleted something — that is always wrong.
+2. NEVER DROP A TOP-LEVEL STRUCTURAL SECTION.
+   The note's major structural headings (HPI, HISTORY, REVIEW OF SYSTEMS, PHYSICAL EXAM, ASSESSMENT/PLAN, CARE PLAN, etc.) are inviolable. If the original note has all five top-level headings, your editedNote must have all five — in the same order. You may NEVER silently omit a structural section.
+   IMPORTANT EXCEPTION — CONSOLIDATION WITHIN ASSESSMENT/PLAN IS ALLOWED: When the provider asks you to merge, combine, or consolidate multiple diagnoses into a single umbrella diagnosis bundle (e.g., combining hypogonadism + perimenopause into "Early Hormonal Transition Syndrome"), it is correct and expected that the number of diagnosis entries inside the Assessment/Plan section will decrease. The HPI, ROS, Physical Exam, and all other top-level sections must still be preserved verbatim — only the internal diagnosis list in Assessment/Plan changes. This is a legitimate clinical operation and does not violate the size rule.
 
 3. ONLY MODIFY WHAT WAS ASKED.
    The provider asked you to change specific content. Change only that content. Every other word in the note is off limits. Do not reformat, reorder, or restructure any section you were not explicitly asked to change.
