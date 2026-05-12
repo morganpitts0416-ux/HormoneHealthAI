@@ -353,8 +353,6 @@ export default function FemaleLabInterpretation() {
     fileInputRef.current?.click();
   };
 
-  const [savedLabId, setSavedLabId] = useState<number | null>(null);
-
   const saveMutation = useMutation({
     mutationFn: async () => {
       if (!interpretationResult) throw new Error('No interpretation to save');
@@ -375,11 +373,10 @@ export default function FemaleLabInterpretation() {
         labDate,
       });
     },
-    onSuccess: (data: any) => {
+    onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/saved-interpretations'] });
       if (selectedPatient) {
         queryClient.invalidateQueries({ queryKey: [`/api/patients/${selectedPatient.id}/labs`] });
-        if (data?.id) setSavedLabId(data.id);
       }
       toast({
         title: "Saved",

@@ -1296,6 +1296,7 @@ export default function PatientProfiles() {
   const [publishDialogLab, setPublishDialogLab] = useState<LabResult | null>(null);
   const [publishNotes, setPublishNotes] = useState("");
   const [publishDietaryGuidance, setPublishDietaryGuidance] = useState("");
+  const [publishPatientSummary, setPublishPatientSummary] = useState("");
   const [isDietaryGenerating, setIsDietaryGenerating] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const [showMessages, setShowMessages] = useState(false);
@@ -1723,7 +1724,7 @@ export default function PatientProfiles() {
   });
 
   const publishProtocolMutation = useMutation({
-    mutationFn: async ({ lab, notes, dietaryGuidance }: { lab: LabResult; notes: string; dietaryGuidance: string }) => {
+    mutationFn: async ({ lab, notes, dietaryGuidance, patientSummary }: { lab: LabResult; notes: string; dietaryGuidance: string; patientSummary: string }) => {
       const interp = lab.interpretationResult as any;
       const supplements = interp?.supplements || [];
       const res = await apiRequest("POST", "/api/protocols/publish", {
@@ -1732,6 +1733,7 @@ export default function PatientProfiles() {
         supplements,
         clinicianNotes: notes || null,
         dietaryGuidance: dietaryGuidance || null,
+        patientSummary: patientSummary || null,
         labDate: lab.labDate,
       });
       return res;
@@ -1742,6 +1744,7 @@ export default function PatientProfiles() {
       setPublishDialogLab(null);
       setPublishNotes("");
       setPublishDietaryGuidance("");
+      setPublishPatientSummary("");
       toast({
         title: "Protocol published",
         description: `${((variables.lab.interpretationResult as any)?.supplements?.length || 0)} supplements are now visible to the patient in their portal.`,
@@ -1757,6 +1760,9 @@ export default function PatientProfiles() {
     setPublishDialogLab(lab);
     setPublishNotes("");
     setPublishDietaryGuidance("");
+    // Pre-populate health assessment with the saved patient summary from this lab
+    const interp = (lab.interpretationResult as any) || {};
+    setPublishPatientSummary(interp.patientSummary || "");
   };
 
   const filteredPatients = useMemo(() => {
@@ -4345,7 +4351,7 @@ export default function PatientProfiles() {
 
       {/* Publish Protocol Dialog */}
       {publishDialogLab && (
-        <Dialog open onOpenChange={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); }}>
+        <Dialog open onOpenChange={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); setPublishPatientSummary(""); }}>
           <DialogContent className="max-w-md">
             <DialogHeader>
               <DialogTitle className="flex items-center gap-2">
@@ -4446,11 +4452,31 @@ export default function PatientProfiles() {
               </div>
             </div>
 
+              {/* Health Assessment (patient summary) */}
+              <div className="space-y-1.5">
+                <Label className="text-xs font-medium flex items-center gap-1.5">
+                  Health Assessment
+                  <span className="text-muted-foreground font-normal">(shown as "Your Health Assessment" in patient portal)</span>
+                </Label>
+                <Textarea
+                  placeholder="The patient-friendly summary of their lab results. Edit before publishing — this is exactly what the patient will read."
+                  value={publishPatientSummary}
+                  onChange={(e) => setPublishPatientSummary(e.target.value)}
+                  className="text-sm min-h-[120px] resize-none"
+                  data-testid="input-publish-patient-summary"
+                />
+                {!publishPatientSummary && (
+                  <p className="text-xs text-muted-foreground">
+                    No patient summary found. Generate an interpretation first, or type one above.
+                  </p>
+                )}
+              </div>
+
             <DialogFooter className="gap-2">
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); setIsDietaryGenerating(false); }}
+                onClick={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); setPublishPatientSummary(""); setIsDietaryGenerating(false); }}
                 disabled={publishProtocolMutation.isPending}
               >
                 Cancel
@@ -4460,7 +4486,7 @@ export default function PatientProfiles() {
                 disabled={publishProtocolMutation.isPending}
                 onClick={() => {
                   setPublishingLabId(publishDialogLab.id);
-                  publishProtocolMutation.mutate({ lab: publishDialogLab, notes: publishNotes, dietaryGuidance: publishDietaryGuidance });
+                  publishProtocolMutation.mutate({ lab: publishDialogLab, notes: publishNotes, dietaryGuidance: publishDietaryGuidance, patientSummary: publishPatientSummary });
                 }}
                 style={(portalStatus?.publishedLabResultIds ?? []).includes(publishDialogLab.id)
                   ? { backgroundColor: "#92400e", color: "#fef3c7" }

@@ -816,6 +816,7 @@ export const publishedProtocols = pgTable("published_protocols", {
   supplements: jsonb("supplements").$type<SupplementRecommendation[]>().notNull(),
   clinicianNotes: text("clinician_notes"),
   dietaryGuidance: text("dietary_guidance"),
+  patientSummary: text("patient_summary"),
   labDate: timestamp("lab_date"),
   publishedAt: timestamp("published_at").defaultNow().notNull(),
   firstViewedAt: timestamp("first_viewed_at"),

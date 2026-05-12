@@ -3909,6 +3909,16 @@ Return ONLY this JSON structure:
       const isHormonePattern = (cat: string) => HORMONE_PATTERN_PREFIXES.some(p => cat.startsWith(p));
 
       // Return labs with patient-safe fields (no raw clinical scoring text)
+      // Build per-lab maps for all published-protocol fields
+      const summaryByLabId = new Map<number, string | null>();
+      for (const p of protocols) {
+        if (p.labResultId) {
+          if (p.patientSummary && !summaryByLabId.has(p.labResultId)) {
+            summaryByLabId.set(p.labResultId, p.patientSummary);
+          }
+        }
+      }
+
       const safeLabs = labs.map((lab) => {
         const interp = (lab.interpretationResult as any) || {};
         const allInterpretations: any[] = interp.interpretations || [];
@@ -3922,7 +3932,10 @@ Return ONLY this JSON structure:
           // Surface hormone pattern rows separately for the portal hormone assessment section
           hormonePatternRows: allInterpretations.filter((i: any) => isHormonePattern(i.category || '')),
           supplements: interp.supplements || [],
-          patientSummary: interp.patientSummary || null,
+          // Health Assessment: use the explicitly published summary (edited/approved by provider
+          // at publish time). Fall back to the AI-generated one in interpretationResult only if
+          // the lab has never been published with a summary.
+          patientSummary: summaryByLabId.get(lab.id) ?? interp.patientSummary ?? null,
           preventRisk: interp.preventRisk || null,
           insulinResistance: interp.insulinResistance || null,
           // Female clinical phenotypes (FemaleHormoneAssessmentCard data)
@@ -4008,7 +4021,7 @@ Return ONLY this JSON structure:
   app.post("/api/protocols/publish", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
-      const { patientId, labResultId, supplements, clinicianNotes, dietaryGuidance, labDate } = req.body;
+      const { patientId, labResultId, supplements, clinicianNotes, dietaryGuidance, patientSummary, labDate } = req.body;
       if (!patientId || !supplements) return res.status(400).json({ message: "patientId and supplements are required" });
 
       // Verify clinician can access this patient (clinic-scoped)
@@ -4027,6 +4040,7 @@ Return ONLY this JSON structure:
         supplements,
         clinicianNotes: clinicianNotes || null,
         dietaryGuidance: dietaryGuidance || null,
+        patientSummary: patientSummary || null,
         labDate: labDate ? new Date(labDate) : null,
       });
 
