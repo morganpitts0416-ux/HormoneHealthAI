@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { useParams } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { isFieldVisible } from "@/lib/form-conditions";
@@ -39,6 +39,7 @@ interface IntakeForm {
   name: string;
   description: string | null;
   requiresPatientSignature: boolean;
+  brandingJson?: any;
 }
 
 interface ClinicBranding {
@@ -59,17 +60,47 @@ const FORM_DEFAULT_BORDER = "#d4c9b5";
 const FORM_DEFAULT_MUTED = "#8a7e6b";
 const FORM_DEFAULT_SUBHEAD = "#5a7040";
 
-/** Resolves the public-form palette: clinic branding overrides → historic defaults. */
-function resolveFormPalette(clinic?: ClinicBranding) {
+/**
+ * Resolves the public-form palette.
+ * Priority: form-level brandingJson → clinic branding → ClinIQ defaults.
+ */
+function resolveFormPalette(formBranding?: any, clinic?: ClinicBranding) {
   return {
-    primary: clinic?.primaryColor || FORM_DEFAULT_PRIMARY,
-    background: clinic?.formBackgroundColor || FORM_DEFAULT_BG,
-    headerBg: clinic?.accentColor || FORM_DEFAULT_HEADER_BG,
-    border: FORM_DEFAULT_BORDER,
-    muted: FORM_DEFAULT_MUTED,
-    subhead: clinic?.primaryColor || FORM_DEFAULT_SUBHEAD,
+    primary:    formBranding?.primaryColor    || clinic?.primaryColor        || FORM_DEFAULT_PRIMARY,
+    background: formBranding?.backgroundColor || clinic?.formBackgroundColor || FORM_DEFAULT_BG,
+    headerBg:   formBranding?.headerBgColor   || clinic?.accentColor         || FORM_DEFAULT_HEADER_BG,
+    border:     FORM_DEFAULT_BORDER,
+    muted:      FORM_DEFAULT_MUTED,
+    subhead:    formBranding?.primaryColor    || clinic?.primaryColor        || FORM_DEFAULT_SUBHEAD,
   };
 }
+
+const FONT_FAMILY_MAP: Record<string, string> = {
+  system:       "ui-sans-serif, system-ui, -apple-system, sans-serif",
+  inter:        "'Inter', ui-sans-serif, sans-serif",
+  opensans:     "'Open Sans', ui-sans-serif, sans-serif",
+  lato:         "'Lato', ui-sans-serif, sans-serif",
+  montserrat:   "'Montserrat', ui-sans-serif, sans-serif",
+  georgia:      "Georgia, 'Times New Roman', serif",
+  merriweather: "'Merriweather', Georgia, serif",
+  playfair:     "'Playfair Display', Georgia, serif",
+};
+
+const GFONT_PARAMS: Record<string, string> = {
+  inter:        "Inter:wght@400;500;600;700",
+  opensans:     "Open+Sans:wght@400;500;600;700",
+  lato:         "Lato:wght@400;700",
+  montserrat:   "Montserrat:wght@400;500;600;700",
+  merriweather: "Merriweather:wght@400;700",
+  playfair:     "Playfair+Display:wght@400;600;700",
+};
+
+const FORM_MAX_WIDTH: Record<string, string> = {
+  narrow: "480px",
+  medium: "640px",
+  wide:   "800px",
+  full:   "100%",
+};
 
 interface PublicFormData {
   form: IntakeForm;
@@ -239,14 +270,16 @@ export default function FormPublicPage() {
     );
   }
 
+  const formBranding = data.form.brandingJson ?? null;
+
   if (submitted) {
     return (
-      <PageShell isEmbedded={isEmbedded} clinic={data?.clinic}>
+      <PageShell isEmbedded={isEmbedded} clinic={data?.clinic} formBranding={formBranding}>
         <div className="flex flex-col items-center justify-center gap-4 py-20 text-center">
           <CheckCircle2 className="h-12 w-12 text-green-500" />
-          <p className="font-semibold text-xl">Thank You!</p>
+          <p className="font-semibold text-xl">{formBranding?.successHeading || "Thank You!"}</p>
           <p className="text-muted-foreground text-sm max-w-sm">
-            Your form has been submitted successfully. Your care team will review your responses.
+            {formBranding?.successMessage || "Your form has been submitted successfully. Your care team will review your responses."}
           </p>
         </div>
       </PageShell>
@@ -257,7 +290,6 @@ export default function FormPublicPage() {
   const sortedFields = [...fields].sort((a, b) => a.orderIndex - b.orderIndex);
   const sortedSections = [...sections].sort((a, b) => a.orderIndex - b.orderIndex);
 
-
   // Group fields by section (null = no section)
   const fieldsBySectionId: Record<string | "null", FormField[]> = { null: [] };
   for (const sec of sortedSections) fieldsBySectionId[sec.id] = [];
@@ -267,10 +299,16 @@ export default function FormPublicPage() {
     fieldsBySectionId[key].push(field);
   }
 
-  const palette = resolveFormPalette(data.clinic);
+  const palette = resolveFormPalette(formBranding, data.clinic);
+  const submitLabel = formBranding?.submitButtonLabel || "Submit Form";
+  const btnStyle = formBranding?.buttonStyle ?? "filled";
+  const btnBg      = btnStyle === "outline" ? "transparent" : palette.primary;
+  const btnColor   = btnStyle === "outline" ? palette.primary : palette.background;
+  const btnBorder  = btnStyle === "outline" ? `2px solid ${palette.primary}` : "none";
+  const btnRadius  = btnStyle === "pill"    ? "9999px" : "6px";
 
   return (
-    <PageShell isEmbedded={isEmbedded} clinic={data.clinic}>
+    <PageShell isEmbedded={isEmbedded} clinic={data.clinic} formBranding={formBranding}>
       {/* Form header */}
       <div className="mb-8">
         {isEmbedded && (
@@ -280,8 +318,11 @@ export default function FormPublicPage() {
           </div>
         )}
         <h1 className="text-2xl font-bold" style={{ color: palette.primary }}>{form.name}</h1>
+        {formBranding?.formTagline && (
+          <p className="mt-1 text-sm font-medium" style={{ color: palette.subhead }}>{formBranding.formTagline}</p>
+        )}
         {form.description && (
-          <p className="mt-2 text-muted-foreground">{form.description}</p>
+          <p className="mt-2 text-muted-foreground text-sm">{form.description}</p>
         )}
       </div>
 
@@ -357,10 +398,15 @@ export default function FormPublicPage() {
           disabled={submitMutation.isPending}
           data-testid="button-submit-form"
           className="w-full sm:w-auto"
-          style={!isEmbedded ? { backgroundColor: palette.primary, color: palette.background } : undefined}>
+          style={{
+            backgroundColor: btnBg,
+            color: btnColor,
+            border: btnBorder,
+            borderRadius: btnRadius,
+          }}>
           {submitMutation.isPending ? (
             <><RefreshCw className="h-4 w-4 mr-2 animate-spin" /> Submitting...</>
-          ) : "Submit Form"}
+          ) : submitLabel}
         </Button>
         {submitMutation.isError && (
           <p className="text-sm text-destructive mt-2">
@@ -374,28 +420,46 @@ export default function FormPublicPage() {
 
 // ─── Page Shell ───────────────────────────────────────────────────────────────
 
-function PageShell({ children, clinic, isEmbedded }: {
+function PageShell({ children, clinic, isEmbedded, formBranding }: {
   children: React.ReactNode;
   clinic?: ClinicBranding;
   isEmbedded?: boolean;
+  formBranding?: any;
 }) {
+  const palette   = resolveFormPalette(formBranding, clinic);
+  const fontFamily = FONT_FAMILY_MAP[formBranding?.fontFamily ?? ""] ?? FONT_FAMILY_MAP.system;
+  const maxWidth   = FORM_MAX_WIDTH[formBranding?.formWidth ?? "medium"] ?? "640px";
+
+  // Inject Google Font link if a web font is selected
+  useEffect(() => {
+    const fk = formBranding?.fontFamily;
+    if (!fk || fk === "system" || fk === "georgia") return;
+    const param = GFONT_PARAMS[fk];
+    if (!param) return;
+    const id = `gfont-${fk}`;
+    if (document.getElementById(id)) return;
+    const link = document.createElement("link");
+    link.id   = id;
+    link.rel  = "stylesheet";
+    link.href = `https://fonts.googleapis.com/css2?family=${param}&display=swap`;
+    document.head.appendChild(link);
+  }, [formBranding?.fontFamily]);
+
   if (isEmbedded) {
     return (
-      <div className="bg-transparent">
-        <div className="max-w-2xl mx-auto px-4 py-4">
+      <div style={{ fontFamily }}>
+        <div style={{ maxWidth, margin: "0 auto", padding: "1rem" }}>
           {children}
         </div>
       </div>
     );
   }
 
-  const palette = resolveFormPalette(clinic);
-
   return (
-    <div className="min-h-screen" style={{ backgroundColor: palette.background }}>
+    <div className="min-h-screen" style={{ backgroundColor: palette.background, fontFamily }}>
       {clinic?.clinicName && (
         <div style={{ backgroundColor: palette.headerBg, borderBottom: `1px solid ${palette.border}` }}>
-          <div className="max-w-2xl mx-auto px-4 py-4">
+          <div style={{ maxWidth, margin: "0 auto", padding: "0 1rem" }} className="py-4">
             <div className="flex items-center gap-4 flex-wrap">
               {clinic.clinicLogo && (
                 <img
@@ -410,7 +474,7 @@ function PageShell({ children, clinic, isEmbedded }: {
                 </p>
                 {(clinic.phone || clinic.address) && (
                   <p className="text-xs mt-0.5" style={{ color: palette.subhead }}>
-                    {[clinic.phone, clinic.address].filter(Boolean).join(" \u00B7 ")}
+                    {[clinic.phone, clinic.address].filter(Boolean).join(" · ")}
                   </p>
                 )}
               </div>
@@ -418,14 +482,16 @@ function PageShell({ children, clinic, isEmbedded }: {
           </div>
         </div>
       )}
-      <div className="max-w-2xl mx-auto px-4 py-10">
+      <div style={{ maxWidth, margin: "0 auto", padding: "2.5rem 1rem" }}>
         {children}
       </div>
-      <div className="border-t py-6 text-center" style={{ borderColor: palette.border }}>
-        <p className="text-xs" style={{ color: palette.muted }}>
-          Powered by ClinIQ
-        </p>
-      </div>
+      {!formBranding?.hidePoweredBy && (
+        <div className="border-t py-6 text-center" style={{ borderColor: palette.border }}>
+          <p className="text-xs" style={{ color: palette.muted }}>
+            Powered by ClinIQ
+          </p>
+        </div>
+      )}
     </div>
   );
 }

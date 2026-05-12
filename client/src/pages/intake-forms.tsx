@@ -22,7 +22,8 @@ import {
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
   Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft,
-  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users, Upload, MapPin
+  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users, Upload, MapPin,
+  Palette, Wand2
 } from "lucide-react";
 
 // ─── Types ───────────────────────────────────────────────────────────────────
@@ -46,6 +47,8 @@ interface IntakeForm {
   sections: FormSection[];
   fields: FormField[];
   publications: FormPublication[];
+  brandingJson?: any;
+  settingsJson?: any;
 }
 
 interface FormSection {
@@ -159,6 +162,11 @@ const CATEGORIES = [
   { value: "surgical_history", label: "Surgical History" },
   { value: "medication_review", label: "Medication Review" },
   { value: "symptom_survey", label: "Symptom Survey" },
+  { value: "survey", label: "Survey" },
+  { value: "quiz", label: "Quiz / Assessment" },
+  { value: "lead_capture", label: "Lead Capture" },
+  { value: "consent", label: "Consent Form" },
+  { value: "feedback", label: "Patient Feedback" },
 ];
 
 interface SmartFieldDef {
@@ -1185,6 +1193,9 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
           <Tabs value={activeTab} onValueChange={setActiveTab} className="flex-1">
             <TabsList className="h-auto p-1 w-full sm:w-auto">
               <TabsTrigger value="fields" data-testid="tab-builder" className="text-xs flex-1 sm:flex-none">Builder</TabsTrigger>
+              <TabsTrigger value="style" data-testid="tab-style" className="text-xs flex-1 sm:flex-none">
+                <Palette className="h-3 w-3 mr-1" />Style
+              </TabsTrigger>
               <TabsTrigger value="settings" data-testid="tab-settings" className="text-xs flex-1 sm:flex-none">Settings</TabsTrigger>
               <TabsTrigger value="submissions" data-testid="tab-submissions" className="text-xs flex-1 sm:flex-none">Submissions</TabsTrigger>
             </TabsList>
@@ -1193,6 +1204,24 @@ function FormBuilderView({ formId, onBack, canEdit = true }: { formId: number; o
       </div>
 
       {/* Non-builder tabs */}
+      {activeTab === "style" && (
+        <div className="flex-1 overflow-auto p-3 sm:p-6">
+          <FormStylePanel
+            form={form}
+            onUpdate={(data) =>
+              updateFormMutation.mutate(data, {
+                onSuccess: () => toast({ title: "Style saved" }),
+                onError: (err: any) =>
+                  toast({
+                    title: "Failed to save style",
+                    description: err?.message ?? "Please try again",
+                    variant: "destructive",
+                  }),
+              })
+            }
+          />
+        </div>
+      )}
       {activeTab === "settings" && (
         <div className="flex-1 overflow-auto p-3 sm:p-6">
           <FormSettingsPanel
@@ -2155,6 +2184,251 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
 }
 
 // ─── Form Settings Panel ──────────────────────────────────────────────────────
+
+// ─── Form Style Panel ────────────────────────────────────────────────────────
+
+const FORM_STYLE_THEMES: Record<string, { label: string; bg: string; primary: string; headerBg: string }> = {
+  warm_cream:   { label: "Warm Cream",    bg: "#f9f6f0", primary: "#2e3a20", headerBg: "#e8ddd0" },
+  clean_white:  { label: "Clean White",   bg: "#ffffff", primary: "#1f2937", headerBg: "#f3f4f6" },
+  ocean_blue:   { label: "Ocean Blue",    bg: "#f0f7ff", primary: "#1e6091", headerBg: "#d4e9f7" },
+  sage_green:   { label: "Sage Green",    bg: "#f4f7f2", primary: "#3d7a51", headerBg: "#d6e8d0" },
+  slate:        { label: "Slate",         bg: "#f8fafc", primary: "#334155", headerBg: "#e2e8f0" },
+  rose:         { label: "Rose",          bg: "#fff5f5", primary: "#be123c", headerBg: "#ffe4e6" },
+  dark_elegant: { label: "Dark",          bg: "#1e1e2e", primary: "#c9a84c", headerBg: "#16213e" },
+  midnight:     { label: "Midnight",      bg: "#0f172a", primary: "#38bdf8", headerBg: "#1e293b" },
+};
+
+const FORM_FONT_OPTIONS = [
+  { value: "system",      label: "System Default" },
+  { value: "inter",       label: "Inter — Modern Sans" },
+  { value: "opensans",    label: "Open Sans — Friendly" },
+  { value: "lato",        label: "Lato — Clean" },
+  { value: "montserrat",  label: "Montserrat — Bold" },
+  { value: "georgia",     label: "Georgia — Classic Serif" },
+  { value: "merriweather",label: "Merriweather — Editorial" },
+  { value: "playfair",    label: "Playfair Display — Elegant" },
+];
+
+const FORM_WIDTH_OPTIONS = [
+  { value: "narrow", label: "Narrow  (480 px)" },
+  { value: "medium", label: "Medium  (640 px)" },
+  { value: "wide",   label: "Wide    (800 px)" },
+  { value: "full",   label: "Full Width" },
+];
+
+const BUTTON_STYLE_OPTIONS = [
+  { value: "filled",  label: "Filled" },
+  { value: "outline", label: "Outline" },
+  { value: "pill",    label: "Pill / Rounded" },
+];
+
+function FormStylePanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (data: any) => void }) {
+  const branding = (form.brandingJson as any) ?? {};
+  const { toast } = useToast();
+
+  const [selectedTheme, setSelectedTheme] = useState<string>(branding.theme ?? "warm_cream");
+  const [bgColor,        setBgColor]        = useState<string>(branding.backgroundColor  ?? FORM_STYLE_THEMES.warm_cream.bg);
+  const [primaryColor,   setPrimaryColor]   = useState<string>(branding.primaryColor     ?? FORM_STYLE_THEMES.warm_cream.primary);
+  const [headerBgColor,  setHeaderBgColor]  = useState<string>(branding.headerBgColor    ?? FORM_STYLE_THEMES.warm_cream.headerBg);
+  const [fontFamily,     setFontFamily]     = useState<string>(branding.fontFamily       ?? "system");
+  const [formWidth,      setFormWidth]      = useState<string>(branding.formWidth        ?? "medium");
+  const [buttonStyle,    setButtonStyle]    = useState<string>(branding.buttonStyle      ?? "filled");
+  const [submitLabel,    setSubmitLabel]    = useState<string>(branding.submitButtonLabel ?? "");
+  const [successHeading, setSuccessHeading] = useState<string>(branding.successHeading   ?? "");
+  const [successMessage, setSuccessMessage] = useState<string>(branding.successMessage   ?? "");
+  const [formTagline,    setFormTagline]    = useState<string>(branding.formTagline      ?? "");
+  const [hidePoweredBy,  setHidePoweredBy]  = useState<boolean>(branding.hidePoweredBy  ?? false);
+
+  const applyTheme = (key: string) => {
+    const t = FORM_STYLE_THEMES[key];
+    if (!t) return;
+    setSelectedTheme(key);
+    setBgColor(t.bg);
+    setPrimaryColor(t.primary);
+    setHeaderBgColor(t.headerBg);
+  };
+
+  const handleSave = () => {
+    onUpdate({
+      brandingJson: {
+        theme:             selectedTheme,
+        backgroundColor:   bgColor,
+        primaryColor,
+        headerBgColor,
+        fontFamily,
+        formWidth,
+        buttonStyle,
+        submitButtonLabel: submitLabel.trim()    || null,
+        successHeading:    successHeading.trim() || null,
+        successMessage:    successMessage.trim() || null,
+        formTagline:       formTagline.trim()    || null,
+        hidePoweredBy,
+      },
+    });
+  };
+
+  return (
+    <div className="max-w-xl space-y-6">
+      <div>
+        <h3 className="font-semibold flex items-center gap-2">
+          <Palette className="h-4 w-4 text-muted-foreground" />
+          Form Style
+        </h3>
+        <p className="text-sm text-muted-foreground mt-0.5">
+          Customize the look of your public form for website embeds, lead capture, and patient-facing links.
+        </p>
+      </div>
+
+      {/* ── Theme presets ── */}
+      <div className="space-y-2">
+        <Label>Theme Preset</Label>
+        <div className="grid grid-cols-4 gap-2">
+          {Object.entries(FORM_STYLE_THEMES).map(([key, theme]) => (
+            <button
+              key={key}
+              type="button"
+              onClick={() => applyTheme(key)}
+              data-testid={`button-theme-${key}`}
+              className={`rounded-md overflow-hidden border-2 transition-all text-left ${
+                selectedTheme === key
+                  ? "border-primary ring-1 ring-primary/30"
+                  : "border-transparent hover:border-border"
+              }`}
+            >
+              <div className="h-14" style={{ backgroundColor: theme.bg }}>
+                <div className="h-4 w-full" style={{ backgroundColor: theme.headerBg }} />
+                <div className="px-1.5 pt-1.5 space-y-1">
+                  <div className="h-1.5 w-3/4 rounded-sm" style={{ backgroundColor: theme.primary, opacity: 0.9 }} />
+                  <div className="h-1 w-full rounded-sm" style={{ backgroundColor: theme.primary, opacity: 0.15 }} />
+                  <div className="h-1 w-5/6 rounded-sm" style={{ backgroundColor: theme.primary, opacity: 0.15 }} />
+                </div>
+              </div>
+              <p className="text-[10px] font-medium py-1 bg-muted/50 text-center truncate px-1">{theme.label}</p>
+            </button>
+          ))}
+        </div>
+        {selectedTheme === "custom" && (
+          <p className="text-xs text-muted-foreground flex items-center gap-1">
+            <Wand2 className="h-3 w-3" /> Custom colors active — pick a preset above to reset.
+          </p>
+        )}
+      </div>
+
+      {/* ── Custom colors ── */}
+      <div className="space-y-2">
+        <Label>Colors</Label>
+        <div className="grid grid-cols-3 gap-3">
+          {[
+            { label: "Page Background", val: bgColor,       set: setBgColor,       tid: "color-bg"      },
+            { label: "Primary Color",   val: primaryColor,  set: setPrimaryColor,  tid: "color-primary" },
+            { label: "Header Banner",   val: headerBgColor, set: setHeaderBgColor, tid: "color-header"  },
+          ].map(({ label, val, set, tid }) => (
+            <div key={tid} className="space-y-1">
+              <p className="text-xs text-muted-foreground">{label}</p>
+              <div className="flex items-center gap-1.5">
+                <input
+                  type="color"
+                  value={val}
+                  onChange={e => { set(e.target.value); setSelectedTheme("custom"); }}
+                  className="h-8 w-8 rounded border cursor-pointer p-0.5 flex-shrink-0"
+                  data-testid={tid}
+                />
+                <Input
+                  value={val}
+                  onChange={e => { set(e.target.value); setSelectedTheme("custom"); }}
+                  className="font-mono text-xs"
+                  data-testid={`input-${tid}`}
+                  maxLength={7}
+                />
+              </div>
+            </div>
+          ))}
+        </div>
+      </div>
+
+      {/* ── Typography + Layout ── */}
+      <div className="grid grid-cols-2 gap-4">
+        <div className="space-y-1.5">
+          <Label>Font Family</Label>
+          <Select value={fontFamily} onValueChange={setFontFamily}>
+            <SelectTrigger data-testid="select-font-family"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {FORM_FONT_OPTIONS.map(f => <SelectItem key={f.value} value={f.value}>{f.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+        <div className="space-y-1.5">
+          <Label>Form Width</Label>
+          <Select value={formWidth} onValueChange={setFormWidth}>
+            <SelectTrigger data-testid="select-form-width"><SelectValue /></SelectTrigger>
+            <SelectContent>
+              {FORM_WIDTH_OPTIONS.map(w => <SelectItem key={w.value} value={w.value}>{w.label}</SelectItem>)}
+            </SelectContent>
+          </Select>
+        </div>
+      </div>
+
+      <div className="space-y-1.5">
+        <Label>Submit Button Style</Label>
+        <Select value={buttonStyle} onValueChange={setButtonStyle}>
+          <SelectTrigger data-testid="select-button-style"><SelectValue /></SelectTrigger>
+          <SelectContent>
+            {BUTTON_STYLE_OPTIONS.map(b => <SelectItem key={b.value} value={b.value}>{b.label}</SelectItem>)}
+          </SelectContent>
+        </Select>
+      </div>
+
+      {/* ── Custom text ── */}
+      <div className="space-y-4 pt-2 border-t">
+        <h4 className="text-sm font-medium text-muted-foreground uppercase tracking-wide text-xs">Custom Text</h4>
+
+        <div className="space-y-1.5">
+          <Label>Form Tagline <span className="text-muted-foreground font-normal">(optional)</span></Label>
+          <Input value={formTagline} onChange={e => setFormTagline(e.target.value)}
+            placeholder="A brief subtitle shown under the form title"
+            data-testid="input-form-tagline" />
+        </div>
+
+        <div className="space-y-1.5">
+          <Label>Submit Button Label <span className="text-muted-foreground font-normal">(optional)</span></Label>
+          <Input value={submitLabel} onChange={e => setSubmitLabel(e.target.value)}
+            placeholder='Default: "Submit Form"'
+            data-testid="input-submit-label" />
+        </div>
+
+        <div className="grid grid-cols-1 gap-3">
+          <div className="space-y-1.5">
+            <Label>Success Heading <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Input value={successHeading} onChange={e => setSuccessHeading(e.target.value)}
+              placeholder='Default: "Thank You!"'
+              data-testid="input-success-heading" />
+          </div>
+          <div className="space-y-1.5">
+            <Label>Success Message <span className="text-muted-foreground font-normal">(optional)</span></Label>
+            <Textarea value={successMessage} onChange={e => setSuccessMessage(e.target.value)}
+              placeholder="Default: Your form has been submitted successfully. Your care team will review your responses."
+              rows={2}
+              data-testid="textarea-success-message" />
+          </div>
+        </div>
+      </div>
+
+      {/* ── Branding ── */}
+      <div className="flex items-center justify-between py-3 border-t">
+        <div>
+          <Label>Hide "Powered by ClinIQ"</Label>
+          <p className="text-xs text-muted-foreground">Remove the ClinIQ footer from the public form</p>
+        </div>
+        <Switch checked={hidePoweredBy} onCheckedChange={setHidePoweredBy} data-testid="switch-hide-powered-by" />
+      </div>
+
+      <Button onClick={handleSave} data-testid="button-save-style">
+        <Palette className="h-3.5 w-3.5 mr-1.5" />
+        Save Style
+      </Button>
+    </div>
+  );
+}
 
 function FormSettingsPanel({ form, onUpdate }: { form: IntakeForm; onUpdate: (data: any) => void }) {
   const [name, setName] = useState(form.name);
