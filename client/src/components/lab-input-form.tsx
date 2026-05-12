@@ -895,6 +895,58 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
 
                 <FormField
                   control={form.control}
+                  name="freeTestosterone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Calculated Free Testosterone</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="120"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-free-testosterone"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">pg/mL</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Optimal 120-220 pg/mL</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="bioavailableTestosterone"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Bioavailable Testosterone</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="180"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-bioavailable-testosterone"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/dL</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Optimal 100-280 ng/dL</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="lh"
                   render={({ field }) => (
                     <FormItem>
@@ -1096,6 +1148,159 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
 
                 <FormField
                   control={form.control}
+                  name="freeT4"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Free T4</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="1.2"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-free-t4-thyroid"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/dL</span>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="freeT3"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Free T3</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.01"
+                            placeholder="3.5"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-free-t3"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">pg/mL</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Optimal 3.2-4.2 pg/mL</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="totalT3"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Total T3</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            placeholder="130"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-total-t3"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/dL</span>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="totalT4"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Total T4</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="8.0"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-total-t4"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">mcg/dL</span>
+                      </div>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="tpoAntibodies"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Anti-TPO Antibodies</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            placeholder="10"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-tpo-antibodies-male"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">IU/mL</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">&lt;35 negative, &gt;100 Hashimoto's</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="antiTg"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Anti-Thyroglobulin</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            placeholder="10"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-anti-tg-male"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">IU/mL</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">&lt;20 negative, &gt;40 positive</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
                   name="a1c"
                   render={({ field }) => (
                     <FormItem>
@@ -1246,31 +1451,6 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
 
                 <FormField
                   control={form.control}
-                  name="freeT4"
-                  render={({ field }) => (
-                    <FormItem>
-                      <FormLabel className="text-xs font-medium uppercase">Free T4</FormLabel>
-                      <div className="flex items-center gap-2">
-                        <FormControl>
-                          <Input
-                            type="number"
-                            step="0.01"
-                            placeholder="1.2"
-                            {...field}
-                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
-                            value={field.value ?? ''}
-                            data-testid="input-free-t4"
-                          />
-                        </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">ng/dL</span>
-                      </div>
-                      <FormMessage />
-                    </FormItem>
-                  )}
-                />
-
-                <FormField
-                  control={form.control}
                   name="apoB"
                   render={({ field }) => (
                     <FormItem>
@@ -1327,7 +1507,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
             <AccordionTrigger className="hover:no-underline" data-testid="accordion-inflammation">
               <div className="flex items-center gap-2">
                 <Activity className="w-4 h-4 text-yellow-500" />
-                <span className="font-semibold">Inflammation Markers</span>
+                <span className="font-semibold">Inflammation &amp; Metabolic Markers</span>
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
@@ -1353,6 +1533,58 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
                         <span className="text-sm text-muted-foreground whitespace-nowrap">mg/L</span>
                       </div>
                       <p className="text-xs text-muted-foreground">&lt;1 low risk, 1–3 moderate, &gt;3 high risk</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="dheas"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">DHEA-S</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="1"
+                            placeholder="400"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-dheas-male"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">mcg/dL</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Optimal 280-650 mcg/dL (male)</p>
+                      <FormMessage />
+                    </FormItem>
+                  )}
+                />
+
+                <FormField
+                  control={form.control}
+                  name="homocysteine"
+                  render={({ field }) => (
+                    <FormItem>
+                      <FormLabel className="text-xs font-medium uppercase">Homocysteine</FormLabel>
+                      <div className="flex items-center gap-2">
+                        <FormControl>
+                          <Input
+                            type="number"
+                            step="0.1"
+                            placeholder="8.0"
+                            {...field}
+                            onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)}
+                            value={field.value ?? ''}
+                            data-testid="input-homocysteine-male"
+                          />
+                        </FormControl>
+                        <span className="text-sm text-muted-foreground whitespace-nowrap">µmol/L</span>
+                      </div>
+                      <p className="text-xs text-muted-foreground">Optimal &lt;10, elevated &gt;15</p>
                       <FormMessage />
                     </FormItem>
                   )}

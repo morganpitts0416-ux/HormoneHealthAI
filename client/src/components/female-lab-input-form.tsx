@@ -989,11 +989,40 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                 )} />
                 <FormField control={form.control} name="tpoAntibodies" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-medium uppercase">TPO Antibodies</FormLabel>
+                    <FormLabel className="text-xs font-medium uppercase">Anti-TPO Antibodies</FormLabel>
                     <div className="flex items-center gap-2">
                       <FormControl><Input type="number" step="1" placeholder="10" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-tpo-antibodies" /></FormControl>
                       <span className="text-sm text-muted-foreground">IU/mL</span>
                     </div>
+                    <p className="text-xs text-muted-foreground">&lt;35 negative, &gt;100 Hashimoto's</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="totalT3" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Total T3</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="130" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-total-t3-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">ng/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="totalT4" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Total T4</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="8.0" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-total-t4-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">mcg/dL</span>
+                    </div>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="antiTg" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Anti-Thyroglobulin</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="10" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-anti-tg-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">IU/mL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">&lt;20 negative, &gt;40 positive</p>
                   </FormItem>
                 )} />
               </div>
@@ -1220,6 +1249,16 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                       <span className="text-sm text-muted-foreground">mg/L</span>
                     </div>
                     <p className="text-xs text-muted-foreground">&lt;1 low risk, 1-3 moderate, &gt;3 high risk</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="homocysteine" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Homocysteine</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="8.0" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-homocysteine-female" /></FormControl>
+                      <span className="text-sm text-muted-foreground">µmol/L</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Optimal &lt;10, elevated &gt;15</p>
                   </FormItem>
                 )} />
               </div>

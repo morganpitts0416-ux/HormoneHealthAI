@@ -1192,6 +1192,62 @@ export class ClinicalLogicEngine {
       });
     }
 
+    // Bioavailable Testosterone
+    if (labs.bioavailableTestosterone !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+      const onTRT = labs.onTRT === true;
+
+      if (onTRT) {
+        if (labs.bioavailableTestosterone > 450) {
+          status = 'abnormal';
+          interpretation = `Bioavailable testosterone elevated (${labs.bioavailableTestosterone} ng/dL) above therapeutic target on TRT. Supraphysiologic levels may increase RBC/hematocrit and mood effects.`;
+          recommendation = 'Reduce testosterone dose 10-20%. Recheck in 6-8 weeks. Monitor hematocrit.';
+        } else if (labs.bioavailableTestosterone >= 130 && labs.bioavailableTestosterone <= 450) {
+          status = 'normal';
+          interpretation = `Bioavailable testosterone optimal (${labs.bioavailableTestosterone} ng/dL) within therapeutic target range for TRT. Reflects excellent tissue delivery of active hormone.`;
+          recommendation = 'Maintain current dose. Routine monitoring per protocol.';
+        } else if (labs.bioavailableTestosterone >= 70 && labs.bioavailableTestosterone < 130) {
+          status = 'borderline';
+          interpretation = `Bioavailable testosterone borderline low (${labs.bioavailableTestosterone} ng/dL) despite TRT. Therapeutic response may be suboptimal.`;
+          recommendation = 'Evaluate SHBG — elevated SHBG reduces bioavailability. Consider dose adjustment or injection frequency change if symptomatic.';
+        } else {
+          status = 'abnormal';
+          interpretation = `Bioavailable testosterone low (<70 ng/dL) on TRT. Insufficient tissue delivery of active hormone.`;
+          recommendation = 'Increase dose or adjust frequency. Check SHBG — if >60 nmol/L, address SHBG drivers. Repeat labs in 4-6 weeks after adjustment.';
+        }
+      } else {
+        if (labs.bioavailableTestosterone > 280) {
+          status = 'borderline';
+          interpretation = `Bioavailable testosterone elevated (${labs.bioavailableTestosterone} ng/dL). Evaluate for androgen excess.`;
+          recommendation = 'Correlate with total testosterone and clinical symptoms. Evaluate for secondary causes if significantly elevated.';
+        } else if (labs.bioavailableTestosterone >= 100 && labs.bioavailableTestosterone <= 280) {
+          status = 'normal';
+          interpretation = `Bioavailable testosterone in optimal range (${labs.bioavailableTestosterone} ng/dL). Reflects adequate active hormone delivery to tissues.`;
+          recommendation = 'Healthy androgen bioavailability. Routine monitoring.';
+        } else if (labs.bioavailableTestosterone >= 70 && labs.bioavailableTestosterone < 100) {
+          status = 'borderline';
+          interpretation = `Bioavailable testosterone borderline low (${labs.bioavailableTestosterone} ng/dL). May limit optimal androgen effects at the tissue level.`;
+          recommendation = 'Evaluate SHBG. If SHBG elevated, address drivers. If symptomatic (fatigue, low libido, poor body composition), discuss TRT candidacy.';
+        } else {
+          status = 'abnormal';
+          interpretation = `Bioavailable testosterone deficient (<70 ng/dL). Insufficient active hormone for optimal function regardless of total testosterone level.`;
+          recommendation = 'Strong indicator for TRT candidacy when symptomatic. Evaluate for secondary hypogonadism (LH, FSH). Address SHBG if elevated.';
+        }
+      }
+
+      interpretations.push({
+        category: 'Bioavailable Testosterone',
+        value: labs.bioavailableTestosterone,
+        unit: 'ng/dL',
+        status,
+        referenceRange: onTRT ? '130-450 ng/dL (therapeutic target)' : '100-280 ng/dL',
+        interpretation,
+        recommendation,
+      });
+    }
+
     // RBC (Red Blood Cell Count)
     if (labs.rbc !== undefined) {
       let status: LabInterpretation['status'] = 'normal';
@@ -1534,6 +1590,259 @@ export class ClinicalLogicEngine {
         unit: 'ng/dL',
         status,
         referenceRange: '0.9-1.7 ng/dL',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Free T3 (Free Triiodothyronine) — the active thyroid hormone
+    if (labs.freeT3 !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.freeT3 > 4.2) {
+        status = 'abnormal';
+        interpretation = `Elevated Free T3 (${labs.freeT3} pg/mL). Possible hyperthyroidism or excessive thyroid medication.`;
+        recommendation = 'Correlate with TSH — if suppressed, evaluate for hyperthyroidism or dose reduction if on thyroid medication. Consider endocrine referral.';
+      } else if (labs.freeT3 >= 3.2 && labs.freeT3 <= 4.2) {
+        status = 'normal';
+        interpretation = `Free T3 optimal (${labs.freeT3} pg/mL). Active thyroid hormone in the clinic-preferred 3.2–4.2 pg/mL range. Excellent T4→T3 conversion.`;
+        recommendation = 'Optimal thyroid function. Maintain current approach and monitor routinely.';
+      } else if (labs.freeT3 >= 2.3 && labs.freeT3 < 3.2) {
+        status = 'borderline';
+        interpretation = `Free T3 low-normal (${labs.freeT3} pg/mL). Within standard reference range but below the clinic-preferred optimal of 3.2 pg/mL. Many patients are symptomatic in this range due to suboptimal T4→T3 conversion.`;
+        recommendation = 'Evaluate for symptoms: fatigue, cold intolerance, hair thinning, constipation, brain fog, weight difficulty. Low T3 despite adequate T4 suggests peripheral conversion impairment — assess selenium status, chronic inflammation (hs-CRP), cortisol burden, and medications (beta-blockers, amiodarone). If symptomatic, consider trial of T3 support or combination T4/T3 therapy.';
+      } else if (labs.freeT3 >= 1.8 && labs.freeT3 < 2.3) {
+        status = 'abnormal';
+        interpretation = `Free T3 low (${labs.freeT3} pg/mL). Below laboratory reference range — consistent with hypothyroid symptoms even when TSH/T4 appear normal.`;
+        recommendation = 'Clinical hypothyroid pattern. If on levothyroxine and symptomatic, consider adding T3 (liothyronine) or switching to combination T4/T3 therapy. Address conversion factors: selenium deficiency, elevated cortisol, chronic inflammation. Evaluate TSH and Free T4 concurrently.';
+      } else {
+        status = 'critical';
+        interpretation = `Free T3 critically low (<1.8 pg/mL). Severe thyroid hormone deficiency at the tissue level.`;
+        recommendation = 'URGENT: Initiate or optimize thyroid replacement. Consult endocrinology if etiology unclear. Check for central hypothyroidism (low TSH + low T3/T4).';
+      }
+
+      interpretations.push({
+        category: 'Free T3',
+        value: labs.freeT3,
+        unit: 'pg/mL',
+        status,
+        referenceRange: '2.3-4.2 pg/mL (optimal >3.2)',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Total T3
+    if (labs.totalT3 !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.totalT3 > 200) {
+        status = 'abnormal';
+        interpretation = `Total T3 elevated (${labs.totalT3} ng/dL). Possible hyperthyroidism or T3 supplementation effect.`;
+        recommendation = 'Correlate with TSH and Free T3. Evaluate for thyrotoxicosis. If on T3 medication, consider dose reduction.';
+      } else if (labs.totalT3 >= 100 && labs.totalT3 <= 200) {
+        status = 'normal';
+        interpretation = `Total T3 optimal (${labs.totalT3} ng/dL). Adequate total circulating T3 pool.`;
+        recommendation = 'Normal T3 production and transport. Routine monitoring.';
+      } else if (labs.totalT3 >= 80 && labs.totalT3 < 100) {
+        status = 'borderline';
+        interpretation = `Total T3 borderline low (${labs.totalT3} ng/dL). Suboptimal circulating T3 — correlate with Free T3 for clinical significance.`;
+        recommendation = 'Evaluate Free T3 for active hormone level. Address conversion impairment if Free T3 also low: selenium supplementation, reduce cortisol burden, optimize iron status.';
+      } else if (labs.totalT3 >= 60 && labs.totalT3 < 80) {
+        status = 'abnormal';
+        interpretation = `Total T3 low (${labs.totalT3} ng/dL). Consistent with hypothyroid state — reduced T3 production or conversion.`;
+        recommendation = 'Optimize thyroid replacement. Consider combination T4/T3 therapy if on levothyroxine alone and symptomatic. Supplement selenium 200 mcg/day to support T4→T3 conversion.';
+      } else {
+        status = 'critical';
+        interpretation = `Total T3 critically low (<60 ng/dL). Severe hypothyroid state.`;
+        recommendation = 'Immediate thyroid replacement optimization. Consider T3 therapy alongside T4. Evaluate for pituitary dysfunction.';
+      }
+
+      interpretations.push({
+        category: 'Total T3',
+        value: labs.totalT3,
+        unit: 'ng/dL',
+        status,
+        referenceRange: '80-200 ng/dL (optimal 100-180)',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Total T4 (Total Thyroxine)
+    if (labs.totalT4 !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.totalT4 > 12.0) {
+        status = 'abnormal';
+        interpretation = `Total T4 elevated (${labs.totalT4} mcg/dL). May indicate hyperthyroidism, exogenous thyroid excess, or elevated thyroid binding globulin (TBG).`;
+        recommendation = 'Correlate with Free T4 and TSH. If Free T4 normal, elevated TBG likely (estrogen effect, pregnancy). If Free T4 also elevated, evaluate for hyperthyroidism.';
+      } else if (labs.totalT4 >= 6.5 && labs.totalT4 <= 12.0) {
+        status = 'normal';
+        interpretation = `Total T4 optimal (${labs.totalT4} mcg/dL). Normal total circulating thyroxine. Adequate thyroid production.`;
+        recommendation = 'Normal thyroid hormone production. Routine monitoring.';
+      } else if (labs.totalT4 >= 5.0 && labs.totalT4 < 6.5) {
+        status = 'borderline';
+        interpretation = `Total T4 borderline low (${labs.totalT4} mcg/dL). Within standard reference but below optimal — correlate with Free T4.`;
+        recommendation = 'Evaluate Free T4 for accurate assessment. If Free T4 also low, consider thyroid support. Low TBG can cause low Total T4 with normal Free T4 (common with androgens/anabolic use).';
+      } else {
+        status = 'abnormal';
+        interpretation = `Total T4 low (<5 mcg/dL). Reduced total thyroxine — consistent with hypothyroid state or very low thyroid-binding proteins.`;
+        recommendation = 'Confirm with Free T4 and TSH. Initiate or optimize thyroid replacement if Free T4 also low and TSH elevated.';
+      }
+
+      interpretations.push({
+        category: 'Total T4',
+        value: labs.totalT4,
+        unit: 'mcg/dL',
+        status,
+        referenceRange: '5.0-12.0 mcg/dL (optimal 6.5-12.0)',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Anti-TPO Antibodies (Thyroid Peroxidase Antibodies)
+    if (labs.tpoAntibodies !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.tpoAntibodies > 500) {
+        status = 'critical';
+        interpretation = `Anti-TPO antibodies markedly elevated (${labs.tpoAntibodies} IU/mL). Strongly positive — consistent with active autoimmune thyroiditis (Hashimoto's disease). High antibody burden correlates with accelerated thyroid destruction and risk of overt hypothyroidism.`;
+        recommendation = "PROVIDER: Confirm Hashimoto's diagnosis. Initiate or optimize levothyroxine even if TSH borderline — protect remaining thyroid tissue. Prescribe selenium 200 mcg/day (evidence-based for reducing TPO antibodies). Consider LDN (low-dose naltrexone) if autoimmune burden high. Dietary: eliminate gluten trial 90 days, reduce inflammatory foods, address microbiome. Recheck TPO antibodies at 6-12 months to track response to treatment.";
+      } else if (labs.tpoAntibodies > 100 && labs.tpoAntibodies <= 500) {
+        status = 'abnormal';
+        interpretation = `Anti-TPO antibodies elevated (${labs.tpoAntibodies} IU/mL). Positive — consistent with Hashimoto's thyroiditis. The immune system is attacking thyroid tissue.`;
+        recommendation = "Confirm Hashimoto's diagnosis clinically. Monitor TSH/Free T4 every 6 months — autoimmune thyroiditis progressively reduces thyroid function. Prescribe selenium 200 mcg/day. Discuss dietary anti-inflammatory approach (gluten reduction, whole foods, gut health). Optimize thyroid hormone levels to minimize autoimmune burden.";
+      } else if (labs.tpoAntibodies > 35 && labs.tpoAntibodies <= 100) {
+        status = 'borderline';
+        interpretation = `Anti-TPO antibodies borderline elevated (${labs.tpoAntibodies} IU/mL). Early autoimmune thyroid activity — may represent early Hashimoto's or transient thyroid inflammation.`;
+        recommendation = 'Monitor thyroid function every 6 months. Begin selenium 200 mcg/day as primary prevention. Anti-inflammatory lifestyle counseling. Recheck antibodies in 6-12 months — rising trend warrants increased monitoring.';
+      } else {
+        status = 'normal';
+        interpretation = `Anti-TPO antibodies negative (${labs.tpoAntibodies} IU/mL). No autoimmune thyroid activity detected.`;
+        recommendation = 'No autoimmune thyroid disease. Routine monitoring with annual thyroid panel.';
+      }
+
+      interpretations.push({
+        category: 'Anti-TPO Antibodies',
+        value: labs.tpoAntibodies,
+        unit: 'IU/mL',
+        status,
+        referenceRange: '<35 IU/mL',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Anti-Thyroglobulin Antibodies (Anti-Tg)
+    if (labs.antiTg !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.antiTg > 40) {
+        status = 'abnormal';
+        interpretation = `Anti-thyroglobulin antibodies positive (${labs.antiTg} IU/mL). Elevated anti-Tg indicates autoimmune thyroid disease — consistent with Hashimoto's thyroiditis or Graves disease. Approximately 10-15% of Hashimoto's patients have isolated anti-Tg elevation with negative TPO antibodies.`;
+        recommendation = "Treat as Hashimoto's thyroiditis if clinical picture consistent. Optimize TSH to 0.5-2.5 mIU/L. Prescribe selenium 200 mcg/day. Monitor thyroid function every 6 months. Anti-Tg is also used as a tumor marker for differentiated thyroid cancer — correlate with clinical context. Anti-inflammatory dietary approach.";
+      } else if (labs.antiTg > 20 && labs.antiTg <= 40) {
+        status = 'borderline';
+        interpretation = `Anti-thyroglobulin antibodies borderline elevated (${labs.antiTg} IU/mL). Low-level autoimmune thyroid activity. May represent early Hashimoto's, particularly if TPO antibodies also abnormal.`;
+        recommendation = "Monitor closely, especially if TPO antibodies also elevated. Selenium 200 mcg/day. Recheck in 6 months. If rising trend, treat as early Hashimoto's.";
+      } else {
+        status = 'normal';
+        interpretation = `Anti-thyroglobulin antibodies negative (${labs.antiTg} IU/mL). No anti-thyroglobulin autoimmunity detected.`;
+        recommendation = 'No thyroglobulin autoimmunity. Routine monitoring.';
+      }
+
+      interpretations.push({
+        category: 'Anti-Thyroglobulin Antibodies',
+        value: labs.antiTg,
+        unit: 'IU/mL',
+        status,
+        referenceRange: '<20 IU/mL',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // DHEA-S (DHEA-Sulfate) — Male adrenal androgen
+    if (labs.dheas !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.dheas > 650) {
+        status = 'abnormal';
+        interpretation = `DHEA-S markedly elevated (${labs.dheas} mcg/dL). Adrenal androgen excess — evaluate for adrenal hyperplasia or adrenal tumor.`;
+        recommendation = 'Order 17-OH progesterone to rule out congenital adrenal hyperplasia. Consider adrenal imaging if very high or rising. Endocrinology referral if etiology unclear.';
+      } else if (labs.dheas >= 280 && labs.dheas <= 650) {
+        status = 'normal';
+        interpretation = `DHEA-S optimal (${labs.dheas} mcg/dL). Healthy adrenal androgen production — supports energy, libido, muscle mass, and cognitive function.`;
+        recommendation = 'Excellent adrenal reserve. No intervention needed. Continue lifestyle optimization to maintain levels.';
+      } else if (labs.dheas >= 150 && labs.dheas < 280) {
+        status = 'borderline';
+        interpretation = `DHEA-S borderline low (${labs.dheas} mcg/dL). Below optimal for most adult men — may contribute to fatigue, reduced libido, muscle loss, and mood changes. DHEA-S declines naturally with age (peak in late 20s), but low levels relative to symptom burden warrant attention.`;
+        recommendation = 'Evaluate adrenal function in context of symptoms. Consider DHEA supplementation 25-50 mg/day if symptomatic and no contraindication. Support adrenal reserve with adaptogenic herbs (ashwagandha, rhodiola), adequate sleep, and stress management. Recheck in 3-6 months.';
+      } else {
+        status = 'abnormal';
+        interpretation = `DHEA-S deficient (<150 mcg/dL). Significantly reduced adrenal androgen production. This level is associated with increased fatigue, low libido, poor body composition, cognitive decline, and reduced quality of life.`;
+        recommendation = 'PROVIDER: DHEA supplementation 25-50 mg/day with morning meal (convert to testosterone/estrogen peripherally). Evaluate for adrenal insufficiency (morning cortisol, ACTH stimulation if indicated). Full adrenal support protocol: adaptogen therapy, sleep optimization, cortisol management. Monitor DHEA-S and testosterone at 6-8 weeks.';
+      }
+
+      interpretations.push({
+        category: 'DHEA-S',
+        value: labs.dheas,
+        unit: 'mcg/dL',
+        status,
+        referenceRange: '280-650 mcg/dL (optimal male range)',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Homocysteine — cardiovascular and methylation risk marker
+    if (labs.homocysteine !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.homocysteine > 30) {
+        status = 'critical';
+        interpretation = `Homocysteine critically elevated (${labs.homocysteine} µmol/L). Severe hyperhomocysteinemia — major independent cardiovascular risk factor. Associated with thrombosis, stroke, accelerated atherosclerosis, and cognitive impairment. Consider methylation disorder or severe B-vitamin deficiency.`;
+        recommendation = 'URGENT: Begin aggressive B-vitamin therapy: methylfolate 1-5 mg/day, methylcobalamin B12 1000-2000 mcg/day, pyridoxal-5-phosphate (B6) 50-100 mg/day. Rule out MTHFR polymorphism. Evaluate renal function (impaired clearance). Consider cardiology referral if cardiovascular disease present. Recheck in 8 weeks.';
+      } else if (labs.homocysteine > 15 && labs.homocysteine <= 30) {
+        status = 'abnormal';
+        interpretation = `Homocysteine elevated (${labs.homocysteine} µmol/L). Hyperhomocysteinemia — significant cardiovascular and thrombotic risk. Associated with B12, B6, and folate deficiency, and MTHFR gene variants that impair methylation.`;
+        recommendation = 'Begin methyl B-vitamin protocol: methylfolate 1 mg/day, methylcobalamin B12 1000 mcg/day, P5P (B6) 25-50 mg/day. Check serum B12 and folate. Consider MTHFR genetic testing. Dietary: increase leafy greens, legumes, eggs. Reduce red meat and alcohol. Recheck homocysteine in 8-12 weeks.';
+      } else if (labs.homocysteine > 10 && labs.homocysteine <= 15) {
+        status = 'borderline';
+        interpretation = `Homocysteine borderline elevated (${labs.homocysteine} µmol/L). Above optimal clinic target of <10 µmol/L. Emerging cardiovascular risk — correlate with other risk factors (hs-CRP, lipid panel, PREVENT score).`;
+        recommendation = 'Optimize B-vitamin intake: methylfolate 400-800 mcg/day, B12 500-1000 mcg/day, B6. Dietary: increase methylation-supportive foods (leafy greens, eggs, legumes). If above 12 µmol/L, consider MTHFR testing. Recheck in 3-6 months.';
+      } else if (labs.homocysteine >= 7 && labs.homocysteine <= 10) {
+        status = 'normal';
+        interpretation = `Homocysteine in acceptable range (${labs.homocysteine} µmol/L). Within standard normal limits, though clinic-preferred optimal is <7 µmol/L.`;
+        recommendation = 'Maintain B-vitamin status. Dietary optimization: leafy greens, eggs, legumes. Consider methylfolate if MTHFR positive or family history of cardiovascular disease.';
+      } else {
+        status = 'normal';
+        interpretation = `Homocysteine optimal (${labs.homocysteine} µmol/L). Excellent methylation capacity. Low cardiovascular risk from this marker.`;
+        recommendation = 'Optimal homocysteine. Maintain current nutrition and B-vitamin status.';
+      }
+
+      interpretations.push({
+        category: 'Homocysteine',
+        value: labs.homocysteine,
+        unit: 'µmol/L',
+        status,
+        referenceRange: '<15 µmol/L (optimal <10)',
         interpretation,
         recommendation,
       });

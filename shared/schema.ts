@@ -142,11 +142,21 @@ export const labValuesSchema = z.object({
   lh: z.number().optional(),
   prolactin: z.number().optional(),
   shbg: z.number().optional(), // Sex Hormone Binding Globulin
-  freeTestosterone: z.number().optional(), // Calculated or measured
-  
-  // Other
+  freeTestosterone: z.number().optional(), // Calculated Free Testosterone (pg/mL)
+  bioavailableTestosterone: z.number().optional(), // Bioavailable Testosterone (ng/dL)
+
+  // Thyroid Panel
   tsh: z.number().optional(),
   freeT4: z.number().optional(), // Free Thyroxine (ng/dL)
+  freeT3: z.number().optional(), // Free Triiodothyronine (pg/mL)
+  totalT3: z.number().optional(), // Total T3 (ng/dL)
+  totalT4: z.number().optional(), // Total T4 / Thyroxine (mcg/dL)
+  tpoAntibodies: z.number().optional(), // Anti-TPO Antibodies (IU/mL)
+  antiTg: z.number().optional(), // Anti-Thyroglobulin Antibodies (IU/mL)
+
+  // Other
+  dheas: z.number().optional(), // DHEA-Sulfate (mcg/dL)
+  homocysteine: z.number().optional(), // Homocysteine (µmol/L)
   psa: z.number().optional(),
   a1c: z.number().optional(),
   hsCRP: z.number().optional(), // High-Sensitivity C-Reactive Protein (mg/dL)
@@ -248,9 +258,13 @@ export const femaleLabValuesSchema = z.object({
   tsh: z.number().optional(),
   freeT4: z.number().optional(),
   freeT3: z.number().optional(),
-  tpoAntibodies: z.number().optional(), // Thyroid Peroxidase Antibodies
-  
+  totalT3: z.number().optional(), // Total T3 (ng/dL)
+  totalT4: z.number().optional(), // Total T4 / Thyroxine (mcg/dL)
+  tpoAntibodies: z.number().optional(), // Anti-TPO Antibodies (IU/mL)
+  antiTg: z.number().optional(), // Anti-Thyroglobulin Antibodies (IU/mL)
+
   // Other
+  homocysteine: z.number().optional(), // Homocysteine (µmol/L)
   a1c: z.number().optional(),
   vitaminD: z.number().optional(),
   ferritin: z.number().optional(),
