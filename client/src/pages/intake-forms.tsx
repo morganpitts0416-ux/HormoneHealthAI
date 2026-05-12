@@ -811,7 +811,7 @@ const FIELD_PALETTE_GROUPS = [
   },
   {
     label: "Layout",
-    types: ["heading", "paragraph", "signature"],
+    types: ["heading", "paragraph", "signature", "initials"],
   },
 ];
 
