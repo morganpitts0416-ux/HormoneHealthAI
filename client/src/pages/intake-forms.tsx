@@ -440,13 +440,13 @@ function BundlesSection({ forms }: { forms: IntakeForm[] }) {
                     const checked = selectedFormIds.includes(f.id);
                     const idx = selectedFormIds.indexOf(f.id);
                     return (
-                      <div key={f.id} className={`flex items-center gap-2 rounded p-1.5 ${checked ? "bg-muted/60" : "hover:bg-muted/30"}`}
+                      <div key={f.id} className={`flex items-start gap-2 rounded p-1.5 ${checked ? "bg-muted/60" : "hover:bg-muted/30"}`}
                         data-testid={`bundle-form-row-${f.id}`}>
                         <input type="checkbox" id={`bf-${f.id}`} checked={checked} onChange={() => toggleForm(f.id)}
-                          className="h-3.5 w-3.5 accent-primary" data-testid={`checkbox-bundle-form-${f.id}`} />
-                        <label htmlFor={`bf-${f.id}`} className="flex-1 text-sm cursor-pointer truncate">{f.name}</label>
+                          className="h-3.5 w-3.5 mt-0.5 shrink-0 accent-primary" data-testid={`checkbox-bundle-form-${f.id}`} />
+                        <label htmlFor={`bf-${f.id}`} className="flex-1 text-sm cursor-pointer leading-snug break-words min-w-0">{f.name}</label>
                         {checked && (
-                          <div className="flex items-center gap-0.5">
+                          <div className="flex items-center gap-0.5 shrink-0">
                             <span className="text-xs text-muted-foreground mr-1">#{idx + 1}</span>
                             <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => moveForm(idx, -1)} disabled={idx === 0}
                               data-testid={`button-bundle-move-up-${f.id}`}>
