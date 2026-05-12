@@ -46,6 +46,7 @@ import IntakeFormsPage from "@/pages/intake-forms";
 import NoteTemplatesPage from "@/pages/note-templates";
 import FormSubmissionsPage from "@/pages/form-submissions";
 import FormPublicPage from "@/pages/form-public";
+import FormPacketPage from "@/pages/form-packet";
 import PrivacyPolicy from "@/pages/privacy";
 import TermsOfService from "@/pages/terms";
 import BusinessAssociateAgreement from "@/pages/baa";
@@ -315,6 +316,7 @@ function Router() {
         {() => <ProtectedRoute component={FormSubmissionsPage} />}
       </Route>
       <Route path="/f/:token" component={FormPublicPage} />
+      <Route path="/packet/:token" component={FormPacketPage} />
       <Route path="/help">
         {() => <ProtectedRoute component={HelpCenter} />}
       </Route>

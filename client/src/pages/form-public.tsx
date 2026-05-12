@@ -147,7 +147,14 @@ export default function FormPublicPage() {
         if (!r.ok) throw new Error((await r.json()).message ?? "Submit failed");
         return r.json();
       }),
-    onSuccess: () => setSubmitted(true),
+    onSuccess: () => {
+      const pkt = new URLSearchParams(window.location.search).get("pkt");
+      if (pkt && window.parent && window.parent !== window) {
+        window.parent.postMessage({ type: "cliniq-packet-form-done", pkt }, "*");
+      } else {
+        setSubmitted(true);
+      }
+    },
   });
 
   // Pre-populate smart fields from URL params injected by the "Fill In Clinic" flow.

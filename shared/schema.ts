@@ -2319,3 +2319,45 @@ export const updateClinicalBlockDefaultsSchema = z.object({
   peSystems: z.array(clinicalSystemDefaultSchema).max(40).nullable().optional(),
 });
 export type UpdateClinicalBlockDefaults = z.infer<typeof updateClinicalBlockDefaultsSchema>;
+
+// ─── Form Bundles ─────────────────────────────────────────────────────────────
+
+export const formBundles = pgTable("form_bundles", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: "cascade" }),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type FormBundle = typeof formBundles.$inferSelect;
+export const insertFormBundleSchema = createInsertSchema(formBundles).omit({ id: true, createdAt: true });
+export type InsertFormBundle = z.infer<typeof insertFormBundleSchema>;
+
+export const formBundleItems = pgTable("form_bundle_items", {
+  id: serial("id").primaryKey(),
+  bundleId: integer("bundle_id").notNull().references(() => formBundles.id, { onDelete: "cascade" }),
+  formId: integer("form_id").notNull().references(() => intakeForms.id, { onDelete: "cascade" }),
+  orderIndex: integer("order_index").notNull().default(0),
+});
+export type FormBundleItem = typeof formBundleItems.$inferSelect;
+export const insertFormBundleItemSchema = createInsertSchema(formBundleItems).omit({ id: true });
+export type InsertFormBundleItem = z.infer<typeof insertFormBundleItemSchema>;
+
+export const patientPacketAssignments = pgTable("patient_packet_assignments", {
+  id: serial("id").primaryKey(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  bundleId: integer("bundle_id").notNull().references(() => formBundles.id),
+  clinicianId: integer("clinician_id").notNull().references(() => users.id),
+  clinicId: integer("clinic_id").references(() => clinics.id, { onDelete: "cascade" }),
+  packetToken: varchar("packet_token", { length: 80 }).notNull().unique(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  formOrderJson: jsonb("form_order_json"),
+  prefillJson: jsonb("prefill_json"),
+  returnUrl: text("return_url"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+});
+export type PatientPacketAssignment = typeof patientPacketAssignments.$inferSelect;
+export const insertPatientPacketAssignmentSchema = createInsertSchema(patientPacketAssignments).omit({ id: true, createdAt: true });
+export type InsertPatientPacketAssignment = z.infer<typeof insertPatientPacketAssignmentSchema>;

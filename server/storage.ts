@@ -2476,6 +2476,72 @@ export class DbStorage implements IStorage {
     return row;
   }
 
+  // ─── Form Bundles ─────────────────────────────────────────────────────────────
+
+  async getFormBundles(clinicianId: number, clinicId: number | null): Promise<schema.FormBundle[]> {
+    const conditions = clinicId
+      ? or(eq(schema.formBundles.clinicianId, clinicianId), eq(schema.formBundles.clinicId, clinicId))
+      : eq(schema.formBundles.clinicianId, clinicianId);
+    return db.select().from(schema.formBundles).where(conditions).orderBy(desc(schema.formBundles.createdAt));
+  }
+
+  async getFormBundleById(id: number): Promise<schema.FormBundle | undefined> {
+    const [row] = await db.select().from(schema.formBundles).where(eq(schema.formBundles.id, id)).limit(1);
+    return row;
+  }
+
+  async createFormBundle(data: schema.InsertFormBundle): Promise<schema.FormBundle> {
+    const [row] = await db.insert(schema.formBundles).values(data).returning();
+    return row;
+  }
+
+  async updateFormBundle(id: number, data: Partial<schema.InsertFormBundle>): Promise<schema.FormBundle | undefined> {
+    const [row] = await db.update(schema.formBundles).set(data).where(eq(schema.formBundles.id, id)).returning();
+    return row;
+  }
+
+  async deleteFormBundle(id: number): Promise<void> {
+    await db.delete(schema.formBundles).where(eq(schema.formBundles.id, id));
+  }
+
+  async getFormBundleItems(bundleId: number): Promise<schema.FormBundleItem[]> {
+    return db.select().from(schema.formBundleItems)
+      .where(eq(schema.formBundleItems.bundleId, bundleId))
+      .orderBy(schema.formBundleItems.orderIndex);
+  }
+
+  async setFormBundleItems(bundleId: number, items: { formId: number; orderIndex: number }[]): Promise<void> {
+    await db.delete(schema.formBundleItems).where(eq(schema.formBundleItems.bundleId, bundleId));
+    if (items.length > 0) {
+      await db.insert(schema.formBundleItems).values(items.map(i => ({ bundleId, ...i })));
+    }
+  }
+
+  // ─── Patient Packet Assignments ───────────────────────────────────────────────
+
+  async createPatientPacketAssignment(data: schema.InsertPatientPacketAssignment): Promise<schema.PatientPacketAssignment> {
+    const [row] = await db.insert(schema.patientPacketAssignments).values(data).returning();
+    return row;
+  }
+
+  async getPatientPacketAssignments(patientId: number): Promise<schema.PatientPacketAssignment[]> {
+    return db.select().from(schema.patientPacketAssignments)
+      .where(eq(schema.patientPacketAssignments.patientId, patientId))
+      .orderBy(desc(schema.patientPacketAssignments.createdAt));
+  }
+
+  async getPatientPacketAssignmentByToken(token: string): Promise<schema.PatientPacketAssignment | undefined> {
+    const [row] = await db.select().from(schema.patientPacketAssignments)
+      .where(eq(schema.patientPacketAssignments.packetToken, token)).limit(1);
+    return row;
+  }
+
+  async updatePatientPacketAssignment(id: number, data: Partial<schema.InsertPatientPacketAssignment>): Promise<schema.PatientPacketAssignment | undefined> {
+    const [row] = await db.update(schema.patientPacketAssignments).set(data)
+      .where(eq(schema.patientPacketAssignments.id, id)).returning();
+    return row;
+  }
+
   // ─── Form Submissions (raw SQL — production DB may lack clinic_id column) ──
 
   async getFormSubmissionsByPatient(patientId: number): Promise<schema.FormSubmission[]> {
