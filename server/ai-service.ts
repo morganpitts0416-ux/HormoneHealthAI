@@ -513,10 +513,40 @@ MEDICATION NAME RULE — NON-NEGOTIABLE: You must NEVER invent, fabricate, or ap
   ): string {
     const patientType = gender === 'female' ? "women's hormone clinic patient" : "men's hormone clinic patient";
     const onTRT = gender === 'male' && (labs as any).onTRT === true;
+    const onHRT = gender === 'female' && (labs as any).onHRT === true;
     const trtContext = onTRT ? ' Currently on Testosterone Replacement Therapy (TRT).' : '';
-    let prompt = `Analyze these lab results from a ${patientType}.${trtContext} Provide synthesized clinical recommendations:\n\n`;
+    const hrtContext = onHRT ? ' Currently on Hormone Replacement Therapy (HRT).' : '';
+    let prompt = `Analyze these lab results from a ${patientType}.${trtContext}${hrtContext} Provide synthesized clinical recommendations:\n\n`;
     if (onTRT) {
       prompt += `CLINICAL CONTEXT: Patient is actively on TRT. Testosterone optimal target: 600–1200 ng/dL (trough). Interpret testosterone findings in context of TRT protocol management.\n\n`;
+    }
+    if (onHRT) {
+      prompt += `━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CLINICAL CONTEXT — FEMALE HRT PATIENT (NON-NEGOTIABLE REASONING RULES)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+This patient is actively on female Hormone Replacement Therapy. Apply the following rules without exception:
+
+TESTOSTERONE ON HRT:
+- Clinic optimization target: 50–125 ng/dL total testosterone.
+- Pre-treatment baseline is typically 5–25 ng/dL. A rise from that baseline into the 50–125 ng/dL range is the INTENDED THERAPEUTIC RESPONSE — it is NOT a critical finding, NOT excess exogenous exposure, NOT a transference risk event.
+- A trend from low baseline (e.g., 13 ng/dL) to therapeutic range (e.g., 50 ng/dL) = HRT working correctly. Document as "testosterone responding appropriately to therapy."
+- Do NOT flag any testosterone value ≤125 ng/dL as elevated, concerning, or requiring urgent action in an HRT patient.
+- Only flag as truly elevated (dose reduction needed) if total testosterone >150 ng/dL.
+- Free testosterone target on HRT: 3–10 pg/mL. Values 6–10 pg/mL are acceptable. Only flag if >12 pg/mL.
+
+PCOS RULE — ABSOLUTE:
+- NEVER suggest PCOS workup, PCOS pattern, or androgen excess pathology for a patient on HRT whose testosterone is elevated due to therapy.
+- Elevated androgens in an HRT patient reflect therapeutic intent. PCOS is a diagnosis of exclusion in the non-treated state.
+
+ESTRADIOL & PROGESTERONE TARGETS ON HRT:
+- Estradiol goal: 60–100 pg/mL (minimum 40 pg/mL for bone protection).
+- Progesterone goal: 8–10 ng/mL.
+
+TREND INTERPRETATION ON HRT:
+- Rising testosterone from pre-HRT baseline to therapeutic range = success.
+- Falling testosterone on existing HRT = dose adherence or absorption issue — do NOT treat as spontaneous decline.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n\n`;
     }
 
     // Add vital signs (BP, BMI) so cardiovascular and metabolic recommendations

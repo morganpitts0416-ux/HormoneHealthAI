@@ -2,8 +2,9 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Heart, TrendingUp, Activity, Zap, Moon, Dna, AlertTriangle, CheckCircle, AlertCircle, Info,
+  Heart, TrendingUp, Activity, Zap, Moon, Dna, AlertTriangle, CheckCircle, AlertCircle, Info, FlaskConical,
 } from "lucide-react";
+import type { LabInterpretation } from "@shared/schema";
 import type {
   PREVENTRiskResult, AdjustedRiskAssessment, InsulinResistanceScreening,
   StopBangResult, MaleHormonePattern,
@@ -382,7 +383,7 @@ export function MaleHormoneAssessmentCard({ patterns }: { patterns: MaleHormoneP
   );
 }
 
-// ─── Female Hormone / Clinical Phenotype Assessment Card ──────────────────
+// ─── Female Clinical Phenotype Assessment Card ────────────────────────────
 interface ClinicalPhenotype {
   name: string;
   confidence: 'high' | 'moderate' | 'low';
@@ -407,10 +408,10 @@ export function FemaleHormoneAssessmentCard({ phenotypes }: { phenotypes: Clinic
       <CardHeader>
         <div className="flex items-center gap-2">
           <Dna className="w-5 h-5 text-purple-600" />
-          <CardTitle>Hormone Assessment</CardTitle>
+          <CardTitle>Clinical Phenotype Assessment</CardTitle>
         </div>
         <CardDescription>
-          Detected clinical phenotypes driving hormone interpretation, supplement, and treatment recommendations
+          Detected clinical patterns driving supplement and treatment recommendations
         </CardDescription>
       </CardHeader>
       <CardContent>
@@ -437,6 +438,165 @@ export function FemaleHormoneAssessmentCard({ phenotypes }: { phenotypes: Clinic
               </div>
             </div>
           ))}
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Female Hormone Panel Detail Card ─────────────────────────────────────
+const HORMONE_CATEGORIES = new Set([
+  'Testosterone (Total)', 'Estradiol', 'Progesterone', 'SHBG',
+  'FSH', 'LH', 'DHEA-S', 'Prolactin', 'Free Testosterone',
+  'TSH', 'Free T4', 'Free T3', 'Anti-TPO', 'AMH',
+]);
+
+const statusColors: Record<string, { tile: string; value: string; badge: string }> = {
+  normal:    { tile: 'bg-green-50/60 dark:bg-green-950/20 border-green-200 dark:border-green-800', value: 'text-green-700 dark:text-green-400', badge: 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300' },
+  borderline:{ tile: 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',  value: 'text-amber-700 dark:text-amber-400',  badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300' },
+  abnormal:  { tile: 'bg-red-50/60 dark:bg-red-950/20 border-red-200 dark:border-red-800',          value: 'text-red-700 dark:text-red-400',      badge: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300' },
+  critical:  { tile: 'bg-red-100/80 dark:bg-red-950/40 border-red-400 dark:border-red-600',         value: 'text-red-800 dark:text-red-300',      badge: 'bg-red-200 text-red-800 dark:bg-red-900 dark:text-red-200' },
+};
+
+export function FemaleHormoneDetailCard({
+  interpretations,
+  onHRT,
+}: {
+  interpretations: LabInterpretation[];
+  onHRT: boolean;
+}) {
+  const hormoneInterps = interpretations.filter(i => HORMONE_CATEGORIES.has(i.category));
+  if (hormoneInterps.length === 0) return null;
+
+  // Separate sex hormones (first grid) from thyroid (second section)
+  const sexHormones = hormoneInterps.filter(i =>
+    !['TSH', 'Free T4', 'Free T3', 'Anti-TPO'].includes(i.category)
+  );
+  const thyroidHormones = hormoneInterps.filter(i =>
+    ['TSH', 'Free T4', 'Free T3', 'Anti-TPO'].includes(i.category)
+  );
+
+  // Pick key clinical recommendations to surface (exclude routine "Continue monitoring")
+  const keyFindings = hormoneInterps.filter(i =>
+    i.status !== 'normal' || (i.recommendation && !i.recommendation.toLowerCase().startsWith('continue routine'))
+  ).slice(0, 4);
+
+  return (
+    <Card data-testid="card-female-hormone-detail">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <FlaskConical className="w-5 h-5 text-primary" />
+            <CardTitle>Female Hormone Assessment</CardTitle>
+          </div>
+          <Badge
+            variant="outline"
+            className={onHRT
+              ? 'bg-purple-50 text-purple-700 border-purple-200 dark:bg-purple-950/30 dark:text-purple-400 dark:border-purple-800'
+              : 'bg-muted text-muted-foreground'
+            }
+            data-testid="badge-hrt-status"
+          >
+            {onHRT ? 'On HRT — Optimization Targets Active' : 'No HRT — Standard Reference Ranges'}
+          </Badge>
+        </div>
+        <CardDescription>
+          Hormone axis evaluation{onHRT ? ' — values assessed against clinic optimization goals, not population reference ranges' : ' — values assessed against standard female reference ranges'}
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+        {/* Sex hormone grid */}
+        {sexHormones.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+              Sex Hormones
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {sexHormones.map((h, i) => {
+                const colors = statusColors[h.status] ?? statusColors.normal;
+                return (
+                  <div
+                    key={i}
+                    className={`p-3 rounded-lg border ${colors.tile}`}
+                    data-testid={`hormone-tile-${h.category.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <p className="text-xs font-medium text-muted-foreground uppercase mb-1 truncate">{h.category}</p>
+                    <p className={`text-xl font-bold font-mono ${colors.value}`}>
+                      {h.value}
+                      <span className="text-xs font-normal ml-1">{h.unit}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">{h.referenceRange}</p>
+                    <span className={`mt-1.5 inline-block px-1.5 py-0.5 text-xs rounded-full font-medium ${colors.badge}`}>
+                      {h.status === 'normal' ? 'At Goal' : h.status === 'borderline' ? 'Off Target' : h.status === 'abnormal' ? 'Abnormal' : 'Critical'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Thyroid grid (if present) */}
+        {thyroidHormones.length > 0 && (
+          <div>
+            <h4 className="text-sm font-semibold mb-3 text-muted-foreground uppercase tracking-wide">
+              Thyroid Axis
+            </h4>
+            <div className="grid grid-cols-2 md:grid-cols-3 lg:grid-cols-4 gap-3">
+              {thyroidHormones.map((h, i) => {
+                const colors = statusColors[h.status] ?? statusColors.normal;
+                return (
+                  <div
+                    key={i}
+                    className={`p-3 rounded-lg border ${colors.tile}`}
+                    data-testid={`hormone-tile-${h.category.toLowerCase().replace(/\s+/g, '-')}`}
+                  >
+                    <p className="text-xs font-medium text-muted-foreground uppercase mb-1 truncate">{h.category}</p>
+                    <p className={`text-xl font-bold font-mono ${colors.value}`}>
+                      {h.value}
+                      <span className="text-xs font-normal ml-1">{h.unit}</span>
+                    </p>
+                    <p className="text-xs text-muted-foreground mt-1 truncate">{h.referenceRange}</p>
+                    <span className={`mt-1.5 inline-block px-1.5 py-0.5 text-xs rounded-full font-medium ${colors.badge}`}>
+                      {h.status === 'normal' ? 'At Goal' : h.status === 'borderline' ? 'Off Target' : h.status === 'abnormal' ? 'Abnormal' : 'Critical'}
+                    </span>
+                  </div>
+                );
+              })}
+            </div>
+          </div>
+        )}
+
+        {/* Key clinical findings */}
+        {keyFindings.length > 0 && (
+          <>
+            <Separator />
+            <div className="space-y-3">
+              <h4 className="text-xs font-semibold uppercase text-muted-foreground tracking-wide">Clinical Findings &amp; Recommendations</h4>
+              {keyFindings.map((h, i) => (
+                <div key={i} className="space-y-1">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <span className="text-sm font-medium">{h.category}</span>
+                    <span className={`px-1.5 py-0.5 text-xs rounded-full font-medium ${(statusColors[h.status] ?? statusColors.normal).badge}`}>
+                      {h.value} {h.unit}
+                    </span>
+                  </div>
+                  <p className="text-xs text-muted-foreground leading-relaxed">{h.interpretation}</p>
+                  {h.recommendation && (
+                    <p className="text-xs bg-muted/50 p-2 rounded leading-relaxed">
+                      {h.recommendation.replace(/^PROVIDER RECOMMENDATION:\s*/i, '')}
+                    </p>
+                  )}
+                </div>
+              ))}
+            </div>
+          </>
+        )}
+
+        <div className="text-xs text-muted-foreground border-t pt-3">
+          {onHRT
+            ? 'Ranges reflect clinic optimization targets for HRT patients, not standard population reference ranges. Rising values from pre-treatment baseline toward target represent therapeutic progress.'
+            : 'Values assessed against standard female reference ranges. Consider HRT if hormones are suboptimal and patient is symptomatic.'}
         </div>
       </CardContent>
     </Card>
