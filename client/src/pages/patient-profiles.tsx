@@ -1693,6 +1693,30 @@ export default function PatientProfiles() {
     onError: () => toast({ title: "Failed to delete submission", variant: "destructive" }),
   });
 
+  const deletePacketMutation = useMutation({
+    mutationFn: async (packetId: number) => {
+      const res = await apiRequest("DELETE", `/api/patients/${selectedPatient!.id}/packets/${packetId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'packets'] });
+      toast({ title: "Packet removed" });
+    },
+    onError: () => toast({ title: "Failed to remove packet", variant: "destructive" }),
+  });
+
+  const deleteAssignmentMutation = useMutation({
+    mutationFn: async (assignmentId: number) => {
+      const res = await apiRequest("DELETE", `/api/patients/${selectedPatient!.id}/form-assignments/${assignmentId}`);
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'form-assignments'] });
+      toast({ title: "Form assignment removed" });
+    },
+    onError: () => toast({ title: "Failed to remove form assignment", variant: "destructive" }),
+  });
+
   const fulfillOrderMutation = useMutation({
     mutationFn: async (orderId: number) => {
       const res = await apiRequest("PATCH", `/api/supplement-orders/${orderId}/status`, { status: "fulfilled" });
@@ -3522,6 +3546,19 @@ export default function PatientProfiles() {
                                   >
                                     <Copy className="h-3 w-3" />
                                   </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      if (window.confirm("Remove this packet assignment? This cannot be undone.")) {
+                                        deletePacketMutation.mutate(packet.id);
+                                      }
+                                    }}
+                                    disabled={deletePacketMutation.isPending}
+                                    data-testid={`button-delete-packet-${packet.id}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
+                                  </Button>
                                 </div>
                               </div>
                             </div>
@@ -3610,6 +3647,19 @@ export default function PatientProfiles() {
                                     disabled={sendFormLinkMutation.isPending}
                                     data-testid={`button-fill-in-clinic-${assignment.id}`}>
                                     <Eye className="h-3 w-3 mr-1" /> Fill In Clinic
+                                  </Button>
+                                  <Button
+                                    size="icon"
+                                    variant="ghost"
+                                    onClick={() => {
+                                      if (window.confirm("Remove this form assignment? This cannot be undone.")) {
+                                        deleteAssignmentMutation.mutate(assignment.id);
+                                      }
+                                    }}
+                                    disabled={deleteAssignmentMutation.isPending}
+                                    data-testid={`button-delete-assignment-${assignment.id}`}
+                                  >
+                                    <Trash2 className="h-3.5 w-3.5 text-destructive" />
                                   </Button>
                                 </div>
                               </div>

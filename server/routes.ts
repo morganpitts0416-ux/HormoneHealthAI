@@ -13055,6 +13055,49 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // DELETE /api/patients/:patientId/packets/:packetId — remove a pending packet assignment
+  app.delete("/api/patients/:patientId/packets/:packetId", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.patientId);
+      const packetId = parseInt(req.params.packetId);
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const [packet] = await db.select().from(schema.patientPacketAssignments)
+        .where(and(eq(schema.patientPacketAssignments.id, packetId), eq(schema.patientPacketAssignments.patientId, patientId))).limit(1);
+      if (!packet) return res.status(404).json({ message: "Packet not found" });
+      const isOwner = packet.clinicianId === clinicianId;
+      const isClinicMember = clinicId && packet.clinicId === clinicId;
+      if (!isOwner && !isClinicMember) return res.status(403).json({ message: "Not authorized" });
+      await storage.deletePatientPacketAssignment(packetId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[DeletePacket]", err);
+      res.status(500).json({ message: "Failed to delete packet" });
+    }
+  });
+
+  // DELETE /api/patients/:patientId/form-assignments/:assignmentId — remove a pending form assignment
+  app.delete("/api/patients/:patientId/form-assignments/:assignmentId", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.patientId);
+      const assignmentId = parseInt(req.params.assignmentId);
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const assignments = await storage.getPatientFormAssignments(patientId);
+      const assignment = assignments.find((a: any) => a.id === assignmentId);
+      if (!assignment) return res.status(404).json({ message: "Assignment not found" });
+      await storage.deletePatientFormAssignment(assignmentId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[DeleteFormAssignment]", err);
+      res.status(500).json({ message: "Failed to delete form assignment" });
+    }
+  });
+
   // DELETE /api/form-submissions/:id — delete a submission and its sync events
   app.delete("/api/form-submissions/:id", requireAuth, async (req: any, res) => {
     try {

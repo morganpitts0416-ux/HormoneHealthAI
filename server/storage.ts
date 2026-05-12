@@ -2542,6 +2542,16 @@ export class DbStorage implements IStorage {
     return row;
   }
 
+  async deletePatientPacketAssignment(id: number): Promise<void> {
+    await db.delete(schema.patientPacketAssignments)
+      .where(eq(schema.patientPacketAssignments.id, id));
+  }
+
+  async deletePatientFormAssignment(id: number): Promise<void> {
+    await db.delete(schema.patientFormAssignments)
+      .where(eq(schema.patientFormAssignments.id, id));
+  }
+
   // ─── Form Submissions (raw SQL — production DB may lack clinic_id column) ──
 
   async getFormSubmissionsByPatient(patientId: number): Promise<schema.FormSubmission[]> {
