@@ -1,6 +1,8 @@
+import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Clock } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Clock, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
 import type { LabInterpretation, RedFlag } from "@shared/schema";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
@@ -51,6 +53,7 @@ export function ResultsDisplay({
   recheckWindow,
   redFlags = [],
 }: ResultsDisplayProps) {
+  const [synthesisOpen, setSynthesisOpen] = useState(false);
 
   const tableRows = interpretations.filter(i => !isScreeningRow(i.category));
   const abnormalResults = tableRows.filter(i => i.status !== 'normal');
@@ -224,18 +227,34 @@ export function ResultsDisplay({
             </div>
           )}
 
-          {/* AI Clinical Synthesis — embedded, not standalone */}
+          {/* AI Clinical Synthesis — collapsed by default */}
           {aiRecommendations && (
             <>
               <Separator />
               <div className="space-y-2">
-                <h3 className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
-                  <div className="w-2 h-2 rounded-full bg-primary" />
-                  AI Clinical Synthesis
-                </h3>
-                <div className="text-sm leading-relaxed whitespace-pre-wrap bg-muted/30 rounded-md p-4">
-                  {aiRecommendations}
-                </div>
+                <button
+                  type="button"
+                  onClick={() => setSynthesisOpen(v => !v)}
+                  className="w-full flex items-center justify-between gap-2 group"
+                  data-testid="button-toggle-ai-synthesis"
+                >
+                  <span className="text-sm font-semibold uppercase tracking-wide text-muted-foreground flex items-center gap-2">
+                    <Sparkles className="w-3.5 h-3.5 text-primary" />
+                    AI Clinical Synthesis
+                  </span>
+                  <span className="flex items-center gap-1.5 text-xs text-muted-foreground">
+                    {synthesisOpen ? (
+                      <><ChevronDown className="w-3.5 h-3.5" />Collapse</>
+                    ) : (
+                      <><ChevronRight className="w-3.5 h-3.5" />Read full synthesis</>
+                    )}
+                  </span>
+                </button>
+                {synthesisOpen && (
+                  <div className="text-sm leading-relaxed whitespace-pre-wrap bg-muted/30 rounded-md p-4" data-testid="section-ai-synthesis">
+                    {aiRecommendations}
+                  </div>
+                )}
               </div>
             </>
           )}
