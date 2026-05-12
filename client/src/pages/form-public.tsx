@@ -282,10 +282,12 @@ export default function FormPublicPage() {
         effectiveEmail = responses[emailField.fieldKey] || effectiveEmail;
       }
     }
+    const pkt = new URLSearchParams(window.location.search).get("pkt");
     submitMutation.mutate({
       responses,
       submitterName: effectiveName,
       submitterEmail: effectiveEmail,
+      ...(pkt ? { packetToken: pkt } : {}),
     });
   };
 

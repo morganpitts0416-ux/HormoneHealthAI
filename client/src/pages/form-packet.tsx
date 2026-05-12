@@ -60,7 +60,10 @@ export default function FormPacketPage() {
         method: "PATCH",
         headers: { "Content-Type": "application/json" },
         body: JSON.stringify({ completedToken }),
-      }).then(r => r.json()),
+      }).then(async r => {
+        if (!r.ok) throw new Error((await r.json()).message ?? "Failed to update packet progress");
+        return r.json();
+      }),
   });
 
   useEffect(() => {

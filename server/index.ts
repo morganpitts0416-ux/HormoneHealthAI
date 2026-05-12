@@ -91,12 +91,12 @@ declare module 'http' {
 }
 
 app.use(express.json({
-  limit: "15mb",
+  limit: "50mb",
   verify: (req, _res, buf) => {
     req.rawBody = buf;
   }
 }));
-app.use(express.urlencoded({ extended: false, limit: "15mb" }));
+app.use(express.urlencoded({ extended: false, limit: "50mb" }));
 
 // Liveness probe. Registered before session/auth/deny-list so it stays
 // responsive even if the DB is degraded. Intentionally does NOT touch

@@ -12392,7 +12392,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       }
       const form = await storage.getIntakeFormById(pub.formId);
       if (!form) return res.status(404).json({ message: "Form not found" });
-      const { responses, submitterName, submitterEmail, signature } = req.body;
+      const { responses, submitterName, submitterEmail, signature, packetToken } = req.body;
       if (!responses || typeof responses !== "object") {
         return res.status(400).json({ message: "Responses are required" });
       }
@@ -12688,6 +12688,32 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             }
           } catch (syncErr) {
             console.error("[FormSubmit] smart-field sync error:", syncErr);
+          }
+        });
+      }
+
+      // Server-side packet progress update — marks this form complete in the
+      // packet's formOrderJson so the clinician counter is always accurate even
+      // if the client postMessage / iframe flow misfires (e.g. large upload,
+      // browser security policy, etc.).
+      if (packetToken && typeof packetToken === "string") {
+        setImmediate(async () => {
+          try {
+            const packet = await storage.getPatientPacketAssignmentByToken(packetToken);
+            if (packet) {
+              const forms = (packet.formOrderJson as any[]) ?? [];
+              const updated = forms.map((f: any) =>
+                f.publicToken === req.params.token ? { ...f, completed: true } : f
+              );
+              const allDone = updated.every((f: any) => f.completed);
+              await storage.updatePatientPacketAssignment(packet.id, {
+                formOrderJson: updated,
+                status: allDone ? "completed" : "pending",
+                ...(allDone ? { completedAt: new Date() } : {}),
+              });
+            }
+          } catch (pktErr) {
+            console.error("[FormSubmit] packet progress update error:", pktErr);
           }
         });
       }
