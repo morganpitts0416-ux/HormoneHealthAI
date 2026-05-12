@@ -104,6 +104,7 @@ const FIELD_TYPES = [
   { value: "yes_no", label: "Yes / No" },
   { value: "scale", label: "Rating Scale" },
   { value: "signature", label: "Signature" },
+  { value: "initials", label: "Initials" },
   { value: "heading", label: "Section Heading" },
   { value: "paragraph", label: "Paragraph / Instructions" },
   { value: "medication_list", label: "Medication List" },
@@ -503,6 +504,7 @@ const FIELD_TYPE_ICONS: Record<string, React.ElementType> = {
   yes_no: ToggleLeft,
   scale: Star,
   signature: PenLine,
+  initials: PenLine,
   heading: Heading,
   paragraph: AlignJustify,
   medication_list: Pill,
@@ -712,6 +714,15 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
         return (
           <div className="border-2 border-dashed border-border rounded-md h-20 flex items-center justify-center text-sm text-muted-foreground bg-muted/10">
             Sign here
+          </div>
+        );
+      case "initials":
+        return (
+          <div className="flex items-center gap-3">
+            <div className="border-2 border-dashed border-border rounded-md w-20 h-14 flex items-center justify-center text-sm text-muted-foreground bg-muted/10 font-serif italic shrink-0">
+              AB
+            </div>
+            <p className="text-xs text-muted-foreground">Patient types or draws their initials here</p>
           </div>
         );
       case "file_upload":
@@ -1689,7 +1700,7 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
   };
 
   const eligibleSourceFields = allFields.filter(
-    f => f.id !== field.id && !["heading", "paragraph", "divider", "section_break", "spacer", "signature", "matrix", "family_history_chart"].includes(f.fieldType)
+    f => f.id !== field.id && !["heading", "paragraph", "divider", "section_break", "spacer", "signature", "initials", "matrix", "family_history_chart"].includes(f.fieldType)
   );
   const getFieldOptions = (fId: number | null): string[] => {
     if (fId == null) return [];
@@ -1804,7 +1815,7 @@ function FieldEditor({ field, allFields, onUpdate, onDelete, onDuplicate, isPend
           />
         </div>
 
-        {!isDecorative && !["signature", "yes_no", "scale"].includes(local.fieldType) && (
+        {!isDecorative && !["signature", "initials", "yes_no", "scale"].includes(local.fieldType) && (
           <div className="space-y-1">
             <Label className="text-xs">Placeholder</Label>
             <Input

@@ -10,7 +10,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { RichTextView } from "@/components/rich-text-editor";
-import { CheckCircle2, AlertCircle, RefreshCw, ClipboardList, Plus, X, Upload, FileText } from "lucide-react";
+import { CheckCircle2, AlertCircle, RefreshCw, ClipboardList, Plus, X, Upload, FileText, PenLine } from "lucide-react";
 
 interface FormField {
   id: number;
@@ -711,6 +711,122 @@ function SignatureField({ value, onChange, fieldKey }: { value: string; onChange
   );
 }
 
+// ─── Initials Field ───────────────────────────────────────────────────────────
+
+function InitialsField({ value, onChange, fieldKey }: { value: string; onChange: (v: string) => void; fieldKey: string }) {
+  const [tab, setTab] = useState<"type" | "draw">("type");
+  const [typed, setTyped] = useState("");
+  const canvasRef = useRef<HTMLCanvasElement>(null);
+  const isDrawingRef = useRef(false);
+
+  useEffect(() => {
+    const canvas = canvasRef.current;
+    if (!canvas || tab !== "draw") return;
+    const ctx = canvas.getContext("2d");
+    if (!ctx) return;
+    ctx.lineWidth = 2.5;
+    ctx.lineCap = "round";
+    ctx.strokeStyle = "#222";
+    const rect = () => canvas.getBoundingClientRect();
+    const getPos = (e: MouseEvent | TouchEvent) => {
+      const r = rect();
+      const pt = "touches" in e ? e.touches[0] : e;
+      return { x: (pt.clientX - r.left) * (canvas.width / r.width), y: (pt.clientY - r.top) * (canvas.height / r.height) };
+    };
+    const start = (e: MouseEvent | TouchEvent) => { e.preventDefault(); isDrawingRef.current = true; const p = getPos(e); ctx.beginPath(); ctx.moveTo(p.x, p.y); };
+    const move = (e: MouseEvent | TouchEvent) => { if (!isDrawingRef.current) return; e.preventDefault(); const p = getPos(e); ctx.lineTo(p.x, p.y); ctx.stroke(); };
+    const end = () => { if (isDrawingRef.current) { isDrawingRef.current = false; onChange(canvas.toDataURL("image/png")); } };
+    canvas.addEventListener("mousedown", start);
+    canvas.addEventListener("mousemove", move);
+    canvas.addEventListener("mouseup", end);
+    canvas.addEventListener("mouseleave", end);
+    canvas.addEventListener("touchstart", start, { passive: false });
+    canvas.addEventListener("touchmove", move, { passive: false });
+    canvas.addEventListener("touchend", end);
+    return () => {
+      canvas.removeEventListener("mousedown", start);
+      canvas.removeEventListener("mousemove", move);
+      canvas.removeEventListener("mouseup", end);
+      canvas.removeEventListener("mouseleave", end);
+      canvas.removeEventListener("touchstart", start);
+      canvas.removeEventListener("touchmove", move);
+      canvas.removeEventListener("touchend", end);
+    };
+  }, [tab, onChange]);
+
+  const clearDraw = () => {
+    const canvas = canvasRef.current;
+    if (canvas) { const ctx = canvas.getContext("2d"); if (ctx) ctx.clearRect(0, 0, canvas.width, canvas.height); }
+    onChange("");
+  };
+
+  const handleTyped = (v: string) => {
+    const capped = v.slice(0, 4).toUpperCase();
+    setTyped(capped);
+    if (!capped.trim()) { onChange(""); return; }
+    const c = document.createElement("canvas");
+    c.width = 160; c.height = 100;
+    const ctx = c.getContext("2d");
+    if (ctx) {
+      ctx.fillStyle = "#fff"; ctx.fillRect(0, 0, 160, 100);
+      ctx.font = "italic 52px 'Georgia', 'Times New Roman', serif";
+      ctx.fillStyle = "#222"; ctx.textAlign = "center"; ctx.textBaseline = "middle";
+      ctx.fillText(capped, 80, 52);
+      onChange(c.toDataURL("image/png"));
+    }
+  };
+
+  return (
+    <div className="space-y-2" data-testid={`field-${fieldKey}`}>
+      <div className="flex items-start gap-4 flex-wrap">
+        {/* The initials box */}
+        <div className="shrink-0">
+          {tab === "type" ? (
+            <div className="flex flex-col items-center gap-1">
+              <div className="border-2 border-border rounded-md w-24 h-16 flex items-center justify-center bg-white">
+                {typed ? (
+                  <span style={{ fontFamily: "'Georgia', 'Times New Roman', serif", fontStyle: "italic", fontSize: "2rem", color: "#222", lineHeight: 1 }}>
+                    {typed}
+                  </span>
+                ) : (
+                  <PenLine className="h-5 w-5 text-muted-foreground" />
+                )}
+              </div>
+              <Input
+                value={typed}
+                onChange={e => handleTyped(e.target.value)}
+                placeholder="e.g. JD"
+                maxLength={4}
+                className="w-24 text-center text-sm font-mono uppercase tracking-widest"
+                data-testid={`input-${fieldKey}`}
+              />
+            </div>
+          ) : (
+            <div className="flex flex-col items-center gap-1">
+              <canvas
+                ref={canvasRef}
+                width={160}
+                height={100}
+                className="border-2 border-border rounded-md bg-white cursor-crosshair"
+                style={{ width: "96px", height: "64px", touchAction: "none" }}
+              />
+              <Button size="sm" variant="ghost" type="button" onClick={clearDraw} className="text-xs w-24">Clear</Button>
+            </div>
+          )}
+        </div>
+        {/* Tab switcher + instruction */}
+        <div className="flex flex-col gap-1.5 pt-1">
+          <div className="flex gap-1.5">
+            <button type="button" onClick={() => { setTab("type"); clearDraw(); }} className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${tab === "type" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>Type</button>
+            <button type="button" onClick={() => { setTab("draw"); setTyped(""); onChange(""); }} className={`text-xs px-2.5 py-1 rounded-md border transition-colors ${tab === "draw" ? "bg-primary text-primary-foreground" : "bg-muted"}`}>Draw</button>
+          </div>
+          <p className="text-xs text-muted-foreground">By initialing, you acknowledge reading this section.</p>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 // ─── Google Places Autocomplete ───────────────────────────────────────────────
 // Fetches the Maps API key from /api/config/google-maps at runtime.
 // Falls back to a plain Input when no key is configured.
@@ -1213,6 +1329,14 @@ function FieldRenderer({ field, value, onChange, error }: {
 
       {field.fieldType === "signature" && (
         <SignatureField
+          value={value ?? ""}
+          onChange={onChange}
+          fieldKey={field.fieldKey}
+        />
+      )}
+
+      {field.fieldType === "initials" && (
+        <InitialsField
           value={value ?? ""}
           onChange={onChange}
           fieldKey={field.fieldKey}
