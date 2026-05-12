@@ -150,6 +150,33 @@ export default function FormPublicPage() {
     onSuccess: () => setSubmitted(true),
   });
 
+  // Pre-populate smart fields from URL params injected by the "Fill In Clinic" flow.
+  // Params: pf_fn, pf_ln, pf_dob, pf_email, pf_phone — only fills blank fields.
+  useEffect(() => {
+    if (!data?.fields?.length) return;
+    const sp = new URLSearchParams(window.location.search);
+    const paramMap: Record<string, string> = {
+      patient_first_name: sp.get("pf_fn")    ?? "",
+      patient_last_name:  sp.get("pf_ln")    ?? "",
+      patient_dob:        sp.get("pf_dob")   ?? "",
+      patient_email:      sp.get("pf_email") ?? "",
+      patient_phone:      sp.get("pf_phone") ?? "",
+    };
+    setResponses(prev => {
+      const next = { ...prev };
+      let changed = false;
+      for (const field of data.fields) {
+        if (!field.smartFieldKey) continue;
+        const val = paramMap[field.smartFieldKey];
+        if (val && (next[field.fieldKey] === undefined || next[field.fieldKey] === "" || next[field.fieldKey] === null)) {
+          next[field.fieldKey] = val;
+          changed = true;
+        }
+      }
+      return changed ? next : prev;
+    });
+  }, [data]);
+
   const setResponse = (key: string, value: any) => {
     setResponses(prev => ({ ...prev, [key]: value }));
     if (validationErrors[key]) {

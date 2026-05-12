@@ -1608,6 +1608,18 @@ export default function PatientProfiles() {
     onError: () => toast({ title: "Failed to send form", variant: "destructive" }),
   });
 
+  function buildPrefillUrl(baseUrl: string, prefill?: Record<string, string | null> | null): string {
+    if (!prefill) return baseUrl;
+    const params = new URLSearchParams();
+    if (prefill.firstName)   params.set("pf_fn",    prefill.firstName);
+    if (prefill.lastName)    params.set("pf_ln",    prefill.lastName);
+    if (prefill.dateOfBirth) params.set("pf_dob",   prefill.dateOfBirth);
+    if (prefill.email)       params.set("pf_email", prefill.email);
+    if (prefill.phone)       params.set("pf_phone", prefill.phone);
+    const qs = params.toString();
+    return qs ? `${baseUrl}?${qs}` : baseUrl;
+  }
+
   const sendFormLinkMutation = useMutation({
     mutationFn: async ({ patientId, formId, method }: { patientId: number; formId: number; method: string }) => {
       const res = await apiRequest("POST", `/api/patients/${patientId}/forms/send-link`, { formId, method });
@@ -3466,8 +3478,9 @@ export default function PatientProfiles() {
                                       const newTab = window.open("about:blank", "_blank");
                                       sendFormLinkMutation.mutate({ patientId: selectedPatient!.id, formId: assignment.formId, method: "link" }, {
                                         onSuccess: (data: any) => {
-                                          if (data.formUrl && newTab) { newTab.location.href = data.formUrl; }
-                                          else if (data.formUrl) { window.open(data.formUrl, "_blank"); }
+                                          const url = data.formUrl ? buildPrefillUrl(data.formUrl, data.prefill) : null;
+                                          if (url && newTab) { newTab.location.href = url; }
+                                          else if (url) { window.open(url, "_blank"); }
                                         },
                                         onError: () => { if (newTab) newTab.close(); }
                                       });
@@ -3644,8 +3657,9 @@ export default function PatientProfiles() {
                                             onSettled: () => {
                                               sendFormLinkMutation.mutate({ patientId: selectedPatient.id, formId: form.id, method: "link" }, {
                                                 onSuccess: (data: any) => {
-                                                  if (data.formUrl && newTab) { newTab.location.href = data.formUrl; }
-                                                  else if (data.formUrl) { window.open(data.formUrl, "_blank"); }
+                                                  const url = data.formUrl ? buildPrefillUrl(data.formUrl, data.prefill) : null;
+                                                  if (url && newTab) { newTab.location.href = url; }
+                                                  else if (url) { window.open(url, "_blank"); }
                                                   setShowAssignFormDialog(false);
                                                 },
                                                 onError: () => { if (newTab) newTab.close(); }

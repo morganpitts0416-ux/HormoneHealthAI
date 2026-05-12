@@ -4802,6 +4802,14 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
         });
       }
 
+      const prefill = {
+        firstName:   patient.firstName   || null,
+        lastName:    patient.lastName    || null,
+        dateOfBirth: patient.dateOfBirth || null,
+        email:       patient.email       || null,
+        phone:       (patient as any).phone || null,
+      };
+
       if (method === "email" && patient.email) {
         try {
           const clinician = await storage.getUser(clinicianId);
@@ -4840,13 +4848,13 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
             res.json({ success: true, method: "email_skipped", formUrl, note: "Email service not configured — link generated instead" });
             return;
           }
-          res.json({ success: true, method: "email", formUrl });
+          res.json({ success: true, method: "email", formUrl, prefill });
         } catch (emailErr) {
           console.error("[Send Form Link] Email error:", emailErr);
-          res.json({ success: true, method: "email_failed", formUrl, note: "Email sending failed but link generated" });
+          res.json({ success: true, method: "email_failed", formUrl, prefill, note: "Email sending failed but link generated" });
         }
       } else {
-        res.json({ success: true, method: "link", formUrl });
+        res.json({ success: true, method: "link", formUrl, prefill });
       }
     } catch (err) {
       console.error("[Send Form Link]", err);
