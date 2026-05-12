@@ -280,11 +280,11 @@ export class PDFExtractionService {
 
   // ── Vision-based extraction (scanned / image-based PDFs) ─────────────────
   private static async extractFromVision(pdfBuffer: Buffer): Promise<ExtractedLabValues> {
-    // Render PDF pages as PNG screenshots
+    // Render PDF pages as PNG screenshots — capture up to 12 pages
     let pageImages: { data: Buffer }[] = [];
     try {
       const parser = new PDFParse({ data: pdfBuffer });
-      const result = await parser.getScreenshot({ scale: 1.5, first: 6, imageDataUrl: false, imageBuffer: true });
+      const result = await parser.getScreenshot({ scale: 1.2, first: 12, imageDataUrl: false, imageBuffer: true });
       pageImages = (result?.pages ?? []).filter((p: any) => p?.data) as { data: Buffer }[];
       await parser.destroy();
       console.log('[PDF Extraction] Got', pageImages.length, 'page screenshot(s)');
@@ -297,17 +297,18 @@ export class PDFExtractionService {
       throw new Error('No pages could be rendered from this PDF. Please enter lab values manually.');
     }
 
-    // Build vision message — send up to 4 pages to stay within token limits
+    // Build vision message — send all pages (up to 10) so no lab values are missed
+    // Scale is reduced to 1.2 to keep per-page token cost manageable across many pages
     const imageContent: OpenAI.Chat.ChatCompletionContentPart[] = [
       {
         type: 'text',
-        text: `This is a lab report rendered as image(s). Extract all patient demographics and lab values.${USER_PROMPT_SUFFIX}`,
+        text: `This is a lab report rendered as image(s) — ALL pages are included. Scan every page and extract all patient demographics and lab values found anywhere in the report.${USER_PROMPT_SUFFIX}`,
       },
-      ...pageImages.slice(0, 4).map((p): OpenAI.Chat.ChatCompletionContentPart => ({
+      ...pageImages.slice(0, 10).map((p): OpenAI.Chat.ChatCompletionContentPart => ({
         type: 'image_url',
         image_url: {
           url: `data:image/png;base64,${Buffer.from(p.data).toString('base64')}`,
-          detail: 'high',
+          detail: 'auto',
         },
       })),
     ];
@@ -321,7 +322,7 @@ export class PDFExtractionService {
         ],
         response_format: { type: 'json_object' },
         temperature: 0,
-        max_tokens: 2000,
+        max_tokens: 3000,
       });
 
       const content = response.choices[0]?.message?.content ?? '{}';
