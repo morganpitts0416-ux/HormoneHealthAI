@@ -15,10 +15,22 @@ const SCREENING_CATEGORY_PREFIXES = [
   '30-Year',
 ];
 
+// Pattern/assessment categories that belong in dedicated hormone assessment cards,
+// not in the main lab value marker table.
+const HORMONE_PATTERN_PREFIXES = [
+  'Testosterone Pattern',
+  'Perimenopause Assessment:',
+  'Hormone Pattern:',
+];
+
 function isScreeningRow(category: string): boolean {
   return SCREENING_CATEGORY_PREFIXES.some(prefix =>
     category.startsWith(prefix) || category.includes('(PREVENT)') || category.includes('STOP-BANG')
   );
+}
+
+function isHormonePatternRow(category: string): boolean {
+  return HORMONE_PATTERN_PREFIXES.some(prefix => category.startsWith(prefix));
 }
 
 function formatClinicalManagement(text: string): string {
@@ -55,7 +67,7 @@ export function ResultsDisplay({
 }: ResultsDisplayProps) {
   const [synthesisOpen, setSynthesisOpen] = useState(false);
 
-  const tableRows = interpretations.filter(i => !isScreeningRow(i.category));
+  const tableRows = interpretations.filter(i => !isScreeningRow(i.category) && !isHormonePatternRow(i.category));
   const abnormalResults = tableRows.filter(i => i.status !== 'normal');
 
   const hasRedFlag = (category: string) =>

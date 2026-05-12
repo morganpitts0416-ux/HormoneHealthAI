@@ -15,7 +15,6 @@ import {
   AdvancedLipidsCard,
   StopBangCard,
   FemaleHormoneAssessmentCard,
-  FemaleHormoneDetailCard,
   InsulinResistanceCard,
 } from "@/components/lab-assessment-cards";
 import { PatientSummary } from "@/components/patient-summary";
@@ -645,13 +644,7 @@ export default function FemaleLabInterpretation() {
                   <StopBangCard stopBangRisk={interpretationResult.stopBangRisk} />
                 )}
 
-                {/* 6. Female Hormone Assessment — structured hormone panel with HRT context */}
-                <FemaleHormoneDetailCard
-                  interpretations={interpretationResult.interpretations}
-                  onHRT={labValues.onHRT === true}
-                />
-
-                {/* 7. Clinical Phenotype Assessment (phenotypes like stress, iron deficiency) */}
+                {/* 6. Clinical Phenotype Assessment (female hormone patterns) */}
                 {interpretationResult.clinicalPhenotypes && interpretationResult.clinicalPhenotypes.length > 0 && (
                   <FemaleHormoneAssessmentCard phenotypes={interpretationResult.clinicalPhenotypes} />
                 )}
