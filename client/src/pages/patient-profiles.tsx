@@ -1306,6 +1306,9 @@ export default function PatientProfiles() {
   const [showForms, setShowForms] = useState(true);
   const [showAssignFormDialog, setShowAssignFormDialog] = useState(false);
   const [assignDeliveryMode, setAssignDeliveryMode] = useState<"portal" | "in_clinic">("portal");
+  const [showAssignPacketDialog, setShowAssignPacketDialog] = useState(false);
+  const [assigningPacketBundleId, setAssigningPacketBundleId] = useState<number | null>(null);
+  const [lastAssignedPacketUrl, setLastAssignedPacketUrl] = useState<string | null>(null);
   const [showSendEmailDialog, setShowSendEmailDialog] = useState(false);
   const [sendEmailFormId, setSendEmailFormId] = useState<number | null>(null);
   const [sendEmailAddress, setSendEmailAddress] = useState("");
@@ -1571,6 +1574,22 @@ export default function PatientProfiles() {
     enabled: !!selectedPatient,
   });
 
+  const { data: patientPackets = [] } = useQuery<any[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'packets'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/packets`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+  });
+
+  const { data: formBundles = [] } = useQuery<any[]>({
+    queryKey: ['/api/form-bundles'],
+    enabled: !!selectedPatient,
+  });
+
   const assignFormMutation = useMutation({
     mutationFn: async ({ patientId, formId, notes, deliveryMode }: { patientId: number; formId: number; notes?: string; deliveryMode?: "portal" | "in_clinic" }) => {
       const res = await apiRequest("POST", `/api/patients/${patientId}/form-assignments`, { formId, notes, deliveryMode });
@@ -1586,6 +1605,21 @@ export default function PatientProfiles() {
       });
     },
     onError: () => toast({ title: "Failed to assign form", variant: "destructive" }),
+  });
+
+  const assignPacketMutation = useMutation({
+    mutationFn: async ({ patientId, bundleId }: { patientId: number; bundleId: number }) => {
+      const res = await apiRequest("POST", `/api/patients/${patientId}/assign-packet`, { bundleId });
+      return res.json();
+    },
+    onSuccess: (data: any) => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'packets'] });
+      setLastAssignedPacketUrl(data.packetUrl);
+      setShowAssignPacketDialog(false);
+      setAssigningPacketBundleId(null);
+      toast({ title: `Packet assigned — ${data.formCount} form${data.formCount !== 1 ? "s" : ""}` });
+    },
+    onError: (err: any) => toast({ title: err?.message ?? "Failed to assign packet", variant: "destructive" }),
   });
 
   const sendFormToEmailMutation = useMutation({
@@ -3433,11 +3467,99 @@ export default function PatientProfiles() {
                       >
                         <Send className="h-3 w-3" /> Send to Email
                       </Button>
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        className="text-xs gap-1"
+                        onClick={() => { setShowAssignPacketDialog(true); setLastAssignedPacketUrl(null); }}
+                        data-testid="button-assign-packet"
+                      >
+                        <ClipboardList className="h-3 w-3" /> Assign Packet
+                      </Button>
                     </div>
                   </div>
                 </CardHeader>
                 {showForms && (
                   <CardContent className="space-y-4">
+                    {/* Pending Packets */}
+                    {patientPackets.filter((p: any) => p.status !== "completed").length > 0 && (
+                      <div className="space-y-2">
+                        <p className="text-xs font-semibold text-blue-700 dark:text-blue-400 uppercase tracking-wide">Pending Packets</p>
+                        {patientPackets.filter((p: any) => p.status !== "completed").map((packet: any) => {
+                          const forms = (packet.formOrderJson as any[]) ?? [];
+                          const completedCount = forms.filter((f: any) => f.completed).length;
+                          return (
+                            <div key={packet.id} className="rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50/50 dark:bg-blue-950/20 p-3" data-testid={`packet-pending-${packet.id}`}>
+                              <div className="flex items-start justify-between gap-2 flex-wrap">
+                                <div>
+                                  <p className="text-sm font-medium">{packet.bundleName}</p>
+                                  <p className="text-xs text-muted-foreground">
+                                    {completedCount}/{forms.length} forms complete · Assigned {new Date(packet.createdAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                                  </p>
+                                </div>
+                                <div className="flex items-center gap-1.5 flex-wrap">
+                                  <Badge variant="outline" className="text-xs text-blue-600 dark:text-blue-400">
+                                    <ClipboardList className="h-2.5 w-2.5 mr-1" />In-Clinic Packet
+                                  </Badge>
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="text-xs gap-1"
+                                    onClick={() => window.open(`/packet/${packet.packetToken}`, "_blank")}
+                                    data-testid={`button-open-packet-${packet.id}`}
+                                  >
+                                    <Eye className="h-3 w-3" /> Open Packet
+                                  </Button>
+                                  <Button
+                                    size="sm"
+                                    variant="ghost"
+                                    className="text-xs"
+                                    onClick={() => {
+                                      navigator.clipboard.writeText(`${window.location.origin}/packet/${packet.packetToken}`);
+                                      toast({ title: "Packet link copied" });
+                                    }}
+                                    data-testid={`button-copy-packet-link-${packet.id}`}
+                                  >
+                                    <Copy className="h-3 w-3" />
+                                  </Button>
+                                </div>
+                              </div>
+                            </div>
+                          );
+                        })}
+                      </div>
+                    )}
+                    {/* Completed Packets (collapsed summary) */}
+                    {patientPackets.filter((p: any) => p.status === "completed").length > 0 && (
+                      <div className="space-y-1">
+                        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Completed Packets</p>
+                        {patientPackets.filter((p: any) => p.status === "completed").map((packet: any) => (
+                          <div key={packet.id} className="flex items-center gap-2 text-xs text-muted-foreground py-1" data-testid={`packet-completed-${packet.id}`}>
+                            <CheckCircle className="h-3 w-3 text-green-500" />
+                            <span>{packet.bundleName}</span>
+                            <span>·</span>
+                            <span>{packet.completedAt ? new Date(packet.completedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" }) : "Completed"}</span>
+                          </div>
+                        ))}
+                      </div>
+                    )}
+                    {/* Last assigned packet quick-open */}
+                    {lastAssignedPacketUrl && (
+                      <div className="rounded-md border border-green-200 dark:border-green-800 bg-green-50/50 dark:bg-green-950/20 p-3 flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          <p className="text-sm font-medium text-green-800 dark:text-green-300">Packet ready</p>
+                          <p className="text-xs text-muted-foreground">Hand device to patient or open in a new tab</p>
+                        </div>
+                        <div className="flex items-center gap-2">
+                          <Button size="sm" onClick={() => window.open(lastAssignedPacketUrl, "_blank")} data-testid="button-open-new-packet">
+                            <Eye className="h-3 w-3 mr-1" /> Open Packet
+                          </Button>
+                          <Button size="sm" variant="ghost" onClick={() => setLastAssignedPacketUrl(null)} data-testid="button-dismiss-packet-banner">
+                            <X className="h-3 w-3" />
+                          </Button>
+                        </div>
+                      </div>
+                    )}
                     {/* Pending Assignments */}
                     {patientFormAssignments.filter((a: any) => a.status === "pending").length > 0 && (
                       <div className="space-y-2">
@@ -3681,6 +3803,63 @@ export default function PatientProfiles() {
                       </div>
                     </ScrollArea>
                   </div>
+                </DialogContent>
+              </Dialog>
+
+              {/* Assign Packet Dialog */}
+              <Dialog open={showAssignPacketDialog} onOpenChange={(v) => { if (!v) { setShowAssignPacketDialog(false); setAssigningPacketBundleId(null); } }}>
+                <DialogContent className="max-w-md" data-testid="dialog-assign-packet">
+                  <DialogHeader>
+                    <DialogTitle>Assign Packet to Patient</DialogTitle>
+                  </DialogHeader>
+                  <div className="space-y-3 py-2">
+                    <p className="text-sm text-muted-foreground">
+                      Select a form bundle to assign as an in-clinic packet for{" "}
+                      <strong>{selectedPatient?.firstName} {selectedPatient?.lastName}</strong>.
+                      The patient will complete all forms sequentially on a shared device.
+                    </p>
+                    {formBundles.length === 0 ? (
+                      <div className="rounded-md border bg-muted/30 p-4 text-center space-y-2">
+                        <p className="text-sm text-muted-foreground">No form bundles yet.</p>
+                        <p className="text-xs text-muted-foreground">Create bundles in <strong>Digital Forms → Bundles</strong>.</p>
+                      </div>
+                    ) : (
+                      <ScrollArea className="max-h-72">
+                        <div className="space-y-2 pr-2">
+                          {formBundles.map((b: any) => (
+                            <button
+                              key={b.id}
+                              type="button"
+                              onClick={() => setAssigningPacketBundleId(b.id)}
+                              className={`w-full text-left rounded-md border p-3 transition-colors hover-elevate ${assigningPacketBundleId === b.id ? "border-primary bg-primary/5 ring-1 ring-primary" : "bg-background/60"}`}
+                              data-testid={`button-select-bundle-${b.id}`}
+                            >
+                              <p className="text-sm font-medium">{b.name}</p>
+                              {b.description && <p className="text-xs text-muted-foreground mt-0.5">{b.description}</p>}
+                              <p className="text-xs text-muted-foreground mt-1">
+                                {b.items?.length ?? 0} form{(b.items?.length ?? 0) !== 1 ? "s" : ""}
+                                {b.items?.length > 0 && ` · ${b.items.map((item: any, _i: number) => item.formId).join(", ")}`}
+                              </p>
+                            </button>
+                          ))}
+                        </div>
+                      </ScrollArea>
+                    )}
+                  </div>
+                  <DialogFooter>
+                    <Button variant="outline" onClick={() => setShowAssignPacketDialog(false)}>Cancel</Button>
+                    <Button
+                      onClick={() => {
+                        if (selectedPatient && assigningPacketBundleId) {
+                          assignPacketMutation.mutate({ patientId: selectedPatient.id, bundleId: assigningPacketBundleId });
+                        }
+                      }}
+                      disabled={!assigningPacketBundleId || assignPacketMutation.isPending}
+                      data-testid="button-confirm-assign-packet"
+                    >
+                      {assignPacketMutation.isPending ? "Assigning..." : "Assign & Get Link"}
+                    </Button>
+                  </DialogFooter>
                 </DialogContent>
               </Dialog>
 

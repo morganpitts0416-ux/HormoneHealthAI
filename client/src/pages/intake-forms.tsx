@@ -262,8 +262,224 @@ function SmartFieldPalette({ existingSmartKeys, onAdd }: {
   );
 }
 
+// ─── Bundles Section ──────────────────────────────────────────────────────────
+
+interface FormBundleWithItems {
+  id: number;
+  name: string;
+  description: string | null;
+  clinicianId: number;
+  clinicId: number | null;
+  createdAt: string;
+  items: { id: number; bundleId: number; formId: number; orderIndex: number }[];
+}
+
+function BundlesSection({ forms }: { forms: IntakeForm[] }) {
+  const { toast } = useToast();
+  const [showDialog, setShowDialog] = useState(false);
+  const [editingBundle, setEditingBundle] = useState<FormBundleWithItems | null>(null);
+  const [bundleName, setBundleName] = useState("");
+  const [bundleDesc, setBundleDesc] = useState("");
+  const [selectedFormIds, setSelectedFormIds] = useState<number[]>([]);
+
+  const { data: bundles = [], isLoading } = useQuery<FormBundleWithItems[]>({
+    queryKey: ["/api/form-bundles"],
+  });
+
+  const createMutation = useMutation({
+    mutationFn: (data: any) => apiRequest("POST", "/api/form-bundles", data).then(r => r.json()),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/form-bundles"] }); closeDialog(); },
+    onError: () => toast({ title: "Failed to save bundle", variant: "destructive" }),
+  });
+
+  const updateMutation = useMutation({
+    mutationFn: ({ id, data }: { id: number; data: any }) => apiRequest("PATCH", `/api/form-bundles/${id}`, data).then(r => r.json()),
+    onSuccess: () => { queryClient.invalidateQueries({ queryKey: ["/api/form-bundles"] }); closeDialog(); },
+    onError: () => toast({ title: "Failed to update bundle", variant: "destructive" }),
+  });
+
+  const deleteMutation = useMutation({
+    mutationFn: (id: number) => apiRequest("DELETE", `/api/form-bundles/${id}`),
+    onSuccess: () => queryClient.invalidateQueries({ queryKey: ["/api/form-bundles"] }),
+    onError: () => toast({ title: "Failed to delete bundle", variant: "destructive" }),
+  });
+
+  const openCreate = () => {
+    setEditingBundle(null);
+    setBundleName("");
+    setBundleDesc("");
+    setSelectedFormIds([]);
+    setShowDialog(true);
+  };
+
+  const openEdit = (b: FormBundleWithItems) => {
+    setEditingBundle(b);
+    setBundleName(b.name);
+    setBundleDesc(b.description ?? "");
+    setSelectedFormIds(b.items.sort((a, e) => a.orderIndex - e.orderIndex).map(i => i.formId));
+    setShowDialog(true);
+  };
+
+  const closeDialog = () => { setShowDialog(false); setEditingBundle(null); };
+
+  const toggleForm = (id: number) => {
+    setSelectedFormIds(prev => prev.includes(id) ? prev.filter(f => f !== id) : [...prev, id]);
+  };
+
+  const moveForm = (idx: number, dir: -1 | 1) => {
+    const next = [...selectedFormIds];
+    const target = idx + dir;
+    if (target < 0 || target >= next.length) return;
+    [next[idx], next[target]] = [next[target], next[idx]];
+    setSelectedFormIds(next);
+  };
+
+  const handleSave = () => {
+    if (!bundleName.trim()) return toast({ title: "Bundle name is required", variant: "destructive" });
+    const payload = { name: bundleName.trim(), description: bundleDesc.trim() || null, formIds: selectedFormIds };
+    if (editingBundle) updateMutation.mutate({ id: editingBundle.id, data: payload });
+    else createMutation.mutate(payload);
+  };
+
+  const publishedForms = forms.filter(f => f.status === "active");
+  const allActiveForms = forms.filter(f => f.status !== "archived");
+  const isSaving = createMutation.isPending || updateMutation.isPending;
+
+  return (
+    <div className="flex flex-col flex-1 overflow-hidden">
+      <ScrollArea className="flex-1 p-3 sm:p-6">
+        <div className="max-w-3xl space-y-4">
+          <div className="flex items-center justify-between gap-2">
+            <div>
+              <h2 className="text-sm font-semibold">Form Bundles</h2>
+              <p className="text-xs text-muted-foreground mt-0.5">Group forms into packets for sequential in-clinic completion.</p>
+            </div>
+            <Button size="sm" onClick={openCreate} data-testid="button-create-bundle">
+              <Plus className="h-3.5 w-3.5 mr-1" /> New Bundle
+            </Button>
+          </div>
+
+          {isLoading ? (
+            <div className="space-y-3">{[1,2,3].map(i => <div key={i} className="h-20 rounded-md bg-muted animate-pulse" />)}</div>
+          ) : bundles.length === 0 ? (
+            <div className="flex flex-col items-center justify-center py-16 text-center gap-3">
+              <Users className="h-10 w-10 text-muted-foreground/40" />
+              <p className="text-muted-foreground font-medium">No bundles yet</p>
+              <p className="text-sm text-muted-foreground">Create a bundle to group forms into a sequential in-clinic packet.</p>
+              <Button onClick={openCreate} data-testid="button-create-bundle-empty">
+                <Plus className="h-4 w-4 mr-1" /> Create Bundle
+              </Button>
+            </div>
+          ) : (
+            <div className="space-y-3">
+              {bundles.map(b => (
+                <Card key={b.id} data-testid={`card-bundle-${b.id}`}>
+                  <CardContent className="p-4">
+                    <div className="flex items-start justify-between gap-3 flex-wrap">
+                      <div className="flex-1 min-w-0">
+                        <p className="font-medium" data-testid={`text-bundle-name-${b.id}`}>{b.name}</p>
+                        {b.description && <p className="text-sm text-muted-foreground mt-0.5 line-clamp-1">{b.description}</p>}
+                        <div className="flex items-center gap-3 mt-2 text-xs text-muted-foreground flex-wrap">
+                          <span className="flex items-center gap-1">
+                            <LayoutList className="h-3 w-3" />
+                            {b.items.length} form{b.items.length !== 1 ? "s" : ""}
+                          </span>
+                          {b.items.length > 0 && (
+                            <span className="truncate max-w-xs">
+                              {b.items
+                                .sort((a, e) => a.orderIndex - e.orderIndex)
+                                .map(item => forms.find(f => f.id === item.formId)?.name ?? "Unknown")
+                                .join(" → ")}
+                            </span>
+                          )}
+                        </div>
+                      </div>
+                      <div className="flex items-center gap-1">
+                        <Button size="icon" variant="ghost" title="Edit bundle" onClick={() => openEdit(b)} data-testid={`button-edit-bundle-${b.id}`}>
+                          <Edit3 className="h-4 w-4" />
+                        </Button>
+                        <Button size="icon" variant="ghost" title="Delete bundle" className="text-destructive"
+                          onClick={() => { if (confirm(`Delete bundle "${b.name}"?`)) deleteMutation.mutate(b.id); }}
+                          data-testid={`button-delete-bundle-${b.id}`}>
+                          <Trash2 className="h-4 w-4" />
+                        </Button>
+                      </div>
+                    </div>
+                  </CardContent>
+                </Card>
+              ))}
+            </div>
+          )}
+        </div>
+      </ScrollArea>
+
+      <Dialog open={showDialog} onOpenChange={v => { if (!v) closeDialog(); }}>
+        <DialogContent className="max-w-lg">
+          <DialogHeader>
+            <DialogTitle>{editingBundle ? "Edit Bundle" : "New Form Bundle"}</DialogTitle>
+          </DialogHeader>
+          <div className="space-y-4 py-1">
+            <div className="space-y-1.5">
+              <Label htmlFor="bundle-name">Bundle Name</Label>
+              <Input id="bundle-name" value={bundleName} onChange={e => setBundleName(e.target.value)}
+                placeholder="e.g. New Member Packet" data-testid="input-bundle-name" />
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="bundle-desc">Description <span className="text-muted-foreground font-normal">(optional)</span></Label>
+              <Textarea id="bundle-desc" value={bundleDesc} onChange={e => setBundleDesc(e.target.value)}
+                placeholder="Brief description of this packet..." rows={2} data-testid="input-bundle-desc" />
+            </div>
+            <div className="space-y-2">
+              <Label>Forms in this bundle</Label>
+              <p className="text-xs text-muted-foreground">Select published forms and arrange their order.</p>
+              {allActiveForms.length === 0 ? (
+                <p className="text-sm text-muted-foreground italic">No active forms available. Create and publish a form first.</p>
+              ) : (
+                <div className="space-y-1.5 max-h-52 overflow-y-auto rounded-md border p-2">
+                  {allActiveForms.map(f => {
+                    const checked = selectedFormIds.includes(f.id);
+                    const idx = selectedFormIds.indexOf(f.id);
+                    return (
+                      <div key={f.id} className={`flex items-center gap-2 rounded p-1.5 ${checked ? "bg-muted/60" : "hover:bg-muted/30"}`}
+                        data-testid={`bundle-form-row-${f.id}`}>
+                        <input type="checkbox" id={`bf-${f.id}`} checked={checked} onChange={() => toggleForm(f.id)}
+                          className="h-3.5 w-3.5 accent-primary" data-testid={`checkbox-bundle-form-${f.id}`} />
+                        <label htmlFor={`bf-${f.id}`} className="flex-1 text-sm cursor-pointer truncate">{f.name}</label>
+                        {checked && (
+                          <div className="flex items-center gap-0.5">
+                            <span className="text-xs text-muted-foreground mr-1">#{idx + 1}</span>
+                            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => moveForm(idx, -1)} disabled={idx === 0}
+                              data-testid={`button-bundle-move-up-${f.id}`}>
+                              <ArrowUp className="h-3 w-3" />
+                            </Button>
+                            <Button size="icon" variant="ghost" className="h-5 w-5" onClick={() => moveForm(idx, 1)} disabled={idx === selectedFormIds.length - 1}
+                              data-testid={`button-bundle-move-down-${f.id}`}>
+                              <ArrowDown className="h-3 w-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+            </div>
+          </div>
+          <DialogFooter>
+            <Button variant="outline" onClick={closeDialog}>Cancel</Button>
+            <Button onClick={handleSave} disabled={isSaving} data-testid="button-save-bundle">
+              {isSaving ? "Saving..." : editingBundle ? "Save Changes" : "Create Bundle"}
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
+    </div>
+  );
+}
+
 export default function IntakeFormsPage() {
   const [activeFormId, setActiveFormId] = useState<number | null>(null);
+  const [view, setView] = useState<"forms" | "bundles">("forms");
   const [showCreate, setShowCreate] = useState(false);
   const [newName, setNewName] = useState("");
   const [newCategory, setNewCategory] = useState("custom");
@@ -327,6 +543,41 @@ export default function IntakeFormsPage() {
     );
   }
 
+  if (view === "bundles") {
+    return (
+      <div className="flex flex-col flex-1 overflow-hidden">
+        <div className="border-b px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
+          <div className="flex items-center gap-2 sm:gap-3 min-w-0">
+            <Users className="h-5 w-5 text-muted-foreground flex-shrink-0 hidden sm:block" />
+            <div className="min-w-0">
+              <h1 className="text-base sm:text-lg font-semibold">Form Bundles</h1>
+              <p className="text-xs text-muted-foreground hidden sm:block">Group forms into sequential in-clinic packets</p>
+            </div>
+          </div>
+          <div className="flex items-center gap-2 flex-shrink-0">
+            <div className="flex rounded-md border overflow-hidden">
+              <button
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === "forms" ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                onClick={() => setView("forms")}
+                data-testid="tab-view-forms"
+              >
+                Forms
+              </button>
+              <button
+                className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === "bundles" ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted"}`}
+                onClick={() => setView("bundles")}
+                data-testid="tab-view-bundles"
+              >
+                Bundles
+              </button>
+            </div>
+          </div>
+        </div>
+        <BundlesSection forms={forms} />
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col flex-1 overflow-hidden">
       <div className="border-b px-3 sm:px-6 py-3 sm:py-4 flex flex-wrap items-center justify-between gap-3" style={{ backgroundColor: "#f5f2ed", borderColor: "#d4c9b5" }}>
@@ -338,6 +589,22 @@ export default function IntakeFormsPage() {
           </div>
         </div>
         <div className="flex items-center gap-2 flex-shrink-0">
+          <div className="flex rounded-md border overflow-hidden">
+            <button
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === "forms" ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted"}`}
+              onClick={() => setView("forms")}
+              data-testid="tab-view-forms"
+            >
+              Forms
+            </button>
+            <button
+              className={`px-3 py-1.5 text-xs font-medium transition-colors ${view === "bundles" ? "bg-foreground text-background" : "bg-background text-muted-foreground hover:bg-muted"}`}
+              onClick={() => setView("bundles")}
+              data-testid="tab-view-bundles"
+            >
+              Bundles
+            </button>
+          </div>
           <Select value={filterStatus} onValueChange={setFilterStatus}>
             <SelectTrigger className="w-28 sm:w-36" data-testid="select-filter-status">
               <SelectValue />

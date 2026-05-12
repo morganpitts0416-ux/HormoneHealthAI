@@ -12792,6 +12792,190 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // ─── Form Bundles ──────────────────────────────────────────────────────────
+
+  app.get("/api/form-bundles", requireAuth, async (req: any, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const bundles = await storage.getFormBundles(clinicianId, clinicId);
+      const enriched = await Promise.all(bundles.map(async b => {
+        const items = await storage.getFormBundleItems(b.id);
+        return { ...b, items };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch form bundles" });
+    }
+  });
+
+  app.post("/api/form-bundles", requireAuth, async (req: any, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const { name, description, formIds } = req.body;
+      if (!name) return res.status(400).json({ message: "name required" });
+      const bundle = await storage.createFormBundle({ name, description: description || null, clinicianId, clinicId });
+      if (formIds?.length) {
+        await storage.setFormBundleItems(bundle.id, (formIds as number[]).map((fid, i) => ({ formId: fid, orderIndex: i })));
+      }
+      const items = await storage.getFormBundleItems(bundle.id);
+      res.status(201).json({ ...bundle, items });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to create form bundle" });
+    }
+  });
+
+  app.patch("/api/form-bundles/:id", requireAuth, async (req: any, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { name, description, formIds } = req.body;
+      const patch: any = {};
+      if (name !== undefined) patch.name = name;
+      if (description !== undefined) patch.description = description;
+      const bundle = await storage.updateFormBundle(id, patch);
+      if (formIds !== undefined) {
+        await storage.setFormBundleItems(id, (formIds as number[]).map((fid, i) => ({ formId: fid, orderIndex: i })));
+      }
+      const items = await storage.getFormBundleItems(id);
+      res.json({ ...bundle, items });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update form bundle" });
+    }
+  });
+
+  app.delete("/api/form-bundles/:id", requireAuth, async (req: any, res) => {
+    try {
+      await storage.deleteFormBundle(parseInt(req.params.id));
+      res.json({ success: true });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to delete form bundle" });
+    }
+  });
+
+  // POST /api/patients/:id/assign-packet — create a new in-clinic packet session
+  app.post("/api/patients/:id/assign-packet", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const { bundleId } = req.body;
+      if (!bundleId) return res.status(400).json({ message: "bundleId required" });
+
+      const bundle = await storage.getFormBundleById(parseInt(bundleId));
+      if (!bundle) return res.status(404).json({ message: "Bundle not found" });
+
+      const items = await storage.getFormBundleItems(bundle.id);
+      if (!items.length) return res.status(400).json({ message: "Bundle has no forms. Add at least one form to the bundle first." });
+
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+
+      const { randomBytes } = await import("crypto");
+
+      const formOrder = await Promise.all(items.map(async item => {
+        const form = await storage.getIntakeFormById(item.formId);
+        const publications = await storage.getFormPublications(item.formId);
+        let pub = publications.find((p: any) => p.status === "active");
+        if (!pub) {
+          pub = await storage.createFormPublication({
+            formId: item.formId,
+            mode: "link",
+            status: "active",
+            publicToken: randomBytes(16).toString("hex"),
+          });
+        }
+        return { formId: item.formId, formName: form?.name ?? "Form", publicToken: pub.publicToken, completed: false };
+      }));
+
+      const packetToken = randomBytes(20).toString("hex");
+      const prefill = {
+        firstName: patient.firstName || null,
+        lastName: patient.lastName || null,
+        dateOfBirth: (patient as any).dateOfBirth || null,
+        email: (patient as any).email || null,
+        phone: (patient as any).phone || null,
+      };
+
+      const packet = await storage.createPatientPacketAssignment({
+        patientId,
+        bundleId: bundle.id,
+        clinicianId,
+        clinicId,
+        packetToken,
+        status: "pending",
+        formOrderJson: formOrder,
+        prefillJson: prefill,
+        returnUrl: null,
+        completedAt: null,
+      });
+
+      const packetUrl = `${req.protocol}://${req.get("host")}/packet/${packetToken}`;
+      res.json({ success: true, id: packet.id, packetUrl, packetToken, bundleName: bundle.name, formCount: formOrder.length });
+    } catch (err) {
+      console.error("[Assign Packet]", err);
+      res.status(500).json({ message: "Failed to assign packet" });
+    }
+  });
+
+  // GET /api/patients/:id/packets
+  app.get("/api/patients/:id/packets", requireAuth, async (req: any, res) => {
+    try {
+      const patientId = parseInt(req.params.id);
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const packets = await storage.getPatientPacketAssignments(patientId);
+      const enriched = await Promise.all(packets.map(async p => {
+        const bundle = await storage.getFormBundleById(p.bundleId);
+        return { ...p, bundleName: bundle?.name ?? "Packet" };
+      }));
+      res.json(enriched);
+    } catch (err) {
+      res.status(500).json({ message: "Failed to fetch packets" });
+    }
+  });
+
+  // GET /api/packets/public/:token — public (no auth)
+  app.get("/api/packets/public/:token", async (req, res) => {
+    try {
+      const packet = await storage.getPatientPacketAssignmentByToken(req.params.token);
+      if (!packet) return res.status(404).json({ message: "Packet not found" });
+      const bundle = await storage.getFormBundleById(packet.bundleId);
+      res.json({
+        packetToken: packet.packetToken,
+        bundleName: bundle?.name ?? "Packet",
+        forms: packet.formOrderJson ?? [],
+        prefill: packet.prefillJson ?? null,
+        returnUrl: packet.returnUrl,
+        status: packet.status,
+      });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to load packet" });
+    }
+  });
+
+  // PATCH /api/packets/public/:token/progress — mark a form complete (no auth)
+  app.patch("/api/packets/public/:token/progress", async (req, res) => {
+    try {
+      const { completedToken } = req.body;
+      const packet = await storage.getPatientPacketAssignmentByToken(req.params.token);
+      if (!packet) return res.status(404).json({ message: "Packet not found" });
+      const forms = (packet.formOrderJson as any[]) ?? [];
+      const updated = forms.map(f => f.publicToken === completedToken ? { ...f, completed: true } : f);
+      const allDone = updated.every((f: any) => f.completed);
+      await storage.updatePatientPacketAssignment(packet.id, {
+        formOrderJson: updated,
+        status: allDone ? "completed" : "pending",
+        ...(allDone ? { completedAt: new Date() } : {}),
+      });
+      res.json({ success: true, allCompleted: allDone });
+    } catch (err) {
+      res.status(500).json({ message: "Failed to update packet progress" });
+    }
+  });
+
   // GET /api/patients/:id/form-submissions
   app.get("/api/patients/:id/form-submissions", requireAuth, async (req: any, res) => {
     try {
