@@ -9,21 +9,11 @@ import {
   type PortalLab,
 } from "@/components/portal/portal-data";
 
-interface PublishedProtocol {
-  id: number;
-  dietaryGuidance: string | null;
-}
-
 export default function PortalLabsPage() {
   const [selectedLab, setSelectedLab] = useState<PortalLab | null>(null);
 
   const { data: labs = [], isLoading } = useQuery<PortalLab[]>({
     queryKey: ["/api/portal/labs"],
-    retry: false,
-  });
-
-  const { data: protocol } = useQuery<PublishedProtocol | null>({
-    queryKey: ["/api/portal/protocol"],
     retry: false,
   });
 
@@ -91,7 +81,6 @@ export default function PortalLabsPage() {
       {selectedLab && (
         <LabQuickViewDialog
           lab={selectedLab}
-          dietaryGuidance={protocol?.dietaryGuidance}
           onClose={() => setSelectedLab(null)}
         />
       )}

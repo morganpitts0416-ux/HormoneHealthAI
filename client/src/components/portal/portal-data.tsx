@@ -7,7 +7,7 @@ import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   FlaskConical, ChevronRight, Heart, Activity, Utensils, ChevronDown, ChevronUp,
   Info, ChefHat, Clock, Users, Loader2, ArrowLeft, Bookmark, BookmarkCheck,
-  Download, Trash2, MessageSquare,
+  Download, Trash2,
 } from "lucide-react";
 import type { SupplementRecommendation } from "@shared/schema";
 
@@ -38,11 +38,26 @@ export interface PortalLab {
     interpretation: string;
     recommendation?: string;
   }>;
+  /** Hormone-pattern rows (Testosterone Pattern A–E, Perimenopause Assessment, etc.) */
+  hormonePatternRows: Array<{
+    category: string;
+    value?: number;
+    unit: string;
+    status: string;
+    interpretation: string;
+    recommendation?: string;
+  }>;
   supplements: SupplementRecommendation[];
   patientSummary: string | null;
   preventRisk: any | null;
   insulinResistance: any | null;
+  /** Female clinical phenotypes from the hormone assessment engine */
+  clinicalPhenotypes: any[] | null;
+  /** Male hormone patterns */
+  maleHormonePatterns: any[] | null;
   clinicianNotes: string | null;
+  /** Per-lab dietary guidance from the published protocol linked to this lab */
+  dietaryGuidance: string | null;
 }
 
 export interface SavedRecipeRow {
@@ -450,11 +465,12 @@ export function RecipeDialog({ food, onClose }: { food: FoodItem; onClose: () =>
 
 // ───── Lab quick-view dialog ───────────────────────────────────────────────
 export function LabQuickViewDialog({
-  lab, dietaryGuidance, onClose,
-}: { lab: PortalLab; dietaryGuidance?: string | null; onClose: () => void }) {
+  lab, onClose,
+}: { lab: PortalLab; onClose: () => void }) {
   const [expandedSection, setExpandedSection] = useState<string | null>(null);
   const [quickViewFood, setQuickViewFood] = useState<FoodItem | null>(null);
 
+  // Group lab value interpretations by the prefix before the first colon
   const grouped = lab.interpretations.reduce((acc: Record<string, typeof lab.interpretations>, interp) => {
     const cat = interp.category.includes(":") ? interp.category.split(":")[0].trim() : interp.category;
     if (!acc[cat]) acc[cat] = [];
@@ -463,7 +479,16 @@ export function LabQuickViewDialog({
   }, {});
 
   const hasCVRisk = !!lab.preventRisk;
-  const hasIR = !!(lab.insulinResistance && lab.insulinResistance.likelihood && lab.insulinResistance.likelihood !== 'none');
+
+  // Hormone assessment: female clinical phenotypes, male patterns, and any
+  // hormone-pattern interpretation rows (Testosterone Pattern A–E, Perimenopause, etc.)
+  const hasClinicalPhenotypes = !!(lab.clinicalPhenotypes && lab.clinicalPhenotypes.length > 0);
+  const hasMalePatterns = !!(lab.maleHormonePatterns && lab.maleHormonePatterns.length > 0);
+  const hasHormonePatternRows = !!(lab.hormonePatternRows && lab.hormonePatternRows.length > 0);
+  const hasHormoneAssessment = hasClinicalPhenotypes || hasMalePatterns || hasHormonePatternRows;
+
+  // Nutrition: per-lab dietary guidance from the published protocol
+  const nutritionText = lab.dietaryGuidance;
 
   function Section({ id, title, icon, children }: { id: string; title: string; icon: React.ReactNode; children: React.ReactNode }) {
     const open = expandedSection === id;
@@ -502,6 +527,8 @@ export function LabQuickViewDialog({
 
         <ScrollArea className="max-h-[70vh]">
           <div className="px-4 py-4 space-y-3">
+
+            {/* ── 1. Your Lab Values ──────────────────────────────────────── */}
             {lab.interpretations.length > 0 && (
               <Section id="labs" title="Your Lab Values" icon={<FlaskConical className="w-4 h-4" style={{ color: "#5a7040" }} />}>
                 <div className="space-y-4 pt-1">
@@ -538,8 +565,9 @@ export function LabQuickViewDialog({
               </Section>
             )}
 
+            {/* ── 2. Your Heart Health ────────────────────────────────────── */}
             {hasCVRisk && (
-              <Section id="cardiac" title="Heart Health Assessment" icon={<Heart className="w-4 h-4" style={{ color: "#c0392b" }} />}>
+              <Section id="cardiac" title="Your Heart Health" icon={<Heart className="w-4 h-4" style={{ color: "#c0392b" }} />}>
                 <div className="space-y-3 pt-1">
                   <div className="flex items-center justify-between">
                     <span className="text-xs" style={{ color: "#5a6a48" }}>Overall risk level</span>
@@ -572,52 +600,74 @@ export function LabQuickViewDialog({
               </Section>
             )}
 
-            {hasIR && (
-              <Section id="metabolic" title="Metabolic Health Assessment" icon={<Activity className="w-4 h-4" style={{ color: "#c9932a" }} />}>
-                <div className="space-y-3 pt-1">
-                  <div className="flex items-center justify-between">
-                    <span className="text-xs" style={{ color: "#5a6a48" }}>Metabolic balance</span>
-                    <span
-                      className="text-xs font-semibold px-2.5 py-1 rounded-full"
-                      style={{
-                        backgroundColor: lab.insulinResistance.likelihood === 'high' ? "#fce8e6" : lab.insulinResistance.likelihood === 'moderate' ? "#fef2e6" : "#fef8ec",
-                        color: lab.insulinResistance.likelihood === 'high' ? "#7a1a0a" : lab.insulinResistance.likelihood === 'moderate' ? "#7a4010" : "#7a5a10",
-                      }}
-                    >
-                      {lab.insulinResistance.likelihoodLabel || lab.insulinResistance.likelihood}
-                    </span>
-                  </div>
-                  {lab.insulinResistance.patientSummary && (
-                    <p className="text-sm leading-relaxed" style={{ color: "#3d4a30" }}>
-                      {lab.insulinResistance.patientSummary}
-                    </p>
-                  )}
-                  {lab.insulinResistance.phenotypes?.length > 0 && (
-                    <div className="rounded-lg p-3" style={{ backgroundColor: "#f9f6f0" }}>
-                      <p className="text-xs font-medium mb-1.5" style={{ color: "#5a6a48" }}>Identified patterns:</p>
-                      {lab.insulinResistance.phenotypes.map((ph: any, i: number) => (
-                        <div key={i} className="mb-2 last:mb-0">
-                          <p className="text-xs font-semibold" style={{ color: "#1c2414" }}>{ph.name}</p>
-                          {ph.patientExplanation && (
-                            <p className="text-xs leading-relaxed mt-0.5" style={{ color: "#7a8a64" }}>{ph.patientExplanation}</p>
+            {/* ── 3. Your Hormone Assessment ──────────────────────────────── */}
+            {hasHormoneAssessment && (
+              <Section id="hormones" title="Your Hormone Assessment" icon={<Activity className="w-4 h-4" style={{ color: "#8b6cb5" }} />}>
+                <div className="space-y-4 pt-1">
+
+                  {/* Female clinical phenotypes */}
+                  {hasClinicalPhenotypes && (
+                    <div className="space-y-3">
+                      {lab.clinicalPhenotypes!.map((ph: any, i: number) => (
+                        <div key={i} className="rounded-lg p-3" style={{ backgroundColor: "#f4f0f8", border: "1px solid #e0d4f0" }}>
+                          <p className="text-xs font-semibold mb-1" style={{ color: "#5a3a8a" }}>{ph.name || ph.label}</p>
+                          {(ph.patientExplanation || ph.description) && (
+                            <p className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>
+                              {ph.patientExplanation || ph.description}
+                            </p>
                           )}
                         </div>
                       ))}
+                    </div>
+                  )}
+
+                  {/* Male hormone patterns */}
+                  {hasMalePatterns && (
+                    <div className="space-y-3">
+                      {lab.maleHormonePatterns!.map((pt: any, i: number) => (
+                        <div key={i} className="rounded-lg p-3" style={{ backgroundColor: "#f4f0f8", border: "1px solid #e0d4f0" }}>
+                          <p className="text-xs font-semibold mb-1" style={{ color: "#5a3a8a" }}>{pt.name || pt.pattern}</p>
+                          {pt.patientSummary && (
+                            <p className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>{pt.patientSummary}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  )}
+
+                  {/* Hormone-pattern interpretation rows (Testosterone Pattern A–E, Perimenopause, etc.) */}
+                  {hasHormonePatternRows && (
+                    <div className="space-y-3">
+                      {lab.hormonePatternRows!.map((row: any, i: number) => {
+                        // Strip the "Testosterone Pattern X: " prefix for a cleaner label
+                        const label = row.category.includes(":") ? row.category.split(":").slice(1).join(":").trim() : row.category;
+                        // Extract patient-facing text from the interpretation (before "PROVIDER RECOMMENDATION:")
+                        const patientText = (row.interpretation || "").split(/PROVIDER RECOMMENDATION:/i)[0].trim();
+                        return (
+                          <div key={i} className="rounded-lg p-3" style={{ backgroundColor: "#f4f0f8", border: "1px solid #e0d4f0" }}>
+                            <p className="text-xs font-semibold mb-1.5" style={{ color: "#5a3a8a" }}>{label}</p>
+                            {patientText && (
+                              <p className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>{patientText}</p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   )}
                 </div>
               </Section>
             )}
 
-            {dietaryGuidance && (() => {
-              const qvFoodItems = parseFoodItems(dietaryGuidance);
+            {/* ── 4. Nutrition ────────────────────────────────────────────── */}
+            {nutritionText && (() => {
+              const qvFoodItems = parseFoodItems(nutritionText);
               return (
-                <Section id="dietary" title="Dietary & Lifestyle Guidance" icon={<Utensils className="w-4 h-4" style={{ color: "#5a7040" }} />}>
+                <Section id="nutrition" title="Nutrition" icon={<Utensils className="w-4 h-4" style={{ color: "#5a7040" }} />}>
                   <div className="pt-1 space-y-3">
-                    <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#3d4a30" }}>{dietaryGuidance}</p>
+                    <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#3d4a30" }}>{nutritionText}</p>
                     <p className="text-xs italic" style={{ color: "#a0a880" }}>
-                      Guidance provided by your care team at{" "}
-                      <span className="not-italic font-medium">{lab.labDate ? formatDate(lab.labDate) : "your last visit"}</span>.
+                      Dietary recommendations prepared by your care team based on your specific lab results from{" "}
+                      <span className="not-italic font-medium">{lab.labDate ? formatDate(lab.labDate) : "this visit"}</span>.
                     </p>
                     {qvFoodItems.length > 0 && (
                       <div className="rounded-lg p-3 mt-2" style={{ backgroundColor: "#f4efe8", border: "1px solid #e0d8cc" }}>
@@ -648,17 +698,30 @@ export function LabQuickViewDialog({
             })()}
             {quickViewFood && <RecipeDialog food={quickViewFood} onClose={() => setQuickViewFood(null)} />}
 
-            {lab.clinicianNotes && (
-              <Section id="provider-note" title="A Note from Your Provider" icon={<MessageSquare className="w-4 h-4" style={{ color: "#5a7040" }} />}>
-                <p className="text-sm leading-relaxed pt-1 whitespace-pre-wrap" style={{ color: "#3d4a30" }}>{lab.clinicianNotes}</p>
+            {/* ── 5. Your Health Assessment ───────────────────────────────── */}
+            {(lab.patientSummary || lab.clinicianNotes) && (
+              <Section id="summary" title="Your Health Assessment" icon={<Info className="w-4 h-4" style={{ color: "#5a7040" }} />}>
+                <div className="space-y-3 pt-1">
+                  {lab.patientSummary && (
+                    <p className="text-sm leading-relaxed" style={{ color: "#3d4a30" }}>{lab.patientSummary}</p>
+                  )}
+                  {lab.clinicianNotes && (
+                    <>
+                      {lab.patientSummary && <hr style={{ borderColor: "#e8ddd0" }} />}
+                      <div>
+                        <p className="text-xs font-semibold uppercase tracking-wider mb-1.5" style={{ color: "#7a8a64" }}>
+                          A Note from Your Provider
+                        </p>
+                        <p className="text-sm leading-relaxed whitespace-pre-wrap" style={{ color: "#3d4a30" }}>
+                          {lab.clinicianNotes}
+                        </p>
+                      </div>
+                    </>
+                  )}
+                </div>
               </Section>
             )}
 
-            {lab.patientSummary && (
-              <Section id="summary" title="Your Health Assessment" icon={<Info className="w-4 h-4" style={{ color: "#5a7040" }} />}>
-                <p className="text-sm leading-relaxed pt-1" style={{ color: "#3d4a30" }}>{lab.patientSummary}</p>
-              </Section>
-            )}
           </div>
         </ScrollArea>
 

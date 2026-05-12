@@ -3890,29 +3890,86 @@ Return ONLY this JSON structure:
     try {
       const patientId = (req.session as any).portalPatientId as number;
       const labs = await storage.getLabResultsByPatient(patientId);
-      // Load all protocols for this patient so we can attach clinicianNotes per lab
+      // Load all protocols for this patient so we can attach clinicianNotes + dietaryGuidance per lab
       const protocols = await storage.getAllPublishedProtocols(patientId);
       const notesByLabId = new Map<number, string | null>();
+      const dietaryByLabId = new Map<number, string | null>();
       for (const p of protocols) {
-        if (p.labResultId && p.clinicianNotes) notesByLabId.set(p.labResultId, p.clinicianNotes);
+        if (p.labResultId) {
+          if (p.clinicianNotes) notesByLabId.set(p.labResultId, p.clinicianNotes);
+          // Use the most-recently-published dietary guidance per lab (protocols are desc by publishedAt)
+          if (p.dietaryGuidance && !dietaryByLabId.has(p.labResultId)) {
+            dietaryByLabId.set(p.labResultId, p.dietaryGuidance);
+          }
+        }
       }
+
+      // Categories that belong in the hormone assessment section, not the lab values table
+      const HORMONE_PATTERN_PREFIXES = ['Testosterone Pattern', 'Perimenopause Assessment:', 'Hormone Pattern:'];
+      const isHormonePattern = (cat: string) => HORMONE_PATTERN_PREFIXES.some(p => cat.startsWith(p));
+
       // Return labs with patient-safe fields (no raw clinical scoring text)
-      const safeLabs = labs.map((lab) => ({
-        id: lab.id,
-        labDate: lab.labDate,
-        createdAt: lab.createdAt,
-        labValues: lab.labValues || null,
-        interpretations: (lab.interpretationResult as any)?.interpretations || [],
-        supplements: (lab.interpretationResult as any)?.supplements || [],
-        patientSummary: (lab.interpretationResult as any)?.patientSummary || null,
-        preventRisk: (lab.interpretationResult as any)?.preventRisk || null,
-        insulinResistance: (lab.interpretationResult as any)?.insulinResistance || null,
-        clinicianNotes: notesByLabId.get(lab.id) ?? null,
-      }));
+      const safeLabs = labs.map((lab) => {
+        const interp = (lab.interpretationResult as any) || {};
+        const allInterpretations: any[] = interp.interpretations || [];
+        return {
+          id: lab.id,
+          labDate: lab.labDate,
+          createdAt: lab.createdAt,
+          labValues: lab.labValues || null,
+          // Filter hormone-pattern rows out — they appear in the hormone assessment section
+          interpretations: allInterpretations.filter((i: any) => !isHormonePattern(i.category || '')),
+          // Surface hormone pattern rows separately for the portal hormone assessment section
+          hormonePatternRows: allInterpretations.filter((i: any) => isHormonePattern(i.category || '')),
+          supplements: interp.supplements || [],
+          patientSummary: interp.patientSummary || null,
+          preventRisk: interp.preventRisk || null,
+          insulinResistance: interp.insulinResistance || null,
+          // Female clinical phenotypes (FemaleHormoneAssessmentCard data)
+          clinicalPhenotypes: interp.clinicalPhenotypes || null,
+          // Male hormone patterns
+          maleHormonePatterns: interp.maleHormonePatterns || null,
+          clinicianNotes: notesByLabId.get(lab.id) ?? null,
+          // Per-lab dietary guidance from the matching published protocol
+          dietaryGuidance: dietaryByLabId.get(lab.id) ?? null,
+        };
+      });
       res.json(safeLabs);
     } catch (error) {
       console.error("[PORTAL] Error fetching labs:", error);
       res.status(500).json({ message: "Failed to fetch lab history" });
+    }
+  });
+
+  // ── Clinician: Update patient summary for a saved lab result ──────────────
+  // This keeps the portal "Your Health Assessment" in sync when provider edits it.
+  app.patch("/api/patients/:id/labs/:labId/patient-summary", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const labId = parseInt(req.params.labId);
+      const { patientSummary } = req.body;
+      if (typeof patientSummary !== 'string') {
+        return res.status(400).json({ message: "patientSummary must be a string" });
+      }
+      // Verify clinician can access this patient
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      // Fetch the lab result and verify it belongs to this patient
+      const labResult = await storage.getLabResult(labId);
+      if (!labResult || labResult.patientId !== patientId) {
+        return res.status(404).json({ message: "Lab result not found" });
+      }
+      // Merge updated patientSummary into the stored interpretationResult JSON
+      const existing = (labResult.interpretationResult as any) || {};
+      const updated = await storage.updateLabResult(labId, {
+        interpretationResult: { ...existing, patientSummary } as any,
+      });
+      res.json({ message: "Patient summary updated", patientSummary });
+    } catch (error) {
+      console.error("Error updating patient summary:", error);
+      res.status(500).json({ message: "Failed to update patient summary" });
     }
   });
 
