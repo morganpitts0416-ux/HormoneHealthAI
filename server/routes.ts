@@ -8364,13 +8364,19 @@ RULES:
       if (chart) {
         const chartLines: string[] = [];
         if ((chart.currentMedications as any[])?.length)
-          chartLines.push(`Current Medications: ${(chart.currentMedications as string[]).join(", ")}`);
+          chartLines.push(`Current Medications: ${(chart.currentMedications as string[]).join(" | ")}`);
         if ((chart.allergies as any[])?.length)
           chartLines.push(`Allergies: ${(chart.allergies as string[]).join(", ")}`);
         if ((chart.medicalHistory as any[])?.length)
-          chartLines.push(`Medical History: ${(chart.medicalHistory as string[]).join(", ")}`);
+          chartLines.push(`Past Medical History: ${(chart.medicalHistory as string[]).join(" | ")}`);
+        if ((chart.surgicalHistory as any[])?.length)
+          chartLines.push(`Past Surgical History: ${(chart.surgicalHistory as string[]).join(" | ")}`);
+        if ((chart.socialHistory as any[])?.length)
+          chartLines.push(`Social History: ${(chart.socialHistory as string[]).join(" | ")}`);
+        if ((chart.familyHistory as any[])?.length)
+          chartLines.push(`Family History: ${(chart.familyHistory as string[]).join(" | ")}`);
         if (chartLines.length)
-          sections.push(`PATIENT CHART:\n${chartLines.join("\n")}`);
+          sections.push(`PATIENT CHART DATA — USE THESE VERBATIM in the Medical History section of the note. Do NOT write "not reported" or "not mentioned" for any item listed here — these are the patient's documented chart items and must appear in the note exactly as listed:\n${chartLines.join("\n")}`);
       }
 
       // 3. Recent vitals (last 3 readings)
@@ -9178,6 +9184,71 @@ Return JSON matching EvidenceOverlay structure:
           console.log(`[SOAP Pipeline] Evidence auto-generated for encounter ${id} (${(evidenceOverlay.suggestions ?? []).length} suggestions)`);
         } catch (evErr) {
           console.warn(`[SOAP Pipeline] Background evidence generation failed for encounter ${id}:`, evErr);
+        }
+
+        // ── Social history extraction — merge new items into patient chart ─────
+        // Scans transcript for career, living situation, family dynamics, schooling,
+        // social habits (tobacco/alcohol/substances/exercise/diet) and appends any
+        // genuinely new items to the patient's chart social history. Never removes
+        // existing items, never duplicates.
+        if (encounter.patientId) {
+          try {
+            const shCompletion = await openai.chat.completions.create({
+              model: "gpt-4o",
+              messages: [
+                {
+                  role: "system",
+                  content: `You are a clinical documentation specialist. Extract social history items from a clinical encounter transcript.
+
+Extract ONLY items that are explicitly stated or very clearly implied. Categories to look for:
+- Occupation / career / employer / work status (employed, retired, disabled, etc.)
+- Living situation (lives alone, with spouse, with family, assisted living, etc.)
+- Relationship status / marital status
+- Children / dependents (ages if mentioned)
+- Education / schooling level
+- Tobacco use (current, former, never — include type and amount if stated)
+- Alcohol use (frequency, amount — e.g. "1-2 drinks/week")
+- Recreational drug / substance use
+- Exercise habits (type, frequency, duration)
+- Diet patterns (e.g. low-carb, vegetarian, intermittent fasting)
+- Significant stressors or life events mentioned clinically
+
+Return JSON: { "social_history_items": ["<item 1>", "<item 2>", ...] }
+Each item should be a concise, standalone clinical statement (e.g. "Employed as a nurse", "Lives with spouse and 2 children", "Former smoker — quit 2018", "Drinks 1-2 glasses of wine nightly", "Exercises 3x/week, resistance training").
+If nothing is found, return: { "social_history_items": [] }`,
+                },
+                {
+                  role: "user",
+                  content: `TRANSCRIPT:\n${transcriptForEvidence.slice(0, 8000)}`,
+                },
+              ],
+              response_format: { type: "json_object" },
+            });
+
+            const shParsed = JSON.parse(shCompletion.choices[0].message.content || "{}");
+            const extractedItems: string[] = shParsed.social_history_items ?? [];
+
+            if (extractedItems.length > 0) {
+              const existingChart = await storage.getPatientChart(encounter.patientId, clinicianId);
+              const existing: string[] = (existingChart?.socialHistory as string[]) ?? [];
+              const existingLower = existing.map((s: string) => s.toLowerCase().trim());
+
+              // Only append items that aren't already represented in the chart
+              const newItems = extractedItems.filter((item: string) => {
+                const lc = item.toLowerCase().trim();
+                return !existingLower.some(e => e.includes(lc.slice(0, 20)) || lc.includes(e.slice(0, 20)));
+              });
+
+              if (newItems.length > 0) {
+                await storage.upsertPatientChart(encounter.patientId, clinicianId, {
+                  socialHistory: [...existing, ...newItems],
+                });
+                console.log(`[SOAP Pipeline] Social history updated for patient ${encounter.patientId}: +${newItems.length} items`);
+              }
+            }
+          } catch (shErr) {
+            console.warn(`[SOAP Pipeline] Background social history extraction failed:`, shErr);
+          }
         }
       });
     } catch (err) {

@@ -732,6 +732,16 @@ If ANY BMI value is explicitly mentioned, generate the appropriate weight classi
 PATIENT EDUCATION — MANDATORY DOCUMENTATION:
 Document in THREE places: HPI narrative, Assessment item reasoning, Plan for that item.
 
+CHART DATA — MANDATORY CHART-TO-NOTE MAPPING:
+If PATIENT HISTORICAL CONTEXT contains a "PATIENT CHART DATA" block, you MUST use those exact items in the Medical History section — verbatim, not paraphrased. Specific rules:
+- "Past Medical History" chart items → Past Medical Hx in the note (list ALL of them — never omit or condense)
+- "Past Surgical History" chart items → Past Surgical Hx in the note (list ALL of them)
+- "Social History" chart items → Social Hx in the note (list ALL of them)
+- "Current Medications" chart items → include in OBJECTIVE and weave into HPI/Assessment as clinically relevant
+- "Allergies" chart items → Allergies line
+- "Family History" chart items → Family Hx in the note
+If additional history is mentioned in the transcript, ADD it to the chart items — never replace them. Do NOT write "not reported," "not mentioned," or "none documented" for any section that has chart data.
+
 MEDICATION-IMPLIED PMH — MANDATORY:
 Psychiatric/sleep medications → corresponding conditions in PMH and Assessment. See medication list for specific mappings.
 
