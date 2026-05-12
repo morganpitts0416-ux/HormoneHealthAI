@@ -12798,13 +12798,15 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const bundles = await storage.getFormBundles(clinicianId, clinicId);
-      const enriched = await Promise.all(bundles.map(async b => {
-        const items = await storage.getFormBundleItems(b.id);
+      const st = storage as any;
+      const bundles = await st.getFormBundles(clinicianId, clinicId);
+      const enriched = await Promise.all(bundles.map(async (b: any) => {
+        const items = await st.getFormBundleItems(b.id);
         return { ...b, items };
       }));
       res.json(enriched);
     } catch (err) {
+      console.error("[FormBundles GET]", err);
       res.status(500).json({ message: "Failed to fetch form bundles" });
     }
   });
@@ -12815,13 +12817,15 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const clinicId = getEffectiveClinicId(req);
       const { name, description, formIds } = req.body;
       if (!name) return res.status(400).json({ message: "name required" });
-      const bundle = await storage.createFormBundle({ name, description: description || null, clinicianId, clinicId });
+      const db = (storage as any);
+      const bundle = await db.createFormBundle({ name, description: description || null, clinicianId, clinicId });
       if (formIds?.length) {
-        await storage.setFormBundleItems(bundle.id, (formIds as number[]).map((fid, i) => ({ formId: fid, orderIndex: i })));
+        await db.setFormBundleItems(bundle.id, (formIds as number[]).map((fid: number, i: number) => ({ formId: fid, orderIndex: i })));
       }
-      const items = await storage.getFormBundleItems(bundle.id);
+      const items = await db.getFormBundleItems(bundle.id);
       res.status(201).json({ ...bundle, items });
     } catch (err) {
+      console.error("[FormBundles POST]", err);
       res.status(500).json({ message: "Failed to create form bundle" });
     }
   });
@@ -12833,22 +12837,25 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const patch: any = {};
       if (name !== undefined) patch.name = name;
       if (description !== undefined) patch.description = description;
-      const bundle = await storage.updateFormBundle(id, patch);
+      const db = (storage as any);
+      const bundle = await db.updateFormBundle(id, patch);
       if (formIds !== undefined) {
-        await storage.setFormBundleItems(id, (formIds as number[]).map((fid, i) => ({ formId: fid, orderIndex: i })));
+        await db.setFormBundleItems(id, (formIds as number[]).map((fid: number, i: number) => ({ formId: fid, orderIndex: i })));
       }
-      const items = await storage.getFormBundleItems(id);
+      const items = await db.getFormBundleItems(id);
       res.json({ ...bundle, items });
     } catch (err) {
+      console.error("[FormBundles PATCH]", err);
       res.status(500).json({ message: "Failed to update form bundle" });
     }
   });
 
   app.delete("/api/form-bundles/:id", requireAuth, async (req: any, res) => {
     try {
-      await storage.deleteFormBundle(parseInt(req.params.id));
+      await (storage as any).deleteFormBundle(parseInt(req.params.id));
       res.json({ success: true });
     } catch (err) {
+      console.error("[FormBundles DELETE]", err);
       res.status(500).json({ message: "Failed to delete form bundle" });
     }
   });
@@ -12862,10 +12869,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const { bundleId } = req.body;
       if (!bundleId) return res.status(400).json({ message: "bundleId required" });
 
-      const bundle = await storage.getFormBundleById(parseInt(bundleId));
+      const bundle = await (storage as any).getFormBundleById(parseInt(bundleId));
       if (!bundle) return res.status(404).json({ message: "Bundle not found" });
 
-      const items = await storage.getFormBundleItems(bundle.id);
+      const items = await (storage as any).getFormBundleItems(bundle.id);
       if (!items.length) return res.status(400).json({ message: "Bundle has no forms. Add at least one form to the bundle first." });
 
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
@@ -12926,13 +12933,15 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       const clinicId = getEffectiveClinicId(req);
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
-      const packets = await storage.getPatientPacketAssignments(patientId);
-      const enriched = await Promise.all(packets.map(async p => {
-        const bundle = await storage.getFormBundleById(p.bundleId);
+      const st = storage as any;
+      const packets = await st.getPatientPacketAssignments(patientId);
+      const enriched = await Promise.all(packets.map(async (p: any) => {
+        const bundle = await st.getFormBundleById(p.bundleId);
         return { ...p, bundleName: bundle?.name ?? "Packet" };
       }));
       res.json(enriched);
     } catch (err) {
+      console.error("[Packets GET]", err);
       res.status(500).json({ message: "Failed to fetch packets" });
     }
   });
