@@ -594,18 +594,35 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       if (issuedForPatientId !== currentPatientId) return;
       if (voiceSessionRef.current) setVoiceSessionMode(false);
       const msg = err.message ?? "";
-      // "Failed to fetch" (Android/Chrome) and "Load failed" (iOS Safari) are
-      // network-layer errors — the AI never failed, the connection did.
+      // AbortError fires when the AbortController cancelled an in-flight request
+      // (e.g. patient switched mid-request). Silently discard — the request was
+      // intentionally cancelled; showing an error would confuse the provider.
+      const isAbort = err.name === "AbortError" || /aborted/i.test(msg);
+      if (isAbort) return;
+      // "Failed to fetch" (Chrome) / "Load failed" (Safari) = network-layer drop
       const isNetworkError = /failed to fetch|load failed|networkerror|network error|the internet connection appears to be offline|could not connect/i.test(msg);
-      // AbortError fires if the AbortController cancelled the request
-      const isAbort = err.name === "AbortError" || /aborted|abort/i.test(msg);
-      // 500 JSON body from the server gets forwarded as "500: {...}" — strip it
-      const isServerJson = msg.includes("{");
-      const displayMsg = isNetworkError || isAbort
-        ? "It looks like there was a connection hiccup — this can happen on mobile when signal is spotty or the screen locked mid-request. Please try again."
-        : isServerJson
-          ? "Something went wrong reaching the AI service. Please try again in a moment."
-          : (msg || "Something went wrong. Please try again.");
+      // Timeout: OpenAI or Replit proxy cut the connection
+      const isTimeout = /timeout|timed out|etimedout/i.test(msg) || msg.includes("408") || msg.includes("504");
+      // Rate limit
+      const isRateLimit = msg.includes("429");
+      // 500 JSON body from the server gets forwarded as "500: {...}"
+      const isServerError = msg.startsWith("500") || msg.includes("500:");
+      const isTooLarge = msg.includes("400") && (msg.includes("30,000") || msg.includes("10,000"));
+
+      let displayMsg: string;
+      if (isRateLimit) {
+        displayMsg = "The AI service is temporarily busy. Please wait a moment and try again.";
+      } else if (isTimeout) {
+        displayMsg = "The request took too long to complete. Please try again — shorter messages process faster.";
+      } else if (isTooLarge) {
+        displayMsg = "The message or note is too large for June to process. Try closing the SOAP note or starting a new conversation.";
+      } else if (isNetworkError) {
+        displayMsg = "June lost her connection to the server. Please check your network and try again.";
+      } else if (isServerError) {
+        displayMsg = "Something went wrong on the server. Please try again in a moment.";
+      } else {
+        displayMsg = msg || "Something went wrong. Please try again.";
+      }
       setMessages(prev => [...prev, { role: "assistant", content: displayMsg }]);
     },
   });

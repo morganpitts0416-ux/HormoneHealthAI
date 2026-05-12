@@ -201,6 +201,14 @@ app.use((req, res, next) => {
     await ensureSchema();
     console.log("[startup] cleaning up bad chart entries…");
     await cleanupObjectObjectChartEntries();
+    // ── OpenAI / AI integration key check ────────────────────────────────────
+    const aiKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY;
+    const aiBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+    if (!aiKey) {
+      console.warn("[startup] WARNING: No OpenAI API key found (OPENAI_API_KEY / AI_INTEGRATIONS_OPENAI_API_KEY). June AI features will fail.");
+    } else {
+      console.log(`[startup] OpenAI API key present (${aiBase ? "AI integration base URL: " + aiBase : "direct key"})`);
+    }
     console.log("[startup] registering routes…");
     const server = await registerRoutes(app);
 

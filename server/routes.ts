@@ -14459,11 +14459,22 @@ IMPORTANT:
 - Never fabricate citations. If you don't know the specific study, say "based on clinical practice guidelines" or "per generally accepted clinical consensus" rather than making up a citation.
 - Protect patient privacy — never include patient identifiers in any way that could be logged or exposed outside this conversation.`;
 
+      // Use direct OPENAI_API_KEY if the modelfarm proxy base URL is a localhost
+      // address — the modelfarm proxy has its own internal timeout that can cut
+      // long June responses. Fall back to the direct key when available so the
+      // call goes straight to OpenAI rather than through the proxy.
+      const modelfarmBase = process.env.AI_INTEGRATIONS_OPENAI_BASE_URL;
+      const isLocalProxy = modelfarmBase && /localhost|127\.0\.0\.1/.test(modelfarmBase);
+      const directKey = process.env.OPENAI_API_KEY;
+      const integrationKey = process.env.AI_INTEGRATIONS_OPENAI_API_KEY;
+
       const openai = new OpenAI({
-        baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL || undefined,
-        apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY || process.env.OPENAI_API_KEY,
-        timeout: 55000,  // 55 s — returns a clean error before mobile browsers kill the connection (~60 s)
-        maxRetries: 0,   // don't silently retry; let the provider retry explicitly
+        // Prefer direct connection to OpenAI when we have a direct key AND the
+        // integration is routing through a local proxy (which can timeout).
+        baseURL: (isLocalProxy && directKey) ? undefined : (modelfarmBase || undefined),
+        apiKey: (isLocalProxy && directKey) ? directKey : (integrationKey || directKey),
+        timeout: 45000,  // 45 s hard limit — OpenAI p95 for gpt-4o is ~25s at 2k tokens
+        maxRetries: 1,   // one silent retry for transient network blips
       });
 
       const chatMessages: any[] = [
@@ -14478,7 +14489,7 @@ IMPORTANT:
         model: "gpt-4o",
         messages: chatMessages,
         temperature: 0.3,
-        max_tokens: 4000,
+        max_tokens: 2000,  // 2k is plenty for conversational replies; reduces latency
         ...(soapNote ? { response_format: { type: "json_object" } } : {}),
       });
 

@@ -10,12 +10,13 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
-import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
+import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
+import { Command, CommandEmpty, CommandGroup, CommandInput, CommandItem, CommandList } from "@/components/ui/command";
 import { Separator } from "@/components/ui/separator";
 import {
   FlaskConical, Plus, Trash2, ChevronDown, ChevronUp,
   Sparkles, CheckCircle2, ArrowLeft, User, CalendarDays, Loader2,
-  Upload, FileText, X,
+  Upload, FileText, X, ChevronsUpDown, Check,
 } from "lucide-react";
 import type { Patient, SimpleLabUpload } from "@shared/schema";
 
@@ -103,6 +104,7 @@ export default function SimpleLabUpload() {
   const [selectedPatientId, setSelectedPatientId] = useState<number | null>(
     initialPatientId ? parseInt(initialPatientId) : null
   );
+  const [patientComboOpen, setPatientComboOpen] = useState(false);
   const [labDate, setLabDate] = useState(new Date().toISOString().split("T")[0]);
   const [entries, setEntries] = useState<LabEntry[]>([emptyEntry()]);
   const [notes, setNotes] = useState("");
@@ -351,22 +353,52 @@ export default function SimpleLabUpload() {
       {/* Patient + Date row */}
       <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
         <div className="space-y-1.5">
-          <Label htmlFor="patient-select">Patient</Label>
-          <Select
-            value={selectedPatientId ? String(selectedPatientId) : ""}
-            onValueChange={(v) => setSelectedPatientId(parseInt(v))}
-          >
-            <SelectTrigger id="patient-select" data-testid="select-patient">
-              <SelectValue placeholder="Select patient…" />
-            </SelectTrigger>
-            <SelectContent>
-              {patients.map((p) => (
-                <SelectItem key={p.id} value={String(p.id)} data-testid={`option-patient-${p.id}`}>
-                  {p.firstName} {p.lastName}
-                </SelectItem>
-              ))}
-            </SelectContent>
-          </Select>
+          <Label htmlFor="patient-combo-trigger">Patient</Label>
+          <Popover open={patientComboOpen} onOpenChange={setPatientComboOpen}>
+            <PopoverTrigger asChild>
+              <Button
+                id="patient-combo-trigger"
+                variant="outline"
+                role="combobox"
+                aria-expanded={patientComboOpen}
+                className="w-full justify-between font-normal"
+                data-testid="select-patient"
+              >
+                <span className="truncate">
+                  {selectedPatient
+                    ? `${selectedPatient.firstName} ${selectedPatient.lastName}`
+                    : "Search patient…"}
+                </span>
+                <ChevronsUpDown className="ml-2 h-4 w-4 shrink-0 text-muted-foreground" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent className="w-[320px] p-0" align="start">
+              <Command>
+                <CommandInput placeholder="Type a name to search…" data-testid="input-patient-search" />
+                <CommandList>
+                  <CommandEmpty>No patients found.</CommandEmpty>
+                  <CommandGroup>
+                    {patients.map((p) => (
+                      <CommandItem
+                        key={p.id}
+                        value={`${p.firstName} ${p.lastName}`}
+                        onSelect={() => {
+                          setSelectedPatientId(p.id);
+                          setPatientComboOpen(false);
+                        }}
+                        data-testid={`option-patient-${p.id}`}
+                      >
+                        <Check
+                          className={`mr-2 h-4 w-4 ${selectedPatientId === p.id ? "opacity-100" : "opacity-0"}`}
+                        />
+                        {p.firstName} {p.lastName}
+                      </CommandItem>
+                    ))}
+                  </CommandGroup>
+                </CommandList>
+              </Command>
+            </PopoverContent>
+          </Popover>
         </div>
         <div className="space-y-1.5">
           <Label htmlFor="lab-date">Lab Date</Label>
