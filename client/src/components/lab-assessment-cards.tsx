@@ -29,6 +29,45 @@ function RiskBadge({ category }: { category: string }) {
   }
 }
 
+// ─── PREVENT Not Calculated Notice Card ──────────────────────────────────
+export function PreventNotCalculatedCard({ missingFields }: { missingFields: string[] }) {
+  return (
+    <Card data-testid="card-prevent-not-calculated" className="border-dashed">
+      <CardHeader className="pb-3">
+        <div className="flex items-center gap-2">
+          <Heart className="w-5 h-5 text-muted-foreground" />
+          <CardTitle className="text-muted-foreground">PREVENT Cardiovascular Risk Assessment</CardTitle>
+        </div>
+        <CardDescription>
+          2023 AHA PREVENT Equations — not calculated for this evaluation
+        </CardDescription>
+      </CardHeader>
+      <CardContent>
+        <div className="flex items-start gap-3 text-sm text-muted-foreground">
+          <Info className="w-4 h-4 mt-0.5 shrink-0" />
+          <div>
+            <p className="font-medium mb-1">
+              {missingFields.length > 0
+                ? 'The following fields are required to calculate PREVENT cardiovascular risk:'
+                : 'Required lab values and demographic data were not entered.'}
+            </p>
+            {missingFields.length > 0 && (
+              <ul className="list-disc list-inside space-y-0.5">
+                {missingFields.map(f => (
+                  <li key={f}>{f}</li>
+                ))}
+              </ul>
+            )}
+            <p className="mt-2 text-xs">
+              Enter these values in the Demographics and lab panels section, then re-run the evaluation.
+            </p>
+          </div>
+        </div>
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── PREVENT Cardiovascular Assessment Card ────────────────────────────────
 export function PreventAssessmentCard({ preventAssessment }: { preventAssessment: PREVENTRiskResult }) {
   return (

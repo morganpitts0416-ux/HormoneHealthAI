@@ -11,6 +11,7 @@ import { ResultsDisplay } from "@/components/results-display";
 import { RedFlagAlert } from "@/components/red-flag-alert";
 import {
   PreventAssessmentCard,
+  PreventNotCalculatedCard,
   AdvancedLipidsCard,
   StopBangCard,
   FemaleHormoneAssessmentCard,
@@ -628,8 +629,10 @@ export default function FemaleLabInterpretation() {
                 />
 
                 {/* 3. PREVENT Cardiovascular Risk Assessment */}
-                {interpretationResult.preventRisk && (
+                {interpretationResult.preventRisk ? (
                   <PreventAssessmentCard preventAssessment={interpretationResult.preventRisk} />
+                ) : (
+                  <PreventNotCalculatedCard missingFields={interpretationResult.preventMissingFields || []} />
                 )}
 
                 {/* 4. Advanced Lipid Marker Risk Adjustment */}

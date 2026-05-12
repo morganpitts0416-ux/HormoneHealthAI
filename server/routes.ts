@@ -1193,7 +1193,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         demographics: labs.demographics ? { ...labs.demographics, sex: 'male' as const } : undefined
       };
       const preventRisk = PREVENTCalculator.calculateRisk(preventLabData) || undefined;
-      console.log('[API] Male PREVENT calculation result:', preventRisk ? `10yr CVD: ${preventRisk.tenYearCVDPercentage}, ASCVD: ${preventRisk.tenYearASCVDPercentage}, HF: ${preventRisk.tenYearHFPercentage}` : 'Not calculated');
+      // Compute which required PREVENT fields are missing so the client can surface them
+      const preventMissingFields: string[] = [];
+      if (!preventRisk) {
+        const d = preventLabData.demographics;
+        if (!d || !d.age) preventMissingFields.push('Age');
+        if (!d || d.systolicBP === undefined) preventMissingFields.push('Systolic Blood Pressure');
+        if (!d || d.bmi === undefined) preventMissingFields.push('BMI');
+        if (labs.totalCholesterol === undefined) preventMissingFields.push('Total Cholesterol');
+        if (labs.hdl === undefined) preventMissingFields.push('HDL Cholesterol');
+        if (labs.egfr === undefined) preventMissingFields.push('eGFR');
+      }
+      console.log('[API] Male PREVENT calculation result:', preventRisk ? `10yr CVD: ${preventRisk.tenYearCVDPercentage}, ASCVD: ${preventRisk.tenYearASCVDPercentage}, HF: ${preventRisk.tenYearHFPercentage}` : `Not calculated — missing: ${preventMissingFields.join(', ') || 'unknown'}`);
 
       // Step 3a: Add PREVENT risk metrics to interpretations if calculated
       if (preventRisk) {
@@ -1458,6 +1469,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientSummary,
         recheckWindow,
         preventRisk,
+        preventMissingFields: preventMissingFields.length > 0 ? preventMissingFields : undefined,
         adjustedRisk,
         supplements,
         insulinResistance,
@@ -1599,7 +1611,18 @@ export async function registerRoutes(app: Express): Promise<Server> {
         demographics: labs.demographics ? { ...labs.demographics, sex: 'female' as const } : undefined
       };
       const preventRisk = PREVENTCalculator.calculateRisk(preventLabData) || undefined;
-      console.log('[API] Female PREVENT calculation result:', preventRisk ? `10yr CVD: ${preventRisk.tenYearCVDPercentage}, ASCVD: ${preventRisk.tenYearASCVDPercentage}, HF: ${preventRisk.tenYearHFPercentage}` : 'Not calculated');
+      // Compute which required PREVENT fields are missing so the client can surface them
+      const preventMissingFields: string[] = [];
+      if (!preventRisk) {
+        const d = preventLabData.demographics;
+        if (!d || !d.age) preventMissingFields.push('Age');
+        if (!d || d.systolicBP === undefined) preventMissingFields.push('Systolic Blood Pressure');
+        if (!d || d.bmi === undefined) preventMissingFields.push('BMI');
+        if (labs.totalCholesterol === undefined) preventMissingFields.push('Total Cholesterol');
+        if (labs.hdl === undefined) preventMissingFields.push('HDL Cholesterol');
+        if (labs.egfr === undefined) preventMissingFields.push('eGFR');
+      }
+      console.log('[API] Female PREVENT calculation result:', preventRisk ? `10yr CVD: ${preventRisk.tenYearCVDPercentage}, ASCVD: ${preventRisk.tenYearASCVDPercentage}, HF: ${preventRisk.tenYearHFPercentage}` : `Not calculated — missing: ${preventMissingFields.join(', ') || 'unknown'}`);
 
       // Step 3a: Add PREVENT risk metrics to interpretations if calculated
       if (preventRisk) {
@@ -1848,6 +1871,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         patientSummary,
         recheckWindow,
         preventRisk,
+        preventMissingFields: preventMissingFields.length > 0 ? preventMissingFields : undefined,
         adjustedRisk,
         supplements,
         cvRiskFlags,

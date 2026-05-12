@@ -492,6 +492,7 @@ export const interpretationResultSchema = z.object({
   maleHormonePatterns: z.array(maleHormonePatternSchema).optional(),
   stopBangRisk: stopBangResultSchema.optional(),
   soapNote: z.string().optional(),
+  preventMissingFields: z.array(z.string()).optional(),
 });
 
 export type InterpretationResult = z.infer<typeof interpretationResultSchema>;
