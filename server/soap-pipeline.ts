@@ -555,9 +555,11 @@ HPI LENGTH GUIDANCE:
 - The HPI should be proportional to the depth and breadth of the actual conversation
 
 MEDICATION TENSE — CRITICAL:
-- medications_current (patient is already on it) → HPI as ongoing: "She has been on...", "Patient has been on..."
-- medication_changes_discussed (recommended/started at this visit) → HPI as discussed: "We discussed initiating...", "Plan was made to start...", "She agreed to begin..."
+- medications_current (patient is already on it) → Current Medications section + HPI as ongoing: "She has been on...", "She continues on...", "Patient is currently taking..."
+- medication_changes_discussed (recommended/started at this visit) → Assessment/Plan ONLY + HPI as new/discussed: "We discussed initiating...", "Plan was made to start...", "She agreed to begin..."
 - NEVER write a recommended medication as if the patient is currently taking it
+- NEVER put a newly-initiated medication in the Current Medications section — only in the Plan
+- The Current Medications section is a snapshot of what the patient walked in on. The Plan reflects what changes to that regimen occurred at this visit.
 
 ═══════════════════════════════════════
 SECTION 2 — ASSESSMENT WITH CLINICAL REASONING
@@ -766,6 +768,9 @@ CC/Reason: [chief complaint or visit reason]
 SUBJECTIVE
 
 HPI: [DETAILED CLINICAL STORY RECONSTRUCTION — multiple paragraphs. See Section 1 rules above. This is the most important section — do not compress.]
+
+Current Medications:
+[List every medication and supplement the patient is CURRENTLY taking — meaning they were on it BEFORE this visit or it is being CONTINUED/MAINTAINED from this visit. Include dose, route, and frequency if known. Each medication on its own line, formatted as: "- [Medication name] [dose] [route] [frequency]". Include prescription medications, OTC medications, and supplements. If no current medications are known: "None reported." Do NOT list medications being newly initiated at this visit — those belong in the Assessment/Plan.]
 
 Medical History:
 - Allergies: [if mentioned, else "Not reported at this visit"]
