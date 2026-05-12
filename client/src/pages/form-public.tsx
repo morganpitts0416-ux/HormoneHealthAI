@@ -157,6 +157,18 @@ export default function FormPublicPage() {
     },
   });
 
+  // Pre-populate the top-level submitter name + email from URL prefill params.
+  // These params are injected by the packet flow (pf_fn, pf_ln, pf_email).
+  useEffect(() => {
+    const sp = new URLSearchParams(window.location.search);
+    const fn = sp.get("pf_fn")?.trim() ?? "";
+    const ln = sp.get("pf_ln")?.trim() ?? "";
+    const em = sp.get("pf_email")?.trim() ?? "";
+    const fullName = [fn, ln].filter(Boolean).join(" ");
+    if (fullName) setSubmitterName(prev => prev || fullName);
+    if (em)       setSubmitterEmail(prev => prev || em);
+  }, []);
+
   // Pre-populate smart fields from URL params injected by the "Fill In Clinic" flow.
   // Params: pf_fn, pf_ln, pf_dob, pf_email, pf_phone — only fills blank fields.
   useEffect(() => {
