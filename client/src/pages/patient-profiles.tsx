@@ -582,13 +582,58 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                 insulinResistance={interp.insulinResistance}
               />
 
+              {/* Male Hormone Patterns */}
+              {interp.maleHormonePatterns && interp.maleHormonePatterns.length > 0 && (
+                <Card>
+                  <CardHeader className="pb-3">
+                    <CardTitle className="text-base flex items-center gap-2">
+                      <Activity className="w-4 h-4 text-blue-600" />
+                      Male Hormone Assessment
+                    </CardTitle>
+                  </CardHeader>
+                  <CardContent>
+                    <div className="space-y-3">
+                      {interp.maleHormonePatterns.map((pattern: any, index: number) => (
+                        <div
+                          key={index}
+                          className={`p-3 rounded-md border ${
+                            pattern.confidence === 'high'
+                              ? 'border-blue-300 bg-blue-50/50 dark:bg-blue-950/20'
+                              : pattern.confidence === 'moderate'
+                              ? 'border-indigo-200 bg-indigo-50/50 dark:bg-indigo-950/20'
+                              : 'border-muted bg-muted/30'
+                          }`}
+                        >
+                          <div className="flex items-center gap-2 mb-1.5 flex-wrap">
+                            <span className="text-sm font-semibold">{pattern.name}</span>
+                            <span className={`text-xs px-2 py-0.5 rounded-full ${
+                              pattern.confidence === 'high'
+                                ? 'bg-blue-100 text-blue-700 dark:bg-blue-900 dark:text-blue-200'
+                                : pattern.confidence === 'moderate'
+                                ? 'bg-indigo-100 text-indigo-700 dark:bg-indigo-900 dark:text-indigo-200'
+                                : 'bg-muted text-muted-foreground'
+                            }`}>{pattern.confidence} confidence</span>
+                          </div>
+                          <p className="text-xs text-muted-foreground mb-1.5">{pattern.interpretation}</p>
+                          <div className="flex flex-wrap gap-1">
+                            {(pattern.matchedFindings as string[]).map((f: string, fi: number) => (
+                              <span key={fi} className="text-xs px-2 py-0.5 rounded bg-muted text-muted-foreground">{f}</span>
+                            ))}
+                          </div>
+                        </div>
+                      ))}
+                    </div>
+                  </CardContent>
+                </Card>
+              )}
+
               {/* Clinical Phenotypes (female hormone patterns) */}
               {interp.clinicalPhenotypes && interp.clinicalPhenotypes.length > 0 && (
                 <Card>
                   <CardHeader className="pb-3">
                     <CardTitle className="text-base flex items-center gap-2">
                       <Activity className="w-4 h-4 text-purple-600" />
-                      Clinical Phenotype Assessment
+                      Hormone Assessment
                     </CardTitle>
                   </CardHeader>
                   <CardContent>

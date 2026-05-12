@@ -185,10 +185,19 @@ export function AdvancedLipidsCard({ adjustedRiskAssessment }: { adjustedRiskAss
         <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
           <div className="p-4 rounded-lg bg-muted/30 border">
             <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Base 10yr ASCVD</p>
-            <span className="text-2xl font-bold font-mono" data-testid="text-base-ascvd">
-              {adjustedRiskAssessment.baseASCVDRisk.toFixed(1)}%
-            </span>
-            <p className="text-xs text-muted-foreground mt-1">From PREVENT calculator</p>
+            {adjustedRiskAssessment.baseASCVDRisk === 0 ? (
+              <>
+                <span className="text-2xl font-bold font-mono text-muted-foreground" data-testid="text-base-ascvd">N/A</span>
+                <p className="text-xs text-muted-foreground mt-1">PREVENT not calculated — enter age, BP, BMI &amp; eGFR</p>
+              </>
+            ) : (
+              <>
+                <span className="text-2xl font-bold font-mono" data-testid="text-base-ascvd">
+                  {adjustedRiskAssessment.baseASCVDRisk.toFixed(1)}%
+                </span>
+                <p className="text-xs text-muted-foreground mt-1">From PREVENT calculator</p>
+              </>
+            )}
           </div>
           {adjustedRiskAssessment.apoBValue !== undefined && (
             <div className={`p-4 rounded-lg border ${

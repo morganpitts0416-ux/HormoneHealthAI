@@ -1353,10 +1353,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
       }
 
       // Step 3d: Calculate Adjusted Risk Assessment based on ApoB and Lp(a)
+      // Runs whenever either marker is present — independent of whether PREVENT was calculated.
+      // If PREVENT wasn't calculated, base ASCVD is treated as 0 and the card notes this.
       let adjustedRisk = undefined;
-      if (preventRisk && (labs.apoB !== undefined || labs.lpa !== undefined)) {
+      if (labs.apoB !== undefined || labs.lpa !== undefined) {
         adjustedRisk = PREVENTCalculator.calculateAdjustedRisk(
-          preventRisk.tenYearASCVD,
+          preventRisk?.tenYearASCVD ?? 0,
           labs.apoB,
           labs.lpa
         ) || undefined;
@@ -1837,10 +1839,11 @@ export async function registerRoutes(app: Express): Promise<Server> {
       console.log('[API] CAC/Statin Recommendations generated');
 
       // Step 11: Calculate Adjusted Risk Assessment based on ApoB and Lp(a)
+      // Runs whenever either marker is present — independent of whether PREVENT was calculated.
       let adjustedRisk = undefined;
-      if (preventRisk && (labs.apoB !== undefined || labs.lpa !== undefined)) {
+      if (labs.apoB !== undefined || labs.lpa !== undefined) {
         adjustedRisk = PREVENTCalculator.calculateAdjustedRisk(
-          preventRisk.tenYearASCVD,
+          preventRisk?.tenYearASCVD ?? 0,
           labs.apoB,
           labs.lpa
         ) || undefined;
