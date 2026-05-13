@@ -6,6 +6,28 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appUrl } from "@/lib/app-url";
+import labEvalVideo from "@assets/Lab_Evaluation_Demo_updated_1778688596260.mp4";
+import patientReportImage from "@assets/patient_report_mock_up_1778688339677.png";
+
+function VideoPlayer({ src, label }: { src: string; label?: string }) {
+  return (
+    <div className="relative rounded-xl overflow-hidden" style={{ boxShadow: "0 4px 24px 0 rgba(44,58,32,0.10)", border: "1px solid #e0d9cc" }}>
+      <video
+        src={src}
+        controls
+        playsInline
+        preload="metadata"
+        className="w-full block"
+        style={{ display: "block", backgroundColor: "#1c2414", maxHeight: 480, objectFit: "contain" }}
+      />
+      {label && (
+        <div className="px-3 py-2" style={{ backgroundColor: "#f5f1e8", borderTop: "1px solid #e0d9cc" }}>
+          <p className="text-[11px] font-medium" style={{ color: "#7a8a64" }}>{label}</p>
+        </div>
+      )}
+    </div>
+  );
+}
 
 function ScreenshotPlaceholder({ label }: { label?: string }) {
   return (
@@ -122,7 +144,7 @@ export default function FeatureLabsPage() {
                 "AI-powered PDF extraction — upload a lab and values populate automatically",
               ]} />
             </div>
-            <ScreenshotPlaceholder label="Lab results panel — color-coded status across all markers" />
+            <VideoPlayer src={labEvalVideo} label="Full lab evaluation walkthrough — PDF upload, marker interpretation, cardiovascular risk, hormone patterns, insulin resistance, supplements, dietary guidance, and patient report generation" />
           </div>
         </div>
       </section>
@@ -336,7 +358,15 @@ export default function FeatureLabsPage() {
                 "Professional format suitable for sharing with other providers",
               ]} />
             </div>
-            <ScreenshotPlaceholder label="Patient wellness report — PDF and portal publish" />
+            <div className="flex flex-col gap-4">
+              <VideoPlayer src={labEvalVideo} label="Generating the patient report and how it appears to the patient in their portal" />
+              <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e0d9cc", boxShadow: "0 4px 24px 0 rgba(44,58,32,0.08)" }}>
+                <img src={patientReportImage} alt="Patient wellness report PDF — lab values, interpretations, supplement protocol, dietary guidance, and cardiovascular risk" className="w-full block" style={{ display: "block", backgroundColor: "#1c2414" }} />
+                <div className="px-3 py-2" style={{ backgroundColor: "#f5f1e8", borderTop: "1px solid #e0d9cc" }}>
+                  <p className="text-[11px] font-medium" style={{ color: "#7a8a64" }}>Branded wellness PDF — lab values, clinical interpretations, supplement protocol, dietary guidance, and cardiovascular risk in one clean document</p>
+                </div>
+              </div>
+            </div>
           </div>
         </div>
       </section>
