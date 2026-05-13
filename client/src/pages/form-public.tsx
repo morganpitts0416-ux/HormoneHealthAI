@@ -877,7 +877,24 @@ function InitialsField({ value, onChange, fieldKey }: { value: string; onChange:
 
 // ─── Google Places Autocomplete ───────────────────────────────────────────────
 // Fetches the Maps API key from /api/config/google-maps at runtime.
-// Falls back to a plain Input when no key is configured.
+// Falls back to a plain Input when no key is configured OR when Google
+// fires an auth failure (bad key, domain restriction, billing problem).
+
+// Module-level: track gm_authFailure across all instances on the page.
+// gm_authFailure is a well-known global callback Google Maps calls when
+// the key is invalid, not whitelisted for this domain, or billing is off.
+let _gmAuthFailed = false;
+const _gmAuthListeners = new Set<() => void>();
+
+function ensureGmAuthFailureHandler() {
+  if ((window as any).__cliniq_gmAuthHandlerSet) return;
+  (window as any).__cliniq_gmAuthHandlerSet = true;
+  (window as any).gm_authFailure = () => {
+    _gmAuthFailed = true;
+    _gmAuthListeners.forEach(fn => fn());
+    _gmAuthListeners.clear();
+  };
+}
 
 function PlacesAutocompleteInput({
   value,
@@ -897,6 +914,15 @@ function PlacesAutocompleteInput({
   onChangeRef.current = onChange;
   const isInitialized = useRef(false);
   const [apiKey, setApiKey] = useState<string | null | undefined>(undefined); // undefined = loading
+  const [authFailed, setAuthFailed] = useState(_gmAuthFailed);
+
+  // Subscribe to auth-failure events fired by any instance on this page.
+  useEffect(() => {
+    if (_gmAuthFailed) { setAuthFailed(true); return; }
+    const notify = () => setAuthFailed(true);
+    _gmAuthListeners.add(notify);
+    return () => { _gmAuthListeners.delete(notify); };
+  }, []);
 
   // Fetch the key from the backend at runtime (avoids needing VITE_ build-time env var)
   useEffect(() => {
@@ -907,7 +933,7 @@ function PlacesAutocompleteInput({
   }, []);
 
   useEffect(() => {
-    if (!apiKey || !inputRef.current || isInitialized.current) return;
+    if (!apiKey || !inputRef.current || isInitialized.current || authFailed) return;
 
     const initAutocomplete = () => {
       if (!inputRef.current || !(window as any).google?.maps?.places || isInitialized.current) return;
@@ -930,6 +956,10 @@ function PlacesAutocompleteInput({
       });
     };
 
+    // Register the gm_authFailure handler BEFORE injecting the script so
+    // Google can call it synchronously if auth fails during load.
+    ensureGmAuthFailureHandler();
+
     const scriptId = "google-maps-places-api";
     const existing = document.getElementById(scriptId);
     if (existing) {
@@ -946,8 +976,10 @@ function PlacesAutocompleteInput({
     script.src = `https://maps.googleapis.com/maps/api/js?key=${apiKey}&libraries=places`;
     script.async = true;
     script.onload = initAutocomplete;
+    // Network or load error — fall back to plain text just like no-key.
+    script.onerror = () => setApiKey(null);
     document.head.appendChild(script);
-  }, [apiKey, placesType]);
+  }, [apiKey, placesType, authFailed]);
 
   // Still fetching the key — render plain input to avoid flash
   if (apiKey === undefined) {
@@ -961,8 +993,8 @@ function PlacesAutocompleteInput({
     );
   }
 
-  // No API key configured — plain controlled input
-  if (!apiKey) {
+  // No API key configured, network error, or Google auth failure — plain controlled input
+  if (!apiKey || authFailed) {
     return (
       <Input
         value={value}
