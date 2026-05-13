@@ -7,7 +7,7 @@ import {
 import { Button } from "@/components/ui/button";
 import { appUrl } from "@/lib/app-url";
 const labEvalVideo = "/assets/Lab_Evaluation_Demo_updated_1778688596260-CfGJGFdc.mp4";
-import patientReportImage from "@assets/patient_report_mock_up_1778688339677.png";
+const patientReportImage = "/assets/patient_report_mock_up_1778688339677-yqAV7ke5.png";
 
 function VideoPlayer({ src, label }: { src: string; label?: string }) {
   return (

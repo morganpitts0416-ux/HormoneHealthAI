@@ -6,10 +6,10 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appUrl } from "@/lib/app-url";
-import intakeFlowVideo from "@assets/Intake_Flow_updated_(1)_1778687909629.mp4";
-import iPadIntakeVideo from "@assets/intake_mockup_with_voice_1778687935447.mp4";
-import formPdfImage from "@assets/Form_quick_mock-up_1778687945791.png";
-import formBuilderVideo from "@assets/Form_builder_Demo_(1)_1778689377166.mp4";
+const intakeFlowVideo = "/marketing/clinical-copilot-demo.mp4";
+const iPadIntakeVideo = "/assets/intake_mockup_with_voice_1778687935447-DPMKyfh4.mp4";
+const formPdfImage = "/assets/Form_quick_mock-up_1778687945791-DJVRZgSP.png";
+const formBuilderVideo = "/assets/Form_builder_Demo_(1)_1778689377166-BlO-3uTh.mp4";
 
 function ScreenshotPlaceholder({ label }: { label?: string }) {
   return (
