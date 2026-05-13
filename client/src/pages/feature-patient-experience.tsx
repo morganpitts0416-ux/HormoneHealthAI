@@ -9,6 +9,7 @@ import { appUrl } from "@/lib/app-url";
 import intakeFlowVideo from "@assets/Intake_Flow_updated_(1)_1778687909629.mp4";
 import iPadIntakeVideo from "@assets/intake_mockup_with_voice_1778687935447.mp4";
 import formPdfImage from "@assets/Form_quick_mock-up_1778687945791.png";
+import formBuilderVideo from "@assets/Form_builder_Demo_(1)_1778689377166.mp4";
 
 function ScreenshotPlaceholder({ label }: { label?: string }) {
   return (
@@ -147,7 +148,7 @@ export default function FeaturePatientExperiencePage() {
               ]} />
             </div>
             <div className="flex flex-col gap-4">
-              <VideoPlayer src={intakeFlowVideo} label="Intake workflow — patient form completion, clinic notification, chart auto-population, and document storage" />
+              <VideoPlayer src={formBuilderVideo} label="Form builder walkthrough — building custom forms, sending via text and email, assigning to patient profiles, and embedding on clinic websites" />
               <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e0d9cc", boxShadow: "0 4px 24px 0 rgba(44,58,32,0.08)" }}>
                 <img src={formPdfImage} alt="Intake form PDF export — clean branded medical document" className="w-full block" style={{ display: "block", backgroundColor: "#1c2414" }} />
                 <div className="px-3 py-2" style={{ backgroundColor: "#f5f1e8", borderTop: "1px solid #e0d9cc" }}>
@@ -163,8 +164,9 @@ export default function FeaturePatientExperiencePage() {
       <section className="border-b" style={{ backgroundColor: "#f9f6f0", borderColor: "#e8ddd0" }}>
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
-            <div className="order-2 lg:order-1">
-              <VideoPlayer src={iPadIntakeVideo} label="In-clinic tablet mode — patients complete forms at check-in, submissions auto-save directly to their chart" />
+            <div className="order-2 lg:order-1 flex flex-col gap-4">
+              <VideoPlayer src={formBuilderVideo} label="Sending forms via text and email, assigning to patient profiles, and embedding on your clinic website" />
+              <VideoPlayer src={iPadIntakeVideo} label="In-clinic tablet mode — hand off at check-in, submissions auto-save directly to the chart" />
             </div>
             <div className="order-1 lg:order-2">
               <SectionLabel>Four Ways to Deliver Every Form</SectionLabel>
