@@ -6,6 +6,7 @@ import {
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { appUrl } from "@/lib/app-url";
+import intakeFlowVideo from "@assets/Intake_Flow_updated_(1)_1778687909629.mp4";
 
 function ScreenshotPlaceholder({ label }: { label?: string }) {
   return (
@@ -22,6 +23,26 @@ function ScreenshotPlaceholder({ label }: { label?: string }) {
       <p className="text-xs font-semibold text-center" style={{ color: "#9aaa84" }}>
         {label ?? "Screenshot coming soon"}
       </p>
+    </div>
+  );
+}
+
+function VideoPlayer({ src, label }: { src: string; label?: string }) {
+  return (
+    <div className="relative rounded-xl overflow-hidden" style={{ boxShadow: "0 4px 24px 0 rgba(44,58,32,0.10)", border: "1px solid #e0d9cc" }}>
+      <video
+        src={src}
+        controls
+        playsInline
+        preload="metadata"
+        className="w-full block"
+        style={{ display: "block", backgroundColor: "#1c2414", maxHeight: 480, objectFit: "contain" }}
+      />
+      {label && (
+        <div className="px-3 py-2" style={{ backgroundColor: "#f5f1e8", borderTop: "1px solid #e0d9cc" }}>
+          <p className="text-[11px] font-medium" style={{ color: "#7a8a64" }}>{label}</p>
+        </div>
+      )}
     </div>
   );
 }
@@ -123,7 +144,7 @@ export default function FeaturePatientExperiencePage() {
                 "Every submission exported as a branded PDF and stored in the patient chart",
               ]} />
             </div>
-            <ScreenshotPlaceholder label="Form builder with field types and layout options" />
+            <VideoPlayer src={intakeFlowVideo} label="Intake workflow — patient form completion, clinic notification, chart auto-population, and document storage" />
           </div>
         </div>
       </section>
@@ -133,7 +154,7 @@ export default function FeaturePatientExperiencePage() {
         <div className="max-w-5xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
           <div className="grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
             <div className="order-2 lg:order-1">
-              <ScreenshotPlaceholder label="Form assignment options — portal, email, tablet, public link" />
+              <VideoPlayer src={intakeFlowVideo} label="Clinic dashboard notification, quick-view submission, and patient document storage" />
             </div>
             <div className="order-1 lg:order-2">
               <SectionLabel>Four Ways to Deliver Every Form</SectionLabel>
