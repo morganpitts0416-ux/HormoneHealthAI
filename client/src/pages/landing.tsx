@@ -1,14 +1,58 @@
 import { Link } from "wouter";
+import { useRef, useState, useEffect } from "react";
 import {
   FlaskConical, Brain, Heart, Activity, FileText, Sparkles,
   Users, Shield, ChevronRight, CheckCircle2, Stethoscope,
   BarChart3, BookOpen, Leaf, ClipboardList, Zap, Lock,
   MousePointerClick, Send, Link2, PenLine, ListChecks, Smartphone,
+  ChevronDown, FlaskConical as Lab, Bot, HeartPulse, Dna, TrendingUp,
+  AlertTriangle, NotepadText, BookTemplate, LayoutList, Tablet,
+  BarChart2, CalendarDays, ShoppingBag, Building2,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { appUrl } from "@/lib/app-url";
 import { DemoModal } from "@/components/demo-modal";
+
+// ── Features nav data ────────────────────────────────────────────────────────
+const NAV_FEATURES = [
+  {
+    category: "Clinical Intelligence",
+    items: [
+      { slug: "lab-interpretation",   label: "Lab Interpretation",            icon: FlaskConical, desc: "60+ markers with clinical context" },
+      { slug: "june-ai",              label: "June — AI Colleague",           icon: Bot,          desc: "Full-chart AI clinical reasoning" },
+      { slug: "cardiovascular-risk",  label: "Cardiovascular Risk",           icon: HeartPulse,   desc: "PREVENT scoring + ApoB/Lp(a)" },
+      { slug: "female-hormones",      label: "Female Hormone Patterns",       icon: Dna,          desc: "Phase-aware female interpretation" },
+      { slug: "insulin-resistance",   label: "Insulin Resistance Screening",  icon: TrendingUp,   desc: "Catch it before A1c rises" },
+      { slug: "red-flags",            label: "Red Flag Alert System",         icon: AlertTriangle, desc: "Critical values surfaced instantly" },
+    ],
+  },
+  {
+    category: "Documentation",
+    items: [
+      { slug: "soap-notes",           label: "AI SOAP Notes",                 icon: NotepadText,  desc: "Record → transcript → signed note" },
+      { slug: "encounter-templates",  label: "Encounter Templates",           icon: BookTemplate, desc: "Structured templates by visit type" },
+      { slug: "ehr-chart",            label: "EHR-Style Patient Chart",       icon: LayoutList,   desc: "History, meds, allergies, notes" },
+    ],
+  },
+  {
+    category: "Patient Experience",
+    items: [
+      { slug: "patient-portal",       label: "Patient Portal",                icon: Tablet,       desc: "Labs patients actually understand" },
+      { slug: "healthiq",             label: "HealthIQ Hub",                  icon: BarChart2,    desc: "Body system health scores" },
+      { slug: "digital-forms",        label: "Digital Forms & Intake",        icon: ListChecks,   desc: "Drag-and-drop form builder" },
+      { slug: "daily-checkin",        label: "Daily Check-In & Vitals",       icon: Activity,     desc: "Monitoring between visits" },
+    ],
+  },
+  {
+    category: "Practice Tools",
+    items: [
+      { slug: "patient-management",   label: "Patient Management",            icon: Users,        desc: "Full profiles + trend charts" },
+      { slug: "appointments",         label: "Appointments & Scheduling",     icon: CalendarDays, desc: "Clinical calendar + booking" },
+      { slug: "supplements",          label: "Supplement Library",            icon: ShoppingBag,  desc: "Lab-linked recommendations" },
+    ],
+  },
+];
 
 const COPILOT_DEMO_VIDEO_URL = "/marketing/clinical-copilot-demo.mp4";
 
@@ -94,6 +138,19 @@ const INCLUDED = [
 ];
 
 export default function Landing() {
+  const [featuresOpen, setFeaturesOpen] = useState(false);
+  const featuresRef = useRef<HTMLDivElement>(null);
+
+  useEffect(() => {
+    function handleClick(e: MouseEvent) {
+      if (featuresRef.current && !featuresRef.current.contains(e.target as Node)) {
+        setFeaturesOpen(false);
+      }
+    }
+    document.addEventListener("mousedown", handleClick);
+    return () => document.removeEventListener("mousedown", handleClick);
+  }, []);
+
   return (
     <div className="min-h-screen" style={{ backgroundColor: "#f9f6f0", fontFamily: "IBM Plex Sans, Inter, sans-serif" }}>
 
@@ -103,7 +160,89 @@ export default function Landing() {
           <div className="flex items-center">
             <img src="/cliniq-logo.png?v=2" alt="ClinIQ" className="h-14 w-auto" />
           </div>
-          <nav className="flex items-center gap-2">
+
+          <nav className="flex items-center gap-1">
+            {/* Features mega-menu */}
+            <div ref={featuresRef} className="relative">
+              <button
+                onClick={() => setFeaturesOpen(v => !v)}
+                data-testid="button-nav-features"
+                className="flex items-center gap-1 px-3 py-1.5 rounded-md text-sm font-medium transition-colors"
+                style={{ color: featuresOpen ? "#2e3a20" : "#4a5a38", backgroundColor: featuresOpen ? "#edf2e6" : "transparent" }}
+              >
+                Features
+                <ChevronDown
+                  className="w-3.5 h-3.5 transition-transform"
+                  style={{ transform: featuresOpen ? "rotate(180deg)" : "rotate(0deg)", color: "#7a8a64" }}
+                />
+              </button>
+
+              {featuresOpen && (
+                <div
+                  className="absolute left-1/2 -translate-x-1/2 top-full mt-2 rounded-xl shadow-xl z-50"
+                  style={{
+                    width: "min(860px, 96vw)",
+                    backgroundColor: "#ffffff",
+                    border: "1px solid #e8ddd0",
+                    boxShadow: "0 20px 60px rgba(46,58,32,0.14), 0 4px 16px rgba(0,0,0,0.06)",
+                  }}
+                >
+                  {/* Top label */}
+                  <div className="px-6 pt-5 pb-3 border-b" style={{ borderColor: "#f0ebe3" }}>
+                    <p className="text-xs font-semibold uppercase tracking-wider" style={{ color: "#9aaa84" }}>
+                      Platform Features
+                    </p>
+                  </div>
+
+                  {/* Feature grid */}
+                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 p-4">
+                    {NAV_FEATURES.map((group) => (
+                      <div key={group.category} className="px-2 py-1">
+                        <p className="text-[10px] font-bold uppercase tracking-widest mb-2 px-1" style={{ color: "#a0b880" }}>
+                          {group.category}
+                        </p>
+                        <ul className="space-y-0.5">
+                          {group.items.map(({ slug, label, icon: Icon, desc }) => (
+                            <li key={slug}>
+                              <Link
+                                href={`/features/${slug}`}
+                                onClick={() => setFeaturesOpen(false)}
+                                className="flex items-start gap-2.5 rounded-lg px-2 py-2 group transition-colors"
+                                style={{ textDecoration: "none" }}
+                                onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f5f1e8")}
+                                onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                              >
+                                <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5" style={{ backgroundColor: "#edf2e6" }}>
+                                  <Icon className="w-3 h-3" style={{ color: "#2e3a20" }} />
+                                </div>
+                                <div className="min-w-0">
+                                  <div className="text-xs font-semibold leading-snug" style={{ color: "#1c2414" }}>{label}</div>
+                                  <div className="text-[11px] leading-snug mt-0.5" style={{ color: "#8a9878" }}>{desc}</div>
+                                </div>
+                              </Link>
+                            </li>
+                          ))}
+                        </ul>
+                      </div>
+                    ))}
+                  </div>
+
+                  {/* Footer CTA */}
+                  <div className="px-6 py-3 border-t flex items-center justify-between" style={{ borderColor: "#f0ebe3", backgroundColor: "#faf7f2" }}>
+                    <span className="text-xs" style={{ color: "#9aaa84" }}>
+                      14-day free trial · No credit card required
+                    </span>
+                    <a href={appUrl("/register?plan=solo")} onClick={() => setFeaturesOpen(false)}>
+                      <Button size="sm" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
+                        Start Free Trial
+                        <ChevronRight className="w-3 h-3 ml-1" />
+                      </Button>
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+
             <a href={appUrl("/login")}>
               <Button variant="ghost" size="sm" data-testid="link-signin">Sign In</Button>
             </a>

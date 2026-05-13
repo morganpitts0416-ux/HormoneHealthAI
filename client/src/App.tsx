@@ -41,6 +41,7 @@ import AppointmentsPage from "@/pages/appointments";
 import AccountSchedulingPage from "@/pages/account-scheduling";
 import InboxPage from "@/pages/inbox";
 import Landing from "@/pages/landing";
+import FeatureDetailPage from "@/pages/feature-detail";
 import BillingPage from "@/pages/billing";
 import IntakeFormsPage from "@/pages/intake-forms";
 import NoteTemplatesPage from "@/pages/note-templates";
@@ -262,6 +263,7 @@ function Router() {
     <Switch>
       <Route path="/" component={RootRedirect} />
       <Route path="/home" component={Landing} />
+      <Route path="/features/:slug" component={FeatureDetailPage} />
       <Route path="/privacy" component={PrivacyPolicy} />
       <Route path="/terms" component={TermsOfService} />
       <Route path="/baa" component={BusinessAssociateAgreement} />
