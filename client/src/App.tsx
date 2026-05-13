@@ -224,22 +224,10 @@ function RootRedirect() {
     if (isLoading) return;
     if (user) {
       setLocation("/dashboard");
-    } else if (appSubdomain) {
-      // cliniqapp.ai — unauthenticated users go straight to login
-      setLocation("/login");
     }
-  }, [user, isLoading, appSubdomain, setLocation]);
+  }, [user, isLoading, setLocation]);
 
   if (isLoading) {
-    return (
-      <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f9f6f0" }}>
-        <div className="text-sm" style={{ color: "#9aaa84" }}>Loading…</div>
-      </div>
-    );
-  }
-
-  // app subdomain — briefly shown while redirect to /login fires
-  if (appSubdomain && !user) {
     return (
       <div className="min-h-screen flex items-center justify-center" style={{ backgroundColor: "#f9f6f0" }}>
         <div className="text-sm" style={{ color: "#9aaa84" }}>Loading…</div>
@@ -256,7 +244,7 @@ function RootRedirect() {
     );
   }
 
-  // Main domain — unauthenticated users see the marketing homepage
+  // Unauthenticated — show the marketing homepage (with Features nav, Sign In, etc.)
   return <Landing />;
 }
 
