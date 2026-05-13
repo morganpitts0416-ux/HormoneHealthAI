@@ -154,6 +154,7 @@ export interface IStorage {
   getPortalAccountByResetToken(token: string): Promise<PatientPortalAccount | undefined>;
   createPortalAccount(account: InsertPatientPortalAccount): Promise<PatientPortalAccount>;
   updatePortalAccount(patientId: number, data: Partial<InsertPatientPortalAccount>): Promise<PatientPortalAccount | undefined>;
+  updatePortalAccountByEmail(email: string, data: Partial<InsertPatientPortalAccount>): Promise<PatientPortalAccount | undefined>;
 
   // Published protocol operations
   publishProtocol(protocol: InsertPublishedProtocol): Promise<PublishedProtocol>;
@@ -998,6 +999,16 @@ export class DbStorage implements IStorage {
       .update(schema.patientPortalAccounts)
       .set(data as any)
       .where(eq(schema.patientPortalAccounts.patientId, patientId))
+      .returning();
+    return result[0];
+  }
+
+  async updatePortalAccountByEmail(email: string, data: Partial<InsertPatientPortalAccount>): Promise<PatientPortalAccount | undefined> {
+    const normalized = (email || "").trim().toLowerCase();
+    const result = await db
+      .update(schema.patientPortalAccounts)
+      .set(data as any)
+      .where(sql`LOWER(${schema.patientPortalAccounts.email}) = ${normalized}`)
       .returning();
     return result[0];
   }

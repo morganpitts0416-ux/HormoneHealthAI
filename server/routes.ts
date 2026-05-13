@@ -3451,15 +3451,24 @@ Return ONLY this JSON structure:
       // Update patient email on record (normalized)
       await storage.updatePatient(patientId, { email }, clinicianId, clinicId);
 
-      // Check if portal account already exists
+      // Check if portal account already exists (by patient ID first, then by email to catch stale links)
       let portalAccount = await storage.getPortalAccountByPatientId(patientId);
       const token = crypto.randomBytes(32).toString("hex");
       const expires = new Date(Date.now() + 72 * 60 * 60 * 1000);
 
       if (portalAccount) {
+        // Account already linked to this patient — just refresh the invite token
         await storage.updatePortalAccount(patientId, { email, inviteToken: token, inviteExpires: expires });
       } else {
-        await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
+        // No account for this patient ID. Check if the email is already on a different patient's account
+        // (stale link scenario) — re-link to the current patient rather than creating a duplicate.
+        const existingByEmail = await storage.getPortalAccountByEmail(email);
+        if (existingByEmail) {
+          console.log(`[PORTAL] Re-linking portal account for email ${email} from patient ${existingByEmail.patientId} → ${patientId} (invite path)`);
+          await storage.updatePortalAccountByEmail(email, { patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
+        } else {
+          await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
+        }
       }
 
       // Build base URL: APP_URL env var takes highest priority (custom domain),
@@ -4029,8 +4038,16 @@ Return ONLY this JSON structure:
       const patient = await storage.getPatient(parseInt(patientId), clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
 
-      // Verify patient has a portal account
-      const portalAccount = await storage.getPortalAccountByPatientId(parseInt(patientId));
+      // Verify patient has a portal account (fall back to email lookup to heal stale patient_id links)
+      let portalAccount = await storage.getPortalAccountByPatientId(parseInt(patientId));
+      if (!portalAccount && patient.email) {
+        const accountByEmail = await storage.getPortalAccountByEmail(patient.email);
+        if (accountByEmail && accountByEmail.patientId !== parseInt(patientId)) {
+          console.log(`[PORTAL] Re-linking portal account for email ${patient.email} from patient ${accountByEmail.patientId} → ${patientId} (publish path)`);
+          const relinked = await storage.updatePortalAccountByEmail(patient.email, { patientId: parseInt(patientId) });
+          portalAccount = relinked ?? { ...accountByEmail, patientId: parseInt(patientId) };
+        }
+      }
       if (!portalAccount) return res.status(400).json({ message: "Patient does not have a portal account. Please invite them first." });
 
       const protocol = await storage.publishProtocol({
@@ -4082,7 +4099,18 @@ Return ONLY this JSON structure:
       const patientId = parseInt(req.params.patientId);
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
-      const portalAccount = await storage.getPortalAccountByPatientId(patientId);
+      let portalAccount = await storage.getPortalAccountByPatientId(patientId);
+      // Fallback: if no account found by patient ID, check by the patient's email.
+      // This heals stale patient_id links (e.g. patient record was recreated with a
+      // new ID while the portal account still references the old one).
+      if (!portalAccount && patient.email) {
+        const accountByEmail = await storage.getPortalAccountByEmail(patient.email);
+        if (accountByEmail && accountByEmail.patientId !== patientId) {
+          console.log(`[PORTAL] Re-linking portal account for email ${patient.email} from patient ${accountByEmail.patientId} → ${patientId}`);
+          const relinked = await storage.updatePortalAccountByEmail(patient.email, { patientId });
+          portalAccount = relinked ?? { ...accountByEmail, patientId };
+        }
+      }
       const allProtocols = await storage.getAllPublishedProtocols(patientId);
       const latestProtocol = allProtocols[0] || null;
       // Collect the set of lab result IDs that have already been published
