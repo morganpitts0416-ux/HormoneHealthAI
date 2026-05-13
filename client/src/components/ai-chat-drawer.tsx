@@ -543,24 +543,29 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
       setInput("");
       baseInputRef.current = "";
 
-      const issuedForPatientId = usePatient && patientContext ? patientContext.id : null;
-      requestPatientIdRef.current = issuedForPatientId;
+      // patientIdForAI: which patient's context to send to the AI (respects the usePatient toggle)
+      // selectedPatientId: which patient was SELECTED at request time — used only for the
+      //   cross-patient safety check in onSuccess/onError so that disconnecting the patient
+      //   context toggle (usePatient=false) never causes responses to be silently dropped.
+      const patientIdForAI = usePatient && patientContext ? patientContext.id : null;
+      const selectedPatientId = patientContext?.id ?? null;
+      requestPatientIdRef.current = selectedPatientId;
       const controller = new AbortController();
       abortControllerRef.current = controller;
 
       const res = await apiRequest("POST", "/api/ai-chat", {
         messages: newMessages.map(m => ({ role: m.role, content: m.content })),
-        patientId: issuedForPatientId ?? undefined,
+        patientId: patientIdForAI ?? undefined,
         // Send the active SOAP note when one is open so the AI can read + edit it
         soapNote: activeSoapNote ?? undefined,
       }, { signal: controller.signal });
 
       const data = await res.json();
-      return { data, issuedForPatientId };
+      return { data, selectedPatientId };
     },
-    onSuccess: ({ data, issuedForPatientId }: { data: any; issuedForPatientId: number | null }) => {
+    onSuccess: ({ data, selectedPatientId }: { data: any; selectedPatientId: number | null }) => {
       const currentPatientId = patientContext?.id ?? null;
-      if (issuedForPatientId !== currentPatientId) return;
+      if (selectedPatientId !== currentPatientId) return;
 
       const reply: string = data.reply ?? "I wasn't able to generate a response.";
       const spoken: string | null = data.spoken ?? null;
