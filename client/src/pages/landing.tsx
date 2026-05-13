@@ -17,40 +17,25 @@ import { DemoModal } from "@/components/demo-modal";
 // ── Features nav data ────────────────────────────────────────────────────────
 const NAV_FEATURES = [
   {
-    category: "Clinical Intelligence",
-    items: [
-      { slug: "lab-interpretation",   label: "Lab Interpretation",            icon: FlaskConical, desc: "60+ markers with clinical context" },
-      { slug: "june-ai",              label: "June — AI Colleague",           icon: Bot,          desc: "Full-chart AI clinical reasoning" },
-      { slug: "cardiovascular-risk",  label: "Cardiovascular Risk",           icon: HeartPulse,   desc: "PREVENT scoring + ApoB/Lp(a)" },
-      { slug: "female-hormones",      label: "Female Hormone Patterns",       icon: Dna,          desc: "Phase-aware female interpretation" },
-      { slug: "insulin-resistance",   label: "Insulin Resistance Screening",  icon: TrendingUp,   desc: "Catch it before A1c rises" },
-      { slug: "red-flags",            label: "Red Flag Alert System",         icon: AlertTriangle, desc: "Critical values surfaced instantly" },
-    ],
+    href: "/features/labs",
+    icon: FlaskConical,
+    label: "Lab Interpretation",
+    desc: "Cardiovascular risk, hormone patterns, insulin resistance, red flags, supplement and dietary guidance, and one-tap patient reports.",
+    tags: ["60+ markers", "Male & female", "Patient reports"],
   },
   {
-    category: "Documentation",
-    items: [
-      { slug: "soap-notes",           label: "AI SOAP Notes",                 icon: NotepadText,  desc: "Record → transcript → signed note" },
-      { slug: "encounter-templates",  label: "Encounter Templates",           icon: BookTemplate, desc: "Structured templates by visit type" },
-      { slug: "ehr-chart",            label: "EHR-Style Patient Chart",       icon: LayoutList,   desc: "History, meds, allergies, notes" },
-    ],
+    href: "/features/documentation",
+    icon: NotepadText,
+    label: "Documentation",
+    desc: "Encounter transcription, AI SOAP notes with evidence overlay, manual builder, templates, chart extraction, phrase library, Teach June.",
+    tags: ["AI SOAP notes", "Templates", "Teach June"],
   },
   {
-    category: "Patient Experience",
-    items: [
-      { slug: "patient-portal",       label: "Patient Portal",                icon: Tablet,       desc: "Labs patients actually understand" },
-      { slug: "healthiq",             label: "HealthIQ Hub",                  icon: BarChart2,    desc: "Body system health scores" },
-      { slug: "digital-forms",        label: "Digital Forms & Intake",        icon: ListChecks,   desc: "Drag-and-drop form builder" },
-      { slug: "daily-checkin",        label: "Daily Check-In & Vitals",       icon: Activity,     desc: "Monitoring between visits" },
-    ],
-  },
-  {
-    category: "Practice Tools",
-    items: [
-      { slug: "patient-management",   label: "Patient Management",            icon: Users,        desc: "Full profiles + trend charts" },
-      { slug: "appointments",         label: "Appointments & Scheduling",     icon: CalendarDays, desc: "Clinical calendar + booking" },
-      { slug: "supplements",          label: "Supplement Library",            icon: ShoppingBag,  desc: "Lab-linked recommendations" },
-    ],
+    href: "/features/patient-experience",
+    icon: Users,
+    label: "Patient Experience",
+    desc: "Smart intake forms, appointments, patient portal with form assignment, HealthIQ body system scores, and daily vitals monitoring.",
+    tags: ["Intake forms", "Portal", "HealthIQ"],
   },
 ];
 
@@ -194,36 +179,33 @@ export default function Landing() {
                     </p>
                   </div>
 
-                  {/* Feature grid */}
-                  <div className="grid grid-cols-2 lg:grid-cols-4 gap-0 p-4">
-                    {NAV_FEATURES.map((group) => (
-                      <div key={group.category} className="px-2 py-1">
-                        <p className="text-[10px] font-bold uppercase tracking-widest mb-2 px-1" style={{ color: "#a0b880" }}>
-                          {group.category}
-                        </p>
-                        <ul className="space-y-0.5">
-                          {group.items.map(({ slug, label, icon: Icon, desc }) => (
-                            <li key={slug}>
-                              <Link
-                                href={`/features/${slug}`}
-                                onClick={() => setFeaturesOpen(false)}
-                                className="flex items-start gap-2.5 rounded-lg px-2 py-2 group transition-colors"
-                                style={{ textDecoration: "none" }}
-                                onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f5f1e8")}
-                                onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                              >
-                                <div className="w-6 h-6 rounded-md flex items-center justify-center shrink-0 mt-0.5" style={{ backgroundColor: "#edf2e6" }}>
-                                  <Icon className="w-3 h-3" style={{ color: "#2e3a20" }} />
-                                </div>
-                                <div className="min-w-0">
-                                  <div className="text-xs font-semibold leading-snug" style={{ color: "#1c2414" }}>{label}</div>
-                                  <div className="text-[11px] leading-snug mt-0.5" style={{ color: "#8a9878" }}>{desc}</div>
-                                </div>
-                              </Link>
-                            </li>
+                  {/* Feature cards */}
+                  <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 p-5">
+                    {NAV_FEATURES.map(({ href, icon: Icon, label, desc, tags }) => (
+                      <Link
+                        key={href}
+                        href={href}
+                        onClick={() => setFeaturesOpen(false)}
+                        className="flex flex-col gap-3 rounded-xl p-4 transition-colors"
+                        style={{ textDecoration: "none", border: "1px solid #ede8df", backgroundColor: "#faf7f2" }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f0ece3")}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = "#faf7f2")}
+                      >
+                        <div className="flex items-center gap-2.5">
+                          <div className="w-8 h-8 rounded-lg flex items-center justify-center shrink-0" style={{ backgroundColor: "#edf2e6" }}>
+                            <Icon className="w-4 h-4" style={{ color: "#2e3a20" }} />
+                          </div>
+                          <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>{label}</span>
+                        </div>
+                        <p className="text-xs leading-relaxed" style={{ color: "#6a7a58" }}>{desc}</p>
+                        <div className="flex flex-wrap gap-1 mt-auto">
+                          {tags.map(t => (
+                            <span key={t} className="text-[10px] font-semibold rounded-full px-2 py-0.5" style={{ backgroundColor: "#edf2e6", color: "#3d4a30" }}>
+                              {t}
+                            </span>
                           ))}
-                        </ul>
-                      </div>
+                        </div>
+                      </Link>
                     ))}
                   </div>
 
