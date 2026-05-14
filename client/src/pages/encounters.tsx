@@ -747,6 +747,23 @@ export function EncounterEditor({
   const [signDialogOpen, setSignDialogOpen] = useState(false);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
+  // ── SOAP note localStorage backup ─────────────────────────────────────────
+  // Writes soap.fullNote to localStorage 2 s after the last change so unsaved
+  // work survives an accidental logout or browser crash. Cleared on explicit
+  // save or sign.  Key includes encounter id (or "new") so multiple tabs
+  // don't stomp each other.
+  const soapDraftKey = savedId ? `soap-draft-${savedId}` : "soap-draft-new";
+  const soapDraftTimer = useRef<ReturnType<typeof setTimeout> | null>(null);
+  useEffect(() => {
+    const text = soap.fullNote ?? "";
+    if (!text.trim()) return;
+    if (soapDraftTimer.current) clearTimeout(soapDraftTimer.current);
+    soapDraftTimer.current = setTimeout(() => {
+      try { localStorage.setItem(soapDraftKey, text); } catch (_) {}
+    }, 2_000);
+    return () => { if (soapDraftTimer.current) clearTimeout(soapDraftTimer.current); };
+  }, [soap.fullNote, soapDraftKey]);
+
   const soapNoteValue = soap.fullNote ?? legacySoapToText(soap);
   const dxSearch = useDiagnosisSearch({
     textareaRef: soapTextareaRef,
@@ -1183,6 +1200,7 @@ export function EncounterEditor({
       invalidate();
       setSoapSaved(true);
       if (encRecsKey) localStorage.setItem(encRecsKey, "1");
+      try { localStorage.removeItem(soapDraftKey); } catch (_) {}
       toast({ title: "SOAP note saved" });
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Save failed", description: e.message }),
@@ -1238,17 +1256,23 @@ export function EncounterEditor({
   // Ensure overlay clears on unmount
   useEffect(() => () => { clearGlobalLoading(); }, []);
 
-  // ── Recording activity heartbeat ──────────────────────────────────────────
-  // Prevent the session-timeout idle timer from firing during an active
-  // recording. Every 60 s we dispatch a synthetic activity event so the
-  // modal's idle clock stays reset for as long as the mic is live.
+  // ── Encounter activity heartbeat ──────────────────────────────────────────
+  // Keep both the client-side idle timer AND the server session alive during
+  // any active encounter work: recording, post-recording processing, or
+  // editing an unsaved SOAP note. Every 60 s we (a) dispatch a synthetic
+  // activity event so the SessionTimeoutModal clock stays reset, and (b) ping
+  // /api/auth/me so the server-side rolling session is also refreshed.
+  const encounterActive = recorderState === "recording" ||
+    (!soapSaved && !!(soap.fullNote?.trim() || (soap as any).assessment || (soap as any).subjective));
   useEffect(() => {
-    if (recorderState !== "recording") return;
+    if (!encounterActive) return;
     const id = setInterval(() => {
       window.dispatchEvent(new MouseEvent("mousemove", { bubbles: true }));
+      // Also ping the server so the rolling session maxAge resets
+      fetch("/api/auth/me", { credentials: "include" }).catch(() => {});
     }, 60_000);
     return () => clearInterval(id);
-  }, [recorderState]);
+  }, [encounterActive]);
 
   // Save patient summary edits
   const saveSummaryMutation = useMutation({
@@ -1429,6 +1453,7 @@ export function EncounterEditor({
       setSoapViewMode("view");
       setSoapSaved(true); // hide recommendations permanently
       if (encRecsKey) localStorage.setItem(encRecsKey, "1");
+      try { localStorage.removeItem(soapDraftKey); } catch (_) {}
       invalidate();
       const queued = !!data.chartReviewItem;
       toast({

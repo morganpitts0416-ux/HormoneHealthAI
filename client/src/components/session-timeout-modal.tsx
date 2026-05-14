@@ -6,8 +6,8 @@ import { apiRequest } from "@/lib/queryClient";
 import { queryClient } from "@/lib/queryClient";
 import { Clock } from "lucide-react";
 
-const IDLE_TIMEOUT_MS = 30 * 60 * 1000; // 30 minutes
-const WARNING_MS = 25 * 60 * 1000;       // warn at 25 minutes
+const IDLE_TIMEOUT_MS = 2 * 60 * 60 * 1000;  // 2 hours — matches server maxAge
+const WARNING_MS      = 115 * 60 * 1000;       // warn at 1h55m (5 min before)
 const TICK_INTERVAL_MS = 1000;
 
 const ACTIVITY_EVENTS = ["mousedown", "mousemove", "keydown", "touchstart", "scroll", "click"];
