@@ -2417,15 +2417,78 @@ export class FemaleClinicalLogicEngine {
       });
     }
     
+    // Perimenopause: Low Androgen Availability / High SHBG
+    // Fires for non-HRT patients age 35–65 with at least one marker of reduced androgen availability.
+    // Takes priority over Pattern D — prevents the contradictory "adequate androgens" label
+    // when free T is low, total T is low-normal, SHBG is elevated, or DHEA-S is borderline-low.
+    const _periAge = labs.demographics?.age === undefined || (labs.demographics.age >= 35 && labs.demographics.age <= 65);
+    if (!testosteronePatternIdentified && labs.onHRT !== true && _periAge) {
+      const _freeT = labs.freeTestosterone;
+      const _totalT = labs.testosterone;
+      const _shbg = labs.shbg;
+      const _dheas = labs.dheas;
+
+      const _freeTLow = _freeT !== undefined && _freeT < 4;
+      const _totalTLow = _totalT !== undefined && _totalT < 30;
+      const _shbgHigh = _shbg !== undefined && _shbg > 60;
+      const _dheasLow = _dheas !== undefined && _dheas < 150;
+
+      const _periFindings: string[] = [];
+      if (_freeT !== undefined) {
+        if (_freeT < 3) _periFindings.push(`Free testosterone ${_freeT} pg/mL (low, optimal 3–10 pg/mL)`);
+        else if (_freeT < 4) _periFindings.push(`Free testosterone ${_freeT} pg/mL (low-normal, optimal 3–10 pg/mL)`);
+      }
+      if (_totalT !== undefined) {
+        if (_totalT < 20) _periFindings.push(`Total testosterone ${_totalT} ng/dL (low, optimal 30–60 ng/dL)`);
+        else if (_totalT < 30) _periFindings.push(`Total testosterone ${_totalT} ng/dL (low-normal, optimal 30–60 ng/dL)`);
+      }
+      if (_shbg !== undefined) {
+        if (_shbg > 90) _periFindings.push(`SHBG ${_shbg} nmol/L (very elevated, markedly reducing androgen bioavailability)`);
+        else if (_shbg > 70) _periFindings.push(`SHBG ${_shbg} nmol/L (elevated, reducing androgen bioavailability)`);
+        else if (_shbg > 60) _periFindings.push(`SHBG ${_shbg} nmol/L (borderline elevated, optimal 30–60 nmol/L)`);
+      }
+      if (_dheas !== undefined) {
+        if (_dheas < 100) _periFindings.push(`DHEA-S ${_dheas} µg/dL (very low, significantly reduced adrenal androgen reserve)`);
+        else if (_dheas < 135) _periFindings.push(`DHEA-S ${_dheas} µg/dL (low, optimal 150–300 µg/dL)`);
+        else if (_dheas < 150) _periFindings.push(`DHEA-S ${_dheas} µg/dL (borderline low adrenal reserve)`);
+      }
+
+      const _periMarkers = [_freeTLow, _totalTLow, _shbgHigh, _dheasLow].filter(Boolean).length;
+
+      if (_periMarkers >= 1 && _periFindings.length > 0) {
+        testosteronePatternIdentified = true;
+
+        const _periSymptoms: string[] = [];
+        if (labs.lowLibido) _periSymptoms.push('low libido');
+        if (labs.lowEnergy) _periSymptoms.push('fatigue/low energy');
+        if (labs.brainFog) _periSymptoms.push('brain fog');
+        if (labs.lowMotivation) _periSymptoms.push('low motivation');
+        if (labs.moodChanges) _periSymptoms.push('mood changes');
+        if (_periSymptoms.length > 0) _periFindings.push(`Compatible symptoms: ${_periSymptoms.join(', ')}`);
+
+        const _periStatus: LabInterpretation['status'] = _periMarkers >= 3 ? 'abnormal' : 'borderline';
+
+        interpretations.push({
+          category: 'Perimenopause Assessment: Low Androgen / High SHBG Pattern',
+          value: _totalT ?? _shbg ?? _freeT ?? 0,
+          unit: _totalT !== undefined ? 'ng/dL' : _shbg !== undefined ? 'nmol/L' : 'pg/mL',
+          status: _periStatus,
+          referenceRange: 'Total T 30–60 ng/dL, Free T 3–10 pg/mL, SHBG 30–60 nmol/L',
+          interpretation: `Low Androgen Availability / High SHBG perimenopause pattern identified (${_periFindings.filter(f => !f.startsWith('Compatible')).join('; ')}). Pattern suggests reduced androgen availability due to low free testosterone, low-normal total testosterone, elevated SHBG, and/or borderline-low DHEA-S. Estradiol and progesterone may still appear adequate — this is an androgen availability and hormone-binding pattern, not primarily an estrogen-deficiency pattern. Common in women ages 35–55.${_periSymptoms.length > 0 ? ` Symptom correlation: ${_periSymptoms.join(', ')}.` : ''}`,
+          recommendation: `PROVIDER RECOMMENDATION: Evaluate SHBG drivers — oral estrogen route (switch to transdermal to reduce SHBG), oral contraceptive history, thyroid dosing. Consider adrenal androgen reserve: check DHEA-S if not already done. Consider low-dose DHEA or pregnenolone supplementation. If free testosterone remains consistently low after addressing SHBG, discuss low-dose testosterone optimization. PATIENT EDUCATION: Your lab results show that while total hormone levels may appear borderline, your body's available androgens (hormones that support energy, libido, and mood) are lower than optimal. This is a common pattern in women in their 30s–50s. Your provider will identify what's reducing your available hormones and discuss targeted treatment options.`,
+        });
+      }
+    }
+
     // Pattern D – Adequate Androgens, Persistent Symptoms
-    // Total, Free & Bioavailable T within range, SHBG not extreme
-    // Common symptoms: fatigue, low mood, sleep disruption, low libido despite normal labs
-    // This pattern fires when all testosterone markers are in range and no other pattern (A/B/C/E) was identified
-    // Excluded for HRT patients — their reference range is 75-125 ng/dL, not 15-70 ng/dL
+    // Total T >30 ng/dL AND Free T >3 pg/mL (when available), SHBG not extreme
+    // Only fires when all testosterone markers are genuinely adequate (new optimized thresholds).
+    // Excluded for HRT patients — their reference range is 75-125 ng/dL, not 30-60 ng/dL.
+    // Excluded for patients who already matched the perimenopause Low Androgen pattern above.
     if (!testosteronePatternIdentified &&
         labs.onHRT !== true &&
-        labs.testosterone !== undefined && labs.testosterone >= 15 && labs.testosterone <= 70 &&
-        (labs.freeTestosterone === undefined || (labs.freeTestosterone >= 0.5 && labs.freeTestosterone <= 5.0)) &&
+        labs.testosterone !== undefined && labs.testosterone > 30 && labs.testosterone <= 70 &&
+        (labs.freeTestosterone === undefined || (labs.freeTestosterone > 3 && labs.freeTestosterone <= 10)) &&
         (labs.bioavailableTestosterone === undefined || (labs.bioavailableTestosterone >= 2 && labs.bioavailableTestosterone <= 10)) &&
         (labs.shbg === undefined || (labs.shbg >= 24 && labs.shbg <= 100))) {
       
@@ -2450,7 +2513,7 @@ export class FemaleClinicalLogicEngine {
         value: labs.testosterone,
         unit: 'ng/dL',
         status: 'borderline',
-        referenceRange: 'Total T 15-70 ng/dL, Free T 0.5-5.0 pg/mL (all within range)',
+        referenceRange: 'Total T 30-60 ng/dL, Free T 3-10 pg/mL (all within range)',
         interpretation: `Adequate Androgens pattern identified (${labDetails.join('; ')}). Total, free, and bioavailable testosterone are within normal ranges and SHBG is not extreme. If the patient reports fatigue, low mood, sleep disruption, or low libido, these symptoms are likely driven by non-androgenic factors.${otherFactors.length > 0 ? ` Findings to evaluate: ${otherFactors.join('. ')}.` : ' Evaluate iron, thyroid, sleep quality, and estrogen/progesterone balance.'}`,
         recommendation: `PROVIDER RECOMMENDATION: Do not reflexively add testosterone when levels are adequate — look deeper. Evaluate iron status (ferritin target >50 for symptom resolution), thyroid function (optimize TSH), and sleep quality (consider sleep apnea screening with STOP-BANG). Assess estrogen and progesterone balance — E2/P4 imbalance is a common driver of persistent symptoms. Address CNS and psychosocial drivers: chronic stress, HPA axis dysregulation, mood disorders. Consider DHEA-S if not already checked. Support with lifestyle optimization: sleep hygiene, stress management, nutrition. PATIENT EDUCATION: Your testosterone levels are actually in a healthy range, which is good news. When symptoms persist despite normal testosterone, it usually means something else is contributing. Your provider will look at other factors like iron levels, thyroid function, sleep quality, and hormone balance to find what's driving your symptoms.`,
       });

@@ -420,7 +420,6 @@ export function detectClinicalPhenotypes(labs: FemaleLabValues, irScreening?: In
     detectIronDeficiencyPhenotype,
     detectInsulinResistancePhenotype,
     detectMenopausalTransitionPhenotype,
-    detectLowAndrogenHighSHBGPerimenopausePhenotype,
     detectEstrogenDominancePhenotype,
     detectOxidativeStressPhenotype,
     detectStressDysregulationPhenotype,
