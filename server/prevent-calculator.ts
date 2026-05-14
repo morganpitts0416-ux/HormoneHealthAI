@@ -502,45 +502,43 @@ export class PREVENTCalculator {
 
     const baseRiskPercent = tenYearASCVD * 100;
     
-    // Determine marker status with borderline classification
-    // ApoB: <90 normal, 90-129 borderline, ≥130 elevated (RISK ENHANCER)
-    // Lp(a): mg/dL (<40 normal, 40-49 borderline, ≥50 elevated = RISK ENHANCER)
-    //        nmol/L (<75 normal, 75-124 borderline, ≥125 elevated = RISK ENHANCER)
-    // Unit detection: Values ≥200 are likely nmol/L (Lp(a) in mg/dL rarely exceeds 150)
+    // Determine marker status — 3-tier classification per ACC/AHA 2019 Cholesterol Guidelines
+    // ApoB:  <90 mg/dL = normal | 90–129 mg/dL = borderline | ≥130 mg/dL = elevated → RISK ENHANCER
+    // Lp(a): mg/dL:  <30 = normal | 30–49 = borderline | ≥50 = elevated → RISK ENHANCER
+    //        nmol/L: <75 = normal | 75–124 = borderline | ≥125 = elevated → RISK ENHANCER
+    // Unit detection: values ≥200 are almost certainly nmol/L (mg/dL rarely exceeds 150)
+    // Reclassification trigger: Lp(a) elevated (≥50 mg/dL or ≥125 nmol/L) OR ApoB ≥130 mg/dL
     
     let apoBStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
     if (apoB !== undefined) {
-      if (apoB >= 130) apoBStatus = 'elevated';  // RISK ENHANCER
-      else if (apoB >= 90) apoBStatus = 'borderline';
+      if (apoB >= 130) apoBStatus = 'elevated';   // ACC/AHA risk-enhancing factor → upward reclassification
+      else if (apoB >= 90) apoBStatus = 'borderline'; // Risk-enhancing, supports statin discussion
     }
     
     let lpaStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
     let lpaIsNmolL = false;
-    let lpaIsRiskEnhancer = false;
     if (lpa !== undefined) {
-      // Detect unit based on value magnitude
-      // Lp(a) in mg/dL typically ranges 0-150, nmol/L typically 0-300+
-      // Values ≥200 are almost certainly nmol/L
+      // Unit detection: values ≥200 are almost certainly nmol/L
       lpaIsNmolL = lpa >= 200;
       
       if (lpaIsNmolL) {
-        // nmol/L scale: <75 normal, ≥75 elevated, ≥125 RISK ENHANCER
-        if (lpa >= 75) lpaStatus = 'elevated';
-        if (lpa >= 125) lpaIsRiskEnhancer = true;
+        // nmol/L scale (ACC/AHA 2019): <75 normal | 75–124 borderline | ≥125 elevated = RISK ENHANCER
+        if (lpa >= 125) lpaStatus = 'elevated';
+        else if (lpa >= 75) lpaStatus = 'borderline';
       } else {
-        // mg/dL scale: <29 normal, ≥29 elevated, ≥50 RISK ENHANCER
-        if (lpa >= 29) lpaStatus = 'elevated';
-        if (lpa >= 50) lpaIsRiskEnhancer = true;
+        // mg/dL scale (ACC/AHA 2019): <30 normal | 30–49 borderline | ≥50 elevated = RISK ENHANCER
+        if (lpa >= 50) lpaStatus = 'elevated';
+        else if (lpa >= 30) lpaStatus = 'borderline';
       }
     }
     
-    const lpaElevated = lpaStatus === 'elevated';
-    const apoBElevated = apoBStatus === 'elevated';
-    const lpaBorderline = false; // Lp(a) protocol: no borderline, only normal/elevated
-    const apoBBorderline = apoBStatus === 'borderline';
+    const lpaElevated = lpaStatus === 'elevated';   // ≥50 mg/dL or ≥125 nmol/L → triggers reclassification
+    const lpaBorderline = lpaStatus === 'borderline'; // 30–49 mg/dL or 75–124 nmol/L → risk-enhancing
+    const apoBElevated = apoBStatus === 'elevated';   // ≥130 mg/dL → triggers reclassification
+    const apoBBorderline = apoBStatus === 'borderline'; // 90–129 mg/dL → risk-enhancing
     
-    // Risk enhancers: Lp(a) ≥50 mg/dL (or ≥125 nmol/L) OR ApoB ≥130 mg/dL
-    const hasRiskEnhancer = lpaIsRiskEnhancer || apoBElevated;
+    // Risk enhancers per ACC/AHA 2019: Lp(a) ≥50 mg/dL (≥125 nmol/L) OR ApoB ≥130 mg/dL
+    const hasRiskEnhancer = lpaElevated || apoBElevated;
     
     // Get base risk category
     let riskCategory: 'low' | 'borderline' | 'intermediate' | 'high';
@@ -603,18 +601,33 @@ export class PREVENTCalculator {
       }
     }
 
-    // Build marker-specific notes for risk enhancers
+    // Build marker-specific notes — only label ≥threshold as RISK ENHANCER
     const riskEnhancerNotes: string[] = [];
-    if (lpaElevated) {
+    const borderlineNotes: string[] = [];
+
+    if (lpa !== undefined) {
       const unit = lpaIsNmolL ? 'nmol/L' : 'mg/dL';
-      riskEnhancerNotes.push(`Lp(a) ${lpa} ${unit} - RISK ENHANCER (genetic risk factor)`);
+      if (lpaElevated) {
+        const threshold = lpaIsNmolL ? '≥125 nmol/L' : '≥50 mg/dL';
+        riskEnhancerNotes.push(`Lp(a) ${lpa} ${unit} (${threshold}) — RISK ENHANCER: genetic cardiovascular risk factor warranting upward risk reclassification`);
+      } else if (lpaBorderline) {
+        const range = lpaIsNmolL ? '75–124 nmol/L' : '30–49 mg/dL';
+        borderlineNotes.push(`Lp(a) ${lpa} ${unit} (${range}) — borderline elevated: risk-enhancing factor, consider more aggressive LDL lowering`);
+      }
     }
-    if (apoBElevated) {
-      riskEnhancerNotes.push(`ApoB ${apoB} mg/dL - RISK ENHANCER (elevated atherogenic particle burden)`);
+
+    if (apoB !== undefined) {
+      if (apoBElevated) {
+        riskEnhancerNotes.push(`ApoB ${apoB} mg/dL (≥130 mg/dL) — RISK ENHANCER: high atherogenic particle burden warranting upward risk reclassification`);
+      } else if (apoBBorderline) {
+        borderlineNotes.push(`ApoB ${apoB} mg/dL (90–129 mg/dL) — borderline elevated: risk-enhancing factor, support statin discussion`);
+      }
     }
-    
-    if (riskEnhancerNotes.length > 0) {
-      clinicalGuidance = `${riskEnhancerNotes.join('; ')}. ${clinicalGuidance}`;
+
+    // Prepend risk-enhancer and borderline notes to clinical guidance
+    const allNotes: string[] = [...riskEnhancerNotes, ...borderlineNotes];
+    if (allNotes.length > 0) {
+      clinicalGuidance = `${allNotes.join('; ')}. ${clinicalGuidance}`;
     }
 
     return {
