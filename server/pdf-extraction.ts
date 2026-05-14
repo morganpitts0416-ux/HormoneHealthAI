@@ -67,7 +67,9 @@ export interface ExtractedLabValues {
   tsh?: number;
   freeT4?: number;
   freeT3?: number;
+  totalT3?: number;
   tpoAntibodies?: number;
+  antiTg?: number;
 
   // Iron
   iron?: number;
@@ -80,9 +82,10 @@ export interface ExtractedLabValues {
   vitaminB12?: number;
   folate?: number;
 
-  // Inflammation / Glycemic
+  // Inflammation / Glycemic / Cardiovascular
   hsCRP?: number;
   a1c?: number;
+  homocysteine?: number;
 
   // Male-specific
   psa?: number;
@@ -147,6 +150,9 @@ EXTRACTION RULES:
    - Free T4: FT4, Free Thyroxine, Free T4 (Direct)
    - Free T3: FT3, Free Triiodothyronine, Free T3 (Direct)
    - TPO Antibodies: Thyroid Peroxidase Ab, Anti-TPO, TPO Ab
+   - Total T3: T3 Total, Triiodothyronine Total, Total Triiodothyronine
+   - Anti-Thyroglobulin: Anti-TG, Anti-Tg Ab, Thyroglobulin Antibodies, TgAb
+   - Homocysteine: HOMOCYSTEINE, Homocyst, HCY, Plasma Homocysteine
    - Iron: Serum Iron, Fe
    - TIBC: Total Iron Binding Capacity, Iron Binding Cap, Iron Binding Capacity, Iron Bind Cap, Iron Bind. Cap, TIBC (Iron Binding Capacity)
    - Iron Saturation: % Saturation, Transferrin Saturation, Iron Sat, TSAT, Iron %, Percent Saturation, Iron Percent Saturation, Transferrin Sat
@@ -209,6 +215,9 @@ Return this JSON structure (include ONLY fields you found):
   "freeT4": number,
   "freeT3": number,
   "tpoAntibodies": number,
+  "totalT3": number,
+  "antiTg": number,
+  "homocysteine": number,
   "iron": number,
   "tibc": number,
   "ironSaturation": number,
