@@ -199,58 +199,77 @@ export function AdvancedLipidsCard({ adjustedRiskAssessment }: { adjustedRiskAss
               </>
             )}
           </div>
-          {adjustedRiskAssessment.apoBValue !== undefined && (
-            <div className={`p-4 rounded-lg border ${
-              adjustedRiskAssessment.apoBStatus === 'elevated'
+          <div className={`p-4 rounded-lg border ${
+            adjustedRiskAssessment.apoBValue !== undefined
+              ? adjustedRiskAssessment.apoBStatus === 'elevated'
                 ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
                 : adjustedRiskAssessment.apoBStatus === 'borderline'
                 ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
                 : 'bg-muted/30'
-            }`}>
-              <p className="text-xs font-medium text-muted-foreground uppercase mb-1">ApoB</p>
-              <span className={`text-2xl font-bold font-mono ${
-                adjustedRiskAssessment.apoBStatus === 'elevated' ? 'text-orange-600 dark:text-orange-400' :
-                adjustedRiskAssessment.apoBStatus === 'borderline' ? 'text-amber-600 dark:text-amber-400' : ''
-              }`} data-testid="text-apob">
-                {adjustedRiskAssessment.apoBValue} mg/dL
-              </span>
-              <p className="text-xs text-muted-foreground mt-1">
-                {adjustedRiskAssessment.apoBStatus === 'elevated'
-                  ? 'Elevated — Risk Enhancer (≥130 mg/dL)'
-                  : adjustedRiskAssessment.apoBStatus === 'borderline'
-                  ? 'Borderline (90–129 mg/dL)'
-                  : 'Optimal (<90 mg/dL)'}
-              </p>
-            </div>
-          )}
-          {adjustedRiskAssessment.lpaValue !== undefined && (() => {
-            const isNmolL = adjustedRiskAssessment.lpaValue >= 200;
-            const unit = isNmolL ? 'nmol/L' : 'mg/dL';
-            const elevatedLabel  = isNmolL ? 'Elevated — Risk Enhancer (≥125 nmol/L)' : 'Elevated — Risk Enhancer (≥50 mg/dL)';
-            const borderlineLabel = isNmolL ? 'Borderline (75–124 nmol/L)' : 'Borderline (30–49 mg/dL)';
-            const normalLabel    = isNmolL ? 'Optimal (<75 nmol/L)' : 'Optimal (<30 mg/dL)';
-            return (
-              <div className={`p-4 rounded-lg border ${
-                adjustedRiskAssessment.lpaStatus === 'elevated'
-                  ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
-                  : adjustedRiskAssessment.lpaStatus === 'borderline'
-                  ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
-                  : 'bg-muted/30'
-              }`}>
-                <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Lp(a)</p>
+              : 'bg-muted/30 opacity-60'
+          }`}>
+            <p className="text-xs font-medium text-muted-foreground uppercase mb-1">ApoB</p>
+            {adjustedRiskAssessment.apoBValue !== undefined ? (
+              <>
                 <span className={`text-2xl font-bold font-mono ${
-                  adjustedRiskAssessment.lpaStatus === 'elevated' ? 'text-orange-600 dark:text-orange-400' :
-                  adjustedRiskAssessment.lpaStatus === 'borderline' ? 'text-amber-600 dark:text-amber-400' : ''
-                }`} data-testid="text-lpa">
-                  {adjustedRiskAssessment.lpaValue} {unit}
+                  adjustedRiskAssessment.apoBStatus === 'elevated' ? 'text-orange-600 dark:text-orange-400' :
+                  adjustedRiskAssessment.apoBStatus === 'borderline' ? 'text-amber-600 dark:text-amber-400' : ''
+                }`} data-testid="text-apob">
+                  {adjustedRiskAssessment.apoBValue} mg/dL
                 </span>
                 <p className="text-xs text-muted-foreground mt-1">
-                  {adjustedRiskAssessment.lpaStatus === 'elevated'
-                    ? elevatedLabel
-                    : adjustedRiskAssessment.lpaStatus === 'borderline'
-                    ? borderlineLabel
-                    : normalLabel}
+                  {adjustedRiskAssessment.apoBStatus === 'elevated'
+                    ? 'Elevated — Risk Enhancer (≥130 mg/dL)'
+                    : adjustedRiskAssessment.apoBStatus === 'borderline'
+                    ? 'Borderline (90–129 mg/dL)'
+                    : 'Optimal (<90 mg/dL)'}
                 </p>
+              </>
+            ) : (
+              <>
+                <span className="text-2xl font-bold font-mono text-muted-foreground" data-testid="text-apob">—</span>
+                <p className="text-xs text-muted-foreground mt-1">Not recorded this visit</p>
+              </>
+            )}
+          </div>
+          {(() => {
+            const lpaValue = adjustedRiskAssessment.lpaValue;
+            if (lpaValue !== undefined) {
+              const isNmolL = lpaValue >= 200;
+              const unit = isNmolL ? 'nmol/L' : 'mg/dL';
+              const elevatedLabel  = isNmolL ? 'Elevated — Risk Enhancer (≥125 nmol/L)' : 'Elevated — Risk Enhancer (≥50 mg/dL)';
+              const borderlineLabel = isNmolL ? 'Borderline (75–124 nmol/L)' : 'Borderline (30–49 mg/dL)';
+              const normalLabel    = isNmolL ? 'Optimal (<75 nmol/L)' : 'Optimal (<30 mg/dL)';
+              return (
+                <div className={`p-4 rounded-lg border ${
+                  adjustedRiskAssessment.lpaStatus === 'elevated'
+                    ? 'bg-orange-50/50 dark:bg-orange-950/20 border-orange-200 dark:border-orange-800'
+                    : adjustedRiskAssessment.lpaStatus === 'borderline'
+                    ? 'bg-amber-50/50 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800'
+                    : 'bg-muted/30'
+                }`}>
+                  <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Lp(a)</p>
+                  <span className={`text-2xl font-bold font-mono ${
+                    adjustedRiskAssessment.lpaStatus === 'elevated' ? 'text-orange-600 dark:text-orange-400' :
+                    adjustedRiskAssessment.lpaStatus === 'borderline' ? 'text-amber-600 dark:text-amber-400' : ''
+                  }`} data-testid="text-lpa">
+                    {lpaValue} {unit}
+                  </span>
+                  <p className="text-xs text-muted-foreground mt-1">
+                    {adjustedRiskAssessment.lpaStatus === 'elevated'
+                      ? elevatedLabel
+                      : adjustedRiskAssessment.lpaStatus === 'borderline'
+                      ? borderlineLabel
+                      : normalLabel}
+                  </p>
+                </div>
+              );
+            }
+            return (
+              <div className="p-4 rounded-lg border bg-muted/30 opacity-60">
+                <p className="text-xs font-medium text-muted-foreground uppercase mb-1">Lp(a)</p>
+                <span className="text-2xl font-bold font-mono text-muted-foreground" data-testid="text-lpa">—</span>
+                <p className="text-xs text-muted-foreground mt-1">Not recorded this visit</p>
               </div>
             );
           })()}

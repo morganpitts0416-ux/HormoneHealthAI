@@ -259,6 +259,90 @@ export async function generateLabReportPDF(
     yPosition = (doc as any).lastAutoTable.finalY + 12;
   }
 
+  // Advanced Lipid Markers (ApoB and Lp(a)) — only renders when at least one marker was recorded
+  if (interpretation.adjustedRisk) {
+    const ar = interpretation.adjustedRisk;
+    const hasApoB = ar.apoBValue !== undefined;
+    const hasLpa  = ar.lpaValue  !== undefined;
+    if (hasApoB || hasLpa) {
+      if (yPosition > 240) {
+        doc.addPage();
+        yPosition = 20;
+      }
+      doc.setFontSize(12);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...HEADING_RGB);
+      doc.text('Advanced Lipid Markers (ApoB & Lp(a))', 14, yPosition);
+      doc.setTextColor(0, 0, 0);
+      yPosition += 6;
+
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'italic');
+      doc.setTextColor(80, 80, 80);
+      const markerSubtitle = `Base 10-yr ASCVD: ${ar.baseASCVDRisk === 0 ? 'N/A (PREVENT not calculated)' : ar.baseASCVDRisk.toFixed(1) + '%'}  |  Adjusted category: ${ar.adjustedCategory.replace('_', ' ')}`;
+      doc.text(markerSubtitle, 14, yPosition);
+      doc.setTextColor(0, 0, 0);
+      doc.setFont('helvetica', 'normal');
+      yPosition += 7;
+
+      const markerRows: string[][] = [];
+      if (hasApoB) {
+        const apoBStatus = ar.apoBStatus === 'elevated' ? 'Elevated (≥130)' : ar.apoBStatus === 'borderline' ? 'Borderline (90–129)' : 'Optimal (<90)';
+        markerRows.push(['ApoB', `${ar.apoBValue} mg/dL`, apoBStatus, ar.apoBStatus === 'elevated' ? 'Risk Enhancer' : ar.apoBStatus === 'borderline' ? 'Risk-Enhancing' : 'Normal']);
+      }
+      if (hasLpa) {
+        const isNmol = ar.lpaValue! >= 200;
+        const lpaUnit = isNmol ? 'nmol/L' : 'mg/dL';
+        const lpaStatus = ar.lpaStatus === 'elevated'
+          ? (isNmol ? 'Elevated (≥125 nmol/L)' : 'Elevated (≥50 mg/dL)')
+          : ar.lpaStatus === 'borderline'
+          ? (isNmol ? 'Borderline (75–124)' : 'Borderline (30–49)')
+          : (isNmol ? 'Optimal (<75 nmol/L)' : 'Optimal (<30 mg/dL)');
+        markerRows.push(['Lp(a)', `${ar.lpaValue} ${lpaUnit}`, lpaStatus, ar.lpaStatus === 'elevated' ? 'Risk Enhancer' : ar.lpaStatus === 'borderline' ? 'Risk-Enhancing' : 'Normal']);
+      }
+
+      (doc as any).autoTable({
+        head: [['Marker', 'Value', 'Status', 'Classification']],
+        body: markerRows,
+        startY: yPosition,
+        margin: { left: 14, right: 14 },
+        styles: { fontSize: 8, cellPadding: 2 },
+        headStyles: { fillColor: HEADING_RGB, textColor: [255, 255, 255], fontStyle: 'bold' },
+        columnStyles: {
+          0: { cellWidth: 22 },
+          1: { cellWidth: 32 },
+          2: { cellWidth: 60 },
+          3: { cellWidth: 40 },
+        },
+        didParseCell: (data: any) => {
+          if (data.section === 'body' && data.column.index === 3) {
+            const val = data.cell.raw as string;
+            if (val === 'Risk Enhancer') data.cell.styles.textColor = [185, 28, 28];
+            else if (val === 'Risk-Enhancing') data.cell.styles.textColor = [180, 100, 0];
+          }
+        },
+      });
+
+      yPosition = (doc as any).lastAutoTable.finalY + 8;
+
+      if (ar.clinicalGuidance) {
+        if (yPosition > 260) { doc.addPage(); yPosition = 20; }
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.text('Clinical Guidance:', 14, yPosition);
+        yPosition += 4;
+        doc.setFont('helvetica', 'normal');
+        const guidanceLines = doc.splitTextToSize(sanitizeForPdf(ar.clinicalGuidance), pageWidth - 28);
+        guidanceLines.forEach((line: string) => {
+          if (yPosition > 270) { doc.addPage(); yPosition = 20; }
+          doc.text(line, 14, yPosition);
+          yPosition += 4;
+        });
+        yPosition += 4;
+      }
+    }
+  }
+
   if (interpretation.aiRecommendations) {
     if (yPosition > 240) {
       doc.addPage();
