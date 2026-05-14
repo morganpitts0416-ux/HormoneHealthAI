@@ -14584,13 +14584,24 @@ IMPORTANT:
 
       const raw = completion.choices[0]?.message?.content || "";
 
-      // Helper: extract and strip [SPOKEN]...[/SPOKEN] from plain-text responses
+      // Helper: extract and strip [SPOKEN]...[/SPOKEN] from plain-text responses.
+      // Also handles the case where the model emits [SPOKEN] but forgets [/SPOKEN].
       const extractSpoken = (text: string): { spoken: string | null; clean: string } => {
-        const match = text.match(/\[SPOKEN\]([\s\S]*?)\[\/SPOKEN\]/i);
-        if (!match) return { spoken: null, clean: text.trim() };
-        const spoken = match[1].trim();
-        const clean = text.replace(/\[SPOKEN\][\s\S]*?\[\/SPOKEN\]\n?/i, "").trim();
-        return { spoken, clean };
+        // Full [SPOKEN]...[/SPOKEN] block — ideal path
+        const fullMatch = text.match(/\[SPOKEN\]([\s\S]*?)\[\/SPOKEN\]/i);
+        if (fullMatch) {
+          const spoken = fullMatch[1].trim();
+          const clean = text.replace(/\[SPOKEN\][\s\S]*?\[\/SPOKEN\]\n?/i, "").trim();
+          return { spoken, clean };
+        }
+        // Model wrote [SPOKEN] but omitted [/SPOKEN] — strip the bare tag so it
+        // never shows in the displayed message. Return spoken=null so the client's
+        // 2-sentence fallback kicks in for TTS (better than reading the full reply).
+        const stripped = text
+          .replace(/\[\/SPOKEN\]/gi, "")
+          .replace(/\[SPOKEN\]/gi, "")
+          .trim();
+        return { spoken: null, clean: stripped };
       };
 
       // When soapNote was in the request the model returns structured JSON.

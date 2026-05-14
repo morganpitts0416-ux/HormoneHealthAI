@@ -73,6 +73,10 @@ const isIOS =
 // Strip markdown formatting so TTS reads clean text
 function stripMarkdownForSpeech(text: string): string {
   return text
+    // Safety: strip any [SPOKEN]/[/SPOKEN] markers the server failed to remove
+    .replace(/\[SPOKEN\][\s\S]*?\[\/SPOKEN\]/gi, "")
+    .replace(/\[\/SPOKEN\]/gi, "")
+    .replace(/\[SPOKEN\]/gi, "")
     // Remove third-person self-references that slip through (**June's X:** or June's X:)
     .replace(/\*{1,2}June'?s?\s+[^:*\n]+:\*{1,2}\s*/gi, "")
     .replace(/^June'?s?\s+[^:\n]+:\s*/gim, "")
@@ -588,7 +592,7 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
         // the entire formatted reply verbatim (which sounds robotic and reads
         // things like "June's Observations:" out loud).
         if (ttsEnabled) {
-          setTimeout(() => speakText(spokenForMsg, next.length - 1), 80);
+          speakText(spokenForMsg, next.length - 1);
         }
         return next;
       });
@@ -1076,21 +1080,6 @@ export function AiChatDrawer({ patientContext }: AiChatDrawerProps) {
                         >
                           <Volume2 className="w-3 h-3" />
                           Tap to hear June
-                        </Button>
-                      )}
-                      {/* Replay TTS for this message */}
-                      {ttsSupported && !(isIOS && pendingTts?.msgIdx === i) && (
-                        <Button
-                          size="icon"
-                          variant="ghost"
-                          className={`h-6 w-6 ${speakingMsgIdxRef.current === i && isSpeaking ? "text-amber-500" : "text-muted-foreground"}`}
-                          onClick={() => speakingMsgIdxRef.current === i && isSpeaking ? stopSpeaking() : speakText(msg.spoken ?? makeFallbackSpoken(msg.content), i)}
-                          title={speakingMsgIdxRef.current === i && isSpeaking ? "Stop" : "Read aloud"}
-                          data-testid={`button-speak-msg-${i}`}
-                        >
-                          {speakingMsgIdxRef.current === i && isSpeaking
-                            ? <Square className="w-3 h-3 fill-current" />
-                            : <Volume2 className="w-3 h-3" />}
                         </Button>
                       )}
                       {/* Apply-to-note button — shown when AI proposed an edit */}
