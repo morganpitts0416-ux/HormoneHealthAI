@@ -210,7 +210,14 @@ export default function FeaturePatientExperiencePage() {
                 "Multi-provider scheduling for group practices",
               ]} />
             </div>
-            <ScreenshotPlaceholder label="Appointment calendar and scheduling interface" />
+            <div className="rounded-xl overflow-hidden" style={{ border: "1px solid #e0d9cc", boxShadow: "0 4px 24px 0 rgba(44,58,32,0.10)" }}>
+              <img
+                src="/media/schedule-calendar.png"
+                alt="ClinIQ appointment calendar — weekly view with provider scheduling"
+                className="w-full block"
+                style={{ display: "block" }}
+              />
+            </div>
           </div>
         </div>
       </section>
