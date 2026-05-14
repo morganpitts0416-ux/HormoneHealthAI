@@ -651,6 +651,88 @@ export function FemaleHormoneDetailCard({
   );
 }
 
+// ─── Female Hormone Pattern Card (Testosterone Patterns + Perimenopause Assessment) ───
+const HORMONE_PATTERN_PREFIXES = [
+  'Testosterone Pattern',
+  'Perimenopause Assessment:',
+  'Hormone Pattern:',
+];
+
+const patternStatusConfig: Record<string, { tile: string; badge: string; label: string }> = {
+  normal:    { tile: 'bg-green-50/60 dark:bg-green-950/20 border-green-200 dark:border-green-800',   badge: 'bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300',   label: 'Optimal' },
+  borderline:{ tile: 'bg-amber-50/60 dark:bg-amber-950/20 border-amber-200 dark:border-amber-800',   badge: 'bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300',   label: 'Borderline' },
+  abnormal:  { tile: 'bg-red-50/60 dark:bg-red-950/20 border-red-200 dark:border-red-800',           badge: 'bg-red-100 text-red-700 dark:bg-red-900/50 dark:text-red-300',           label: 'Abnormal' },
+  critical:  { tile: 'bg-red-100/80 dark:bg-red-950/40 border-red-400 dark:border-red-600',          badge: 'bg-red-200 text-red-800 dark:bg-red-900 dark:text-red-200',               label: 'Critical' },
+};
+
+function stripPatternPrefix(category: string): string {
+  return category
+    .replace(/^Testosterone Pattern [A-Z]:\s*/i, '')
+    .replace(/^Perimenopause Assessment:\s*/i, '')
+    .replace(/^Hormone Pattern:\s*/i, '');
+}
+
+export function FemaleHormonePatternCard({ interpretations }: { interpretations: LabInterpretation[] }) {
+  const patternRows = interpretations.filter(i =>
+    HORMONE_PATTERN_PREFIXES.some(p => i.category.startsWith(p))
+  );
+
+  if (patternRows.length === 0) return null;
+
+  return (
+    <Card data-testid="card-female-hormone-patterns">
+      <CardHeader>
+        <div className="flex items-center gap-2">
+          <Activity className="w-5 h-5 text-primary" />
+          <CardTitle>Hormone Pattern Assessment</CardTitle>
+        </div>
+        <CardDescription>
+          Perimenopause, testosterone, and combined hormone pattern evaluation
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {patternRows.map((row, idx) => {
+          const cfg = patternStatusConfig[row.status] ?? patternStatusConfig.borderline;
+          const title = stripPatternPrefix(row.category);
+          const providerRec = formatClinicalManagement(row.recommendation || '');
+          return (
+            <div
+              key={idx}
+              className={`p-4 rounded-lg border ${cfg.tile}`}
+              data-testid={`hormone-pattern-${idx}`}
+            >
+              <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
+                <div className="flex-1 min-w-0">
+                  <h4 className="font-semibold text-sm leading-snug">{title}</h4>
+                  {row.referenceRange && (
+                    <p className="text-xs text-muted-foreground mt-0.5">
+                      Reference: {row.referenceRange}
+                    </p>
+                  )}
+                </div>
+                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${cfg.badge}`}>
+                  {cfg.label}
+                </span>
+              </div>
+
+              {row.interpretation && (
+                <p className="text-sm leading-relaxed mb-3">{row.interpretation}</p>
+              )}
+
+              {providerRec && (
+                <div className="bg-background/60 rounded-md p-3 border border-border/50">
+                  <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Clinical Management</p>
+                  <p className="text-xs leading-relaxed text-muted-foreground">{providerRec}</p>
+                </div>
+              )}
+            </div>
+          );
+        })}
+      </CardContent>
+    </Card>
+  );
+}
+
 // ─── Insulin Resistance / Phenotype Assessment Card ───────────────────────
 export function InsulinResistanceCard({ insulinResistance }: { insulinResistance: InsulinResistanceScreening }) {
   if (insulinResistance.likelihood === 'none') return null;

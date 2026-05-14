@@ -44,6 +44,8 @@ import {
   AdvancedLipidsCard,
   StopBangCard,
   InsulinResistanceCard,
+  FemaleHormonePatternCard,
+  FemaleHormoneAssessmentCard,
 } from "@/components/lab-assessment-cards";
 import { PatientSummary } from "@/components/patient-summary";
 import PatientDocumentsCard from "@/components/patient-documents-card";
@@ -605,6 +607,16 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
               {/* Insulin Resistance Screening */}
               {interp.insulinResistance && interp.insulinResistance.likelihood !== 'none' && (
                 <InsulinResistanceCard insulinResistance={interp.insulinResistance} />
+              )}
+
+              {/* Female Hormone Pattern Assessment (Testosterone Patterns + Perimenopause Assessment rows) */}
+              {interp.interpretations && (
+                <FemaleHormonePatternCard interpretations={interp.interpretations} />
+              )}
+
+              {/* Clinical Phenotype Assessment (pattern-level female hormone recognition) */}
+              {interp.clinicalPhenotypes && interp.clinicalPhenotypes.length > 0 && (
+                <FemaleHormoneAssessmentCard phenotypes={interp.clinicalPhenotypes} />
               )}
 
               {/* Male Hormone Patterns */}

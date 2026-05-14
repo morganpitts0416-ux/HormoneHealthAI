@@ -15,6 +15,7 @@ import {
   AdvancedLipidsCard,
   StopBangCard,
   FemaleHormoneAssessmentCard,
+  FemaleHormonePatternCard,
   InsulinResistanceCard,
 } from "@/components/lab-assessment-cards";
 import { PatientSummary } from "@/components/patient-summary";
@@ -644,12 +645,15 @@ export default function FemaleLabInterpretation() {
                   <StopBangCard stopBangRisk={interpretationResult.stopBangRisk} />
                 )}
 
-                {/* 6. Clinical Phenotype Assessment (female hormone patterns) */}
+                {/* 6. Hormone Pattern Assessment (Testosterone Patterns + Perimenopause Assessment rows) */}
+                <FemaleHormonePatternCard interpretations={interpretationResult.interpretations} />
+
+                {/* 7. Clinical Phenotype Assessment (pattern-level female hormone recognition) */}
                 {interpretationResult.clinicalPhenotypes && interpretationResult.clinicalPhenotypes.length > 0 && (
                   <FemaleHormoneAssessmentCard phenotypes={interpretationResult.clinicalPhenotypes} />
                 )}
 
-                {/* 7. Phenotype Assessment — Insulin Resistance Screening */}
+                {/* 8. Phenotype Assessment — Insulin Resistance Screening */}
                 {interpretationResult.insulinResistance && interpretationResult.insulinResistance.likelihood !== 'none' && (
                   <InsulinResistanceCard insulinResistance={interpretationResult.insulinResistance} />
                 )}

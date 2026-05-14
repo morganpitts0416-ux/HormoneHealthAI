@@ -1,0 +1,303 @@
+## Low Androgen Availability / High SHBG Perimenopause Pattern
+
+### Pattern Purpose
+
+This pattern is designed to identify women who may still have adequate estradiol and progesterone production, but have reduced androgen availability due to low free testosterone, low-normal total testosterone, elevated SHBG, and/or low adrenal androgen reserve.
+
+This is most commonly seen in women ages 35–55, especially those with symptoms of perimenopause, fatigue, low libido, brain fog, poor stress resilience, mood changes, hair thinning, reduced muscle tone, or loss of motivation.
+
+---
+
+## Primary Lab Markers
+
+### Free Testosterone
+
+Free testosterone is one of the strongest markers for this pattern because it reflects available androgen activity.
+
+**Optimal target range:** 3–10 pg/mL
+**Low/suboptimal:** <3 pg/mL
+**Low-normal/borderline:** 3–4 pg/mL
+**Adequate:** 4–10 pg/mL
+**High/overcorrected:** >10 pg/mL
+
+Pattern support:
+
+* Strong support if free testosterone is <3 pg/mL
+* Moderate support if free testosterone is 3–4 pg/mL
+* Does not support this pattern if free testosterone is clearly adequate unless symptoms and SHBG strongly suggest reduced availability
+
+---
+
+### Total Testosterone
+
+Total testosterone helps identify low androgen production or low androgen reserve.
+
+**Optimized range:** 30–60 ng/dL
+**Low:** <20 ng/dL
+**Low-normal/suboptimal:** 20–30 ng/dL
+**Adequate:** 30–60 ng/dL
+**High/overcorrected:** >70 ng/dL
+
+Pattern support:
+
+* Strong support if total testosterone is <20 ng/dL
+* Moderate support if total testosterone is 20–30 ng/dL
+* Does not support this pattern if total testosterone is adequate and free testosterone is adequate
+
+---
+
+### SHBG
+
+SHBG is important because elevated SHBG can bind testosterone and reduce free/bioavailable testosterone.
+
+**Optimized range:** 30–60 nmol/L
+**High-normal/borderline elevated:** 60–70 nmol/L
+**Elevated:** >70 nmol/L
+**Very elevated:** >90 nmol/L
+
+Pattern support:
+
+* Moderate support if SHBG is 60–70 nmol/L
+* Strong support if SHBG is >70 nmol/L
+* Very strong support if SHBG is >90 nmol/L, especially with low free testosterone
+
+Clinical note:
+Elevated SHBG may be associated with oral estrogen use, oral contraceptive history, thyroid excess, low insulin states, under-eating, overtraining, liver patterns, or genetic tendency.
+
+---
+
+### DHEA-S
+
+DHEA-S helps assess adrenal androgen reserve.
+
+**Optimized range:** 150–300 µg/dL
+**Borderline low:** 135–150 µg/dL
+**Low:** <135 µg/dL
+**Very low:** <100 µg/dL
+**High:** >350 µg/dL
+
+Pattern support:
+
+* Mild support if DHEA-S is 135–150 µg/dL
+* Moderate support if DHEA-S is <135 µg/dL
+* Strong support if DHEA-S is <100 µg/dL
+
+Clinical note:
+DHEA-S should be interpreted with age, symptoms, androgen sensitivity, and whether the patient is already using testosterone therapy.
+
+---
+
+## Secondary Context Markers
+
+### Estradiol
+
+Estradiol may be normal, adequate, or fluctuating in this pattern. This pattern should not require low estradiol.
+
+**Common adequate range in cycling/perimenopausal women:** 50–250 pg/mL, depending on cycle timing
+**Potentially low:** <50 pg/mL
+**Potentially high/fluctuating:** >250 pg/mL
+
+Pattern support:
+
+* Estradiol 50–250 pg/mL does not rule out this pattern
+* Low estradiol may suggest a broader estrogen-deficient menopause pattern
+* High estradiol may suggest estrogen-dominant or fluctuating perimenopause pattern
+
+---
+
+### Progesterone
+
+Progesterone depends heavily on cycle timing. A progesterone of 10 ng/mL is generally consistent with ovulation/luteal phase adequacy.
+
+**Luteal adequate:** >10 ng/mL
+**Borderline luteal:** 5–10 ng/mL
+**Low luteal/anovulatory pattern:** <5 ng/mL
+
+Pattern support:
+
+* Progesterone >10 ng/mL does not rule out this pattern
+* Progesterone <5 ng/mL may suggest anovulatory/perimenopause pattern in addition to low androgen availability
+
+---
+
+## Pattern Scoring Guide
+
+### Strong Pattern Match
+
+This pattern should be strongly flagged when the patient has:
+
+* Free testosterone <3 pg/mL
+  AND at least one of the following:
+
+  * SHBG >70 nmol/L
+  * Total testosterone <30 ng/dL
+  * DHEA-S <150 µg/dL
+
+OR
+
+* Free testosterone 3–4 pg/mL
+  AND:
+
+  * SHBG >70 nmol/L
+  * Total testosterone <30 ng/dL
+  * compatible symptoms are present
+
+---
+
+### Moderate Pattern Match
+
+This pattern should be moderately flagged when the patient has:
+
+* Total testosterone 20–30 ng/dL
+* Free testosterone 3–4 pg/mL
+* SHBG 60–70 nmol/L
+* DHEA-S 135–150 µg/dL
+* Symptoms compatible with low androgen availability
+
+---
+
+### Mild Pattern Match
+
+This pattern may be mildly flagged when the patient has:
+
+* One abnormal androgen marker only
+* Borderline symptoms
+* SHBG high-normal but free testosterone still adequate
+* DHEA-S borderline low without low testosterone symptoms
+
+---
+
+## Symptom Criteria
+
+This pattern is more clinically relevant when at least 2–3 of the following symptoms are present:
+
+* fatigue
+* low libido
+* brain fog
+* low motivation
+* poor stress tolerance
+* mood changes
+* anxiety
+* reduced exercise recovery
+* reduced muscle tone
+* hair thinning
+* weight gain or body composition change
+* emotional flatness
+* sleep disruption
+* feeling “not like myself”
+
+---
+
+## Clinical Interpretation Text
+
+This pattern suggests reduced androgen availability, often due to low free testosterone, low-normal total testosterone, elevated SHBG, and/or borderline-low DHEA-S. Estradiol and progesterone may still appear adequate, especially in perimenopause, but the patient may still experience symptoms related to reduced androgen signaling and lower adrenal/ovarian androgen reserve.
+
+This pattern is not primarily an estrogen-deficiency pattern. It is better understood as an androgen availability and hormone-binding pattern.
+
+---
+
+## Treatment Consideration Logic
+
+Treatment should be individualized based on symptoms, history, current therapy, androgen sensitivity, and follow-up labs.
+
+### Testosterone Consideration
+
+Consider testosterone optimization when:
+
+* free testosterone is <3 pg/mL, or
+* total testosterone is <30 ng/dL with compatible symptoms, or
+* SHBG is elevated and free testosterone is suboptimal.
+
+Monitor carefully for androgen excess symptoms.
+
+---
+
+### Pregnenolone Consideration
+
+Pregnenolone may be considered when:
+
+* DHEA-S is borderline low or low,
+* symptoms include brain fog, poor stress resilience, mood changes, poor sleep, or “burned out” feeling,
+* the patient is androgen-sensitive,
+* or the patient is already using testosterone therapy and DHEA may be too androgenic.
+
+Suggested low-dose range:
+
+* Pregnenolone 5–15 mg daily
+
+---
+
+### DHEA Consideration
+
+DHEA may be considered when:
+
+* DHEA-S is clearly low, especially <135 µg/dL,
+* symptoms include low libido, fatigue, low androgen reserve, or poor vitality,
+* the patient is not androgen-sensitive,
+* and the patient is not already showing androgen excess on testosterone therapy.
+
+Suggested low-dose range:
+
+* DHEA 5–10 mg daily in women
+
+Use caution or avoid reflexively recommending DHEA when:
+
+* patient is already on testosterone therapy,
+* acne is present,
+* hair shedding is present,
+* hirsutism is present,
+* irritability is present,
+* or the patient has a history of androgen sensitivity.
+
+---
+
+## Monitoring Recommendations
+
+Recheck labs in 8–12 weeks after therapy changes:
+
+* total testosterone
+* free testosterone
+* SHBG
+* DHEA-S
+* estradiol
+* progesterone if cycle timing is relevant
+
+Monitor symptoms and side effects, including:
+
+* acne
+* oily skin
+* scalp hair shedding
+* hirsutism
+* irritability
+* voice changes
+* clitoral sensitivity
+* sleep disruption
+* mood changes
+
+---
+
+## Example Pattern Match
+
+Example labs:
+
+* Estradiol: 120 pg/mL
+* Progesterone: 10 ng/mL
+* Total testosterone: 20 ng/dL
+* Free testosterone: 2 pg/mL
+* SHBG: 73.9 nmol/L
+* DHEA-S: 135 µg/dL
+
+Interpretation:
+
+This is a strong match for Low Androgen Availability / High SHBG Perimenopause Pattern.
+
+Supporting findings:
+
+* Free testosterone is suboptimal at 2 pg/mL.
+* Total testosterone is low-normal/suboptimal at 20 ng/dL.
+* SHBG is elevated at 73.9 nmol/L.
+* DHEA-S is borderline low at 135 µg/dL.
+* Estradiol and progesterone appear adequate and do not rule out this pattern.
+
+Suggested clinical direction:
+This patient may benefit from androgen optimization and/or upstream adrenal precursor support. If already using testosterone therapy and improving clinically, pregnenolone may be preferred over reflexively adding DHEA, especially if the patient is androgen-sensitive or if the goal is improved resilience, brain fog, mood, and stress tolerance rather than direct androgen loading.

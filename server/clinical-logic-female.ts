@@ -784,23 +784,27 @@ export class FemaleClinicalLogicEngine {
           recommendation = 'Provider recommendation: Increase testosterone dose. Target 75-125 ng/dL for optimal results.';
         }
       } else {
-        // Non-HRT patient - standard female ranges
+        // Non-HRT patient — optimized clinical range: 30–60 ng/dL
         if (labs.testosterone > 70) {
           status = 'abnormal';
-          interpretation = 'Elevated testosterone for females.';
-          recommendation = 'Evaluate for PCOS, adrenal hyperplasia, or androgen-secreting tumor.';
-        } else if (labs.testosterone > 50 && labs.testosterone <= 70) {
+          interpretation = `Testosterone elevated (${labs.testosterone} ng/dL). Above the physiologic range for women — evaluate for PCOS, adrenal hyperplasia, or androgen-secreting tumor.`;
+          recommendation = 'Evaluate for PCOS, adrenal hyperplasia, or androgen-secreting tumor. Consider LH/FSH ratio, 17-OH progesterone. Endocrinology referral if etiology unclear.';
+        } else if (labs.testosterone > 60 && labs.testosterone <= 70) {
           status = 'borderline';
-          interpretation = 'Upper normal testosterone - may be elevated.';
-          recommendation = 'Correlate with clinical signs (hirsutism, acne). Consider PCOS workup.';
-        } else if (labs.testosterone >= 15 && labs.testosterone <= 50) {
+          interpretation = `Testosterone upper-normal (${labs.testosterone} ng/dL). At the high end of the female range — correlate with symptoms of androgen excess (acne, hirsutism, hair thinning).`;
+          recommendation = 'Correlate with clinical signs (hirsutism, acne, scalp hair loss). Consider PCOS workup if symptomatic. Optimal range for androgen balance is 30–60 ng/dL.';
+        } else if (labs.testosterone >= 30 && labs.testosterone <= 60) {
           status = 'normal';
-          interpretation = 'Testosterone within normal female range.';
-          recommendation = 'No intervention needed.';
-        } else {
+          interpretation = `Testosterone within optimal range (${labs.testosterone} ng/dL). Supports libido, energy, muscle tone, cognitive function, and bone density.`;
+          recommendation = 'Optimal androgen level. Continue routine monitoring.';
+        } else if (labs.testosterone >= 20 && labs.testosterone < 30) {
           status = 'borderline';
-          interpretation = 'Low testosterone.';
-          recommendation = 'May contribute to low libido or fatigue. Consider HRT discussion.';
+          interpretation = `Testosterone low-normal (${labs.testosterone} ng/dL). Below the optimal range of 30–60 ng/dL. May contribute to reduced libido, energy, motivation, or muscle tone.`;
+          recommendation = 'Correlate with free testosterone, SHBG, and symptoms. If symptomatic, consider full androgen panel (free T, bioavailable T, SHBG). Discuss androgen optimization if persistent symptoms.';
+        } else {
+          status = 'abnormal';
+          interpretation = `Testosterone low (${labs.testosterone} ng/dL). Significantly below the optimal range of 30–60 ng/dL. Associated with low libido, fatigue, reduced motivation, poor muscle tone, and mood changes.`;
+          recommendation = 'Evaluate free testosterone and SHBG. If free T also low, consider androgen optimization discussion. Assess adrenal reserve (DHEA-S). Identify reversible drivers: poor sleep, under-eating, overtraining, elevated cortisol. Consider low-dose testosterone therapy if symptomatic.';
         }
       }
 
@@ -809,7 +813,7 @@ export class FemaleClinicalLogicEngine {
         value: labs.testosterone,
         unit: 'ng/dL',
         status,
-        referenceRange: onHRT ? '75-125 ng/dL (HRT goal)' : '15-70 ng/dL',
+        referenceRange: onHRT ? '75-125 ng/dL (HRT goal)' : '30-60 ng/dL (optimal)',
         interpretation,
         recommendation,
       });
@@ -1156,18 +1160,26 @@ export class FemaleClinicalLogicEngine {
         status = 'abnormal';
         interpretation = `DHEA-S elevated (${labs.dheas} µg/dL). Adrenal androgen excess — evaluate for adrenal hyperplasia or adrenal tumor. In the context of PCOS, elevated DHEA-S indicates adrenal-origin androgen excess.`;
         recommendation = 'Evaluate for adrenal hyperplasia: order 17-OH progesterone. Consider adrenal imaging if very high. If PCOS diagnosis: correlate with LH/FSH ratio and testosterone. Endocrinology referral if etiology unclear.';
-      } else if (labs.dheas >= 150 && labs.dheas <= 400) {
-        status = 'normal';
-        interpretation = `DHEA-S within optimal range for women (${labs.dheas} µg/dL). Supports energy, libido, bone density, skin health, and cognitive function. DHEA-S declines naturally after age 30.`;
-        recommendation = 'Healthy adrenal androgen production. No intervention needed.';
-      } else if (labs.dheas >= 65 && labs.dheas < 150) {
+      } else if (labs.dheas > 350 && labs.dheas <= 400) {
         status = 'borderline';
-        interpretation = `DHEA-S borderline low for women (${labs.dheas} µg/dL). Below optimal — may contribute to fatigue, low libido, brain fog, hair thinning, and mood changes. Common in perimenopausal and postmenopausal women.`;
-        recommendation = 'Consider DHEA supplementation 5-25 mg/day (lower doses than men — women are more sensitive). Support adrenal reserve: adequate sleep, stress management, adaptogen herbs (ashwagandha). Monitor testosterone if supplementing — DHEA converts to androgens. Recheck in 3-6 months.';
+        interpretation = `DHEA-S high-normal (${labs.dheas} µg/dL). Above the clinical optimal ceiling of 350 µg/dL. Monitor for androgen excess symptoms (acne, hair thinning, hirsutism), particularly if on DHEA supplementation.`;
+        recommendation = 'If on DHEA or testosterone supplementation, consider dose reduction. Monitor for androgenic side effects. Recheck in 3 months.';
+      } else if (labs.dheas >= 150 && labs.dheas <= 350) {
+        status = 'normal';
+        interpretation = `DHEA-S within optimal range (${labs.dheas} µg/dL). Supports energy, libido, bone density, skin health, and cognitive function. Optimal female range is 150–300 µg/dL; values to 350 are well-tolerated.`;
+        recommendation = 'Healthy adrenal androgen production. No intervention needed.';
+      } else if (labs.dheas >= 100 && labs.dheas < 150) {
+        status = 'borderline';
+        interpretation = `DHEA-S borderline low (${labs.dheas} µg/dL). Below the optimal range of 150–300 µg/dL. Reduced adrenal androgen reserve — may contribute to fatigue, low libido, brain fog, hair thinning, and mood changes. Common in perimenopausal and postmenopausal women.`;
+        recommendation = 'Consider low-dose DHEA supplementation 5–10 mg/day (women are more sensitive than men — start low). Use caution if patient is androgen-sensitive, has acne, or is already on testosterone therapy (prefer pregnenolone in that case). Support adrenal reserve: sleep optimization, stress management, adaptogen herbs. Monitor testosterone and DHEA-S at recheck in 8–12 weeks.';
+      } else if (labs.dheas >= 65 && labs.dheas < 100) {
+        status = 'abnormal';
+        interpretation = `DHEA-S low (${labs.dheas} µg/dL). Significantly below the optimal range of 150–300 µg/dL. Indicates reduced adrenal androgen reserve — associated with fatigue, low libido, poor stress resilience, brain fog, and accelerated aging.`;
+        recommendation = 'PROVIDER: Low-dose DHEA 5–10 mg/day in women (start at 5 mg and titrate). Avoid higher doses — women are highly androgen-sensitive. Consider pregnenolone 10–25 mg as an upstream precursor if patient has androgenic sensitivity or is on testosterone therapy. Monitor DHEA-S, free testosterone, and estradiol. Full adrenal support: sleep, stress, nutrition. Recheck in 8–12 weeks.';
       } else {
         status = 'abnormal';
-        interpretation = `DHEA-S deficient (<65 µg/dL). Significantly reduced adrenal androgen production. Associated with pronounced fatigue, very low libido, accelerated bone loss, mood disorders, and reduced quality of life.`;
-        recommendation = 'PROVIDER: DHEA supplementation 5-25 mg/day (start low in women). Monitor DHEA-S, testosterone, and estradiol — DHEA is a hormone precursor. Full adrenal support protocol. Consider DHEA cream if concerned about systemic conversion. Recheck in 6-8 weeks.';
+        interpretation = `DHEA-S severely deficient (<65 µg/dL). Critically low adrenal androgen production. Associated with pronounced fatigue, very low libido, accelerated bone loss, mood disorders, poor stress tolerance, and reduced quality of life.`;
+        recommendation = 'PROVIDER: Evaluate adrenal function (consider morning cortisol, 24h urinary cortisol if adrenal insufficiency suspected). DHEA supplementation 5–10 mg/day (start low). Consider pregnenolone 10–25 mg as upstream support. Full adrenal support protocol. Monitor DHEA-S, testosterone, and estradiol — DHEA is a hormone precursor. Recheck in 8 weeks.';
       }
 
       interpretations.push({
@@ -1175,7 +1187,7 @@ export class FemaleClinicalLogicEngine {
         value: labs.dheas,
         unit: 'µg/dL',
         status,
-        referenceRange: '65-400 µg/dL (optimal 150-400)',
+        referenceRange: '100-400 µg/dL (optimal 150-350)',
         interpretation,
         recommendation,
       });
@@ -2452,27 +2464,35 @@ export class FemaleClinicalLogicEngine {
         let shbgInterp = '';
         let shbgRec = '';
         
-        if (labs.shbg > 100) {
+        if (labs.shbg > 120) {
           shbgStatus = 'abnormal';
-          shbgInterp = `SHBG ${labs.shbg} nmol/L is elevated. High SHBG reduces bioavailable testosterone and estrogen. Common causes: oral estrogen, oral contraceptives, thyroid medication, liver conditions.`;
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is significantly elevated. Well above the optimal range of 30–70 nmol/L. At this level, SHBG is substantially binding both testosterone and estradiol, leaving little free hormone available to tissues. This can cause symptoms even when total hormone levels appear "normal."`;
           const hasFreeT = labs.freeTestosterone !== undefined;
           const hasBioavailT = labs.bioavailableTestosterone !== undefined;
           if (!hasFreeT && !hasBioavailT) {
-            shbgRec = 'Evaluate SHBG drivers. Consider ordering Free Testosterone and Bioavailable Testosterone for complete androgen assessment.';
-          } else if (!hasFreeT) {
-            shbgRec = 'Evaluate SHBG drivers (oral estrogen, OCP, thyroid medication). Consider ordering Free Testosterone for complete androgen assessment.';
-          } else if (!hasBioavailT) {
-            shbgRec = 'Evaluate SHBG drivers (oral estrogen, OCP, thyroid medication). Consider ordering Bioavailable Testosterone for complete androgen assessment.';
+            shbgRec = 'Order Free Testosterone and Bioavailable Testosterone to quantify impact. Evaluate SHBG drivers: oral estrogen (switch to transdermal), oral contraceptives (major SHBG elevator), thyroid medication dosing, liver conditions. Consider testosterone optimization if free T is low.';
           } else {
-            shbgRec = 'Evaluate SHBG drivers: oral estrogen (switch to transdermal may lower SHBG), oral contraceptive pill, thyroid medication dosing, or liver conditions. Androgen assessment is complete with Free and Bioavailable Testosterone on file.';
+            shbgRec = 'Identify and address SHBG drivers: oral estrogen → switch to transdermal, OCP → discuss alternatives, thyroid medication → review dosing, liver → check hepatic markers. Consider testosterone optimization if free T is low despite treatment of SHBG drivers.';
           }
-        } else if (labs.shbg < 24) {
-          shbgStatus = 'abnormal';
-          shbgInterp = `SHBG ${labs.shbg} nmol/L is low. Low SHBG increases free androgen activity and is associated with insulin resistance and metabolic syndrome.`;
-          shbgRec = 'Evaluate for insulin resistance (fasting insulin, HOMA-IR). Consider metabolic workup.';
+        } else if (labs.shbg > 90 && labs.shbg <= 120) {
+          shbgStatus = 'borderline';
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is very elevated. Above the optimal upper limit of 70 nmol/L. High SHBG is significantly reducing androgen bioavailability — evaluate free testosterone to quantify impact.`;
+          shbgRec = 'Evaluate SHBG drivers: oral estrogen (switch to transdermal), OCP, thyroid medication dosing, underweight/undereating, or genetic tendency. Check free testosterone and bioavailable testosterone if not already done.';
+        } else if (labs.shbg > 70 && labs.shbg <= 90) {
+          shbgStatus = 'borderline';
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is elevated. Above the optimal range of 30–70 nmol/L — is binding testosterone and reducing androgen bioavailability. Common in perimenopause and is associated with oral estrogen use, thyroid medication, and OCP history.`;
+          shbgRec = 'Correlate with free testosterone to assess impact. Evaluate SHBG drivers: oral estrogen (transdermal reduces SHBG), OCP, thyroid medication dosing. If free T is low, discuss androgen availability with patient.';
+        } else if (labs.shbg >= 30 && labs.shbg <= 70) {
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is within the optimal range (30–70 nmol/L). Appropriate hormone binding — supports balanced free and total sex hormone levels.`;
+          shbgRec = 'Optimal SHBG. Continue routine monitoring.';
+        } else if (labs.shbg >= 17 && labs.shbg < 30) {
+          shbgStatus = 'borderline';
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is low. Below the optimal range of 30–70 nmol/L. Low SHBG increases free androgen activity and is associated with insulin resistance, metabolic syndrome, and PCOS.`;
+          shbgRec = 'Evaluate for insulin resistance (fasting insulin, HOMA-IR, TG:HDL ratio). Consider metabolic workup. Low SHBG combined with normal or elevated total testosterone may cause androgenic symptoms.';
         } else {
-          shbgInterp = `SHBG ${labs.shbg} nmol/L is within normal range. SHBG regulates bioavailable sex hormones by binding testosterone and estradiol.`;
-          shbgRec = 'Continue routine monitoring.';
+          shbgStatus = 'abnormal';
+          shbgInterp = `SHBG ${labs.shbg} nmol/L is very low. Significantly below the optimal range of 30–70 nmol/L. Very low SHBG strongly suggests insulin resistance or metabolic dysfunction.`;
+          shbgRec = 'Evaluate for insulin resistance: fasting insulin, HOMA-IR, A1c, TG:HDL ratio. Consider endocrinology referral. Very low SHBG amplifies free androgen activity and increases androgen-related symptom burden.';
         }
         
         interpretations.push({
@@ -2480,7 +2500,7 @@ export class FemaleClinicalLogicEngine {
           value: labs.shbg,
           unit: 'nmol/L',
           status: shbgStatus,
-          referenceRange: '24-122 nmol/L',
+          referenceRange: '30-70 nmol/L (optimal)',
           interpretation: shbgInterp,
           recommendation: shbgRec,
         });
@@ -2492,23 +2512,23 @@ export class FemaleClinicalLogicEngine {
         let ftInterp = '';
         let ftRec = '';
         
-        if (labs.freeTestosterone < 0.5) {
+        if (labs.freeTestosterone < 1.5) {
           ftStatus = 'abnormal';
-          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is low. May contribute to low libido, fatigue, and reduced motivation.`;
-          ftRec = 'Evaluate SHBG and total testosterone in context. Consider androgen insufficiency workup.';
-        } else if (labs.freeTestosterone > 5.0) {
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is low. Well below the optimal range of 3–10 pg/mL. Reduced androgen signaling — commonly associated with low libido, fatigue, brain fog, reduced motivation, and poor stress resilience.`;
+          ftRec = 'Evaluate SHBG (elevated SHBG reduces free T), total testosterone, and DHEA-S. Consider full androgen panel if not already done. If symptomatic, discuss testosterone optimization. Identify SHBG drivers (oral estrogen, OCP, thyroid medication).';
+        } else if (labs.freeTestosterone > 10.0) {
           ftStatus = 'abnormal';
-          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is elevated${labs.onHRT ? ' — consistent with exogenous testosterone use' : ''}. May cause androgenic symptoms (acne, hirsutism, hair thinning).`;
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is elevated${labs.onHRT ? ' — consistent with exogenous testosterone use at current dose' : ''}. Above the optimal range of 3–10 pg/mL — may cause androgenic symptoms (acne, oily skin, hirsutism, scalp hair thinning, irritability, sleep disruption).`;
           ftRec = labs.onHRT === true
-            ? 'Elevated free testosterone is expected with exogenous testosterone therapy. Monitor for androgenic side effects (acne, hair thinning, hirsutism) and correlate with total testosterone dose and target range.'
-            : 'Evaluate for PCOS, exogenous testosterone, or low SHBG driving elevated free T.';
-        } else if (labs.freeTestosterone < 1.0) {
+            ? 'Free testosterone above optimal range (3–10 pg/mL). Monitor for androgenic side effects (acne, hair thinning, hirsutism, sleep disruption). Correlate with total testosterone and consider dose reduction if symptomatic.'
+            : 'Elevated free testosterone without exogenous therapy. Evaluate for PCOS, low SHBG driving elevated free T, or adrenal excess. Correlate with clinical symptoms.';
+        } else if (labs.freeTestosterone >= 1.5 && labs.freeTestosterone < 3.0) {
           ftStatus = 'borderline';
-          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is on the lower end. May be associated with reduced libido or energy.`;
-          ftRec = 'Consider clinical correlation with symptoms. If symptomatic, evaluate SHBG and total testosterone in context.';
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is low-normal/suboptimal. Below the optimal range of 3–10 pg/mL. May contribute to reduced libido, energy, or motivation, particularly with SHBG elevation or borderline total testosterone.`;
+          ftRec = 'Correlate with symptoms, SHBG, and total testosterone. Evaluate SHBG drivers if elevated (oral estrogen, OCP, thyroid medication). If symptomatic, consider androgen optimization discussion.';
         } else {
-          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is within normal functional range.`;
-          ftRec = 'Continue routine monitoring.';
+          ftInterp = `Free testosterone ${labs.freeTestosterone} pg/mL is within the optimal functional range (3–10 pg/mL). Supports libido, energy, cognitive function, and muscle tone.`;
+          ftRec = 'Optimal free testosterone. Continue routine monitoring.';
         }
         
         interpretations.push({
@@ -2516,7 +2536,7 @@ export class FemaleClinicalLogicEngine {
           value: labs.freeTestosterone,
           unit: 'pg/mL',
           status: ftStatus,
-          referenceRange: '0.5-5.0 pg/mL',
+          referenceRange: '3.0-10.0 pg/mL (optimal)',
           interpretation: ftInterp,
           recommendation: ftRec,
         });

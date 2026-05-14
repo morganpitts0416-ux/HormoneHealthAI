@@ -298,6 +298,89 @@ function detectStressDysregulationPhenotype(ctx: PhenotypeDetectionContext): Cli
   return null;
 }
 
+function detectLowAndrogenHighSHBGPerimenopausePhenotype(ctx: PhenotypeDetectionContext): ClinicalPhenotype | null {
+  const { labs } = ctx;
+  const findings: string[] = [];
+
+  const age = labs.demographics?.age;
+  const isPeriAge = age === undefined || (age >= 35 && age <= 65);
+  if (!isPeriAge) return null;
+
+  const freeT = labs.freeTestosterone;
+  const totalT = labs.testosterone;
+  const shbg = labs.shbg;
+  const dheas = labs.dheas;
+
+  const freeTVeryLow = freeT !== undefined && freeT < 3;
+  const freeTLowNormal = freeT !== undefined && freeT >= 3 && freeT < 4;
+  const totalTVeryLow = totalT !== undefined && totalT < 20;
+  const totalTLowNormal = totalT !== undefined && totalT >= 20 && totalT < 30;
+  const shbgElevated = shbg !== undefined && shbg > 70;
+  const shbgVeryElevated = shbg !== undefined && shbg > 90;
+  const shbgBorderlineElevated = shbg !== undefined && shbg >= 60 && shbg <= 70;
+  const dheasVeryLow = dheas !== undefined && dheas < 100;
+  const dheasLow = dheas !== undefined && dheas >= 100 && dheas < 135;
+  const dheasBorderlineLow = dheas !== undefined && dheas >= 135 && dheas < 150;
+
+  if (freeTVeryLow) findings.push(`Free testosterone ${freeT} pg/mL (low, optimal 3–10 pg/mL)`);
+  else if (freeTLowNormal) findings.push(`Free testosterone ${freeT} pg/mL (low-normal, optimal 3–10 pg/mL)`);
+  if (totalTVeryLow) findings.push(`Total testosterone ${totalT} ng/dL (low, optimal 30–60 ng/dL)`);
+  else if (totalTLowNormal) findings.push(`Total testosterone ${totalT} ng/dL (low-normal, optimal 30–60 ng/dL)`);
+  if (shbgVeryElevated) findings.push(`SHBG ${shbg} nmol/L (very elevated, markedly reducing androgen bioavailability)`);
+  else if (shbgElevated) findings.push(`SHBG ${shbg} nmol/L (elevated, reducing androgen bioavailability)`);
+  else if (shbgBorderlineElevated) findings.push(`SHBG ${shbg} nmol/L (borderline elevated, optimal 30–60 nmol/L)`);
+  if (dheasVeryLow) findings.push(`DHEA-S ${dheas} µg/dL (very low, significantly reduced adrenal androgen reserve)`);
+  else if (dheasLow) findings.push(`DHEA-S ${dheas} µg/dL (low, optimal 150–300 µg/dL)`);
+  else if (dheasBorderlineLow) findings.push(`DHEA-S ${dheas} µg/dL (borderline low adrenal reserve)`);
+
+  if (findings.length === 0) return null;
+
+  const symptomScore = [
+    labs.lowLibido, labs.lowEnergy, labs.brainFog, labs.lowMotivation,
+    labs.hairLoss, labs.sleepDisruption, labs.moodChanges, labs.anxiety,
+    labs.weightGain,
+  ].filter(Boolean).length;
+
+  const strongFreeTWithSupport =
+    freeTVeryLow && (shbgElevated || totalTVeryLow || totalTLowNormal || dheasLow || dheasBorderlineLow || dheasVeryLow);
+  const strongBorderlineFreeTWithMultiple =
+    freeTLowNormal && shbgElevated && (totalTVeryLow || totalTLowNormal);
+  const moderateMarkerCount = [freeTLowNormal, totalTLowNormal, shbgBorderlineElevated, dheasBorderlineLow].filter(Boolean).length;
+
+  let confidence: 'high' | 'moderate' | 'low';
+  if (strongFreeTWithSupport || strongBorderlineFreeTWithMultiple || shbgVeryElevated && freeTVeryLow) {
+    confidence = 'high';
+  } else if (moderateMarkerCount >= 2 || (findings.length >= 2 && symptomScore >= 2)) {
+    confidence = 'moderate';
+  } else if (findings.length >= 1 && symptomScore >= 1) {
+    confidence = 'low';
+  } else {
+    return null;
+  }
+
+  if (symptomScore >= 2) {
+    const symptomList = [
+      labs.lowLibido && 'low libido',
+      labs.lowEnergy && 'fatigue/low energy',
+      labs.brainFog && 'brain fog',
+      labs.lowMotivation && 'low motivation',
+      labs.hairLoss && 'hair thinning',
+      labs.sleepDisruption && 'sleep disruption',
+      labs.moodChanges && 'mood changes',
+      labs.anxiety && 'anxiety',
+      labs.weightGain && 'weight/body composition changes',
+    ].filter(Boolean) as string[];
+    findings.push(`Compatible symptoms: ${symptomList.join(', ')}`);
+  }
+
+  return {
+    name: 'Low Androgen Availability / High SHBG Perimenopause',
+    confidence,
+    supportingFindings: findings,
+    description: 'Pattern suggesting reduced androgen availability due to low free testosterone, low-normal total testosterone, elevated SHBG, and/or borderline-low DHEA-S. Estradiol and progesterone may still appear adequate — this is an androgen availability and hormone-binding pattern, not primarily an estrogen-deficiency pattern. Common in women ages 35–55. Clinical drivers include elevated SHBG (oral estrogen/OCP history, thyroid excess), low adrenal androgen reserve, or low ovarian testosterone output. Treatment may include testosterone optimization, SHBG driver evaluation, and/or pregnenolone or low-dose DHEA support.',
+  };
+}
+
 function detectGutMicrobiomePhenotype(ctx: PhenotypeDetectionContext): ClinicalPhenotype | null {
   const { labs } = ctx;
   const findings: string[] = [];
@@ -337,6 +420,7 @@ export function detectClinicalPhenotypes(labs: FemaleLabValues, irScreening?: In
     detectIronDeficiencyPhenotype,
     detectInsulinResistancePhenotype,
     detectMenopausalTransitionPhenotype,
+    detectLowAndrogenHighSHBGPerimenopausePhenotype,
     detectEstrogenDominancePhenotype,
     detectOxidativeStressPhenotype,
     detectStressDysregulationPhenotype,
