@@ -39,7 +39,7 @@ function VideoPlayer({ src, label }: { src: string; label?: string }) {
         playsInline
         preload="metadata"
         className="w-full block"
-        style={{ display: "block", backgroundColor: "#1c2414", maxHeight: 480, objectFit: "contain" }}
+        style={{ display: "block", backgroundColor: "#1c2414", aspectRatio: "16/9", objectFit: "contain" }}
       />
       {label && (
         <div className="px-3 py-2" style={{ backgroundColor: "#f5f1e8", borderTop: "1px solid #e0d9cc" }}>
