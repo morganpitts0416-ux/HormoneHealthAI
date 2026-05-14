@@ -397,7 +397,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
           </DialogTitle>
         </DialogHeader>
 
-        <ScrollArea className="flex-1 -mx-6 px-6">
+        <div className="flex-1 overflow-y-auto -mx-6 px-6">
           {/* Active monitoring episode banner(s) */}
           {activeEpisodes.length > 0 && (
             <div className="space-y-2 mb-4">
@@ -1082,7 +1082,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
               </details>
             )}
           </div>
-        </ScrollArea>
+        </div>
 
         <DialogFooter className="gap-2 sm:justify-between">
           {onShowTrends ? (
