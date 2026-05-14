@@ -33,6 +33,33 @@ function isHormonePatternRow(category: string): boolean {
   return HORMONE_PATTERN_PREFIXES.some(prefix => category.startsWith(prefix));
 }
 
+// Markers that have rich dedicated assessment sections elsewhere on the page.
+// In the summary table we only show a brief one-liner; full detail lives in the
+// Detailed Clinical Assessment cards and the hormone/thyroid assessment panels.
+const DEDICATED_SECTION_MARKERS = [
+  'Testosterone', 'Free Testosterone', 'Bioavailable Testosterone',
+  'Estradiol', 'Progesterone', 'LH', 'FSH', 'Prolactin', 'SHBG', 'AMH',
+  'DHEA-S', 'DHEA', 'TSH', 'Free T4', 'Free T3', 'Total T3',
+  'TPO Antibodies', 'Anti-Thyroglobulin',
+  'Iron Saturation', 'TIBC', 'Ferritin', 'Serum Iron',
+];
+
+function hasDedicatedSection(category: string): boolean {
+  return DEDICATED_SECTION_MARKERS.some(marker =>
+    category === marker ||
+    category.startsWith(marker + ' (') ||
+    category.startsWith(marker + ':')
+  );
+}
+
+/** First sentence of text, capped at maxLen chars. */
+function firstSentence(text: string, maxLen = 120): string {
+  if (!text) return text;
+  const m = text.match(/^[^.!?]+[.!?]+/);
+  const s = m ? m[0].trim() : text.substring(0, maxLen).trim();
+  return s.length < text.length ? s : s;
+}
+
 function formatClinicalManagement(text: string): string {
   if (!text) return text;
   let cleaned = text.replace(/PROVIDER RECOMMENDATION:\s*/gi, '');
@@ -41,6 +68,19 @@ function formatClinicalManagement(text: string): string {
     cleaned = cleaned.substring(0, patientEdIndex).trimEnd();
   }
   return cleaned.trim();
+}
+
+/** Abbreviated management text for use in the summary table. */
+function tableManagement(text: string, category: string): string {
+  const full = formatClinicalManagement(text);
+  if (!full || !hasDedicatedSection(category)) return full;
+  return firstSentence(full);
+}
+
+/** Abbreviated interpretation text for use in the summary table. */
+function tableInterpretation(text: string, category: string): string {
+  if (!text || !hasDedicatedSection(category)) return text;
+  return firstSentence(text);
 }
 
 function briefFollowUpSummary(aiText: string, recheckWindow: string): string {
@@ -160,8 +200,8 @@ export function ResultsDisplay({
                         </TableCell>
                         <TableCell>{getStatusBadge(interp.status)}</TableCell>
                         <TableCell className="text-xs text-muted-foreground">{interp.referenceRange}</TableCell>
-                        <TableCell className="text-sm">{interp.interpretation}</TableCell>
-                        <TableCell className="text-sm">{formatClinicalManagement(interp.recommendation)}</TableCell>
+                        <TableCell className="text-sm">{tableInterpretation(interp.interpretation, interp.category)}</TableCell>
+                        <TableCell className="text-sm">{tableManagement(interp.recommendation, interp.category)}</TableCell>
                         <TableCell className="text-center">
                           {isRedFlag && (
                             <AlertOctagon className="w-5 h-5 text-destructive inline-block" data-testid={`red-flag-${index}`} />
