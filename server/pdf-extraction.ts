@@ -148,8 +148,8 @@ EXTRACTION RULES:
    - Free T3: FT3, Free Triiodothyronine, Free T3 (Direct)
    - TPO Antibodies: Thyroid Peroxidase Ab, Anti-TPO, TPO Ab
    - Iron: Serum Iron, Fe
-   - TIBC: Total Iron Binding Capacity, Iron Binding Cap
-   - Iron Saturation: % Saturation, Transferrin Saturation, Iron Sat
+   - TIBC: Total Iron Binding Capacity, Iron Binding Cap, Iron Binding Capacity, Iron Bind Cap, Iron Bind. Cap, TIBC (Iron Binding Capacity)
+   - Iron Saturation: % Saturation, Transferrin Saturation, Iron Sat, TSAT, Iron %, Percent Saturation, Iron Percent Saturation, Transferrin Sat
    - Ferritin: Serum Ferritin
    - Vitamin D: 25-OH Vitamin D, 25-Hydroxyvitamin D, Vitamin D 25-Hydroxy, Calcidiol
    - Vitamin B12: B12, Cobalamin, Cyanocobalamin

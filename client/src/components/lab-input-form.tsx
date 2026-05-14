@@ -9,7 +9,7 @@ import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Accordion, AccordionContent, AccordionItem, AccordionTrigger } from "@/components/ui/accordion";
-import { Sparkles, User, Thermometer, Activity } from "lucide-react";
+import { Sparkles, User, Thermometer, Activity, Droplet } from "lucide-react";
 import { Card, CardContent } from "@/components/ui/card";
 
 interface LabInputFormProps {
@@ -116,7 +116,7 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
   return (
     <Form {...form}>
       <form onSubmit={form.handleSubmit(onSubmit)} className="space-y-6">
-        <Accordion type="multiple" defaultValue={["demographics", "symptoms", "cbc", "hormones", "lipids", "other"]} className="space-y-4">
+        <Accordion type="multiple" defaultValue={["demographics", "symptoms", "cbc", "hormones", "lipids", "other", "iron"]} className="space-y-4">
           {/* Patient Demographics & ASCVD Risk Factors */}
           <AccordionItem value="demographics" className="border rounded-md px-4">
             <AccordionTrigger className="hover:no-underline" data-testid="accordion-demographics">
@@ -1498,6 +1498,60 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
                     </FormItem>
                   )}
                 />
+              </div>
+            </AccordionContent>
+          </AccordionItem>
+
+          {/* Iron Studies */}
+          <AccordionItem value="iron" className="border rounded-md px-4">
+            <AccordionTrigger className="hover:no-underline" data-testid="accordion-iron">
+              <div className="flex items-center gap-2">
+                <Droplet className="w-4 h-4 text-orange-500" />
+                <span className="font-semibold">Iron Studies</span>
+              </div>
+            </AccordionTrigger>
+            <AccordionContent className="pt-4 pb-2">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
+                <FormField control={form.control} name="ferritin" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Ferritin</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="100" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-ferritin-male" /></FormControl>
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">ng/mL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Optimal 70-150 ng/mL</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="iron" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Iron</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="90" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-iron-male" /></FormControl>
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">ug/dL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Normal 60-170 ug/dL</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="tibc" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">TIBC (Iron Binding Cap)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="1" placeholder="300" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-tibc-male" /></FormControl>
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">ug/dL</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Normal 250-450 ug/dL</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="ironSaturation" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Iron Saturation (TSAT)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="30" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-iron-saturation-male" /></FormControl>
+                      <span className="text-sm text-muted-foreground whitespace-nowrap">%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Normal 20-50%</p>
+                  </FormItem>
+                )} />
               </div>
             </AccordionContent>
           </AccordionItem>

@@ -366,14 +366,16 @@ export class FemaleClinicalLogicEngine {
       // Check for reactive patterns (iron restriction, inflammation, etc.)
       const reactivePatterns: string[] = [];
       
-      // Iron restriction: Calculate TSAT from iron and TIBC, or check ferritin low/borderline
+      // Iron restriction: Use directly reported iron saturation if available, otherwise calculate from iron/TIBC
       // TSAT = (Iron / TIBC) × 100
       const ferritin = labs.ferritin;
-      let calculatedTsat: number | undefined;
-      if (labs.iron !== undefined && labs.tibc !== undefined && labs.tibc > 0) {
-        calculatedTsat = (labs.iron / labs.tibc) * 100;
+      let effectiveTsat: number | undefined;
+      if (labs.ironSaturation !== undefined) {
+        effectiveTsat = labs.ironSaturation;
+      } else if (labs.iron !== undefined && labs.tibc !== undefined && labs.tibc > 0) {
+        effectiveTsat = (labs.iron / labs.tibc) * 100;
       }
-      if (calculatedTsat !== undefined && calculatedTsat < 20) {
+      if (effectiveTsat !== undefined && effectiveTsat < 20) {
         reactivePatterns.push('iron restriction (low iron saturation)');
       }
       if (ferritin !== undefined && ferritin < 30) {
@@ -1850,6 +1852,53 @@ export class FemaleClinicalLogicEngine {
         unit: 'ug/dL',
         status,
         referenceRange: '40-170 ug/dL',
+        interpretation,
+        recommendation,
+      });
+    }
+
+    // Iron Saturation (Transferrin Saturation / TSAT)
+    // Normal: 20-45%; Low (<20%): iron deficiency or functional deficiency; High (>45%): iron overload concern
+    if (labs.ironSaturation !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.ironSaturation < 16) {
+        status = 'abnormal';
+        const ferritinContext = labs.ferritin !== undefined
+          ? labs.ferritin < 30
+            ? ' With low ferritin, this confirms iron deficiency anemia.'
+            : labs.ferritin >= 100
+              ? ' With normal-to-high ferritin, consider functional iron deficiency (anemia of chronic disease).'
+              : ''
+          : '';
+        interpretation = `Low iron saturation (${labs.ironSaturation.toFixed(1)}%) — significant reduction in iron transport capacity.${ferritinContext}`;
+        recommendation = 'Iron supplementation indicated. Evaluate for blood loss (menorrhagia, GI). If ferritin is normal or high with low TSAT, consider anemia of chronic disease rather than iron deficiency; treat the underlying inflammation.';
+      } else if (labs.ironSaturation >= 16 && labs.ironSaturation < 20) {
+        status = 'borderline';
+        interpretation = `Borderline-low iron saturation (${labs.ironSaturation.toFixed(1)}%). Suggests developing iron deficiency or suboptimal iron transport.`;
+        recommendation = 'Correlate with ferritin and serum iron. Consider iron supplementation if symptomatic (fatigue, hair loss, restless legs). Recheck iron studies in 3 months.';
+      } else if (labs.ironSaturation >= 20 && labs.ironSaturation <= 45) {
+        status = 'normal';
+        interpretation = `Iron saturation ${labs.ironSaturation.toFixed(1)}% — within normal range, adequate iron transport.`;
+        recommendation = 'Routine monitoring.';
+      } else if (labs.ironSaturation > 45 && labs.ironSaturation <= 55) {
+        status = 'borderline';
+        interpretation = `Iron saturation mildly elevated (${labs.ironSaturation.toFixed(1)}%). May indicate early iron excess or high dietary iron intake.`;
+        recommendation = 'Correlate with ferritin. If ferritin also elevated, evaluate for hemochromatosis (HFE gene testing).';
+      } else {
+        status = 'abnormal';
+        interpretation = `Elevated iron saturation (${labs.ironSaturation.toFixed(1)}%) — suggests iron overload. Hemochromatosis or excessive supplementation should be considered.`;
+        recommendation = 'Check ferritin. If both TSAT >45% and ferritin elevated, order HFE gene testing (C282Y, H63D mutations). Reduce iron supplementation. Refer to gastroenterology if hemochromatosis confirmed.';
+      }
+
+      interpretations.push({
+        category: 'Iron Saturation (TSAT)',
+        value: labs.ironSaturation,
+        unit: '%',
+        status,
+        referenceRange: '20-45%',
         interpretation,
         recommendation,
       });

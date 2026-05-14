@@ -8769,7 +8769,7 @@ Return this exact JSON structure (all arrays, even if empty):
             psa: "PSA (ng/mL)", previousPsa: "Previous PSA (ng/mL)", monthsSinceLastPsa: "Months Since Last PSA",
             a1c: "HbA1c (%)", hsCRP: "hs-CRP (mg/L)", vitaminD: "Vitamin D 25-OH (ng/mL)",
             vitaminB12: "Vitamin B12 (pg/mL)", ferritin: "Ferritin (ng/mL)", iron: "Iron (µg/dL)",
-            tibc: "TIBC (µg/dL)", dhea: "DHEA (µg/dL)", dheas: "DHEA-S (µg/dL)",
+            tibc: "TIBC (µg/dL)", ironSaturation: "Iron Saturation/TSAT (%)", dhea: "DHEA (µg/dL)", dheas: "DHEA-S (µg/dL)",
             igf1: "IGF-1 (ng/mL)", cortisol: "Cortisol (µg/dL)", insulin: "Fasting Insulin (µIU/mL)",
             homocysteine: "Homocysteine (µmol/L)", uricAcid: "Uric Acid (mg/dL)",
           };

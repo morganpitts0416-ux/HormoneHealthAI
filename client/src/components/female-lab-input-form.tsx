@@ -1156,7 +1156,7 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
               </div>
             </AccordionTrigger>
             <AccordionContent className="pt-4 pb-2">
-              <div className="grid grid-cols-1 md:grid-cols-3 gap-4">
+              <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-4 gap-4">
                 <FormField control={form.control} name="ferritin" render={({ field }) => (
                   <FormItem>
                     <FormLabel className="text-xs font-medium uppercase">Ferritin</FormLabel>
@@ -1178,11 +1178,22 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                 )} />
                 <FormField control={form.control} name="tibc" render={({ field }) => (
                   <FormItem>
-                    <FormLabel className="text-xs font-medium uppercase">TIBC (Iron Binding Capacity)</FormLabel>
+                    <FormLabel className="text-xs font-medium uppercase">TIBC (Iron Binding Cap)</FormLabel>
                     <div className="flex items-center gap-2">
                       <FormControl><Input type="number" step="1" placeholder="300" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-tibc" /></FormControl>
                       <span className="text-sm text-muted-foreground">ug/dL</span>
                     </div>
+                    <p className="text-xs text-muted-foreground">Normal 250-450 ug/dL</p>
+                  </FormItem>
+                )} />
+                <FormField control={form.control} name="ironSaturation" render={({ field }) => (
+                  <FormItem>
+                    <FormLabel className="text-xs font-medium uppercase">Iron Saturation (TSAT)</FormLabel>
+                    <div className="flex items-center gap-2">
+                      <FormControl><Input type="number" step="0.1" placeholder="30" {...field} onChange={(e) => field.onChange(e.target.value ? parseFloat(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-iron-saturation" /></FormControl>
+                      <span className="text-sm text-muted-foreground">%</span>
+                    </div>
+                    <p className="text-xs text-muted-foreground">Normal 20-45%</p>
                   </FormItem>
                 )} />
               </div>

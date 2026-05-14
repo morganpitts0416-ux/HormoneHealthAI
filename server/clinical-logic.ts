@@ -1474,6 +1474,53 @@ export class ClinicalLogicEngine {
       });
     }
 
+    // Iron Saturation (Transferrin Saturation / TSAT)
+    // Normal: 20-50%; Low (<20%): iron deficiency or functional deficiency; High (>50%): iron overload concern
+    if (labs.ironSaturation !== undefined) {
+      let status: LabInterpretation['status'] = 'normal';
+      let interpretation = '';
+      let recommendation = '';
+
+      if (labs.ironSaturation < 16) {
+        status = 'abnormal';
+        const ferritinContext = labs.ferritin !== undefined
+          ? labs.ferritin < 30
+            ? ' With low ferritin, this confirms iron deficiency.'
+            : labs.ferritin >= 100
+              ? ' With normal-to-high ferritin, consider functional iron deficiency or anemia of chronic disease rather than true iron deficiency.'
+              : ''
+          : '';
+        interpretation = `Low iron saturation (${labs.ironSaturation.toFixed(1)}%) — significantly reduced iron transport.${ferritinContext}`;
+        recommendation = 'Evaluate for blood loss or iron malabsorption. If true iron deficiency: iron supplementation (ferrous sulfate or bisglycinate). Recheck iron panel in 3 months. If ferritin normal/high, investigate for chronic disease or inflammation driving functional iron deficiency.';
+      } else if (labs.ironSaturation >= 16 && labs.ironSaturation < 20) {
+        status = 'borderline';
+        interpretation = `Borderline-low iron saturation (${labs.ironSaturation.toFixed(1)}%). May indicate developing iron deficiency.`;
+        recommendation = 'Correlate with ferritin and serum iron. Monitor with follow-up iron panel in 3–6 months. Consider supplementation if symptomatic.';
+      } else if (labs.ironSaturation >= 20 && labs.ironSaturation <= 50) {
+        status = 'normal';
+        interpretation = `Iron saturation ${labs.ironSaturation.toFixed(1)}% — within normal range.`;
+        recommendation = 'Routine monitoring.';
+      } else if (labs.ironSaturation > 50 && labs.ironSaturation <= 60) {
+        status = 'borderline';
+        interpretation = `Iron saturation mildly elevated (${labs.ironSaturation.toFixed(1)}%). May reflect iron excess or high intake.`;
+        recommendation = 'Correlate with ferritin. If ferritin also elevated, evaluate for hemochromatosis (HFE gene testing).';
+      } else {
+        status = 'abnormal';
+        interpretation = `Elevated iron saturation (${labs.ironSaturation.toFixed(1)}%) — iron overload pattern. Hereditary hemochromatosis or excessive iron intake should be considered.`;
+        recommendation = 'Check ferritin. If both TSAT >50% and ferritin elevated, order HFE gene testing (C282Y, H63D). Discontinue iron supplementation. Refer to gastroenterology if hemochromatosis confirmed.';
+      }
+
+      interpretations.push({
+        category: 'Iron Saturation (TSAT)',
+        value: labs.ironSaturation,
+        unit: '%',
+        status,
+        referenceRange: '20-50%',
+        interpretation,
+        recommendation,
+      });
+    }
+
     // Vitamin D (25-hydroxyvitamin D)
     // Deficient: ≤30, Insufficient: 31-40, Suboptimal: 41-59, Optimal: ≥60
     // Supplement tiers: ≤20 = D3 10,000+K, 21-40 = D3 5,000+K, 41-59 = D3 2000 Complex

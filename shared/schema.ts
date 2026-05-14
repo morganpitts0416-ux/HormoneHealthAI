@@ -270,6 +270,7 @@ export const femaleLabValuesSchema = z.object({
   ferritin: z.number().optional(),
   iron: z.number().optional(),
   tibc: z.number().optional(), // Total Iron Binding Capacity
+  ironSaturation: z.number().optional(), // Transferrin Saturation / % Saturation (%)
   vitaminB12: z.number().optional(),
   folate: z.number().optional(),
   hsCRP: z.number().optional(), // High-Sensitivity C-Reactive Protein

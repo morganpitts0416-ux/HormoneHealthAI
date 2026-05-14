@@ -111,7 +111,8 @@ const MARKER_META: Record<string, MarkerMeta> = {
 
   // Iron studies
   iron: { displayName: "Iron", unit: "µg/dL", panel: "iron", aliases: ["Serum Iron"] },
-  tibc: { displayName: "TIBC", unit: "µg/dL", panel: "iron", aliases: ["TIBC (Iron Binding Capacity)", "Total Iron Binding Capacity"] },
+  tibc: { displayName: "TIBC", unit: "µg/dL", panel: "iron", aliases: ["TIBC (Iron Binding Capacity)", "Total Iron Binding Capacity", "Iron Binding Capacity", "Iron Binding Cap", "Iron Bind Cap", "Iron Bind. Cap"] },
+  ironSaturation: { displayName: "Iron Saturation (TSAT)", unit: "%", panel: "iron", aliases: ["Transferrin Saturation", "% Saturation", "Iron Sat", "TSAT", "Percent Saturation", "Iron % Saturation", "Iron Percent Saturation", "Transferrin Sat"] },
   ferritin: { displayName: "Ferritin", unit: "ng/mL", panel: "iron" },
 
   // Metabolic / Glycemic
