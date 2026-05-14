@@ -1483,6 +1483,13 @@ export async function generatePatientWellnessPDF(
       category: 'iron'
     },
     {
+      name: 'Berberine GT',
+      aliases: ['berberine gt', 'berberine', 'berberine hcl', 'berberine green tea', 'blood sugar support', 'metabolic berberine'],
+      description: 'Berberine HCl 500 mg combined with decaffeinated green tea extract 200 mg per capsule. Supports healthy blood sugar regulation, improves insulin sensitivity, helps lower triglycerides, and supports healthy cholesterol levels. Berberine activates AMPK — the body\'s natural metabolic regulator — making it especially effective for insulin resistance, pre-diabetes patterns, and metabolic syndrome.',
+      defaultDose: '1 capsule 2–3 times daily with meals',
+      category: 'metabolic'
+    },
+    {
       name: 'Intrinsi B12-Folate',
       aliases: ['intrinsi', 'b12-folate', 'b12 folate', 'intrinsic factor', 'methylcobalamin', 'b12', 'vitamin b12'],
       description: 'High-potency methylcobalamin (500 mcg) and L-5-MTHF folate with intrinsic factor for enhanced absorption. Supports nervous system function, cardiovascular health, and energy metabolism.',

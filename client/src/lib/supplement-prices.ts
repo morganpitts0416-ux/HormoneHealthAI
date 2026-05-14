@@ -24,6 +24,7 @@ const PRICE_MAP: Record<string, SupplementPriceInfo> = {
   "EstroFactors":                             { price: 54.95, supplyDays: 30 },
   "AdvaClear":                                { price: 54.95, supplyDays: 28 },
   "GlutaClear":                               { price: 47.95, supplyDays: 30 },
+  "Berberine GT":                             { price: 54.95, supplyDays: 30 },
 };
 
 function normalize(name: string): string {

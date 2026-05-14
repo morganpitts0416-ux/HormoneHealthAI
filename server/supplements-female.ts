@@ -21,9 +21,11 @@ function evaluateHemagenics(labs: FemaleLabValues, phenotypes: ClinicalPhenotype
   let score = 0;
   const matchedPhenotypes: string[] = [];
 
-  const lowFerritin = labs.ferritin !== undefined && labs.ferritin <= 50;
-  const veryLowFerritin = labs.ferritin !== undefined && labs.ferritin <= 20;
-  const moderateLowFerritin = labs.ferritin !== undefined && labs.ferritin > 20 && labs.ferritin <= 30;
+  // Ferritin <30: HIGH confidence for ALL patients — no exceptions per clinical protocol
+  const criticallyLowFerritin = labs.ferritin !== undefined && labs.ferritin < 30;
+  // Ferritin 30–49: MODERATE confidence — especially with iron-responsive symptoms
+  const suboptimalFerritin    = labs.ferritin !== undefined && labs.ferritin >= 30 && labs.ferritin < 50;
+  const anyLowFerritin        = labs.ferritin !== undefined && labs.ferritin < 50;
   const lowIron = labs.iron !== undefined && labs.iron < 60;
   const elevatedTIBC = labs.tibc !== undefined && labs.tibc > 450;
   const lowHemoglobin = labs.hemoglobin !== undefined && labs.hemoglobin < 12;
@@ -32,38 +34,35 @@ function evaluateHemagenics(labs: FemaleLabValues, phenotypes: ClinicalPhenotype
   const hasLowEnergy = labs.lowEnergy === true;
   const hasHeavyMenses = labs.heavyMenses === true;
 
-  if (veryLowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (severely depleted ≤20)`); score += 5; }
-  else if (moderateLowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (iron deficiency ≤30)`); score += 4; }
-  else if (lowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (suboptimal ≤50, optimal >50)`); score += 4; }
+  if (criticallyLowFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (critically depleted <30 — high-confidence indication regardless of symptoms)`); score += 8; }
+  else if (suboptimalFerritin) { findings.push(`Ferritin ${labs.ferritin} ng/mL (suboptimal 30–49 ng/mL; optimal >50)`); score += 4; }
   if (lowIron) { findings.push(`Serum iron ${labs.iron} µg/dL (low <60)`); score += 2; }
   if (elevatedTIBC) { findings.push(`TIBC ${labs.tibc} µg/dL (elevated >450)`); score += 2; }
   if (lowHemoglobin) { findings.push(`Hemoglobin ${labs.hemoglobin} g/dL (low)`); score += 3; }
-  if (hasHairLoss) { findings.push("Hair loss reported (iron-responsive symptom)"); score += 1; }
+  if (hasHairLoss) { findings.push("Hair loss reported (iron-responsive symptom)"); score += 2; }
   if (hasRestlessLegs) { findings.push("Restless legs reported (iron-responsive symptom)"); score += 1; }
-  if (hasLowEnergy && lowFerritin) { findings.push("Fatigue with iron depletion"); score += 1; }
+  if (hasLowEnergy && anyLowFerritin) { findings.push("Fatigue/low energy with iron depletion"); score += 2; }
   if (hasHeavyMenses) { findings.push("Heavy menses (increased iron loss)"); score += 1; }
 
   const ironPhenotype = phenotypes.find(p => p.name === "Iron Deficiency");
   if (ironPhenotype) matchedPhenotypes.push(ironPhenotype.name);
 
-  const hasLabEvidence = lowFerritin || veryLowFerritin || lowIron || elevatedTIBC || lowHemoglobin;
+  const hasLabEvidence = anyLowFerritin || lowIron || elevatedTIBC || lowHemoglobin;
   if (!hasLabEvidence) return null;
   if (score < 3) return null;
-
-  const isHighPriority = lowFerritin || veryLowFerritin || moderateLowFerritin || lowHemoglobin || lowIron || elevatedTIBC || score >= 5;
 
   return {
     name: "Hemagenics\u00AE Red Blood Cell Support",
     dose: "1 tablet twice daily with meals",
     category: 'iron',
-    caution: "Contains iron, folate, and B12 for comprehensive RBC support. Avoid taking with calcium-rich foods or dairy. May cause mild GI upset initially.",
+    caution: "Contains iron bisglycinate, B12, B6, and folate for comprehensive red blood cell support. Avoid taking with calcium-rich foods or dairy. May cause mild GI upset initially — take with food.",
     score,
-    priority: isHighPriority ? 'high' : 'medium',
-    confidenceLevel: score >= 6 ? 'high' : score >= 4 ? 'moderate' : 'supportive',
+    priority: criticallyLowFerritin || lowHemoglobin || lowIron || elevatedTIBC ? 'high' : 'medium',
+    confidenceLevel: criticallyLowFerritin ? 'high' : score >= 6 ? 'high' : score >= 4 ? 'moderate' : 'supportive',
     supportingFindings: findings,
     phenotypes: matchedPhenotypes,
-    clinicalRationale: "Hemagenics provides highly absorbable iron bisglycinate with B12, B6, and folate for comprehensive red blood cell support. Indicated for functional iron deficiency, iron deficiency without anemia, and iron-responsive symptoms.",
-    patientExplanation: "Your lab results suggest your iron stores are lower than optimal. This supplement provides a gentle, well-absorbed form of iron along with B12 and folate to support your energy levels, hair health, and overall vitality.",
+    clinicalRationale: "Hemagenics provides highly absorbable iron bisglycinate with B12, B6, and folate for comprehensive red blood cell support. Ferritin <30 ng/mL is a hard clinical indication — high-confidence recommendation for ALL patients regardless of symptoms. Ferritin 30–49 ng/mL warrants a moderate-confidence recommendation, especially when accompanied by iron-responsive symptoms (fatigue, hair loss, restless legs, heavy menses).",
+    patientExplanation: "Your iron stores are lower than optimal. This supplement provides a gentle, highly absorbable form of iron along with B12 and folate to support your energy levels, hair health, and overall vitality.",
   };
 }
 
@@ -652,6 +651,76 @@ function evaluateCoQ10(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[]): 
   };
 }
 
+function evaluateBerberineGT(labs: FemaleLabValues, phenotypes: ClinicalPhenotype[], irScreening?: InsulinResistanceScreening): SupplementCandidate | null {
+  const findings: string[] = [];
+  let score = 0;
+  const matchedPhenotypes: string[] = [];
+
+  const irPhenotype = phenotypes.find(p => p.name === "Insulin Resistance / Visceral Adiposity");
+
+  // Lab markers for insulin resistance patterns
+  const glucoseBorderline   = labs.glucose !== undefined && labs.glucose >= 90 && labs.glucose <= 110;
+  const glucoseElevated     = labs.glucose !== undefined && labs.glucose > 110;
+  const a1cPreDiabetic      = labs.a1c !== undefined && labs.a1c >= 5.4 && labs.a1c < 6.5;
+  const trigsOver100        = labs.triglycerides !== undefined && labs.triglycerides > 100;
+  const trigsOver150        = labs.triglycerides !== undefined && labs.triglycerides > 150;
+  const lowHDL              = labs.hdl !== undefined && labs.hdl < 50;
+  const unfavorableTGHDL    = labs.triglycerides !== undefined && labs.hdl !== undefined && labs.hdl > 0 && (labs.triglycerides / labs.hdl) > 3.0;
+  const elevatedALT         = labs.alt !== undefined && labs.alt > 30;
+  const hasWeightGain       = labs.weightGain === true;
+  const hasLowEnergy        = labs.lowEnergy === true;
+
+  // PCOS / hormonal insulin resistance pattern via irScreening phenotypes
+  const hasPcosPhenotype    = irScreening?.phenotypes?.some(p => p.key === 'hormonal_pcos') ?? false;
+  const hasHepaticPhenotype = irScreening?.phenotypes?.some(p => p.key === 'hepatic') ?? false;
+
+  if (irPhenotype) {
+    matchedPhenotypes.push(irPhenotype.name);
+    score += irPhenotype.confidence === 'high' ? 5 : 3;
+    findings.push("Insulin resistance / visceral adiposity phenotype confirmed");
+  }
+
+  if (glucoseElevated)     { findings.push(`Fasting glucose ${labs.glucose} mg/dL (elevated — pre-diabetic range)`); score += 4; }
+  else if (glucoseBorderline) { findings.push(`Fasting glucose ${labs.glucose} mg/dL (90–110, trending toward pre-diabetic range)`); score += 2; }
+  if (a1cPreDiabetic)      { findings.push(`A1c ${labs.a1c}% (pre-diabetic range 5.4–6.4%)`); score += 4; }
+  if (trigsOver150)        { findings.push(`Triglycerides ${labs.triglycerides} mg/dL (elevated >150 — metabolic insulin resistance marker)`); score += 3; }
+  else if (trigsOver100)   { findings.push(`Triglycerides ${labs.triglycerides} mg/dL (elevated >100 — early metabolic pattern)`); score += 2; }
+  if (lowHDL)              { findings.push(`HDL ${labs.hdl} mg/dL (low — unfavorable metabolic risk pattern)`); score += 2; }
+  if (unfavorableTGHDL)    { findings.push(`TG:HDL ratio ${(labs.triglycerides! / labs.hdl!).toFixed(1)} (unfavorable >3.0 — surrogate marker for insulin resistance)`); score += 2; }
+  if (elevatedALT)         { findings.push(`ALT ${labs.alt} U/L (elevated — fatty liver / metabolic syndrome pattern)`); score += 2; }
+  if (hasWeightGain)       { findings.push("Central weight gain / visceral adiposity reported"); score += 2; }
+  if (hasLowEnergy && (glucoseBorderline || glucoseElevated || a1cPreDiabetic)) {
+    findings.push("Low energy with glycemic dysregulation (common in insulin resistance)"); score += 1;
+  }
+  if (hasPcosPhenotype) {
+    matchedPhenotypes.push("PCOS / Hormonal IR Pattern");
+    findings.push("PCOS-type or androgenic hormonal pattern (berberine supports insulin sensitivity and androgen metabolism in PCOS)");
+    score += 3;
+  }
+  if (hasHepaticPhenotype) {
+    matchedPhenotypes.push("Hepatic IR Pattern");
+    findings.push("Hepatic insulin resistance / fatty liver tendency (berberine activates AMPK, supporting hepatic glucose metabolism)");
+    score += 2;
+  }
+
+  // Require meaningful metabolic evidence — at least two positive markers
+  if (score < 4) return null;
+
+  return {
+    name: "Berberine GT\u00AE",
+    dose: "1 capsule 2–3 times daily with meals (or as directed by provider)",
+    category: 'metabolic',
+    caution: "Berberine HCl 500 mg + decaffeinated green tea extract 200 mg per capsule. May potentiate blood-sugar-lowering medications — monitor glucose levels. Not for use in pregnancy. Take with food to minimize GI effects.",
+    score,
+    priority: score >= 7 ? 'high' : 'medium',
+    confidenceLevel: score >= 9 ? 'high' : score >= 6 ? 'moderate' : 'supportive',
+    supportingFindings: findings,
+    phenotypes: matchedPhenotypes,
+    clinicalRationale: "Metagenics Berberine GT combines berberine HCl 500 mg with decaffeinated green tea extract 200 mg per capsule, dosed 1 capsule 2–3× daily with meals. Berberine activates AMPK to improve hepatic and peripheral insulin sensitivity, lower fasting glucose, reduce triglycerides, support favorable LDL particle quality, and assist with weight management. Green tea EGCG provides complementary antioxidant and metabolic support. Indicated for patients with pre-diabetic glucose or A1c patterns, unfavorable TG:HDL ratio, low HDL, elevated ALT or fatty liver tendency, PCOS, central adiposity, or metabolic syndrome features. Also appropriate as adjunct support in GLP-1 patients who need additional glucose and lipid optimization.",
+    patientExplanation: "This supplement combines berberine — a well-studied plant compound that helps your body use insulin more effectively — with green tea extract for added metabolic support. It works by improving how your cells respond to blood sugar, which helps normalize glucose levels, support healthier triglycerides and cholesterol, and assists with weight management. The patterns in your labs make this a strong match for your metabolic health goals.",
+  };
+}
+
 function prioritizeAndCap(candidates: SupplementCandidate[]): SupplementRecommendation[] {
   candidates.sort((a, b) => {
     const priorityOrder = { high: 0, medium: 1, low: 2 };
@@ -712,6 +781,7 @@ export function evaluateSupplements(labs: FemaleLabValues, irScreening?: Insulin
     () => evaluateUltraFloraHealthyWeight(labs, phenotypes),
     () => evaluateOmegaGenics(labs, phenotypes),
     () => evaluateCoQ10(labs, phenotypes),
+    () => evaluateBerberineGT(labs, phenotypes, irScreening),
   ];
 
   const candidates: SupplementCandidate[] = [];

@@ -354,6 +354,88 @@ const supplementRules: SupplementRule[] = [
       return null;
     }
   },
+  // HEMAGENICS - Iron Deficiency (hemoglobin-triggered for male panel)
+  {
+    supplement: {
+      name: "Hemagenics\u00AE Red Blood Cell Support",
+      dose: "1 tablet twice daily with meals",
+      priority: 'high',
+      category: 'iron',
+      caution: "Contains iron bisglycinate, B12, B6, and folate for comprehensive red blood cell support. Avoid taking with calcium-rich foods or dairy. May cause mild GI upset initially — take with food."
+    },
+    evaluate: (labs) => {
+      const lowHemoglobin = labs.hemoglobin !== undefined && labs.hemoglobin < 13.5;
+      const hasHairLoss   = labs.hairLoss === true;
+      const hasLowEnergy  = labs.lowEnergy === true;
+      const hasRestless   = labs.restlessLegs === true;
+
+      if (!lowHemoglobin) return null;
+
+      const indications: string[] = [];
+      indications.push(`Hemoglobin ${labs.hemoglobin} g/dL (low <13.5 in men)`);
+      if (hasHairLoss)  indications.push("Hair loss (iron-responsive symptom)");
+      if (hasLowEnergy) indications.push("Fatigue/low energy with anemia");
+      if (hasRestless)  indications.push("Restless legs (iron-responsive symptom)");
+
+      return {
+        shouldRecommend: true,
+        indication: indications.join('; '),
+        rationale: "Hemagenics provides highly absorbable iron bisglycinate with B12, B6, and folate for comprehensive red blood cell support. Indicated for low hemoglobin, iron-responsive fatigue, hair loss, and restless legs syndrome. High-confidence recommendation when hemoglobin is below normal male reference range."
+      };
+    }
+  },
+
+  // BERBERINE GT - Insulin Resistance / Metabolic Support
+  {
+    supplement: {
+      name: "Berberine GT\u00AE",
+      dose: "1 capsule 2–3 times daily with meals (or as directed by provider)",
+      priority: 'high',
+      category: 'metabolic',
+      caution: "Berberine HCl 500 mg + decaffeinated green tea extract 200 mg per capsule. May potentiate blood-sugar-lowering medications — monitor glucose levels. Take with food to minimize GI effects."
+    },
+    evaluate: (labs) => {
+      const glucoseBorderline  = labs.glucose !== undefined && labs.glucose >= 90 && labs.glucose <= 110;
+      const glucoseElevated    = labs.glucose !== undefined && labs.glucose > 110;
+      const a1cPreDiabetic     = labs.a1c !== undefined && labs.a1c >= 5.4 && labs.a1c < 6.5;
+      const trigsOver100       = labs.triglycerides !== undefined && labs.triglycerides > 100;
+      const trigsOver150       = labs.triglycerides !== undefined && labs.triglycerides > 150;
+      const lowHDL             = labs.hdl !== undefined && labs.hdl < 40;
+      const unfavorableTGHDL   = labs.triglycerides !== undefined && labs.hdl !== undefined && labs.hdl > 0 && (labs.triglycerides / labs.hdl) > 3.0;
+      const elevatedALT        = labs.alt !== undefined && labs.alt > 35;
+      const hasWeightGain      = labs.weightGain === true;
+
+      let score = 0;
+      if (glucoseElevated)    score += 4;
+      else if (glucoseBorderline) score += 2;
+      if (a1cPreDiabetic)     score += 4;
+      if (trigsOver150)       score += 3;
+      else if (trigsOver100)  score += 2;
+      if (lowHDL)             score += 2;
+      if (unfavorableTGHDL)   score += 2;
+      if (elevatedALT)        score += 2;
+      if (hasWeightGain)      score += 2;
+
+      if (score < 4) return null;
+
+      const indications: string[] = [];
+      if (glucoseElevated)       indications.push(`Fasting glucose ${labs.glucose} mg/dL (elevated — pre-diabetic)`);
+      else if (glucoseBorderline) indications.push(`Fasting glucose ${labs.glucose} mg/dL (90–110, trending pre-diabetic)`);
+      if (a1cPreDiabetic)        indications.push(`A1c ${labs.a1c}% (pre-diabetic range 5.4–6.4%)`);
+      if (trigsOver150)          indications.push(`Triglycerides ${labs.triglycerides} mg/dL (elevated >150)`);
+      else if (trigsOver100)     indications.push(`Triglycerides ${labs.triglycerides} mg/dL (elevated >100)`);
+      if (lowHDL)                indications.push(`HDL ${labs.hdl} mg/dL (low)`);
+      if (unfavorableTGHDL)      indications.push(`TG:HDL ratio ${(labs.triglycerides! / labs.hdl!).toFixed(1)} (unfavorable >3.0)`);
+      if (elevatedALT)           indications.push(`ALT ${labs.alt} U/L (elevated — metabolic/fatty liver pattern)`);
+      if (hasWeightGain)         indications.push("Central weight gain / visceral adiposity");
+
+      return {
+        shouldRecommend: true,
+        indication: indications.join('; '),
+        rationale: "Metagenics Berberine GT combines berberine HCl 500 mg with decaffeinated green tea extract 200 mg per capsule, dosed 1 capsule 2–3× daily with meals. Berberine activates AMPK to improve insulin sensitivity, lower fasting glucose, reduce triglycerides, support favorable LDL particle quality, and assist with weight management. Green tea EGCG provides complementary antioxidant and metabolic support. Indicated for pre-diabetic glucose or A1c, unfavorable TG:HDL ratio, low HDL, elevated ALT or fatty liver tendency, central adiposity, or metabolic syndrome features. Also appropriate as adjunct support in GLP-1 patients needing additional glucose and lipid optimization."
+      };
+    }
+  },
 ];
 
 export function evaluateMaleSupplements(labs: LabValues): SupplementRecommendation[] {
