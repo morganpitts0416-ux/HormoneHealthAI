@@ -3460,15 +3460,17 @@ Return ONLY this JSON structure:
         // Account already linked to this patient — just refresh the invite token
         await storage.updatePortalAccount(patientId, { email, inviteToken: token, inviteExpires: expires });
       } else {
-        // No account for this patient ID. Check if the email is already on a different patient's account
-        // (stale link scenario) — re-link to the current patient rather than creating a duplicate.
+        // Check if this email is already registered to a DIFFERENT patient's portal account.
+        // We do NOT steal/re-link another patient's account — that would revoke a different
+        // patient's portal access. Instead, return a clear error so the clinician can use
+        // the correct email or contact support.
         const existingByEmail = await storage.getPortalAccountByEmail(email);
-        if (existingByEmail) {
-          console.log(`[PORTAL] Re-linking portal account for email ${email} from patient ${existingByEmail.patientId} → ${patientId} (invite path)`);
-          await storage.updatePortalAccountByEmail(email, { patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
-        } else {
-          await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
+        if (existingByEmail && existingByEmail.patientId !== patientId) {
+          return res.status(409).json({
+            message: "This email address is already registered to another patient's portal account. Please use a different email address.",
+          });
         }
+        await storage.createPortalAccount({ patientId, email, inviteToken: token, inviteExpires: expires, isActive: true });
       }
 
       // Build base URL: APP_URL env var takes highest priority (custom domain),
@@ -4099,18 +4101,7 @@ Return ONLY this JSON structure:
       const patientId = parseInt(req.params.patientId);
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
-      let portalAccount = await storage.getPortalAccountByPatientId(patientId);
-      // Fallback: if no account found by patient ID, check by the patient's email.
-      // This heals stale patient_id links (e.g. patient record was recreated with a
-      // new ID while the portal account still references the old one).
-      if (!portalAccount && patient.email) {
-        const accountByEmail = await storage.getPortalAccountByEmail(patient.email);
-        if (accountByEmail && accountByEmail.patientId !== patientId) {
-          console.log(`[PORTAL] Re-linking portal account for email ${patient.email} from patient ${accountByEmail.patientId} → ${patientId}`);
-          const relinked = await storage.updatePortalAccountByEmail(patient.email, { patientId });
-          portalAccount = relinked ?? { ...accountByEmail, patientId };
-        }
-      }
+      const portalAccount = await storage.getPortalAccountByPatientId(patientId);
       const allProtocols = await storage.getAllPublishedProtocols(patientId);
       const latestProtocol = allProtocols[0] || null;
       // Collect the set of lab result IDs that have already been published
@@ -4138,6 +4129,7 @@ Return ONLY this JSON structure:
         inviteSentAt: portalAccount?.createdAt || null,
       });
     } catch (error) {
+      console.error("[PORTAL STATUS] Error fetching portal status:", error);
       res.status(500).json({ message: "Failed to fetch portal status" });
     }
   });

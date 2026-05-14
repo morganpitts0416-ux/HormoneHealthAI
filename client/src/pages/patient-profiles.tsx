@@ -1462,7 +1462,7 @@ export default function PatientProfiles() {
     onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
   });
 
-  const { data: portalStatus } = useQuery<{
+  const { data: portalStatus, isError: portalStatusError, refetch: refetchPortalStatus } = useQuery<{
     hasPortalAccount: boolean;
     hasPassword: boolean;
     email: string | null;
@@ -1477,10 +1477,12 @@ export default function PatientProfiles() {
     queryKey: ['/api/portal/status', selectedPatient?.id],
     queryFn: async () => {
       const res = await fetch(`/api/portal/status/${selectedPatient!.id}`, { credentials: 'include' });
-      if (!res.ok) throw new Error('Failed to fetch portal status');
+      if (!res.ok) throw new Error(`${res.status}: Failed to fetch portal status`);
       return res.json();
     },
     enabled: !!selectedPatient,
+    staleTime: 0,
+    retry: 1,
   });
 
   const { user } = useAuth();
@@ -2446,20 +2448,35 @@ export default function PatientProfiles() {
                     <Stethoscope className="h-3 w-3" />
                     New Encounter
                   </Button>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => {
-                      setInviteEmail(portalStatus?.email || (selectedPatient as any).email || "");
-                      setShowInviteModal(true);
-                    }}
-                    data-testid="button-invite-to-portal"
-                    className="text-xs gap-1.5"
-                    style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
-                  >
-                    <Mail className="h-3 w-3" />
-                    {portalStatus?.hasPortalAccount ? "Resend Invite" : "Invite to Portal"}
-                  </Button>
+                  {portalStatusError ? (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => refetchPortalStatus()}
+                      data-testid="button-portal-status-retry"
+                      className="text-xs gap-1.5"
+                      style={{ color: "#b45309", borderColor: "#fcd34d" }}
+                      title="Portal status could not be loaded — click to retry"
+                    >
+                      <Mail className="h-3 w-3" />
+                      Retry Portal Status
+                    </Button>
+                  ) : (
+                    <Button
+                      variant="outline"
+                      size="sm"
+                      onClick={() => {
+                        setInviteEmail(portalStatus?.email || (selectedPatient as any).email || "");
+                        setShowInviteModal(true);
+                      }}
+                      data-testid="button-invite-to-portal"
+                      className="text-xs gap-1.5"
+                      style={{ color: "#2e3a20", borderColor: "#c4b9a5" }}
+                    >
+                      <Mail className="h-3 w-3" />
+                      {portalStatus?.hasPortalAccount ? "Resend Invite" : "Invite to Portal"}
+                    </Button>
+                  )}
                   <Button
                     variant="outline"
                     size="sm"
