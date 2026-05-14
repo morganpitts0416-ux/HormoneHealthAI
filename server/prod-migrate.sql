@@ -105,6 +105,8 @@ CREATE TABLE IF NOT EXISTS published_protocols (
   published_at TIMESTAMP DEFAULT NOW() NOT NULL,
   first_viewed_at TIMESTAMP
 );
+-- patient_summary was added to the Drizzle schema after initial deploy
+ALTER TABLE published_protocols ADD COLUMN IF NOT EXISTS patient_summary TEXT;
 
 CREATE TABLE IF NOT EXISTS portal_messages (
   id SERIAL PRIMARY KEY,
@@ -378,6 +380,11 @@ CREATE TABLE IF NOT EXISTS patient_vitals (
   notes TEXT,
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+-- Columns added to patient_vitals after initial deploy
+ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS temperature REAL;
+ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'clinic';
+ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS time_of_day VARCHAR(5);
+ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS symptoms TEXT[] DEFAULT ARRAY[]::TEXT[];
 
 -- ── Note typing on clinical_encounters ──────────────────────────────
 ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS note_type VARCHAR(30) NOT NULL DEFAULT 'soap_provider';
@@ -396,6 +403,8 @@ CREATE TABLE IF NOT EXISTS note_templates (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+-- shortcut column added to note_templates after initial deploy
+ALTER TABLE note_templates ADD COLUMN IF NOT EXISTS shortcut VARCHAR(50);
 
 -- ── note_phrases ────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS note_phrases (
