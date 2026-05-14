@@ -4,7 +4,7 @@ import { useMutation, useQuery } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
-import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History, Heart } from "lucide-react";
+import { FileText, Sparkles, AlertCircle, Download, Upload, CheckCircle2, Save, History, Heart, User } from "lucide-react";
 import { Alert, AlertDescription, AlertTitle } from "@/components/ui/alert";
 import { LabInputForm } from "@/components/lab-input-form";
 import { ResultsDisplay } from "@/components/results-display";
@@ -441,6 +441,15 @@ export default function LabInterpretation() {
           </Link>
               {interpretationResult && (
                 <>
+                  {selectedPatient && (
+                    <Link href={`/patients?patient=${selectedPatient.id}`}>
+                      <Button variant="outline" size="sm" data-testid="button-view-patient-profile">
+                        <User className="w-4 h-4 mr-1" />
+                        <span className="hidden sm:inline">View Patient</span>
+                        <span className="sm:hidden">Profile</span>
+                      </Button>
+                    </Link>
+                  )}
                   <Button 
                     variant="default" 
                     onClick={handlePatientReport}
@@ -485,7 +494,7 @@ export default function LabInterpretation() {
         <Tabs value={activeTab} onValueChange={setActiveTab} className="space-y-6">
           <TabsList className="grid w-full max-w-lg grid-cols-3" data-testid="tabs-navigation">
             <TabsTrigger value="input" data-testid="tab-input">Lab Entry</TabsTrigger>
-            <TabsTrigger value="results" disabled={!interpretationResult} data-testid="tab-results">
+            <TabsTrigger value="results" data-testid="tab-results">
               Results
             </TabsTrigger>
             <TabsTrigger value="history" data-testid="tab-history">
@@ -696,7 +705,16 @@ export default function LabInterpretation() {
             ) : (
               <Card>
                 <CardContent className="py-12 text-center text-muted-foreground">
-                  <p>No interpretation results yet. Enter lab values to get started.</p>
+                  <div className="flex flex-col items-center gap-3">
+                    <Sparkles className="w-8 h-8 opacity-30" />
+                    <div className="space-y-1">
+                      <p className="text-sm font-medium text-foreground">No results yet</p>
+                      <p className="text-xs">Enter lab values on the Lab Entry tab and run an interpretation to see results here.</p>
+                    </div>
+                    <Button variant="outline" size="sm" onClick={() => setActiveTab("input")} data-testid="button-go-to-lab-entry">
+                      Go to Lab Entry
+                    </Button>
+                  </div>
                 </CardContent>
               </Card>
             )}
