@@ -4101,7 +4101,16 @@ Return ONLY this JSON structure:
       const patientId = parseInt(req.params.patientId);
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
-      const portalAccount = await storage.getPortalAccountByPatientId(patientId);
+      // Primary lookup: by patient_id (fast, authoritative).
+      // Fallback: by patient email — handles cases where the portal account's
+      // patient_id hasn't been backfilled to match the current patient record.
+      // Read-only: we never mutate here; the invite endpoint is responsible for
+      // canonical data. We just want to surface the correct status.
+      let portalAccount = await storage.getPortalAccountByPatientId(patientId);
+      if (!portalAccount && patient.email) {
+        const byEmail = await storage.getPortalAccountByEmail(patient.email);
+        if (byEmail) portalAccount = byEmail;
+      }
       const allProtocols = await storage.getAllPublishedProtocols(patientId);
       const latestProtocol = allProtocols[0] || null;
       // Collect the set of lab result IDs that have already been published

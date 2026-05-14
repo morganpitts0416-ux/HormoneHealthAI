@@ -1462,7 +1462,7 @@ export default function PatientProfiles() {
     onError: () => toast({ title: "Failed to delete", variant: "destructive" }),
   });
 
-  const { data: portalStatus, isError: portalStatusError, refetch: refetchPortalStatus } = useQuery<{
+  const { data: portalStatus, isError: portalStatusError, isFetching: portalStatusFetching, refetch: refetchPortalStatus } = useQuery<{
     hasPortalAccount: boolean;
     hasPassword: boolean;
     email: string | null;
@@ -1482,7 +1482,12 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient,
     staleTime: 0,
-    retry: 1,
+    retry: 2,
+    retryDelay: 2000,
+    refetchOnWindowFocus: true,
+    // When errored (e.g. server restart), poll every 5 s until the endpoint
+    // responds successfully so the status heals without user action.
+    refetchInterval: (query) => query.state.status === 'error' ? 5000 : false,
   });
 
   const { user } = useAuth();
@@ -2454,12 +2459,13 @@ export default function PatientProfiles() {
                       size="sm"
                       onClick={() => refetchPortalStatus()}
                       data-testid="button-portal-status-retry"
-                      className="text-xs gap-1.5"
-                      style={{ color: "#b45309", borderColor: "#fcd34d" }}
-                      title="Portal status could not be loaded — click to retry"
+                      className="text-xs gap-1.5 opacity-70"
+                      style={{ color: "#b45309", borderColor: "#d6b57a" }}
+                      title="Portal status is loading — retrying automatically"
+                      disabled={portalStatusFetching}
                     >
                       <Mail className="h-3 w-3" />
-                      Retry Portal Status
+                      {portalStatusFetching ? "Checking portal…" : "Check Portal Status"}
                     </Button>
                   ) : (
                     <Button
