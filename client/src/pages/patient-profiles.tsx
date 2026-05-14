@@ -38,6 +38,13 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment, SimpleLabUpload } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
+import {
+  PreventAssessmentCard,
+  PreventNotCalculatedCard,
+  AdvancedLipidsCard,
+  StopBangCard,
+  InsulinResistanceCard,
+} from "@/components/lab-assessment-cards";
 import { PatientSummary } from "@/components/patient-summary";
 import PatientDocumentsCard from "@/components/patient-documents-card";
 import { SOAPNote } from "@/components/soap-note";
@@ -570,17 +577,35 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
                 <RedFlagAlert redFlags={interp.redFlags} />
               )}
 
-              {/* Full Lab Results + PREVENT CVD Risk + Insulin Resistance */}
+              {/* Full Lab Results */}
               <ResultsDisplay
                 interpretations={interp.interpretations || []}
                 aiRecommendations={interp.aiRecommendations || ''}
                 recheckWindow={interp.recheckWindow || ''}
                 redFlags={interp.redFlags || []}
-                ascvdAssessment={interp.ascvdRisk || null}
-                preventAssessment={interp.preventRisk}
-                adjustedRiskAssessment={interp.adjustedRisk}
-                insulinResistance={interp.insulinResistance}
               />
+
+              {/* PREVENT Cardiovascular Risk Assessment */}
+              {interp.preventRisk ? (
+                <PreventAssessmentCard preventAssessment={interp.preventRisk} />
+              ) : (
+                <PreventNotCalculatedCard missingFields={(interp as any).preventMissingFields || []} />
+              )}
+
+              {/* Advanced Lipid Marker Risk Adjustment */}
+              {interp.adjustedRisk && (
+                <AdvancedLipidsCard adjustedRiskAssessment={interp.adjustedRisk} />
+              )}
+
+              {/* STOP-BANG Sleep Apnea Screening */}
+              {interp.stopBangRisk && (
+                <StopBangCard stopBangRisk={interp.stopBangRisk} />
+              )}
+
+              {/* Insulin Resistance Screening */}
+              {interp.insulinResistance && interp.insulinResistance.likelihood !== 'none' && (
+                <InsulinResistanceCard insulinResistance={interp.insulinResistance} />
+              )}
 
               {/* Male Hormone Patterns */}
               {interp.maleHormonePatterns && interp.maleHormonePatterns.length > 0 && (
