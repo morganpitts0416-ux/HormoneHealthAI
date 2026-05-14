@@ -1314,6 +1314,7 @@ export default function PatientProfiles() {
   const [mergeSearch, setMergeSearch] = useState("");
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef(false);
+  const pendingOpenLabId = useRef<number | null>(null);
 
   // Auto-generate patient-specific dietary guidance when the publish dialog opens.
   // The endpoint pulls directly from this lab's interpretations + lab values, so
@@ -1352,17 +1353,19 @@ export default function PatientProfiles() {
     },
   });
 
-  // Auto-select patient from URL param (e.g. ?patient=123&tab=encounters)
+  // Auto-select patient from URL param (e.g. ?patient=123&tab=encounters&lab=456)
   useEffect(() => {
     if (urlParamApplied.current || allPatients.length === 0) return;
     const params = new URLSearchParams(searchStr);
     const patientId = params.get("patient");
     const tab = params.get("tab");
+    const labId = params.get("lab");
     if (!patientId) return;
     const found = allPatients.find(p => p.id === Number(patientId));
     if (!found) return;
     urlParamApplied.current = true;
     setSelectedPatient(found);
+    if (labId) pendingOpenLabId.current = Number(labId);
     if (tab === "messages") setShowMessages(true);
     if (tab === "orders") setShowOrders(true);
     if (tab === "encounters") setShowEncounters(true);
@@ -1388,6 +1391,17 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient,
   });
+
+  // Open the lab detail modal once labs are loaded after a ?lab= deep-link
+  // (pendingOpenLabId is set by the URL param handler above when ?lab=ID is present)
+  useEffect(() => {
+    if (!pendingOpenLabId.current || labs.length === 0) return;
+    const labToOpen = labs.find(l => l.id === pendingOpenLabId.current);
+    if (labToOpen) {
+      pendingOpenLabId.current = null;
+      setViewingLab(labToOpen);
+    }
+  }, [labs]);
 
   const { data: simpleLabs = [] } = useQuery<SimpleLabUpload[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'simple-labs'],

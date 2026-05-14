@@ -32,7 +32,7 @@ import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useGlobalLoading } from "@/hooks/use-global-loading";
-import { Link, useSearch } from "wouter";
+import { Link, useSearch, useLocation } from "wouter";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { FemaleLabValues, InterpretationResult, LabValues, Patient, LabResult } from "@shared/schema";
 
@@ -47,6 +47,7 @@ function calculateAge(dateOfBirth: Date | string): number {
 
 export default function FemaleLabInterpretation() {
   const search = useSearch();
+  const [, setLocation] = useLocation();
   const initialPatientId = new URLSearchParams(search).get('patientId');
 
   const [labValues, setLabValues] = useState<FemaleLabValues>({});
@@ -139,14 +140,18 @@ export default function FemaleLabInterpretation() {
       }
 
       if (resolvedPatient) {
-        apiRequest('POST', `/api/patients/${resolvedPatient.id}/labs`, {
+        const pid = resolvedPatient.id;
+        apiRequest('POST', `/api/patients/${pid}/labs`, {
           labDate,
           labValues,
           interpretationResult: data,
-        }).then(() => {
-          queryClient.invalidateQueries({ queryKey: [`/api/patients/${resolvedPatient!.id}/labs`] });
+        }).then(async (res) => {
+          const saved = await res.json().catch(() => ({}));
+          queryClient.invalidateQueries({ queryKey: [`/api/patients/${pid}/labs`] });
           queryClient.invalidateQueries({ queryKey: ['/api/patients'] });
-          console.log('[Frontend] Auto-saved interpretation to patient profile');
+          console.log('[Frontend] Auto-saved interpretation to patient profile, labId:', saved?.id);
+          const labParam = saved?.id ? `&lab=${saved.id}` : '';
+          setLocation(`/patients?patient=${pid}${labParam}`);
         }).catch(err => console.error('[Frontend] Auto-save failed:', err));
       } else if (labValues.patientName) {
         // Auto-create a patient profile from the name typed in the form
@@ -160,11 +165,14 @@ export default function FemaleLabInterpretation() {
               const newPatient = await createRes.json();
               setSelectedPatient(newPatient);
               queryClient.invalidateQueries({ queryKey: ['/api/patients'] });
-              await apiRequest('POST', `/api/patients/${newPatient.id}/labs`, {
+              const labRes = await apiRequest('POST', `/api/patients/${newPatient.id}/labs`, {
                 labDate, labValues, interpretationResult: data,
               });
+              const savedLab = await labRes.json().catch(() => ({}));
               queryClient.invalidateQueries({ queryKey: [`/api/patients/${newPatient.id}/labs`] });
               console.log('[Frontend] Auto-created female patient profile and saved labs:', newPatient.id);
+              const labParam = savedLab?.id ? `&lab=${savedLab.id}` : '';
+              setLocation(`/patients?patient=${newPatient.id}${labParam}`);
             } else {
               // Fallback to saved-interpretations
               await apiRequest('POST', '/api/saved-interpretations', { patientName: labValues.patientName, gender: 'female', labValues, interpretation: data, labDate });
