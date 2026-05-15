@@ -12,6 +12,13 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@
 import { RichTextView } from "@/components/rich-text-editor";
 import { CheckCircle2, AlertCircle, RefreshCw, ClipboardList, Plus, X, Upload, FileText, PenLine } from "lucide-react";
 
+const US_STATES = [
+  "AL","AK","AZ","AR","CA","CO","CT","DE","FL","GA","HI","ID","IL","IN","IA",
+  "KS","KY","LA","ME","MD","MA","MI","MN","MS","MO","MT","NE","NV","NH","NJ",
+  "NM","NY","NC","ND","OH","OK","OR","PA","RI","SC","SD","TN","TX","UT","VT",
+  "VA","WA","WV","WI","WY","DC",
+];
+
 interface FormField {
   id: number;
   fieldKey: string;
@@ -227,11 +234,14 @@ export default function FormPublicPage() {
         !val || typeof val !== "object" || Array.isArray(val) ||
         Object.values(val).every((row: any) => !row || typeof row !== "object" || Object.values(row).every((v: any) => v === undefined || v === null || v === false || (typeof v === "string" && !v.trim())))
       );
+      const isCompositeEmpty = field.fieldType === "address_composite" && (
+        !val || typeof val !== "object" || Array.isArray(val) || !String((val as any).street ?? "").trim()
+      );
       const isEmpty = val === undefined || val === null || val === "" ||
         (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) ||
         (field.fieldType === "family_history_chart" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim())) ||
         (field.fieldType === "symptom_checklist" && typeof val === "object" && !Array.isArray(val) && Object.values(val).every((v: any) => !v || !String(v).trim())) ||
-        isMatrixEmpty;
+        isMatrixEmpty || isCompositeEmpty;
       if (isEmpty) {
         errors[field.fieldKey] = "This field is required";
       }
@@ -283,8 +293,23 @@ export default function FormPublicPage() {
       }
     }
     const pkt = new URLSearchParams(window.location.search).get("pkt");
+
+    // Flatten address_composite objects → plain address strings before sending
+    const flatResponses: Record<string, any> = { ...responses };
+    for (const field of data.fields) {
+      if (field.fieldType === "address_composite") {
+        const comp = responses[field.fieldKey];
+        if (comp && typeof comp === "object" && !Array.isArray(comp)) {
+          const { street = "", city = "", state = "", zip = "" } = comp as any;
+          const cityState = [city.trim(), state.trim()].filter(Boolean).join(", ");
+          const parts = [street.trim(), cityState, zip.trim()].filter(Boolean);
+          flatResponses[field.fieldKey] = parts.join(", ");
+        }
+      }
+    }
+
     submitMutation.mutate({
-      responses,
+      responses: flatResponses,
       submitterName: effectiveName,
       submitterEmail: effectiveEmail,
       ...(pkt ? { packetToken: pkt } : {}),
@@ -909,6 +934,50 @@ function FieldRenderer({ field, value, onChange, error }: {
         {field.isRequired && <span className="text-destructive ml-1">*</span>}
       </Label>
       {field.helpText && <p className="text-xs text-muted-foreground">{field.helpText}</p>}
+
+      {field.fieldType === "address_composite" && (() => {
+        const comp = (value && typeof value === "object" && !Array.isArray(value))
+          ? value as { street?: string; city?: string; state?: string; zip?: string }
+          : { street: "", city: "", state: "", zip: "" };
+        const upd = (key: string, v: string) => onChange({ ...comp, [key]: v });
+        return (
+          <div className="space-y-2">
+            <Input
+              value={comp.street ?? ""}
+              onChange={e => upd("street", e.target.value)}
+              placeholder="Street address"
+              data-testid={`input-${field.fieldKey}-street`}
+            />
+            <div className="flex gap-2">
+              <Input
+                className="flex-1"
+                value={comp.city ?? ""}
+                onChange={e => upd("city", e.target.value)}
+                placeholder="City"
+                data-testid={`input-${field.fieldKey}-city`}
+              />
+              <Select value={comp.state ?? ""} onValueChange={v => upd("state", v)}>
+                <SelectTrigger className="w-24" data-testid={`select-${field.fieldKey}-state`}>
+                  <SelectValue placeholder="State" />
+                </SelectTrigger>
+                <SelectContent>
+                  {US_STATES.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
+              <Input
+                className="w-28"
+                value={comp.zip ?? ""}
+                onChange={e => upd("zip", e.target.value)}
+                placeholder="ZIP"
+                data-testid={`input-${field.fieldKey}-zip`}
+                maxLength={10}
+              />
+            </div>
+          </div>
+        );
+      })()}
 
       {field.fieldType === "short_text" && (
         <Input
