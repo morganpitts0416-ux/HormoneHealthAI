@@ -12506,6 +12506,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             if (!existing.dateOfBirth && dobRaw) updates.dateOfBirth = parseDateOnly(dobRaw);
             if (!existing.email && email) updates.email = email;
             if (!existing.phone && phone) updates.phone = phone;
+            if (!existing.address && address) updates.address = address;
             if (!existing.preferredPharmacy && preferredPharmacy) updates.preferredPharmacy = preferredPharmacy;
             if (Object.keys(updates).length > 0) {
               await storage.updatePatient(existing.id, updates, form.clinicianId, formClinicId);
@@ -12520,6 +12521,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
               gender,
               email: email || null,
               phone: phone || null,
+              address: address || null,
               preferredPharmacy: preferredPharmacy || null,
             });
             resolvedPatientId = created.id;
