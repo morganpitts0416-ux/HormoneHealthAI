@@ -22,7 +22,7 @@ import {
   LayoutList, Edit3, Globe, Send, RefreshCw, Inbox, Zap, UserRoundSearch, ArrowRightLeft, Code,
   Type, AlignLeft, Hash, Mail, Phone, Calendar, Circle, CheckSquare, List, ToggleLeft,
   Star, PenLine, Heading, AlignJustify, Pill, Activity, ChevronLeft,
-  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users, Upload, MapPin,
+  ArrowUp, ArrowDown, Home, X, PanelLeft, SlidersHorizontal, ListChecks, Users, Upload,
   Palette, Wand2
 } from "lucide-react";
 
@@ -889,21 +889,6 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
       case "short_text":
       case "email":
       case "phone":
-        if (field.smartFieldKey === "patient_address" || field.smartFieldKey === "patient_preferred_pharmacy") {
-          return (
-            <div className="space-y-1">
-              <Input disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" />
-              <div className="flex items-center gap-1.5">
-                <MapPin className="h-3 w-3 text-blue-500 flex-shrink-0" />
-                <span className="text-xs text-blue-600 dark:text-blue-400">
-                  {field.smartFieldKey === "patient_preferred_pharmacy"
-                    ? "Google Places pharmacy autocomplete active on patient form"
-                    : "Google Places address autocomplete active on patient form"}
-                </span>
-              </div>
-            </div>
-          );
-        }
         return <Input disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" />;
       case "long_text":
         return <Textarea disabled placeholder={field.placeholder ?? ""} className="bg-muted/30" rows={3} />;
