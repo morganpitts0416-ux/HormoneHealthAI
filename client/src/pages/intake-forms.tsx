@@ -190,7 +190,7 @@ const SMART_FIELDS: SmartFieldDef[] = [
   { key: "patient_email", label: "Email Address", fieldType: "email", placeholder: "patient@example.com", category: "demographics", syncTarget: "patient.email" },
   { key: "patient_phone", label: "Phone Number", fieldType: "phone", placeholder: "(555) 000-0000", category: "demographics", syncTarget: "patient.phone" },
   { key: "patient_address", label: "Address", fieldType: "address_composite", placeholder: "Street, City, State ZIP", category: "demographics", syncTarget: "patient.address" },
-  { key: "patient_preferred_pharmacy", label: "Preferred Pharmacy", fieldType: "short_text", placeholder: "Pharmacy name, address, and phone", category: "demographics", syncTarget: "patient.preferredPharmacy", helpText: "Where should we send your prescriptions?" },
+  { key: "patient_preferred_pharmacy", label: "Preferred Pharmacy", fieldType: "pharmacy_composite", placeholder: "Pharmacy name, address, and phone", category: "demographics", syncTarget: "patient.preferredPharmacy", helpText: "Where should we send your prescriptions?" },
   { key: "current_medications", label: "Current Medications", fieldType: "medication_list", placeholder: "List each medication, dosage, and frequency", category: "clinical", syncTarget: "chart.currentMedications", helpText: "Enter each medication on a new line" },
   { key: "allergies", label: "Allergies", fieldType: "allergy_list", placeholder: "Allergy (include reaction type if known)", category: "clinical", syncTarget: "chart.allergies", helpText: "Add each allergy individually" },
   { key: "medical_history", label: "Medical History", fieldType: "medical_history_list", placeholder: "Condition or diagnosis", category: "clinical", syncTarget: "chart.medicalHistory", helpText: "Add each condition individually" },
@@ -894,6 +894,17 @@ function FieldPreview({ field, isSelected, onClick, onMoveUp, onMoveDown, canMov
               <Input disabled placeholder="City" className="bg-muted/30 flex-1" />
               <Input disabled placeholder="State" className="bg-muted/30 w-20" />
               <Input disabled placeholder="ZIP" className="bg-muted/30 w-28" />
+            </div>
+          </div>
+        );
+      case "pharmacy_composite":
+        return (
+          <div className="space-y-2">
+            <Input disabled placeholder="Pharmacy name" className="bg-muted/30" />
+            <Input disabled placeholder="Street address" className="bg-muted/30" />
+            <div className="flex gap-2">
+              <Input disabled placeholder="City" className="bg-muted/30 flex-1" />
+              <Input disabled placeholder="State" className="bg-muted/30 w-20" />
             </div>
           </div>
         );

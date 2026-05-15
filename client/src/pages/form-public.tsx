@@ -234,8 +234,11 @@ export default function FormPublicPage() {
         !val || typeof val !== "object" || Array.isArray(val) ||
         Object.values(val).every((row: any) => !row || typeof row !== "object" || Object.values(row).every((v: any) => v === undefined || v === null || v === false || (typeof v === "string" && !v.trim())))
       );
-      const isCompositeEmpty = field.fieldType === "address_composite" && (
-        !val || typeof val !== "object" || Array.isArray(val) || !String((val as any).street ?? "").trim()
+      const isCompositeEmpty = (
+        (field.fieldType === "address_composite" || field.fieldType === "pharmacy_composite") && (
+          !val || typeof val !== "object" || Array.isArray(val) ||
+          !String((val as any)[field.fieldType === "pharmacy_composite" ? "name" : "street"] ?? "").trim()
+        )
       );
       const isEmpty = val === undefined || val === null || val === "" ||
         (Array.isArray(val) && (val.length === 0 || val.every((v: any) => !v || !String(v).trim()))) ||
@@ -294,7 +297,7 @@ export default function FormPublicPage() {
     }
     const pkt = new URLSearchParams(window.location.search).get("pkt");
 
-    // Flatten address_composite objects → plain address strings before sending
+    // Flatten composite address/pharmacy objects → plain strings before sending
     const flatResponses: Record<string, any> = { ...responses };
     for (const field of data.fields) {
       if (field.fieldType === "address_composite") {
@@ -303,6 +306,15 @@ export default function FormPublicPage() {
           const { street = "", city = "", state = "", zip = "" } = comp as any;
           const cityState = [city.trim(), state.trim()].filter(Boolean).join(", ");
           const parts = [street.trim(), cityState, zip.trim()].filter(Boolean);
+          flatResponses[field.fieldKey] = parts.join(", ");
+        }
+      }
+      if (field.fieldType === "pharmacy_composite") {
+        const comp = responses[field.fieldKey];
+        if (comp && typeof comp === "object" && !Array.isArray(comp)) {
+          const { name = "", street = "", city = "", state = "" } = comp as any;
+          const cityState = [city.trim(), state.trim()].filter(Boolean).join(", ");
+          const parts = [name.trim(), street.trim(), cityState].filter(Boolean);
           flatResponses[field.fieldKey] = parts.join(", ");
         }
       }
@@ -974,6 +986,48 @@ function FieldRenderer({ field, value, onChange, error }: {
                 data-testid={`input-${field.fieldKey}-zip`}
                 maxLength={10}
               />
+            </div>
+          </div>
+        );
+      })()}
+
+      {field.fieldType === "pharmacy_composite" && (() => {
+        const comp = (value && typeof value === "object" && !Array.isArray(value))
+          ? value as { name?: string; street?: string; city?: string; state?: string }
+          : { name: "", street: "", city: "", state: "" };
+        const upd = (key: string, v: string) => onChange({ ...comp, [key]: v });
+        return (
+          <div className="space-y-2">
+            <Input
+              value={comp.name ?? ""}
+              onChange={e => upd("name", e.target.value)}
+              placeholder="Pharmacy name"
+              data-testid={`input-${field.fieldKey}-name`}
+            />
+            <Input
+              value={comp.street ?? ""}
+              onChange={e => upd("street", e.target.value)}
+              placeholder="Street address"
+              data-testid={`input-${field.fieldKey}-street`}
+            />
+            <div className="flex gap-2">
+              <Input
+                className="flex-1"
+                value={comp.city ?? ""}
+                onChange={e => upd("city", e.target.value)}
+                placeholder="City"
+                data-testid={`input-${field.fieldKey}-city`}
+              />
+              <Select value={comp.state ?? ""} onValueChange={v => upd("state", v)}>
+                <SelectTrigger className="w-24" data-testid={`select-${field.fieldKey}-state`}>
+                  <SelectValue placeholder="State" />
+                </SelectTrigger>
+                <SelectContent>
+                  {US_STATES.map(s => (
+                    <SelectItem key={s} value={s}>{s}</SelectItem>
+                  ))}
+                </SelectContent>
+              </Select>
             </div>
           </div>
         );
