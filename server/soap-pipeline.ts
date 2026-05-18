@@ -337,6 +337,11 @@ B. "discussed_but_not_decided" — The topic was discussed but no definitive com
 C. "clinically_relevant_followup" — Items that were NOT discussed but are clinically relevant given the visit context. These are intelligent clinical additions a thoughtful provider might consider.
    Examples: Preventative screenings suggested by age/risk, monitoring implied by medication class, follow-up labs implied by treatment changes
 
+RULE — CURRENT MEDICATIONS DISCUSSED IN THIS ENCOUNTER:
+If a medication has status = "current" AND it was substantively discussed during this encounter (dose mentioned explicitly, tolerability asked about, efficacy/weight progress discussed in its context, labs reviewed in relation to it, or continuation confirmed), you MUST add it to "explicitly_decided_plan_items" using this format:
+"Continue [medication name] [dose] [route] [frequency] — reviewed and continued at this visit"
+Do NOT leave actively-discussed current medications out of explicitly_decided_plan_items. Failing to include them means the note-writing stage will silently omit them from the Assessment/Plan. This is the most common source of medication omissions in the final note.
+
 Return this exact JSON structure:
 {
   "medications_normalized": [...],
@@ -495,7 +500,11 @@ CORE RULES — NON-NEGOTIABLE
 5. INCLUDE DOSING WHEN AVAILABLE
    If a medication dose, frequency, route, or titration plan is mentioned anywhere in the transcript, include it in the Plan. Do not strip dosing detail.
 
-6. DO NOT SUMMARIZE AWAY CLINICAL DETAIL
+6. CURRENT MEDICATIONS THAT WERE DISCUSSED IN THE ENCOUNTER MUST APPEAR IN ASSESSMENT/PLAN
+   A medication being in the "Current Medications" section is NOT sufficient if that medication was substantively discussed during the encounter. If the transcript shows the provider or patient mentioned a medication's dose, asked about tolerability, reviewed labs in the context of it, discussed weight/efficacy, or confirmed continuation — that medication MUST receive its own numbered Assessment/Plan item. Do NOT bury it only in the Current Medications list and skip it in A/P.
+   The numbered A/P item for a continued medication should include: the specific drug name + dose + route + frequency, a brief tolerability/efficacy note if discussed, the monitoring plan, and the continuation plan.
+
+7. DO NOT SUMMARIZE AWAY CLINICAL DETAIL
    Preserve meaningful clinical nuance:
    - Reasoning behind decisions
    - Symptom associations that drove the decision
@@ -927,7 +936,11 @@ async function qaCheck(
   const systemPrompt = `You are a clinical documentation quality assurance specialist. Your job is to compare the SOAP note against the source extraction data and transcript to catch omissions, contradictions, and over-compression.
 
 CHECK FOR:
-1. MEDICATION OMISSIONS: Are all medications from the extraction present in the SOAP note? Every medication in medications_current must appear somewhere (HPI or Care Plan).
+1. MEDICATION OMISSIONS: Are all medications from the extraction present in the SOAP note?
+   a) Every medication in medications_current must appear in the Current Medications section with its dose.
+   b) CRITICAL: Any medication in medications_current that was substantively discussed in the transcript (dose mentioned, tolerability assessed, efficacy/weight discussed, labs reviewed in its context, or continuation confirmed) MUST ALSO appear as a numbered item in the Assessment/Plan — not just in the Current Medications list. If such a medication is missing from the Assessment/Plan, this is a CRITICAL omission requiring revision.
+   c) Check medications_normalized from the normalization output — any medication listed there with a "current" status that was discussed in the transcript must be in the A/P.
+   If a currently-prescribed medication (e.g., GLP-1, testosterone, thyroid medication, antidepressant) was discussed during the visit and is absent from the Assessment/Plan, flag this as a CRITICAL issue and add a proper numbered A/P item for it with dose, tolerability note, monitoring plan, and continuation decision.
 2. SYMPTOM OMISSIONS: Are all reported symptoms captured in the HPI? Secondary concerns must not be lost.
 3. SIDE EFFECT OMISSIONS: Were side effects or tolerability issues discussed but not documented?
 4. PRIOR TREATMENT OMISSIONS: Were prior medication trials or failed treatments mentioned but not captured?
