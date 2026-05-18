@@ -354,7 +354,7 @@ export default function FemaleLabInterpretation() {
       setPdfFileName(file.name);
       setInterpretationResult(null);
       setActiveTab("input");
-      pdfExtractMutation.mutate(file);
+      pdfExtractMutation.mutate({ file, patientId: selectedPatient?.id });
     }
   };
 

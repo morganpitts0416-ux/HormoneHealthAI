@@ -2167,7 +2167,7 @@ Rules:
   });
 
   // PDF upload and extraction endpoint
-  app.post("/api/extract-pdf-labs", upload.single('pdf'), async (req, res) => {
+  app.post("/api/extract-pdf-labs", requireAuth, upload.single('pdf'), async (req, res) => {
     console.log('[API] POST /api/extract-pdf-labs - Received PDF upload');
     
     try {
@@ -2185,6 +2185,42 @@ Rules:
       const extractedValues = await PDFExtractionService.extractLabValues(req.file.buffer);
 
       console.log('[API] Extraction complete, extracted fields:', Object.keys(extractedValues));
+
+      // ── Silent auto-save to patient documents ──────────────────────────────
+      // If a patientId is provided, save the original PDF to the patient's
+      // documents as "Pathology / Lab Report". Best-effort — never fails the
+      // extraction response if the save doesn't work.
+      const patientIdRaw = req.body?.patientId;
+      const patientId = patientIdRaw ? parseInt(patientIdRaw, 10) : null;
+      if (patientId && !Number.isNaN(patientId)) {
+        try {
+          const clinicianId = getClinicianId(req);
+          const clinicId = getEffectiveClinicId(req);
+          if (clinicId) {
+            const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+            if (patient) {
+              const uploaderUser = (req as any).user;
+              const uploaderName = uploaderUser?.name || uploaderUser?.email || 'System';
+              await storage.createPatientDocument({
+                clinicId,
+                patientId,
+                uploadedByUserId: clinicianId,
+                uploadedByName: uploaderName,
+                fileName: req.file.originalname || 'lab-report.pdf',
+                mimeType: req.file.mimetype,
+                sizeBytes: req.file.size,
+                category: 'pathology',
+                notes: 'Auto-saved from lab evaluation upload',
+                source: 'upload',
+                fileData: req.file.buffer.toString('base64'),
+              });
+              console.log(`[API] Lab PDF auto-saved to patient ${patientId} documents`);
+            }
+          }
+        } catch (saveErr) {
+          console.error('[API] Silent lab PDF doc save failed (non-fatal):', saveErr);
+        }
+      }
 
       res.json({ 
         success: true, 

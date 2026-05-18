@@ -264,7 +264,7 @@ export default function LabInterpretation() {
       setPdfFileName(file.name);
       setInterpretationResult(null);
       setActiveTab("input");
-      pdfExtractMutation.mutate(file);
+      pdfExtractMutation.mutate({ file, patientId: selectedPatient?.id });
     }
   };
 

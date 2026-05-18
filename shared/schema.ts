@@ -908,6 +908,7 @@ export const PATIENT_DOCUMENT_CATEGORIES = [
   'referral',
   'consent',
   'lab_external',
+  'pathology',
   'other',
 ] as const;
 export type PatientDocumentCategory = typeof PATIENT_DOCUMENT_CATEGORIES[number];

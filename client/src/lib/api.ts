@@ -10,14 +10,16 @@ export const labsApi = {
     return result;
   },
 
-  extractPdfLabs: async (pdfFile: File): Promise<Partial<LabValues>> => {
-    console.log('[API Client] extractPdfLabs called with file:', pdfFile.name);
+  extractPdfLabs: async ({ file, patientId }: { file: File; patientId?: number }): Promise<Partial<LabValues>> => {
+    console.log('[API Client] extractPdfLabs called with file:', file.name);
     const formData = new FormData();
-    formData.append('pdf', pdfFile);
+    formData.append('pdf', file);
+    if (patientId) formData.append('patientId', String(patientId));
 
     const response = await fetch('/api/extract-pdf-labs', {
       method: 'POST',
       body: formData,
+      credentials: 'include',
     });
 
     if (!response.ok) {
@@ -65,14 +67,16 @@ export const femaleLabsApi = {
     return result;
   },
 
-  extractPdfLabs: async (pdfFile: File): Promise<Partial<FemaleLabValues>> => {
-    console.log('[API Client] extractPdfLabsFemale called with file:', pdfFile.name);
+  extractPdfLabs: async ({ file, patientId }: { file: File; patientId?: number }): Promise<Partial<FemaleLabValues>> => {
+    console.log('[API Client] extractPdfLabsFemale called with file:', file.name);
     const formData = new FormData();
-    formData.append('pdf', pdfFile);
+    formData.append('pdf', file);
+    if (patientId) formData.append('patientId', String(patientId));
 
     const response = await fetch('/api/extract-pdf-labs', {
       method: 'POST',
       body: formData,
+      credentials: 'include',
     });
 
     if (!response.ok) {

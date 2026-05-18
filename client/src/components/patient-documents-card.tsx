@@ -32,6 +32,7 @@ const CATEGORY_OPTIONS: { value: string; label: string }[] = [
   { value: "pmp", label: "PMP Report" },
   { value: "imaging", label: "Imaging Report" },
   { value: "lab_external", label: "External Lab Result" },
+  { value: "pathology", label: "Pathology / Lab Report" },
   { value: "referral", label: "Referral" },
   { value: "consent", label: "Consent" },
   { value: "insurance", label: "Insurance" },

@@ -201,6 +201,7 @@ export default function SimpleLabUpload() {
     try {
       const fd = new FormData();
       fd.append("pdf", file);
+      if (selectedPatientId) fd.append("patientId", String(selectedPatientId));
       const res = await fetch("/api/extract-pdf-labs", { method: "POST", body: fd, credentials: "include" });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
