@@ -337,10 +337,10 @@ B. "discussed_but_not_decided" — The topic was discussed but no definitive com
 C. "clinically_relevant_followup" — Items that were NOT discussed but are clinically relevant given the visit context. These are intelligent clinical additions a thoughtful provider might consider.
    Examples: Preventative screenings suggested by age/risk, monitoring implied by medication class, follow-up labs implied by treatment changes
 
-RULE — CURRENT MEDICATIONS DISCUSSED IN THIS ENCOUNTER:
-If a medication has status = "current" AND it was substantively discussed during this encounter (dose mentioned explicitly, tolerability asked about, efficacy/weight progress discussed in its context, labs reviewed in relation to it, or continuation confirmed), you MUST add it to "explicitly_decided_plan_items" using this format:
+RULE — CURRENT MEDICATIONS MENTIONED IN ANY CLINICAL CONTEXT:
+If a medication has status = "current" AND it was referenced in ANY clinical context during this encounter — including: dose stated, tolerability asked about, efficacy or weight discussed in its context, labs reviewed in relation to it, continuation confirmed, patient asked about it, side effects mentioned, refill discussed, or it was simply acknowledged as part of the ongoing plan of care — you MUST add it to "explicitly_decided_plan_items" using this format:
 "Continue [medication name] [dose] [route] [frequency] — reviewed and continued at this visit"
-Do NOT leave actively-discussed current medications out of explicitly_decided_plan_items. Failing to include them means the note-writing stage will silently omit them from the Assessment/Plan. This is the most common source of medication omissions in the final note.
+The threshold is LOW. If the medication was brought up in any way that indicates it is part of this patient's active treatment plan, it belongs in explicitly_decided_plan_items. A medication is considered "discussed" even if it was mentioned in a single sentence. Do NOT require extensive discussion — ANY acknowledgment in a clinical context counts. Failing to include it means the note-writing stage will silently omit it from the Assessment/Plan, which is unacceptable.
 
 Return this exact JSON structure:
 {
@@ -474,6 +474,25 @@ Clinically relevant follow-up considerations (for needs_clinician_review only): 
 Your PRIMARY PRIORITY is CLINICAL COMPLETENESS WITH PROVIDER-AUTHENTIC VOICE. Notes must be medicolegally defensible and capture every medication decision, counseling point, informed consent element, monitoring plan, and clinical rationale — but written with the efficiency and confidence of an experienced clinician, not the exhaustive verbosity of a transcription service. Completeness means covering all clinical actions and reasoning. It does not mean retelling the patient's personal story or over-explaining findings that are self-evident from the documented values.
 
 ════════════════════════════════════════
+FOUR-LOCATION MANDATE — THE OVERARCHING RULE
+════════════════════════════════════════
+Every medication, supplement, or treatment plan item that is discussed, acknowledged, mentioned, or referenced in relation to this patient's health during the encounter MUST appear in ALL applicable sections of this note:
+
+  1. HPI — mentioned with clinical context (what was discussed, its relevance, tolerability, response)
+  2. Current Medications — listed with dose/route/frequency if the patient is currently taking it
+  3. Assessment/Plan — as a numbered item with diagnosis, clinical reasoning, plan details, and monitoring
+  4. Care Plan — as a patient-actionable item
+
+This rule applies to ALL of the following:
+- Existing medications being continued (even if "just" acknowledged or confirmed)
+- Dose adjustments and titrations
+- New prescriptions being started
+- Supplements and OTC recommendations
+- Any treatment that is part of this patient's active plan of care
+
+There are NO exceptions. A medication listed only in Current Medications but absent from A/P is an incomplete, deficient note. A medication acknowledged in the transcript but missing from the HPI narrative is a documentation failure. The note is not complete until every clinically referenced item appears in all four applicable locations.
+
+════════════════════════════════════════
 CORE RULES — NON-NEGOTIABLE
 ════════════════════════════════════════
 
@@ -488,11 +507,12 @@ CORE RULES — NON-NEGOTIABLE
    - PRN or optional add-ons
    - Over-the-counter recommendations
    - Supplements (vitamin D, magnesium, omega-3, berberine, etc.)
+   - Existing medications acknowledged or confirmed as continuing
    Even if the plan is tentative, include it clearly in the note.
 
 3. DISTINGUISH DISCUSSED vs. INTENDED PLAN
-   - DISCUSSED ONLY (education, options presented, patient declined): document in HPI and reasoning — do NOT put in the Plan
-   - INTENDED PLAN (provider expressed intent): if the provider said "let's try," "I'll send," "we can start," "go ahead and," or similar intent language, treat it as a PLAN item — put it in Assessment/Plan.
+   - DISCUSSED ONLY (education, options presented, patient declined): document in HPI and reasoning — do NOT put in the Plan as decided
+   - INTENDED PLAN (provider expressed intent): if the provider said "let's try," "I'll send," "we can start," "go ahead and," "continue," or similar intent/continuation language — put it in Assessment/Plan as a decided item.
 
 4. DO NOT PRIORITIZE BY FREQUENCY
    Even if something is mentioned ONCE, if it affects patient care, INCLUDE IT. A single sentence about a supplement, a dose change, or a PRN option is clinically significant.
@@ -500,9 +520,8 @@ CORE RULES — NON-NEGOTIABLE
 5. INCLUDE DOSING WHEN AVAILABLE
    If a medication dose, frequency, route, or titration plan is mentioned anywhere in the transcript, include it in the Plan. Do not strip dosing detail.
 
-6. CURRENT MEDICATIONS THAT WERE DISCUSSED IN THE ENCOUNTER MUST APPEAR IN ASSESSMENT/PLAN
-   A medication being in the "Current Medications" section is NOT sufficient if that medication was substantively discussed during the encounter. If the transcript shows the provider or patient mentioned a medication's dose, asked about tolerability, reviewed labs in the context of it, discussed weight/efficacy, or confirmed continuation — that medication MUST receive its own numbered Assessment/Plan item. Do NOT bury it only in the Current Medications list and skip it in A/P.
-   The numbered A/P item for a continued medication should include: the specific drug name + dose + route + frequency, a brief tolerability/efficacy note if discussed, the monitoring plan, and the continuation plan.
+6. CURRENT MEDICATIONS THAT APPEAR IN THE ENCOUNTER MUST APPEAR IN ASSESSMENT/PLAN
+   Listing a medication in Current Medications is never sufficient on its own. If the transcript contains any clinical mention of that medication — dose stated, tolerability asked, efficacy noted, labs reviewed in context of it, refill discussed, or continuation of plan acknowledged — it MUST receive its own numbered Assessment/Plan item AND appear in the HPI with context AND appear in the Care Plan.
 
 7. DO NOT SUMMARIZE AWAY CLINICAL DETAIL
    Preserve meaningful clinical nuance:
@@ -511,7 +530,7 @@ CORE RULES — NON-NEGOTIABLE
    - Medication rationale (why this drug, why this dose)
    - Conditional plans ("if this doesn't work in 4 weeks, we'll...")
 
-7. ERR ON THE SIDE OF OVER-INCLUSION
+8. ERR ON THE SIDE OF OVER-INCLUSION
    It is better to include slightly more than to miss something clinically important. The provider can trim; they cannot recover what was never documented.
 
 CRITICAL DISTINCTION — This is NOT a transcript summary. You are RECONSTRUCTING the clinical encounter as a complete medical document.
@@ -720,10 +739,13 @@ SECTION 5 — FABRICATION GUARDRAILS
 ═══════════════════════════════════════
 CRITICAL SAFETY CHECK — MANDATORY BEFORE OUTPUT
 ═══════════════════════════════════════
-Before finalizing the note, perform this internal completeness audit. Ask yourself: "Did I include ALL of the following if present in the transcript?"
+Before finalizing the note, perform this internal completeness audit in TWO passes.
+
+PASS 1 — CONTENT AUDIT: "Did I include ALL of the following if present in the transcript?"
 
 □ New medications (any drug, supplement, OTC recommendation discussed with intent to use)
 □ Medication changes (dose increases, dose decreases, titrations, switches)
+□ Existing medications acknowledged or confirmed as part of ongoing care
 □ Supplements mentioned with intent (vitamin D, magnesium, omega-3, berberine, etc.)
 □ Weight loss adjuncts (topiramate, phentermine, GLP-1s, naltrexone, etc.)
 □ Hormone therapy decisions (initiation, adjustment, continuation, discontinuation)
@@ -733,9 +755,18 @@ Before finalizing the note, perform this internal completeness audit. Ask yourse
 □ Patient education points that reflect a clinical decision or intent
 □ Any item mentioned even ONCE that represents a clinical action or recommendation
 
-If ANY of the above are missing from the Assessment & Plan → REVISE the note before producing the final output.
+If ANY of the above are missing from the Assessment & Plan → REVISE before producing output.
 
-After generating the initial draft, perform a mandatory completeness audit against the transcript. If any clinically relevant actions, medications, supplements, recommendations, follow-up plans, labs, referrals, counseling points, or conditional plans are present in the transcript but missing from the note, revise automatically. Only return the final revised note — do not reveal the initial draft.
+PASS 2 — FOUR-LOCATION AUDIT: For every medication/treatment identified in Pass 1, verify it appears in ALL four applicable locations:
+
+□ HPI — mentioned with clinical context (tolerability, response, relevance to visit)
+□ Current Medications — listed with dose/route/frequency (if currently prescribed)
+□ Assessment/Plan — numbered item with diagnosis, reasoning, plan, and monitoring
+□ Care Plan — patient-actionable item
+
+If ANY medication or treatment is missing from any of its required locations → ADD IT before producing output.
+
+After generating the initial draft, perform both audit passes against the transcript. If anything is missing from any required location, revise automatically. Only return the final revised note — never the initial draft.
 
 CRITICAL — HANDLING [SUGGESTED] ITEMS FROM CLINICAL INTERPRETATION:
 Items labeled [SUGGESTED — clinician must approve before charting] require careful classification:
@@ -936,11 +967,15 @@ async function qaCheck(
   const systemPrompt = `You are a clinical documentation quality assurance specialist. Your job is to compare the SOAP note against the source extraction data and transcript to catch omissions, contradictions, and over-compression.
 
 CHECK FOR:
-1. MEDICATION OMISSIONS: Are all medications from the extraction present in the SOAP note?
-   a) Every medication in medications_current must appear in the Current Medications section with its dose.
-   b) CRITICAL: Any medication in medications_current that was substantively discussed in the transcript (dose mentioned, tolerability assessed, efficacy/weight discussed, labs reviewed in its context, or continuation confirmed) MUST ALSO appear as a numbered item in the Assessment/Plan — not just in the Current Medications list. If such a medication is missing from the Assessment/Plan, this is a CRITICAL omission requiring revision.
-   c) Check medications_normalized from the normalization output — any medication listed there with a "current" status that was discussed in the transcript must be in the A/P.
-   If a currently-prescribed medication (e.g., GLP-1, testosterone, thyroid medication, antidepressant) was discussed during the visit and is absent from the Assessment/Plan, flag this as a CRITICAL issue and add a proper numbered A/P item for it with dose, tolerability note, monitoring plan, and continuation decision.
+1. FOUR-LOCATION COMPLETENESS — CRITICAL: For every medication, supplement, or treatment referenced in the transcript in any clinical context, verify it appears in ALL four applicable locations:
+   a) HPI — mentioned with clinical context (what was said about it, tolerability, response, dose stated)
+   b) Current Medications — listed with dose/route/frequency (if currently prescribed)
+   c) Assessment/Plan — as a numbered item with clinical reasoning, plan details, monitoring, and continuation decision
+   d) Care Plan — as a patient-actionable item
+
+   Scan the full transcript and medications_normalized list. For ANY medication with "current" status that was mentioned in the transcript — even briefly, even in a single sentence, even to simply confirm continuation — check all four locations. A medication present in medications_current but absent from the Assessment/Plan is a CRITICAL omission. A medication discussed in the transcript but absent from the HPI is a CRITICAL omission. Both require revision.
+
+   If ANY currently-prescribed or newly-started medication (GLP-1, testosterone, thyroid medication, antidepressant, supplement, hormone, etc.) is missing from any of its four required locations → flag as CRITICAL and add it to every missing location before returning the revised note.
 2. SYMPTOM OMISSIONS: Are all reported symptoms captured in the HPI? Secondary concerns must not be lost.
 3. SIDE EFFECT OMISSIONS: Were side effects or tolerability issues discussed but not documented?
 4. PRIOR TREATMENT OMISSIONS: Were prior medication trials or failed treatments mentioned but not captured?
