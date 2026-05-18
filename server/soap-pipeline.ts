@@ -444,7 +444,7 @@ async function generateSoapSections(
   const planClassification = `
 PLAN DECISION CLASSIFICATION:
 Explicitly decided (DO include in Plan): ${normalized.explicitly_decided_plan_items?.length ? normalized.explicitly_decided_plan_items.join("; ") : "none identified"}
-Discussed but not decided (mention in HPI/Assessment, do NOT put in Plan as decided): ${normalized.discussed_but_not_decided?.length ? normalized.discussed_but_not_decided.join("; ") : "none"}
+Discussed but not decided (MUST receive a numbered Assessment/Plan entry — write the clinical reasoning normally; qualify the Plan line as pending/under consideration, e.g. "Options discussed; patient to consider and follow up." Do NOT reduce to HPI-only): ${normalized.discussed_but_not_decided?.length ? normalized.discussed_but_not_decided.join("; ") : "none"}
 Clinically relevant follow-up considerations (for needs_clinician_review only): ${normalized.clinically_relevant_followup?.length ? normalized.clinically_relevant_followup.join("; ") : "none"}`;
 
   const hpiElements = normalized.enhanced_extraction?.hpi_chronological_elements?.length
@@ -620,9 +620,12 @@ SECTION 3 — PLAN REFLECTING ACTUAL DECISIONS + COUNSELING/SDM PRESERVATION
 The Plan must ONLY reflect what was actually decided during the visit. AND it must preserve the clinical counseling and shared decision-making that actually occurred — not collapse it into vague summary phrases.
 
 CRITICAL PLAN RULE — DECISION CLASSIFICATION:
-- Items in "explicitly_decided_plan_items" → include in the Plan as definitive orders/decisions
-- Items in "discussed_but_not_decided" → mention in the Assessment reasoning or HPI, but do NOT include as a decided plan action. Instead: "Patient to consider [X] and follow up when ready"
+- Items in "explicitly_decided_plan_items" → include in the Plan as a definitive order/decision with full specificity (drug name, dose, route, frequency, monitoring)
+- Items in "discussed_but_not_decided" → MUST still receive a NUMBERED ASSESSMENT/PLAN ENTRY. The distinction only affects how the Plan line is written — not whether the Assessment entry exists. Write the diagnosis and clinical reasoning as normal, then write the Plan line as pending/under consideration: "Options discussed; patient to consider [X] and follow up when ready" or "Further evaluation warranted; plan to be finalized at follow-up." Do NOT reduce these to HPI-only mentions. A problem discussed with the patient is a clinical problem that belongs in the Assessment, regardless of whether treatment was decided.
 - Items in "clinically_relevant_followup" → put in needs_clinician_review ONLY, never in the Plan
+
+SYMPTOM-TO-ASSESSMENT RULE — NON-NEGOTIABLE:
+Every significant symptom reported by the patient (fatigue, mood changes, low libido, sleep disturbance, weight changes, pain, cognitive symptoms, etc.) that drove clinical discussion during this encounter MUST appear as a numbered Assessment/Plan entry — not just in the HPI narrative. Symptoms that cluster around a known condition (e.g., fatigue + low libido + mood changes in a woman discussing hormone optimization) should be grouped under the most appropriate diagnosis. If no treatment was decided, the Assessment entry still exists with a Plan line reflecting the discussion and next steps. Symptoms documented only in the HPI with no corresponding Assessment entry represent an incomplete, medicolegally deficient note.
 
 Plan specifics:
 - Include drug name, dose, route, frequency for every medication
@@ -976,18 +979,20 @@ CHECK FOR:
    Scan the full transcript and medications_normalized list. For ANY medication with "current" status that was mentioned in the transcript — even briefly, even in a single sentence, even to simply confirm continuation — check all four locations. A medication present in medications_current but absent from the Assessment/Plan is a CRITICAL omission. A medication discussed in the transcript but absent from the HPI is a CRITICAL omission. Both require revision.
 
    If ANY currently-prescribed or newly-started medication (GLP-1, testosterone, thyroid medication, antidepressant, supplement, hormone, etc.) is missing from any of its four required locations → flag as CRITICAL and add it to every missing location before returning the revised note.
-2. SYMPTOM OMISSIONS: Are all reported symptoms captured in the HPI? Secondary concerns must not be lost.
-3. SIDE EFFECT OMISSIONS: Were side effects or tolerability issues discussed but not documented?
-4. PRIOR TREATMENT OMISSIONS: Were prior medication trials or failed treatments mentioned but not captured?
-5. DIAGNOSIS OMISSIONS: Are medication-implied conditions documented in PMH and Assessment?
-6. EDUCATION OMISSIONS: Was patient education provided but not documented in all three required places?
-7. PATIENT DECISION OMISSIONS: Did the patient state decisions/preferences that were not documented?
-8. CONTRADICTIONS: Does the note contradict any transcript facts? (e.g., "denies nausea" when patient reported nausea)
-9. TENSE ERRORS: Are recommended medications incorrectly presented as current medications?
-10. OVER-COMPRESSION: Does the HPI reduce a rich, multi-topic encounter to a brief summary? Is the HPI proportional to the visit depth?
-11. PREVENTATIVE SIGNALS LOST: Were clinically relevant "between the lines" clues identified in normalization but not reflected in the Assessment?
-12. RECOMMENDATION DUPLICATES: Does needs_clinician_review contain items that duplicate the explicit Plan?
-13. MISCLASSIFIED SUGGESTIONS: Does needs_clinician_review contain "SUGGESTED (awaiting clinician approval):" items for actions that were EXPLICITLY DISCUSSED AND DECIDED during the encounter? If the transcript and extraction show the provider and patient agreed to initiate/adjust/continue something, it must be in the Plan as a decided action, NOT in needs_clinician_review as a suggestion. Move it to the Plan and remove from needs_clinician_review.
+2. SYMPTOM-TO-ASSESSMENT OMISSIONS — CRITICAL: Are all significant symptoms reported by the patient captured not only in the HPI but ALSO in a numbered Assessment/Plan entry?
+   Symptoms that drove clinical discussion (fatigue, mood changes, low libido, sleep disturbance, weight changes, pain, brain fog, palpitations, etc.) MUST appear as numbered Assessment items — not just as narrative in the HPI. Symptom clusters that point to a known condition (fatigue + low libido + mood in a woman = likely female hormone deficiency/HSDD) should be grouped under the appropriate diagnosis with clinical reasoning. A Plan line of "Options discussed; patient to consider further" is acceptable when no treatment was decided — but the Assessment entry MUST exist. If significant symptoms appear in the HPI but have no corresponding numbered Assessment entry, flag as CRITICAL and add the Assessment item.
+3. SECONDARY CONCERN OMISSIONS: Are all secondary concerns discussed during the visit captured in the HPI and Assessment? Secondary concerns must not be lost.
+4. SIDE EFFECT OMISSIONS: Were side effects or tolerability issues discussed but not documented?
+5. PRIOR TREATMENT OMISSIONS: Were prior medication trials or failed treatments mentioned but not captured?
+6. DIAGNOSIS OMISSIONS: Are medication-implied conditions documented in PMH and Assessment?
+7. EDUCATION OMISSIONS: Was patient education provided but not documented in all three required places?
+8. PATIENT DECISION OMISSIONS: Did the patient state decisions/preferences that were not documented?
+9. CONTRADICTIONS: Does the note contradict any transcript facts? (e.g., "denies nausea" when patient reported nausea)
+10. TENSE ERRORS: Are recommended medications incorrectly presented as current medications?
+11. OVER-COMPRESSION: Does the HPI reduce a rich, multi-topic encounter to a brief summary? Is the HPI proportional to the visit depth?
+12. PREVENTATIVE SIGNALS LOST: Were clinically relevant "between the lines" clues identified in normalization but not reflected in the Assessment?
+13. RECOMMENDATION DUPLICATES: Does needs_clinician_review contain items that duplicate the explicit Plan?
+14. MISCLASSIFIED SUGGESTIONS: Does needs_clinician_review contain "SUGGESTED (awaiting clinician approval):" items for actions that were EXPLICITLY DISCUSSED AND DECIDED during the encounter? If the transcript and extraction show the provider and patient agreed to initiate/adjust/continue something, it must be in the Plan as a decided action, NOT in needs_clinician_review as a suggestion. Move it to the Plan and remove from needs_clinician_review.
 14. COUNSELING / SDM UNDER-DOCUMENTATION: When the transcript contains real counseling content (risks/benefits, side effects named, mechanism explained, titration schedule, administration instructions, alternatives discussed, rationale for the chosen option, return precautions, patient verbalized understanding/agreement) — does the SOAP note's relevant Assessment/Plan item actually preserve those specifics, or does it collapse them into vague phrases like "treatment discussed", "options reviewed", "patient interested", or a generic "risks and benefits discussed" without naming what was actually said? If under-documented, REVISE the affected numbered item by adding a "Counseling / Education:" sub-line (and a "Monitoring / Follow-up:" sub-line where applicable) that names the specific counseling points that occurred. Do NOT invent counseling content that is not in the transcript.
 15. MEDICATION INITIATION COUNSELING: For any medication being INITIATED at this visit (especially hormones, GLP-1s, controlled substances, injectables, chronic disease starts) — is the counseling that occurred in the transcript (contraindication review, side effect counseling, administration counseling, titration plan, safety/return precautions, patient consent/understanding) actually documented under that problem? If the transcript contains it and the note collapsed it, restore the specifics in a "Counseling / Education:" sub-line for that problem. Concise but specific — not theatrical.
 16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed alternatives or the patient stated a preference, the note must make the SDM visible: what was discussed, why the chosen option was selected, what the patient preferred, and the follow-up. If missing, add it concisely.
