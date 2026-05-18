@@ -890,6 +890,7 @@ Those are instructions to YOU — they are not part of the note content.
 ═══════════════════════════════════════
 WRITING RULES (apply while drafting — never include this header or these bullets in fullNote)
 ═══════════════════════════════════════
+- PLAIN TEXT ONLY — ABSOLUTELY NO MARKDOWN: Never use asterisks (*), double asterisks (**), underscores (_), pound signs (#), or any other markdown syntax anywhere in the note. This includes medication names, diagnosis headings, sub-section labels (Plan:, Counseling:, Monitoring:), and Assessment items. Everything is plain text. If you write **anything** with asterisks you have produced an invalid note.
 - Third person, past tense for Subjective, present for Assessment/Plan
 - Standard medical abbreviations
 - No redundancy
@@ -1040,8 +1041,8 @@ ${soapOutput.fullNote}
 NEEDS_CLINICIAN_REVIEW (check for duplicates of plan):
 ${JSON.stringify(soapOutput.needs_clinician_review)}
 
-TRANSCRIPT (full conversation — review the entire encounter, including later sections, before flagging diagnoses or findings as unsupported):
-${transcriptText.substring(0, 60000)}
+TRANSCRIPT (full conversation — review the entire encounter, including later sections, before flagging diagnoses or findings as unsupported; encounters may be 60-90 minutes long, review the entire text):
+${transcriptText.substring(0, 120000)}
 
 Review the note for quality issues. If critical/important issues are found, provide a corrected version.`;
 

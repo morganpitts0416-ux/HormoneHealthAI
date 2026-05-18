@@ -8407,7 +8407,7 @@ RULES:
   }
 
   // ── Shared helper: build historical patient context for AI note generation ──
-  // Pulls last 3 prior completed notes + chart meds + recent vitals.
+  // Pulls last 5 prior completed notes + chart data + recent vitals + recent labs.
   // Both generate-soap and generate-template-note use this.
   async function buildPatientHistoricalContext(
     patientId: number,
@@ -8417,22 +8417,22 @@ RULES:
   ): Promise<string> {
     const sections: string[] = [];
     try {
-      // 1. Prior encounter notes (last 3, excluding current, with a completed fullNote)
+      // 1. Prior encounter notes (last 5, excluding current, with a completed fullNote)
       const allEncounters = await storage.getEncountersByClinicianId(clinicianId, patientId, clinicId);
       const priorNotes = allEncounters
         .filter((e: any) => e.id !== currentEncounterId && (e.soapNote as any)?.fullNote)
-        .slice(0, 3);
+        .slice(0, 5);
       if (priorNotes.length > 0) {
         const noteLines = priorNotes.map((e: any, idx: number) => {
           const date = e.visitDate ? new Date(e.visitDate).toLocaleDateString() : "Unknown date";
           const type = e.visitType ?? "visit";
-          const noteText: string = ((e.soapNote as any)?.fullNote ?? "").slice(0, 2000);
-          return `--- Prior Note ${idx + 1} (${type}, ${date}) ---\n${noteText}${noteText.length >= 2000 ? "\n[note truncated]" : ""}`;
+          const noteText: string = ((e.soapNote as any)?.fullNote ?? "").slice(0, 4000);
+          return `--- Prior Note ${idx + 1} (${type}, ${date}) ---\n${noteText}${noteText.length >= 4000 ? "\n[note continues — truncated for context]" : ""}`;
         });
-        sections.push(`PRIOR VISIT NOTES (most recent first — use these to understand medication changes, dose adjustments, ongoing treatment plans, and prior clinical decisions; reference them when the current transcript alludes to prior visits):\n${noteLines.join("\n\n")}`);
+        sections.push(`PRIOR VISIT NOTES (most recent first — use these to understand medication history, dose adjustments, ongoing treatment plans, prior diagnoses, and clinical decisions made at prior visits; when the current transcript references prior visits or ongoing therapies, cross-reference here):\n${noteLines.join("\n\n")}`);
       }
 
-      // 2. Current medications & chart data
+      // 2. Current medications & full chart data
       const chart = await storage.getPatientChart(patientId, clinicianId);
       if (chart) {
         const chartLines: string[] = [];
@@ -8452,9 +8452,29 @@ RULES:
           sections.push(`PATIENT CHART DATA — USE THESE VERBATIM in the Medical History section of the note. Do NOT write "not reported" or "not mentioned" for any item listed here — these are the patient's documented chart items and must appear in the note exactly as listed:\n${chartLines.join("\n")}`);
       }
 
-      // 3. Recent vitals (last 3 readings)
+      // 3. Recent lab results (last 3 panels)
+      try {
+        const recentLabs = await storage.getLabResultsByPatient(patientId);
+        const labsToShow = recentLabs.slice(0, 3);
+        if (labsToShow.length > 0) {
+          const labLines = labsToShow.map((lab: any) => {
+            const date = lab.labDate ? new Date(lab.labDate).toLocaleDateString() : "Unknown date";
+            const vals = lab.labValues as Record<string, any> ?? {};
+            const notable: string[] = [];
+            for (const [key, val] of Object.entries(vals)) {
+              if (val !== null && val !== undefined && val !== "") notable.push(`${key}: ${val}`);
+            }
+            return `  ${date}: ${notable.slice(0, 30).join(" | ")}${notable.length > 30 ? " [additional values omitted]" : ""}`;
+          });
+          sections.push(`RECENT LAB RESULTS (most recent first — use for trend interpretation, monitoring, and clinical context; reference when current transcript discusses lab values or trends):\n${labLines.join("\n")}`);
+        }
+      } catch (labErr) {
+        console.warn("[HistoricalContext] Lab results fetch failed:", labErr);
+      }
+
+      // 4. Recent vitals (last 5 readings)
       const vitals = await storage.getPatientVitals(patientId, clinicianId);
-      const recentVitals = vitals.slice(0, 3);
+      const recentVitals = vitals.slice(0, 5);
       if (recentVitals.length > 0) {
         const vitalLines = recentVitals.map((v: any) => {
           const date = v.recordedAt ? new Date(v.recordedAt).toLocaleDateString() : "Unknown";
@@ -8467,13 +8487,13 @@ RULES:
           return parts.length ? `  ${date}: ${parts.join(" | ")}` : null;
         }).filter(Boolean);
         if (vitalLines.length)
-          sections.push(`RECENT VITALS:\n${vitalLines.join("\n")}`);
+          sections.push(`RECENT VITALS (most recent first):\n${vitalLines.join("\n")}`);
       }
     } catch (err) {
       console.warn("[HistoricalContext] Failed to build historical context:", err);
     }
     return sections.length
-      ? `PATIENT HISTORICAL CONTEXT (use this to interpret references to prior visits, past medication changes, and ongoing treatment; do NOT copy verbatim — integrate contextually as clinically appropriate):\n${sections.join("\n\n")}`
+      ? `PATIENT HISTORICAL CONTEXT — IMPORTANT: This is the patient's documented medical record. Use it to populate Medical History, Current Medications, and Family History verbatim. Use prior notes to understand ongoing treatments, prior decisions, and medication changes over time. Use recent labs for trend context. Do NOT write "not reported" for any item present here.\n\n${sections.join("\n\n")}`
       : "";
   }
 
