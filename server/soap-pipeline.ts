@@ -1145,17 +1145,26 @@ Plan: [...]
 [Continue for each diagnosis, grouped by clinical domain — hormonal together, metabolic together, etc.]
 
 CARE PLAN
-[Write this section as a patient-readable summary of what they need to do and know after this visit. It should be genuinely useful to the patient, not just a medication reprint. Structure it to answer: what am I starting/changing and why does it matter, what labs are being ordered and when should I get them, what symptoms should make me call before my next visit, what was decided today vs. what is still pending a decision.
+[Write this section as a patient-facing bulleted action list — what the patient needs to do, take, watch for, and follow up on after this visit. Every bullet is a concrete, actionable item written in plain language the patient can understand and act on.
 
-Format: a short paragraph or brief numbered list — whichever reads more naturally for this patient's complexity. Avoid bullet lists of raw medication names with no context. Include:
-- New medications/supplements being started, with a one-line rationale the patient can understand
-- Any dose changes and what to expect
-- Labs ordered with a timeframe ("bloodwork in 6 weeks")
-- Any pending decisions the patient is still considering
-- Red-flag symptoms to watch for and call about
-- Any lifestyle or dietary action items discussed
+FORMAT RULES — MANDATORY:
+- Use a dash (-) at the start of each bullet. No numbers, no paragraphs, no prose.
+- Each bullet = one clear action or instruction.
+- Write in second person ("Take your...", "Schedule a...", "Watch for...") or imperative ("Pause semaglutide injections...", "Get bloodwork...").
+- One topic per bullet — do not combine multiple instructions into one long run-on bullet.
 
-Keep it concise. This is a care summary, not a restatement of the entire Assessment/Plan.]
+CONTENT — include a bullet for each of the following that applies to this visit:
+- Each new medication or supplement being started: what it is, when/how to take it, and a one-line plain-language reason ("Start progesterone 100 mg by mouth at bedtime to help with sleep and hormone balance")
+- Each medication being paused, stopped, or changed: what changed and why in plain language
+- Labs ordered and when to get them ("Get bloodwork within the next 2 weeks")
+- Any referrals placed ("Schedule an appointment with a gastroenterologist")
+- Pending decisions the patient is still considering ("You are deciding whether to pursue X — let us know at your next visit")
+- Dietary or lifestyle actions discussed ("Trial a gluten-free diet over the summer pending GI guidance")
+- Red-flag symptoms to call about before the next appointment ("Call us if vomiting worsens or you develop severe abdominal pain")
+- Next appointment or follow-up timing ("Return in 2 weeks to reassess your response")
+
+Do NOT include bullets for medications that were discussed but are continuing unchanged with no patient action required — only include continuing medications if there is something specific the patient needs to do or know about them.
+Keep each bullet concise — one clear sentence per action.]
 
 FOLLOW-UP
 [Specific interval with clinical rationale]
@@ -1326,6 +1335,7 @@ STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
 
 - OPENING SYNTHESIS PARAGRAPH REQUIRED: The Assessment must begin with a 3-5 sentence paragraph synthesizing the clinical picture at the pattern level — connecting symptoms, labs, and treatment rationale. This is NOT a table of contents ("This patient has X, Y, Z diagnoses addressed below"). It is an independent clinical impression.
+- CARE PLAN MUST BE A BULLETED LIST: The Care Plan section must be formatted as a dash-prefixed bullet list (- bullet text). Never rewrite it as a paragraph or numbered list. Each bullet is one concrete, patient-facing action item written in plain language. If the Care Plan in the draft is in paragraph or numbered-list form, convert it to dash bullets before returning the revised note.
 - NO "Counseling / Education:" SUB-SECTIONS: Never add a "Counseling / Education:" or "Monitoring / Follow-up:" sub-section header under any numbered Assessment item. Education and counseling belong woven into the clinical reasoning paragraph as integrated clinical sentences.
 - NO BOILERPLATE CONSENT PHRASES: Never write "Patient verbalized understanding and consented," "Risks and benefits discussed," "Patient is agreeable," or "Education provided regarding [X]." These phrases must not appear anywhere in the revised note.
 - NUMBERED ITEMS GROUPED BY DOMAIN: Assessment items should follow the same topical grouping as the HPI — hormonal together, metabolic together, etc. Do not scatter related diagnoses randomly.
