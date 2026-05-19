@@ -650,6 +650,16 @@ ASSESSMENT RULES:
 - Inferred conditions with "strongly_implied" confidence: state directly, note the basis
 - Preventative medicine signals: woven into relevant items as clinical context, not listed as separate diagnoses
 
+LAB VALUE CITATION RULE — SPECIFICITY REQUIRED:
+When lab values are available in the lab context provided, cite them numerically in the clinical reasoning — not generically.
+
+CORRECT: "Free testosterone 0.8 pg/mL (goal 1.5–2.5 pg/mL) — below therapeutic range despite current dose"
+CORRECT: "TSH 3.8 mIU/L with fT3 2.4 pg/mL — fT3/fT4 ratio narrow at 0.31, suggesting suboptimal peripheral conversion"
+CORRECT: "LDL 142 mg/dL, ApoB 98 mg/dL — above target of <70 mg/dL given 10-year ASCVD risk"
+WRONG: "free testosterone was low" / "TSH was not at goal" / "LDL was elevated"
+
+If the lab context contains specific values, you must use those numbers. Do not describe a lab result in vague directional terms when the actual number is available to you.
+
 ═══════════════════════════════════════
 SECTION 3 — PLAN REFLECTING ACTUAL DECISIONS + COUNSELING/SDM PRESERVATION
 ═══════════════════════════════════════
@@ -662,6 +672,24 @@ CRITICAL PLAN RULE — DECISION CLASSIFICATION:
 
 SYMPTOM-TO-ASSESSMENT RULE — NON-NEGOTIABLE:
 Every significant symptom reported by the patient (fatigue, mood changes, low libido, sleep disturbance, weight changes, pain, cognitive symptoms, etc.) that drove clinical discussion during this encounter MUST appear as a numbered Assessment/Plan entry — not just in the HPI narrative. Symptoms that cluster around a known condition (e.g., fatigue + low libido + mood changes in a woman discussing hormone optimization) should be grouped under the most appropriate diagnosis. If no treatment was decided, the Assessment entry still exists with a Plan line reflecting the discussion and next steps. Symptoms documented only in the HPI with no corresponding Assessment entry represent an incomplete, medicolegally deficient note.
+
+MEDICATION CONTINUATION TRIAGE — WHEN TO CREATE AN ASSESSMENT ENTRY:
+Not every currently-prescribed medication needs its own numbered Assessment/Plan entry. Apply this rule:
+
+ASSESSMENT ENTRY REQUIRED — when any of these apply:
+- New prescription being initiated at this visit
+- Dose change, titration, or medication switch
+- Medication is the primary focus of the visit (the main reason the patient came)
+- Tolerability concern, side effect, or efficacy question was discussed
+- Labs ordered or reviewed specifically in relation to this medication
+- The underlying condition is being actively managed, reassessed, or newly diagnosed
+- Any hormone therapy in a hormone optimization visit (testosterone, estrogen, progesterone, thyroid) — these are the point of the visit even if unchanged
+- Any controlled substance renewed at this visit
+
+NO ASSESSMENT ENTRY NEEDED — simple continuation:
+- Medication mentioned in passing and acknowledged, no new clinical discussion
+- No change, no concern, no new decision, no relevant labs
+→ Current Medications list + brief HPI mention is sufficient. Do NOT generate a numbered item just to write "Continue [medication] — patient tolerating well."
 
 Plan specifics:
 - Include drug name, dose, route, frequency for every medication
@@ -704,18 +732,24 @@ FORBIDDEN ANYWHERE IN THE NOTE:
 ═══════════════════════════════════════
 SECTION 3C — MEDICATION-INITIATION VISITS (HORMONES, GLP-1s, CONTROLLED SUBSTANCES, INJECTABLES, CHRONIC DISEASE STARTS)
 ═══════════════════════════════════════
-When a medication is being INITIATED at this visit (especially testosterone, estrogen, progesterone, thyroid hormone, GLP-1s like semaglutide/tirzepatide/liraglutide, controlled substances, naltrexone/LDN, injectables, or any new chronic disease therapy), the note MUST explicitly preserve — when the transcript contains them — the following counseling elements for that medication:
+When a medication is being INITIATED at this visit (especially testosterone, estrogen, progesterone, thyroid hormone, GLP-1s like semaglutide/tirzepatide/liraglutide, controlled substances, naltrexone/LDN, injectables, or any new chronic disease therapy), the initiation counseling must be preserved in the clinical reasoning paragraph for that Assessment item — woven in naturally, not announced with a sub-section header.
 
-- Contraindication review (what was screened for / asked about)
-- Side effect counseling (the specific side effects named to the patient)
-- Administration counseling (injection technique, timing, storage, missed-dose handling)
-- Titration plan (starting dose → schedule of dose increases → target)
-- Safety precautions and return precautions (red-flag symptoms that should prompt a call)
-- Patient consent / verbalized understanding / agreement to start
+Elements to capture when present in the transcript — write them as integrated clinical sentences, not as a list:
+- Contraindication review: "screened for history of [X] before initiating"
+- Side effects named: write the actual side effects mentioned, not "side effects reviewed"
+- Administration: "instructed on injection technique / timing / storage"
+- Titration plan: "starting at [dose], advancing to [target] at [interval] if tolerated"
+- Return precautions: "instructed to call if [specific symptoms]"
+- Patient agreement: captured implicitly by the fact that a prescription was issued — do not add "patient verbalized understanding and agreed to start" as a standalone sentence
 
-Example — if a GLP-1 is being initiated and the transcript contains the conversation: the Counseling / Education sub-line for that problem must document the risk/benefit discussion, the titration schedule, the injection technique and timing, the named side effects (nausea, GI effects, gallbladder, pancreatitis warning, mood/appetite monitoring), and that the patient verbalized understanding and agreed to start. Do NOT reduce this to one sentence when the transcript contains the actual content.
+CORRECT format for a GLP-1 initiation:
+"Semaglutide 0.25 mg SQ weekly initiated for weight management given BMI [X] with [symptoms/comorbidities]. Counseled on expected GI side effects including nausea and constipation, importance of slow titration, and rare gallbladder/pancreatitis risk; instructed to inject in abdomen or thigh on the same day each week and call with severe abdominal pain or vomiting. Plan to advance to 0.5 mg at 4 weeks if tolerating well."
+Plan: Semaglutide 0.25 mg SQ weekly × 4 weeks, then 0.5 mg if tolerated. Follow up 4 weeks.
 
-If the transcript does NOT contain a given counseling element, do NOT invent it. Only document what is actually present.
+FORBIDDEN — do not create a separate sub-section:
+"Counseling / Education: Risks and benefits of semaglutide reviewed. Patient verbalized understanding and agreed to start."
+
+If the transcript does NOT contain a given counseling element, do NOT invent it. Only document what actually occurred.
 
 ═══════════════════════════════════════
 SECTION 4 — RECOMMENDATION DUPLICATE SUPPRESSION
@@ -818,6 +852,20 @@ If PATIENT HISTORICAL CONTEXT contains a "PATIENT CHART DATA" block, you MUST us
 - "Family History" chart items → Family Hx in the note
 If additional history is mentioned in the transcript, ADD it to the chart items — never replace them. Do NOT write "not reported," "not mentioned," or "none documented" for any section that has chart data.
 
+HISTORICAL TRAJECTORY — USE PRIOR NOTES AND LABS FOR TREND LANGUAGE:
+If PATIENT HISTORICAL CONTEXT contains prior notes, prior lab results, or prior vitals, use them to surface explicit trajectory language in the HPI and Assessment. Do not silently have this data and ignore it.
+
+Trajectory language to generate when data supports it:
+- Lab trends: "Free testosterone has increased from 0.4 → 0.8 → 1.2 pg/mL over the past three visits, approaching therapeutic range"
+- Weight: "Weight down 11 lbs since initiating tirzepatide in January" / "Weight stable over the past two visits"
+- Symptom trajectory: "Energy has progressively improved since thyroid optimization began in October" / "Sleep remains disrupted despite progesterone initiation at last visit — dose reassessment warranted"
+- Vitals: "Blood pressure trending down: 148/92 at last visit, 138/86 today — improvement on current regimen"
+- Lab normalization: "Vitamin D has normalized to 58 ng/mL from a baseline of 18 ng/mL six months ago"
+
+Format: weave trajectory naturally into the HPI narrative and Assessment reasoning — not as a separate "Historical Trends" section. One efficient sentence with the actual numbers is far more useful than a vague "patient has been making progress."
+
+Only generate trajectory language when you have actual prior data to cite. Do not invent trends or approximate values.
+
 MEDICATION-IMPLIED PMH — MANDATORY:
 Psychiatric/sleep medications → corresponding conditions in PMH and Assessment. See medication list for specific mappings.
 
@@ -890,7 +938,17 @@ Plan: [...]
 [Continue for each diagnosis, grouped by clinical domain — hormonal together, metabolic together, etc.]
 
 CARE PLAN
-[Patient-readable action list — specific, named, complete]
+[Write this section as a patient-readable summary of what they need to do and know after this visit. It should be genuinely useful to the patient, not just a medication reprint. Structure it to answer: what am I starting/changing and why does it matter, what labs are being ordered and when should I get them, what symptoms should make me call before my next visit, what was decided today vs. what is still pending a decision.
+
+Format: a short paragraph or brief numbered list — whichever reads more naturally for this patient's complexity. Avoid bullet lists of raw medication names with no context. Include:
+- New medications/supplements being started, with a one-line rationale the patient can understand
+- Any dose changes and what to expect
+- Labs ordered with a timeframe ("bloodwork in 6 weeks")
+- Any pending decisions the patient is still considering
+- Red-flag symptoms to watch for and call about
+- Any lifestyle or dietary action items discussed
+
+Keep it concise. This is a care summary, not a restatement of the entire Assessment/Plan.]
 
 FOLLOW-UP
 [Specific interval with clinical rationale]
@@ -1014,6 +1072,16 @@ CHECK FOR:
 15. COUNSELING AND SDM INTEGRATION: When the transcript contains specific counseling content (named side effects, titration steps reviewed, administration instructions, alternatives weighed, return precautions stated) — is this content preserved in the note? It should appear woven into the clinical reasoning paragraph for each affected Assessment item — NOT as a separate "Counseling / Education:" sub-line. If meaningful counseling content from the transcript is collapsed into a vague phrase ("risks and benefits discussed," "patient educated"), flag as important and integrate it naturally into the clinical reasoning. Do NOT add "Counseling / Education:" or "Monitoring / Follow-up:" sub-section headers — that format is forbidden.
 16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed options or the patient stated a preference, the note should make that visible through the specifics of the reasoning — what alternatives were considered, why the chosen option was selected, what the patient preferred. This belongs in the clinical reasoning paragraph, not in boilerplate consent language.
 17. ROS FORMAT COMPLIANCE: Is the Review of Systems rendered as the required 13-row two-column chart, with each of these systems on its own line in this exact order — Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic — each in "System Name: findings." format (colon required)? If the ROS was instead written as a paragraph, a comma-separated list, a bulleted list, a partial subset of systems, or any other format — REVISE the ROS section to the strict 13-row chart format. Use "Not addressed at this visit." for any system that was not discussed. Do NOT invent symptoms; preserve all documented positives and negatives. This rule applies to the ROS section ONLY — do NOT alter Assessment/Plan/HPI/Care Plan/Follow-up formatting.
+
+STYLE PRESERVATION — MANDATORY WHEN REVISING:
+If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
+
+- OPENING SYNTHESIS PARAGRAPH REQUIRED: The Assessment must begin with a 3-5 sentence paragraph synthesizing the clinical picture at the pattern level — connecting symptoms, labs, and treatment rationale. This is NOT a table of contents ("This patient has X, Y, Z diagnoses addressed below"). It is an independent clinical impression.
+- NO "Counseling / Education:" SUB-SECTIONS: Never add a "Counseling / Education:" or "Monitoring / Follow-up:" sub-section header under any numbered Assessment item. Education and counseling belong woven into the clinical reasoning paragraph as integrated clinical sentences.
+- NO BOILERPLATE CONSENT PHRASES: Never write "Patient verbalized understanding and consented," "Risks and benefits discussed," "Patient is agreeable," or "Education provided regarding [X]." These phrases must not appear anywhere in the revised note.
+- NUMBERED ITEMS GROUPED BY DOMAIN: Assessment items should follow the same topical grouping as the HPI — hormonal together, metabolic together, etc. Do not scatter related diagnoses randomly.
+- PLAIN TEXT ONLY: No asterisks, no markdown bold, no pound signs, no underscores anywhere in the note.
+- INTEGRATED INITIATION COUNSELING: For medications being initiated, write the counseling specifics (titration plan, named side effects, administration instructions) as natural sentences in the clinical reasoning paragraph — not as a separate sub-section.
 
 CRITICAL — DIAGNOSIS PRESERVATION:
 - Do NOT remove a diagnosis from the Assessment simply because you cannot find supporting dialogue in the transcript portion you can see. Long encounters discuss conditions throughout the visit; supporting evidence may appear anywhere in the conversation.

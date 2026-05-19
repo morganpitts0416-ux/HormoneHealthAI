@@ -9535,7 +9535,7 @@ HOW TO USE THE TEMPLATE:
             },
             {
               role: "user",
-              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete SOAP note now.`,
+              content: `${patientContext}\nVisit Type: ${encounter.visitType ?? "follow-up"}\nChief Complaint: ${encounter.chiefComplaint ?? "See template"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete SOAP note now.`,
             },
           ],
         });
@@ -9564,7 +9564,7 @@ HOW TO USE THE TEMPLATE:
             },
             {
               role: "user",
-              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete nursing note now.`,
+              content: `${patientContext}\nVisit: ${encounter.visitType ?? "clinical visit"}\n\nTRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete nursing note now.`,
             },
           ],
         });
@@ -9592,7 +9592,7 @@ HOW TO USE THE TEMPLATE:
             },
             {
               role: "user",
-              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 10000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete non-visit note now.`,
+              content: `${patientContext}\nContact Type: ${encounter.visitType ?? "non-visit contact"}\n\nNOTES / TRANSCRIPT:\n${transcriptText.slice(0, 100000)}${fieldsBlock}${instructionBlock}${vitalsPromptBlock}${standingBlock}\n\nGenerate the complete non-visit note now.`,
             },
           ],
         });
