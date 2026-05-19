@@ -29,6 +29,11 @@ interface PipelineInput {
   openai: OpenAI;
   patientName?: string;
   historicalContext?: string;
+  diagnosisBundles?: Array<{
+    title: string;
+    codes: { code: string; name: string }[];
+    aliases: string[];
+  }>;
 }
 
 interface PipelineOutput {
@@ -82,6 +87,12 @@ interface NormalizedExtraction {
     provider_reasoning: string;
   }>;
   clinically_relevant_followup: string[];
+  matched_bundles: Array<{
+    bundle_title: string;
+    matched_codes: string[];
+    confidence: "strong" | "moderate" | "weak";
+    rationale: string;
+  }>;
   enhanced_extraction: any;
 }
 
@@ -89,7 +100,8 @@ async function medicalNormalizationAndInference(
   openai: OpenAI,
   extraction: any,
   transcriptText: string,
-  diarized: any[]
+  diarized: any[],
+  diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>
 ): Promise<NormalizedExtraction> {
   const diarizedInput = diarized.length > 0
     ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
@@ -101,7 +113,7 @@ You receive:
 1. Structured clinical extraction (JSON) from a prior pipeline stage
 2. The original diarized transcript
 
-Your job has FOUR parts:
+Your job has FIVE parts:
 
 ═══════════════════════════════════════
 PART 1 — MEDICATION NORMALIZATION
@@ -380,6 +392,20 @@ For each symptom in "symptom_timeline", classify its causality:
 - confirmed: provider explicitly confirmed the diagnosis or causal relationship
 - unknown: insufficient information to classify
 
+═══════════════════════════════════════
+PART 5 — DIAGNOSIS BUNDLE MATCHING
+═══════════════════════════════════════
+If PROVIDER DIAGNOSIS BUNDLES are provided in the user message, evaluate whether the clinical pattern of this visit matches one or more of those bundles. A diagnosis bundle is a clinician-defined grouping of related diagnoses that together represent a unified clinical picture (e.g., "Early Hormone Transition" grouping HSDD, perimenopause, fatigue, and sleep disturbance).
+
+MATCHING CRITERIA:
+- STRONG: ≥ 2/3 of the bundle's component diagnoses are discussed explicitly with clinical depth (symptoms, labs, treatment decisions) AND the visit clearly revolves around this pattern as its central theme
+- MODERATE: The core diagnoses of the bundle are discussed but not all components, AND the provider's framing aligns with the bundle's clinical concept
+- WEAK: Some overlap but the visit's primary focus is on a different issue, or fewer than half the component diagnoses were substantively discussed
+
+If matched (strong or moderate): add to "matched_bundles" with bundle_title (exact title from the bundle list), matched_codes (only the codes from the bundle that were relevant to this visit), confidence, and rationale (one sentence: which diagnoses were discussed and why the bundle fits).
+If no match or weak confidence only: return empty "matched_bundles" array.
+If no PROVIDER DIAGNOSIS BUNDLES were provided in the user message: return empty "matched_bundles" array.
+
 RULE — CURRENT MEDICATIONS MENTIONED IN ANY CLINICAL CONTEXT:
 If a medication has status = "current" AND it was referenced in ANY clinical context during this encounter — including: dose stated, tolerability asked about, efficacy or weight discussed in its context, labs reviewed in relation to it, continuation confirmed, patient asked about it, side effects mentioned, refill discussed, or it was simply acknowledged as part of the ongoing plan of care — you MUST add it to "explicitly_decided_plan_items" using this format:
 "Continue [medication name] [dose] [route] [frequency] — reviewed and continued at this visit"
@@ -421,6 +447,14 @@ Return this exact JSON structure:
     }
   ],
   "clinically_relevant_followup": ["STATE D — clinically relevant items not discussed"],
+  "matched_bundles": [
+    {
+      "bundle_title": "exact title from the provider bundle list",
+      "matched_codes": ["ICD-10 codes from the bundle that were relevant to this visit"],
+      "confidence": "strong|moderate|weak",
+      "rationale": "one sentence: which diagnoses were discussed and why the bundle fits"
+    }
+  ],
   "enhanced_extraction": {
     "hpi_chronological_elements": ["ordered list of clinically relevant events/discussions as they occurred in the visit, for HPI reconstruction"],
     "patient_perspective_statements": ["direct or paraphrased patient statements that are medically relevant"],
@@ -430,8 +464,14 @@ Return this exact JSON structure:
   }
 }`;
 
+  const bundlesBlock = diagnosisBundles?.length
+    ? `\nPROVIDER DIAGNOSIS BUNDLES (evaluate for PART 5 pattern matching):\n${diagnosisBundles.map(b =>
+        `- "${b.title}": ${b.codes.map(c => `${c.code} (${c.name})`).join(", ")}${b.aliases?.length ? ` | keywords: ${b.aliases.join(", ")}` : ""}`
+      ).join('\n')}`
+    : "";
+
   const userPrompt = `STRUCTURED EXTRACTION (from prior pipeline stage):
-${JSON.stringify(extraction, null, 2)}
+${JSON.stringify(extraction, null, 2)}${bundlesBlock}
 
 TRANSCRIPT:
 ${diarizedInput}`;
@@ -461,6 +501,7 @@ ${diarizedInput}`;
     exploratory_discussions: result.exploratory_discussions ?? [],
     treatment_rationale: result.treatment_rationale ?? [],
     clinically_relevant_followup: result.clinically_relevant_followup ?? [],
+    matched_bundles: result.matched_bundles ?? [],
     enhanced_extraction: result.enhanced_extraction ?? {},
   };
 }
@@ -476,7 +517,8 @@ async function generateSoapSections(
   medicationContext: string,
   encounter: any,
   patientName?: string,
-  historicalContext?: string
+  historicalContext?: string,
+  diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>
 ): Promise<PipelineOutput> {
   const diarizedInput = diarized.length > 0
     ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
@@ -786,6 +828,37 @@ STATE C — EXPLORATORY DISCUSSION (conversational possibility, no near-term pla
 STATE D — CLINICALLY RELEVANT (not discussed, provider flag only):
 - Add to needs_clinician_review only, never in the note body
 - Prefix: "SUGGESTED (awaiting clinician approval): [specific recommendation with rationale]"
+
+═══════════════════════════════════════
+DIAGNOSIS BUNDLE CONSOLIDATION
+═══════════════════════════════════════
+The MATCHED DIAGNOSIS BUNDLES context above (when present) lists provider-defined clinical bundles that match this visit's pattern with strong or moderate confidence. A diagnosis bundle is a clinician-curated grouping of related diagnoses representing a unified clinical picture.
+
+WHEN ONE OR MORE MATCHED BUNDLES ARE LISTED (strong or moderate confidence):
+- Use the bundle title as the PRIMARY Assessment item header for all component diagnoses. Instead of numbering each diagnosis separately, group them under the single bundle header.
+- Format: "[Bundle Title] ([ICD-10 code1], [ICD-10 code2], ...)\n  [Provider-defined clinical bundle]"
+- Write a SINGLE unified clinical reasoning paragraph that narrates the full clinical picture — all component diagnoses, all supporting lab values, all symptoms, as one coherent story. Do not write separate paragraphs per diagnosis.
+- The Plan section under this one Assessment item covers ALL treatment decisions:
+  - STATE A items: list as definitive orders
+  - STATE B items: name the deferral reason and trigger
+  - STATE C items: omit from Plan (HPI only)
+- Do NOT also create separate numbered Assessment items for the component diagnoses — they are fully subsumed by the bundle item.
+- If additional diagnoses were discussed that are NOT part of the bundle, create separate numbered items for those in the normal format.
+
+EXAMPLE — before bundle consolidation (incorrect):
+1. Perimenopause (N95.1) — Clinical reasoning... Plan: estrogen deferred
+2. Female androgen insufficiency (E28.39) — Clinical reasoning... Plan: testosterone deferred
+3. Sleep-onset insomnia (G47.00) — Clinical reasoning... Plan: progesterone 100 mg QHS
+
+EXAMPLE — after bundle consolidation (correct):
+1. Early Hormone Transition (N95.1, E28.39, F52.0, G47.00)
+   [Provider-defined clinical bundle]
+   Patient presents with a constellation of early perimenopausal symptoms — disrupted sleep onset, low libido meeting HSDD criteria, fatigue, and mood instability — consistent with an early hormone transition pattern. Progesterone was initiated at this visit as the primary entry point for hormone therapy, targeting sleep and uterine protection. Estrogen was discussed in depth and deferred to a 2-week follow-up to assess progesterone efficacy and patient tolerance before layering a second hormone. Testosterone was reviewed as a later phase of the transition plan, deferred to a subsequent visit once the hormonal foundation is established.
+   Plan: Progesterone 100 mg PO QHS initiated. Return in 2 weeks to assess sleep response and tolerability; estrogen initiation to be determined at that visit. Testosterone deferred to a follow-up visit pending progesterone establishment and estrogen decision.
+
+WHEN NO MATCHED BUNDLES ARE PRESENT:
+- Use the standard Assessment format (one numbered item per diagnosis/condition).
+- This consolidation logic does not apply.
 
 ═══════════════════════════════════════
 SECTION 3 — PLAN REFLECTING ACTUAL DECISIONS + COUNSELING/SDM PRESERVATION
@@ -1142,9 +1215,15 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
   const historicalBlock = historicalContext
     ? `\n\n${historicalContext}`
     : "";
+  const bundleContext = normalized.matched_bundles?.filter(b => b.confidence !== "weak").length
+    ? `\nMATCHED DIAGNOSIS BUNDLES (apply DIAGNOSIS BUNDLE CONSOLIDATION rules for these — use bundle title as Assessment header, unify all component diagnoses under it):\n${normalized.matched_bundles.filter(b => b.confidence !== "weak").map(b =>
+        `- "${b.bundle_title}" [${b.confidence} match]: codes ${b.matched_codes.join(", ")} — ${b.rationale}`
+      ).join('\n')}`
+    : "";
+
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${bundleContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
 
 TRANSCRIPT:
 ${diarizedInput}
@@ -1350,14 +1429,17 @@ function buildExtractionSummary(extraction: any): string {
 }
 
 export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<PipelineOutput> {
-  const { openai, extraction, transcriptText, diarized, labContext, patternContext, medicationContext, encounter, historicalContext } = input;
+  const { openai, extraction, transcriptText, diarized, labContext, patternContext, medicationContext, encounter, historicalContext, diagnosisBundles } = input;
 
   console.log("[SOAP Pipeline] Step 3c: Medical normalization + context inference...");
   let normalized: NormalizedExtraction;
   try {
-    normalized = await medicalNormalizationAndInference(openai, extraction, transcriptText, diarized);
+    normalized = await medicalNormalizationAndInference(openai, extraction, transcriptText, diarized, diagnosisBundles);
     console.log(`[SOAP Pipeline] Normalization complete: ${normalized.medications_normalized.length} meds, ${normalized.conditions_inferred.length} conditions, ${normalized.preventative_signals.length} preventative signals`);
     console.log(`[SOAP Pipeline] Plan classification: ${normalized.explicitly_decided_plan_items.length} decided, ${normalized.discussed_but_not_decided.length} discussed, ${normalized.clinically_relevant_followup.length} follow-up`);
+    if (normalized.matched_bundles?.length) {
+      console.log(`[SOAP Pipeline] Diagnosis bundle matches: ${normalized.matched_bundles.map(b => `"${b.bundle_title}" (${b.confidence})`).join(", ")}`);
+    }
   } catch (err) {
     console.warn("[SOAP Pipeline] Normalization/inference failed, proceeding with extraction only:", err);
     normalized = {
@@ -1367,7 +1449,11 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
       symptom_timeline: [],
       explicitly_decided_plan_items: [],
       discussed_but_not_decided: [],
+      future_considerations: [],
+      exploratory_discussions: [],
+      treatment_rationale: [],
       clinically_relevant_followup: [],
+      matched_bundles: [],
       enhanced_extraction: {},
     };
   }
@@ -1377,7 +1463,7 @@ export async function runEnhancedSoapPipeline(input: PipelineInput): Promise<Pip
   try {
     soapOutput = await generateSoapSections(
       openai, extraction, normalized, transcriptText, diarized,
-      labContext, patternContext, medicationContext, encounter, input.patientName, historicalContext
+      labContext, patternContext, medicationContext, encounter, input.patientName, historicalContext, diagnosisBundles
     );
   } catch (err) {
     console.error("[SOAP Pipeline] SOAP generation failed:", err);

@@ -9154,6 +9154,20 @@ Return a JSON object:
         );
       }
 
+      // ── Load diagnosis bundles for bundle pattern matching (Stage 1 Part 5) ─
+      let diagnosisBundles: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }> = [];
+      if (clinicId) {
+        try {
+          diagnosisBundles = (await storage.getDiagnosisPresets(clinicId)).map(p => ({
+            title: p.title,
+            codes: Array.isArray(p.codes) ? p.codes : [],
+            aliases: Array.isArray(p.aliases) ? p.aliases : [],
+          }));
+        } catch (bundleErr) {
+          console.warn("[SOAP] Could not load diagnosis bundles, proceeding without:", bundleErr);
+        }
+      }
+
       // ── PIPELINE STEP 4+5: Enhanced multi-stage SOAP generation ─────────────
       // Uses the new enhanced pipeline: normalization+inference → section-specific generation → QA check
       let soapNote = await runEnhancedSoapPipeline({
@@ -9167,6 +9181,7 @@ Return a JSON object:
         openai,
         patientName,
         historicalContext,
+        diagnosisBundles,
       });
 
       // ── June refinement pass (post-processing) ────────────────────────────
