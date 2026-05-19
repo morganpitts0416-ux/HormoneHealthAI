@@ -754,6 +754,8 @@ The synthesis paragraph must:
 - Connect the patient's symptom pattern to the underlying hormonal, metabolic, or clinical picture
 - Name the key lab findings or clinical patterns driving decisions
 - State the treatment rationale at the pattern level (not just "starting testosterone because testosterone is low" — but WHY, in this patient's context)
+- Preserve chronology and causality — if symptoms evolved over time or were triggered by a prior event, the synthesis should reflect that sequence, not collapse it into a single static snapshot
+- Reflect diagnostic nuance and uncertainty when appropriate — if the diagnosis is evolving, if differential possibilities remain open, or if the clinical picture is not fully resolved, say so in the synthesis rather than projecting false certainty
 - Read like a clinician who has synthesized the full picture, not like an introduction to a list
 
 Example of the RIGHT synthesis voice:
@@ -765,10 +767,18 @@ Example of WRONG synthesis (table of contents, not synthesis):
 NUMBERED ASSESSMENT ITEMS — GROUPING RULE:
 Group related diagnoses together in logical clinical clusters, matching the HPI grouping. Do not alternate randomly between unrelated problems. Present hormonal issues together, metabolic issues together, etc. The Assessment should follow the same topical flow as the HPI.
 
+ANTI-FRAGMENTATION RULE — IMPORTANT:
+Do NOT create a separate numbered heading for every individual symptom or discussion point. Closely related symptoms, conditions, and concerns that share a clinical domain belong UNDER the same numbered item — not split into multiple numbered items. Over-fragmentation produces a note that reads like a charge sheet rather than clinical reasoning.
+- WRONG: separate numbered items for "Fatigue (R53.83)", "Low libido (F52.0)", and "Sleep disturbance (G47.00)" when all three are aspects of the same hormonal picture
+- RIGHT: one item — "Perimenopausal Hormonal Transition / HSDD (N95.1, F52.0, G47.00)" — with a unified reasoning paragraph covering all three
+- WRONG: a separate numbered item for every medication being continued if all belong to the same condition domain
+- RIGHT: medications continued for the same condition consolidated under one clinical item
+Do NOT over-fragment related conditions into isolated buckets. A note with 12 numbered items for a typical hormone visit is a sign of fragmentation, not thoroughness.
+
 Each numbered item format:
-- Diagnosis Name (ICD-10 code)
-- Clinical reasoning (2-3 sentences): WHY this diagnosis, what evidence supports it, how it connects to symptoms or labs
-- Plan: [specific orders — drug name, dose, route, frequency, labs ordered, referrals]
+- Diagnosis Name (ICD-10 code) — may include multiple codes when conditions are tightly related
+- Clinical reasoning (2-3 sentences): WHY this diagnosis, what evidence supports it (symptoms, labs, pattern), how it connects to this patient's presentation, and — when clinically appropriate — brief differential considerations ("this presentation is most consistent with X rather than Y given..."; "thyroid origin of fatigue was considered but fT3/TSH pattern is inconsistent")
+- Plan: [specific orders — drug name, dose, route, frequency, labs ordered, referrals, follow-up timing; future considerations if applicable — deferred options or next-phase decisions contingent on response or pending data]
 - Include monitoring targets and follow-up parameters only when specific and relevant — never as generic filler
 
 ASSESSMENT RULES:
@@ -1338,7 +1348,7 @@ If you are writing a revised_fullNote, the following style rules are non-negotia
 - CARE PLAN MUST BE A BULLETED LIST: The Care Plan section must be formatted as a dash-prefixed bullet list (- bullet text). Never rewrite it as a paragraph or numbered list. Each bullet is one concrete, patient-facing action item written in plain language. If the Care Plan in the draft is in paragraph or numbered-list form, convert it to dash bullets before returning the revised note.
 - NO "Counseling / Education:" SUB-SECTIONS: Never add a "Counseling / Education:" or "Monitoring / Follow-up:" sub-section header under any numbered Assessment item. Education and counseling belong woven into the clinical reasoning paragraph as integrated clinical sentences.
 - NO BOILERPLATE CONSENT PHRASES: Never write "Patient verbalized understanding and consented," "Risks and benefits discussed," "Patient is agreeable," or "Education provided regarding [X]." These phrases must not appear anywhere in the revised note.
-- NUMBERED ITEMS GROUPED BY DOMAIN: Assessment items should follow the same topical grouping as the HPI — hormonal together, metabolic together, etc. Do not scatter related diagnoses randomly.
+- NUMBERED ITEMS GROUPED BY DOMAIN: Assessment items should follow the same topical grouping as the HPI — hormonal together, metabolic together, etc. Do not scatter related diagnoses randomly. Do NOT split a consolidated multi-code Assessment item into separate numbered items during revision — if the original note grouped "Perimenopausal Hormonal Transition / HSDD (N95.1, F52.0, G47.00)" as one item, keep it as one item.
 - PLAIN TEXT ONLY: No asterisks, no markdown bold, no pound signs, no underscores anywhere in the note.
 - INTEGRATED INITIATION COUNSELING: For medications being initiated, write the counseling specifics (titration plan, named side effects, administration instructions) as natural sentences in the clinical reasoning paragraph — not as a separate sub-section.
 

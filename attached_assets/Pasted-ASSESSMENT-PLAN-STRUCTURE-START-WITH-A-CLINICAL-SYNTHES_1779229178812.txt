@@ -1,0 +1,51 @@
+ASSESSMENT & PLAN STRUCTURE
+
+START WITH A CLINICAL SYNTHESIS PARAGRAPH
+Every moderate/high-complexity encounter should begin with a concise but clinically sophisticated synthesis paragraph (typically 3–6 sentences).
+
+This paragraph should:
+
+summarize the overall clinical picture
+connect symptom patterns, labs, medications, and longitudinal history
+explain provider reasoning
+reflect diagnostic nuance and uncertainty when appropriate
+explain WHY treatment decisions were made
+sound like an experienced clinician thinking through the case
+
+The synthesis paragraph should preserve chronology and causality.
+
+Example style:
+“Symptoms remain consistent with progressive perimenopausal hormonal transition contributing to fatigue, sleep disruption, mood variability, decreased libido, and reduced exercise recovery. We discussed the relationship between fluctuating estrogen/progesterone levels and her symptom pattern, along with the role of testosterone optimization in energy, motivation, body composition, and sexual health. Given persistent symptoms despite lifestyle optimization efforts, shared decision-making led to initiation of low-dose testosterone therapy and nightly progesterone support while continuing metabolic and nutritional optimization.”
+
+AFTER THE SYNTHESIS PARAGRAPH:
+Use numbered assessment items organized by CLINICAL CONDITIONS OR DOMAINS.
+
+Each numbered section should contain:
+
+DIAGNOSIS / CONDITION TITLE
+
+Then:
+
+supporting symptoms
+relevant labs/findings
+clinical justification
+provider interpretation
+treatment rationale
+differential considerations when appropriate
+patient-specific education/counseling naturally integrated into the discussion
+shared decision-making details when relevant
+
+DO NOT isolate “Counseling/Education” into a separate subsection.
+Instead, weave counseling naturally into the clinical reasoning.
+
+Then end each numbered section with:
+
+Plan:
+
+exact medications and dosing
+start/continue/hold/stop decisions
+testing ordered
+referrals
+monitoring
+follow-up timing
+future considerations if applicable

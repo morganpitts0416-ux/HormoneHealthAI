@@ -1,0 +1,106 @@
+ASSESSMENT & PLAN STRUCTURE
+
+START WITH A CLINICAL SYNTHESIS PARAGRAPH
+Every moderate/high-complexity encounter should begin with a concise but clinically sophisticated synthesis paragraph (typically 3–6 sentences).
+
+This paragraph should:
+
+summarize the overall clinical picture
+connect symptom patterns, labs, medications, and longitudinal history
+explain provider reasoning
+reflect diagnostic nuance and uncertainty when appropriate
+explain WHY treatment decisions were made
+sound like an experienced clinician thinking through the case
+
+The synthesis paragraph should preserve chronology and causality.
+
+Example style:
+“Symptoms remain consistent with progressive perimenopausal hormonal transition contributing to fatigue, sleep disruption, mood variability, decreased libido, and reduced exercise recovery. We discussed the relationship between fluctuating estrogen/progesterone levels and her symptom pattern, along with the role of testosterone optimization in energy, motivation, body composition, and sexual health. Given persistent symptoms despite lifestyle optimization efforts, shared decision-making led to initiation of low-dose testosterone therapy and nightly progesterone support while continuing metabolic and nutritional optimization.”
+
+AFTER THE SYNTHESIS PARAGRAPH:
+Use numbered assessment items organized by CLINICAL CONDITIONS OR DOMAINS.
+
+Each numbered section should contain:
+
+DIAGNOSIS / CONDITION TITLE
+
+Then:
+
+supporting symptoms
+relevant labs/findings
+clinical justification
+provider interpretation
+treatment rationale
+differential considerations when appropriate
+patient-specific education/counseling naturally integrated into the discussion
+shared decision-making details when relevant
+
+DO NOT isolate “Counseling/Education” into a separate subsection.
+Instead, weave counseling naturally into the clinical reasoning.
+
+Then end each numbered section with:
+
+Plan:
+
+exact medications and dosing
+start/continue/hold/stop decisions
+testing ordered
+referrals
+monitoring
+follow-up timing
+future considerations if applicable
+
+EXAMPLE STRUCTURE:
+
+Perimenopausal Hormonal Transition / HSDD
+
+Patient reports progressive fatigue, sleep disruption, decreased libido, reduced exercise recovery, and mood variability consistent with early perimenopausal hormonal fluctuation. Lab findings and symptom progression support evolving hormonal transition despite preserved menstrual cycling. We discussed the role of testosterone in libido, motivation, muscle maintenance, and overall quality of life, along with the benefits of progesterone for sleep support and hormonal stabilization. Risks, expected response timeline, and dose-adjustment expectations were reviewed.
+
+Plan:
+
+Start testosterone cypionate 10 mg IM weekly
+Start progesterone 100 mg nightly
+Reassess symptom response in 2–4 weeks
+Repeat hormone labs in approximately 6–8 weeks depending on clinical response
+IMPORTANT ORGANIZATIONAL RULES
+Keep related symptoms together under the most clinically appropriate condition/domain
+Do NOT create separate diagnosis headings for every symptom or discussion point
+Do NOT over-fragment related conditions into isolated buckets
+Preserve all clinically relevant symptoms, diagnoses, medications, and decisions discussed during the encounter
+Differentiate clearly between:
+active decisions made today
+future considerations
+differential diagnoses
+exploratory discussion
+pending workup
+CAUSALITY & LONGITUDINAL REASONING
+
+Preserve temporal and clinical nuance.
+
+If symptoms pre-dated a medication, do NOT inaccurately label the medication as the sole cause. Instead use nuanced phrasing such as:
+
+“may be exacerbating”
+“temporally worsened following”
+“superimposed on chronic symptoms”
+“possibly contributing to”
+
+The note should reflect real clinical reasoning and longitudinal thinking rather than simplistic symptom-to-diagnosis mapping.
+
+GOAL
+
+The goal is:
+
+clinically intelligent documentation
+medicolegally complete documentation
+longitudinal reasoning
+realistic provider voice
+strong treatment rationale
+preservation of all clinically relevant details
+
+WITHOUT:
+
+excessive fragmentation
+repetitive filler language
+insurance-template formatting
+isolated counseling subsections
+over-diagnosing every conversational topic
