@@ -1,0 +1,29 @@
+Courtney presents with complex gastrointestinal symptoms likely exacerbated by her GLP-1 therapy, contributing to vomiting, diarrhea, and abdominal pain. These symptoms have worsened since the initiation of semaglutide, consistent with known gastric slowing effects of GLP-1 agonists. The decision was made to pause semaglutide therapy to observe for symptom resolution and reevaluation of her chronic gastrointestinal issues potentially linked to esophagitis and gallbladder dysfunction.
+
+1. Gastritis/Esophagitis (K21.9)
+
+Courtney has a prior history of esophagitis, with symptoms suggestive of potential esophageal involvement exacerbated by GLP-1 therapy. Plan to hold on semaglutide to observe for resolution of throat and stomach pain.
+
+Plan: Hold semaglutide 1 mg SQ. Monitor symptoms and reassess in follow-up.
+
+2. Chronic Diarrhea (K59.1) with history of constipation and bloating
+
+Courtney continues laxative therapy for constipation but now experiences exacerbation of diarrhea post-GLP-1. Discussed with GI to reassess causes and consider lower GI scoping.
+
+Plan: Provide GI referral. Monitor bowel habits. Consider gluten-free trial over summer pending GI recommendation.
+
+3. Potential Pancreatic Issue (K85.80)
+
+Pancreatic involvement to be ruled out due to pain and symptom cluster.
+
+Plan: Order pancreatic enzyme labs.
+
+4. Obesity (E66.9)
+
+Ongoing weight management strategy requiring realignment; discussed switching to tirzepatide with fewer GI side effects if needed post-evaluation.
+
+Plan: Deferred pending symptom stabilization and GI feedback.
+
+CARE PLAN
+Courtney should pause her semaglutide injections immediately to observe any improvement in her GI symptoms. She will continue her escitalopram, pantoprazole, and birth control as usual. A GI consult is scheduled to further evaluate her chronic symptoms, and she'll consider dietary changes if advised. We will monitor her pancreatic enzyme levels now and look further into gallbladder involvement should symptoms not resolve. She was informed about the possible better tolerability of tirzepatide for future GLP-1 trials if necessary.
+
