@@ -63,9 +63,24 @@ interface NormalizedExtraction {
     duration?: string;
     trajectory: "improving" | "stable" | "worsening" | "new" | "resolved" | "unknown";
     context?: string;
+    causality?: "pre_existing" | "medication_side_effect" | "temporally_associated" | "exacerbation_of_chronic" | "unrelated_coincidental" | "differential" | "confirmed" | "unknown";
   }>;
   explicitly_decided_plan_items: string[];
   discussed_but_not_decided: string[];
+  future_considerations: Array<{
+    item: string;
+    deferred_reason: string;
+    deferred_trigger: "next_visit" | "labs_pending" | "patient_consideration" | "specialist_evaluation" | "insurance_approval" | "condition_stabilization" | "symptom_progression" | "other";
+  }>;
+  exploratory_discussions: string[];
+  treatment_rationale: Array<{
+    treatment: string;
+    symptoms_addressed: string[];
+    diagnosis_pattern: string;
+    relevant_labs: string[];
+    prior_treatment_context: string;
+    provider_reasoning: string;
+  }>;
   clinically_relevant_followup: string[];
   enhanced_extraction: any;
 }
@@ -326,16 +341,44 @@ Only include signals grounded in the transcript. Do not fabricate.
 ═══════════════════════════════════════
 PART 4 — PLAN DECISION CLASSIFICATION
 ═══════════════════════════════════════
-This is CRITICAL for recommendation quality. Classify every discussed action item into exactly one of:
+This is CRITICAL for recommendation quality. Classify every discussed action item into exactly one of these four states:
 
-A. "explicitly_decided_plan_items" — The provider clearly and definitively committed to this action during the visit. The patient agreed or the provider stated it as a decision.
+STATE A — "explicitly_decided_plan_items": Provider clearly and definitively committed to this action. Patient agreed or provider stated it as a decision. → Add as a string to this array.
    Trigger phrases: "I'm going to start you on", "let's do", "we'll begin", "I'll order", "I'm prescribing", "continue current dose", "we decided to"
-   
-B. "discussed_but_not_decided" — The topic was discussed but no definitive commitment was made. The patient needs to think about it, or it's a future consideration.
-   Trigger phrases: "we could consider", "you might want to think about", "if you're interested", "we can discuss next time", "I'd like you to consider", "once you're ready"
-   
-C. "clinically_relevant_followup" — Items that were NOT discussed but are clinically relevant given the visit context. These are intelligent clinical additions a thoughtful provider might consider.
+
+STATE B — "discussed_but_not_decided": Topic was raised AND definitively deferred — a specific reason or trigger for deferral is identifiable. → Add as a string to "discussed_but_not_decided" AND as an object to "future_considerations" with deferred_reason and deferred_trigger.
+   Trigger phrases: "once labs come back", "we'll revisit at next visit", "if symptoms worsen", "once you decide", "pending specialist", "once insurance approves", "after we stabilize X first", "come back and we'll discuss"
+   Deferred trigger values: next_visit | labs_pending | patient_consideration | specialist_evaluation | insurance_approval | condition_stabilization | symptom_progression | other
+
+STATE C — "exploratory_discussions": Theoretical or speculative discussion — possibilities floated conversationally with no near-term commitment or specific deferral trigger. → Add to "exploratory_discussions" ONLY. Do NOT add to discussed_but_not_decided.
+   Trigger phrases: "someday we might think about", "just so you're aware that option exists", "theoretically we could", conversational musings about distant future possibilities with no specific plan
+
+STATE D — "clinically_relevant_followup": Items NOT discussed but clinically relevant given context. → Add to this array only. Never appears in Plan.
    Examples: Preventative screenings suggested by age/risk, monitoring implied by medication class, follow-up labs implied by treatment changes
+
+═══════════════════════════════════════
+PART 4B — TREATMENT RATIONALE EXTRACTION
+═══════════════════════════════════════
+For each STATE A treatment being INITIATED or CHANGED at this visit, and for each STATE B item discussed with clinical depth, extract the full treatment rationale into "treatment_rationale":
+- treatment: the medication or intervention name
+- symptoms_addressed: list of specific symptoms or complaints this treatment directly addresses
+- diagnosis_pattern: the underlying diagnosis or clinical pattern driving the decision
+- relevant_labs: specific lab values or findings supporting the choice (e.g., "Free T 0.8 pg/mL below therapeutic range")
+- prior_treatment_context: any prior treatment failures, intolerances, or alternatives that were considered and rejected (empty string if none)
+- provider_reasoning: the provider's stated rationale extracted verbatim or as close paraphrase from the transcript — WHY this treatment, WHY this dose, WHY now
+
+═══════════════════════════════════════
+PART 4C — SYMPTOM CAUSALITY CLASSIFICATION
+═══════════════════════════════════════
+For each symptom in "symptom_timeline", classify its causality:
+- pre_existing: symptom/condition was present before any medication or treatment mentioned in this visit
+- medication_side_effect: provider or patient directly and explicitly attributes the symptom to a specific medication
+- temporally_associated: symptom onset correlates with medication start but causality is NOT confirmed by provider
+- exacerbation_of_chronic: worsening of a known pre-existing condition (the underlying condition is not new)
+- unrelated_coincidental: provider explicitly notes it is likely unrelated to current treatments
+- differential: named as a possible cause under consideration but not confirmed
+- confirmed: provider explicitly confirmed the diagnosis or causal relationship
+- unknown: insufficient information to classify
 
 RULE — CURRENT MEDICATIONS MENTIONED IN ANY CLINICAL CONTEXT:
 If a medication has status = "current" AND it was referenced in ANY clinical context during this encounter — including: dose stated, tolerability asked about, efficacy or weight discussed in its context, labs reviewed in relation to it, continuation confirmed, patient asked about it, side effects mentioned, refill discussed, or it was simply acknowledged as part of the ongoing plan of care — you MUST add it to "explicitly_decided_plan_items" using this format:
@@ -351,14 +394,33 @@ Return this exact JSON structure:
     {
       "symptom": "string",
       "onset": "string or null",
-      "duration": "string or null", 
+      "duration": "string or null",
       "trajectory": "improving|stable|worsening|new|resolved|unknown",
-      "context": "relevant context"
+      "context": "relevant context",
+      "causality": "pre_existing|medication_side_effect|temporally_associated|exacerbation_of_chronic|unrelated_coincidental|differential|confirmed|unknown"
     }
   ],
-  "explicitly_decided_plan_items": ["list of plan items the provider definitively committed to"],
-  "discussed_but_not_decided": ["list of items discussed but not finalized"],
-  "clinically_relevant_followup": ["list of clinically relevant considerations not explicitly discussed"],
+  "explicitly_decided_plan_items": ["STATE A — list of plan items the provider definitively committed to"],
+  "discussed_but_not_decided": ["STATE B — list of items discussed but definitively deferred (also populate future_considerations)"],
+  "future_considerations": [
+    {
+      "item": "what was discussed",
+      "deferred_reason": "specific reason for deferral in plain language",
+      "deferred_trigger": "next_visit|labs_pending|patient_consideration|specialist_evaluation|insurance_approval|condition_stabilization|symptom_progression|other"
+    }
+  ],
+  "exploratory_discussions": ["STATE C — conversational/theoretical possibilities with no near-term plan"],
+  "treatment_rationale": [
+    {
+      "treatment": "medication or intervention name",
+      "symptoms_addressed": ["symptom1", "symptom2"],
+      "diagnosis_pattern": "underlying diagnosis or clinical pattern",
+      "relevant_labs": ["specific lab value or finding supporting the decision"],
+      "prior_treatment_context": "prior failures, intolerances, alternatives considered — or empty string",
+      "provider_reasoning": "provider's stated rationale extracted from transcript"
+    }
+  ],
+  "clinically_relevant_followup": ["STATE D — clinically relevant items not discussed"],
   "enhanced_extraction": {
     "hpi_chronological_elements": ["ordered list of clinically relevant events/discussions as they occurred in the visit, for HPI reconstruction"],
     "patient_perspective_statements": ["direct or paraphrased patient statements that are medically relevant"],
@@ -395,6 +457,9 @@ ${diarizedInput}`;
     symptom_timeline: result.symptom_timeline ?? [],
     explicitly_decided_plan_items: result.explicitly_decided_plan_items ?? [],
     discussed_but_not_decided: result.discussed_but_not_decided ?? [],
+    future_considerations: result.future_considerations ?? [],
+    exploratory_discussions: result.exploratory_discussions ?? [],
+    treatment_rationale: result.treatment_rationale ?? [],
     clinically_relevant_followup: result.clinically_relevant_followup ?? [],
     enhanced_extraction: result.enhanced_extraction ?? {},
   };
@@ -437,15 +502,32 @@ async function generateSoapSections(
 
   const symptomTimelineContext = normalized.symptom_timeline.length
     ? `\nSYMPTOM TIMELINE:\n${normalized.symptom_timeline.map(s =>
-        `- ${s.symptom} [${s.trajectory}]${s.onset ? ` onset: ${s.onset}` : ""}${s.duration ? ` duration: ${s.duration}` : ""}${s.context ? ` — ${s.context}` : ""}`
+        `- ${s.symptom} [${s.trajectory}${s.causality ? ` / causality:${s.causality}` : ""}]${s.onset ? ` onset: ${s.onset}` : ""}${s.duration ? ` duration: ${s.duration}` : ""}${s.context ? ` — ${s.context}` : ""}`
+      ).join('\n')}`
+    : "";
+
+  const futureConsiderationsContext = normalized.future_considerations?.length
+    ? `\nFUTURE CONSIDERATIONS (STATE B — deferred with specific trigger; MUST receive a numbered Assessment/Plan entry; Plan line must name the deferral reason):\n${normalized.future_considerations.map(f =>
+        `- ${f.item} | deferred because: ${f.deferred_reason} | trigger type: ${f.deferred_trigger}`
+      ).join('\n')}`
+    : "";
+
+  const exploratoryContext = normalized.exploratory_discussions?.length
+    ? `\nEXPLORATORY DISCUSSIONS (STATE C — conversational possibilities only; do NOT create Assessment entries or needs_clinician_review items; brief HPI mention is acceptable if clinically relevant):\n${normalized.exploratory_discussions.map(e => `- ${e}`).join('\n')}`
+    : "";
+
+  const treatmentRationaleContext = normalized.treatment_rationale?.length
+    ? `\nTREATMENT RATIONALE (use to build the clinical reasoning paragraph for each Assessment item — these are the WHY behind each treatment decision):\n${normalized.treatment_rationale.map(t =>
+        `- ${t.treatment}:\n    Symptoms addressed: ${t.symptoms_addressed.join(", ") || "not specified"}\n    Diagnosis/pattern: ${t.diagnosis_pattern || "not specified"}\n    Supporting labs: ${t.relevant_labs.join(", ") || "none cited"}\n    Prior treatment context: ${t.prior_treatment_context || "none"}\n    Provider reasoning: ${t.provider_reasoning || "not captured"}`
       ).join('\n')}`
     : "";
 
   const planClassification = `
-PLAN DECISION CLASSIFICATION:
-Explicitly decided (DO include in Plan): ${normalized.explicitly_decided_plan_items?.length ? normalized.explicitly_decided_plan_items.join("; ") : "none identified"}
-Discussed but not decided (MUST receive a numbered Assessment/Plan entry — write the clinical reasoning normally; qualify the Plan line as pending/under consideration, e.g. "Options discussed; patient to consider and follow up." Do NOT reduce to HPI-only): ${normalized.discussed_but_not_decided?.length ? normalized.discussed_but_not_decided.join("; ") : "none"}
-Clinically relevant follow-up considerations (for needs_clinician_review only): ${normalized.clinically_relevant_followup?.length ? normalized.clinically_relevant_followup.join("; ") : "none"}`;
+PLAN DECISION CLASSIFICATION (use these states to determine note language — see DECISION-STATE DOCUMENTATION LANGUAGE rules):
+STATE A — Explicitly decided (include in Plan as definitive order): ${normalized.explicitly_decided_plan_items?.length ? normalized.explicitly_decided_plan_items.join("; ") : "none identified"}
+STATE B — Future consideration (MUST receive a numbered Assessment/Plan entry; Plan line must reflect the specific deferral reason and trigger): ${normalized.discussed_but_not_decided?.length ? normalized.discussed_but_not_decided.join("; ") : "none"}
+STATE C — Exploratory discussion (do NOT create Assessment entries; brief HPI mention only if relevant): ${normalized.exploratory_discussions?.length ? normalized.exploratory_discussions.join("; ") : "none"}
+STATE D — Clinically relevant follow-up (for needs_clinician_review only; never in Plan): ${normalized.clinically_relevant_followup?.length ? normalized.clinically_relevant_followup.join("; ") : "none"}`;
 
   const hpiElements = normalized.enhanced_extraction?.hpi_chronological_elements?.length
     ? `\nHPI CHRONOLOGICAL ELEMENTS (use these to reconstruct the clinical story in order):\n${normalized.enhanced_extraction.hpi_chronological_elements.map((e: string, i: number) => `${i + 1}. ${e}`).join('\n')}`
@@ -659,6 +741,51 @@ CORRECT: "LDL 142 mg/dL, ApoB 98 mg/dL — above target of <70 mg/dL given 10-ye
 WRONG: "free testosterone was low" / "TSH was not at goal" / "LDL was elevated"
 
 If the lab context contains specific values, you must use those numbers. Do not describe a lab result in vague directional terms when the actual number is available to you.
+
+═══════════════════════════════════════
+TREATMENT RATIONALE LINKING — REQUIRED FOR ALL NEW TREATMENTS AND DOSE CHANGES
+═══════════════════════════════════════
+When a treatment is being INITIATED or CHANGED at this visit, the clinical reasoning paragraph for that Assessment item MUST explicitly link ALL of the following elements that are available:
+
+1. SYMPTOMS → name the specific symptoms this treatment addresses ("persistent fatigue, low libido, and cognitive slowing")
+2. DIAGNOSIS/PATTERN → state the clinical pattern being treated ("female androgen insufficiency")
+3. SUPPORTING LABS → cite the specific values driving the decision ("Free testosterone 0.8 pg/mL, below our target of 1.5–2.5 pg/mL")
+4. PRIOR TREATMENT CONTEXT → if relevant, name what was tried before ("previously trialed topical testosterone cream with inadequate absorption and subtherapeutic levels")
+5. PROVIDER REASONING → state WHY this specific treatment, dose, or approach ("initiated injectable form to improve dose predictability and bioavailability")
+
+The TREATMENT RATIONALE data extracted by Stage 1 provides this structured information — use it to build the clinical reasoning paragraph. Do not write a generic "testosterone initiated for low testosterone" sentence when you have the provider's actual reasoning available.
+
+EXAMPLE OF COMPLETE TREATMENT RATIONALE:
+"Semaglutide 0.25 mg SQ weekly initiated for obesity management (BMI 34.2) in the setting of fatigue, cravings, and metabolic dysregulation. Fasting insulin 22 mIU/L with HOMA-IR 4.8 and A1c 5.9% confirm insulin resistance as the primary driver. Patient previously attempted caloric restriction with a 6-lb loss over 6 months, plateauing without further progress. GLP-1 initiated to target the insulin resistance mechanism directly, with expectation of improved satiety, glycemic stabilization, and progressive weight loss."
+
+If the TREATMENT RATIONALE context block above contains extracted rationale for this treatment, use it. If it does not, infer from the transcript. If neither is available, document with whatever specificity the transcript allows — but never reduce a treatment initiation to a single generic sentence.
+
+═══════════════════════════════════════
+DECISION-STATE DOCUMENTATION LANGUAGE
+═══════════════════════════════════════
+The PLAN DECISION CLASSIFICATION above assigns each treatment to a state. Use these language patterns based on state:
+
+STATE A — INITIATED TODAY (provider and patient committed):
+- Use definitive, present-tense treatment language in the Plan: "[Drug] [dose] [route] [frequency] initiated/continued/adjusted"
+- Clinical reasoning states the treatment as a decided course of action
+- Do NOT hedge with "may consider" or "could potentially"
+
+STATE B — FUTURE CONSIDERATION (deferred with specific trigger):
+- Assessment entry EXISTS with full clinical reasoning (why this treatment warrants consideration for this patient)
+- Plan line reflects the specific deferral: "Deferred pending [specific trigger]; patient to return for further discussion once [condition]. Will reassess at [timeframe]."
+- Do NOT write "patient declined" unless the patient explicitly declined
+- Do NOT write "options discussed" as the only Plan line — name what the options are and why they were deferred
+- Name the specific trigger: "pending DEXA results before initiating bisphosphonate", "patient considering and will follow up", "deferred pending insurance authorization"
+
+STATE C — EXPLORATORY DISCUSSION (conversational possibility, no near-term plan):
+- Brief mention in HPI narrative only, if clinically relevant: "Future hormonal pellet therapy was discussed in passing as a long-term option"
+- Do NOT create a numbered Assessment entry
+- Do NOT add to needs_clinician_review as a clinical recommendation
+- One clause in the HPI is sufficient — do not elevate to a clinical plan item
+
+STATE D — CLINICALLY RELEVANT (not discussed, provider flag only):
+- Add to needs_clinician_review only, never in the note body
+- Prefix: "SUGGESTED (awaiting clinician approval): [specific recommendation with rationale]"
 
 ═══════════════════════════════════════
 SECTION 3 — PLAN REFLECTING ACTUAL DECISIONS + COUNSELING/SDM PRESERVATION
@@ -973,6 +1100,38 @@ WRITING RULES (apply while drafting — never include this header or these bulle
 - Integrate lab values naturally into narrative
 
 ═══════════════════════════════════════
+CAUSALITY & TEMPORAL REASONING (apply throughout — HPI, Assessment, Plan)
+═══════════════════════════════════════
+Distinguish carefully between confirmed causation, temporal association, and coincidence. The SYMPTOM TIMELINE above includes causality classifications for each symptom — use them to guide language.
+
+CAUSALITY LANGUAGE GUIDE:
+
+pre_existing: "she has had [symptom] for [duration], predating any current treatment" / "a pre-existing condition, present prior to initiating [medication]"
+
+medication_side_effect (provider explicitly attributed): "[Medication] was identified as the likely cause of [symptom]" / "patient reports [symptom] consistent with known [medication] side effects, as confirmed by provider"
+
+temporally_associated (onset correlates but NOT confirmed): "she reports [symptom] that appeared approximately [timeframe] after initiating [medication], though causality has not been established" / "[symptom] appears to have worsened temporally with [medication] initiation — may be contributing"
+
+exacerbation_of_chronic: "[symptom] represents worsening of her underlying [condition], superimposed on chronic baseline" / "[condition] exacerbated in the setting of [context]"
+
+unrelated_coincidental (provider explicitly noted): "provider noted this finding is likely unrelated to current hormonal therapy" / "considered incidental given clinical context"
+
+differential (possible cause, not confirmed): "[medication] may be contributing to [symptom]; differential includes [alternative causes]" / "temporally associated — cannot exclude [medication] as a contributing factor, though [alternative] also possible"
+
+confirmed: "[symptom] confirmed as [diagnosis] by [finding/test]" / "provider confirmed [causal relationship]"
+
+FORBIDDEN CAUSAL LANGUAGE — do not use:
+- "caused by [medication]" unless provider explicitly confirmed causation
+- "[Medication] is causing [symptom]" — only if provider stated this directly
+- Attributing a pre-existing symptom to a newly initiated medication unless the transcript explicitly supports it
+- Stating a diagnosis as confirmed when the provider expressed uncertainty or is still investigating
+
+PREFERRED OVER-ATTRIBUTION GUARDRAILS:
+- If a patient reports a symptom that started before a medication was initiated → do not attribute the symptom to the medication
+- If a patient reports a symptom that may or may not be medication-related → use "appears to worsen", "may be contributing to", "temporally associated with", "superimposed on"
+- If a provider hedged with "it could be the [medication]" → write "may be contributing" not "is causing"
+
+═══════════════════════════════════════
 PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this header in fullNote)
 ═══════════════════════════════════════
 - The PATIENT is the person being treated. Their name will be provided below. Use ONLY the patient's name (or "patient"/"she"/"he") when referring to the person receiving care.
@@ -985,7 +1144,7 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
     : "";
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
-Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
+Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
 
 TRANSCRIPT:
 ${diarizedInput}
@@ -1072,6 +1231,8 @@ CHECK FOR:
 15. COUNSELING AND SDM INTEGRATION: When the transcript contains specific counseling content (named side effects, titration steps reviewed, administration instructions, alternatives weighed, return precautions stated) — is this content preserved in the note? It should appear woven into the clinical reasoning paragraph for each affected Assessment item — NOT as a separate "Counseling / Education:" sub-line. If meaningful counseling content from the transcript is collapsed into a vague phrase ("risks and benefits discussed," "patient educated"), flag as important and integrate it naturally into the clinical reasoning. Do NOT add "Counseling / Education:" or "Monitoring / Follow-up:" sub-section headers — that format is forbidden.
 16. SHARED DECISION-MAKING VISIBILITY: When the transcript shows the patient and provider weighed options or the patient stated a preference, the note should make that visible through the specifics of the reasoning — what alternatives were considered, why the chosen option was selected, what the patient preferred. This belongs in the clinical reasoning paragraph, not in boilerplate consent language.
 17. ROS FORMAT COMPLIANCE: Is the Review of Systems rendered as the required 13-row two-column chart, with each of these systems on its own line in this exact order — Constitutional, HEENT, Cardiovascular, Respiratory, Gastrointestinal, Genitourinary, Musculoskeletal, Skin, Neurological, Psychiatric, Endocrine, Hematologic/Lymphatic, Allergic/Immunologic — each in "System Name: findings." format (colon required)? If the ROS was instead written as a paragraph, a comma-separated list, a bulleted list, a partial subset of systems, or any other format — REVISE the ROS section to the strict 13-row chart format. Use "Not addressed at this visit." for any system that was not discussed. Do NOT invent symptoms; preserve all documented positives and negatives. This rule applies to the ROS section ONLY — do NOT alter Assessment/Plan/HPI/Care Plan/Follow-up formatting.
+18. TREATMENT RATIONALE COMPLETENESS: For each new medication initiated or dose changed at this visit — does the Assessment item's clinical reasoning paragraph explicitly connect: (a) the specific symptoms it addresses, (b) the diagnosis or clinical pattern driving the decision, (c) relevant lab values or findings (cited numerically if available), and (d) the provider's reasoning for choosing this treatment at this dose? A reasoning paragraph that only says "testosterone initiated for low testosterone levels" when specific symptoms, labs, and provider reasoning are present in the transcript is an important omission. If the rationale is present in the transcript but not reflected in the note, revise the clinical reasoning paragraph to include it.
+19. CAUSAL LANGUAGE ACCURACY: Does the note correctly distinguish confirmed causation from temporal association and coincidence? Specifically: (a) are symptoms that pre-date a medication incorrectly attributed to that medication? (b) does the note say a medication "is causing" a symptom when the provider only expressed uncertainty or possibility? (c) are temporally associated symptoms described without appropriate hedging language ("appears to worsen," "may be contributing," "temporally associated with")? If the note makes overconfident causal claims unsupported by the transcript, flag as important and revise to use nuanced causal language matching the provider's actual certainty level.
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
