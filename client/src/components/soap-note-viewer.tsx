@@ -15,6 +15,15 @@ const ROS_SYSTEMS = new Set([
   "hematologic/lymphatic", "allergic/immunologic",
 ]);
 
+const PE_HEADER = /^Physical Examination\s*:?\s*$/i;
+const PE_SYSTEMS_SET = new Set([
+  "general appearance", "head", "eyes", "ent", "neck", "cardiovascular",
+  "respiratory", "abdomen", "musculoskeletal", "neurological", "skin",
+  "psychiatric", "lymphatic",
+]);
+const PE_NOT_EXAMINED = /^not examined$/i;
+const PE_NOT_PERFORMED = /not\s+(performed|completed|done|conducted)/i;
+
 const guidelineClassBadge: Record<string, string> = {
   "I":   "bg-emerald-50 border-emerald-200 text-emerald-800",
   "IIa": "bg-blue-50 border-blue-200 text-blue-800",
@@ -263,8 +272,66 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
       // No system rows followed — fall through to default rendering.
     }
 
+    // Detect Physical Examination header (manual builder chart-mode output).
+    if (PE_HEADER.test(trimmed)) {
+      const rows: { system: string; findings: string }[] = [];
+      let j = i + 1;
+      while (j < lines.length) {
+        const rawNext = lines[j];
+        const next = rawNext.trim();
+        if (!next) { j++; continue; }
+        if (MAJOR_SECTIONS.test(next)) break;
+        const m = next.match(SUB_LABEL);
+        if (!m) break;
+        const sysName = m[1].trim();
+        if (!PE_SYSTEMS_SET.has(sysName.toLowerCase())) break;
+        rows.push({ system: sysName, findings: m[2].trim() });
+        j++;
+      }
+      if (rows.length > 0) {
+        const displayRows = rows.filter(r => !PE_NOT_EXAMINED.test(r.findings));
+        if (displayRows.length > 0) {
+          nodes.push(
+            <p key={`${i}-pe-label`} className="soap-body">
+              <span className="soap-label">Physical Examination</span>
+            </p>
+          );
+          nodes.push(
+            <div
+              key={`${i}-pe-grid`}
+              className="soap-ros-grid grid grid-cols-[minmax(140px,180px)_1fr] gap-x-3 gap-y-1.5 my-1.5 border border-border/50 rounded-md overflow-hidden"
+              data-testid="pe-chart"
+            >
+              {displayRows.map((r, ri) => (
+                <div key={`pe-row-${ri}`} className="contents">
+                  <div
+                    className={`soap-label text-xs px-2.5 py-1.5 bg-muted/30 ${ri < displayRows.length - 1 ? "border-b border-border/40" : ""}`}
+                    data-testid={`pe-system-${r.system.toLowerCase().replace(/[^a-z]+/g, "-")}`}
+                  >
+                    {r.system}
+                  </div>
+                  <div
+                    className={`text-xs px-2.5 py-1.5 ${ri < displayRows.length - 1 ? "border-b border-border/40" : ""} text-foreground`}
+                    data-testid={`pe-findings-${r.system.toLowerCase().replace(/[^a-z]+/g, "-")}`}
+                  >
+                    {r.findings || "—"}
+                  </div>
+                </div>
+              ))}
+            </div>
+          );
+        }
+        i = j - 1; // advance past all consumed rows
+        continue;
+      }
+    }
+
     const subMatch = trimmed.match(SUB_LABEL);
     if (subMatch && subMatch[1].length < 32) {
+      // Suppress single-line "Physical Exam: not performed" from AI-generated notes.
+      if (/^Physical Exam$/i.test(subMatch[1]) && PE_NOT_PERFORMED.test(subMatch[2].trim())) {
+        continue;
+      }
       nodes.push(
         <p key={i} className="soap-body">
           <span className="soap-label">{subMatch[1]}: </span>
