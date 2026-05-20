@@ -230,31 +230,34 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
         j++;
       }
       if (rows.length > 0) {
-        nodes.push(
-          <div
-            key={`${i}-ros-grid`}
-            className="soap-ros-grid grid grid-cols-[minmax(140px,180px)_1fr] gap-x-3 gap-y-1.5 my-1.5 border border-border/50 rounded-md overflow-hidden"
-            data-testid="ros-chart"
-          >
-            {rows.map((r, ri) => (
-              <div key={`ros-row-${ri}`} className="contents">
-                <div
-                  className={`soap-label text-xs px-2.5 py-1.5 bg-muted/30 ${ri < rows.length - 1 ? "border-b border-border/40" : ""}`}
-                  data-testid={`ros-system-${r.system.toLowerCase().replace(/[^a-z]+/g, "-")}`}
-                >
-                  {r.system}
+        const displayRows = rows.filter(r => !/not addressed at this visit/i.test(r.findings));
+        if (displayRows.length > 0) {
+          nodes.push(
+            <div
+              key={`${i}-ros-grid`}
+              className="soap-ros-grid grid grid-cols-[minmax(140px,180px)_1fr] gap-x-3 gap-y-1.5 my-1.5 border border-border/50 rounded-md overflow-hidden"
+              data-testid="ros-chart"
+            >
+              {displayRows.map((r, ri) => (
+                <div key={`ros-row-${ri}`} className="contents">
+                  <div
+                    className={`soap-label text-xs px-2.5 py-1.5 bg-muted/30 ${ri < displayRows.length - 1 ? "border-b border-border/40" : ""}`}
+                    data-testid={`ros-system-${r.system.toLowerCase().replace(/[^a-z]+/g, "-")}`}
+                  >
+                    {r.system}
+                  </div>
+                  <div
+                    className={`text-xs px-2.5 py-1.5 ${ri < displayRows.length - 1 ? "border-b border-border/40" : ""} text-foreground`}
+                    data-testid={`ros-findings-${r.system.toLowerCase().replace(/[^a-z]+/g, "-")}`}
+                  >
+                    {r.findings || "—"}
+                  </div>
                 </div>
-                <div
-                  className={`text-xs px-2.5 py-1.5 ${ri < rows.length - 1 ? "border-b border-border/40" : ""} ${/not addressed at this visit/i.test(r.findings) ? "text-muted-foreground italic" : "text-foreground"}`}
-                  data-testid={`ros-findings-${r.system.toLowerCase().replace(/[^a-z]+/g, "-")}`}
-                >
-                  {r.findings || "—"}
-                </div>
-              </div>
-            ))}
-          </div>
-        );
-        i = j - 1; // advance past consumed rows
+              ))}
+            </div>
+          );
+        }
+        i = j - 1; // advance past consumed rows (all rows, not just displayed ones)
         continue;
       }
       // No system rows followed — fall through to default rendering.
