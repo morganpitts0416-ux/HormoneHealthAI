@@ -14459,11 +14459,22 @@ When you return an editedNote, you are returning a LEGAL MEDICAL DOCUMENT. These
 THE PRIME DIRECTIVE — LAYOUT AND STRUCTURE ARE FROZEN:
 Unless the provider explicitly says "change the format," "reorganize the note," or "restructure this section," the note's layout is completely off limits. You are a content editor, not a document designer. The structure you received is the structure you return — every heading, every section order, every formatting convention — unchanged. This applies to every edit, no exceptions.
 
+⚠️ CRITICAL FAILURE MODE — THE PARTIAL-RETURN TRAP:
+The most dangerous mistake you can make is returning ONLY the section you edited and nothing else. This deletes the entire rest of the clinical record. It is a catastrophic documentation error. If the provider asks you to add a finding to the Physical Exam, you return a complete note — SUBJECTIVE, OBJECTIVE, ASSESSMENT/PLAN, CARE PLAN, FOLLOW-UP — with only the Physical Exam finding changed. You do NOT return just the Physical Exam section. You do NOT return just the OBJECTIVE block. You return the ENTIRE NOTE with surgical precision applied to only the requested section.
+
+MANDATORY PRE-SUBMISSION CHECKLIST — run this before setting editedNote:
+□ Count the major section headers in the original note (SUBJECTIVE, OBJECTIVE, ASSESSMENT/PLAN, CARE PLAN, FOLLOW-UP, etc.)
+□ Count the major section headers in your editedNote
+□ Are they the same? If not — STOP. You dropped sections. Rebuild the complete note.
+□ Is your editedNote approximately the same length or longer than the original? If it is dramatically shorter — STOP. You dropped content. Rebuild.
+□ Did you touch ONLY the section(s) the provider asked about? Every other section should be byte-for-byte identical to the original.
+If any checkbox fails, do NOT return that editedNote. Correct the error first.
+
 1. COPY EVERY UNCHANGED SECTION VERBATIM — CHARACTER FOR CHARACTER.
-   If the provider asked you to change only the Assessment/Plan, you MUST reproduce the HPI, HISTORY, REVIEW OF SYSTEMS, PHYSICAL EXAM, and every other section EXACTLY as they appear in the original — not paraphrased, not summarized, not condensed. Copy them word-for-word, line-for-line, punctuation-for-punctuation. This includes blank lines, indentation, and internal formatting within each section.
+   If the provider asked you to change only the Physical Exam, you MUST reproduce SUBJECTIVE (HPI, Current Medications, Medical History, ROS), every line of OBJECTIVE you didn't change, ASSESSMENT/PLAN, CARE PLAN, FOLLOW-UP — all of it — EXACTLY as it appears in the original. Not paraphrased. Not summarized. Not condensed. Character for character, line for line, punctuation for punctuation, blank lines included.
 
 2. NEVER DROP A TOP-LEVEL STRUCTURAL SECTION.
-   The note's major structural headings (HPI, HISTORY, REVIEW OF SYSTEMS, PHYSICAL EXAM, ASSESSMENT/PLAN, CARE PLAN, etc.) are inviolable. If the original note has all five top-level headings, your editedNote must have all five — in the same order. You may NEVER silently omit a structural section.
+   The note's major structural headings (SUBJECTIVE, OBJECTIVE, ASSESSMENT/PLAN, CARE PLAN, FOLLOW-UP) are inviolable. If the original note has these headings, your editedNote must have all of them — in the same order. You may NEVER silently omit a structural section.
    IMPORTANT EXCEPTION — CONSOLIDATION WITHIN ASSESSMENT/PLAN IS ALLOWED: When the provider asks you to merge, combine, or consolidate multiple diagnoses into a single umbrella diagnosis bundle (e.g., combining hypogonadism + perimenopause into "Early Hormonal Transition Syndrome"), it is correct and expected that the number of diagnosis entries inside the Assessment/Plan section will decrease. The HPI, ROS, Physical Exam, and all other top-level sections must still be preserved verbatim — only the internal diagnosis list in Assessment/Plan changes. This is a legitimate clinical operation and does not violate the size rule.
 
 3. ONLY MODIFY WHAT WAS ASKED — EVERYTHING ELSE IS READ-ONLY.
@@ -14472,10 +14483,13 @@ Unless the provider explicitly says "change the format," "reorganize the note," 
 4. REVERT REQUESTS — RESTORE FROM THE ORIGINAL IN YOUR CONTEXT.
    If the provider asks you to "revert," "undo," "restore," or "put it back," reproduce the original note from your context EXACTLY as it appeared — every section, every word, unchanged. The provider will confirm it matches. If you cannot guarantee a perfect restoration, tell the provider to use the Revert button in the interface instead, which performs a guaranteed restore.
 
-5. SECTION HEADERS AND FORMATTING ARE SACRED.
+5. WHEN THE PROVIDER TELLS YOU THAT YOU DELETED CONTENT:
+   If the provider tells you that you dropped sections, deleted the note, or returned only part of it — DO NOT repeat the same response. Acknowledge the error immediately: "You're right — I returned only part of the note. Let me fix that." Then return the COMPLETE note with only the originally requested change applied. Use the full original note from your conversation context as your starting point and apply only the surgical edit the provider asked for.
+
+6. SECTION HEADERS AND FORMATTING ARE SACRED.
    Never add, remove, rename, reorder, or reformat section headers. Never change a header from bold to plain text, from uppercase to mixed case, or alter its spacing. The note structure — its headings, their order, and their formatting — must be byte-for-byte identical between input and output unless the provider explicitly asked to change the structure.
 
-6. WHEN IN DOUBT — COPY IT EXACTLY.
+7. WHEN IN DOUBT — COPY IT EXACTLY.
    If you are not 100% certain whether a part of the note was affected by the edit request, reproduce it exactly as written. Erring on the side of preservation is always the right call for a legal clinical document.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
@@ -14660,7 +14674,12 @@ IMPORTANT:
         model: "gpt-4o",
         messages: chatMessages,
         temperature: 0.3,
-        max_tokens: 2000,  // 2k is plenty for conversational replies; reduces latency
+        // When a SOAP note is open, the model must return the COMPLETE note in
+        // editedNote — which can be 2,000–5,000 tokens on its own. The 2k cap
+        // caused truncation: the model ran out of tokens after the edited section
+        // and silently dropped the rest. Bump to 8k for editing mode so the full
+        // note always fits. Conversational-only responses stay at 2k.
+        max_tokens: soapNote ? 8000 : 2000,
         ...(soapNote ? { response_format: { type: "json_object" } } : {}),
       });
 
@@ -14695,9 +14714,48 @@ IMPORTANT:
           const reply = parsed.reply || "I wasn't able to generate a response. Please try again.";
           const spoken: string | null = typeof parsed.spoken === "string" && parsed.spoken.trim()
             ? parsed.spoken.trim() : null;
-          const editedNote: string | undefined = typeof parsed.editedNote === "string" && parsed.editedNote.trim()
+          let editedNote: string | undefined = typeof parsed.editedNote === "string" && parsed.editedNote.trim()
             ? parsed.editedNote.trim()
             : undefined;
+
+          // ── Section-loss guard ────────────────────────────────────────────
+          // Reject editedNote if the model dropped major structural sections
+          // that were present in the original note. This catches the failure
+          // pattern where the model returns only the edited section instead of
+          // the complete document (typically caused by token exhaustion, but
+          // guard against it at the response layer regardless of cause).
+          if (editedNote && soapNote) {
+            const MAJOR_SECTIONS_RE = /^(SUBJECTIVE|OBJECTIVE|ASSESSMENT\/PLAN|ASSESSMENT\s*&\s*PLAN|ASSESSMENT|CARE PLAN|FOLLOW[\s-]?UP)\s*$/im;
+            const extractMajorSections = (text: string): Set<string> => {
+              const found = new Set<string>();
+              for (const line of text.split('\n')) {
+                const m = line.trim().match(MAJOR_SECTIONS_RE);
+                if (m) {
+                  // Normalize: ASSESSMENT/PLAN and ASSESSMENT & PLAN → ASSESSMENT
+                  const normalized = m[1].replace(/[\s\/&]+PLAN/i, '').replace(/[\s-]+/g, ' ').trim().toUpperCase();
+                  found.add(normalized);
+                }
+              }
+              return found;
+            };
+            const originalSections = extractMajorSections(soapNote);
+            const editedSections = extractMajorSections(editedNote);
+            const missingSections = [...originalSections].filter(s => !editedSections.has(s));
+
+            if (missingSections.length > 0) {
+              console.warn(`[June] editedNote rejected — missing sections: ${missingSections.join(', ')}`);
+              const sectionList = [...originalSections].join(', ');
+              const errorReply = `I made an error on that edit — I returned only part of the note instead of the complete document. The note must include all sections (${sectionList}) and I dropped: ${missingSections.join(', ')}. Please ask me again; I'll return the full note with only your requested change applied.`;
+              return res.json({
+                reply: errorReply,
+                spoken: "I made an error — I returned only part of the note instead of the full thing. Please ask me again and I'll get it right.",
+                editedNote: null,
+                patientName: patientName || null,
+              });
+            }
+          }
+          // ─────────────────────────────────────────────────────────────────
+
           return res.json({ reply, spoken, editedNote: editedNote ?? null, patientName: patientName || null });
         } catch {
           // Malformed JSON fallback — treat the whole thing as a plain reply
