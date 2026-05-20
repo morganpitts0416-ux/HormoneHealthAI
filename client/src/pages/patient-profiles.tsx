@@ -1274,6 +1274,7 @@ export default function PatientProfiles() {
   const [publishDietaryGuidance, setPublishDietaryGuidance] = useState("");
   const [publishPatientSummary, setPublishPatientSummary] = useState("");
   const [isDietaryGenerating, setIsDietaryGenerating] = useState(false);
+  const [isDietaryError, setIsDietaryError] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const [showMessages, setShowMessages] = useState(false);
   const [showPortalSection, setShowPortalSection] = useState(false);
@@ -1353,14 +1354,17 @@ export default function PatientProfiles() {
 
     let cancelled = false;
     setIsDietaryGenerating(true);
+    setIsDietaryError(false);
     apiRequest("POST", "/api/generate-dietary-guidance", { labResultId: publishDialogLab.id })
       .then(res => res.json())
       .then(data => {
         if (!cancelled && data.dietaryGuidance) {
           setPublishDietaryGuidance(data.dietaryGuidance);
+        } else if (!cancelled) {
+          setIsDietaryError(true);
         }
       })
-      .catch(() => {}) // silently fail — clinician can fill in manually
+      .catch(() => { if (!cancelled) setIsDietaryError(true); })
       .finally(() => { if (!cancelled) setIsDietaryGenerating(false); });
 
     return () => { cancelled = true; };
@@ -1827,6 +1831,7 @@ export default function PatientProfiles() {
     setPublishDialogLab(lab);
     setPublishNotes("");
     setPublishDietaryGuidance("");
+    setIsDietaryError(false);
     // Pre-populate health assessment with the saved patient summary from this lab
     const interp = (lab.interpretationResult as any) || {};
     setPublishPatientSummary(interp.patientSummary || "");
@@ -4663,6 +4668,10 @@ export default function PatientProfiles() {
                         <Loader2 className="w-3 h-3 animate-spin" />
                         Generating from lab results…
                       </span>
+                    ) : isDietaryError ? (
+                      <span className="flex items-center gap-1 font-normal text-destructive">
+                        Generation failed — enter manually or retry
+                      </span>
                     ) : publishDietaryGuidance ? (
                       <span className="flex items-center gap-1 font-normal" style={{ color: "#5a7040" }}>
                         <Sparkles className="w-3 h-3" />
@@ -4672,24 +4681,28 @@ export default function PatientProfiles() {
                       <span className="text-muted-foreground font-normal">(shown in patient portal)</span>
                     )}
                   </Label>
-                  {publishDietaryGuidance && !isDietaryGenerating && (
+                  {(publishDietaryGuidance || isDietaryError) && !isDietaryGenerating && (
                     <button
                       type="button"
                       data-testid="button-regenerate-dietary"
                       onClick={() => {
                         setPublishDietaryGuidance("");
+                        setIsDietaryError(false);
                         setIsDietaryGenerating(true);
                         apiRequest("POST", "/api/generate-dietary-guidance", { labResultId: publishDialogLab!.id })
                           .then(res => res.json())
-                          .then(data => { if (data.dietaryGuidance) setPublishDietaryGuidance(data.dietaryGuidance); })
-                          .catch(() => {})
+                          .then(data => {
+                            if (data.dietaryGuidance) setPublishDietaryGuidance(data.dietaryGuidance);
+                            else setIsDietaryError(true);
+                          })
+                          .catch(() => setIsDietaryError(true))
                           .finally(() => setIsDietaryGenerating(false));
                       }}
                       className="flex items-center gap-1 text-xs"
                       style={{ color: "#7a8a64" }}
                     >
                       <RefreshCw className="w-3 h-3" />
-                      Regenerate
+                      {isDietaryError ? "Retry" : "Regenerate"}
                     </button>
                   )}
                 </div>
@@ -4733,14 +4746,14 @@ export default function PatientProfiles() {
               <Button
                 variant="outline"
                 size="sm"
-                onClick={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); setPublishPatientSummary(""); setIsDietaryGenerating(false); }}
+                onClick={() => { setPublishDialogLab(null); setPublishNotes(""); setPublishDietaryGuidance(""); setPublishPatientSummary(""); setIsDietaryGenerating(false); setIsDietaryError(false); }}
                 disabled={publishProtocolMutation.isPending}
               >
                 Cancel
               </Button>
               <Button
                 size="sm"
-                disabled={publishProtocolMutation.isPending}
+                disabled={publishProtocolMutation.isPending || isDietaryGenerating}
                 onClick={() => {
                   setPublishingLabId(publishDialogLab.id);
                   publishProtocolMutation.mutate({ lab: publishDialogLab, notes: publishNotes, dietaryGuidance: publishDietaryGuidance, patientSummary: publishPatientSummary });

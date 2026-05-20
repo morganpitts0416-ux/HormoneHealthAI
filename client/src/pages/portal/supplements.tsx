@@ -52,6 +52,7 @@ interface PublishedProtocol {
   id: number;
   supplements: SupplementRecommendation[];
   clinicianNotes: string | null;
+  dietaryGuidance: string | null;
   labDate: string | null;
   publishedAt: string;
   clinicName: string;
@@ -600,6 +601,12 @@ function ProtocolBlock({ protocol, isLatest, discount }: { protocol: PublishedPr
         <div className="rounded-xl p-4 text-sm leading-relaxed" style={{ backgroundColor: "#edf2e6", color: "#2e3a20" }}>
           <p className="font-medium text-xs uppercase tracking-wider mb-1.5" style={{ color: "#5a7040" }}>Note from your care team</p>
           {protocol.clinicianNotes}
+        </div>
+      )}
+      {protocol.dietaryGuidance && (
+        <div className="rounded-xl p-4 space-y-2" style={{ backgroundColor: "#f4efe8", border: "1px solid #e0d8cc" }}>
+          <p className="font-medium text-xs uppercase tracking-wider" style={{ color: "#7a6a50" }}>Dietary guidance</p>
+          <p className="text-sm leading-relaxed whitespace-pre-line" style={{ color: "#3d4a30" }}>{protocol.dietaryGuidance}</p>
         </div>
       )}
       {highPriority.length > 0 && (
