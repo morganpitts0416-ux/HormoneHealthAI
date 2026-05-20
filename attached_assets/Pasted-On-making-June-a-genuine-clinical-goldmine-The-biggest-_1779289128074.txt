@@ -1,0 +1,18 @@
+On making June a genuine clinical goldmine:
+
+The biggest gap today is that she's constrained to GPT-4o's training cutoff and conventional-medicine framing. A few concrete directions that would meaningfully level her up:
+
+1. Inject clinic-specific clinical intelligence into her system prompt
+The june_preferences / "Teach June" system already exists — extend it to accept clinical protocol snippets (e.g., "our testosterone optimization target is 800–1100 ng/dL free+total with symptoms, not 300 ng/dL") and lab interpretation philosophy (functional ranges vs. conventional ranges). She can then apply that clinic's specific lens to every recommendation rather than defaulting to 1990s reference ranges.
+
+2. Layer in explicit integrative/preventive framing in her base system prompt
+Right now she defaults to conventional guidelines. Adding a "functional medicine clinical colleague" persona to her base prompt — with explicit instructions to always consider root cause, nutrient optimization, hormone optimization as primary tools, and standard pharma as adjunct — would shift her outputs dramatically. Key domains to inject: thyroid (TSH vs. free T3/T4 optimization), iron studies (ferritin >70 for fatigue, not just "not anemic"), nutrient status (D3, magnesium RBC, B12 active, omega-3 index), cardiovascular (ApoB, Lp(a), sdLDL, hs-CRP interpretation beyond Framingham), and insulin resistance (HOMA-IR, fasting insulin, not just HbA1c).
+
+3. Real-time evidence retrieval (web tool)
+The biggest quality ceiling is knowledge cutoff. Adding a Brave/Perplexity-style search call when June gets asked about specific studies or current guidelines would let her pull from PubMed abstracts and recent consensus statements in real time. This is probably the highest-leverage technical change.
+
+4. Explicit chain-of-thought reasoning mode
+For complex cases, prompting her to "think out loud" — show her differential, rank hypotheses by prior probability, explain why she's recommending X over Y — produces dramatically better recommendations than a direct answer. This is a prompt change, not a feature build.
+
+5. Specialty knowledge injections per clinic type
+Men's clinic → full hormone cascade reasoning, fertility markers, sleep/metabolic optimization. Women's clinic → menstrual phase context, DUTCH/DUTCH-cycle mapping, bone density risk, autoimmune thyroid considerations. These can be conditional blocks in the system prompt based on clinic specialty tag.

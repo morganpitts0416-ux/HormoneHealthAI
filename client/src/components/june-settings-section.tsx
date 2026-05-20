@@ -15,10 +15,10 @@ import {
 } from "@/components/ui/dialog";
 import {
   BrainCircuit, Plus, Pencil, Trash2, ToggleLeft, ToggleRight,
-  Zap, BookOpen, MessageSquare, Sparkles, Volume2, ArrowRight,
+  Zap, BookOpen, MessageSquare, Sparkles, Volume2, ArrowRight, FlaskConical,
 } from "lucide-react";
 
-type Category = "instruction" | "trigger" | "snippet" | "pronunciation";
+type Category = "instruction" | "trigger" | "snippet" | "clinical_protocol" | "pronunciation";
 
 interface JunePreference {
   id: number;
@@ -31,6 +31,12 @@ interface JunePreference {
 }
 
 const CATEGORY_META: Record<Exclude<Category, "pronunciation">, { label: string; icon: React.ComponentType<{ className?: string }>; color: string; description: string }> = {
+  clinical_protocol: {
+    label: "Clinical Protocol",
+    icon: FlaskConical,
+    color: "bg-violet-100 text-violet-800 dark:bg-violet-950 dark:text-violet-300",
+    description: "Clinic's lab philosophy and treatment protocols — June treats these as highest authority",
+  },
   instruction: {
     label: "Always-on",
     icon: MessageSquare,
@@ -52,6 +58,26 @@ const CATEGORY_META: Record<Exclude<Category, "pronunciation">, { label: string;
 };
 
 const EXAMPLES: { category: Exclude<Category, "pronunciation">; label: string; instruction: string; triggerPhrases?: string }[] = [
+  {
+    category: "clinical_protocol",
+    label: "Testosterone optimization targets",
+    instruction: "Our clinic targets Total Testosterone 800–1100 ng/dL + Free Testosterone >150 pg/mL with symptoms. We do NOT use the lab reference range of 300 ng/dL as a treatment threshold. If a patient is symptomatic below 600 ng/dL, that warrants a clinical conversation regardless of the lab flag.",
+  },
+  {
+    category: "clinical_protocol",
+    label: "Ferritin optimal range",
+    instruction: "We treat ferritin <70 ng/mL as functionally low in any patient with fatigue, hair loss, brain fog, or poor exercise recovery — regardless of hemoglobin or conventional anemia thresholds. Optimal target is 80–120 ng/mL. Always investigate the root cause before supplementing: check CRP, dietary intake, H. pylori antibody, and consider celiac if indicated.",
+  },
+  {
+    category: "clinical_protocol",
+    label: "Thyroid optimization philosophy",
+    instruction: "We do not treat by TSH alone. We interpret Free T3 + Free T4 together with TSH. Optimal TSH for our symptomatic patients is 1.0–2.0 mIU/L. A T3/T4 ratio <0.25 indicates poor conversion and warrants a conversation about combination therapy or desiccated thyroid. We also check TPO antibodies routinely — Hashimoto's changes the management conversation.",
+  },
+  {
+    category: "clinical_protocol",
+    label: "Vitamin D targets",
+    instruction: "Our clinic targets Vitamin D3 (25-OH) at 60–80 ng/mL for optimal immune, hormonal, and metabolic function. Levels <40 ng/mL are treated as functionally deficient. Standard dosing starts at 5,000 IU/day with K2 100 mcg to prevent arterial calcification. Recheck at 90 days.",
+  },
   {
     category: "instruction",
     label: "No note summarizing",
@@ -331,6 +357,7 @@ export function JuneSettingsSection() {
   const pronunciationPrefs = prefs.filter(p => p.category === "pronunciation");
 
   const grouped = {
+    clinical_protocol: nonPronunciationPrefs.filter(p => p.category === "clinical_protocol"),
     instruction: nonPronunciationPrefs.filter(p => p.category === "instruction"),
     trigger: nonPronunciationPrefs.filter(p => p.category === "trigger"),
     snippet: nonPronunciationPrefs.filter(p => p.category === "snippet"),
@@ -391,7 +418,7 @@ export function JuneSettingsSection() {
         </Card>
       ) : (
         <div className="space-y-5">
-          {(["instruction", "trigger", "snippet"] as Exclude<Category, "pronunciation">[]).map(cat => {
+          {(["clinical_protocol", "instruction", "trigger", "snippet"] as Exclude<Category, "pronunciation">[]).map(cat => {
             const items = grouped[cat];
             if (items.length === 0) return null;
             const meta = CATEGORY_META[cat];
@@ -515,6 +542,12 @@ export function JuneSettingsSection() {
                       <SelectValue />
                     </SelectTrigger>
                     <SelectContent>
+                      <SelectItem value="clinical_protocol">
+                        <div className="flex items-center gap-2">
+                          <FlaskConical className="w-3.5 h-3.5" />
+                          <span>Clinical protocol</span>
+                        </div>
+                      </SelectItem>
                       <SelectItem value="instruction">
                         <div className="flex items-center gap-2">
                           <MessageSquare className="w-3.5 h-3.5" />
@@ -542,7 +575,8 @@ export function JuneSettingsSection() {
                   <label className="text-sm font-medium">Label <span className="text-destructive">*</span></label>
                   <Input
                     placeholder={
-                      form.category === "instruction" ? "e.g. No note summarizing"
+                      form.category === "clinical_protocol" ? "e.g. Testosterone optimization targets"
+                      : form.category === "instruction" ? "e.g. No note summarizing"
                       : form.category === "trigger" ? "e.g. GLP-1 start trigger"
                       : "e.g. GLP Education"
                     }
@@ -569,11 +603,13 @@ export function JuneSettingsSection() {
 
                 <div className="space-y-1.5">
                   <label className="text-sm font-medium">
-                    {form.category === "snippet" ? "Content" : "Instruction"} <span className="text-destructive">*</span>
+                    {form.category === "snippet" ? "Content" : form.category === "clinical_protocol" ? "Protocol" : "Instruction"} <span className="text-destructive">*</span>
                   </label>
                   <Textarea
                     placeholder={
-                      form.category === "instruction"
+                      form.category === "clinical_protocol"
+                        ? "e.g. Our clinic targets Total Testosterone 800–1100 ng/dL. We do not use the lab reference range of 300 ng/dL as a treatment threshold..."
+                        : form.category === "instruction"
                         ? "e.g. Never summarize my SOAP note back to me. Jump straight to your point."
                         : form.category === "trigger"
                         ? "e.g. Include my GLP Education snippet in the A/P and add standard monitoring labs."

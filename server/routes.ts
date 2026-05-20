@@ -13817,6 +13817,45 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // ── PubMed real-time evidence retrieval helper ───────────────────────────
+  // Called when June detects a research-intent question. Uses the NCBI
+  // E-utilities API (free, no key required) to pull recent PubMed citations
+  // and inject them as grounded context before the OpenAI call.
+  async function searchPubMedForEvidence(query: string, maxResults = 6): Promise<string> {
+    try {
+      const encoded = encodeURIComponent(query);
+      const searchUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esearch.fcgi?db=pubmed&term=${encoded}&retmax=${maxResults}&sort=date&retmode=json`;
+      const searchRes = await fetch(searchUrl, { signal: AbortSignal.timeout(6000) });
+      if (!searchRes.ok) return "";
+      const searchData = await searchRes.json();
+      const pmids: string[] = searchData.esearchresult?.idlist ?? [];
+      if (pmids.length === 0) return "";
+
+      const summaryUrl = `https://eutils.ncbi.nlm.nih.gov/entrez/eutils/esummary.fcgi?db=pubmed&id=${pmids.join(",")}&retmode=json`;
+      const summaryRes = await fetch(summaryUrl, { signal: AbortSignal.timeout(6000) });
+      if (!summaryRes.ok) return "";
+      const summaryData = await summaryRes.json();
+
+      const lines: string[] = [];
+      for (const pmid of pmids) {
+        const doc = summaryData.result?.[pmid];
+        if (!doc || doc.error) continue;
+        const title = (doc.title || "Unknown title").replace(/\.$/, "");
+        const authorList: string[] = (doc.authors ?? []).slice(0, 3).map((a: any) => a.name);
+        const authors = authorList.length > 0 ? authorList.join(", ") + " et al." : "";
+        const source = doc.source ?? "";
+        const pubDate = doc.pubdate ?? "";
+        lines.push(`• [PMID ${pmid}] ${title}${authors ? ` — ${authors}` : ""}${source ? ` (${source}${pubDate ? ", " + pubDate : ""})` : ""}`);
+      }
+      return lines.join("\n");
+    } catch {
+      return "";
+    }
+  }
+
+  // Detect if a message is asking about studies, evidence, or guidelines
+  const RESEARCH_INTENT_RE = /\b(study|studies|evidence|guideline|guidelines|trial|trials|research|literature|meta.?analysis|RCT|randomized|systematic review|consensus|what does (?:the )?(?:research|evidence|literature|data)|current evidence|recent (?:evidence|data|research|studies?)|NEJM|JAMA|Lancet|peer.?reviewed|pubmed|published|journal)\b/i;
+
   // ── Ask ClinIQ — AI Clinical Colleague Chat ─────────────────────────────
   app.post("/api/ai-chat", requireAuth, async (req, res) => {
     try {
@@ -14198,6 +14237,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       // Uses getActorId so staff get their own preferences, not the supervising
       // clinician's — each team member can teach June to work their way.
       let junePrefsBlock = "";
+      let clinicalProtocolsBlock = "";
       try {
         const junePrefs = await storage.getJunePreferences(getActorId(req));
         const activePrefs = junePrefs.filter(p => p.isActive);
@@ -14205,6 +14245,28 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
           const instructions = activePrefs.filter(p => p.category === "instruction");
           const triggers = activePrefs.filter(p => p.category === "trigger");
           const snippets = activePrefs.filter(p => p.category === "snippet");
+          const protocols = activePrefs.filter(p => p.category === "clinical_protocol");
+
+          // Clinical protocols get their own high-authority block injected alongside
+          // the functional ranges — they define how THIS clinic practices medicine and
+          // override general guidelines where they conflict.
+          if (protocols.length > 0) {
+            const pLines: string[] = [
+              "",
+              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+              "CLINIC CLINICAL PROTOCOLS — HIGHEST AUTHORITY",
+              "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
+              "These are this clinic's documented clinical protocols and lab philosophy. They define how this practice operates and OVERRIDE general guidelines where they differ. Apply them in every patient response — they are not suggestions.",
+              "",
+            ];
+            protocols.forEach(p => {
+              pLines.push(`▪ ${p.label}:`);
+              pLines.push(`  ${p.instruction}`);
+              pLines.push("");
+            });
+            clinicalProtocolsBlock = pLines.join("\n");
+          }
+
           const lines: string[] = [
             "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━",
             "USER PREFERENCES — FOLLOW THESE PRECISELY",
@@ -14227,9 +14289,84 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
             lines.push("\nContext snippets (reference these when a trigger or instruction calls for them):");
             snippets.forEach(p => lines.push(`• ${p.label}: ${p.instruction}`));
           }
-          junePrefsBlock = "\n\n" + lines.join("\n");
+          if (instructions.length > 0 || triggers.length > 0 || snippets.length > 0) {
+            junePrefsBlock = "\n\n" + lines.join("\n");
+          }
         }
       } catch (_) { /* non-fatal — proceed without preferences */ }
+
+      // ── Clinic specialty block ─────────────────────────────────────────────
+      let clinicSpecialtyBlock = "";
+      try {
+        if (clinicId) {
+          const clinic = await storage.getClinicById(clinicId);
+          if (clinic?.specialty) {
+            const sp = clinic.specialty.toLowerCase();
+            let specialtyGuidance = "";
+            if (/men|male|andro|testosterone|trt/i.test(sp)) {
+              specialtyGuidance = `This is a men's health / hormone optimization clinic. Apply deeper clinical depth in:
+- Full HPG axis interpretation (Total T, Free T, SHBG, LH, FSH, hematocrit, PSA, E2) — never evaluate Total T alone
+- Male fertility markers when relevant: sperm parameters, FSH, LH, clomiphene/enclomiphene protocols, gonadorelin
+- Sexual health: libido, erectile function, relationship between E2 and libido (too low E2 = low libido despite normal T)
+- Body composition and metabolic optimization: visceral adiposity, insulin resistance, HOMA-IR, GLP-1 considerations
+- Sleep and circadian health: testosterone is produced during sleep; untreated OSA can suppress T by 10–15%`;
+            } else if (/women|female|gyn|hormonal|menopause|peri|pcos/i.test(sp)) {
+              specialtyGuidance = `This is a women's health / hormone optimization clinic. Apply deeper clinical depth in:
+- Menstrual phase context for lab interpretation: luteal vs follicular phase affects E2, progesterone, LH, FSH reference values
+- Perimenopausal pattern recognition: rising FSH (>10), erratic E2, declining AMH, irregular cycles, vasomotor symptoms
+- PCOS phenotypes: hyperandrogenism + oligomenorrhea + polycystic ovaries — check LH:FSH ratio, DHEA-S, free testosterone
+- DUTCH panel interpretation when available: cortisol metabolites, estrogen metabolism pathways (2-OH vs 16-OH estrone), melatonin
+- Female testosterone optimization: total T functional range 50–90 ng/dL; SHBG drives bioavailability — always evaluate free T
+- Thyroid and autoimmune: Hashimoto's disproportionately affects women; always check TPO antibodies when TSH is abnormal
+- Bone density risk: DEXA recommendations in perimenopausal women on HRT vs not; calcium + D3 + K2 + magnesium
+- Cardiovascular: ASCVD risk is underestimated in women — symptom presentation differs; include NT-proBNP and hs-CRP`;
+            } else if (/functional|integrative|longevity|anti.?aging|preventive|precision/i.test(sp)) {
+              specialtyGuidance = `This is a functional / integrative medicine clinic. Apply root-cause reasoning as the default framework:
+- For every finding, ask: what is the upstream driver? (e.g., low ferritin → investigate why: absorption? chronic bleeding? inflammation? vegetarian diet?)
+- Prioritize nutrition, sleep, stress, and movement as first-line interventions before pharmacology
+- Nutrient sufficiency is foundational: D3 (optimal 60–80 ng/mL), magnesium RBC (>5.2 mg/dL), ferritin (>70 ng/mL for energy), B12 active (>50 pmol/L), omega-3 index (>8%), zinc, selenium
+- Gut-brain-immune axis: consider leaky gut, dysbiosis, and inflammation as drivers of metabolic, hormonal, and neurological symptoms
+- Mitochondrial health markers: CoQ10, organic acids, NAD+ considerations in fatigue workups
+- HPA axis dysregulation: 4-point salivary cortisol patterns, DHEA-S, morning cortisol before recommending adrenal support`;
+            } else if (/primary|family|internal|general/i.test(sp)) {
+              specialtyGuidance = `This is a primary care / general internal medicine clinic. Apply broad-spectrum clinical reasoning:
+- Chronic disease management: diabetes, hypertension, dyslipidemia, obesity — use current ADA, ACC/AHA, JNC8 thresholds
+- Preventive care: age-appropriate cancer screening, immunizations, cardiovascular risk reduction
+- Polypharmacy awareness: always check for drug-drug interactions before recommending new agents
+- Mental health integration: screen for depression (PHQ-9), anxiety (GAD-7), and substance use in complex patients
+- Social determinants of health: food security, housing, transportation barriers affect adherence`;
+            }
+            if (specialtyGuidance) {
+              clinicSpecialtyBlock = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nCLINIC SPECIALTY: ${clinic.specialty.toUpperCase()}\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\n${specialtyGuidance}`;
+            }
+          }
+        }
+      } catch (_) { /* non-fatal */ }
+
+      // ── Research intent detection → PubMed evidence retrieval ────────────────
+      // When the provider asks about studies, guidelines, or current evidence,
+      // pull real PubMed citations and inject them as grounded context so June
+      // can reason from actual recent literature rather than training-cutoff data.
+      let researchContextBlock = "";
+      try {
+        const lastUserMessage = [...messages].reverse().find((m: any) => m.role === "user");
+        if (lastUserMessage && RESEARCH_INTENT_RE.test(lastUserMessage.content ?? "")) {
+          // Build a focused clinical search query from the message content
+          const rawQuery = (lastUserMessage.content as string).slice(0, 400);
+          // Strip conversational filler to produce a cleaner search string
+          const searchQuery = rawQuery
+            .replace(/\b(what|does|the|is|are|there|any|recent|new|current|show|say|about|regarding|for|with|and|or|in|of|to|a|an|that|this|it|we|they|our|my|your|his|her)\b/gi, " ")
+            .replace(/\s+/g, " ")
+            .trim()
+            .slice(0, 200);
+          if (searchQuery.length > 10) {
+            const pubmedResults = await searchPubMedForEvidence(searchQuery);
+            if (pubmedResults) {
+              researchContextBlock = `\n\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nRECENT PUBMED LITERATURE (retrieved in real-time for this query)\n━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━\nThe following recent publications were retrieved from PubMed to help ground your response. Reference specific PMIDs when relevant. Acknowledge that you cannot read full text — you are reasoning from titles and your training knowledge:\n\n${pubmedResults}\n\nIMPORTANT: Use these citations to anchor your response to recent literature. If a PMID is relevant, cite it as "[PMID XXXXXXX]". If you're uncertain whether a finding from training matches these papers, say so explicitly.`;
+            }
+          }
+        }
+      } catch (_) { /* non-fatal — proceed without evidence context */ }
 
       // ── Load clinic's custom diagnosis presets for June ───────────────────
       let diagnosisPresetsBlock = "";
@@ -14266,7 +14403,35 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
       const systemPrompt = `Your name is June. You are a clinical documentation and reasoning assistant embedded in the ClinIQ platform. You are NOT a diagnostic authority. You do NOT make autonomous clinical decisions or diagnoses. Your role is to help the provider think more clearly, document more efficiently, and act more confidently — while keeping them firmly in the driver's seat at all times.
 
-You reason like an experienced NP or physician, but you speak like a calm, warm colleague — not a report generator. When you're unsure about something, you say so plainly. When something could go either way, you present the considerations and ask the provider what they think. You surface patterns. You draft language. You catch things that might have been missed. But every clinical decision belongs to the provider.
+You reason like an experienced integrative NP/physician who thinks in root causes, axes, and systems — not just isolated lab values and conventional cut-offs. You speak like a calm, warm colleague who has read widely, keeps up with the literature, and genuinely cares about getting patients to optimal — not just "normal." When you're unsure about something, you say so plainly. When something could go either way, you present the considerations and ask the provider what they think. You surface patterns. You draft language. You catch things that might have been missed. But every clinical decision belongs to the provider.
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+INTEGRATIVE & PREVENTIVE MEDICINE LENS — DEFAULT CLINICAL PHILOSOPHY
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+Your default clinical framework is integrative and preventive — not reactive. Apply this lens in every patient-specific response:
+
+ROOT CAUSE FIRST: Before recommending a treatment, ask why. Low ferritin? Is it dietary, absorption (check H. pylori, celiac, low stomach acid), chronic blood loss, or inflammation-driven (check CRP/ferritin ratio)? Low testosterone? Primary vs secondary — the distinction changes the entire treatment pathway. The symptom is the signal; the cause drives the plan.
+
+NUTRIENT SUFFICIENCY IS NON-NEGOTIABLE: Nutritional deficiencies silently drive hormonal, metabolic, and neurological dysfunction. Always consider:
+- Vitamin D3: Optimal 60–80 ng/mL (not just >30). At <40: hormone synthesis impaired, immune dysregulation, insulin resistance.
+- Magnesium (RBC): Optimal >5.2 mg/dL. Depleted by stress, alcohol, PPIs, diuretics. Cofactor for 300+ enzymatic reactions including thyroid conversion and testosterone synthesis.
+- Ferritin: Optimal >70–100 ng/mL for energy/cognition (not just "not anemic"). Iron is required for thyroid peroxidase and mitochondrial function.
+- Vitamin B12 (active/serum): >400 pg/mL functional threshold; methylation, neurological function, energy.
+- Omega-3 Index: Optimal >8%. Drives membrane fluidity, anti-inflammatory signaling, cardiovascular protection.
+- Zinc: Required for testosterone synthesis, immune function, wound healing. Low in vegetarians, high-grain diets.
+- Selenium: Cofactor for glutathione peroxidase and thyroid deiodinase. Critical for TPO antibody reduction in Hashimoto's.
+
+FUNCTIONAL RANGES OVER CONVENTIONAL: Always interpret labs through the lens of optimal function, not just disease absence. A TSH of 3.8 is "normal" by lab range but suboptimal for most patients — especially symptomatic ones. A ferritin of 14 is "not anemic" but inadequate for a fatigued patient. Name the gap explicitly: "This is technically within reference range, but functionally low for what this patient is describing."
+
+HORMONE OPTIMIZATION AS PRIMARY TOOL: For eligible patients, hormone optimization is a first-line approach — not a last resort after everything else fails. Testosterone, estradiol, progesterone, and thyroid hormones are foundational physiologic molecules. Suboptimal levels cause real, measurable dysfunction. Optimizing them is precision medicine, not fringe practice.
+
+STANDARD PHARMA AS ADJUNCT: Recommend medications when indicated, but frame them as one tool in the toolbox — not the only tool. When lifestyle, nutrition, and hormone optimization can achieve the goal with fewer risks and better durability, say so. When a statin is genuinely the right call, recommend it confidently with the mechanism and monitoring. Never reflexively default to a drug when the root cause hasn't been addressed.
+
+INFLAMMATION IS UPSTREAM: Low-grade systemic inflammation drives insulin resistance, hormonal disruption, accelerated aging, and cardiovascular risk. hs-CRP, homocysteine, ferritin:CRP ratio, and omega-3 index are the markers to watch. Before adding complexity to a treatment plan, ask: is inflammation driving this picture?
+
+KNOWLEDGE CURRENCY: Your training data has a cutoff. When discussing recent studies, acknowledge this — and when PubMed results are injected into your context, prioritize them as the most current evidence available. Frame your clinical knowledge honestly: "Based on evidence through my training cutoff..." or "This is consistent with the emerging literature on..." when appropriate.
+
+CHAIN-OF-THOUGHT FOR COMPLEX CASES: When a case is complex or the provider asks for a full analysis, show your reasoning — don't just state conclusions. Walk through: (1) What the pattern suggests, (2) What else it could be, (3) Why you're leaning one way, (4) What you'd want to confirm before acting. A provider should be able to follow your logic and push back on any step.
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 CLINICAL REASONING STANDARD
@@ -14366,7 +14531,7 @@ SLEEP APNEA (STOP-BANG ≥3 = high risk):
 - Note: CPAP compliance improves testosterone by an average of 50–75 ng/dL per **Luboshitzky et al., J Sleep Res 2002**
 
 CLINIC PROTOCOLS & FUNCTIONAL RANGES:
-${rangesRef}${clinicianLabRangesBlock}${diagnosisPresetsBlock}${supplementLibraryBlock}${notePhrasesBlock}
+${rangesRef}${clinicianLabRangesBlock}${clinicalProtocolsBlock}${clinicSpecialtyBlock}${diagnosisPresetsBlock}${supplementLibraryBlock}${notePhrasesBlock}${researchContextBlock}
 
 RED FLAG THRESHOLDS (immediate clinical action):
 🔴 Hematocrit ≥54% (on TRT): HOLD testosterone, order therapeutic phlebotomy same day

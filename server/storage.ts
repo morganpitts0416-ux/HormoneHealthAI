@@ -360,6 +360,7 @@ export interface IStorage {
   createJunePreference(data: schema.InsertJunePreference): Promise<schema.JunePreference>;
   updateJunePreference(id: number, clinicianId: number, data: Partial<Pick<schema.JunePreference, 'label' | 'instruction' | 'triggerPhrases' | 'isActive' | 'category'>>): Promise<schema.JunePreference | undefined>;
   deleteJunePreference(id: number, clinicianId: number): Promise<boolean>;
+  getClinicById(id: number): Promise<schema.Clinic | undefined>;
 
   // ── Collaborating Physician Chart Review ─────────────────────────────────
   getChartReviewAgreementForMidLevel(midLevelUserId: number, clinicId: number): Promise<schema.ChartReviewAgreement | undefined>;
@@ -2126,6 +2127,11 @@ export class DbStorage implements IStorage {
     const result = await db.delete(schema.junePreferences)
       .where(and(eq(schema.junePreferences.id, id), eq(schema.junePreferences.clinicianId, clinicianId)));
     return (result.rowCount ?? 0) > 0;
+  }
+
+  async getClinicById(id: number): Promise<schema.Clinic | undefined> {
+    const result = await db.select().from(schema.clinics).where(eq(schema.clinics.id, id)).limit(1);
+    return result[0];
   }
 
   // ── Medication Dictionary ────────────────────────────────────────────────────
