@@ -162,6 +162,13 @@ function detectEstrogenDominancePhenotype(ctx: PhenotypeDetectionContext): Clini
   const { labs } = ctx;
   const findings: string[] = [];
 
+  // ── Hard guard ────────────────────────────────────────────────────────────
+  // Estrogen dominance / impaired clearance is a clinical impossibility when
+  // estradiol is measured and critically low.  E2 < 30 pg/mL is
+  // postmenopausal / severely deficient territory — the exact opposite of
+  // excess.  Firing this pattern on a depleted patient is a harmful error.
+  if (labs.estradiol !== undefined && labs.estradiol < 30) return null;
+
   const hasEstradiol = labs.estradiol !== undefined;
   const hasProgesterone = labs.progesterone !== undefined;
   const isNotPostmenopausal = labs.menstrualPhase !== 'postmenopausal';
@@ -196,18 +203,34 @@ function detectEstrogenDominancePhenotype(ctx: PhenotypeDetectionContext): Clini
   if (hasBloating) findings.push("Bloating reported");
   if (hasMoodChanges) findings.push("Mood changes reported");
 
-  const labScore = [estrogenProgesteroneImbalance, highEstrogen, lowProgesterone, borderlineALT || borderlineAST, elevatedALT].filter(Boolean).length;
+  // ── Scoring ───────────────────────────────────────────────────────────────
+  // lowProgesterone alone is a PROGESTERONE DEFICIENCY signal, not an
+  // estrogen dominance signal.  It is documented in findings above for
+  // context but intentionally excluded from labScore so it cannot drive
+  // this diagnosis by itself.  labScore requires a direct estrogen marker
+  // (elevated E2 or E2:P4 imbalance) or a liver-clearance marker.
+  const labScore = [
+    estrogenProgesteroneImbalance,
+    highEstrogen,
+    borderlineALT || borderlineAST,
+    elevatedALT,
+  ].filter(Boolean).length;
+
   const symptomScore = [hasPMS, hasHeavyMenses, hasAcne, hasHeadaches, hasIrritability, hasBloating, hasMoodChanges].filter(Boolean).length;
+
+  // Require at least one direct estrogen or liver-clearance lab signal before
+  // combining with symptoms — prevents symptom-only false positives.
+  if (labScore === 0) return null;
 
   if (labScore >= 1 && symptomScore >= 2) {
     return {
       name: "Estrogen Dominance / Impaired Clearance",
-      confidence: labScore >= 2 && symptomScore >= 3 ? 'high' : labScore >= 1 && symptomScore >= 2 ? 'moderate' : 'low',
+      confidence: labScore >= 2 && symptomScore >= 3 ? 'high' : 'moderate',
       supportingFindings: findings,
       description: "Pattern suggesting relative estrogen excess or impaired estrogen metabolism. This may result from insufficient progesterone, sluggish hepatic clearance, or both. Supporting liver detoxification pathways and estrogen metabolism may help restore balance.",
     };
   }
-  if (estrogenProgesteroneImbalance || (labScore >= 2)) {
+  if (estrogenProgesteroneImbalance || labScore >= 2) {
     return {
       name: "Estrogen Dominance / Impaired Clearance",
       confidence: 'moderate',
