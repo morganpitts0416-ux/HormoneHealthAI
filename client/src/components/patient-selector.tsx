@@ -29,7 +29,7 @@ export function PatientSelector({ gender, onPatientSelect, selectedPatient, init
   const containerRef = useRef<HTMLDivElement>(null);
 
   const { data: searchResults = [] } = useQuery<Patient[]>({
-    queryKey: [`/api/patients/search?q=${encodeURIComponent(searchTerm)}&gender=${gender}`],
+    queryKey: [`/api/patients/search?q=${encodeURIComponent(searchTerm)}`],
     enabled: searchTerm.length >= 2,
   });
 
