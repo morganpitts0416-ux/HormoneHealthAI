@@ -120,9 +120,9 @@ export default function SimpleLabUpload() {
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   const { data: patients = [] } = useQuery<Patient[]>({
-    queryKey: ["/api/patients"],
+    queryKey: ["/api/patients/search"],
     queryFn: async () => {
-      const res = await fetch("/api/patients", { credentials: "include" });
+      const res = await fetch("/api/patients/search", { credentials: "include" });
       if (!res.ok) throw new Error("Failed to fetch patients");
       return res.json();
     },
