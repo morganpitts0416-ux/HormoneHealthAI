@@ -17070,6 +17070,100 @@ IMPORTANT:
 
   // ─── End Chart Review ─────────────────────────────────────────────────
 
+  // ─── Spruce Integration ───────────────────────────────────────────────
+  //
+  // POST /api/integrations/spruce/webhook
+  //
+  // Publicly accessible webhook receiver for Spruce events.
+  // - No authentication required (Spruce calls this from outside the platform).
+  // - Raw body is already captured on req.rawBody by the express.json verify
+  //   callback in server/index.ts, so HMAC signature verification works without
+  //   any additional body-parser setup.
+  // - Signature verification is performed when SPRUCE_WEBHOOK_SECRET is set;
+  //   mismatches are logged but do NOT change the HTTP 200 response (Spruce
+  //   requires a fast 200 to mark the delivery as successful — blocking it would
+  //   cause retries and duplicate processing).
+  // - SPRUCE_API_TOKEN is reserved for future outbound calls (not used here yet).
+  //
+  // Environment variables required (set in Replit Secrets):
+  //   SPRUCE_WEBHOOK_SECRET  — shared secret from Spruce webhook settings
+  //   SPRUCE_API_TOKEN       — bearer token for outbound Spruce API calls (future)
+
+  function verifySpruceSignature(
+    rawBody: Buffer | string | undefined,
+    signatureHeader: string | undefined,
+    secret: string,
+  ): { valid: boolean; reason?: string } {
+    if (!signatureHeader) {
+      return { valid: false, reason: "X-Spruce-Signature header missing" };
+    }
+    if (!rawBody) {
+      return { valid: false, reason: "raw body not available for signature check" };
+    }
+    try {
+      const expected = crypto
+        .createHmac("sha256", secret)
+        .update(rawBody)
+        .digest("hex");
+      // Spruce may prefix with "sha256=" — strip it for comparison
+      const incoming = signatureHeader.replace(/^sha256=/, "");
+      const valid = crypto.timingSafeEqual(
+        Buffer.from(expected, "utf8"),
+        Buffer.from(incoming, "utf8"),
+      );
+      return valid ? { valid: true } : { valid: false, reason: "signature mismatch" };
+    } catch (err: any) {
+      return { valid: false, reason: `verification error: ${err?.message ?? err}` };
+    }
+  }
+
+  app.post("/api/integrations/spruce/webhook", (req, res) => {
+    // ── 1. Immediately acknowledge receipt ───────────────────────────────
+    // Spruce marks a webhook delivery successful only when it receives a
+    // 2xx within a short timeout.  Send 200 before doing any heavy work.
+    res.status(200).json({ received: true });
+
+    // ── 2. Safe header logging ───────────────────────────────────────────
+    // Redact the signature header value from logs (log only presence/length).
+    const sigHeader = req.headers["x-spruce-signature"] as string | undefined;
+    const safeHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (k === "x-spruce-signature") {
+        safeHeaders[k] = v ? `[present, length=${String(v).length}]` : "[empty]";
+      } else if (k === "authorization") {
+        safeHeaders[k] = "[redacted]";
+      } else {
+        safeHeaders[k] = Array.isArray(v) ? v.join(", ") : (v ?? "");
+      }
+    }
+    console.log("[Spruce] Webhook received — headers:", JSON.stringify(safeHeaders));
+
+    // ── 3. Body logging ──────────────────────────────────────────────────
+    const body = req.body;
+    const eventType: string = body?.type ?? body?.event_type ?? body?.event ?? "(unknown)";
+    console.log("[Spruce] Event type:", eventType);
+    console.log("[Spruce] Payload:", JSON.stringify(body, null, 2));
+
+    // ── 4. Signature verification (when secret is configured) ────────────
+    const secret = process.env.SPRUCE_WEBHOOK_SECRET;
+    if (secret) {
+      const rawBody = (req as any).rawBody as Buffer | undefined;
+      const result = verifySpruceSignature(rawBody, sigHeader, secret);
+      if (result.valid) {
+        console.log("[Spruce] Signature verified OK");
+      } else {
+        // Log the failure for alerting purposes but do not reject the request —
+        // we already sent 200.  Once the integration is stable, this can be
+        // promoted to a pre-response check that returns 401.
+        console.warn("[Spruce] Signature verification FAILED:", result.reason);
+      }
+    } else {
+      console.warn("[Spruce] SPRUCE_WEBHOOK_SECRET not set — skipping signature verification");
+    }
+  });
+
+  // ─── End Spruce Integration ───────────────────────────────────────────
+
   const httpServer = createServer(app);
   return httpServer;
 }
