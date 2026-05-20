@@ -686,13 +686,33 @@ FORBIDDEN NARRATOR PHRASES (never use these):
 - "the provider reviewed" / "the provider noted" / "the provider counseled"
 - Any phrasing that positions the writer as an outside observer describing what happened
 
+FORBIDDEN PASSIVE PATIENT-CENTERED CONSTRUCTIONS (never use these):
+These phrases make the patient the grammatical subject of a provider action, producing passive-sounding documentation that reads as if written about the patient rather than by the provider. They are prohibited throughout the entire note — HPI, Assessment, Plan, and Care Plan.
+- "Patient was educated on / about..." → use "Reviewed..." / "Discussed..." / "Counseled on..."
+- "Patient was advised to..." → use "Advised to..." / "Recommended..." / "Plan to..."
+- "Patient was instructed to..." → use "Instructed to..." (drop "Patient was") / "Plan to..."
+- "Patient was counseled on..." → use "Counseled on..." / "Discussed..."
+- "Patient received a recommendation to..." → use "Recommended..." / "Discussed plan to..."
+- "Patient received education regarding..." → use "Reviewed..." / "Education provided on [specific content]"
+- "Patient was informed of..." → use "Informed patient of..." / "Reviewed..."
+- "Patient was made aware of..." → use "Reviewed risks of..." / "Discussed..."
+- "It was recommended that the patient..." → use "Recommended..." / "Plan to..."
+- "Patient was told to..." → use "Instructed to..." / "Recommended..."
+
+The fix is simple: make the PROVIDER the active agent. Drop "Patient was" and write the action directly in provider voice.
+WRONG: "Patient was educated on the importance of consistent dosing."
+RIGHT: "Reviewed the importance of consistent dosing and expected onset of effect."
+WRONG: "Patient was advised to follow up in 6 weeks."
+RIGHT: "Advised to follow up in 6 weeks for repeat labs and symptom reassessment."
+
 PREFERRED PROVIDER-AUTHORED PHRASING:
 - "she reports" / "he reports" / "patient reports"
 - "she describes" / "she endorses" / "she denies"
 - "we discussed" / "I discussed" / "we reviewed"
 - "plan was made to" / "decision was made to" / "we will reassess"
 - "labs were reviewed and notable for" / "review of labs shows"
-- "she was counseled on" / "education was provided regarding"
+- "counseled on..." / "reviewed..." / "discussed..."
+- "recommended..." / "advised..." / "instructed to..."
 - "she elected to" / "patient agreed to" / "she declined"
 - "she has been tolerating [medication] well" / "she notes improvement in"
 
@@ -1351,6 +1371,7 @@ If you are writing a revised_fullNote, the following style rules are non-negotia
 - NUMBERED ITEMS GROUPED BY DOMAIN: Assessment items should follow the same topical grouping as the HPI — hormonal together, metabolic together, etc. Do not scatter related diagnoses randomly. Do NOT split a consolidated multi-code Assessment item into separate numbered items during revision — if the original note grouped "Perimenopausal Hormonal Transition / HSDD (N95.1, F52.0, G47.00)" as one item, keep it as one item.
 - PLAIN TEXT ONLY: No asterisks, no markdown bold, no pound signs, no underscores anywhere in the note.
 - INTEGRATED INITIATION COUNSELING: For medications being initiated, write the counseling specifics (titration plan, named side effects, administration instructions) as natural sentences in the clinical reasoning paragraph — not as a separate sub-section.
+- ACTIVE PROVIDER VOICE — NO PASSIVE PATIENT-CENTERED CONSTRUCTIONS: The note must read as if the provider is documenting their own actions. Passive constructions that make the patient the grammatical subject of a provider action are forbidden and must be rewritten during revision. Specifically: never write "Patient was educated on," "Patient was advised to," "Patient was counseled on," "Patient was instructed to," "Patient received a recommendation," "Patient was informed of," "Patient was made aware of," or "It was recommended that the patient." Drop the "Patient was" and write the action directly in provider voice: "Counseled on...", "Reviewed...", "Discussed...", "Recommended...", "Advised to...", "Instructed to...", "Plan to..."
 
 CRITICAL — DIAGNOSIS PRESERVATION:
 - Do NOT remove a diagnosis from the Assessment simply because you cannot find supporting dialogue in the transcript portion you can see. Long encounters discuss conditions throughout the visit; supporting evidence may appear anywhere in the conversation.
