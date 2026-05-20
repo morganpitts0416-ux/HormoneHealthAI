@@ -17072,6 +17072,118 @@ IMPORTANT:
 
   // ─── Spruce Integration ───────────────────────────────────────────────
   //
+  // ── Admin: Spruce routing rule CRUD ──────────────────────────────────
+  //
+  // GET  /api/admin/spruce-routing          — list rules for the current clinic
+  // POST /api/admin/spruce-routing          — create a rule
+  // PATCH /api/admin/spruce-routing/:id     — update a rule
+  // DELETE /api/admin/spruce-routing/:id    — delete a rule
+  // GET  /api/admin/spruce-unrouted         — list unrouted events (system-wide)
+  // PATCH /api/admin/spruce-unrouted/:id/review — mark event reviewed
+
+  app.get("/api/admin/spruce-routing", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const rules = await storage.getSpruceRoutingRulesByClinic(clinicId);
+      res.json(rules);
+    } catch (err) {
+      console.error("[spruce-routing] list error:", err);
+      res.status(500).json({ message: "Failed to load routing rules" });
+    }
+  });
+
+  app.post("/api/admin/spruce-routing", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const { label, sprucePhoneLineId, spruceTeamId, toPhoneNumber, isActive } = req.body;
+      if (!label || typeof label !== "string" || !label.trim()) {
+        return res.status(400).json({ message: "label is required" });
+      }
+      if (!sprucePhoneLineId && !spruceTeamId && !toPhoneNumber) {
+        return res.status(400).json({ message: "At least one routing identifier (sprucePhoneLineId, spruceTeamId, or toPhoneNumber) is required" });
+      }
+      const rule = await storage.createSpruceRoutingRule({
+        clinicId,
+        label: label.trim(),
+        sprucePhoneLineId: sprucePhoneLineId?.trim() || null,
+        spruceTeamId: spruceTeamId?.trim() || null,
+        toPhoneNumber: toPhoneNumber?.trim() || null,
+        isActive: isActive !== false,
+      });
+      res.status(201).json(rule);
+    } catch (err) {
+      console.error("[spruce-routing] create error:", err);
+      res.status(500).json({ message: "Failed to create routing rule" });
+    }
+  });
+
+  app.patch("/api/admin/spruce-routing/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      // Scope check: rule must belong to this clinic
+      const existing = (await storage.getSpruceRoutingRulesByClinic(clinicId)).find((r) => r.id === id);
+      if (!existing) return res.status(404).json({ message: "Routing rule not found" });
+      const { label, sprucePhoneLineId, spruceTeamId, toPhoneNumber, isActive } = req.body;
+      const updated = await storage.updateSpruceRoutingRule(id, {
+        ...(label !== undefined && { label: String(label).trim() }),
+        ...(sprucePhoneLineId !== undefined && { sprucePhoneLineId: sprucePhoneLineId?.trim() || null }),
+        ...(spruceTeamId !== undefined && { spruceTeamId: spruceTeamId?.trim() || null }),
+        ...(toPhoneNumber !== undefined && { toPhoneNumber: toPhoneNumber?.trim() || null }),
+        ...(isActive !== undefined && { isActive: Boolean(isActive) }),
+      });
+      res.json(updated);
+    } catch (err) {
+      console.error("[spruce-routing] update error:", err);
+      res.status(500).json({ message: "Failed to update routing rule" });
+    }
+  });
+
+  app.delete("/api/admin/spruce-routing/:id", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const existing = (await storage.getSpruceRoutingRulesByClinic(clinicId)).find((r) => r.id === id);
+      if (!existing) return res.status(404).json({ message: "Routing rule not found" });
+      await storage.deleteSpruceRoutingRule(id);
+      res.json({ deleted: true });
+    } catch (err) {
+      console.error("[spruce-routing] delete error:", err);
+      res.status(500).json({ message: "Failed to delete routing rule" });
+    }
+  });
+
+  // Unrouted events: any authenticated provider can review (no clinic scope —
+  // these events have no clinic_id yet by definition).
+  app.get("/api/admin/spruce-unrouted", requireAuth, async (req, res) => {
+    try {
+      const unreviewedOnly = req.query.unreviewedOnly === "true";
+      const events = await storage.listSpruceUnroutedEvents({ limit: 200, unreviewedOnly });
+      res.json(events);
+    } catch (err) {
+      console.error("[spruce-unrouted] list error:", err);
+      res.status(500).json({ message: "Failed to load unrouted events" });
+    }
+  });
+
+  app.patch("/api/admin/spruce-unrouted/:id/review", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const userId = getClinicianId(req);
+      await storage.markSpruceUnroutedEventReviewed(id, userId);
+      res.json({ reviewed: true });
+    } catch (err) {
+      console.error("[spruce-unrouted] review error:", err);
+      res.status(500).json({ message: "Failed to mark event reviewed" });
+    }
+  });
+
+  // ── Webhook receiver ──────────────────────────────────────────────────
+  //
   // POST /api/integrations/spruce/webhook
   //
   // Publicly accessible webhook receiver for Spruce events.
@@ -17120,46 +17232,117 @@ IMPORTANT:
   app.post("/api/integrations/spruce/webhook", (req, res) => {
     // ── 1. Immediately acknowledge receipt ───────────────────────────────
     // Spruce marks a webhook delivery successful only when it receives a
-    // 2xx within a short timeout.  Send 200 before doing any heavy work.
+    // 2xx within a short timeout.  Send 200 before any heavy work.
     res.status(200).json({ received: true });
 
-    // ── 2. Safe header logging ───────────────────────────────────────────
-    // Redact the signature header value from logs (log only presence/length).
-    const sigHeader = req.headers["x-spruce-signature"] as string | undefined;
-    const safeHeaders: Record<string, string> = {};
-    for (const [k, v] of Object.entries(req.headers)) {
-      if (k === "x-spruce-signature") {
-        safeHeaders[k] = v ? `[present, length=${String(v).length}]` : "[empty]";
-      } else if (k === "authorization") {
-        safeHeaders[k] = "[redacted]";
-      } else {
-        safeHeaders[k] = Array.isArray(v) ? v.join(", ") : (v ?? "");
+    // Run all async work in a detached promise so we never block the response.
+    (async () => {
+      // ── 2. Safe header logging ─────────────────────────────────────────
+      const sigHeader = req.headers["x-spruce-signature"] as string | undefined;
+      const safeHeaders: Record<string, string> = {};
+      for (const [k, v] of Object.entries(req.headers)) {
+        if (k === "x-spruce-signature") {
+          safeHeaders[k] = v ? `[present, length=${String(v).length}]` : "[empty]";
+        } else if (k === "authorization") {
+          safeHeaders[k] = "[redacted]";
+        } else {
+          safeHeaders[k] = Array.isArray(v) ? v.join(", ") : (v ?? "");
+        }
       }
-    }
-    console.log("[Spruce] Webhook received — headers:", JSON.stringify(safeHeaders));
+      console.log("[Spruce] Webhook received — headers:", JSON.stringify(safeHeaders));
 
-    // ── 3. Body logging ──────────────────────────────────────────────────
-    const body = req.body;
-    const eventType: string = body?.type ?? body?.event_type ?? body?.event ?? "(unknown)";
-    console.log("[Spruce] Event type:", eventType);
-    console.log("[Spruce] Payload:", JSON.stringify(body, null, 2));
-
-    // ── 4. Signature verification (when secret is configured) ────────────
-    const secret = process.env.SPRUCE_WEBHOOK_SECRET;
-    if (secret) {
-      const rawBody = (req as any).rawBody as Buffer | undefined;
-      const result = verifySpruceSignature(rawBody, sigHeader, secret);
-      if (result.valid) {
-        console.log("[Spruce] Signature verified OK");
+      // ── 3. Signature verification ──────────────────────────────────────
+      const secret = process.env.SPRUCE_WEBHOOK_SECRET;
+      if (secret) {
+        const rawBody = (req as any).rawBody as Buffer | undefined;
+        const result = verifySpruceSignature(rawBody, sigHeader, secret);
+        if (result.valid) {
+          console.log("[Spruce] Signature verified OK");
+        } else {
+          console.warn("[Spruce] Signature verification FAILED:", result.reason);
+        }
       } else {
-        // Log the failure for alerting purposes but do not reject the request —
-        // we already sent 200.  Once the integration is stable, this can be
-        // promoted to a pre-response check that returns 401.
-        console.warn("[Spruce] Signature verification FAILED:", result.reason);
+        console.warn("[Spruce] SPRUCE_WEBHOOK_SECRET not set — skipping signature verification");
       }
-    } else {
-      console.warn("[Spruce] SPRUCE_WEBHOOK_SECRET not set — skipping signature verification");
-    }
+
+      // ── 4. Extract event metadata ──────────────────────────────────────
+      const body = req.body;
+      const eventType: string = body?.type ?? body?.event_type ?? body?.event ?? "(unknown)";
+      console.log("[Spruce] Event type:", eventType);
+      console.log("[Spruce] Payload:", JSON.stringify(body, null, 2));
+
+      // ── 5. Extract routing candidates ──────────────────────────────────
+      // Spruce payloads nest identifiers differently depending on event type.
+      // We probe multiple known field paths so future event types work without
+      // code changes.  As we see real payloads the log output will reveal the
+      // exact field names, which can then be used to configure routing rules.
+      const data = body?.data ?? body;
+
+      const phoneLineId: string | null =
+        data?.phone_line?.id ??
+        data?.phoneLineId ??
+        data?.phone_line_id ??
+        body?.phone_line?.id ??
+        null;
+
+      const teamId: string | null =
+        data?.team?.id ??
+        data?.teamId ??
+        data?.team_id ??
+        body?.team?.id ??
+        null;
+
+      const toPhone: string | null =
+        data?.to ??
+        data?.phone_line?.phone_number ??
+        data?.toPhoneNumber ??
+        data?.to_phone_number ??
+        null;
+
+      const routingAttempted = { phoneLineId, teamId, toPhone };
+      console.log("[Spruce] Routing candidates:", JSON.stringify(routingAttempted));
+
+      // ── 6. Clinic lookup ───────────────────────────────────────────────
+      // Priority: phone_line_id → team_id → to_phone_number.
+      // June workflow runs and patient-facing replies are BLOCKED until a
+      // clinic match is confirmed.
+      let matchedClinicId: number | null = null;
+      try {
+        matchedClinicId = await storage.findSpruceClinicId(phoneLineId, teamId, toPhone);
+      } catch (lookupErr) {
+        console.error("[Spruce] Routing lookup failed:", lookupErr);
+      }
+
+      if (matchedClinicId !== null) {
+        // ── 7a. Routed successfully ──────────────────────────────────────
+        console.log(`[Spruce] Routed to clinic_id=${matchedClinicId} via event="${eventType}"`);
+        // TODO: dispatch June workflow / create scoped records here.
+        // All downstream actions MUST use matchedClinicId for tenant scoping.
+        // Automated June replies remain disabled until routing is confirmed
+        // stable and the June workflow integration is implemented.
+
+      } else {
+        // ── 7b. No matching routing rule ─────────────────────────────────
+        // Store for admin review.  Do NOT trigger June.  Do NOT create any
+        // patient-facing reply.
+        console.warn(
+          `[Spruce] UNROUTED event="${eventType}" — no matching routing rule for`,
+          JSON.stringify(routingAttempted),
+          "— stored for admin review at /api/admin/spruce-unrouted",
+        );
+        try {
+          await storage.createSpruceUnroutedEvent({
+            rawPayload: body ?? {},
+            eventType,
+            routingAttempted,
+          });
+        } catch (storeErr) {
+          console.error("[Spruce] Failed to store unrouted event:", storeErr);
+        }
+      }
+    })().catch((err) => {
+      console.error("[Spruce] Unexpected error in async webhook handler:", err);
+    });
   });
 
   // ─── End Spruce Integration ───────────────────────────────────────────

@@ -2363,3 +2363,50 @@ export const patientPacketAssignments = pgTable("patient_packet_assignments", {
 export type PatientPacketAssignment = typeof patientPacketAssignments.$inferSelect;
 export const insertPatientPacketAssignmentSchema = createInsertSchema(patientPacketAssignments).omit({ id: true, createdAt: true });
 export type InsertPatientPacketAssignment = z.infer<typeof insertPatientPacketAssignmentSchema>;
+
+// ─── Spruce Integration ───────────────────────────────────────────────────────
+//
+// Multi-location routing: maps Spruce phone line / team identifiers → ClinIQ
+// clinic_id so that every inbound Spruce event is scoped to the correct tenant.
+//
+// Routing priority (first match wins):
+//   1. sprucePhoneLineId  — most reliable; each Spruce location line has a unique ID
+//   2. spruceTeamId       — fallback when phone-line ID isn't in the payload
+//   3. toPhoneNumber      — E.164 receiving number (last resort)
+//
+// Rules that cannot be matched are stored in spruce_unrouted_events for admin
+// review. June workflow runs and patient-facing replies are BLOCKED until a
+// clinic match is confirmed.
+
+export const spruceRoutingRules = pgTable("spruce_routing_rules", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  // At least one identifier must be set; multiple may be set for belt-and-suspenders.
+  sprucePhoneLineId: varchar("spruce_phone_line_id", { length: 100 }),
+  spruceTeamId: varchar("spruce_team_id", { length: 100 }),
+  toPhoneNumber: varchar("to_phone_number", { length: 30 }),
+  // Human-readable label — helps admins understand which rule maps to which location.
+  label: varchar("label", { length: 200 }).notNull(),
+  isActive: boolean("is_active").notNull().default(true),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type SpruceRoutingRule = typeof spruceRoutingRules.$inferSelect;
+export const insertSpruceRoutingRuleSchema = createInsertSchema(spruceRoutingRules).omit({ id: true, createdAt: true });
+export type InsertSpruceRoutingRule = z.infer<typeof insertSpruceRoutingRuleSchema>;
+
+// Stores Spruce events that could not be matched to any clinic.
+// Admin must review and either configure a routing rule or discard.
+export const spruceUnroutedEvents = pgTable("spruce_unrouted_events", {
+  id: serial("id").primaryKey(),
+  rawPayload: jsonb("raw_payload").notNull(),
+  eventType: varchar("event_type", { length: 100 }),
+  // The routing candidates we extracted from the payload — useful for creating
+  // the corresponding routing rule after review.
+  routingAttempted: jsonb("routing_attempted"),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+  reviewedAt: timestamp("reviewed_at"),
+  reviewedByUserId: integer("reviewed_by_user_id").references(() => users.id, { onDelete: "set null" }),
+});
+export type SpruceUnroutedEvent = typeof spruceUnroutedEvents.$inferSelect;
+export const insertSpruceUnroutedEventSchema = createInsertSchema(spruceUnroutedEvents).omit({ id: true, receivedAt: true });
+export type InsertSpruceUnroutedEvent = z.infer<typeof insertSpruceUnroutedEventSchema>;

@@ -351,6 +351,18 @@ export interface IStorage {
   markAllInboxNotificationsRead(clinicId: number, providerId: number | null, userId: number): Promise<number>;
   dismissInboxNotification(id: number, clinicId: number, userId: number): Promise<boolean>;
 
+  // ── Spruce routing ────────────────────────────────────────────────────────
+  // Maps Spruce phone-line / team identifiers → ClinIQ clinic_id so that every
+  // inbound Spruce event is tenant-scoped before any downstream action is taken.
+  getSpruceRoutingRulesByClinic(clinicId: number): Promise<schema.SpruceRoutingRule[]>;
+  findSpruceClinicId(phoneLineId?: string | null, teamId?: string | null, toPhone?: string | null): Promise<number | null>;
+  createSpruceRoutingRule(data: schema.InsertSpruceRoutingRule & { clinicId: number }): Promise<schema.SpruceRoutingRule>;
+  updateSpruceRoutingRule(id: number, data: Partial<schema.InsertSpruceRoutingRule>): Promise<schema.SpruceRoutingRule | undefined>;
+  deleteSpruceRoutingRule(id: number): Promise<void>;
+  createSpruceUnroutedEvent(data: schema.InsertSpruceUnroutedEvent): Promise<schema.SpruceUnroutedEvent>;
+  listSpruceUnroutedEvents(opts?: { limit?: number; unreviewedOnly?: boolean }): Promise<schema.SpruceUnroutedEvent[]>;
+  markSpruceUnroutedEventReviewed(id: number, userId: number): Promise<void>;
+
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
   upsertClinicalBlockDefaults(clinicId: number, providerId: number, data: schema.UpdateClinicalBlockDefaults): Promise<schema.ClinicalBlockDefaultsRow>;
@@ -4424,4 +4436,101 @@ async function _resolveMandatoryReasons(
     )).limit(1);
     return { item: raced ?? null, encounter: parkedEncounter };
   });
+};
+
+// ── Spruce routing ────────────────────────────────────────────────────────────
+
+(DbStorage.prototype as any).getSpruceRoutingRulesByClinic = async function(
+  clinicId: number,
+): Promise<schema.SpruceRoutingRule[]> {
+  return db
+    .select()
+    .from(schema.spruceRoutingRules)
+    .where(eq(schema.spruceRoutingRules.clinicId, clinicId))
+    .orderBy(desc(schema.spruceRoutingRules.createdAt));
+};
+
+// Priority: phone_line_id first (most reliable), then team_id, then to_phone_number.
+// All active rules for all clinics are loaded once; the in-memory scan is fast
+// because the table will remain small (one row per Spruce line, typically < 50).
+(DbStorage.prototype as any).findSpruceClinicId = async function(
+  phoneLineId?: string | null,
+  teamId?: string | null,
+  toPhone?: string | null,
+): Promise<number | null> {
+  const rules = await db
+    .select()
+    .from(schema.spruceRoutingRules)
+    .where(eq(schema.spruceRoutingRules.isActive, true));
+
+  if (phoneLineId) {
+    const match = rules.find((r) => r.sprucePhoneLineId === phoneLineId);
+    if (match) return match.clinicId;
+  }
+  if (teamId) {
+    const match = rules.find((r) => r.spruceTeamId === teamId);
+    if (match) return match.clinicId;
+  }
+  if (toPhone) {
+    const match = rules.find((r) => r.toPhoneNumber === toPhone);
+    if (match) return match.clinicId;
+  }
+  return null;
+};
+
+(DbStorage.prototype as any).createSpruceRoutingRule = async function(
+  data: schema.InsertSpruceRoutingRule & { clinicId: number },
+): Promise<schema.SpruceRoutingRule> {
+  const [row] = await db.insert(schema.spruceRoutingRules).values(data).returning();
+  return row;
+};
+
+(DbStorage.prototype as any).updateSpruceRoutingRule = async function(
+  id: number,
+  data: Partial<schema.InsertSpruceRoutingRule>,
+): Promise<schema.SpruceRoutingRule | undefined> {
+  const [row] = await db
+    .update(schema.spruceRoutingRules)
+    .set(data)
+    .where(eq(schema.spruceRoutingRules.id, id))
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).deleteSpruceRoutingRule = async function(
+  id: number,
+): Promise<void> {
+  await db.delete(schema.spruceRoutingRules).where(eq(schema.spruceRoutingRules.id, id));
+};
+
+(DbStorage.prototype as any).createSpruceUnroutedEvent = async function(
+  data: schema.InsertSpruceUnroutedEvent,
+): Promise<schema.SpruceUnroutedEvent> {
+  const [row] = await db.insert(schema.spruceUnroutedEvents).values(data).returning();
+  return row;
+};
+
+(DbStorage.prototype as any).listSpruceUnroutedEvents = async function(
+  opts?: { limit?: number; unreviewedOnly?: boolean },
+): Promise<schema.SpruceUnroutedEvent[]> {
+  const conditions = [];
+  if (opts?.unreviewedOnly) {
+    conditions.push(isNull(schema.spruceUnroutedEvents.reviewedAt));
+  }
+  return db
+    .select()
+    .from(schema.spruceUnroutedEvents)
+    .where(conditions.length ? and(...conditions) : undefined)
+    .orderBy(desc(schema.spruceUnroutedEvents.receivedAt))
+    .limit(opts?.limit ?? 100);
+};
+
+(DbStorage.prototype as any).markSpruceUnroutedEventReviewed = async function(
+  id: number,
+  userId: number,
+): Promise<void> {
+  await db
+    .update(schema.spruceUnroutedEvents)
+    .set({ reviewedAt: new Date(), reviewedByUserId: userId })
+    .where(eq(schema.spruceUnroutedEvents.id, id));
 };
