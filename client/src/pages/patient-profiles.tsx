@@ -2394,7 +2394,7 @@ export default function PatientProfiles() {
                       </button>
                       <button
                         className="w-full flex items-center gap-2 px-3 py-2 text-sm rounded-sm hover:bg-muted transition-colors text-left"
-                        onClick={() => setLocation(`/simple-lab-upload?patientId=${selectedPatient.id}`)}
+                        onClick={() => setLocation(`/simple-labs?patientId=${selectedPatient.id}`)}
                         data-testid="button-quick-lab-entry"
                       >
                         <FlaskConical className="h-3.5 w-3.5 text-muted-foreground flex-shrink-0" />
