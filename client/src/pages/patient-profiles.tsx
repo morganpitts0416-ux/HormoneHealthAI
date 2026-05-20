@@ -38,6 +38,7 @@ import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
 import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment, SimpleLabUpload } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
+import { LabComparisonDialog } from "@/components/lab-comparison-dialog";
 import {
   PreventAssessmentCard,
   PreventNotCalculatedCard,
@@ -277,7 +278,7 @@ type CombinedLabItem =
   | { kind: 'full'; lab: LabResult; sortMs: number }
   | { kind: 'quick'; upload: SimpleLabUpload; sortMs: number };
 
-function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, deletingId, onDeleteSimpleUpload, deletingSimpleUploadId, onPublishLab, hasPortalAccount, publishingId, publishedLabResultIds }: {
+function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, deletingId, onDeleteSimpleUpload, deletingSimpleUploadId, onPublishLab, hasPortalAccount, publishingId, publishedLabResultIds, patientName = "" }: {
   labs: LabResult[];
   simpleUploads?: SimpleLabUpload[];
   onViewLab: (lab: LabResult) => void;
@@ -289,7 +290,9 @@ function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, dele
   hasPortalAccount?: boolean;
   publishingId?: number | null;
   publishedLabResultIds?: number[];
+  patientName?: string;
 }) {
+  const [showComparison, setShowComparison] = useState(false);
   const combined: CombinedLabItem[] = [
     ...labs.map(lab => ({ kind: 'full' as const, lab, sortMs: new Date(lab.labDate).getTime() })),
     ...simpleUploads.map(u => ({ kind: 'quick' as const, upload: u, sortMs: new Date(u.labDate).getTime() })),
@@ -300,10 +303,22 @@ function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, dele
   return (
     <Card data-testid="lab-history-list">
       <CardHeader className="pb-3">
-        <CardTitle className="text-lg flex items-center gap-2">
+        <CardTitle className="text-lg flex items-center gap-2 flex-wrap">
           <ClipboardList className="h-5 w-5 text-primary dark:text-primary" />
           Lab History
-          <Badge variant="secondary" className="text-xs ml-auto">{totalCount} record{totalCount !== 1 ? 's' : ''}</Badge>
+          <Badge variant="secondary" className="text-xs">{totalCount} record{totalCount !== 1 ? 's' : ''}</Badge>
+          {totalCount >= 2 && (
+            <Button
+              variant="outline"
+              size="sm"
+              className="ml-auto text-xs gap-1.5"
+              onClick={() => setShowComparison(true)}
+              data-testid="button-lab-comparison-view"
+            >
+              <ArrowRightLeft className="h-3.5 w-3.5" />
+              Comparison View
+            </Button>
+          )}
         </CardTitle>
       </CardHeader>
       <CardContent>
@@ -444,6 +459,14 @@ function LabHistoryList({ labs, simpleUploads = [], onViewLab, onDeleteLab, dele
           </div>
         )}
       </CardContent>
+
+      <LabComparisonDialog
+        open={showComparison}
+        onClose={() => setShowComparison(false)}
+        labs={labs}
+        simpleUploads={simpleUploads}
+        patientName={patientName}
+      />
     </Card>
   );
 }
@@ -3361,6 +3384,7 @@ export default function PatientProfiles() {
                     hasPortalAccount={portalStatus?.hasPortalAccount}
                     publishingId={publishingLabId}
                     publishedLabResultIds={portalStatus?.publishedLabResultIds}
+                    patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`.trim()}
                   />
                   {allLabsForTrending.length >= 2 && (
                     <PatientTrendCharts
