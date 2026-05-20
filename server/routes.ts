@@ -1,6 +1,7 @@
 import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import crypto from "crypto";
+import { encryptSecret, decryptSecret, isEncrypted } from "./crypto-utils";
 import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
@@ -17072,6 +17073,87 @@ IMPORTANT:
 
   // ─── Spruce Integration ───────────────────────────────────────────────
   //
+  // ── Per-clinic settings (connection config + encrypted secrets) ───────
+  //
+  // GET  /api/clinic/spruce-settings   — read current clinic's Spruce config
+  //                                      (secrets shown as boolean flags only)
+  // PUT  /api/clinic/spruce-settings   — upsert config; plaintext secrets are
+  //                                      encrypted (AES-256-GCM) before storage
+
+  app.get("/api/clinic/spruce-settings", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const row = await storage.getClinicSpruceSettings(clinicId);
+      if (!row) return res.json(null);
+      // Never expose encrypted values — return presence flags instead
+      res.json({
+        id: row.id,
+        clinicId: row.clinicId,
+        isEnabled: row.isEnabled,
+        juneEnabled: row.juneEnabled,
+        spruceOrgId: row.spruceOrgId,
+        spruceWebhookEndpointId: row.spruceWebhookEndpointId,
+        webhookSecretConfigured: isEncrypted(row.webhookSecretEncrypted),
+        apiTokenConfigured: isEncrypted(row.apiTokenEncrypted),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+    } catch (err) {
+      console.error("[spruce-settings] GET error:", err);
+      res.status(500).json({ message: "Failed to load Spruce settings" });
+    }
+  });
+
+  app.put("/api/clinic/spruce-settings", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+
+      const {
+        isEnabled,
+        juneEnabled,
+        spruceOrgId,
+        spruceWebhookEndpointId,
+        // Plaintext secrets — encrypted before storage; empty string = clear the secret
+        webhookSecret,
+        apiToken,
+      } = req.body;
+
+      const updates: Parameters<typeof storage.upsertClinicSpruceSettings>[1] = {};
+
+      if (isEnabled !== undefined) updates.isEnabled = Boolean(isEnabled);
+      if (juneEnabled !== undefined) updates.juneEnabled = Boolean(juneEnabled);
+      if (spruceOrgId !== undefined) updates.spruceOrgId = spruceOrgId?.trim() || null;
+      if (spruceWebhookEndpointId !== undefined) updates.spruceWebhookEndpointId = spruceWebhookEndpointId?.trim() || null;
+
+      // Secrets: non-empty string → encrypt and store; empty string → clear
+      if (webhookSecret !== undefined) {
+        updates.webhookSecretEncrypted = webhookSecret ? encryptSecret(String(webhookSecret)) : null;
+      }
+      if (apiToken !== undefined) {
+        updates.apiTokenEncrypted = apiToken ? encryptSecret(String(apiToken)) : null;
+      }
+
+      const row = await storage.upsertClinicSpruceSettings(clinicId, updates);
+      res.json({
+        id: row.id,
+        clinicId: row.clinicId,
+        isEnabled: row.isEnabled,
+        juneEnabled: row.juneEnabled,
+        spruceOrgId: row.spruceOrgId,
+        spruceWebhookEndpointId: row.spruceWebhookEndpointId,
+        webhookSecretConfigured: isEncrypted(row.webhookSecretEncrypted),
+        apiTokenConfigured: isEncrypted(row.apiTokenEncrypted),
+        createdAt: row.createdAt,
+        updatedAt: row.updatedAt,
+      });
+    } catch (err) {
+      console.error("[spruce-settings] PUT error:", err);
+      res.status(500).json({ message: "Failed to save Spruce settings" });
+    }
+  });
+
   // ── Admin: Spruce routing rule CRUD ──────────────────────────────────
   //
   // GET  /api/admin/spruce-routing          — list rules for the current clinic
@@ -17182,42 +17264,18 @@ IMPORTANT:
     }
   });
 
-  // ── Webhook receiver ──────────────────────────────────────────────────
-  //
-  // POST /api/integrations/spruce/webhook
-  //
-  // Publicly accessible webhook receiver for Spruce events.
-  // - No authentication required (Spruce calls this from outside the platform).
-  // - Raw body is already captured on req.rawBody by the express.json verify
-  //   callback in server/index.ts, so HMAC signature verification works without
-  //   any additional body-parser setup.
-  // - Signature verification is performed when SPRUCE_WEBHOOK_SECRET is set;
-  //   mismatches are logged but do NOT change the HTTP 200 response (Spruce
-  //   requires a fast 200 to mark the delivery as successful — blocking it would
-  //   cause retries and duplicate processing).
-  // - SPRUCE_API_TOKEN is reserved for future outbound calls (not used here yet).
-  //
-  // Environment variables required (set in Replit Secrets):
-  //   SPRUCE_WEBHOOK_SECRET  — shared secret from Spruce webhook settings
-  //   SPRUCE_API_TOKEN       — bearer token for outbound Spruce API calls (future)
+  // ── Shared helpers ────────────────────────────────────────────────────
 
+  // HMAC-SHA256 signature verification (Spruce may prefix with "sha256=").
   function verifySpruceSignature(
     rawBody: Buffer | string | undefined,
     signatureHeader: string | undefined,
     secret: string,
   ): { valid: boolean; reason?: string } {
-    if (!signatureHeader) {
-      return { valid: false, reason: "X-Spruce-Signature header missing" };
-    }
-    if (!rawBody) {
-      return { valid: false, reason: "raw body not available for signature check" };
-    }
+    if (!signatureHeader) return { valid: false, reason: "X-Spruce-Signature header missing" };
+    if (!rawBody) return { valid: false, reason: "raw body not available" };
     try {
-      const expected = crypto
-        .createHmac("sha256", secret)
-        .update(rawBody)
-        .digest("hex");
-      // Spruce may prefix with "sha256=" — strip it for comparison
+      const expected = crypto.createHmac("sha256", secret).update(rawBody).digest("hex");
       const incoming = signatureHeader.replace(/^sha256=/, "");
       const valid = crypto.timingSafeEqual(
         Buffer.from(expected, "utf8"),
@@ -17229,120 +17287,165 @@ IMPORTANT:
     }
   }
 
-  app.post("/api/integrations/spruce/webhook", (req, res) => {
-    // ── 1. Immediately acknowledge receipt ───────────────────────────────
-    // Spruce marks a webhook delivery successful only when it receives a
-    // 2xx within a short timeout.  Send 200 before any heavy work.
-    res.status(200).json({ received: true });
-
-    // Run all async work in a detached promise so we never block the response.
-    (async () => {
-      // ── 2. Safe header logging ─────────────────────────────────────────
-      const sigHeader = req.headers["x-spruce-signature"] as string | undefined;
-      const safeHeaders: Record<string, string> = {};
-      for (const [k, v] of Object.entries(req.headers)) {
-        if (k === "x-spruce-signature") {
-          safeHeaders[k] = v ? `[present, length=${String(v).length}]` : "[empty]";
-        } else if (k === "authorization") {
-          safeHeaders[k] = "[redacted]";
-        } else {
-          safeHeaders[k] = Array.isArray(v) ? v.join(", ") : (v ?? "");
+  // Resolve the best webhook secret for a clinic:
+  //   1. Per-clinic encrypted secret from clinicSpruceSettings (preferred)
+  //   2. Global SPRUCE_WEBHOOK_SECRET env var (temporary fallback)
+  async function resolveWebhookSecret(clinicId: number | null): Promise<string | null> {
+    if (clinicId !== null) {
+      try {
+        const settings = await storage.getClinicSpruceSettings(clinicId);
+        if (settings?.webhookSecretEncrypted && isEncrypted(settings.webhookSecretEncrypted)) {
+          return decryptSecret(settings.webhookSecretEncrypted);
         }
-      }
-      console.log("[Spruce] Webhook received — headers:", JSON.stringify(safeHeaders));
+      } catch {}
+    }
+    return process.env.SPRUCE_WEBHOOK_SECRET ?? null;
+  }
 
-      // ── 3. Signature verification ──────────────────────────────────────
-      const secret = process.env.SPRUCE_WEBHOOK_SECRET;
-      if (secret) {
-        const rawBody = (req as any).rawBody as Buffer | undefined;
-        const result = verifySpruceSignature(rawBody, sigHeader, secret);
-        if (result.valid) {
-          console.log("[Spruce] Signature verified OK");
-        } else {
-          console.warn("[Spruce] Signature verification FAILED:", result.reason);
-        }
-      } else {
-        console.warn("[Spruce] SPRUCE_WEBHOOK_SECRET not set — skipping signature verification");
-      }
+  // Core event-processing logic shared by both webhook endpoints.
+  // clinicIdHint: non-null when the clinic is already known from the URL (per-clinic endpoint).
+  async function processSprucWebhookBody(
+    req: { body: any; rawBody?: Buffer; headers: Record<string, any> },
+    clinicIdHint: number | null,
+    tag: string,
+  ): Promise<void> {
+    const sigHeader = req.headers["x-spruce-signature"] as string | undefined;
 
-      // ── 4. Extract event metadata ──────────────────────────────────────
-      const body = req.body;
-      const eventType: string = body?.type ?? body?.event_type ?? body?.event ?? "(unknown)";
-      console.log("[Spruce] Event type:", eventType);
-      console.log("[Spruce] Payload:", JSON.stringify(body, null, 2));
+    // ── Safe header log ────────────────────────────────────────────────
+    const safeHeaders: Record<string, string> = {};
+    for (const [k, v] of Object.entries(req.headers)) {
+      if (k === "x-spruce-signature") safeHeaders[k] = v ? `[present, len=${String(v).length}]` : "[empty]";
+      else if (k === "authorization") safeHeaders[k] = "[redacted]";
+      else safeHeaders[k] = Array.isArray(v) ? v.join(", ") : (v ?? "");
+    }
+    console.log(`${tag} headers:`, JSON.stringify(safeHeaders));
 
-      // ── 5. Extract routing candidates ──────────────────────────────────
-      // Spruce payloads nest identifiers differently depending on event type.
-      // We probe multiple known field paths so future event types work without
-      // code changes.  As we see real payloads the log output will reveal the
-      // exact field names, which can then be used to configure routing rules.
-      const data = body?.data ?? body;
+    // ── Extract event metadata ─────────────────────────────────────────
+    const body = req.body;
+    const eventType: string = body?.type ?? body?.event_type ?? body?.event ?? "(unknown)";
+    console.log(`${tag} event="${eventType}"`);
+    console.log(`${tag} payload:`, JSON.stringify(body, null, 2));
 
-      const phoneLineId: string | null =
-        data?.phone_line?.id ??
-        data?.phoneLineId ??
-        data?.phone_line_id ??
-        body?.phone_line?.id ??
-        null;
+    // ── Extract routing candidates ─────────────────────────────────────
+    // Probe multiple known field paths — real payloads will reveal exact names.
+    const data = body?.data ?? body;
+    const phoneLineId: string | null =
+      data?.phone_line?.id ?? data?.phoneLineId ?? data?.phone_line_id ?? body?.phone_line?.id ?? null;
+    const teamId: string | null =
+      data?.team?.id ?? data?.teamId ?? data?.team_id ?? body?.team?.id ?? null;
+    const toPhone: string | null =
+      data?.to ?? data?.phone_line?.phone_number ?? data?.toPhoneNumber ?? data?.to_phone_number ?? null;
+    const routingAttempted = { phoneLineId, teamId, toPhone };
+    console.log(`${tag} routing candidates:`, JSON.stringify(routingAttempted));
 
-      const teamId: string | null =
-        data?.team?.id ??
-        data?.teamId ??
-        data?.team_id ??
-        body?.team?.id ??
-        null;
-
-      const toPhone: string | null =
-        data?.to ??
-        data?.phone_line?.phone_number ??
-        data?.toPhoneNumber ??
-        data?.to_phone_number ??
-        null;
-
-      const routingAttempted = { phoneLineId, teamId, toPhone };
-      console.log("[Spruce] Routing candidates:", JSON.stringify(routingAttempted));
-
-      // ── 6. Clinic lookup ───────────────────────────────────────────────
-      // Priority: phone_line_id → team_id → to_phone_number.
-      // June workflow runs and patient-facing replies are BLOCKED until a
-      // clinic match is confirmed.
-      let matchedClinicId: number | null = null;
+    // ── Clinic lookup ──────────────────────────────────────────────────
+    // For per-clinic endpoint clinicIdHint is already set; for the global
+    // endpoint we resolve via routing rules.
+    let matchedClinicId: number | null = clinicIdHint;
+    if (matchedClinicId === null) {
       try {
         matchedClinicId = await storage.findSpruceClinicId(phoneLineId, teamId, toPhone);
-      } catch (lookupErr) {
-        console.error("[Spruce] Routing lookup failed:", lookupErr);
+      } catch (err) {
+        console.error(`${tag} routing lookup failed:`, err);
       }
+    }
 
-      if (matchedClinicId !== null) {
-        // ── 7a. Routed successfully ──────────────────────────────────────
-        console.log(`[Spruce] Routed to clinic_id=${matchedClinicId} via event="${eventType}"`);
-        // TODO: dispatch June workflow / create scoped records here.
-        // All downstream actions MUST use matchedClinicId for tenant scoping.
-        // Automated June replies remain disabled until routing is confirmed
-        // stable and the June workflow integration is implemented.
-
-      } else {
-        // ── 7b. No matching routing rule ─────────────────────────────────
-        // Store for admin review.  Do NOT trigger June.  Do NOT create any
-        // patient-facing reply.
+    // ── Per-clinic settings gate ───────────────────────────────────────
+    let clinicSettings: Awaited<ReturnType<typeof storage.getClinicSpruceSettings>> = null;
+    if (matchedClinicId !== null) {
+      try { clinicSettings = await storage.getClinicSpruceSettings(matchedClinicId); } catch {}
+      if (!clinicSettings?.isEnabled) {
+        // Clinic exists but has not enabled Spruce — treat as unrouted.
         console.warn(
-          `[Spruce] UNROUTED event="${eventType}" — no matching routing rule for`,
-          JSON.stringify(routingAttempted),
-          "— stored for admin review at /api/admin/spruce-unrouted",
+          `${tag} clinic_id=${matchedClinicId} matched but Spruce is DISABLED for this clinic — storing as unrouted`,
         );
-        try {
-          await storage.createSpruceUnroutedEvent({
-            rawPayload: body ?? {},
-            eventType,
-            routingAttempted,
-          });
-        } catch (storeErr) {
-          console.error("[Spruce] Failed to store unrouted event:", storeErr);
-        }
+        matchedClinicId = null; // fall through to unrouted branch below
       }
-    })().catch((err) => {
-      console.error("[Spruce] Unexpected error in async webhook handler:", err);
-    });
+    }
+
+    // ── Signature verification ─────────────────────────────────────────
+    // Verify AFTER routing so we can use the per-clinic secret.
+    // Falls back to global SPRUCE_WEBHOOK_SECRET env var if not configured.
+    const secret = await resolveWebhookSecret(matchedClinicId);
+    if (secret) {
+      const result = verifySpruceSignature(req.rawBody, sigHeader, secret);
+      if (result.valid) {
+        console.log(`${tag} signature verified OK`);
+      } else {
+        console.warn(`${tag} signature FAILED:`, result.reason,
+          matchedClinicId ? `(per-clinic secret, clinic_id=${matchedClinicId})`
+            : "(global SPRUCE_WEBHOOK_SECRET fallback)");
+      }
+    } else {
+      console.warn(`${tag} no webhook secret configured — skipping signature verification`);
+    }
+
+    // ── Dispatch ───────────────────────────────────────────────────────
+    if (matchedClinicId !== null && clinicSettings?.isEnabled) {
+      console.log(
+        `${tag} ROUTED clinic_id=${matchedClinicId} juneEnabled=${clinicSettings.juneEnabled} event="${eventType}"`,
+      );
+      // ── Placeholder for future June workflow dispatch ─────────────────
+      // Requirements before enabling:
+      //   1. clinicSettings.juneEnabled must be true
+      //   2. A stable routing config must be in place (confirmed via real payloads)
+      //   3. June workflow implementation must be wired in here
+      // All downstream records MUST be scoped to matchedClinicId.
+      if (clinicSettings.juneEnabled) {
+        // TODO: dispatch June workflow scoped to matchedClinicId
+        console.log(`${tag} June is enabled for this clinic — dispatch point (not yet wired)`);
+      }
+    } else {
+      // No clinic match or clinic has Spruce disabled — store for admin review.
+      // Do NOT trigger June.  Do NOT send any patient-facing reply.
+      const reason = matchedClinicId === null
+        ? "no routing rule matched"
+        : "Spruce disabled for clinic";
+      console.warn(`${tag} UNROUTED (${reason}) — storing for admin review`, JSON.stringify(routingAttempted));
+      try {
+        await storage.createSpruceUnroutedEvent({ rawPayload: body ?? {}, eventType, routingAttempted });
+      } catch (err) {
+        console.error(`${tag} failed to store unrouted event:`, err);
+      }
+    }
+  }
+
+  // ── Per-clinic webhook endpoint ───────────────────────────────────────
+  //
+  // POST /api/integrations/spruce/clinic/:clinicId/webhook
+  //
+  // Recommended URL for new clinic setups.  Each Spruce organization registers
+  // this URL so ClinIQ knows the clinic upfront, enabling per-clinic signature
+  // verification without needing routing rules for the initial lookup.
+  // The clinic must still have isEnabled=true in its Spruce settings.
+  app.post("/api/integrations/spruce/clinic/:clinicId/webhook", (req, res) => {
+    res.status(200).json({ received: true });
+    const clinicId = parseInt(req.params.clinicId);
+    if (!Number.isFinite(clinicId) || clinicId < 1) {
+      console.warn("[Spruce/per-clinic] Invalid clinicId in URL:", req.params.clinicId);
+      return;
+    }
+    const rawReq = { body: req.body, rawBody: (req as any).rawBody, headers: req.headers as any };
+    processSprucWebhookBody(rawReq, clinicId, `[Spruce/clinic-${clinicId}]`).catch((err) =>
+      console.error(`[Spruce/clinic-${clinicId}] Unexpected error:`, err),
+    );
+  });
+
+  // ── Global webhook endpoint (legacy / org-wide Spruce webhooks) ───────
+  //
+  // POST /api/integrations/spruce/webhook
+  //
+  // Accepts events from any Spruce organization.  Clinic is identified via
+  // routing rules (phone_line_id → team_id → to_phone).  For new setups
+  // prefer the per-clinic endpoint above.
+  // Global env var SPRUCE_WEBHOOK_SECRET is used as a fallback secret only;
+  // per-clinic secrets from clinicSpruceSettings take precedence.
+  app.post("/api/integrations/spruce/webhook", (req, res) => {
+    res.status(200).json({ received: true });
+    const rawReq = { body: req.body, rawBody: (req as any).rawBody, headers: req.headers as any };
+    processSprucWebhookBody(rawReq, null, "[Spruce/global]").catch((err) =>
+      console.error("[Spruce/global] Unexpected error:", err),
+    );
   });
 
   // ─── End Spruce Integration ───────────────────────────────────────────

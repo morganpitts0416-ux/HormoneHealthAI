@@ -2366,6 +2366,54 @@ export type InsertPatientPacketAssignment = z.infer<typeof insertPatientPacketAs
 
 // ─── Spruce Integration ───────────────────────────────────────────────────────
 //
+// Spruce is an optional, per-clinic integration.  Some ClinIQ clinics will not
+// use Spruce at all.  Some will have their own separate Spruce organization /
+// API token / webhook secret.  A clinic group may map multiple Spruce phone
+// lines to multiple ClinIQ tenants.
+//
+// Architecture:
+//   clinicSpruceSettings  — one row per clinic, stores connection config +
+//                           AES-256-GCM encrypted secrets.
+//   spruceRoutingRules    — maps Spruce phone-line/team identifiers → clinic_id.
+//   spruceUnroutedEvents  — events that couldn't be matched; surfaced for admin
+//                           review.  No June dispatch, no patient reply.
+//
+// Global env vars (SPRUCE_WEBHOOK_SECRET, SPRUCE_API_TOKEN) are honoured as
+// temporary fallbacks during initial setup; per-clinic secrets take precedence.
+
+export const clinicSpruceSettings = pgTable("clinic_spruce_settings", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().unique().references(() => clinics.id, { onDelete: "cascade" }),
+  // Master switch — if false, no Spruce workflows run for this clinic regardless
+  // of routing rules or webhook events.
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  // Spruce organization/account identifiers (informational, not used in routing).
+  spruceOrgId: varchar("spruce_org_id", { length: 200 }),
+  // Webhook endpoint ID as assigned by Spruce (useful for auditing).
+  spruceWebhookEndpointId: varchar("spruce_webhook_endpoint_id", { length: 200 }),
+  // AES-256-GCM encrypted secrets.  Null = not configured; server falls back
+  // to global env var (SPRUCE_WEBHOOK_SECRET / SPRUCE_API_TOKEN).
+  // Format: base64(iv):base64(authTag):base64(ciphertext)
+  webhookSecretEncrypted: text("webhook_secret_encrypted"),
+  apiTokenEncrypted: text("api_token_encrypted"),
+  // June workflow gate.  Must be explicitly enabled per clinic before any
+  // AI-generated patient-facing reply can be dispatched.
+  juneEnabled: boolean("june_enabled").notNull().default(false),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ClinicSpruceSettings = typeof clinicSpruceSettings.$inferSelect;
+export const insertClinicSpruceSettingsSchema = createInsertSchema(clinicSpruceSettings).omit({
+  id: true, createdAt: true, updatedAt: true, clinicId: true,
+  webhookSecretEncrypted: true, apiTokenEncrypted: true,
+}).extend({
+  spruceOrgId: z.string().trim().max(200).nullable().optional(),
+  spruceWebhookEndpointId: z.string().trim().max(200).nullable().optional(),
+  juneEnabled: z.boolean().default(false),
+  isEnabled: z.boolean().default(false),
+});
+export type InsertClinicSpruceSettings = z.infer<typeof insertClinicSpruceSettingsSchema>;
+
 // Multi-location routing: maps Spruce phone line / team identifiers → ClinIQ
 // clinic_id so that every inbound Spruce event is scoped to the correct tenant.
 //

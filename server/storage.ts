@@ -363,6 +363,16 @@ export interface IStorage {
   listSpruceUnroutedEvents(opts?: { limit?: number; unreviewedOnly?: boolean }): Promise<schema.SpruceUnroutedEvent[]>;
   markSpruceUnroutedEventReviewed(id: number, userId: number): Promise<void>;
 
+  // ── Clinic Spruce settings (per-clinic connection config + encrypted secrets) ─
+  getClinicSpruceSettings(clinicId: number): Promise<schema.ClinicSpruceSettings | null>;
+  upsertClinicSpruceSettings(
+    clinicId: number,
+    data: Partial<Pick<schema.ClinicSpruceSettings,
+      "isEnabled" | "juneEnabled" | "spruceOrgId" | "spruceWebhookEndpointId"
+      | "webhookSecretEncrypted" | "apiTokenEncrypted"
+    >>,
+  ): Promise<schema.ClinicSpruceSettings>;
+
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
   upsertClinicalBlockDefaults(clinicId: number, providerId: number, data: schema.UpdateClinicalBlockDefaults): Promise<schema.ClinicalBlockDefaultsRow>;
@@ -4436,6 +4446,37 @@ async function _resolveMandatoryReasons(
     )).limit(1);
     return { item: raced ?? null, encounter: parkedEncounter };
   });
+};
+
+// ── Clinic Spruce settings ────────────────────────────────────────────────────
+
+(DbStorage.prototype as any).getClinicSpruceSettings = async function(
+  clinicId: number,
+): Promise<schema.ClinicSpruceSettings | null> {
+  const [row] = await db
+    .select()
+    .from(schema.clinicSpruceSettings)
+    .where(eq(schema.clinicSpruceSettings.clinicId, clinicId));
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).upsertClinicSpruceSettings = async function(
+  clinicId: number,
+  data: Partial<Pick<schema.ClinicSpruceSettings,
+    "isEnabled" | "juneEnabled" | "spruceOrgId" | "spruceWebhookEndpointId"
+    | "webhookSecretEncrypted" | "apiTokenEncrypted"
+  >>,
+): Promise<schema.ClinicSpruceSettings> {
+  const now = new Date();
+  const [row] = await db
+    .insert(schema.clinicSpruceSettings)
+    .values({ ...data, clinicId, createdAt: now, updatedAt: now })
+    .onConflictDoUpdate({
+      target: schema.clinicSpruceSettings.clinicId,
+      set: { ...data, updatedAt: now },
+    })
+    .returning();
+  return row;
 };
 
 // ── Spruce routing ────────────────────────────────────────────────────────────
