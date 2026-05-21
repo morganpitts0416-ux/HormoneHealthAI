@@ -2502,6 +2502,10 @@ export const spruceMessages = pgTable("spruce_messages", {
   // Deduplication key: "<eventType>:<spruce_object_id>" — used to detect
   // Spruce retries and prevent duplicate workflow requests.
   spruceEventDedupeKey: varchar("spruce_event_dedupe_key", { length: 220 }),
+  // Display name of the external Spruce contact (e.g. "Leigh Carol Neely").
+  // Extracted from externalParticipants[0].name or .displayName in the payload.
+  // Null when the contact has no name in Spruce or for staff outbound messages.
+  spruceContactName: varchar("spruce_contact_name", { length: 200 }),
   receivedAt: timestamp("received_at").defaultNow().notNull(),
 });
 export type SpruceMessage = typeof spruceMessages.$inferSelect;

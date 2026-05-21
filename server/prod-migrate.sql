@@ -1267,3 +1267,9 @@ ALTER TABLE spruce_messages
 -- NULL = caller not found in patient list (new contact or unmatched phone).
 ALTER TABLE spruce_messages
   ADD COLUMN IF NOT EXISTS patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL;
+
+-- spruce_contact_name: Spruce external-participant display name, extracted from
+-- externalParticipants[0].name|displayName at webhook receipt time.
+-- Used to pre-fill "Add as new patient" dialog for unmatched contacts.
+ALTER TABLE spruce_messages
+  ADD COLUMN IF NOT EXISTS spruce_contact_name VARCHAR(200);

@@ -32,6 +32,12 @@ interface AddPatientDialogProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   onCreated?: (patient: Patient) => void;
+  initialValues?: {
+    firstName?: string;
+    lastName?: string;
+    phone?: string;
+    email?: string;
+  };
 }
 
 const EMPTY_FORM = {
@@ -43,12 +49,22 @@ const EMPTY_FORM = {
   phone: "",
 };
 
-export function AddPatientDialog({ open, onOpenChange, onCreated }: AddPatientDialogProps) {
+export function AddPatientDialog({ open, onOpenChange, onCreated, initialValues }: AddPatientDialogProps) {
   const { toast } = useToast();
   const [form, setForm] = useState(EMPTY_FORM);
 
   useEffect(() => {
-    if (!open) setForm(EMPTY_FORM);
+    if (open) {
+      setForm({
+        ...EMPTY_FORM,
+        firstName: initialValues?.firstName ?? "",
+        lastName: initialValues?.lastName ?? "",
+        phone: initialValues?.phone ?? "",
+        email: initialValues?.email ?? "",
+      });
+    } else {
+      setForm(EMPTY_FORM);
+    }
   }, [open]);
 
   const { data: clinicProviders = [] } = useQuery<ClinicProvider[]>({

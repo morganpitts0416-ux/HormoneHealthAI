@@ -17669,6 +17669,20 @@ IMPORTANT:
         obj?.conversation?.externalParticipants?.[0]?.endpoint?.rawValue ??
         obj?.externalParticipants?.[0]?.endpoint?.rawValue ??
         data?.from?.phone_number ?? "";
+
+      // External contact name: Spruce exposes a name/displayName on the participant object.
+      // We try several field paths and take the first non-empty result.
+      const _extParticipant =
+        obj?.conversation?.externalParticipants?.[0] ??
+        obj?.externalParticipants?.[0] ?? null;
+      const spruceContactName: string | null = (
+        _extParticipant?.name ??
+        _extParticipant?.displayName ??
+        _extParticipant?.fullName ??
+        data?.contact?.name ??
+        data?.contact?.displayName ??
+        null
+      ) || null;
       const toPhoneExtracted: string = toPhone ?? "";
 
       // ── Direction detection ────────────────────────────────────────────
@@ -17746,6 +17760,7 @@ IMPORTANT:
           // This is the human-takeover gate used by the auto-reply system.
           staffRepliedAt: messageDirection === "outbound_staff" ? new Date() : null,
           spruceEventDedupeKey: dedupeKey,
+          spruceContactName: spruceContactName,
         });
         console.log(`${tag} stored spruce_messages id=${storedMsg.id} direction="${messageDirection}"`);
       } catch (err) {

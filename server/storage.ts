@@ -4722,6 +4722,7 @@ export interface SpruceConversationSummary {
   patientId: number | null;
   patientFirstName: string | null;
   patientLastName: string | null;
+  spruceContactName: string | null;
   lastMessage: string | null;
   lastMessageDirection: string | null;
   lastMessageAt: Date;
@@ -4759,6 +4760,7 @@ export interface SpruceConversationMessageRow {
       messageDirection: schema.spruceMessages.messageDirection,
       staffRepliedAt: schema.spruceMessages.staffRepliedAt,
       receivedAt: schema.spruceMessages.receivedAt,
+      spruceContactName: schema.spruceMessages.spruceContactName,
       patientFirstName: schema.patients.firstName,
       patientLastName: schema.patients.lastName,
     })
@@ -4780,6 +4782,7 @@ export interface SpruceConversationMessageRow {
         patientId: row.patientId,
         patientFirstName: row.patientFirstName ?? null,
         patientLastName: row.patientLastName ?? null,
+        spruceContactName: row.spruceContactName ?? null,
         lastMessage: row.messageBody,
         lastMessageDirection: row.messageDirection,
         lastMessageAt: row.receivedAt,
@@ -4795,6 +4798,10 @@ export interface SpruceConversationMessageRow {
         existing.patientId = row.patientId;
         existing.patientFirstName = row.patientFirstName ?? null;
         existing.patientLastName = row.patientLastName ?? null;
+      }
+      // contact name: take the first non-null value found
+      if (!existing.spruceContactName && row.spruceContactName) {
+        existing.spruceContactName = row.spruceContactName;
       }
     }
   }
