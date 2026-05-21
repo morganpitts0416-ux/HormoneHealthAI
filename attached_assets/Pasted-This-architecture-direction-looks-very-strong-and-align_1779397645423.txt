@@ -1,0 +1,70 @@
+This architecture direction looks very strong and aligned with my vision for Spruce June.
+
+A few important strategic clarifications before moving into Phase 2:
+
+1. Spruce June should fundamentally be a workflow orchestration system, not a freeform chatbot.
+   The AI should operate inside workflow guardrails and state machines, not as an unrestricted conversational medical assistant.
+
+2. Long-term, workflows should become composable and clinic-configurable.
+   Not just hardcoded workflows like refill/scheduling, but eventually:
+
+* GLP-1 follow-up
+* BHRT follow-up
+* post-procedure aftercare
+* membership/billing workflows
+* redraw/lab follow-up
+* etc.
+
+I want clinics to eventually configure:
+
+* triggers
+* required information
+* escalation rules
+* allowed AI actions
+* task generation
+* workflow toggles
+
+without needing engineering changes.
+
+3. Please architect conversation state with awareness that a single conversation may eventually contain multiple simultaneous workflow contexts.
+   Not asking to build multi-workflow orchestration yet — just avoid assumptions that one thread always equals one workflow forever.
+
+4. Future AI retrieval should be structured and workflow-scoped.
+   I do NOT want Spruce June freely accessing entire patient charts.
+   Workflow-specific retrieval later should expose only the minimum necessary contextual data for that workflow.
+
+5. The Inbox itself is becoming a major platform surface.
+   Please think of this as evolving into a unified clinical communication workspace:
+
+* Spruce
+* patient messaging
+* workflow tasks
+* AI summaries
+* refill coordination
+* scheduling coordination
+* escalations
+* staff takeover states
+
+All while preserving strict human control and auditability.
+
+Importantly:
+Please continue keeping Spruce June isolated from the existing ClinIQ June assistant and do not modify:
+
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* patient summaries
+* auth
+* billing
+* scheduling
+* core ClinIQ systems
+
+I agree with the proposed phased rollout:
+
+* staff replies from ClinIQ first
+* AI drafts second
+* limited workflow auto-replies later
+
+The human takeover/sticky mute architecture is exactly the right direction.
