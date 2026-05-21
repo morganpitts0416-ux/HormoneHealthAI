@@ -2391,6 +2391,10 @@ export const clinicSpruceSettings = pgTable("clinic_spruce_settings", {
   spruceOrgId: varchar("spruce_org_id", { length: 200 }),
   // Webhook endpoint ID as assigned by Spruce (useful for auditing).
   spruceWebhookEndpointId: varchar("spruce_webhook_endpoint_id", { length: 200 }),
+  // The E.164 receiving phone number assigned to this clinic's location in Spruce.
+  // Used as the primary routing key: internalEndpoint.rawValue → this clinic.
+  // Required for the global webhook to route events to the correct ClinIQ tenant.
+  spruceReceivingPhone: varchar("spruce_receiving_phone", { length: 30 }),
   // AES-256-GCM encrypted secrets.  Null = not configured; server falls back
   // to global env var (SPRUCE_WEBHOOK_SECRET / SPRUCE_API_TOKEN).
   // Format: base64(iv):base64(authTag):base64(ciphertext)
@@ -2410,6 +2414,7 @@ export const insertClinicSpruceSettingsSchema = createInsertSchema(clinicSpruceS
 }).extend({
   spruceOrgId: z.string().trim().max(200).nullable().optional(),
   spruceWebhookEndpointId: z.string().trim().max(200).nullable().optional(),
+  spruceReceivingPhone: z.string().trim().max(30).nullable().optional(),
   spruceAutoReplyEnabled: z.boolean().default(false),
   isEnabled: z.boolean().default(false),
 });
@@ -2484,6 +2489,9 @@ export const spruceMessages = pgTable("spruce_messages", {
   // Non-null = a human staff member has replied in this conversation.
   // June MUST NOT auto-reply when this is set (human-in-the-loop gate).
   staffRepliedAt: timestamp("staff_replied_at"),
+  // Deduplication key: "<eventType>:<spruce_object_id>" — used to detect
+  // Spruce retries and prevent duplicate workflow requests.
+  spruceEventDedupeKey: varchar("spruce_event_dedupe_key", { length: 220 }),
   receivedAt: timestamp("received_at").defaultNow().notNull(),
 });
 export type SpruceMessage = typeof spruceMessages.$inferSelect;

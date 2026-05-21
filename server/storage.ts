@@ -356,6 +356,7 @@ export interface IStorage {
   // inbound Spruce event is tenant-scoped before any downstream action is taken.
   getSpruceRoutingRulesByClinic(clinicId: number): Promise<schema.SpruceRoutingRule[]>;
   findSpruceClinicId(phoneLineId?: string | null, teamId?: string | null, toPhone?: string | null): Promise<number | null>;
+  findSpruceMessageByDedupeKey(clinicId: number, dedupeKey: string): Promise<schema.SpruceMessage | null>;
   createSpruceRoutingRule(data: schema.InsertSpruceRoutingRule & { clinicId: number }): Promise<schema.SpruceRoutingRule>;
   updateSpruceRoutingRule(id: number, data: Partial<schema.InsertSpruceRoutingRule>): Promise<schema.SpruceRoutingRule | undefined>;
   deleteSpruceRoutingRule(id: number): Promise<void>;
@@ -369,7 +370,7 @@ export interface IStorage {
     clinicId: number,
     data: Partial<Pick<schema.ClinicSpruceSettings,
       "isEnabled" | "spruceAutoReplyEnabled" | "spruceOrgId" | "spruceWebhookEndpointId"
-      | "webhookSecretEncrypted" | "apiTokenEncrypted"
+      | "spruceReceivingPhone" | "webhookSecretEncrypted" | "apiTokenEncrypted"
     >>,
   ): Promise<schema.ClinicSpruceSettings>;
 
@@ -4501,19 +4502,46 @@ async function _resolveMandatoryReasons(
     .orderBy(desc(schema.spruceRoutingRules.createdAt));
 };
 
-// Priority: phone_line_id first (most reliable), then team_id, then to_phone_number.
-// All active rules for all clinics are loaded once; the in-memory scan is fast
-// because the table will remain small (one row per Spruce line, typically < 50).
+// Routing priority for inbound Spruce events:
+//   1. clinicSpruceSettings.spruceReceivingPhone — E.164 phone number saved per
+//      clinic during setup; primary match for shared-org multi-location setups.
+//   2. spruceRoutingRules.toPhoneNumber — legacy / admin-managed explicit rules.
+//   3. spruceRoutingRules.sprucePhoneLineId — opaque Spruce line ID (fallback).
+//   4. spruceRoutingRules.spruceTeamId — team ID (last resort).
+//
+// All active rules are loaded in a single query; the in-memory scan is fast
+// because the table remains small (one row per Spruce line, typically < 50).
 (DbStorage.prototype as any).findSpruceClinicId = async function(
   phoneLineId?: string | null,
   teamId?: string | null,
   toPhone?: string | null,
 ): Promise<number | null> {
+  // 1. Match against spruceReceivingPhone stored directly on clinic settings.
+  //    This is the primary routing mechanism for shared-org multi-location setups.
+  if (toPhone) {
+    const settingsMatch = await db
+      .select({ clinicId: schema.clinicSpruceSettings.clinicId })
+      .from(schema.clinicSpruceSettings)
+      .where(
+        and(
+          eq(schema.clinicSpruceSettings.spruceReceivingPhone, toPhone),
+          eq(schema.clinicSpruceSettings.isEnabled, true),
+        ),
+      )
+      .limit(1);
+    if (settingsMatch.length > 0) return settingsMatch[0].clinicId;
+  }
+
+  // 2-4. Fall back to explicit routing rules table.
   const rules = await db
     .select()
     .from(schema.spruceRoutingRules)
     .where(eq(schema.spruceRoutingRules.isActive, true));
 
+  if (toPhone) {
+    const match = rules.find((r) => r.toPhoneNumber === toPhone);
+    if (match) return match.clinicId;
+  }
   if (phoneLineId) {
     const match = rules.find((r) => r.sprucePhoneLineId === phoneLineId);
     if (match) return match.clinicId;
@@ -4522,11 +4550,26 @@ async function _resolveMandatoryReasons(
     const match = rules.find((r) => r.spruceTeamId === teamId);
     if (match) return match.clinicId;
   }
-  if (toPhone) {
-    const match = rules.find((r) => r.toPhoneNumber === toPhone);
-    if (match) return match.clinicId;
-  }
   return null;
+};
+
+// Deduplication: check whether a Spruce event has already been stored for a
+// clinic by its dedupe key ("<eventType>:<spruceObjectId>").
+(DbStorage.prototype as any).findSpruceMessageByDedupeKey = async function(
+  clinicId: number,
+  dedupeKey: string,
+): Promise<schema.SpruceMessage | null> {
+  const [row] = await db
+    .select()
+    .from(schema.spruceMessages)
+    .where(
+      and(
+        eq(schema.spruceMessages.clinicId, clinicId),
+        eq(schema.spruceMessages.spruceEventDedupeKey, dedupeKey),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
 };
 
 (DbStorage.prototype as any).createSpruceRoutingRule = async function(

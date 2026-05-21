@@ -33,6 +33,7 @@ import {
 import { Link } from "wouter";
 
 const PROD_BASE = "https://app.realignlabeval.com";
+const GLOBAL_WEBHOOK_URL = `${PROD_BASE}/api/integrations/spruce/webhook`;
 
 interface SpruceSettings {
   id?: number;
@@ -41,6 +42,7 @@ interface SpruceSettings {
   spruceAutoReplyEnabled: boolean;
   spruceOrgId: string | null;
   spruceWebhookEndpointId: string | null;
+  spruceReceivingPhone: string | null;
   webhookSecretConfigured: boolean;
   apiTokenConfigured: boolean;
 }
@@ -86,11 +88,9 @@ type SimulateStatus =
 function SpruceManageDialog({
   open,
   onClose,
-  clinicId,
 }: {
   open: boolean;
   onClose: () => void;
-  clinicId: number;
 }) {
   const { toast } = useToast();
   const queryClient = useQueryClient();
@@ -103,6 +103,7 @@ function SpruceManageDialog({
   const [isEnabled, setIsEnabled] = useState(false);
   const [orgId, setOrgId] = useState("");
   const [endpointId, setEndpointId] = useState("");
+  const [receivingPhone, setReceivingPhone] = useState("");
   const [signingSecret, setSigningSecret] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [simulateOpen, setSimulateOpen] = useState(false);
@@ -116,6 +117,7 @@ function SpruceManageDialog({
       setIsEnabled(settings?.isEnabled ?? false);
       setOrgId(settings?.spruceOrgId ?? "");
       setEndpointId(settings?.spruceWebhookEndpointId ?? "");
+      setReceivingPhone(settings?.spruceReceivingPhone ?? "");
     }
   }, [isLoading, settings, open]);
 
@@ -132,11 +134,12 @@ function SpruceManageDialog({
   }, [open]);
 
   // ── Enable-toggle safety guard ────────────────────────────────────────────
-  // Required to enable: endpoint ID present AND signing secret configured
-  // (either saved previously or entered in this session).
+  // Required to enable: receiving phone number AND signing secret both configured.
+  // The receiving phone is the routing key; without it, events from a shared
+  // Spruce org cannot be matched to this clinic.
   const signingSecretReady = (settings?.webhookSecretConfigured ?? false) || signingSecret.trim().length > 0;
-  const endpointIdReady = endpointId.trim().length > 0;
-  const canEnable = signingSecretReady && endpointIdReady;
+  const receivingPhoneReady = receivingPhone.trim().length > 0;
+  const canEnable = signingSecretReady && receivingPhoneReady;
   const showEnableBlocker = isEnabled && !canEnable;
 
   function handleEnableToggle(next: boolean) {
@@ -148,9 +151,10 @@ function SpruceManageDialog({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
         isEnabled: isEnabled && canEnable, // never save enabled=true when prereqs missing
-        spruceAutoReplyEnabled: false,     // always off — not implemented
+        spruceAutoReplyEnabled: false,      // always off — not implemented
         spruceOrgId: orgId.trim() || null,
         spruceWebhookEndpointId: endpointId.trim() || null,
+        spruceReceivingPhone: receivingPhone.trim() || null,
       };
       if (signingSecret) body.webhookSecret = signingSecret;
       if (apiToken) body.apiToken = apiToken;
@@ -203,8 +207,6 @@ function SpruceManageDialog({
     },
   });
 
-  const webhookUrl = `${PROD_BASE}/api/integrations/spruce/clinic/${clinicId}/webhook`;
-
   return (
     <Dialog open={open} onOpenChange={(v) => { if (!v) onClose(); }}>
       <DialogContent className="max-w-lg max-h-[90vh] overflow-y-auto" data-testid="dialog-spruce-manage">
@@ -225,35 +227,42 @@ function SpruceManageDialog({
         ) : (
           <div className="space-y-5 pt-1">
 
-            {/* ── Config fields (top — must fill before enabling) ─────────── */}
-            <div className="space-y-3">
-              <div className="space-y-1.5">
-                <Label htmlFor="spruce-org-id" className="text-xs font-medium">
-                  Spruce Organization ID
-                </Label>
-                <Input
-                  id="spruce-org-id"
-                  value={orgId}
-                  onChange={(e) => setOrgId(e.target.value)}
-                  placeholder="e.g. org_abc123"
-                  className="text-sm"
-                  data-testid="input-spruce-org-id"
-                />
+            {/* ── Webhook URL (top — fill this in Spruce first) ────────────── */}
+            <div className="space-y-1.5">
+              <p className="text-xs font-medium">Production Webhook URL</p>
+              <p className="text-xs text-muted-foreground">
+                Register this single URL in your Spruce webhook settings. All clinic locations in the same Spruce organization share this one endpoint — routing to the correct clinic happens automatically using each location's receiving phone number below.
+              </p>
+              <div className="flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1.5">
+                <code className="text-xs flex-1 break-all select-all font-mono" data-testid="text-webhook-url">
+                  {GLOBAL_WEBHOOK_URL}
+                </code>
+                <CopyButton text={GLOBAL_WEBHOOK_URL} />
               </div>
+            </div>
 
+            <Separator />
+
+            {/* ── Config fields ─────────────────────────────────────────────── */}
+            <div className="space-y-3">
+
+              {/* Receiving phone number — primary routing key */}
               <div className="space-y-1.5">
-                <Label htmlFor="spruce-endpoint-id" className="text-xs font-medium">
-                  Spruce Webhook Endpoint ID{" "}
-                  <ConfiguredBadge yes={endpointIdReady} />
+                <Label htmlFor="spruce-receiving-phone" className="text-xs font-medium">
+                  This clinic's Spruce phone number{" "}
+                  <ConfiguredBadge yes={receivingPhoneReady} />
                 </Label>
                 <Input
-                  id="spruce-endpoint-id"
-                  value={endpointId}
-                  onChange={(e) => setEndpointId(e.target.value)}
-                  placeholder="e.g. wh_xyz789"
-                  className="text-sm"
-                  data-testid="input-spruce-endpoint-id"
+                  id="spruce-receiving-phone"
+                  value={receivingPhone}
+                  onChange={(e) => setReceivingPhone(e.target.value)}
+                  placeholder="+12185550001"
+                  className="text-sm font-mono"
+                  data-testid="input-spruce-receiving-phone"
                 />
+                <p className="text-xs text-muted-foreground">
+                  The Spruce phone number assigned to this clinic location (E.164 format, e.g. +12185550001). Inbound messages sent to this number will be routed here.
+                </p>
               </div>
 
               {/* Spruce Signing Secret — write-only */}
@@ -277,7 +286,7 @@ function SpruceManageDialog({
                   autoComplete="new-password"
                 />
                 <p className="text-xs text-muted-foreground">
-                  Paste the signing secret returned by Spruce when you register this clinic's webhook endpoint.
+                  The signing secret returned by Spruce when you registered the webhook endpoint. All clinics sharing one Spruce organization use the same secret.
                 </p>
               </div>
 
@@ -305,6 +314,40 @@ function SpruceManageDialog({
                   Secret values are encrypted before storage and never displayed after saving.
                 </p>
               </div>
+
+              {/* Optional: Spruce Org ID and Endpoint ID (informational) */}
+              <div className="space-y-3 pt-1">
+                <p className="text-xs text-muted-foreground font-medium">Optional — for reference only</p>
+                <div className="space-y-1.5">
+                  <Label htmlFor="spruce-org-id" className="text-xs font-medium text-muted-foreground">
+                    Spruce Organization ID
+                  </Label>
+                  <Input
+                    id="spruce-org-id"
+                    value={orgId}
+                    onChange={(e) => setOrgId(e.target.value)}
+                    placeholder="e.g. entity_28QNVEPK2XXX"
+                    className="text-sm"
+                    data-testid="input-spruce-org-id"
+                  />
+                </div>
+                <div className="space-y-1.5">
+                  <Label htmlFor="spruce-endpoint-id" className="text-xs font-medium text-muted-foreground">
+                    Webhook Endpoint ID
+                  </Label>
+                  <Input
+                    id="spruce-endpoint-id"
+                    value={endpointId}
+                    onChange={(e) => setEndpointId(e.target.value)}
+                    placeholder="e.g. wh_xyz789"
+                    className="text-sm"
+                    data-testid="input-spruce-endpoint-id"
+                  />
+                  <p className="text-xs text-muted-foreground">
+                    The endpoint ID returned by Spruce after registering the webhook URL above.
+                  </p>
+                </div>
+              </div>
             </div>
 
             <Separator />
@@ -326,12 +369,16 @@ function SpruceManageDialog({
                 />
               </div>
 
-              {/* Blocker message — shown when fields are missing */}
+              {/* Blocker message — shown when required fields are missing */}
               {!canEnable && (
                 <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-3 py-2.5" data-testid="alert-enable-blocker">
                   <AlertTriangle className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
                   <p className="text-xs text-amber-800 dark:text-amber-300">
-                    Add the Spruce webhook endpoint ID and signing secret before enabling this integration.
+                    {!receivingPhoneReady && !signingSecretReady
+                      ? "Add this clinic's Spruce phone number and signing secret before enabling."
+                      : !receivingPhoneReady
+                        ? "Add this clinic's Spruce receiving phone number before enabling. This is how inbound messages are routed to the correct clinic."
+                        : "Add the Spruce signing secret before enabling this integration."}
                   </p>
                 </div>
               )}
@@ -353,20 +400,6 @@ function SpruceManageDialog({
             </div>
 
             <Separator />
-
-            {/* ── Webhook URL ───────────────────────────────────────────────── */}
-            <div className="space-y-1.5">
-              <p className="text-xs font-medium">Production Webhook URL</p>
-              <p className="text-xs text-muted-foreground">
-                Paste this URL into your Spruce webhook configuration for this clinic.
-              </p>
-              <div className="flex items-center gap-1 rounded-md border bg-muted/40 px-2 py-1.5">
-                <code className="text-xs flex-1 break-all select-all" data-testid="text-webhook-url">
-                  {webhookUrl}
-                </code>
-                <CopyButton text={webhookUrl} />
-              </div>
-            </div>
 
             {/* ── Save ─────────────────────────────────────────────────────── */}
             <Button
@@ -551,30 +584,19 @@ export function IntegrationsSection() {
                 variant={isSpruceConnected ? "outline" : "default"}
                 style={!isSpruceConnected ? { backgroundColor: "#2e3a20", color: "#f9f6f0" } : {}}
                 onClick={() => setSpruceDialogOpen(true)}
-                data-testid="button-spruce-connect-manage"
+                data-testid="button-spruce-manage"
               >
-                {isSpruceConnected ? "Manage" : "Connect Spruce"}
+                {isSpruceConnected ? "Manage" : "Connect"}
               </Button>
             )}
           </CardContent>
         </Card>
-
-        {/* Placeholder — more integrations coming */}
-        <Card className="border-dashed opacity-50">
-          <CardContent className="pt-5 flex flex-col items-center justify-center text-center py-8 gap-2">
-            <p className="text-sm font-medium text-muted-foreground">More integrations coming soon</p>
-            <p className="text-xs text-muted-foreground">EHR connectors, lab platforms, and more.</p>
-          </CardContent>
-        </Card>
       </div>
 
-      {clinicId && (
-        <SpruceManageDialog
-          open={spruceDialogOpen}
-          onClose={() => setSpruceDialogOpen(false)}
-          clinicId={clinicId}
-        />
-      )}
+      <SpruceManageDialog
+        open={spruceDialogOpen}
+        onClose={() => setSpruceDialogOpen(false)}
+      />
     </div>
   );
 }

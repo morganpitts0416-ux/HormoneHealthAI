@@ -17201,6 +17201,7 @@ IMPORTANT:
         spruceAutoReplyEnabled: row.spruceAutoReplyEnabled,
         spruceOrgId: row.spruceOrgId,
         spruceWebhookEndpointId: row.spruceWebhookEndpointId,
+        spruceReceivingPhone: row.spruceReceivingPhone,
         webhookSecretConfigured: isEncrypted(row.webhookSecretEncrypted),
         apiTokenConfigured: isEncrypted(row.apiTokenEncrypted),
         createdAt: row.createdAt,
@@ -17222,6 +17223,7 @@ IMPORTANT:
         spruceAutoReplyEnabled,
         spruceOrgId,
         spruceWebhookEndpointId,
+        spruceReceivingPhone,
         // Plaintext secrets — encrypted before storage; empty string = clear the secret
         webhookSecret,
         apiToken,
@@ -17233,6 +17235,10 @@ IMPORTANT:
       if (spruceAutoReplyEnabled !== undefined) updates.spruceAutoReplyEnabled = Boolean(spruceAutoReplyEnabled);
       if (spruceOrgId !== undefined) updates.spruceOrgId = spruceOrgId?.trim() || null;
       if (spruceWebhookEndpointId !== undefined) updates.spruceWebhookEndpointId = spruceWebhookEndpointId?.trim() || null;
+      if (spruceReceivingPhone !== undefined) {
+        // Normalise: strip whitespace, preserve E.164 format or null
+        updates.spruceReceivingPhone = spruceReceivingPhone?.trim() || null;
+      }
 
       // Secrets: non-empty string → encrypt and store; empty string → clear
       if (webhookSecret !== undefined) {
@@ -17250,6 +17256,7 @@ IMPORTANT:
         spruceAutoReplyEnabled: row.spruceAutoReplyEnabled,
         spruceOrgId: row.spruceOrgId,
         spruceWebhookEndpointId: row.spruceWebhookEndpointId,
+        spruceReceivingPhone: row.spruceReceivingPhone,
         webhookSecretConfigured: isEncrypted(row.webhookSecretEncrypted),
         apiTokenConfigured: isEncrypted(row.apiTokenEncrypted),
         createdAt: row.createdAt,
@@ -17434,16 +17441,53 @@ IMPORTANT:
     console.log(`${tag} payload:`, JSON.stringify(body, null, 2));
 
     // ── Extract routing candidates ─────────────────────────────────────
-    // Probe multiple known field paths — real payloads will reveal exact names.
+    // Real Spruce payload structure (confirmed from official docs):
+    //
+    //   conversationItem.* events:
+    //     data.object.conversation.internalEndpoint.rawValue  ← receiving phone (E.164)
+    //     data.object.id                                      ← message object ID (ti_XXX)
+    //     data.object.conversation.id                         ← conversation ID (t_XXX)
+    //     data.object.text                                    ← message body
+    //     data.object.conversation.externalParticipants[0].endpoint.rawValue  ← patient phone
+    //
+    //   conversation.* events:
+    //     data.object.internalEndpoint.rawValue               ← receiving phone (E.164)
+    //     data.object.id                                      ← conversation ID (t_XXX)
+    //     data.object.externalParticipants[0].endpoint.rawValue  ← patient phone
+    //
+    //   contact.* events: no internalEndpoint (org-wide, not phone-line-specific)
+    //
+    // For secure (in-app) conversations, internalEndpoint.rawValue is an org slug,
+    // not a phone number — routing on it will naturally fail to match E.164 rules.
+
     const data = body?.data ?? body;
-    const phoneLineId: string | null =
-      data?.phone_line?.id ?? data?.phoneLineId ?? data?.phone_line_id ?? body?.phone_line?.id ?? null;
-    const teamId: string | null =
-      data?.team?.id ?? data?.teamId ?? data?.team_id ?? body?.team?.id ?? null;
+    const obj = data?.object;
+
+    // Primary routing key: receiving phone number from internalEndpoint.rawValue
+    // Checked in two places because conversationItem embeds the conversation object.
     const toPhone: string | null =
-      data?.to ?? data?.phone_line?.phone_number ?? data?.toPhoneNumber ?? data?.to_phone_number ?? null;
-    const routingAttempted = { phoneLineId, teamId, toPhone };
+      obj?.conversation?.internalEndpoint?.rawValue ??   // conversationItem.* events
+      obj?.internalEndpoint?.rawValue ??                  // conversation.* events
+      null;
+
+    // Legacy field paths preserved as fallbacks for non-standard payloads.
+    const phoneLineId: string | null =
+      data?.phone_line?.id ?? data?.phoneLineId ?? data?.phone_line_id ?? null;
+    const teamId: string | null =
+      data?.team?.id ?? data?.teamId ?? data?.team_id ?? null;
+
+    const routingAttempted = { toPhone, phoneLineId, teamId };
     console.log(`${tag} routing candidates:`, JSON.stringify(routingAttempted));
+
+    // ── Deduplication ──────────────────────────────────────────────────
+    // Spruce retries delivery up to 10 times if we return non-2XX.
+    // We always return 200 immediately (fire-and-forget), but idempotent
+    // processing prevents duplicate workflow requests if the same event
+    // arrives twice for any other reason.
+    const spruceObjectId: string | null = obj?.id ?? null;
+    const dedupeKey: string | null = spruceObjectId
+      ? `${eventType}:${spruceObjectId}`.slice(0, 220)
+      : null;
 
     // ── Clinic lookup ──────────────────────────────────────────────────
     // For per-clinic endpoint clinicIdHint is already set; for the global
@@ -17492,17 +17536,49 @@ IMPORTANT:
       console.log(
         `${tag} ROUTED clinic_id=${matchedClinicId} spruceAutoReplyEnabled=${clinicSettings.spruceAutoReplyEnabled} event="${eventType}"`,
       );
+
+      // ── Dedup check ────────────────────────────────────────────────────
+      // If this exact Spruce object ID + event type was already processed for
+      // this clinic (e.g. a Spruce retry after our 200 response was delayed),
+      // skip re-processing to prevent duplicate workflow requests.
+      if (dedupeKey) {
+        try {
+          const existing = await storage.findSpruceMessageByDedupeKey(matchedClinicId, dedupeKey);
+          if (existing) {
+            console.log(`${tag} DUPLICATE event dedupeKey="${dedupeKey}" already stored as id=${existing.id} — skipping`);
+            return;
+          }
+        } catch (err) {
+          console.warn(`${tag} dedup check error (continuing):`, err);
+        }
+      }
+
       // ── Extract message content ────────────────────────────────────────
+      // Field paths matched against confirmed real Spruce payload structure.
+      //
+      // conversationItem.* events nest message fields under data.object:
+      //   .text           → message body
+      //   .id             → message ID (ti_XXX)
+      //   .conversationId → conversation ID (flat field on conversationItem)
+      //   .conversation.id → conversation ID (embedded object)
+      //   .conversation.externalParticipants[0].endpoint.rawValue → patient phone
+      //
+      // conversation.* events:
+      //   .id             → conversation ID (t_XXX)
+      //   .externalParticipants[0].endpoint.rawValue → patient phone
       const msgBody: string =
-        data?.body ?? data?.text ?? data?.content ?? data?.message?.body ?? data?.message?.text ?? "";
-      const spruceMessageId: string =
-        data?.id ?? data?.message_id ?? data?.messageId ?? "";
+        obj?.text ?? obj?.body ?? obj?.content ?? "";
+      const spruceMessageId: string = obj?.id ?? "";
       const spruceConversationId: string =
-        data?.conversation_id ?? data?.conversationId ?? data?.conversation?.id ?? "";
+        obj?.conversationId ??           // flat field on conversationItem
+        obj?.conversation?.id ??         // embedded conversation object
+        (eventType.startsWith("conversation.") ? obj?.id : null) ?? "";
+      // Patient's phone: external participant endpoint for real Spruce payloads
       const fromPhone: string =
-        data?.from?.phone_number ?? data?.from_phone ?? data?.from?.phoneNumber ?? "";
-      const toPhoneExtracted: string =
-        data?.to?.phone_number ?? data?.to_phone ?? data?.to?.phoneNumber ?? toPhone ?? "";
+        obj?.conversation?.externalParticipants?.[0]?.endpoint?.rawValue ??
+        obj?.externalParticipants?.[0]?.endpoint?.rawValue ??
+        data?.from?.phone_number ?? "";
+      const toPhoneExtracted: string = toPhone ?? "";
 
       // ── Persist the inbound message ────────────────────────────────────
       let storedMsg: any = null;
@@ -17519,6 +17595,7 @@ IMPORTANT:
           classifiedWorkflow: null,
           classificationConfidence: null,
           staffRepliedAt: null,
+          spruceEventDedupeKey: dedupeKey,
         });
         console.log(`${tag} stored spruce_messages id=${storedMsg.id}`);
       } catch (err) {
@@ -17625,14 +17702,40 @@ IMPORTANT:
     return { workflow: "unclassified", confidence: "low" };
   }
 
-  // ── Per-clinic webhook endpoint ───────────────────────────────────────
+  // ── Global webhook endpoint — RECOMMENDED for shared Spruce organizations ─
+  //
+  // POST /api/integrations/spruce/webhook
+  //
+  // Use this URL when multiple ClinIQ clinic tenants share ONE Spruce
+  // organization with multiple phone numbers.  Spruce webhook endpoints are
+  // org-scoped — every registered endpoint receives ALL org events — so
+  // registering one URL here and routing internally avoids duplicate events.
+  //
+  // Routing: data.object.conversation.internalEndpoint.rawValue (E.164 receiving
+  // phone number) is matched against clinicSpruceSettings.spruceReceivingPhone or
+  // spruceRoutingRules.toPhoneNumber.  No match → stored in spruce_unrouted_events.
+  //
+  // Signature: verified using the per-clinic secret (after routing) or the
+  // global SPRUCE_WEBHOOK_SECRET env var as fallback.
+  app.post("/api/integrations/spruce/webhook", (req, res) => {
+    res.status(200).json({ received: true });
+    const rawReq = { body: req.body, rawBody: (req as any).rawBody, headers: req.headers as any };
+    processSprucWebhookBody(rawReq, null, "[Spruce/global]").catch((err) =>
+      console.error("[Spruce/global] Unexpected error:", err),
+    );
+  });
+
+  // ── Per-clinic webhook endpoint — for SEPARATE Spruce organizations only ──
   //
   // POST /api/integrations/spruce/clinic/:clinicId/webhook
   //
-  // Recommended URL for new clinic setups.  Each Spruce organization registers
-  // this URL so ClinIQ knows the clinic upfront, enabling per-clinic signature
-  // verification without needing routing rules for the initial lookup.
-  // The clinic must still have isEnabled=true in its Spruce settings.
+  // Only use this if each ClinIQ clinic tenant has its OWN separate Spruce
+  // organization (separate org account, separate contacts database).  In that
+  // case each org registers its own URL and the clinicId is encoded directly.
+  //
+  // WARNING: Do NOT use per-clinic URLs when clinics share one Spruce org.
+  // Spruce would send every org event to every registered URL, creating
+  // duplicate processing for every event.
   app.post("/api/integrations/spruce/clinic/:clinicId/webhook", (req, res) => {
     res.status(200).json({ received: true });
     const clinicId = parseInt(req.params.clinicId);
@@ -17643,23 +17746,6 @@ IMPORTANT:
     const rawReq = { body: req.body, rawBody: (req as any).rawBody, headers: req.headers as any };
     processSprucWebhookBody(rawReq, clinicId, `[Spruce/clinic-${clinicId}]`).catch((err) =>
       console.error(`[Spruce/clinic-${clinicId}] Unexpected error:`, err),
-    );
-  });
-
-  // ── Global webhook endpoint (legacy / org-wide Spruce webhooks) ───────
-  //
-  // POST /api/integrations/spruce/webhook
-  //
-  // Accepts events from any Spruce organization.  Clinic is identified via
-  // routing rules (phone_line_id → team_id → to_phone).  For new setups
-  // prefer the per-clinic endpoint above.
-  // Global env var SPRUCE_WEBHOOK_SECRET is used as a fallback secret only;
-  // per-clinic secrets from clinicSpruceSettings take precedence.
-  app.post("/api/integrations/spruce/webhook", (req, res) => {
-    res.status(200).json({ received: true });
-    const rawReq = { body: req.body, rawBody: (req as any).rawBody, headers: req.headers as any };
-    processSprucWebhookBody(rawReq, null, "[Spruce/global]").catch((err) =>
-      console.error("[Spruce/global] Unexpected error:", err),
     );
   });
 
