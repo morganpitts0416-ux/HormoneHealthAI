@@ -2292,9 +2292,22 @@ Rules:
         messageText = "Hi, I need a refill on my medication please",
         patientPhone = "+15550000000",
         workflow: forcedWorkflow,
-      } = req.body as { messageText?: string; patientPhone?: string; workflow?: string };
+        senderType = "patient",   // "patient" | "staff" — determines direction gate
+      } = req.body as {
+        messageText?: string;
+        patientPhone?: string;
+        workflow?: string;
+        senderType?: "patient" | "staff";
+      };
 
-      // Build a synthetic payload mimicking a Spruce message.created event
+      // Determine direction from senderType param (mirrors real webhook logic).
+      // "patient" → inbound_patient → classify + create workflow request
+      // "staff"   → outbound_staff  → store only, skip classification
+      const simMessageDirection: "inbound_patient" | "outbound_staff" =
+        senderType === "staff" ? "outbound_staff" : "inbound_patient";
+
+      // Build a synthetic payload mimicking a Spruce message.created event.
+      // direction / sender.type mirror what real Spruce payloads would contain.
       const syntheticPayload = {
         type: "message.created",
         _simulated: true,
@@ -2303,7 +2316,8 @@ Rules:
           conversation_id: `sim_conv_${Date.now()}`,
           body: messageText,
           from: { phone_number: patientPhone },
-          direction: "inbound",
+          direction: senderType === "staff" ? "outbound" : "inbound",
+          sender: { type: senderType === "staff" ? "user" : "external" },
         },
       };
 
@@ -2313,6 +2327,8 @@ Rules:
       const spruceMessageId: string = data.id;
       const spruceConversationId: string = data.conversation_id;
       const fromPhone: string = data.from.phone_number;
+
+      console.log(`${tag} senderType="${senderType}" direction="${simMessageDirection}" msgBody="${msgBody.slice(0, 80)}"`);
 
       // ── Patient matching (same logic as real webhook) ─────────────────────
       // Uses the provided patientPhone to search for an existing ClinIQ patient
@@ -2331,7 +2347,7 @@ Rules:
         }
       }
 
-      // Store the message
+      // ── Store the message (all directions, for audit) ─────────────────────
       const storedMsg = await storage.createSpruceMessage({
         clinicId,
         spruceMessageId,
@@ -2344,18 +2360,38 @@ Rules:
         rawPayload: syntheticPayload,
         classifiedWorkflow: null,
         classificationConfidence: null,
-        staffRepliedAt: null,
+        messageDirection: simMessageDirection,
+        staffRepliedAt: simMessageDirection === "outbound_staff" ? new Date() : null,
         spruceEventDedupeKey: null,
       });
 
-      // Classify (allow override for testing specific workflows)
+      // ── Direction gate — skip classification for staff messages ───────────
+      if (simMessageDirection === "outbound_staff") {
+        console.log(
+          `${tag} SKIPPING classification — outbound_staff message. ` +
+          `staffRepliedAt set. No workflow request created.`,
+        );
+        return res.json({
+          ok: true,
+          spruceMessage: storedMsg,
+          classification: null,
+          workflowRequest: null,
+          skipped: { reason: "outbound_staff", message: "Staff outbound messages are not classified to prevent false workflow requests." },
+          patientMatch: simMatchedPatient
+            ? { matched: true, patientId: simMatchedPatient.id, name: `${simMatchedPatient.firstName} ${simMatchedPatient.lastName}` }
+            : { matched: false },
+        });
+      }
+
+      // ── Classify (inbound patient message) ───────────────────────────────
+      // Allow workflow override for testing specific scenarios.
       const classification = forcedWorkflow
         ? { workflow: forcedWorkflow, confidence: "simulated" }
         : classifySpruceMessage(msgBody);
 
       console.log(`${tag} classified="${classification.workflow}" confidence="${classification.confidence}"`);
 
-      // Create workflow request for actionable workflows
+      // ── Create workflow request for actionable workflows ──────────────────
       let workflowRequest: any = null;
       if (classification.workflow !== "unclassified") {
         workflowRequest = await storage.createSpruceWorkflowRequest({
@@ -2380,6 +2416,7 @@ Rules:
         spruceMessage: storedMsg,
         classification,
         workflowRequest,
+        skipped: null,
         patientMatch: simMatchedPatient
           ? { matched: true, patientId: simMatchedPatient.id, name: `${simMatchedPatient.firstName} ${simMatchedPatient.lastName}` }
           : { matched: false },
@@ -17586,6 +17623,9 @@ IMPORTANT:
       //   .conversationId → conversation ID (flat field on conversationItem)
       //   .conversation.id → conversation ID (embedded object)
       //   .conversation.externalParticipants[0].endpoint.rawValue → patient phone
+      //   .direction      → "inbound" (patient→clinic) | "outbound" (staff→patient)
+      //   .sender.type    → "user" (staff) | "external" (patient/external contact)
+      //   .author.type    → alternative sender type field
       //
       // conversation.* events:
       //   .id             → conversation ID (t_XXX)
@@ -17603,6 +17643,41 @@ IMPORTANT:
         obj?.externalParticipants?.[0]?.endpoint?.rawValue ??
         data?.from?.phone_number ?? "";
       const toPhoneExtracted: string = toPhone ?? "";
+
+      // ── Direction detection ────────────────────────────────────────────
+      // Determine if this message was sent by an internal staff member or by the
+      // external patient/contact.  We check two complementary Spruce payload fields:
+      //
+      //   obj.direction   — "inbound" (patient → clinic) | "outbound" (clinic → patient)
+      //   obj.sender.type — "user"     = internal Spruce user (staff member)
+      //                     "external" = external participant (patient/contact)
+      //   obj.author.type — alternative field for the same concept
+      //
+      // Classification is SKIPPED for outbound_staff to prevent false workflow
+      // requests (e.g. staff saying "Your refill was sent" triggering a refill task).
+      // On unknown direction we err on the side of classifying (never drop a real
+      // patient request because the payload was ambiguous).
+      const rawDirectionField: string = (obj?.direction ?? "").toLowerCase();
+      const senderTypeField: string = (
+        obj?.sender?.type ?? obj?.author?.type ?? ""
+      ).toLowerCase();
+
+      const isStaffMessage: boolean =
+        rawDirectionField === "outbound" || senderTypeField === "user";
+      const isPatientMessage: boolean =
+        rawDirectionField === "inbound" || senderTypeField === "external";
+
+      const messageDirection: "inbound_patient" | "outbound_staff" | "unknown" =
+        isStaffMessage
+          ? "outbound_staff"
+          : isPatientMessage
+            ? "inbound_patient"
+            : "unknown";
+
+      console.log(
+        `${tag} message direction="${messageDirection}" ` +
+        `(rawDirection="${rawDirectionField}" senderType="${senderTypeField}")`,
+      );
 
       // ── Patient matching ───────────────────────────────────────────────
       // Attempt to match the caller's phone number to an existing ClinIQ patient
@@ -17622,7 +17697,9 @@ IMPORTANT:
         }
       }
 
-      // ── Persist the inbound message ────────────────────────────────────
+      // ── Persist the message (all directions) ──────────────────────────
+      // Staff outbound messages are stored for audit / conversation threading
+      // but do NOT generate workflow requests.
       let storedMsg: any = null;
       try {
         storedMsg = await storage.createSpruceMessage({
@@ -17637,30 +17714,48 @@ IMPORTANT:
           rawPayload: body ?? {},
           classifiedWorkflow: null,
           classificationConfidence: null,
-          staffRepliedAt: null,
+          messageDirection,
+          // Mark staffRepliedAt when a real staff outbound message is detected.
+          // This is the human-takeover gate used by the auto-reply system.
+          staffRepliedAt: messageDirection === "outbound_staff" ? new Date() : null,
           spruceEventDedupeKey: dedupeKey,
         });
-        console.log(`${tag} stored spruce_messages id=${storedMsg.id}`);
+        console.log(`${tag} stored spruce_messages id=${storedMsg.id} direction="${messageDirection}"`);
       } catch (err) {
         console.error(`${tag} failed to store spruce_message:`, err);
       }
 
-      // ── Classify the message into a workflow ───────────────────────────
-      // Keyword-pattern classification only — no outbound AI replies yet.
-      // Spruce auto-reply requires spruceAutoReplyEnabled=true AND an explicit implementation.
-      // This is completely separate from the ClinIQ June clinical AI assistant.
-      const classification = classifySpruceMessage(msgBody);
-      console.log(`${tag} classified as workflow="${classification.workflow}" confidence="${classification.confidence}"`);
+      // ── Direction gate — skip classification for staff outbound messages ──
+      // Staff replies (e.g. "Your refill was sent", "We'll call you back") often
+      // contain the same keywords as patient requests.  Classifying them would
+      // create false workflow requests in the dashboard inbox.
+      if (messageDirection === "outbound_staff") {
+        console.log(
+          `${tag} SKIPPING classification — outbound_staff message detected. ` +
+          `No workflow request will be created. staffRepliedAt set on message id=${storedMsg?.id ?? "n/a"}.`,
+        );
+        // Still run the auto-reply gate below (it will correctly be a no-op since
+        // auto-reply must not fire for staff-sent messages either).
+      } else {
+        // ── Classify the message into a workflow ─────────────────────────
+        // Keyword-pattern classification only — no outbound AI replies yet.
+        // Spruce auto-reply requires spruceAutoReplyEnabled=true AND a full implementation.
+        // This is completely separate from the ClinIQ June clinical AI assistant.
+        const classification = classifySpruceMessage(msgBody);
+        console.log(
+          `${tag} classified as workflow="${classification.workflow}" ` +
+          `confidence="${classification.confidence}" direction="${messageDirection}"`,
+        );
 
-      // ── Create a workflow request for actionable classifications ────────
-      if (
-        classification.workflow !== "unclassified" &&
-        storedMsg !== null
-      ) {
-        try {
-          const convUrl = spruceConversationId
-            ? `https://app.sprucehealth.com/conversations/${spruceConversationId}`
-            : null;
+        // ── Create a workflow request for actionable classifications ──────
+        if (
+          classification.workflow !== "unclassified" &&
+          storedMsg !== null
+        ) {
+          try {
+            const convUrl = spruceConversationId
+              ? `https://app.sprucehealth.com/conversations/${spruceConversationId}`
+              : null;
           await storage.createSpruceWorkflowRequest({
             clinicId: matchedClinicId,
             spruceMessageId: storedMsg.id,
@@ -17681,6 +17776,7 @@ IMPORTANT:
           console.error(`${tag} failed to create spruce_workflow_request:`, err);
         }
       }
+      } // end: else (not outbound_staff) — classification branch
 
       // ── Spruce auto-reply gate ─────────────────────────────────────────
       // Outbound Spruce patient replies are BLOCKED until explicitly enabled

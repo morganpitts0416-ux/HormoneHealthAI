@@ -2489,6 +2489,13 @@ export const spruceMessages = pgTable("spruce_messages", {
   // Classification result — set immediately on receipt; can be retried later
   classifiedWorkflow: varchar("classified_workflow", { length: 50 }),
   classificationConfidence: varchar("classification_confidence", { length: 20 }), // "high"|"medium"|"low"
+  // Message direction determined from Spruce payload fields (direction / sender.type).
+  // "inbound_patient"  = message came from the external patient/contact.
+  // "outbound_staff"   = message was sent by an internal Spruce user (staff).
+  // "unknown"          = direction could not be determined from the payload
+  //                      (treated as inbound so patient messages are never dropped).
+  // Classification MUST be skipped for "outbound_staff" to prevent false workflow requests.
+  messageDirection: varchar("message_direction", { length: 20 }),
   // Non-null = a human staff member has replied in this conversation.
   // June MUST NOT auto-reply when this is set (human-in-the-loop gate).
   staffRepliedAt: timestamp("staff_replied_at"),

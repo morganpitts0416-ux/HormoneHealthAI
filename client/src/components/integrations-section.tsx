@@ -81,7 +81,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 type SimulateStatus =
-  | { kind: "success"; message: string; requestId: number | null; patientMatch: { matched: boolean; patientId?: number; name?: string } | null }
+  | { kind: "success"; message: string; requestId: number | null; patientMatch: { matched: boolean; patientId?: number; name?: string } | null; skipped: { reason: string; message: string } | null }
   | { kind: "error"; message: string }
   | null;
 
@@ -109,6 +109,7 @@ function SpruceManageDialog({
   const [simulateOpen, setSimulateOpen] = useState(false);
   const [simulateMsg, setSimulateMsg] = useState("");
   const [simulatePhone, setSimulatePhone] = useState("");
+  const [simulateSenderType, setSimulateSenderType] = useState<"patient" | "staff">("patient");
   const [simulateStatus, setSimulateStatus] = useState<SimulateStatus>(null);
 
   // Populate form from server data when dialog opens
@@ -182,6 +183,7 @@ function SpruceManageDialog({
       const res = await apiRequest("POST", "/api/integrations/spruce/simulate", {
         messageText: simulateMsg.trim(),
         patientPhone: simulatePhone.trim() || "+15550000000",
+        senderType: simulateSenderType,
       });
       if (!res.ok) {
         const err = await res.json().catch(() => ({}));
@@ -190,14 +192,23 @@ function SpruceManageDialog({
       return res.json();
     },
     onSuccess: (data) => {
+      const skipped: { reason: string; message: string } | null = data?.skipped ?? null;
+      const patientMatch = data?.patientMatch ?? null;
+      if (skipped) {
+        setSimulateStatus({ kind: "success", message: "Staff message stored — classification skipped", requestId: null, patientMatch, skipped });
+        toast({
+          title: "Staff message — no request created",
+          description: "Outbound staff messages are not classified to prevent false workflow tasks.",
+        });
+        return;
+      }
       const reqId: number | null = data?.workflowRequest?.id ?? null;
       const workflow = data?.classification?.workflow ?? "unclassified";
       const confidence = data?.classification?.confidence ?? "";
-      const patientMatch = data?.patientMatch ?? null;
       const msg = reqId
         ? `Classified as: ${workflow} (${confidence}) · Request #${reqId} created`
         : `Classified as: ${workflow} (${confidence}) · No request created`;
-      setSimulateStatus({ kind: "success", message: msg, requestId: reqId, patientMatch });
+      setSimulateStatus({ kind: "success", message: msg, requestId: reqId, patientMatch, skipped: null });
       toast({
         title: reqId ? "Simulation successful — request created" : "Simulation ran",
         description: `Workflow: ${workflow}${patientMatch?.matched ? ` · Patient: ${patientMatch.name}` : " · Unmatched contact"}`,
@@ -437,22 +448,52 @@ function SpruceManageDialog({
               {simulateOpen && (
                 <div className="mt-3 space-y-2.5 rounded-md border bg-muted/30 p-3">
                   <p className="text-xs text-muted-foreground">
-                    Simulates an inbound Spruce message without a real webhook call. Useful for testing workflow classification and dashboard routing.
+                    Simulates a Spruce message without a real webhook call. Use the sender toggle to verify that staff replies do <em>not</em> create workflow requests.
                   </p>
+
+                  {/* Sender type toggle */}
+                  <div className="space-y-1.5">
+                    <Label className="text-xs">Sender (direction)</Label>
+                    <div className="flex gap-1.5" data-testid="toggle-simulate-sender">
+                      <Button
+                        size="sm"
+                        variant={simulateSenderType === "patient" ? "default" : "outline"}
+                        onClick={() => { setSimulateSenderType("patient"); setSimulateStatus(null); }}
+                        data-testid="button-sender-patient"
+                      >
+                        Patient (inbound)
+                      </Button>
+                      <Button
+                        size="sm"
+                        variant={simulateSenderType === "staff" ? "default" : "outline"}
+                        onClick={() => { setSimulateSenderType("staff"); setSimulateStatus(null); }}
+                        data-testid="button-sender-staff"
+                      >
+                        Staff (outbound)
+                      </Button>
+                    </div>
+                    <p className="text-xs text-muted-foreground">
+                      {simulateSenderType === "staff"
+                        ? "Staff messages are stored for audit but never classified — no dashboard request will be created."
+                        : "Patient messages are classified and create workflow requests in the dashboard."}
+                    </p>
+                  </div>
 
                   <div className="space-y-1.5">
                     <Label className="text-xs">Message text</Label>
                     <Input
                       value={simulateMsg}
                       onChange={(e) => { setSimulateMsg(e.target.value); setSimulateStatus(null); }}
-                      placeholder='e.g. "I need a refill on my testosterone cream"'
+                      placeholder={simulateSenderType === "staff"
+                        ? 'e.g. "Your refill was sent to the pharmacy"'
+                        : 'e.g. "I need a refill on my testosterone cream"'}
                       className="text-sm"
                       data-testid="input-simulate-message"
                     />
                   </div>
 
                   <div className="space-y-1.5">
-                    <Label className="text-xs">Patient phone (optional)</Label>
+                    <Label className="text-xs">Phone number (optional)</Label>
                     <Input
                       value={simulatePhone}
                       onChange={(e) => setSimulatePhone(e.target.value)}
@@ -475,8 +516,26 @@ function SpruceManageDialog({
                     }
                   </Button>
 
-                  {/* Result block */}
-                  {simulateStatus?.kind === "success" && (
+                  {/* Result block — staff message skipped */}
+                  {simulateStatus?.kind === "success" && simulateStatus.skipped && (
+                    <div className="rounded-md bg-amber-50 dark:bg-amber-950/30 border border-amber-200 dark:border-amber-800 px-3 py-2.5 space-y-1.5" data-testid="text-simulate-staff-skipped">
+                      <div className="flex items-center gap-1.5">
+                        <CheckCircle2 className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                        <p className="text-xs font-medium text-amber-800 dark:text-amber-300">
+                          Classification skipped — staff outbound message
+                        </p>
+                      </div>
+                      <p className="text-xs text-amber-700 dark:text-amber-400">
+                        {simulateStatus.skipped.message}
+                      </p>
+                      <p className="text-xs text-amber-700/70 dark:text-amber-400/70 italic">
+                        Message stored for audit. <code className="font-mono">staffRepliedAt</code> set on conversation.
+                      </p>
+                    </div>
+                  )}
+
+                  {/* Result block — patient message classified */}
+                  {simulateStatus?.kind === "success" && !simulateStatus.skipped && (
                     <div className="rounded-md bg-green-50 dark:bg-green-950/40 border border-green-200 dark:border-green-800 px-3 py-2.5 space-y-1.5" data-testid="text-simulate-result">
                       <div className="flex items-center gap-1.5">
                         <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />
