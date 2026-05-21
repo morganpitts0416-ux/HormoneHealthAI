@@ -1,0 +1,95 @@
+Important architecture clarifications before moving forward with Spruce workflows/UI:
+
+1. Production vs Replit
+   Replit is our development/build environment only. The live production ClinIQ app currently runs at:
+
+https://app.realignlabeval.com
+
+The app.cliniqapp.ai domain is currently a branding/overlay domain and should not be assumed as the primary production webhook host.
+
+Production Spruce webhook URLs should ultimately use:
+https://app.realignlabeval.com/api/integrations/spruce/clinic/:clinicId/webhook
+
+The current Replit janeway webhook URL is dev/testing only.
+
+2. Multi-clinic / multi-Spruce architecture
+   Each clinic has its own separate multi-provider ClinIQ tenant/account.
+
+Some clinics may:
+
+* use Spruce
+* have their own completely separate Spruce organization/account
+* have multiple Spruce phone lines
+* or not use Spruce at all
+
+Therefore Spruce must remain:
+
+* clinic-scoped
+* optional per clinic
+* independently configured per clinic
+
+The new clinic_spruce_settings architecture is correct.
+
+3. June workflow behavior
+   June should NOT operate as a general chatbot.
+
+Incoming Spruce messages should:
+
+* be classified into approved workflows
+* or ignored and handled normally by staff
+
+Allowed workflows may include:
+
+* medication refill request
+* intake form request
+* new patient inquiry
+* appointment request
+* lab question/status
+* billing/membership question
+* urgent safety routing
+
+If a message does not confidently match a workflow, June should do nothing and staff should continue using Spruce normally.
+
+Most important rule:
+If a human staff member replies in a Spruce conversation, June must automatically mute/stop participating in that conversation unless manually re-enabled.
+
+4. Current phase only
+   Do NOT activate outbound June replies yet.
+
+Current goal only:
+
+* receive inbound Spruce webhook events
+* route them to the correct clinic
+* capture/store messages
+* create internal ClinIQ dashboard tasks/requests
+
+No patient-facing AI replies yet.
+
+5. Testing clarification
+   The current Spruce setup is connected to a test Spruce organization that may not have active real-world SMS service attached.
+
+Please do not assume true inbound SMS testing is available yet.
+
+Add/support an internal “simulate inbound Spruce message” testing method so we can safely test:
+
+* routing
+* workflow classification
+* dashboard request creation
+  without requiring real SMS traffic.
+
+6. Next requested feature
+   Next implementation priority:
+
+When an inbound Spruce message is classified as a medication refill request:
+
+* create an entry inside the existing “Medication & Supplement Requests” dashboard card
+* similar to how intake form requests currently appear
+* clicking the entry should open a detailed modal/drawer
+* allow staff actions:
+
+  * mark complete
+  * needs more info
+  * visit required
+  * open Spruce conversation
+
+Mark complete should remove it from the dashboard view but preserve it in audit/history.

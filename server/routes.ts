@@ -2240,22 +2240,129 @@ Rules:
   // ===== PATIENT PROFILE ENDPOINTS =====
 
   // GET /api/clinician/notifications — unread messages, pending supplement
-  // orders, and pending patient-portal medication refill requests. The latter
-  // two are surfaced in a single combined dashboard widget
-  // ("Medication & Supplement Requests").
+  // orders, patient-portal medication refill requests, and pending Spruce
+  // workflow requests.  All surfaced in the dashboard widget.
   app.get("/api/clinician/notifications", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const [unreadMessages, pendingOrders, pendingRefillRequests] = await Promise.all([
+      const [unreadMessages, pendingOrders, pendingRefillRequests, pendingSpruceRequests] = await Promise.all([
         storage.getUnreadMessageSummaryForClinician(clinicianId),
         storage.getPendingOrdersForClinician(clinicianId),
         storage.getPendingRefillRequestsForClinician(clinicianId, clinicId ?? null),
+        clinicId ? storage.getPendingSpruceWorkflowRequests(clinicId) : Promise.resolve([]),
       ]);
-      res.json({ unreadMessages, pendingOrders, pendingRefillRequests });
+      res.json({ unreadMessages, pendingOrders, pendingRefillRequests, pendingSpruceRequests });
     } catch (error) {
       console.error("Clinician notifications error:", error);
-      res.json({ unreadMessages: [], pendingOrders: [], pendingRefillRequests: [] });
+      res.json({ unreadMessages: [], pendingOrders: [], pendingRefillRequests: [], pendingSpruceRequests: [] });
+    }
+  });
+
+  // PATCH /api/spruce-requests/:id/status — update a Spruce workflow request status.
+  // Allowed statuses: complete | needs_more_info | visit_required | pending
+  app.patch("/api/spruce-requests/:id/status", requireAuth, async (req, res) => {
+    try {
+      const id = parseInt(req.params.id);
+      const { status } = req.body;
+      const allowed = ["complete", "needs_more_info", "visit_required", "pending"];
+      if (!allowed.includes(status)) {
+        return res.status(400).json({ error: `Invalid status. Allowed: ${allowed.join(", ")}` });
+      }
+      const userId = getClinicianId(req);
+      const updated = await storage.updateSpruceWorkflowRequestStatus(id, status, userId);
+      if (!updated) return res.status(404).json({ error: "Spruce workflow request not found" });
+      res.json(updated);
+    } catch (err) {
+      console.error("Error updating spruce workflow request:", err);
+      res.status(500).json({ error: "Failed to update request" });
+    }
+  });
+
+  // POST /api/integrations/spruce/simulate — internal test endpoint.
+  // Allows staff to simulate an inbound Spruce message without real SMS traffic.
+  // Runs through the full routing → classification → workflow request pipeline.
+  // Requires the requesting user to have a valid clinic session.
+  app.post("/api/integrations/spruce/simulate", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context for simulated message" });
+
+      const {
+        messageText = "Hi, I need a refill on my medication please",
+        patientPhone = "+15550000000",
+        workflow: forcedWorkflow,
+      } = req.body as { messageText?: string; patientPhone?: string; workflow?: string };
+
+      // Build a synthetic payload mimicking a Spruce message.created event
+      const syntheticPayload = {
+        type: "message.created",
+        _simulated: true,
+        data: {
+          id: `sim_${Date.now()}`,
+          conversation_id: `sim_conv_${Date.now()}`,
+          body: messageText,
+          from: { phone_number: patientPhone },
+          direction: "inbound",
+        },
+      };
+
+      const tag = "[Spruce/simulate]";
+      const data = syntheticPayload.data;
+      const msgBody: string = data.body;
+      const spruceMessageId: string = data.id;
+      const spruceConversationId: string = data.conversation_id;
+      const fromPhone: string = data.from.phone_number;
+
+      // Store the message
+      const storedMsg = await storage.createSpruceMessage({
+        clinicId,
+        spruceMessageId,
+        spruceConversationId,
+        fromPhone,
+        toPhone: null,
+        messageBody: msgBody,
+        eventType: "message.created",
+        rawPayload: syntheticPayload,
+        classifiedWorkflow: null,
+        classificationConfidence: null,
+        staffRepliedAt: null,
+      });
+
+      // Classify (allow override for testing specific workflows)
+      const classification = forcedWorkflow
+        ? { workflow: forcedWorkflow, confidence: "simulated" }
+        : classifySpruceMessage(msgBody);
+
+      console.log(`${tag} classified="${classification.workflow}" confidence="${classification.confidence}"`);
+
+      // Create workflow request for actionable workflows
+      let workflowRequest: any = null;
+      if (classification.workflow !== "unclassified") {
+        workflowRequest = await storage.createSpruceWorkflowRequest({
+          clinicId,
+          spruceMessageId: storedMsg.id,
+          patientId: null,
+          workflow: classification.workflow,
+          status: "pending",
+          patientPhone: fromPhone,
+          patientNameExtracted: null,
+          requestSummary: msgBody.slice(0, 300),
+          spruceConversationUrl: `https://app.sprucehealth.com/conversations/${spruceConversationId}`,
+          resolvedAt: null,
+          resolvedByUserId: null,
+        });
+      }
+
+      res.json({
+        ok: true,
+        spruceMessage: storedMsg,
+        classification,
+        workflowRequest,
+      });
+    } catch (err) {
+      console.error("[Spruce/simulate] Error:", err);
+      res.status(500).json({ error: "Simulation failed", detail: String(err) });
     }
   });
 
@@ -17385,15 +17492,80 @@ IMPORTANT:
       console.log(
         `${tag} ROUTED clinic_id=${matchedClinicId} juneEnabled=${clinicSettings.juneEnabled} event="${eventType}"`,
       );
-      // ── Placeholder for future June workflow dispatch ─────────────────
-      // Requirements before enabling:
-      //   1. clinicSettings.juneEnabled must be true
-      //   2. A stable routing config must be in place (confirmed via real payloads)
-      //   3. June workflow implementation must be wired in here
-      // All downstream records MUST be scoped to matchedClinicId.
+      // ── Extract message content ────────────────────────────────────────
+      const msgBody: string =
+        data?.body ?? data?.text ?? data?.content ?? data?.message?.body ?? data?.message?.text ?? "";
+      const spruceMessageId: string =
+        data?.id ?? data?.message_id ?? data?.messageId ?? "";
+      const spruceConversationId: string =
+        data?.conversation_id ?? data?.conversationId ?? data?.conversation?.id ?? "";
+      const fromPhone: string =
+        data?.from?.phone_number ?? data?.from_phone ?? data?.from?.phoneNumber ?? "";
+      const toPhoneExtracted: string =
+        data?.to?.phone_number ?? data?.to_phone ?? data?.to?.phoneNumber ?? toPhone ?? "";
+
+      // ── Persist the inbound message ────────────────────────────────────
+      let storedMsg: any = null;
+      try {
+        storedMsg = await storage.createSpruceMessage({
+          clinicId: matchedClinicId,
+          spruceMessageId: spruceMessageId || null,
+          spruceConversationId: spruceConversationId || null,
+          fromPhone: fromPhone || null,
+          toPhone: toPhoneExtracted || null,
+          messageBody: msgBody || null,
+          eventType,
+          rawPayload: body ?? {},
+          classifiedWorkflow: null,
+          classificationConfidence: null,
+          staffRepliedAt: null,
+        });
+        console.log(`${tag} stored spruce_messages id=${storedMsg.id}`);
+      } catch (err) {
+        console.error(`${tag} failed to store spruce_message:`, err);
+      }
+
+      // ── Classify the message into a workflow ───────────────────────────
+      // Keyword-pattern classification only — no outbound AI replies yet.
+      // June dispatch requires juneEnabled=true AND an explicit implementation.
+      const classification = classifySpruceMessage(msgBody);
+      console.log(`${tag} classified as workflow="${classification.workflow}" confidence="${classification.confidence}"`);
+
+      // ── Create a workflow request for actionable classifications ────────
+      if (
+        classification.workflow !== "unclassified" &&
+        storedMsg !== null
+      ) {
+        try {
+          const convUrl = spruceConversationId
+            ? `https://app.sprucehealth.com/conversations/${spruceConversationId}`
+            : null;
+          await storage.createSpruceWorkflowRequest({
+            clinicId: matchedClinicId,
+            spruceMessageId: storedMsg.id,
+            patientId: null,
+            workflow: classification.workflow,
+            status: "pending",
+            patientPhone: fromPhone || null,
+            patientNameExtracted: null,
+            requestSummary: msgBody ? msgBody.slice(0, 300) : null,
+            spruceConversationUrl: convUrl,
+            resolvedAt: null,
+            resolvedByUserId: null,
+          });
+          console.log(`${tag} created spruce_workflow_requests for workflow="${classification.workflow}"`);
+        } catch (err) {
+          console.error(`${tag} failed to create spruce_workflow_request:`, err);
+        }
+      }
+
+      // ── June dispatch gate ─────────────────────────────────────────────
+      // June outbound replies are BLOCKED until explicitly enabled per-clinic
+      // AND a full implementation is wired in here.
+      // Most important rule: if a human staff member has replied in the
+      // conversation (staffRepliedAt set), June MUST NOT auto-reply.
       if (clinicSettings.juneEnabled) {
-        // TODO: dispatch June workflow scoped to matchedClinicId
-        console.log(`${tag} June is enabled for this clinic — dispatch point (not yet wired)`);
+        console.log(`${tag} June is enabled for this clinic — dispatch not yet implemented`);
       }
     } else {
       // No clinic match or clinic has Spruce disabled — store for admin review.
@@ -17408,6 +17580,46 @@ IMPORTANT:
         console.error(`${tag} failed to store unrouted event:`, err);
       }
     }
+  }
+
+  // ── Spruce message classifier ─────────────────────────────────────────────
+  // Pure keyword-pattern classification — no LLM, no outbound side-effects.
+  // Returns a workflow name + confidence level so callers can decide whether
+  // to create a workflow request or silently ignore the message.
+  function classifySpruceMessage(text: string): { workflow: string; confidence: string } {
+    const t = (text ?? "").toLowerCase();
+    if (!t.trim()) return { workflow: "unclassified", confidence: "low" };
+
+    // Urgent safety — always checked first regardless of other matches.
+    if (/chest\s*pain|suicid|heart\s*attack|stroke|emergency|911|bleeding severely|severe\s*pain/.test(t)) {
+      return { workflow: "urgent_safety", confidence: "high" };
+    }
+    // Medication refill
+    if (/refill|re-?fill|prescription|reorder|running\s*out|out\s*of\s*(my\s*)?(med|medication)|need\s*(more\s*)?(medication|med[s]?|prescription)|renew|renewal/.test(t)) {
+      return { workflow: "medication_refill", confidence: "high" };
+    }
+    // Lab question
+    if (/lab\s*result|blood\s*(work|test)|test\s*result|lab\s*panel|panel\s*result|labs?\s*(came|are|back|ready)/.test(t)) {
+      return { workflow: "lab_question", confidence: "high" };
+    }
+    // Appointment
+    if (/appointment|schedule\s*(an?\s*)?appointment|book\s*(an?\s*)?appointment|reschedule|cancel\s*(my\s*)?appt/.test(t)) {
+      return { workflow: "appointment", confidence: "medium" };
+    }
+    // Intake form
+    if (/intake\s*form|paperwork|questionnaire|patient\s*forms?/.test(t)) {
+      return { workflow: "intake_form", confidence: "medium" };
+    }
+    // New patient
+    if (/new\s*patient|become\s*a\s*patient|first\s*(visit|appointment|time)|sign\s*up|register\s*as/.test(t)) {
+      return { workflow: "new_patient", confidence: "medium" };
+    }
+    // Billing / membership
+    if (/bill|invoice|payment|charge|insurance|membership|subscription/.test(t)) {
+      return { workflow: "billing", confidence: "medium" };
+    }
+
+    return { workflow: "unclassified", confidence: "low" };
   }
 
   // ── Per-clinic webhook endpoint ───────────────────────────────────────

@@ -373,6 +373,16 @@ export interface IStorage {
     >>,
   ): Promise<schema.ClinicSpruceSettings>;
 
+  // ── Spruce message + workflow request persistence ─────────────────────────
+  createSpruceMessage(data: schema.InsertSpruceMessage): Promise<schema.SpruceMessage>;
+  createSpruceWorkflowRequest(data: schema.InsertSpruceWorkflowRequest): Promise<schema.SpruceWorkflowRequest>;
+  getPendingSpruceWorkflowRequests(clinicId: number): Promise<schema.SpruceWorkflowRequest[]>;
+  updateSpruceWorkflowRequestStatus(
+    id: number,
+    status: string,
+    resolvedByUserId?: number,
+  ): Promise<schema.SpruceWorkflowRequest | undefined>;
+
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
   upsertClinicalBlockDefaults(clinicId: number, providerId: number, data: schema.UpdateClinicalBlockDefaults): Promise<schema.ClinicalBlockDefaultsRow>;
@@ -4574,4 +4584,54 @@ async function _resolveMandatoryReasons(
     .update(schema.spruceUnroutedEvents)
     .set({ reviewedAt: new Date(), reviewedByUserId: userId })
     .where(eq(schema.spruceUnroutedEvents.id, id));
+};
+
+// ── Spruce message + workflow request persistence ─────────────────────────
+
+(DbStorage.prototype as any).createSpruceMessage = async function(
+  data: schema.InsertSpruceMessage,
+): Promise<schema.SpruceMessage> {
+  const [row] = await db.insert(schema.spruceMessages).values(data).returning();
+  return row;
+};
+
+(DbStorage.prototype as any).createSpruceWorkflowRequest = async function(
+  data: schema.InsertSpruceWorkflowRequest,
+): Promise<schema.SpruceWorkflowRequest> {
+  const [row] = await db.insert(schema.spruceWorkflowRequests).values(data).returning();
+  return row;
+};
+
+(DbStorage.prototype as any).getPendingSpruceWorkflowRequests = async function(
+  clinicId: number,
+): Promise<schema.SpruceWorkflowRequest[]> {
+  return db
+    .select()
+    .from(schema.spruceWorkflowRequests)
+    .where(
+      and(
+        eq(schema.spruceWorkflowRequests.clinicId, clinicId),
+        eq(schema.spruceWorkflowRequests.status, "pending"),
+      ),
+    )
+    .orderBy(desc(schema.spruceWorkflowRequests.createdAt));
+};
+
+(DbStorage.prototype as any).updateSpruceWorkflowRequestStatus = async function(
+  id: number,
+  status: string,
+  resolvedByUserId?: number,
+): Promise<schema.SpruceWorkflowRequest | undefined> {
+  const isResolved = status !== "pending";
+  const [row] = await db
+    .update(schema.spruceWorkflowRequests)
+    .set({
+      status,
+      ...(isResolved
+        ? { resolvedAt: new Date(), resolvedByUserId: resolvedByUserId ?? null }
+        : { resolvedAt: null, resolvedByUserId: null }),
+    })
+    .where(eq(schema.spruceWorkflowRequests.id, id))
+    .returning();
+  return row;
 };

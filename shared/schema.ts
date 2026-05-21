@@ -2458,3 +2458,67 @@ export const spruceUnroutedEvents = pgTable("spruce_unrouted_events", {
 export type SpruceUnroutedEvent = typeof spruceUnroutedEvents.$inferSelect;
 export const insertSpruceUnroutedEventSchema = createInsertSchema(spruceUnroutedEvents).omit({ id: true, receivedAt: true });
 export type InsertSpruceUnroutedEvent = z.infer<typeof insertSpruceUnroutedEventSchema>;
+
+// ── spruce_messages ────────────────────────────────────────────────────────
+// One row per inbound Spruce message event. Persisted for every routed +
+// enabled clinic, providing an audit trail and the source data for workflow
+// classification / replay.
+export const spruceMessages = pgTable("spruce_messages", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  // Identifiers extracted from the Spruce payload
+  spruceMessageId: varchar("spruce_message_id", { length: 200 }),
+  spruceConversationId: varchar("spruce_conversation_id", { length: 200 }),
+  // E.164 phone numbers when available
+  fromPhone: varchar("from_phone", { length: 30 }),
+  toPhone: varchar("to_phone", { length: 30 }),
+  // Message text extracted from the payload (null for non-message events)
+  messageBody: text("message_body"),
+  eventType: varchar("event_type", { length: 100 }),
+  // Full raw payload for debugging and replay
+  rawPayload: jsonb("raw_payload").notNull(),
+  // Classification result — set immediately on receipt; can be retried later
+  classifiedWorkflow: varchar("classified_workflow", { length: 50 }),
+  classificationConfidence: varchar("classification_confidence", { length: 20 }), // "high"|"medium"|"low"
+  // Non-null = a human staff member has replied in this conversation.
+  // June MUST NOT auto-reply when this is set (human-in-the-loop gate).
+  staffRepliedAt: timestamp("staff_replied_at"),
+  receivedAt: timestamp("received_at").defaultNow().notNull(),
+});
+export type SpruceMessage = typeof spruceMessages.$inferSelect;
+export const insertSpruceMessageSchema = createInsertSchema(spruceMessages).omit({ id: true, receivedAt: true });
+export type InsertSpruceMessage = z.infer<typeof insertSpruceMessageSchema>;
+
+// ── spruce_workflow_requests ───────────────────────────────────────────────
+// Created when an inbound Spruce message is classified as a known workflow
+// (medication_refill, appointment, etc.).  These surface in the dashboard
+// "Medication & Supplement Requests" widget and any future workflow-specific
+// inboxes.  Resolved rows stay in the DB for audit (soft-delete via status).
+export const spruceWorkflowRequests = pgTable("spruce_workflow_requests", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  // Back-reference to the originating message (kept even if message deleted)
+  spruceMessageId: integer("spruce_message_id").references(() => spruceMessages.id, { onDelete: "set null" }),
+  // Matched ClinIQ patient — null when the caller is not yet in the system
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  // Workflow type: medication_refill | intake_form | new_patient |
+  //                appointment | lab_question | billing |
+  //                urgent_safety | unclassified
+  workflow: varchar("workflow", { length: 50 }).notNull(),
+  // pending | complete | needs_more_info | visit_required
+  status: varchar("status", { length: 50 }).notNull().default("pending"),
+  // Caller info extracted from the payload (may be unknown)
+  patientPhone: varchar("patient_phone", { length: 30 }),
+  patientNameExtracted: varchar("patient_name_extracted", { length: 200 }),
+  // Short summary of the request (keyword-extracted or AI-generated)
+  requestSummary: text("request_summary"),
+  // Deep link into the Spruce web app for "Open Spruce conversation" action
+  spruceConversationUrl: text("spruce_conversation_url"),
+  // Resolution tracking
+  resolvedAt: timestamp("resolved_at"),
+  resolvedByUserId: integer("resolved_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type SpruceWorkflowRequest = typeof spruceWorkflowRequests.$inferSelect;
+export const insertSpruceWorkflowRequestSchema = createInsertSchema(spruceWorkflowRequests).omit({ id: true, createdAt: true });
+export type InsertSpruceWorkflowRequest = z.infer<typeof insertSpruceWorkflowRequestSchema>;

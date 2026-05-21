@@ -30,6 +30,10 @@ import {
   Loader2,
   UserPlus,
   Upload,
+  MessageCircle,
+  ExternalLink,
+  AlertCircle,
+  Stethoscope,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
@@ -77,10 +81,26 @@ interface PendingSubmissionRow {
   formName?: string;
 }
 
+interface SpruceWorkflowRequestRow {
+  id: number;
+  clinicId: number;
+  spruceMessageId: number | null;
+  patientId: number | null;
+  workflow: string;
+  status: string;
+  patientPhone: string | null;
+  patientNameExtracted: string | null;
+  requestSummary: string | null;
+  spruceConversationUrl: string | null;
+  resolvedAt: string | null;
+  createdAt: string;
+}
+
 interface NotificationsData {
   unreadMessages: UnreadMessageRow[];
   pendingOrders: PendingOrderRow[];
   pendingRefillRequests: PendingRefillRequestRow[];
+  pendingSpruceRequests: SpruceWorkflowRequestRow[];
 }
 
 interface OpenEncounterRow {
@@ -118,6 +138,17 @@ interface ClinicUser {
   displayName: string;
 }
 
+
+const SPRUCE_WORKFLOW_LABELS: Record<string, string> = {
+  medication_refill: "Medication refill request",
+  intake_form: "Intake form request",
+  new_patient: "New patient inquiry",
+  appointment: "Appointment request",
+  lab_question: "Lab question",
+  billing: "Billing / membership",
+  urgent_safety: "Urgent — safety concern",
+  unclassified: "Inbound message",
+};
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -165,6 +196,8 @@ export default function Dashboard() {
   const [showAddPatient, setShowAddPatient] = useState(false);
   useFirstVisitTour();
 
+  const [selectedSpruceRequest, setSelectedSpruceRequest] = useState<SpruceWorkflowRequestRow | null>(null);
+
   const { data: patients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients/search"],
     queryFn: async () => {
@@ -178,6 +211,17 @@ export default function Dashboard() {
   const { data: notifications, isLoading: notifLoading } = useQuery<NotificationsData>({
     queryKey: ["/api/clinician/notifications"],
     refetchInterval: 20 * 1000,
+  });
+
+  const updateSpruceRequestMutation = useMutation({
+    mutationFn: async ({ id, status }: { id: number; status: string }) => {
+      const res = await apiRequest("PATCH", `/api/spruce-requests/${id}/status`, { status });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/clinician/notifications"] });
+      setSelectedSpruceRequest(null);
+    },
   });
 
   const fulfillOrderMutation = useMutation({
@@ -224,12 +268,14 @@ export default function Dashboard() {
   const unreadMessages = notifications?.unreadMessages ?? [];
   const pendingOrders = notifications?.pendingOrders ?? [];
   const pendingRefillRequests = notifications?.pendingRefillRequests ?? [];
+  const pendingSpruceRequests = notifications?.pendingSpruceRequests ?? [];
 
   // Combined list for the "Medication & Supplement Requests" widget. Each row
   // is tagged so the renderer can show the right icon and action buttons.
   type CombinedRequestRow =
     | { kind: "order"; sortAt: number; row: PendingOrderRow }
-    | { kind: "refill"; sortAt: number; row: PendingRefillRequestRow };
+    | { kind: "refill"; sortAt: number; row: PendingRefillRequestRow }
+    | { kind: "spruce"; sortAt: number; row: SpruceWorkflowRequestRow };
   const combinedRequests: CombinedRequestRow[] = [
     ...pendingOrders.map(o => ({
       kind: "order" as const,
@@ -240,6 +286,11 @@ export default function Dashboard() {
       kind: "refill" as const,
       sortAt: new Date(r.createdAt).getTime() || 0,
       row: r,
+    })),
+    ...pendingSpruceRequests.map(s => ({
+      kind: "spruce" as const,
+      sortAt: new Date(s.createdAt).getTime() || 0,
+      row: s,
     })),
   ].sort((a, b) => b.sortAt - a.sortAt);
 
@@ -708,6 +759,7 @@ export default function Dashboard() {
                       );
                     }
                     // Medication refill request row
+                    if (entry.kind === "refill") {
                     const refill = entry.row;
                     const firstName = refill.patientFirstName ?? "";
                     const lastName = refill.patientLastName ?? "";
@@ -737,7 +789,6 @@ export default function Dashboard() {
                                   Medication refill request
                                 </span>
                               </div>
-                              {/* Show first 2 lines of the structured refill message as a preview */}
                               <p
                                 className="text-xs mt-0.5 whitespace-pre-line"
                                 style={{
@@ -779,6 +830,78 @@ export default function Dashboard() {
                                   View <ChevronRight className="w-3 h-3 ml-0.5" />
                                 </Button>
                               )}
+                            </div>
+                          </div>
+                        </div>
+                      </div>
+                    );
+                    }
+
+                    // ── Spruce inbound request row ──────────────────────────
+                    const spruceReq = entry.row as SpruceWorkflowRequestRow;
+                    const spruceDisplayName = spruceReq.patientNameExtracted ?? spruceReq.patientPhone ?? "Unknown caller";
+                    const spruceLabel = SPRUCE_WORKFLOW_LABELS[spruceReq.workflow] ?? spruceReq.workflow;
+                    const spruceFI = spruceDisplayName[0] ?? "?";
+                    const spruceLI = spruceDisplayName[1] ?? "";
+                    return (
+                      <div
+                        key={`spruce-${spruceReq.id}`}
+                        data-testid={`notification-spruce-${spruceReq.id}`}
+                        className="px-4 py-3"
+                      >
+                        <div className="flex items-start gap-3">
+                          <div
+                            className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
+                            style={{ backgroundColor: "#4a3a6e" }}
+                          >
+                            {spruceFI}{spruceLI}
+                          </div>
+                          <div className="flex-1 min-w-0">
+                            <button
+                              className="w-full text-left"
+                              onClick={() => setSelectedSpruceRequest(spruceReq)}
+                            >
+                              <div className="flex items-center gap-1.5 flex-wrap">
+                                <MessageCircle className="w-3 h-3 flex-shrink-0" style={{ color: "#4a3a6e" }} />
+                                <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                                  {spruceDisplayName}
+                                </p>
+                                <span className="text-xs font-medium" style={{ color: "#4a3a6e" }}>
+                                  {spruceLabel}
+                                </span>
+                                <span className="text-xs" style={{ color: "#a0a880" }}>via Spruce</span>
+                              </div>
+                              {spruceReq.requestSummary && (
+                                <p
+                                  className="text-xs mt-0.5"
+                                  style={{
+                                    color: "#7a8a64",
+                                    display: "-webkit-box",
+                                    WebkitLineClamp: 2,
+                                    WebkitBoxOrient: "vertical",
+                                    overflow: "hidden",
+                                  }}
+                                  data-testid={`text-spruce-summary-${spruceReq.id}`}
+                                >
+                                  {spruceReq.requestSummary}
+                                </p>
+                              )}
+                            </button>
+                            <div className="flex items-center gap-2 mt-2 flex-wrap">
+                              <div className="flex items-center gap-1 text-xs" style={{ color: "#a0a880" }}>
+                                <Clock className="w-3 h-3" />
+                                {formatDate(spruceReq.createdAt)}
+                              </div>
+                              <div className="flex-1" />
+                              <Button
+                                size="sm"
+                                data-testid={`button-spruce-details-${spruceReq.id}`}
+                                className="h-7 px-3 text-xs gap-1.5"
+                                style={{ backgroundColor: "#4a3a6e", color: "#ffffff" }}
+                                onClick={() => setSelectedSpruceRequest(spruceReq)}
+                              >
+                                View details <ChevronRight className="w-3 h-3" />
+                              </Button>
                             </div>
                           </div>
                         </div>
@@ -944,6 +1067,116 @@ export default function Dashboard() {
           email: (user as any)?.email ?? null,
         }}
       />
+
+      {/* ── Spruce workflow request detail drawer ─────────────────────── */}
+      {selectedSpruceRequest && (
+        <Dialog open onOpenChange={(open) => { if (!open) setSelectedSpruceRequest(null); }}>
+          <DialogContent className="max-w-md" data-testid="dialog-spruce-request">
+            <DialogHeader>
+              <DialogTitle className="flex items-center gap-2">
+                <MessageCircle className="w-4 h-4" style={{ color: "#4a3a6e" }} />
+                {SPRUCE_WORKFLOW_LABELS[selectedSpruceRequest.workflow] ?? selectedSpruceRequest.workflow}
+              </DialogTitle>
+            </DialogHeader>
+
+            <div className="space-y-4 pt-1">
+              {/* Caller info */}
+              <div className="rounded-md p-3 space-y-1.5" style={{ backgroundColor: "#f5f3fa" }}>
+                <div className="flex items-center gap-2 text-sm">
+                  <span className="font-medium" style={{ color: "#4a3a6e" }}>Source</span>
+                  <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: "#4a3a6e20", color: "#4a3a6e" }}>
+                    via Spruce
+                  </span>
+                </div>
+                {selectedSpruceRequest.patientNameExtracted && (
+                  <div className="text-sm" style={{ color: "#1c2414" }}>
+                    <span className="text-xs font-medium uppercase tracking-wide" style={{ color: "#7a8a64" }}>Name — </span>
+                    {selectedSpruceRequest.patientNameExtracted}
+                  </div>
+                )}
+                {selectedSpruceRequest.patientPhone && (
+                  <div className="text-sm font-mono" style={{ color: "#1c2414" }}>
+                    <span className="text-xs font-medium uppercase tracking-wide font-sans" style={{ color: "#7a8a64" }}>Phone — </span>
+                    {selectedSpruceRequest.patientPhone}
+                  </div>
+                )}
+                <div className="text-xs" style={{ color: "#a0a880" }}>
+                  Received {timeAgo(selectedSpruceRequest.createdAt)}
+                </div>
+              </div>
+
+              {/* Message text */}
+              {selectedSpruceRequest.requestSummary && (
+                <div>
+                  <p className="text-xs font-medium uppercase tracking-wide mb-1" style={{ color: "#7a8a64" }}>Message</p>
+                  <p className="text-sm leading-relaxed" style={{ color: "#1c2414" }}
+                    data-testid="text-spruce-drawer-summary">
+                    {selectedSpruceRequest.requestSummary}
+                  </p>
+                </div>
+              )}
+
+              {/* Spruce conversation link */}
+              {selectedSpruceRequest.spruceConversationUrl && (
+                <a
+                  href={selectedSpruceRequest.spruceConversationUrl}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="flex items-center gap-2 text-sm font-medium rounded-md px-3 py-2 border"
+                  style={{ color: "#4a3a6e", borderColor: "#c4b8e0" }}
+                  data-testid="link-open-spruce-conversation"
+                >
+                  <ExternalLink className="w-3.5 h-3.5" />
+                  Open conversation in Spruce
+                </a>
+              )}
+
+              {/* Action buttons */}
+              <div className="border-t pt-3" style={{ borderColor: "#ede8df" }}>
+                <p className="text-xs font-medium uppercase tracking-wide mb-2" style={{ color: "#7a8a64" }}>Staff action</p>
+                <div className="grid grid-cols-2 gap-2">
+                  <Button
+                    size="sm"
+                    data-testid="button-spruce-complete"
+                    className="gap-1.5"
+                    style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
+                    onClick={() => updateSpruceRequestMutation.mutate({ id: selectedSpruceRequest.id, status: "complete" })}
+                    disabled={updateSpruceRequestMutation.isPending}
+                  >
+                    <CheckCircle2 className="w-3.5 h-3.5" />
+                    Mark complete
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid="button-spruce-needs-info"
+                    className="gap-1.5"
+                    onClick={() => updateSpruceRequestMutation.mutate({ id: selectedSpruceRequest.id, status: "needs_more_info" })}
+                    disabled={updateSpruceRequestMutation.isPending}
+                  >
+                    <AlertCircle className="w-3.5 h-3.5" />
+                    Needs more info
+                  </Button>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    data-testid="button-spruce-visit-required"
+                    className="gap-1.5 col-span-2"
+                    onClick={() => updateSpruceRequestMutation.mutate({ id: selectedSpruceRequest.id, status: "visit_required" })}
+                    disabled={updateSpruceRequestMutation.isPending}
+                  >
+                    <Stethoscope className="w-3.5 h-3.5" />
+                    Visit required
+                  </Button>
+                </div>
+                <p className="text-xs mt-2" style={{ color: "#a0a880" }}>
+                  "Mark complete" removes this from the dashboard. All actions are preserved in audit history.
+                </p>
+              </div>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
