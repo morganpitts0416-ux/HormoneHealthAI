@@ -22,6 +22,8 @@ import {
   Building2, User, SlidersHorizontal, FileText, ClipboardList, Shield, ShieldCheck,
   Bell, Inbox, Stethoscope, BrainCircuit,
 } from "lucide-react";
+import { Label } from "@/components/ui/label";
+import { Switch } from "@/components/ui/switch";
 import { Dialog, DialogContent, DialogDescription, DialogFooter, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { PreferencesPanel } from "@/components/preferences-panel";
 import { DiagnosisPresetsSection } from "@/components/diagnosis-presets-section";
@@ -30,6 +32,7 @@ import { ChartReviewSection } from "@/components/chart-review/chart-review-secti
 import { ClinicalBlockDefaultsSection } from "@/components/clinical-block-defaults-section";
 import { JuneSettingsSection } from "@/components/june-settings-section";
 import { EncounterTemplatesSection } from "@/components/encounter-templates-section";
+import { IntegrationsSection } from "@/components/integrations-section";
 import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { PLATFORM_DEFAULT_BRANDING, resolveBranding } from "@/lib/branding";
 import { useToast } from "@/hooks/use-toast";
@@ -130,7 +133,7 @@ interface MessagingSettings {
   externalMessagingChannelId: string | null;
 }
 
-type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "baa" | "billing";
+type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "integrations" | "baa" | "billing";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
@@ -147,6 +150,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "encounterTemplates", label: "Encounter Templates", icon: FileText, clinicianOnly: true, providerVisible: true },
   { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true, ownerOnly: true },
   { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true, ownerOnly: true },
+  { id: "integrations", label: "Integrations", icon: Zap, clinicianOnly: true, ownerOnly: true },
   { id: "baa", label: "BAA / HIPAA", icon: Shield, clinicianOnly: true, ownerOnly: true },
   { id: "billing", label: "Billing & Plan", icon: CreditCard, clinicianOnly: true, ownerOnly: true },
 ];
@@ -1927,6 +1931,9 @@ export default function Account() {
 
       case "submissions":
         return <FormSubmissionsSection />;
+
+      case "integrations":
+        return <IntegrationsSection />;
 
       case "baa":
         return <BaaSection />;
