@@ -1164,6 +1164,76 @@ CREATE TABLE IF NOT EXISTS encounter_templates (
   created_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
 
+-- ── Spruce integration tables ─────────────────────────────────────────────────
+-- All five tables are optional. The app starts and runs normally if they are
+-- empty. Spruce features are gated behind is_enabled=false per clinic.
+
+CREATE TABLE IF NOT EXISTS clinic_spruce_settings (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL UNIQUE REFERENCES clinics(id) ON DELETE CASCADE,
+  is_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  spruce_org_id VARCHAR(200),
+  spruce_webhook_endpoint_id VARCHAR(200),
+  webhook_secret_encrypted TEXT,
+  api_token_encrypted TEXT,
+  spruce_auto_reply_enabled BOOLEAN NOT NULL DEFAULT FALSE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS spruce_routing_rules (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  spruce_phone_line_id VARCHAR(100),
+  spruce_team_id VARCHAR(100),
+  to_phone_number VARCHAR(30),
+  label VARCHAR(200) NOT NULL,
+  is_active BOOLEAN NOT NULL DEFAULT TRUE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS spruce_unrouted_events (
+  id SERIAL PRIMARY KEY,
+  raw_payload JSONB NOT NULL,
+  event_type VARCHAR(100),
+  routing_attempted JSONB,
+  received_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  reviewed_at TIMESTAMP,
+  reviewed_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL
+);
+
+CREATE TABLE IF NOT EXISTS spruce_messages (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  spruce_message_id VARCHAR(200),
+  spruce_conversation_id VARCHAR(200),
+  from_phone VARCHAR(30),
+  to_phone VARCHAR(30),
+  message_body TEXT,
+  event_type VARCHAR(100),
+  raw_payload JSONB NOT NULL,
+  classified_workflow VARCHAR(50),
+  classification_confidence VARCHAR(20),
+  staff_replied_at TIMESTAMP,
+  received_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+CREATE TABLE IF NOT EXISTS spruce_workflow_requests (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  spruce_message_id INTEGER REFERENCES spruce_messages(id) ON DELETE SET NULL,
+  patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  workflow VARCHAR(50) NOT NULL,
+  status VARCHAR(50) NOT NULL DEFAULT 'pending',
+  patient_phone VARCHAR(30),
+  patient_name_extracted VARCHAR(200),
+  request_summary TEXT,
+  spruce_conversation_url TEXT,
+  resolved_at TIMESTAMP,
+  resolved_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
 -- ── june_preferences ─────────────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS june_preferences (
   id SERIAL PRIMARY KEY,

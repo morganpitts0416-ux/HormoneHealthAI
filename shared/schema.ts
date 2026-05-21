@@ -2396,9 +2396,10 @@ export const clinicSpruceSettings = pgTable("clinic_spruce_settings", {
   // Format: base64(iv):base64(authTag):base64(ciphertext)
   webhookSecretEncrypted: text("webhook_secret_encrypted"),
   apiTokenEncrypted: text("api_token_encrypted"),
-  // June workflow gate.  Must be explicitly enabled per clinic before any
-  // AI-generated patient-facing reply can be dispatched.
-  juneEnabled: boolean("june_enabled").notNull().default(false),
+  // Gate for Spruce-side auto-reply (future outbound patient messaging via Spruce).
+  // Completely separate from the ClinIQ June clinical AI assistant.
+  // Must be explicitly enabled per-clinic; currently always a no-op (not yet implemented).
+  spruceAutoReplyEnabled: boolean("spruce_auto_reply_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -2409,7 +2410,7 @@ export const insertClinicSpruceSettingsSchema = createInsertSchema(clinicSpruceS
 }).extend({
   spruceOrgId: z.string().trim().max(200).nullable().optional(),
   spruceWebhookEndpointId: z.string().trim().max(200).nullable().optional(),
-  juneEnabled: z.boolean().default(false),
+  spruceAutoReplyEnabled: z.boolean().default(false),
   isEnabled: z.boolean().default(false),
 });
 export type InsertClinicSpruceSettings = z.infer<typeof insertClinicSpruceSettingsSchema>;

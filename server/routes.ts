@@ -17198,7 +17198,7 @@ IMPORTANT:
         id: row.id,
         clinicId: row.clinicId,
         isEnabled: row.isEnabled,
-        juneEnabled: row.juneEnabled,
+        spruceAutoReplyEnabled: row.spruceAutoReplyEnabled,
         spruceOrgId: row.spruceOrgId,
         spruceWebhookEndpointId: row.spruceWebhookEndpointId,
         webhookSecretConfigured: isEncrypted(row.webhookSecretEncrypted),
@@ -17219,7 +17219,7 @@ IMPORTANT:
 
       const {
         isEnabled,
-        juneEnabled,
+        spruceAutoReplyEnabled,
         spruceOrgId,
         spruceWebhookEndpointId,
         // Plaintext secrets — encrypted before storage; empty string = clear the secret
@@ -17230,7 +17230,7 @@ IMPORTANT:
       const updates: Parameters<typeof storage.upsertClinicSpruceSettings>[1] = {};
 
       if (isEnabled !== undefined) updates.isEnabled = Boolean(isEnabled);
-      if (juneEnabled !== undefined) updates.juneEnabled = Boolean(juneEnabled);
+      if (spruceAutoReplyEnabled !== undefined) updates.spruceAutoReplyEnabled = Boolean(spruceAutoReplyEnabled);
       if (spruceOrgId !== undefined) updates.spruceOrgId = spruceOrgId?.trim() || null;
       if (spruceWebhookEndpointId !== undefined) updates.spruceWebhookEndpointId = spruceWebhookEndpointId?.trim() || null;
 
@@ -17247,7 +17247,7 @@ IMPORTANT:
         id: row.id,
         clinicId: row.clinicId,
         isEnabled: row.isEnabled,
-        juneEnabled: row.juneEnabled,
+        spruceAutoReplyEnabled: row.spruceAutoReplyEnabled,
         spruceOrgId: row.spruceOrgId,
         spruceWebhookEndpointId: row.spruceWebhookEndpointId,
         webhookSecretConfigured: isEncrypted(row.webhookSecretEncrypted),
@@ -17490,7 +17490,7 @@ IMPORTANT:
     // ── Dispatch ───────────────────────────────────────────────────────
     if (matchedClinicId !== null && clinicSettings?.isEnabled) {
       console.log(
-        `${tag} ROUTED clinic_id=${matchedClinicId} juneEnabled=${clinicSettings.juneEnabled} event="${eventType}"`,
+        `${tag} ROUTED clinic_id=${matchedClinicId} spruceAutoReplyEnabled=${clinicSettings.spruceAutoReplyEnabled} event="${eventType}"`,
       );
       // ── Extract message content ────────────────────────────────────────
       const msgBody: string =
@@ -17527,7 +17527,8 @@ IMPORTANT:
 
       // ── Classify the message into a workflow ───────────────────────────
       // Keyword-pattern classification only — no outbound AI replies yet.
-      // June dispatch requires juneEnabled=true AND an explicit implementation.
+      // Spruce auto-reply requires spruceAutoReplyEnabled=true AND an explicit implementation.
+      // This is completely separate from the ClinIQ June clinical AI assistant.
       const classification = classifySpruceMessage(msgBody);
       console.log(`${tag} classified as workflow="${classification.workflow}" confidence="${classification.confidence}"`);
 
@@ -17559,13 +17560,15 @@ IMPORTANT:
         }
       }
 
-      // ── June dispatch gate ─────────────────────────────────────────────
-      // June outbound replies are BLOCKED until explicitly enabled per-clinic
-      // AND a full implementation is wired in here.
+      // ── Spruce auto-reply gate ─────────────────────────────────────────
+      // Outbound Spruce patient replies are BLOCKED until explicitly enabled
+      // per-clinic AND a full implementation is wired in here.
+      // This gate has NO connection to the ClinIQ June clinical AI assistant
+      // (SOAP generation, transcription, lab eval, evidence overlay, AI chat).
       // Most important rule: if a human staff member has replied in the
-      // conversation (staffRepliedAt set), June MUST NOT auto-reply.
-      if (clinicSettings.juneEnabled) {
-        console.log(`${tag} June is enabled for this clinic — dispatch not yet implemented`);
+      // conversation (staffRepliedAt set), auto-reply MUST NOT fire.
+      if (clinicSettings.spruceAutoReplyEnabled) {
+        console.log(`${tag} Spruce auto-reply is enabled for this clinic — outbound dispatch not yet implemented`);
       }
     } else {
       // No clinic match or clinic has Spruce disabled — store for admin review.

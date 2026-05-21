@@ -368,7 +368,7 @@ export interface IStorage {
   upsertClinicSpruceSettings(
     clinicId: number,
     data: Partial<Pick<schema.ClinicSpruceSettings,
-      "isEnabled" | "juneEnabled" | "spruceOrgId" | "spruceWebhookEndpointId"
+      "isEnabled" | "spruceAutoReplyEnabled" | "spruceOrgId" | "spruceWebhookEndpointId"
       | "webhookSecretEncrypted" | "apiTokenEncrypted"
     >>,
   ): Promise<schema.ClinicSpruceSettings>;
@@ -4473,7 +4473,7 @@ async function _resolveMandatoryReasons(
 (DbStorage.prototype as any).upsertClinicSpruceSettings = async function(
   clinicId: number,
   data: Partial<Pick<schema.ClinicSpruceSettings,
-    "isEnabled" | "juneEnabled" | "spruceOrgId" | "spruceWebhookEndpointId"
+    "isEnabled" | "spruceAutoReplyEnabled" | "spruceOrgId" | "spruceWebhookEndpointId"
     | "webhookSecretEncrypted" | "apiTokenEncrypted"
   >>,
 ): Promise<schema.ClinicSpruceSettings> {

@@ -1,0 +1,65 @@
+Before I manually sync to Git and deploy, please prepare a deployment safety summary with these clarifications:
+
+1. Production app domain
+   The live production app is:
+   https://app.realignlabeval.com
+
+Replit is development/testing only.
+
+2. SESSION_SECRET / production secrets
+   SESSION_SECRET does NOT currently exist in Cloud Run yet because I have not migrated these new Spruce changes or manually added the secret to Cloud Run yet.
+
+Please confirm:
+
+* exactly which new environment variables will be required in Cloud Run before deployment
+* whether the app will still safely start if Spruce secrets are missing
+* that Spruce remains completely optional and non-blocking
+* that missing Spruce configuration cannot break login, sessions, billing, dashboard access, notifications, or startup
+
+3. Separate June systems
+   The Spruce workflow assistant should be treated as a separate/internal module from the existing ClinIQ June clinical AI assistant.
+
+Spruce June should NOT modify or interfere with:
+
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* patient summaries
+* existing June AI assistant/chat/avatar behavior
+
+Please keep Spruce workflow logic clearly separated in code naming and architecture, such as:
+
+* spruceWorkflowEngine
+* spruceMessageClassifier
+* spruceAutomation
+* spruceJune
+
+4. Spruce outbound replies
+   Only Spruce outbound patient replies should remain disabled.
+
+This should NOT disable or affect existing ClinIQ AI functionality.
+
+5. Deployment readiness
+   Please confirm:
+
+* all Spruce schema changes are included in prod-migrate.sql, not only applied through db:push
+* prod-migrate.sql uses safe/idempotent statements such as CREATE TABLE IF NOT EXISTS and ADD COLUMN IF NOT EXISTS
+* the app can start in production if no Spruce settings exist
+* Spruce env vars are NOT required for normal login/dashboard functionality
+* Spruce remains optional per clinic
+* provide the exact files changed
+* provide a rollback plan if deployment causes issues
+
+6. Current implementation boundary
+   Do not add outbound Spruce AI replies yet.
+
+Current approved scope only:
+
+* inbound Spruce webhook handling
+* routing to the correct clinic
+* workflow classification
+* internal dashboard request/task creation
+* staff workflow actions
+
+No patient-facing AI messaging yet.
