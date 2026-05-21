@@ -19,7 +19,6 @@ import {
   CheckCircle2,
   Bell,
   ArrowRight,
-  Package,
   Users,
   Pill,
   ClipboardList,
@@ -153,6 +152,94 @@ const SPRUCE_WORKFLOW_LABELS: Record<string, string> = {
   urgent_safety: "Urgent — safety concern",
   unclassified: "Inbound message",
 };
+
+// ── CompactQueueTile ──────────────────────────────────────────────────────────
+// Reusable wrapper for dashboard workflow queue tiles. Shows a compact header
+// with count badge + "View all" link, then renders children as the preview rows.
+// When empty, shows a minimal cleared state instead of a tall placeholder.
+
+function CompactQueueTile({
+  icon,
+  label,
+  count,
+  countLabel,
+  accentColor,
+  accentBg,
+  viewAllLabel,
+  onViewAll,
+  isLoading,
+  testId,
+  isEmpty,
+  emptyLabel,
+  children,
+}: {
+  icon: React.ReactNode;
+  label: string;
+  count: number;
+  countLabel?: string;
+  accentColor: string;
+  accentBg: string;
+  viewAllLabel: string;
+  onViewAll: () => void;
+  isLoading: boolean;
+  testId: string;
+  isEmpty: boolean;
+  emptyLabel: string;
+  children?: React.ReactNode;
+}) {
+  return (
+    <div
+      className="rounded-xl overflow-hidden border"
+      style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}
+      data-testid={testId}
+    >
+      {/* Tile header */}
+      <div
+        className="flex items-center justify-between px-4 py-2.5 border-b"
+        style={{ borderColor: "#ede8df", backgroundColor: !isEmpty ? accentBg : "#faf8f5" }}
+      >
+        <div className="flex items-center gap-2">
+          <span style={{ color: !isEmpty ? accentColor : "#a0a880" }}>{icon}</span>
+          <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>{label}</span>
+          {count > 0 && (
+            <span
+              className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold"
+              style={{ backgroundColor: accentColor, color: accentBg }}
+            >
+              {count}
+            </span>
+          )}
+          {countLabel && count > 0 && (
+            <span className="text-xs" style={{ color: accentColor }}>{countLabel}</span>
+          )}
+        </div>
+        <button
+          className="text-xs font-medium flex items-center gap-1"
+          style={{ color: accentColor }}
+          onClick={onViewAll}
+        >
+          {viewAllLabel} <ArrowRight className="w-3 h-3" />
+        </button>
+      </div>
+
+      {/* Body */}
+      {isLoading ? (
+        <div className="space-y-2 p-3">
+          {[1, 2].map(i => <div key={i} className="h-10 rounded-lg animate-pulse" style={{ backgroundColor: "#f0ece5" }} />)}
+        </div>
+      ) : isEmpty ? (
+        <div className="flex items-center gap-2 px-4 py-3">
+          <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "#b0c090" }} />
+          <p className="text-sm" style={{ color: "#a0a880" }}>{emptyLabel}</p>
+        </div>
+      ) : (
+        <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
+          {children}
+        </div>
+      )}
+    </div>
+  );
+}
 
 function getGreeting() {
   const hour = new Date().getHours();
@@ -550,26 +637,25 @@ export default function Dashboard() {
         </div>
 
         {/* ══════════════════════════════════════════════════════════
-            NOTIFICATION CENTER — always visible, full width.
-            The header's total badge is intentionally a quiet summary;
-            each column below has its own count badge in its header so
-            the visual cue lands on the box that actually needs action.
+            WORKFLOW QUEUES — compact count-summary tiles.
+            Each tile shows count + top preview items + "View all" link.
+            Full detail remains accessible via linked views / dialogs.
+            Urgent queue pins to top when non-zero.
         ══════════════════════════════════════════════════════════ */}
         <div id="notifications-anchor" data-testid="notifications-panel">
-          {/* Section header */}
           <div className="flex items-center justify-between mb-3">
             <div className="flex items-center gap-2">
               <div className="w-7 h-7 rounded-lg flex items-center justify-center" style={{ backgroundColor: totalNotifications > 0 ? "#2e3a20" : "#d4c9b5" }}>
                 <Bell className="w-4 h-4" style={{ color: totalNotifications > 0 ? "#e8ddd0" : "#7a8a64" }} />
               </div>
-              <span className="text-base font-semibold" style={{ color: "#1c2414" }}>Notifications</span>
+              <span className="text-base font-semibold" style={{ color: "#1c2414" }}>Workflow Queues</span>
               {totalNotifications > 0 && (
                 <span
                   className="inline-flex items-center justify-center min-w-6 h-5 px-1.5 rounded-full text-[11px] font-semibold"
                   style={{ backgroundColor: "#e8ddd0", color: "#2e3a20" }}
                   data-testid="badge-notifications-total"
                 >
-                  {totalNotifications} total
+                  {totalNotifications}
                 </span>
               )}
             </div>
@@ -578,461 +664,343 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* Three-column grid: Messages | Orders | Submissions
-              Each column header carries its OWN count badge in brand-
-              specific colors (green / amber / blue). That is where the
-              attention should land — not on the section-level total. */}
-          <div className="grid grid-cols-1 lg:grid-cols-3 gap-4">
-
-            {/* ── Messages column ────────────────────────────────── */}
-            <div className="rounded-xl overflow-hidden border" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
-              {/* Column header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ede8df", backgroundColor: unreadMessages.length > 0 ? "#edf4e4" : "#faf8f5" }}>
-                <div className="flex items-center gap-2">
-                  <MessageSquare className="w-4 h-4" style={{ color: unreadMessages.length > 0 ? "#2e3a20" : "#a0a880" }} />
-                  <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Patient Messages</span>
-                  {unreadMessages.length > 0 && (
-                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
-                      {unreadMessages.reduce((s, r) => s + r.count, 0)} unread
+          {/* ── Urgent Spruce requests — pinned tile, only when non-zero ── */}
+          {(() => {
+            const urgentRequests = pendingSpruceRequests.filter(r => r.workflow === "urgent_safety");
+            if (urgentRequests.length === 0) return null;
+            return (
+              <div
+                className="rounded-xl border mb-4 overflow-hidden"
+                style={{ borderColor: "#fca5a5", backgroundColor: "#fff5f5" }}
+                data-testid="tile-urgent-queue"
+              >
+                <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: "#fca5a5" }}>
+                  <div className="flex items-center gap-2">
+                    <AlertCircle className="w-4 h-4" style={{ color: "#b91c1c" }} />
+                    <span className="text-sm font-bold" style={{ color: "#7f1d1d" }}>Urgent — Safety Concerns</span>
+                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#b91c1c", color: "#fff" }}>
+                      {urgentRequests.length}
                     </span>
-                  )}
-                </div>
-                <button
-                  className="text-xs font-medium flex items-center gap-1"
-                  style={{ color: "#2e3a20" }}
-                  onClick={() => setLocation("/patients")}
-                >
-                  All patients <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
-
-              {/* Message rows */}
-              {notifLoading ? (
-                <div className="space-y-2 p-3">
-                  {[1, 2].map(i => <div key={i} className="h-14 rounded-lg animate-pulse" style={{ backgroundColor: "#f0ece5" }} />)}
-                </div>
-              ) : unreadMessages.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                  <CheckCircle2 className="w-7 h-7 mb-2" style={{ color: "#b0c090" }} />
-                  <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>No unread messages</p>
-                  <p className="text-xs mt-0.5" style={{ color: "#a0a880" }}>Patient replies will appear here</p>
-                </div>
-              ) : (
-                <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
-                  {unreadMessages.map((row) => (
-                    <button
-                      key={`msg-${row.patientId}`}
-                      data-testid={`notification-message-${row.patientId}`}
-                      className="w-full text-left px-4 py-3 flex items-center gap-3 transition-colors"
-                      style={{ backgroundColor: "transparent" }}
-                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f4f8ee")}
-                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                      onClick={() => goToPatient(row.patientId, "messages")}
-                    >
-                      <PatientInitials first={row.patientFirstName} last={row.patientLastName} />
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                          {row.patientFirstName} {row.patientLastName}
-                        </p>
-                        <p className="text-xs" style={{ color: "#7a8a64" }}>
-                          {row.count} unread message{row.count !== 1 ? "s" : ""}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-xs" style={{ color: "#a0a880" }}>{timeAgo(row.lastAt)}</span>
-                        <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: "#2e3a20" }} />
-                        <ChevronRight className="w-4 h-4" style={{ color: "#c4b9a5" }} />
-                      </div>
-                    </button>
-                  ))}
-                </div>
-              )}
-            </div>
-
-            {/* ── Medication & Supplement Requests column ─────────── */}
-            {/* Combines pending supplement orders and patient-portal medication
-                refill requests into a single inbox-style widget. */}
-            <div className="rounded-xl overflow-hidden border" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
-              {/* Column header */}
-              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ede8df", backgroundColor: combinedRequests.length > 0 ? "#fef8ed" : "#faf8f5" }}>
-                <div className="flex items-center gap-2">
-                  <ShoppingBag className="w-4 h-4" style={{ color: combinedRequests.length > 0 ? "#7a5c20" : "#a0a880" }} />
-                  <span
-                    className="text-sm font-semibold"
-                    style={{ color: "#1c2414" }}
-                    data-testid="text-medication-supplement-requests-title"
+                  </div>
+                  <button
+                    className="text-xs font-semibold flex items-center gap-1"
+                    style={{ color: "#b91c1c" }}
+                    onClick={() => setLocation("/spruce-inbox")}
                   >
-                    Medication &amp; Supplement Requests
-                  </span>
-                  {combinedRequests.length > 0 && (
-                    <span
-                      className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold"
-                      style={{ backgroundColor: "#7a5c20", color: "#fef8ed" }}
-                      data-testid="badge-medication-supplement-requests-count"
-                    >
-                      {combinedRequests.length} pending
-                    </span>
-                  )}
+                    Open Inbox <ArrowRight className="w-3 h-3" />
+                  </button>
                 </div>
-                <button
-                  className="text-xs font-medium flex items-center gap-1"
-                  style={{ color: "#7a5c20" }}
-                  onClick={() => setLocation("/spruce-inbox")}
-                  data-testid="button-medication-supplement-requests-view-all"
-                >
-                  View all <ArrowRight className="w-3 h-3" />
-                </button>
-              </div>
-
-              {/* Combined rows: supplement orders + medication refill requests */}
-              {notifLoading ? (
-                <div className="space-y-2 p-3">
-                  {[1, 2].map(i => <div key={i} className="h-14 rounded-lg animate-pulse" style={{ backgroundColor: "#f0ece5" }} />)}
-                </div>
-              ) : combinedRequests.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                  <Package className="w-7 h-7 mb-2" style={{ color: "#c4b9a5" }} />
-                  <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>No pending requests</p>
-                  <p className="text-xs mt-0.5" style={{ color: "#a0a880" }}>Patient supplement orders and medication refill requests will appear here</p>
-                </div>
-              ) : (
-                <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
-                  {combinedRequests.map((entry) => {
-                    if (entry.kind === "order") {
-                      const order = entry.row;
-                      return (
-                        <div
-                          key={`order-${order.id}`}
-                          data-testid={`notification-order-${order.id}`}
-                          className="px-4 py-3"
-                        >
-                          <div className="flex items-start gap-3">
-                            <PatientInitials first={order.patientFirstName} last={order.patientLastName} />
-                            <div className="flex-1 min-w-0">
-                              <button
-                                className="w-full text-left"
-                                onClick={() => goToPatient(order.patientId, "orders")}
-                              >
-                                <div className="flex items-center gap-1.5">
-                                  <ShoppingBag className="w-3 h-3 flex-shrink-0" style={{ color: "#7a5c20" }} />
-                                  <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                                    {order.patientFirstName} {order.patientLastName}
-                                  </p>
-                                  <span className="text-xs" style={{ color: "#7a5c20" }}>
-                                    Supplement order
-                                  </span>
-                                </div>
-                                <p className="text-xs mt-0.5" style={{ color: "#7a8a64" }}>
-                                  {order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)} total
-                                </p>
-                                {/* Item preview */}
-                                <p className="text-xs truncate mt-0.5" style={{ color: "#a0a880" }}>
-                                  {order.items.slice(0, 2).map(i => i.name).join(", ")}
-                                  {order.items.length > 2 ? ` +${order.items.length - 2} more` : ""}
-                                </p>
-                              </button>
-                              <div className="flex items-center gap-2 mt-2 flex-wrap">
-                                <div className="flex items-center gap-1 text-xs" style={{ color: "#a0a880" }}>
-                                  <Clock className="w-3 h-3" />
-                                  {formatDate(order.createdAt)}
-                                </div>
-                                <div className="flex-1" />
-                                <Button
-                                  size="sm"
-                                  data-testid={`button-fulfill-order-${order.id}`}
-                                  className="h-7 px-3 text-xs gap-1.5"
-                                  style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                                  onClick={() => fulfillOrderMutation.mutate(order.id)}
-                                  disabled={fulfillOrderMutation.isPending}
-                                >
-                                  <CheckCircle2 className="w-3 h-3" />
-                                  Mark fulfilled
-                                </Button>
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => goToPatient(order.patientId, "orders")}
-                                >
-                                  View <ChevronRight className="w-3 h-3 ml-0.5" />
-                                </Button>
-                              </div>
-                            </div>
-                          </div>
-                        </div>
-                      );
-                    }
-                    // Medication refill request row
-                    if (entry.kind === "refill") {
-                    const refill = entry.row;
-                    const firstName = refill.patientFirstName ?? "";
-                    const lastName = refill.patientLastName ?? "";
-                    const displayName = (firstName || lastName)
-                      ? `${firstName} ${lastName}`.trim()
-                      : "Patient";
+                <div className="divide-y" style={{ borderColor: "#fecaca" }}>
+                  {urgentRequests.slice(0, 3).map((req) => {
+                    const name = req.patientFirstName && req.patientLastName
+                      ? `${req.patientFirstName} ${req.patientLastName}`
+                      : req.patientNameExtracted ?? req.patientPhone ?? "Unknown";
                     return (
-                      <div
-                        key={`refill-${refill.id}`}
-                        data-testid={`notification-refill-${refill.id}`}
-                        className="px-4 py-3"
+                      <button
+                        key={req.id}
+                        className="w-full text-left px-4 py-2.5 flex items-center gap-3"
+                        style={{ backgroundColor: "transparent" }}
+                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#fee2e2")}
+                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                        onClick={() => setSelectedSpruceRequest(req)}
+                        data-testid={`notification-urgent-${req.id}`}
                       >
-                        <div className="flex items-start gap-3">
-                          <PatientInitials first={firstName} last={lastName} />
-                          <div className="flex-1 min-w-0">
-                            <button
-                              className="w-full text-left"
-                              onClick={() => refill.patientId != null && goToPatient(refill.patientId)}
-                              disabled={refill.patientId == null}
-                            >
-                              <div className="flex items-center gap-1.5">
-                                <Pill className="w-3 h-3 flex-shrink-0" style={{ color: "#2e5a7a" }} />
-                                <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                                  {displayName}
-                                </p>
-                                <span className="text-xs" style={{ color: "#2e5a7a" }}>
-                                  Medication refill request
-                                </span>
-                              </div>
-                              <p
-                                className="text-xs mt-0.5 whitespace-pre-line"
-                                style={{
-                                  color: "#7a8a64",
-                                  display: "-webkit-box",
-                                  WebkitLineClamp: 3,
-                                  WebkitBoxOrient: "vertical",
-                                  overflow: "hidden",
-                                }}
-                                data-testid={`text-refill-message-${refill.id}`}
-                              >
-                                {refill.message}
-                              </p>
-                            </button>
-                            <div className="flex items-center gap-2 mt-2 flex-wrap">
-                              <div className="flex items-center gap-1 text-xs" style={{ color: "#a0a880" }}>
-                                <Clock className="w-3 h-3" />
-                                {formatDate(refill.createdAt)}
-                              </div>
-                              <div className="flex-1" />
-                              <Button
-                                size="sm"
-                                data-testid={`button-handle-refill-${refill.id}`}
-                                className="h-7 px-3 text-xs gap-1.5"
-                                style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                                onClick={() => dismissRefillMutation.mutate(refill.id)}
-                                disabled={dismissRefillMutation.isPending}
-                              >
-                                <CheckCircle2 className="w-3 h-3" />
-                                Mark handled
-                              </Button>
-                              {refill.patientId != null && (
-                                <Button
-                                  size="sm"
-                                  variant="ghost"
-                                  className="h-7 px-2 text-xs"
-                                  onClick={() => goToPatient(refill.patientId!)}
-                                >
-                                  View <ChevronRight className="w-3 h-3 ml-0.5" />
-                                </Button>
-                              )}
-                            </div>
-                          </div>
+                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ backgroundColor: "#fca5a5", color: "#7f1d1d" }}>
+                          {name[0]}
                         </div>
-                      </div>
-                    );
-                    }
-
-                    // ── Spruce inbound request row ──────────────────────────
-                    const spruceReq = entry.row as SpruceWorkflowRequestRow;
-                    const spruceLabel = SPRUCE_WORKFLOW_LABELS[spruceReq.workflow] ?? spruceReq.workflow;
-                    // Matched patient: use joined first/last name from DB
-                    const sprucePatientName =
-                      spruceReq.patientFirstName && spruceReq.patientLastName
-                        ? `${spruceReq.patientFirstName} ${spruceReq.patientLastName}`
-                        : spruceReq.patientNameExtracted ?? null;
-                    const spruceIsMatched = !!(spruceReq.patientId && sprucePatientName);
-                    // Avatar initials: use name if matched, else phone digits
-                    const spruceAvatarText = sprucePatientName
-                      ? `${sprucePatientName[0]}${sprucePatientName.split(" ")[1]?.[0] ?? ""}`
-                      : "?";
-                    return (
-                      <div
-                        key={`spruce-${spruceReq.id}`}
-                        data-testid={`notification-spruce-${spruceReq.id}`}
-                        className="px-4 py-3"
-                      >
-                        <div className="flex items-start gap-3">
-                          <div
-                            className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                            style={{ backgroundColor: spruceIsMatched ? "#2e3a20" : "#4a3a6e" }}
-                          >
-                            {spruceAvatarText}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <button
-                              className="w-full text-left"
-                              onClick={() => setSelectedSpruceRequest(spruceReq)}
-                            >
-                              <div className="flex items-center gap-1.5 flex-wrap">
-                                <MessageCircle className="w-3 h-3 flex-shrink-0" style={{ color: "#4a3a6e" }} />
-                                {spruceIsMatched ? (
-                                  <>
-                                    <span
-                                      className="text-sm font-semibold"
-                                      style={{ color: "#1c2414" }}
-                                      data-testid={`text-spruce-patient-name-${spruceReq.id}`}
-                                    >
-                                      {sprucePatientName}
-                                    </span>
-                                    <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: "#e8f0e0", color: "#2e3a20" }}>
-                                      <UserCheck className="w-3 h-3" /> Matched
-                                    </span>
-                                  </>
-                                ) : (
-                                  <>
-                                    <span className="text-sm font-medium" style={{ color: "#5a6a7a" }} data-testid={`text-spruce-unmatched-${spruceReq.id}`}>
-                                      {spruceReq.patientPhone ?? "Unknown number"}
-                                    </span>
-                                    <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: "#f0ece5", color: "#7a6a54" }}>
-                                      <UserX className="w-3 h-3" /> Unmatched
-                                    </span>
-                                  </>
-                                )}
-                                <span className="text-xs font-medium" style={{ color: "#4a3a6e" }}>
-                                  {spruceLabel}
-                                </span>
-                                <span className="text-xs" style={{ color: "#a0a880" }}>via Spruce</span>
-                              </div>
-                              {spruceReq.requestSummary && (
-                                <p
-                                  className="text-xs mt-0.5"
-                                  style={{
-                                    color: "#7a8a64",
-                                    display: "-webkit-box",
-                                    WebkitLineClamp: 2,
-                                    WebkitBoxOrient: "vertical",
-                                    overflow: "hidden",
-                                  }}
-                                  data-testid={`text-spruce-summary-${spruceReq.id}`}
-                                >
-                                  {spruceReq.requestSummary}
-                                </p>
-                              )}
-                            </button>
-                            <div className="flex items-center gap-2 mt-2 flex-wrap">
-                              <div className="flex items-center gap-1 text-xs" style={{ color: "#a0a880" }}>
-                                <Clock className="w-3 h-3" />
-                                {formatDate(spruceReq.createdAt)}
-                              </div>
-                              {spruceIsMatched && spruceReq.patientId && (
-                                <Link
-                                  href={`/patients/${spruceReq.patientId}`}
-                                  className="text-xs font-medium flex items-center gap-1"
-                                  style={{ color: "#2e3a20" }}
-                                  data-testid={`link-spruce-open-chart-${spruceReq.id}`}
-                                  onClick={(e) => e.stopPropagation()}
-                                >
-                                  <ExternalLink className="w-3 h-3" />
-                                  Open chart
-                                </Link>
-                              )}
-                              <div className="flex-1" />
-                              <Button
-                                size="sm"
-                                data-testid={`button-spruce-details-${spruceReq.id}`}
-                                className="h-7 px-3 text-xs gap-1.5"
-                                style={{ backgroundColor: "#4a3a6e", color: "#ffffff" }}
-                                onClick={() => setSelectedSpruceRequest(spruceReq)}
-                              >
-                                View details <ChevronRight className="w-3 h-3" />
-                              </Button>
-                            </div>
-                          </div>
+                        <div className="flex-1 min-w-0">
+                          <span className="text-sm font-semibold truncate block" style={{ color: "#7f1d1d" }}>{name}</span>
+                          {req.requestSummary && (
+                            <span className="text-xs truncate block" style={{ color: "#991b1b" }}>{req.requestSummary}</span>
+                          )}
                         </div>
-                      </div>
+                        <span className="text-[10px] flex-shrink-0" style={{ color: "#b91c1c" }}>{timeAgo(req.createdAt)}</span>
+                        <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#fca5a5" }} />
+                      </button>
                     );
                   })}
                 </div>
-              )}
-            </div>
-
-            {/* ── Submissions column ──────────────────────────────── */}
-            <div className="rounded-xl overflow-hidden border" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
-              <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ede8df", backgroundColor: pendingSubmissions.length > 0 ? "#eef0ff" : "#faf8f5" }}>
-                <div className="flex items-center gap-2">
-                  <ClipboardList className="w-4 h-4" style={{ color: pendingSubmissions.length > 0 ? "#4a5568" : "#a0a880" }} />
-                  <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Form Submissions</span>
-                  {pendingSubmissions.length > 0 && (
-                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#4a5568", color: "#eef0ff" }}>
-                      {pendingSubmissions.length} pending
-                    </span>
-                  )}
-                </div>
-                <button
-                  className="text-xs font-medium flex items-center gap-1"
-                  style={{ color: "#4a5568" }}
-                  onClick={() => setLocation("/form-submissions")}
-                  data-testid="button-view-all-submissions"
-                >
-                  View all <ArrowRight className="w-3 h-3" />
-                </button>
               </div>
+            );
+          })()}
 
-              {notifLoading ? (
-                <div className="space-y-2 p-3">
-                  {[1, 2].map(i => <div key={i} className="h-14 rounded-lg animate-pulse" style={{ backgroundColor: "#f0ece5" }} />)}
-                </div>
-              ) : pendingSubmissions.length === 0 ? (
-                <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                  <ClipboardList className="w-7 h-7 mb-2" style={{ color: "#c4b9a5" }} />
-                  <p className="text-sm font-medium" style={{ color: "#7a8a64" }}>No pending submissions</p>
-                  <p className="text-xs mt-0.5" style={{ color: "#a0a880" }}>Patient form submissions will appear here</p>
-                </div>
-              ) : (
-                <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
-                  {pendingSubmissions.slice(0, 5).map((sub) => (
-                    <div
-                      key={`sub-${sub.id}`}
-                      data-testid={`notification-submission-${sub.id}`}
-                      className="w-full text-left px-4 py-3 flex items-center gap-3 transition-colors cursor-pointer"
-                      style={{ backgroundColor: "transparent" }}
-                      onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f4f6ff")}
-                      onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                      onClick={() => setPreviewSubId(sub.id)}
-                    >
-                      <div
-                        className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
-                        style={{ backgroundColor: "#e8e4f0", color: "#4a5568" }}
-                      >
-                        {(sub.submitterName?.trim()?.[0] ?? "A").toUpperCase()}
-                      </div>
-                      <div className="flex-1 min-w-0">
-                        <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                          {sub.submitterName ?? "Anonymous"}
-                        </p>
-                        <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
-                          {(sub as any).formName ?? "Form submission"}
-                        </p>
-                      </div>
-                      <div className="flex items-center gap-2 flex-shrink-0">
-                        <span className="text-xs" style={{ color: "#a0a880" }}>{timeAgo(sub.submittedAt)}</span>
+          {/* ── Compact 2×2 queue tiles ─────────────────────────────────── */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+
+            {/* Patient Messages */}
+            <CompactQueueTile
+              icon={<MessageSquare className="w-4 h-4" />}
+              label="Patient Messages"
+              count={unreadMessages.reduce((s, r) => s + r.count, 0)}
+              countLabel={`${unreadMessages.length} patient${unreadMessages.length !== 1 ? "s" : ""}`}
+              accentColor="#2e3a20"
+              accentBg="#edf4e4"
+              viewAllLabel="All patients"
+              onViewAll={() => setLocation("/patients")}
+              isLoading={notifLoading}
+              testId="tile-patient-messages"
+              isEmpty={unreadMessages.length === 0}
+              emptyLabel="No unread messages"
+            >
+              {unreadMessages.slice(0, 3).map((row) => (
+                <button
+                  key={`msg-${row.patientId}`}
+                  data-testid={`notification-message-${row.patientId}`}
+                  className="w-full text-left px-4 py-2 flex items-center gap-2.5 transition-colors"
+                  style={{ backgroundColor: "transparent" }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f4f8ee")}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                  onClick={() => goToPatient(row.patientId, "messages")}
+                >
+                  <PatientInitials first={row.patientFirstName} last={row.patientLastName} />
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                      {row.patientFirstName} {row.patientLastName}
+                    </p>
+                    <p className="text-xs" style={{ color: "#7a8a64" }}>
+                      {row.count} unread
+                    </p>
+                  </div>
+                  <span className="text-xs flex-shrink-0" style={{ color: "#a0a880" }}>{timeAgo(row.lastAt)}</span>
+                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: "#2e3a20" }} />
+                </button>
+              ))}
+              {unreadMessages.length > 3 && (
+                <p className="text-xs px-4 py-2" style={{ color: "#7a8a64" }}>
+                  +{unreadMessages.length - 3} more — <button className="underline" onClick={() => setLocation("/patients")}>view all</button>
+                </p>
+              )}
+            </CompactQueueTile>
+
+            {/* Medication & Supplement Requests */}
+            <CompactQueueTile
+              icon={<ShoppingBag className="w-4 h-4" />}
+              label="Medication & Supplement Requests"
+              count={combinedRequests.length}
+              countLabel={combinedRequests.length > 0 ? `${pendingOrders.length} order${pendingOrders.length !== 1 ? "s" : ""}, ${pendingRefillRequests.length} refill${pendingRefillRequests.length !== 1 ? "s" : ""}` : ""}
+              accentColor="#7a5c20"
+              accentBg="#fef8ed"
+              viewAllLabel="View all"
+              onViewAll={() => setLocation("/patients")}
+              isLoading={notifLoading}
+              testId="tile-med-requests"
+              isEmpty={combinedRequests.length === 0}
+              emptyLabel="No pending requests"
+            >
+              {combinedRequests.slice(0, 3).map((entry) => {
+                if (entry.kind === "order") {
+                  const order = entry.row;
+                  return (
+                    <div key={`order-${order.id}`} data-testid={`notification-order-${order.id}`} className="px-4 py-2">
+                      <div className="flex items-center gap-2.5">
+                        <PatientInitials first={order.patientFirstName} last={order.patientLastName} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <ShoppingBag className="w-3 h-3 flex-shrink-0" style={{ color: "#7a5c20" }} />
+                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                              {order.patientFirstName} {order.patientLastName}
+                            </p>
+                          </div>
+                          <p className="text-xs" style={{ color: "#7a8a64" }}>
+                            {order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)}
+                          </p>
+                        </div>
                         <Button
-                          size="icon"
-                          variant="ghost"
-                          data-testid={`button-dismiss-submission-${sub.id}`}
-                          onClick={(e) => {
-                            e.stopPropagation();
-                            markReviewedMutation.mutate(sub.id);
-                          }}
-                          disabled={markReviewedMutation.isPending}
+                          size="sm"
+                          data-testid={`button-fulfill-order-${order.id}`}
+                          className="h-7 px-2 text-xs gap-1"
+                          style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
+                          onClick={() => fulfillOrderMutation.mutate(order.id)}
+                          disabled={fulfillOrderMutation.isPending}
                         >
-                          <X className="h-3.5 w-3.5" />
+                          <CheckCircle2 className="w-3 h-3" />
+                          Fulfill
                         </Button>
                       </div>
                     </div>
-                  ))}
-                </div>
+                  );
+                }
+                if (entry.kind === "refill") {
+                  const refill = entry.row;
+                  const firstName = refill.patientFirstName ?? "";
+                  const lastName = refill.patientLastName ?? "";
+                  return (
+                    <div key={`refill-${refill.id}`} data-testid={`notification-refill-${refill.id}`} className="px-4 py-2">
+                      <div className="flex items-center gap-2.5">
+                        <PatientInitials first={firstName || "P"} last={lastName || "t"} />
+                        <div className="flex-1 min-w-0">
+                          <div className="flex items-center gap-1.5">
+                            <Pill className="w-3 h-3 flex-shrink-0" style={{ color: "#2e5a7a" }} />
+                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                              {(firstName || lastName) ? `${firstName} ${lastName}`.trim() : "Patient"}
+                            </p>
+                          </div>
+                          <p className="text-xs truncate" style={{ color: "#7a8a64" }} data-testid={`text-refill-message-${refill.id}`}>
+                            {refill.message}
+                          </p>
+                        </div>
+                        <Button
+                          size="sm"
+                          data-testid={`button-handle-refill-${refill.id}`}
+                          className="h-7 px-2 text-xs gap-1"
+                          style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
+                          onClick={() => dismissRefillMutation.mutate(refill.id)}
+                          disabled={dismissRefillMutation.isPending}
+                        >
+                          <CheckCircle2 className="w-3 h-3" />
+                          Done
+                        </Button>
+                      </div>
+                    </div>
+                  );
+                }
+                const spruceReq = entry.row as SpruceWorkflowRequestRow;
+                const sprucePatientName = spruceReq.patientFirstName && spruceReq.patientLastName
+                  ? `${spruceReq.patientFirstName} ${spruceReq.patientLastName}`
+                  : spruceReq.patientNameExtracted ?? spruceReq.patientPhone ?? "Unknown";
+                return (
+                  <button
+                    key={`spruce-${spruceReq.id}`}
+                    data-testid={`notification-spruce-${spruceReq.id}`}
+                    className="w-full text-left px-4 py-2 flex items-center gap-2.5"
+                    style={{ backgroundColor: "transparent" }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f5f3fa")}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                    onClick={() => setSelectedSpruceRequest(spruceReq)}
+                  >
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#4a3a6e" }}>
+                      {sprucePatientName[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }} data-testid={`text-spruce-patient-name-${spruceReq.id}`}>
+                        {sprucePatientName}
+                      </p>
+                      <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
+                        {SPRUCE_WORKFLOW_LABELS[spruceReq.workflow] ?? spruceReq.workflow}
+                      </p>
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#c4b9a5" }} />
+                  </button>
+                );
+              })}
+              {combinedRequests.length > 3 && (
+                <p className="text-xs px-4 py-2" style={{ color: "#7a8a64" }}>
+                  +{combinedRequests.length - 3} more
+                </p>
               )}
-            </div>
+            </CompactQueueTile>
+
+            {/* Spruce Conversations */}
+            <CompactQueueTile
+              icon={<MessageCircle className="w-4 h-4" />}
+              label="Spruce Conversations"
+              count={pendingSpruceRequests.filter(r => r.workflow !== "urgent_safety").length}
+              countLabel="inbound requests"
+              accentColor="#4a3a6e"
+              accentBg="#f0ecf8"
+              viewAllLabel="Open Inbox"
+              onViewAll={() => setLocation("/spruce-inbox")}
+              isLoading={notifLoading}
+              testId="tile-spruce-conversations"
+              isEmpty={pendingSpruceRequests.filter(r => r.workflow !== "urgent_safety").length === 0}
+              emptyLabel="No pending Spruce requests"
+            >
+              {pendingSpruceRequests.filter(r => r.workflow !== "urgent_safety").slice(0, 3).map((req) => {
+                const name = req.patientFirstName && req.patientLastName
+                  ? `${req.patientFirstName} ${req.patientLastName}`
+                  : req.patientNameExtracted ?? req.patientPhone ?? "Unknown";
+                const isMatched = !!(req.patientId);
+                return (
+                  <button
+                    key={req.id}
+                    className="w-full text-left px-4 py-2 flex items-center gap-2.5"
+                    style={{ backgroundColor: "transparent" }}
+                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f5f3fa")}
+                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                    onClick={() => setSelectedSpruceRequest(req)}
+                    data-testid={`notification-spruce-${req.id}`}
+                  >
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
+                      style={{ backgroundColor: isMatched ? "#2e3a20" : "#4a3a6e" }}>
+                      {name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-1.5">
+                        <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{name}</p>
+                        {isMatched && (
+                          <UserCheck className="w-3 h-3 flex-shrink-0" style={{ color: "#2e3a20" }} />
+                        )}
+                      </div>
+                      <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
+                        {SPRUCE_WORKFLOW_LABELS[req.workflow] ?? req.workflow}
+                      </p>
+                    </div>
+                    <span className="text-[10px] flex-shrink-0" style={{ color: "#a0a880" }}>{timeAgo(req.createdAt)}</span>
+                  </button>
+                );
+              })}
+            </CompactQueueTile>
+
+            {/* Form Submissions */}
+            <CompactQueueTile
+              icon={<ClipboardList className="w-4 h-4" />}
+              label="Form Submissions"
+              count={pendingSubmissions.length}
+              countLabel="pending review"
+              accentColor="#4a5568"
+              accentBg="#eef0ff"
+              viewAllLabel="View all"
+              onViewAll={() => setLocation("/form-submissions")}
+              isLoading={notifLoading}
+              testId="tile-form-submissions"
+              isEmpty={pendingSubmissions.length === 0}
+              emptyLabel="No pending submissions"
+            >
+              {pendingSubmissions.slice(0, 3).map((sub) => (
+                <div
+                  key={`sub-${sub.id}`}
+                  data-testid={`notification-submission-${sub.id}`}
+                  className="px-4 py-2 flex items-center gap-2.5 cursor-pointer"
+                  style={{ backgroundColor: "transparent" }}
+                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f4f6ff")}
+                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
+                  onClick={() => setPreviewSubId(sub.id)}
+                >
+                  <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#e8e4f0", color: "#4a5568" }}>
+                    {(sub.submitterName?.trim()?.[0] ?? "A").toUpperCase()}
+                  </div>
+                  <div className="flex-1 min-w-0">
+                    <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                      {sub.submitterName ?? "Anonymous"}
+                    </p>
+                    <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
+                      {(sub as any).formName ?? "Form submission"}
+                    </p>
+                  </div>
+                  <div className="flex items-center gap-1 flex-shrink-0">
+                    <span className="text-xs" style={{ color: "#a0a880" }}>{timeAgo(sub.submittedAt)}</span>
+                    <Button
+                      size="icon"
+                      variant="ghost"
+                      data-testid={`button-dismiss-submission-${sub.id}`}
+                      onClick={(e) => {
+                        e.stopPropagation();
+                        markReviewedMutation.mutate(sub.id);
+                      }}
+                      disabled={markReviewedMutation.isPending}
+                    >
+                      <X className="h-3.5 w-3.5" />
+                    </Button>
+                  </div>
+                </div>
+              ))}
+              {pendingSubmissions.length > 3 && (
+                <p className="text-xs px-4 py-2" style={{ color: "#7a8a64" }}>
+                  +{pendingSubmissions.length - 3} more — <button className="underline" onClick={() => setLocation("/form-submissions")}>view all</button>
+                </p>
+              )}
+            </CompactQueueTile>
+
           </div>
         </div>
 
