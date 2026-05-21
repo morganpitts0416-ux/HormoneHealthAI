@@ -2336,6 +2336,39 @@ Rules:
       }
       const body = messageBody.trim();
 
+      // Resolve the sender's display name to prepend on the Spruce side.
+      // Spruce API always attributes messages to the API token owner, so we
+      // embed the real sender's name as the first line of the outbound text.
+      // ClinIQ stores the clean body; only the Spruce-side payload gets the prefix.
+      let senderLabel = "";
+      try {
+        const user = req.user as any;
+        // Prefer the providers.displayName + credentials for this user/clinic
+        const providerRows = await storageDb
+          .select({
+            displayName: providersTable.displayName,
+            credentials: providersTable.credentials,
+          })
+          .from(providersTable)
+          .where(and(
+            eq(providersTable.clinicId, clinicId),
+            eq(providersTable.userId, userId),
+          ))
+          .limit(1);
+        if (providerRows.length > 0) {
+          const p = providerRows[0];
+          senderLabel = p.credentials
+            ? `${p.displayName}, ${p.credentials}`
+            : p.displayName;
+        } else {
+          // Fall back to users.title + firstName + lastName
+          const parts = [user?.title, user?.firstName, user?.lastName].filter(Boolean);
+          senderLabel = parts.join(" ");
+        }
+      } catch {
+        // Non-fatal — send without prefix if lookup fails
+      }
+
       // 1. Write to audit log
       const outbound = await storage.createSpruceOutboundMessage({
         clinicId,
@@ -2398,7 +2431,7 @@ Rules:
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                body: [{ type: "text", value: body }],
+                body: [{ type: "text", value: senderLabel ? `${senderLabel}:\n${body}` : body }],
                 internal: false,
               }),
             },
