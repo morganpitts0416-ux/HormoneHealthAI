@@ -26,6 +26,7 @@ import { Textarea } from "@/components/ui/textarea";
 import { AddPatientDialog } from "@/components/add-patient-dialog";
 import { apiRequest } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { useAuth } from "@/hooks/use-auth";
 import type { Patient } from "@shared/schema";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -59,6 +60,7 @@ interface SpruceMessage {
   patientId: number | null;
   patientFirstName: string | null;
   patientLastName: string | null;
+  spruceContactName: string | null;
 }
 
 interface ConvState {
@@ -175,6 +177,7 @@ function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: b
   const isStaff = msg.messageDirection === "outbound_staff";
 
   if (isStaff) {
+    const senderName = msg.spruceContactName ?? null;
     return (
       <div className={`flex justify-end mb-3 px-4 ${optimistic ? "opacity-60" : ""}`} data-testid={`msg-${msg.id}`}>
         <div className="max-w-[72%]">
@@ -184,8 +187,12 @@ function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: b
           >
             {msg.messageBody}
           </div>
-          <p className="text-[10px] text-[#8a8a7a] mt-1 text-right flex items-center justify-end gap-1">
+          <p className="text-[10px] text-[#8a8a7a] mt-1 text-right flex items-center justify-end gap-1.5">
             {optimistic && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
+            {senderName && (
+              <span className="text-[#5a7a5a] font-medium">{senderName}</span>
+            )}
+            {senderName && <span className="text-[#ccc8c0]">·</span>}
             {formatMessageTime(msg.receivedAt)}
           </p>
         </div>
@@ -231,6 +238,7 @@ function DateDivider({ label }: { label: string }) {
 export default function SpruceInboxPage() {
   const [, setLocation] = useLocation();
   const { toast } = useToast();
+  const { user } = useAuth();
   const qc = useQueryClient();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
@@ -308,6 +316,10 @@ export default function SpruceInboxPage() {
       return res.json();
     },
     onMutate: (body) => {
+      // Build sender label from current user for optimistic display
+      const parts = [user?.title, user?.firstName, user?.lastName].filter(Boolean);
+      const optimisticSender = parts.join(" ") || null;
+
       // Optimistic insert
       const fake: SpruceMessage = {
         id: Date.now(),
@@ -322,6 +334,7 @@ export default function SpruceInboxPage() {
         patientId: null,
         patientFirstName: null,
         patientLastName: null,
+        spruceContactName: optimisticSender,
       };
       setOptimisticMsgs((prev) => [...prev, fake]);
       setReplyText("");

@@ -2336,14 +2336,12 @@ Rules:
       }
       const body = messageBody.trim();
 
-      // Resolve the sender's display name to prepend on the Spruce side.
-      // Spruce API always attributes messages to the API token owner, so we
-      // embed the real sender's name as the first line of the outbound text.
-      // ClinIQ stores the clean body; only the Spruce-side payload gets the prefix.
-      let senderLabel = "";
+      // Resolve the sender's display name for ClinIQ thread attribution.
+      // Stored in spruceContactName on the mirrored spruceMessages row so
+      // the inbox can show who sent each outbound message without schema changes.
+      let staffSenderName: string | null = null;
       try {
         const user = req.user as any;
-        // Prefer the providers.displayName + credentials for this user/clinic
         const providerRows = await storageDb
           .select({
             displayName: providersTable.displayName,
@@ -2357,16 +2355,15 @@ Rules:
           .limit(1);
         if (providerRows.length > 0) {
           const p = providerRows[0];
-          senderLabel = p.credentials
+          staffSenderName = p.credentials
             ? `${p.displayName}, ${p.credentials}`
             : p.displayName;
         } else {
-          // Fall back to users.title + firstName + lastName
           const parts = [user?.title, user?.firstName, user?.lastName].filter(Boolean);
-          senderLabel = parts.join(" ");
+          staffSenderName = parts.join(" ") || null;
         }
       } catch {
-        // Non-fatal — send without prefix if lookup fails
+        // Non-fatal — leave null if lookup fails
       }
 
       // 1. Write to audit log
@@ -2399,7 +2396,7 @@ Rules:
         messageDirection: "outbound_staff",
         staffRepliedAt: new Date(),
         spruceEventDedupeKey: `cliniq_reply:${outbound.id}`,
-        spruceContactName: null,
+        spruceContactName: staffSenderName,
       });
 
       // 3. Update conversation state → staff_takeover (sticky AI mute)
@@ -2431,7 +2428,7 @@ Rules:
                 "Content-Type": "application/json",
               },
               body: JSON.stringify({
-                body: [{ type: "text", value: senderLabel ? `${senderLabel}:\n${body}` : body }],
+                body: [{ type: "text", value: body }],
                 internal: false,
               }),
             },
