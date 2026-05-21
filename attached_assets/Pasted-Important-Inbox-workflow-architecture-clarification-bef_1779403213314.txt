@@ -1,0 +1,182 @@
+Important Inbox / workflow architecture clarification before continuing dashboard queue work.
+
+I think we need to clearly separate:
+
+1. communication/conversation history
+   FROM
+2. operational workflow/action queues
+
+Current thinking:
+
+TOP NAV → Inbox
+The Inbox should become the universal communication workspace for the clinic.
+
+ALL conversations/messages should live there regardless of workflow classification:
+
+* Spruce messages
+* portal messages
+* future SMS/email/chat sources
+* future AI-assisted conversations
+
+The Inbox should function as the chronological communication center for the clinic — not just workflow tasks.
+
+Suggested Inbox structure:
+
+Left sidebar:
+
+* All Conversations
+* Unread
+* Assigned to Me
+* Unmatched
+* Urgent
+* Archived
+
+Main area:
+
+* full conversation thread timeline
+
+Future right-side panel:
+
+* workflow state
+* patient snapshot
+* AI summary
+* tasks generated
+* conversation metadata
+
+The current Spruce messaging system belongs here.
+
+Dashboard queues should serve a different purpose:
+operational/action queues only.
+
+Examples:
+
+Medication & Supplement Requests
+
+* refill approvals
+* pharmacy issues
+* prior auths
+
+Scheduling & Appointment Requests
+
+* reschedules
+* cancellations
+* callback requests
+
+New Patient / Intake
+
+* membership inquiries
+* onboarding
+* intake completion
+
+Clinical Questions / Triage
+
+* symptom concerns
+* lab questions
+* nurse callbacks
+
+Urgent / Escalation
+
+* urgent safety concerns
+* escalation workflows
+
+These dashboard cards/queues should represent actionable workflow tasks — not the complete communication archive.
+
+Additionally:
+Inside the patient profile → Portal & Messages section:
+ALL communication for that patient should aggregate there as well, including:
+
+* Spruce messages
+* portal messages
+* outbound staff replies
+* future AI interactions
+* workflow summaries/audit history
+
+Important architectural distinction:
+Workflow requests/tasks should become DERIVED OBJECTS from conversations — not the conversations themselves.
+
+Meaning:
+Conversation
+→ may generate 0, 1, or multiple workflow/action tasks.
+
+This feels like the cleanest long-term architecture for:
+
+* clinic operations
+* staff usability
+* auditability
+* future workflow orchestration
+* future Spruce June integration
+
+Additional dashboard UX clarification:
+
+I want to avoid the dashboard becoming cluttered with a large number of permanent workflow containers/cards.
+
+I think the architecture should evolve toward:
+
+Dashboard
+= high-level operational summary / command center
+
+Inbox
+= detailed communication workspace
+
+Workflow queue views
+= filtered operational worklists
+
+So for the dashboard specifically:
+
+* workflow queues/cards should remain compact
+* collapsible/minimizable when empty or low priority
+* support “View all” links into filtered Inbox/workflow views
+* dynamically surface higher-priority queues instead of permanently rendering many large containers
+
+Examples:
+
+Medication Requests
+
+* compact count summary
+* quick preview of top few pending items
+* “View all” link
+
+Scheduling Requests
+
+* compact operational summary
+* collapsible if empty
+
+Urgent Queue
+
+* highly visible and pinned when nonzero
+
+I do NOT want:
+
+* 10–15 large permanent dashboard containers
+* duplicated communication views everywhere
+* the dashboard becoming the primary conversation workspace
+
+Instead:
+the Inbox should become the primary communication workspace, while the dashboard remains a clean operational overview.
+
+Additionally:
+Inbox filtered/saved views may ultimately replace many separate dashboard containers entirely:
+
+* Inbox → Refills
+* Inbox → Scheduling
+* Inbox → Urgent
+* Inbox → Unmatched
+* Inbox → New Patients
+
+Please architect workflow queues and Inbox routing with this long-term UX direction in mind.
+
+Please continue keeping all of this isolated to:
+
+* Spruce Inbox
+* messaging/workflow systems
+
+Do NOT modify:
+
+* existing ClinIQ June
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* auth/billing/sessions
+* core ClinIQ systems.
