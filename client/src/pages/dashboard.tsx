@@ -677,7 +677,7 @@ export default function Dashboard() {
                 <button
                   className="text-xs font-medium flex items-center gap-1"
                   style={{ color: "#7a5c20" }}
-                  onClick={() => setLocation("/patients")}
+                  onClick={() => setLocation("/spruce-inbox")}
                   data-testid="button-medication-supplement-requests-view-all"
                 >
                   View all <ArrowRight className="w-3 h-3" />

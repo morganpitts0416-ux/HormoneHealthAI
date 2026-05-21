@@ -1,4 +1,4 @@
-import { eq, ne, desc, ilike, or, and, isNull, count, sql, inArray } from "drizzle-orm";
+import { eq, ne, desc, asc, ilike, or, and, isNull, count, sql, inArray } from "drizzle-orm";
 import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -379,6 +379,8 @@ export interface IStorage {
   createSpruceMessage(data: schema.InsertSpruceMessage): Promise<schema.SpruceMessage>;
   createSpruceWorkflowRequest(data: schema.InsertSpruceWorkflowRequest): Promise<schema.SpruceWorkflowRequest>;
   getPendingSpruceWorkflowRequests(clinicId: number): Promise<schema.SpruceWorkflowRequest[]>;
+  listSpruceConversations(clinicId: number): Promise<SpruceConversationSummary[]>;
+  getSpruceConversationMessages(clinicId: number, conversationKey: string): Promise<SpruceConversationMessageRow[]>;
   updateSpruceWorkflowRequestStatus(
     id: number,
     status: string,
@@ -4709,6 +4711,135 @@ async function _resolveMandatoryReasons(
       ),
     )
     .orderBy(desc(schema.spruceWorkflowRequests.createdAt));
+};
+
+// ── Spruce conversation inbox queries ─────────────────────────────────────
+export interface SpruceConversationSummary {
+  conversationKey: string;
+  spruceConversationId: string | null;
+  fromPhone: string | null;
+  toPhone: string | null;
+  patientId: number | null;
+  patientFirstName: string | null;
+  patientLastName: string | null;
+  lastMessage: string | null;
+  lastMessageDirection: string | null;
+  lastMessageAt: Date;
+  messageCount: number;
+  hasStaffReply: boolean;
+}
+
+export interface SpruceConversationMessageRow {
+  id: number;
+  spruceConversationId: string | null;
+  fromPhone: string | null;
+  toPhone: string | null;
+  messageBody: string | null;
+  messageDirection: string | null;
+  eventType: string | null;
+  staffRepliedAt: Date | null;
+  receivedAt: Date;
+  patientId: number | null;
+  patientFirstName: string | null;
+  patientLastName: string | null;
+}
+
+(DbStorage.prototype as any).listSpruceConversations = async function(
+  clinicId: number,
+): Promise<SpruceConversationSummary[]> {
+  // Fetch all messages for this clinic, newest first, with patient join
+  const rows = await db
+    .select({
+      id: schema.spruceMessages.id,
+      spruceConversationId: schema.spruceMessages.spruceConversationId,
+      fromPhone: schema.spruceMessages.fromPhone,
+      toPhone: schema.spruceMessages.toPhone,
+      patientId: schema.spruceMessages.patientId,
+      messageBody: schema.spruceMessages.messageBody,
+      messageDirection: schema.spruceMessages.messageDirection,
+      staffRepliedAt: schema.spruceMessages.staffRepliedAt,
+      receivedAt: schema.spruceMessages.receivedAt,
+      patientFirstName: schema.patients.firstName,
+      patientLastName: schema.patients.lastName,
+    })
+    .from(schema.spruceMessages)
+    .leftJoin(schema.patients, eq(schema.spruceMessages.patientId, schema.patients.id))
+    .where(eq(schema.spruceMessages.clinicId, clinicId))
+    .orderBy(desc(schema.spruceMessages.receivedAt));
+
+  // Group by conversation key (conversationId → phone → message id fallback)
+  const map = new Map<string, SpruceConversationSummary>();
+  for (const row of rows) {
+    const key = row.spruceConversationId || row.fromPhone || `msg_${row.id}`;
+    if (!map.has(key)) {
+      map.set(key, {
+        conversationKey: key,
+        spruceConversationId: row.spruceConversationId,
+        fromPhone: row.fromPhone,
+        toPhone: row.toPhone,
+        patientId: row.patientId,
+        patientFirstName: row.patientFirstName ?? null,
+        patientLastName: row.patientLastName ?? null,
+        lastMessage: row.messageBody,
+        lastMessageDirection: row.messageDirection,
+        lastMessageAt: row.receivedAt,
+        messageCount: 1,
+        hasStaffReply: row.staffRepliedAt !== null,
+      });
+    } else {
+      const existing = map.get(key)!;
+      existing.messageCount++;
+      if (row.staffRepliedAt) existing.hasStaffReply = true;
+      // patientId / name: prefer the row that has a match
+      if (!existing.patientId && row.patientId) {
+        existing.patientId = row.patientId;
+        existing.patientFirstName = row.patientFirstName ?? null;
+        existing.patientLastName = row.patientLastName ?? null;
+      }
+    }
+  }
+
+  // Sort by lastMessageAt desc (already ordered from DB, but Map insertion is stable)
+  return Array.from(map.values()).sort(
+    (a, b) => new Date(b.lastMessageAt).getTime() - new Date(a.lastMessageAt).getTime(),
+  );
+};
+
+(DbStorage.prototype as any).getSpruceConversationMessages = async function(
+  clinicId: number,
+  conversationKey: string,
+): Promise<SpruceConversationMessageRow[]> {
+  // conversationKey is either a spruceConversationId or a phone number
+  return db
+    .select({
+      id: schema.spruceMessages.id,
+      spruceConversationId: schema.spruceMessages.spruceConversationId,
+      fromPhone: schema.spruceMessages.fromPhone,
+      toPhone: schema.spruceMessages.toPhone,
+      messageBody: schema.spruceMessages.messageBody,
+      messageDirection: schema.spruceMessages.messageDirection,
+      eventType: schema.spruceMessages.eventType,
+      staffRepliedAt: schema.spruceMessages.staffRepliedAt,
+      receivedAt: schema.spruceMessages.receivedAt,
+      patientId: schema.spruceMessages.patientId,
+      patientFirstName: schema.patients.firstName,
+      patientLastName: schema.patients.lastName,
+    })
+    .from(schema.spruceMessages)
+    .leftJoin(schema.patients, eq(schema.spruceMessages.patientId, schema.patients.id))
+    .where(
+      and(
+        eq(schema.spruceMessages.clinicId, clinicId),
+        or(
+          eq(schema.spruceMessages.spruceConversationId, conversationKey),
+          and(
+            isNull(schema.spruceMessages.spruceConversationId),
+            eq(schema.spruceMessages.fromPhone, conversationKey),
+          ),
+        ),
+      ),
+    )
+    .orderBy(asc(schema.spruceMessages.receivedAt));
 };
 
 (DbStorage.prototype as any).updateSpruceWorkflowRequestStatus = async function(

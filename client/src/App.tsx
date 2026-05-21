@@ -40,6 +40,7 @@ import EncountersPage from "@/pages/encounters";
 import AppointmentsPage from "@/pages/appointments";
 import AccountSchedulingPage from "@/pages/account-scheduling";
 import InboxPage from "@/pages/inbox";
+import SpruceInboxPage from "@/pages/spruce-inbox";
 import Landing from "@/pages/landing";
 import FeatureLabsPage from "@/pages/feature-labs";
 import FeatureDocumentationPage from "@/pages/feature-documentation";
@@ -299,6 +300,9 @@ function Router() {
       </Route>
       <Route path="/inbox">
         {() => <ProtectedRoute component={InboxPage} />}
+      </Route>
+      <Route path="/spruce-inbox">
+        {() => <ProtectedRoute component={SpruceInboxPage} />}
       </Route>
       <Route path="/billing">
         {() => <BillingExemptRoute component={BillingPage} />}

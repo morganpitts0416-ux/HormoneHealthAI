@@ -2279,6 +2279,33 @@ Rules:
     }
   });
 
+  // GET /api/spruce/conversations — list all Spruce conversations for the clinic
+  app.get("/api/spruce/conversations", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const conversations = await storage.listSpruceConversations(clinicId);
+      res.json(conversations);
+    } catch (err) {
+      console.error("[Spruce/conversations] Error:", err);
+      res.status(500).json({ error: "Failed to fetch conversations" });
+    }
+  });
+
+  // GET /api/spruce/conversations/:key/messages — messages for one conversation
+  app.get("/api/spruce/conversations/:key/messages", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const key = decodeURIComponent(req.params.key);
+      const messages = await storage.getSpruceConversationMessages(clinicId, key);
+      res.json(messages);
+    } catch (err) {
+      console.error("[Spruce/messages] Error:", err);
+      res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
   // POST /api/integrations/spruce/simulate — internal test endpoint.
   // Allows staff to simulate an inbound Spruce message without real SMS traffic.
   // Runs through the full routing → classification → workflow request pipeline.
