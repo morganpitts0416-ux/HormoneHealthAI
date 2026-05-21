@@ -16,6 +16,8 @@ import {
   Send,
   Lock,
   ShieldCheck,
+  AlertTriangle,
+  Settings,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -241,6 +243,12 @@ export default function SpruceInboxPage() {
   const [optimisticMsgs, setOptimisticMsgs] = useState<SpruceMessage[]>([]);
   const threadBottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
+
+  // ── Clinic Spruce settings (to know if API token is configured) ────────
+  const { data: spruceSettings } = useQuery<{ apiTokenConfigured: boolean } | null>({
+    queryKey: ["/api/clinic/spruce-settings"],
+  });
+  const hasSpruceToken = spruceSettings?.apiTokenConfigured === true;
 
   // ── Conversations list ──────────────────────────────────────────────────
   const {
@@ -645,7 +653,8 @@ export default function SpruceInboxPage() {
           </div>
 
           {/* ── Compose / Reply footer ──────────────────────────────────── */}
-          <div className="border-t border-[#e5e2dc] bg-white px-4 py-3">
+          {/* pb-[72px] creates clearance above the fixed "Ask June" bubble (bottom-6 right-6) */}
+          <div className="border-t border-[#e5e2dc] bg-white px-4 pt-3 pb-[72px]">
             <div className="rounded-lg border border-[#e0dcd4] bg-[#fafaf8] overflow-hidden">
               <Textarea
                 ref={textareaRef}
@@ -657,18 +666,27 @@ export default function SpruceInboxPage() {
                 data-testid="textarea-reply"
               />
               <div className="flex items-center justify-between px-3 py-2 border-t border-[#eeeae4]">
-                <div className="flex items-center gap-1.5 text-[10px] text-[#9a9a8a]">
-                  <ShieldCheck className="w-3 h-3" />
-                  {spruceUrl
-                    ? "Sends via Spruce · logged for audit"
-                    : <span className="text-[#b45309]">Stored in ClinIQ only — no Spruce token configured</span>}
-                </div>
+                {hasSpruceToken ? (
+                  <div className="flex items-center gap-1.5 text-[10px] text-[#9a9a8a]">
+                    <ShieldCheck className="w-3 h-3 flex-shrink-0" />
+                    <span>Sends via Spruce · logged for audit</span>
+                  </div>
+                ) : (
+                  <div className="flex items-center gap-1.5 text-[10px] text-[#b45309] flex-wrap">
+                    <AlertTriangle className="w-3 h-3 flex-shrink-0" />
+                    <span>Stored in ClinIQ only — Spruce API token not configured.</span>
+                    <Link href="/account?tab=spruce" className="underline underline-offset-2 inline-flex items-center gap-0.5">
+                      <Settings className="w-2.5 h-2.5" />
+                      Configure
+                    </Link>
+                  </div>
+                )}
                 <Button
                   size="sm"
                   disabled={!replyText.trim() || sendReply.isPending}
                   onClick={handleSend}
                   style={{ backgroundColor: "#2e7d52" }}
-                  className="text-white"
+                  className="text-white flex-shrink-0 ml-2"
                   data-testid="button-send-reply"
                 >
                   {sendReply.isPending ? (
