@@ -1,0 +1,59 @@
+Please refine the Spruce workflow request behavior so inbound Spruce requests automatically link to the correct ClinIQ patient profile when possible.
+
+Current issue:
+Spruce workflow requests currently display the patient phone number if no patient name is available. For clinical workflows like medication refill requests, staff/providers need to quickly open the patient chart to review history, meds, labs, notes, and prior visits before deciding what to do.
+
+Desired behavior:
+
+1. Automatic patient matching
+   When an inbound Spruce message is processed, use the patient phone number from the Spruce payload to search for an existing ClinIQ patient within the routed clinic.
+
+Match should be clinic-scoped:
+
+* only match patients belonging to that clinic_id
+* do not match across clinics
+* normalize phone numbers before comparing when possible
+
+2. Store patient linkage
+   If a match is found, store the ClinIQ patient_id on:
+
+* spruce_messages if appropriate
+* spruce_workflow_requests
+
+Also store/display the resolved patient name.
+
+3. Dashboard display
+   In the Medication & Supplement Requests card:
+
+* show the patient’s name if matched
+* make the patient name clickable
+* clicking the name should open that patient’s ClinIQ profile/chart
+* if no patient match is found, fall back to showing the phone number and label it as unmatched/new contact
+
+4. Detail drawer/modal
+   In the Spruce request detail drawer:
+
+* show patient name if matched
+* include a clear “Open patient chart” button/link
+* show phone number
+* show unmatched status if no patient match exists
+* preserve the original Spruce message and workflow details
+
+5. Safety
+   If no patient match is found:
+
+* do not guess
+* do not link to the wrong patient
+* do not search across other clinic accounts
+* keep the request visible as an unmatched Spruce request for staff review
+
+6. Simulation tool
+   Update the simulation tool so it can test both:
+
+* matched patient phone numbers
+* unmatched phone numbers
+
+Optional:
+Allow patientName in simulation for testing display, but patientName should not replace real patient matching logic.
+
+Do not change outbound Spruce replies. Do not touch existing ClinIQ June AI, SOAP, transcription, lab evaluation, auth, billing, sessions, or clinic_memberships.

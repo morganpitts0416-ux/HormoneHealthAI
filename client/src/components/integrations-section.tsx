@@ -81,7 +81,7 @@ function CopyButton({ text }: { text: string }) {
 }
 
 type SimulateStatus =
-  | { kind: "success"; message: string; requestId: number | null }
+  | { kind: "success"; message: string; requestId: number | null; patientMatch: { matched: boolean; patientId?: number; name?: string } | null }
   | { kind: "error"; message: string }
   | null;
 
@@ -193,13 +193,14 @@ function SpruceManageDialog({
       const reqId: number | null = data?.workflowRequest?.id ?? null;
       const workflow = data?.classification?.workflow ?? "unclassified";
       const confidence = data?.classification?.confidence ?? "";
+      const patientMatch = data?.patientMatch ?? null;
       const msg = reqId
         ? `Classified as: ${workflow} (${confidence}) · Request #${reqId} created`
         : `Classified as: ${workflow} (${confidence}) · No request created`;
-      setSimulateStatus({ kind: "success", message: msg, requestId: reqId });
+      setSimulateStatus({ kind: "success", message: msg, requestId: reqId, patientMatch });
       toast({
         title: reqId ? "Simulation successful — request created" : "Simulation ran",
-        description: `Workflow: ${workflow}`,
+        description: `Workflow: ${workflow}${patientMatch?.matched ? ` · Patient: ${patientMatch.name}` : " · Unmatched contact"}`,
       });
     },
     onError: (e: any) => {
@@ -486,6 +487,17 @@ function SpruceManageDialog({
                       <p className="text-xs font-mono text-green-700 dark:text-green-400 break-all">
                         {simulateStatus.message}
                       </p>
+                      {/* Patient match result */}
+                      {simulateStatus.patientMatch?.matched ? (
+                        <div className="flex items-center gap-1.5 text-xs text-green-800 dark:text-green-300 font-medium" data-testid="text-simulate-patient-matched">
+                          <CheckCircle2 className="w-3 h-3 shrink-0" />
+                          Patient matched: {simulateStatus.patientMatch.name}
+                        </div>
+                      ) : (
+                        <div className="text-xs text-green-700/70 dark:text-green-400/70 italic" data-testid="text-simulate-patient-unmatched">
+                          No patient match — phone number not in patient list (unmatched contact)
+                        </div>
+                      )}
                       {simulateStatus.requestId && (
                         <Link
                           href="/dashboard"

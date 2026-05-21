@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
 import { Button } from "@/components/ui/button";
@@ -34,6 +34,8 @@ import {
   ExternalLink,
   AlertCircle,
   Stethoscope,
+  UserCheck,
+  UserX,
 } from "lucide-react";
 import type { Patient } from "@shared/schema";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
@@ -90,6 +92,8 @@ interface SpruceWorkflowRequestRow {
   status: string;
   patientPhone: string | null;
   patientNameExtracted: string | null;
+  patientFirstName: string | null;
+  patientLastName: string | null;
   requestSummary: string | null;
   spruceConversationUrl: string | null;
   resolvedAt: string | null;
@@ -839,10 +843,17 @@ export default function Dashboard() {
 
                     // ── Spruce inbound request row ──────────────────────────
                     const spruceReq = entry.row as SpruceWorkflowRequestRow;
-                    const spruceDisplayName = spruceReq.patientNameExtracted ?? spruceReq.patientPhone ?? "Unknown caller";
                     const spruceLabel = SPRUCE_WORKFLOW_LABELS[spruceReq.workflow] ?? spruceReq.workflow;
-                    const spruceFI = spruceDisplayName[0] ?? "?";
-                    const spruceLI = spruceDisplayName[1] ?? "";
+                    // Matched patient: use joined first/last name from DB
+                    const sprucePatientName =
+                      spruceReq.patientFirstName && spruceReq.patientLastName
+                        ? `${spruceReq.patientFirstName} ${spruceReq.patientLastName}`
+                        : spruceReq.patientNameExtracted ?? null;
+                    const spruceIsMatched = !!(spruceReq.patientId && sprucePatientName);
+                    // Avatar initials: use name if matched, else phone digits
+                    const spruceAvatarText = sprucePatientName
+                      ? `${sprucePatientName[0]}${sprucePatientName.split(" ")[1]?.[0] ?? ""}`
+                      : "?";
                     return (
                       <div
                         key={`spruce-${spruceReq.id}`}
@@ -852,9 +863,9 @@ export default function Dashboard() {
                         <div className="flex items-start gap-3">
                           <div
                             className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                            style={{ backgroundColor: "#4a3a6e" }}
+                            style={{ backgroundColor: spruceIsMatched ? "#2e3a20" : "#4a3a6e" }}
                           >
-                            {spruceFI}{spruceLI}
+                            {spruceAvatarText}
                           </div>
                           <div className="flex-1 min-w-0">
                             <button
@@ -863,9 +874,29 @@ export default function Dashboard() {
                             >
                               <div className="flex items-center gap-1.5 flex-wrap">
                                 <MessageCircle className="w-3 h-3 flex-shrink-0" style={{ color: "#4a3a6e" }} />
-                                <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                                  {spruceDisplayName}
-                                </p>
+                                {spruceIsMatched ? (
+                                  <>
+                                    <span
+                                      className="text-sm font-semibold"
+                                      style={{ color: "#1c2414" }}
+                                      data-testid={`text-spruce-patient-name-${spruceReq.id}`}
+                                    >
+                                      {sprucePatientName}
+                                    </span>
+                                    <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: "#e8f0e0", color: "#2e3a20" }}>
+                                      <UserCheck className="w-3 h-3" /> Matched
+                                    </span>
+                                  </>
+                                ) : (
+                                  <>
+                                    <span className="text-sm font-medium" style={{ color: "#5a6a7a" }} data-testid={`text-spruce-unmatched-${spruceReq.id}`}>
+                                      {spruceReq.patientPhone ?? "Unknown number"}
+                                    </span>
+                                    <span className="inline-flex items-center gap-0.5 text-xs font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: "#f0ece5", color: "#7a6a54" }}>
+                                      <UserX className="w-3 h-3" /> Unmatched
+                                    </span>
+                                  </>
+                                )}
                                 <span className="text-xs font-medium" style={{ color: "#4a3a6e" }}>
                                   {spruceLabel}
                                 </span>
@@ -892,6 +923,18 @@ export default function Dashboard() {
                                 <Clock className="w-3 h-3" />
                                 {formatDate(spruceReq.createdAt)}
                               </div>
+                              {spruceIsMatched && spruceReq.patientId && (
+                                <Link
+                                  href={`/patients/${spruceReq.patientId}`}
+                                  className="text-xs font-medium flex items-center gap-1"
+                                  style={{ color: "#2e3a20" }}
+                                  data-testid={`link-spruce-open-chart-${spruceReq.id}`}
+                                  onClick={(e) => e.stopPropagation()}
+                                >
+                                  <ExternalLink className="w-3 h-3" />
+                                  Open chart
+                                </Link>
+                              )}
                               <div className="flex-1" />
                               <Button
                                 size="sm"
@@ -1080,30 +1123,72 @@ export default function Dashboard() {
             </DialogHeader>
 
             <div className="space-y-4 pt-1">
-              {/* Caller info */}
-              <div className="rounded-md p-3 space-y-1.5" style={{ backgroundColor: "#f5f3fa" }}>
-                <div className="flex items-center gap-2 text-sm">
-                  <span className="font-medium" style={{ color: "#4a3a6e" }}>Source</span>
-                  <span className="text-xs px-1.5 py-0.5 rounded font-medium" style={{ backgroundColor: "#4a3a6e20", color: "#4a3a6e" }}>
-                    via Spruce
-                  </span>
-                </div>
-                {selectedSpruceRequest.patientNameExtracted && (
-                  <div className="text-sm" style={{ color: "#1c2414" }}>
-                    <span className="text-xs font-medium uppercase tracking-wide" style={{ color: "#7a8a64" }}>Name — </span>
-                    {selectedSpruceRequest.patientNameExtracted}
+              {/* Caller / patient info */}
+              {(() => {
+                const req = selectedSpruceRequest;
+                const resolvedName =
+                  req.patientFirstName && req.patientLastName
+                    ? `${req.patientFirstName} ${req.patientLastName}`
+                    : req.patientNameExtracted ?? null;
+                const isMatched = !!(req.patientId && resolvedName);
+                return (
+                  <div className="rounded-md p-3 space-y-2" style={{ backgroundColor: isMatched ? "#f0f5eb" : "#f5f3fa" }}>
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium" style={{ color: "#4a3a6e" }}>via Spruce</span>
+                      {isMatched ? (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: "#d4e8c4", color: "#2e3a20" }}>
+                          <UserCheck className="w-3 h-3" /> Patient matched
+                        </span>
+                      ) : (
+                        <span className="inline-flex items-center gap-1 text-xs font-medium px-1.5 py-0.5 rounded" style={{ backgroundColor: "#ede8df", color: "#7a6a54" }}>
+                          <UserX className="w-3 h-3" /> Unmatched contact
+                        </span>
+                      )}
+                    </div>
+
+                    {isMatched && resolvedName ? (
+                      <div className="flex items-center justify-between gap-2 flex-wrap">
+                        <div>
+                          <p className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: "#7a8a64" }}>Patient</p>
+                          <p className="text-sm font-semibold" style={{ color: "#1c2414" }} data-testid="text-spruce-drawer-patient-name">
+                            {resolvedName}
+                          </p>
+                        </div>
+                        <Link
+                          href={`/patients/${req.patientId}`}
+                          onClick={() => setSelectedSpruceRequest(null)}
+                          className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded border"
+                          style={{ color: "#2e3a20", borderColor: "#b0c898", backgroundColor: "#ffffff" }}
+                          data-testid="link-spruce-drawer-open-chart"
+                        >
+                          <ExternalLink className="w-3 h-3" />
+                          Open patient chart
+                        </Link>
+                      </div>
+                    ) : (
+                      <div>
+                        <p className="text-xs font-medium uppercase tracking-wide mb-0.5" style={{ color: "#7a8a64" }}>Caller</p>
+                        <p className="text-sm font-mono" style={{ color: "#1c2414" }} data-testid="text-spruce-drawer-unmatched-phone">
+                          {req.patientPhone ?? "Unknown number"}
+                        </p>
+                        <p className="text-xs mt-1" style={{ color: "#a0a880" }}>
+                          This phone number was not found in your patient list. You can look them up manually or add them as a new patient.
+                        </p>
+                      </div>
+                    )}
+
+                    {req.patientPhone && isMatched && (
+                      <div className="text-xs font-mono" style={{ color: "#7a8a64" }}>
+                        {req.patientPhone}
+                      </div>
+                    )}
+
+                    <div className="text-xs" style={{ color: "#a0a880" }}>
+                      Received {timeAgo(req.createdAt)}
+                    </div>
                   </div>
-                )}
-                {selectedSpruceRequest.patientPhone && (
-                  <div className="text-sm font-mono" style={{ color: "#1c2414" }}>
-                    <span className="text-xs font-medium uppercase tracking-wide font-sans" style={{ color: "#7a8a64" }}>Phone — </span>
-                    {selectedSpruceRequest.patientPhone}
-                  </div>
-                )}
-                <div className="text-xs" style={{ color: "#a0a880" }}>
-                  Received {timeAgo(selectedSpruceRequest.createdAt)}
-                </div>
-              </div>
+                );
+              })()}
 
               {/* Message text */}
               {selectedSpruceRequest.requestSummary && (

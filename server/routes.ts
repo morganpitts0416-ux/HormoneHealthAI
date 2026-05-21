@@ -2314,6 +2314,23 @@ Rules:
       const spruceConversationId: string = data.conversation_id;
       const fromPhone: string = data.from.phone_number;
 
+      // ── Patient matching (same logic as real webhook) ─────────────────────
+      // Uses the provided patientPhone to search for an existing ClinIQ patient
+      // within this clinic.  Real matching only — never a display-name override.
+      let simMatchedPatient: { id: number; firstName: string; lastName: string } | null = null;
+      if (fromPhone) {
+        try {
+          simMatchedPatient = await storage.findPatientByPhoneForClinic(fromPhone, clinicId);
+          console.log(
+            simMatchedPatient
+              ? `${tag} patient matched: id=${simMatchedPatient.id} "${simMatchedPatient.firstName} ${simMatchedPatient.lastName}"`
+              : `${tag} no patient match for ${fromPhone} — unmatched contact`,
+          );
+        } catch (err) {
+          console.warn(`${tag} patient lookup error:`, err);
+        }
+      }
+
       // Store the message
       const storedMsg = await storage.createSpruceMessage({
         clinicId,
@@ -2321,12 +2338,14 @@ Rules:
         spruceConversationId,
         fromPhone,
         toPhone: null,
+        patientId: simMatchedPatient?.id ?? null,
         messageBody: msgBody,
         eventType: "message.created",
         rawPayload: syntheticPayload,
         classifiedWorkflow: null,
         classificationConfidence: null,
         staffRepliedAt: null,
+        spruceEventDedupeKey: null,
       });
 
       // Classify (allow override for testing specific workflows)
@@ -2342,11 +2361,13 @@ Rules:
         workflowRequest = await storage.createSpruceWorkflowRequest({
           clinicId,
           spruceMessageId: storedMsg.id,
-          patientId: null,
+          patientId: simMatchedPatient?.id ?? null,
           workflow: classification.workflow,
           status: "pending",
           patientPhone: fromPhone,
-          patientNameExtracted: null,
+          patientNameExtracted: simMatchedPatient
+            ? `${simMatchedPatient.firstName} ${simMatchedPatient.lastName}`
+            : null,
           requestSummary: msgBody.slice(0, 300),
           spruceConversationUrl: `https://app.sprucehealth.com/conversations/${spruceConversationId}`,
           resolvedAt: null,
@@ -2359,6 +2380,9 @@ Rules:
         spruceMessage: storedMsg,
         classification,
         workflowRequest,
+        patientMatch: simMatchedPatient
+          ? { matched: true, patientId: simMatchedPatient.id, name: `${simMatchedPatient.firstName} ${simMatchedPatient.lastName}` }
+          : { matched: false },
       });
     } catch (err) {
       console.error("[Spruce/simulate] Error:", err);
@@ -17580,6 +17604,24 @@ IMPORTANT:
         data?.from?.phone_number ?? "";
       const toPhoneExtracted: string = toPhone ?? "";
 
+      // ── Patient matching ───────────────────────────────────────────────
+      // Attempt to match the caller's phone number to an existing ClinIQ patient
+      // within this clinic.  Strictly clinic-scoped — no cross-tenant lookup.
+      // On any error we continue without a match rather than blocking the event.
+      let matchedPatient: { id: number; firstName: string; lastName: string } | null = null;
+      if (fromPhone) {
+        try {
+          matchedPatient = await storage.findPatientByPhoneForClinic(fromPhone, matchedClinicId);
+          if (matchedPatient) {
+            console.log(`${tag} patient matched: id=${matchedPatient.id} name="${matchedPatient.firstName} ${matchedPatient.lastName}"`);
+          } else {
+            console.log(`${tag} no patient match for fromPhone=${fromPhone} — will store as unmatched contact`);
+          }
+        } catch (err) {
+          console.warn(`${tag} patient lookup error (continuing without match):`, err);
+        }
+      }
+
       // ── Persist the inbound message ────────────────────────────────────
       let storedMsg: any = null;
       try {
@@ -17589,6 +17631,7 @@ IMPORTANT:
           spruceConversationId: spruceConversationId || null,
           fromPhone: fromPhone || null,
           toPhone: toPhoneExtracted || null,
+          patientId: matchedPatient?.id ?? null,
           messageBody: msgBody || null,
           eventType,
           rawPayload: body ?? {},
@@ -17621,17 +17664,19 @@ IMPORTANT:
           await storage.createSpruceWorkflowRequest({
             clinicId: matchedClinicId,
             spruceMessageId: storedMsg.id,
-            patientId: null,
+            patientId: matchedPatient?.id ?? null,
             workflow: classification.workflow,
             status: "pending",
             patientPhone: fromPhone || null,
-            patientNameExtracted: null,
+            patientNameExtracted: matchedPatient
+              ? `${matchedPatient.firstName} ${matchedPatient.lastName}`
+              : null,
             requestSummary: msgBody ? msgBody.slice(0, 300) : null,
             spruceConversationUrl: convUrl,
             resolvedAt: null,
             resolvedByUserId: null,
           });
-          console.log(`${tag} created spruce_workflow_requests for workflow="${classification.workflow}"`);
+          console.log(`${tag} created spruce_workflow_requests for workflow="${classification.workflow}"${matchedPatient ? ` patient_id=${matchedPatient.id}` : " (unmatched)"}`);
         } catch (err) {
           console.error(`${tag} failed to create spruce_workflow_request:`, err);
         }

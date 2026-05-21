@@ -2478,6 +2478,9 @@ export const spruceMessages = pgTable("spruce_messages", {
   // E.164 phone numbers when available
   fromPhone: varchar("from_phone", { length: 30 }),
   toPhone: varchar("to_phone", { length: 30 }),
+  // Matched ClinIQ patient — null when the caller is not in the system.
+  // Always clinic-scoped; matched by normalised phone number at receipt time.
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
   // Message text extracted from the payload (null for non-message events)
   messageBody: text("message_body"),
   eventType: varchar("event_type", { length: 100 }),

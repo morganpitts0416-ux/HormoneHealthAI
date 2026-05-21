@@ -1259,3 +1259,9 @@ ALTER TABLE clinic_spruce_settings
 -- Format: "<eventType>:<objectId>" truncated to 220 chars, scoped per clinic_id.
 ALTER TABLE spruce_messages
   ADD COLUMN IF NOT EXISTS spruce_event_dedupe_key VARCHAR(220);
+
+-- patient_id: matched ClinIQ patient for this inbound Spruce message.
+-- Populated at receipt time by phone-number lookup (clinic-scoped).
+-- NULL = caller not found in patient list (new contact or unmatched phone).
+ALTER TABLE spruce_messages
+  ADD COLUMN IF NOT EXISTS patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL;

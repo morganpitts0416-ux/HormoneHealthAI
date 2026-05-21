@@ -355,6 +355,7 @@ export interface IStorage {
   // Maps Spruce phone-line / team identifiers → ClinIQ clinic_id so that every
   // inbound Spruce event is tenant-scoped before any downstream action is taken.
   getSpruceRoutingRulesByClinic(clinicId: number): Promise<schema.SpruceRoutingRule[]>;
+  findPatientByPhoneForClinic(phone: string, clinicId: number): Promise<{ id: number; firstName: string; lastName: string } | null>;
   findSpruceClinicId(phoneLineId?: string | null, teamId?: string | null, toPhone?: string | null): Promise<number | null>;
   findSpruceMessageByDedupeKey(clinicId: number, dedupeKey: string): Promise<schema.SpruceMessage | null>;
   createSpruceRoutingRule(data: schema.InsertSpruceRoutingRule & { clinicId: number }): Promise<schema.SpruceRoutingRule>;
@@ -4511,6 +4512,37 @@ async function _resolveMandatoryReasons(
 //
 // All active rules are loaded in a single query; the in-memory scan is fast
 // because the table remains small (one row per Spruce line, typically < 50).
+// ── findPatientByPhoneForClinic ───────────────────────────────────────────────
+// Searches for a ClinIQ patient within a single clinic using the caller's phone
+// number.  Phone normalisation: strip all non-digits, then match on last-10.
+// This handles "+1 (555) 123-4567", "5551234567", "+15551234567" equally.
+//
+// Safety guarantees:
+//   • Strictly clinic_id scoped — will NEVER match across other tenants.
+//   • Returns null (not an error) when no match is found.
+//   • If the normalised number is < 7 digits, returns null rather than guessing.
+(DbStorage.prototype as any).findPatientByPhoneForClinic = async function(
+  phone: string,
+  clinicId: number,
+): Promise<{ id: number; firstName: string; lastName: string } | null> {
+  const digits = (phone || "").replace(/\D/g, "");
+  if (digits.length < 7) return null;
+  const last10 = digits.slice(-10);
+  const result = await db
+    .select({
+      id: schema.patients.id,
+      firstName: schema.patients.firstName,
+      lastName: schema.patients.lastName,
+    })
+    .from(schema.patients)
+    .where(and(
+      eq(schema.patients.clinicId, clinicId),
+      sql`regexp_replace(coalesce(${schema.patients.phone}, ''), '\\D', '', 'g') LIKE ${'%' + last10}`,
+    ))
+    .limit(1);
+  return result[0] ?? null;
+};
+
 (DbStorage.prototype as any).findSpruceClinicId = async function(
   phoneLineId?: string | null,
   teamId?: string | null,
@@ -4647,10 +4679,29 @@ async function _resolveMandatoryReasons(
 
 (DbStorage.prototype as any).getPendingSpruceWorkflowRequests = async function(
   clinicId: number,
-): Promise<schema.SpruceWorkflowRequest[]> {
+): Promise<(schema.SpruceWorkflowRequest & { patientFirstName: string | null; patientLastName: string | null })[]> {
   return db
-    .select()
+    .select({
+      // All columns from spruceWorkflowRequests
+      id: schema.spruceWorkflowRequests.id,
+      clinicId: schema.spruceWorkflowRequests.clinicId,
+      spruceMessageId: schema.spruceWorkflowRequests.spruceMessageId,
+      patientId: schema.spruceWorkflowRequests.patientId,
+      workflow: schema.spruceWorkflowRequests.workflow,
+      status: schema.spruceWorkflowRequests.status,
+      patientPhone: schema.spruceWorkflowRequests.patientPhone,
+      patientNameExtracted: schema.spruceWorkflowRequests.patientNameExtracted,
+      requestSummary: schema.spruceWorkflowRequests.requestSummary,
+      spruceConversationUrl: schema.spruceWorkflowRequests.spruceConversationUrl,
+      resolvedAt: schema.spruceWorkflowRequests.resolvedAt,
+      resolvedByUserId: schema.spruceWorkflowRequests.resolvedByUserId,
+      createdAt: schema.spruceWorkflowRequests.createdAt,
+      // Joined patient name columns (null when no patient match)
+      patientFirstName: schema.patients.firstName,
+      patientLastName: schema.patients.lastName,
+    })
     .from(schema.spruceWorkflowRequests)
+    .leftJoin(schema.patients, eq(schema.spruceWorkflowRequests.patientId, schema.patients.id))
     .where(
       and(
         eq(schema.spruceWorkflowRequests.clinicId, clinicId),
