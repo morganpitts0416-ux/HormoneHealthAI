@@ -1273,3 +1273,31 @@ ALTER TABLE spruce_messages
 -- Used to pre-fill "Add as new patient" dialog for unmatched contacts.
 ALTER TABLE spruce_messages
   ADD COLUMN IF NOT EXISTS spruce_contact_name VARCHAR(200);
+
+-- Phase 2: Spruce conversation state machine
+-- One row per (clinic, conversationKey). Tracks staff-takeover / AI-mute state.
+CREATE TABLE IF NOT EXISTS spruce_conversation_state (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  conversation_key VARCHAR(200) NOT NULL,
+  state VARCHAR(30) NOT NULL DEFAULT 'open',
+  ai_muted_at TIMESTAMP,
+  ai_muted_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  last_activity_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS spruce_conv_state_clinic_key
+  ON spruce_conversation_state(clinic_id, conversation_key);
+
+-- Phase 2: Outbound message audit log
+-- Immutable record of every message sent FROM ClinIQ into Spruce.
+CREATE TABLE IF NOT EXISTS spruce_outbound_messages (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  conversation_key VARCHAR(200) NOT NULL,
+  message_body TEXT NOT NULL,
+  sent_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  sent_by_ai BOOLEAN NOT NULL DEFAULT FALSE,
+  workflow_request_id INTEGER REFERENCES spruce_workflow_requests(id) ON DELETE SET NULL,
+  spruce_delivery_id VARCHAR(200),
+  sent_at TIMESTAMP NOT NULL DEFAULT NOW()
+);

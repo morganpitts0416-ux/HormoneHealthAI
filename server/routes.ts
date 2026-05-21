@@ -2306,6 +2306,149 @@ Rules:
     }
   });
 
+  // GET /api/spruce/conversations/:key/state — conversation state machine row
+  app.get("/api/spruce/conversations/:key/state", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const key = decodeURIComponent(req.params.key);
+      const state = await storage.getSpruceConversationState(clinicId, key);
+      res.json(state ?? { conversationKey: key, state: "open", aiMutedAt: null });
+    } catch (err) {
+      console.error("[Spruce/state] Error:", err);
+      res.status(500).json({ error: "Failed to fetch state" });
+    }
+  });
+
+  // POST /api/spruce/conversations/:key/reply — staff sends a message from ClinIQ.
+  // Phase 2: writes audit log + mirrors into spruceMessages; marks conversation as
+  // staff_takeover (AI muted).  Spruce API delivery is attempted if a token is
+  // configured; falls back gracefully when token is absent.
+  app.post("/api/spruce/conversations/:key/reply", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const userId = (req.user as any)?.id ?? null;
+      const key = decodeURIComponent(req.params.key);
+      const { messageBody } = req.body;
+      if (!messageBody || typeof messageBody !== "string" || !messageBody.trim()) {
+        return res.status(400).json({ error: "messageBody is required" });
+      }
+      const body = messageBody.trim();
+
+      // 1. Write to audit log
+      const outbound = await storage.createSpruceOutboundMessage({
+        clinicId,
+        conversationKey: key,
+        messageBody: body,
+        sentByUserId: userId,
+        sentByAI: false,
+        workflowRequestId: req.body.workflowRequestId ?? null,
+        spruceDeliveryId: null,
+      });
+
+      // 2. Mirror into spruceMessages so the existing thread query picks it up
+      //    Use the conversation key to resolve phone/conversationId context.
+      const conversations = await storage.listSpruceConversations(clinicId);
+      const conv = conversations.find((c) => c.conversationKey === key);
+      await storage.createSpruceMessage({
+        clinicId,
+        spruceMessageId: `cliniq_reply_${outbound.id}`,
+        spruceConversationId: conv?.spruceConversationId ?? null,
+        fromPhone: conv?.toPhone ?? null,   // staff's line is the "from" for outbound
+        toPhone: conv?.fromPhone ?? null,
+        patientId: conv?.patientId ?? null,
+        messageBody: body,
+        eventType: "cliniq_staff_reply",
+        rawPayload: { source: "cliniq", outboundMessageId: outbound.id },
+        classifiedWorkflow: null,
+        classificationConfidence: null,
+        messageDirection: "outbound_staff",
+        staffRepliedAt: new Date(),
+        spruceEventDedupeKey: `cliniq_reply:${outbound.id}`,
+        spruceContactName: null,
+      });
+
+      // 3. Update conversation state → staff_takeover (sticky AI mute)
+      const existing = await storage.getSpruceConversationState(clinicId, key);
+      await storage.upsertSpruceConversationState(clinicId, key, {
+        state: "staff_takeover",
+        aiMutedAt: existing?.aiMutedAt ?? new Date(),
+        aiMutedByUserId: existing?.aiMutedByUserId ?? userId,
+        lastActivityAt: new Date(),
+      });
+
+      // 4. Attempt Spruce API delivery (stub until SPRUCE_API_TOKEN is set)
+      let spruceDelivered = false;
+      const clinicSettings = await storage.getClinicSpruceSettings(clinicId).catch(() => null);
+      const rawToken = clinicSettings?.apiTokenEncrypted
+        ? (isEncrypted(clinicSettings.apiTokenEncrypted) ? decryptSecret(clinicSettings.apiTokenEncrypted) : clinicSettings.apiTokenEncrypted)
+        : null;
+      const apiToken = rawToken ?? process.env.SPRUCE_API_TOKEN ?? null;
+      if (apiToken && conv?.spruceConversationId) {
+        try {
+          const spruceRes = await fetch(
+            `https://api.sprucehealth.com/v1/conversations/${conv.spruceConversationId}/messages`,
+            {
+              method: "POST",
+              headers: {
+                "Authorization": `Bearer ${apiToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ text: body }),
+            },
+          );
+          if (spruceRes.ok) {
+            spruceDelivered = true;
+            const spruceData = await spruceRes.json().catch(() => ({}));
+            if (spruceData?.id) {
+              await storage.updateSpruceOutboundDeliveryId(outbound.id, spruceData.id);
+            }
+          } else {
+            console.warn(`[Spruce/reply] Spruce API returned ${spruceRes.status}`);
+          }
+        } catch (err) {
+          console.warn("[Spruce/reply] Spruce API delivery failed (non-fatal):", err);
+        }
+      } else {
+        console.log("[Spruce/reply] No Spruce API token — message stored in ClinIQ only");
+      }
+
+      res.json({ ok: true, outboundId: outbound.id, spruceDelivered });
+    } catch (err) {
+      console.error("[Spruce/reply] Error:", err);
+      res.status(500).json({ error: "Failed to send reply" });
+    }
+  });
+
+  // POST /api/spruce/rematch-patients — re-run phone matching for all unmatched
+  // Spruce messages + workflow requests in this clinic.  Safe to call repeatedly.
+  app.post("/api/spruce/rematch-patients", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      // Get all patients with phones in this clinic
+      const patients = await db
+        .select({ id: schema.patients.id, phone: schema.patients.phone })
+        .from(schema.patients)
+        .where(and(
+          eq(schema.patients.clinicId, clinicId),
+          sql`${schema.patients.phone} IS NOT NULL AND ${schema.patients.phone} != ''`,
+        ));
+      let linked = 0;
+      for (const p of patients) {
+        if (p.phone) {
+          await storage.backfillSprucePatientLinks(clinicId, p.id, p.phone);
+          linked++;
+        }
+      }
+      res.json({ ok: true, patientsScanned: linked });
+    } catch (err) {
+      console.error("[Spruce/rematch] Error:", err);
+      res.status(500).json({ error: "Failed to rematch patients" });
+    }
+  });
+
   // POST /api/integrations/spruce/simulate — internal test endpoint.
   // Allows staff to simulate an inbound Spruce message without real SMS traffic.
   // Runs through the full routing → classification → workflow request pipeline.
@@ -2467,6 +2610,12 @@ Rules:
         return res.status(400).json({ error: "Invalid patient data", details: parseResult.error.errors });
       }
       const patient = await storage.createPatient(parseResult.data);
+      // Retroactively link any unmatched Spruce messages/workflow requests for
+      // this clinic whose fromPhone matches the new patient's phone number.
+      if (patient.phone && patient.clinicId) {
+        storage.backfillSprucePatientLinks(patient.clinicId, patient.id, patient.phone)
+          .catch((err) => console.warn("[backfillSprucePatientLinks] error (non-fatal):", err));
+      }
       res.json(patient);
     } catch (error) {
       console.error("Error creating patient:", error);

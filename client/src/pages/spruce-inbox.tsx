@@ -1,10 +1,9 @@
 import { useState, useEffect, useRef } from "react";
-import { useQuery } from "@tanstack/react-query";
+import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { useLocation } from "wouter";
 import { Link } from "wouter";
 import {
   MessageCircle,
-  Phone,
   User,
   UserCheck,
   ExternalLink,
@@ -14,11 +13,17 @@ import {
   UserPlus,
   CheckCircle2,
   Filter,
+  Send,
+  Lock,
+  ShieldCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Badge } from "@/components/ui/badge";
+import { Textarea } from "@/components/ui/textarea";
 import { AddPatientDialog } from "@/components/add-patient-dialog";
+import { apiRequest } from "@/lib/queryClient";
+import { useToast } from "@/hooks/use-toast";
 import type { Patient } from "@shared/schema";
 
 // ── Types ──────────────────────────────────────────────────────────────────────
@@ -52,6 +57,11 @@ interface SpruceMessage {
   patientId: number | null;
   patientFirstName: string | null;
   patientLastName: string | null;
+}
+
+interface ConvState {
+  state: string;
+  aiMutedAt: string | null;
 }
 
 // ── Helpers ────────────────────────────────────────────────────────────────────
@@ -88,7 +98,6 @@ function getDisplayName(conv: SpruceConversation): string {
   return conv.fromPhone ?? conv.spruceConversationId ?? "Unknown contact";
 }
 
-/** Parse "First Last" into parts — returns null if it can't split cleanly */
 function parseNameParts(name: string | null): { firstName: string; lastName: string } | null {
   if (!name) return null;
   const parts = name.trim().split(/\s+/);
@@ -160,20 +169,23 @@ function ConversationRow({
 
 // ── MessageBubble ──────────────────────────────────────────────────────────────
 
-function MessageBubble({ msg }: { msg: SpruceMessage }) {
+function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: boolean }) {
   const isStaff = msg.messageDirection === "outbound_staff";
 
   if (isStaff) {
     return (
-      <div className="flex justify-end mb-3 px-4" data-testid={`msg-${msg.id}`}>
+      <div className={`flex justify-end mb-3 px-4 ${optimistic ? "opacity-60" : ""}`} data-testid={`msg-${msg.id}`}>
         <div className="max-w-[72%]">
           <div
             className="rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white leading-relaxed"
             style={{ backgroundColor: "#2e7d52" }}
           >
-            {msg.messageBody ?? <span className="italic opacity-70">— no message text —</span>}
+            {msg.messageBody}
           </div>
-          <p className="text-[10px] text-[#8a8a7a] mt-1 text-right">{formatMessageTime(msg.receivedAt)}</p>
+          <p className="text-[10px] text-[#8a8a7a] mt-1 text-right flex items-center justify-end gap-1">
+            {optimistic && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
+            {formatMessageTime(msg.receivedAt)}
+          </p>
         </div>
       </div>
     );
@@ -190,9 +202,7 @@ function MessageBubble({ msg }: { msg: SpruceMessage }) {
           </p>
         )}
         <div className="rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed bg-white border border-[#e5e2dc] text-[#1c2414]">
-          {msg.messageBody ?? (
-            <span className="italic text-[#9a9a8a]">— non-text event —</span>
-          )}
+          {msg.messageBody ?? <span className="italic text-[#9a9a8a]">— non-text event —</span>}
         </div>
         <p className="text-[10px] text-[#8a8a7a] mt-1 ml-1">{formatMessageTime(msg.receivedAt)}</p>
       </div>
@@ -218,14 +228,21 @@ function DateDivider({ label }: { label: string }) {
 
 export default function SpruceInboxPage() {
   const [, setLocation] = useLocation();
+  const { toast } = useToast();
+  const qc = useQueryClient();
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
   const [search, setSearch] = useState("");
   const [filter, setFilter] = useState<"all" | "patients" | "unmatched">("all");
   const [sort, setSort] = useState<"newest" | "oldest">("newest");
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [addPatientInit, setAddPatientInit] = useState<{ firstName?: string; lastName?: string; phone?: string }>({});
+  const [replyText, setReplyText] = useState("");
+  // Optimistic messages shown while send is in flight
+  const [optimisticMsgs, setOptimisticMsgs] = useState<SpruceMessage[]>([]);
   const threadBottomRef = useRef<HTMLDivElement>(null);
+  const textareaRef = useRef<HTMLTextAreaElement>(null);
 
+  // ── Conversations list ──────────────────────────────────────────────────
   const {
     data: conversations = [],
     isLoading: convsLoading,
@@ -235,6 +252,7 @@ export default function SpruceInboxPage() {
     refetchInterval: 30_000,
   });
 
+  // ── Thread messages ─────────────────────────────────────────────────────
   const {
     data: messages = [],
     isLoading: msgsLoading,
@@ -253,18 +271,86 @@ export default function SpruceInboxPage() {
     enabled: !!selectedKey,
   });
 
+  // ── Conversation state ──────────────────────────────────────────────────
+  const { data: convState, refetch: refetchState } = useQuery<ConvState>({
+    queryKey: ["/api/spruce/conversations", selectedKey, "state"],
+    queryFn: async () => {
+      if (!selectedKey) return { state: "open", aiMutedAt: null };
+      const res = await fetch(
+        `/api/spruce/conversations/${encodeURIComponent(selectedKey)}/state`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return { state: "open", aiMutedAt: null };
+      return res.json();
+    },
+    enabled: !!selectedKey,
+  });
+
+  // ── Send reply mutation ─────────────────────────────────────────────────
+  const sendReply = useMutation({
+    mutationFn: async (body: string) => {
+      if (!selectedKey) throw new Error("No conversation selected");
+      const res = await apiRequest("POST", `/api/spruce/conversations/${encodeURIComponent(selectedKey)}/reply`, {
+        messageBody: body,
+      });
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to send");
+      }
+      return res.json();
+    },
+    onMutate: (body) => {
+      // Optimistic insert
+      const fake: SpruceMessage = {
+        id: Date.now(),
+        spruceConversationId: null,
+        fromPhone: null,
+        toPhone: null,
+        messageBody: body,
+        messageDirection: "outbound_staff",
+        eventType: "cliniq_staff_reply",
+        staffRepliedAt: new Date().toISOString(),
+        receivedAt: new Date().toISOString(),
+        patientId: null,
+        patientFirstName: null,
+        patientLastName: null,
+      };
+      setOptimisticMsgs((prev) => [...prev, fake]);
+      setReplyText("");
+    },
+    onSuccess: () => {
+      setOptimisticMsgs([]);
+      refetchMsgs();
+      refetchConvs();
+      refetchState();
+    },
+    onError: (err: Error) => {
+      setOptimisticMsgs([]);
+      toast({ variant: "destructive", title: "Send failed", description: err.message });
+    },
+  });
+
+  // Scroll to bottom when thread loads or new message arrives
   useEffect(() => {
-    if (!msgsLoading && messages.length > 0) {
+    if ((!msgsLoading && messages.length > 0) || optimisticMsgs.length > 0) {
       setTimeout(() => threadBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
     }
-  }, [selectedKey, msgsLoading, messages.length]);
+  }, [selectedKey, msgsLoading, messages.length, optimisticMsgs.length]);
 
+  // Clear optimistic messages when selectedKey changes
+  useEffect(() => {
+    setOptimisticMsgs([]);
+    setReplyText("");
+  }, [selectedKey]);
+
+  // Auto-select first conversation when list loads
   useEffect(() => {
     if (!selectedKey && conversations.length > 0) {
       setSelectedKey(conversations[0].conversationKey);
     }
   }, [conversations, selectedKey]);
 
+  // ── Filtering + sorting ─────────────────────────────────────────────────
   const filtered = conversations
     .filter((c) => {
       if (filter === "patients" && !c.patientId) return false;
@@ -283,6 +369,7 @@ export default function SpruceInboxPage() {
   const spruceUrl = selectedConv?.spruceConversationId
     ? `https://app.sprucehealth.com/conversations/${selectedConv.spruceConversationId}`
     : null;
+  const isStaffTakeover = convState?.state === "staff_takeover";
 
   function openAddPatient(conv: SpruceConversation) {
     const nameParts = parseNameParts(conv.spruceContactName);
@@ -297,6 +384,19 @@ export default function SpruceInboxPage() {
   function handlePatientCreated(_patient: Patient) {
     setShowAddPatient(false);
     refetchConvs();
+  }
+
+  function handleSend() {
+    const body = replyText.trim();
+    if (!body || sendReply.isPending) return;
+    sendReply.mutate(body);
+  }
+
+  function handleKeyDown(e: React.KeyboardEvent<HTMLTextAreaElement>) {
+    if (e.key === "Enter" && (e.metaKey || e.ctrlKey)) {
+      e.preventDefault();
+      handleSend();
+    }
   }
 
   function groupMessagesByDate(msgs: SpruceMessage[]) {
@@ -322,22 +422,12 @@ export default function SpruceInboxPage() {
         <div className="px-4 py-3 border-b border-[#eeeae4] bg-[#faf8f5]">
           <div className="flex items-center justify-between mb-2.5">
             <div className="flex items-center gap-2">
-              <Button
-                size="icon"
-                variant="ghost"
-                onClick={() => setLocation("/dashboard")}
-                data-testid="button-back-dashboard"
-              >
+              <Button size="icon" variant="ghost" onClick={() => setLocation("/dashboard")} data-testid="button-back-dashboard">
                 <ChevronLeft className="w-4 h-4" />
               </Button>
               <span className="text-sm font-semibold text-[#1c2414]">Spruce Inbox</span>
             </div>
-            <Button
-              size="icon"
-              variant="ghost"
-              onClick={() => { refetchConvs(); if (selectedKey) refetchMsgs(); }}
-              data-testid="button-refresh-inbox"
-            >
+            <Button size="icon" variant="ghost" onClick={() => { refetchConvs(); if (selectedKey) refetchMsgs(); }} data-testid="button-refresh-inbox">
               <RefreshCw className="w-3.5 h-3.5" />
             </Button>
           </div>
@@ -360,9 +450,7 @@ export default function SpruceInboxPage() {
               key={f}
               onClick={() => setFilter(f)}
               className={`text-xs px-2 py-1 rounded transition-colors ${
-                filter === f
-                  ? "bg-[#e6f4ec] text-[#2e7d52] font-semibold"
-                  : "text-[#6a6a5a] hover:text-[#1c2414]"
+                filter === f ? "bg-[#e6f4ec] text-[#2e7d52] font-semibold" : "text-[#6a6a5a] hover:text-[#1c2414]"
               }`}
               data-testid={`filter-${f}`}
             >
@@ -454,6 +542,12 @@ export default function SpruceInboxPage() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {isStaffTakeover && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#92400e] bg-[#fef3c7] px-2 py-1 rounded-full border border-[#f6d860]">
+                  <Lock className="w-2.5 h-2.5" />
+                  Staff takeover
+                </span>
+              )}
               {selectedConv.patientId && (
                 <Link href={`/patients/${selectedConv.patientId}`}>
                   <Button size="sm" variant="outline" data-testid="button-open-chart">
@@ -474,24 +568,19 @@ export default function SpruceInboxPage() {
                 <MessageCircle className="w-3.5 h-3.5" />
                 <span>{selectedConv.messageCount} message{selectedConv.messageCount !== 1 ? "s" : ""}</span>
               </div>
-              {selectedConv.hasStaffReply && (
-                <Badge variant="outline" className="text-[10px] text-[#2e7d52] border-[#c3e6cc]">
-                  Staff replied
-                </Badge>
-              )}
             </div>
           </div>
 
-          {/* Patient match / unmatched bar */}
+          {/* Patient match / unmatched info bar */}
           {selectedConv.patientId ? (
             <div className="mx-4 mt-3 px-3 py-2 rounded-md bg-[#eaf4ec] border border-[#c3e6cc] flex items-center gap-2">
               <UserCheck className="w-3.5 h-3.5 text-[#2e7d52] flex-shrink-0" />
               <p className="text-xs text-[#1a6b3c] flex-1">
-                Matched to patient{" "}
+                Matched to{" "}
                 <Link href={`/patients/${selectedConv.patientId}`} className="font-semibold underline underline-offset-2">
                   {selectedConv.patientFirstName} {selectedConv.patientLastName}
-                </Link>{" "}
-                in your patient list.
+                </Link>
+                {" "}— click their name to open their chart.
               </p>
             </div>
           ) : (
@@ -525,56 +614,76 @@ export default function SpruceInboxPage() {
             </div>
           )}
 
-          {/* Thread */}
+          {/* Message thread */}
           <div className="flex-1 overflow-y-auto py-4">
             {msgsLoading ? (
               <div className="flex items-center justify-center py-20">
                 <RefreshCw className="w-5 h-5 text-[#9a9a8a] animate-spin" />
               </div>
-            ) : messages.length === 0 ? (
+            ) : messages.length === 0 && optimisticMsgs.length === 0 ? (
               <div className="flex flex-col items-center justify-center py-20">
                 <MessageCircle className="w-8 h-8 text-[#c4b9a5] mb-2" />
                 <p className="text-sm text-[#7a8060]">No messages in this conversation</p>
               </div>
             ) : (
-              messageGroups.map((group) => (
-                <div key={group.dateLabel}>
-                  <DateDivider label={group.dateLabel} />
-                  {group.messages.map((msg) => (
-                    <MessageBubble key={msg.id} msg={msg} />
-                  ))}
-                </div>
-              ))
+              <>
+                {messageGroups.map((group) => (
+                  <div key={group.dateLabel}>
+                    <DateDivider label={group.dateLabel} />
+                    {group.messages.map((msg) => (
+                      <MessageBubble key={msg.id} msg={msg} />
+                    ))}
+                  </div>
+                ))}
+                {/* Optimistic messages */}
+                {optimisticMsgs.map((msg) => (
+                  <MessageBubble key={msg.id} msg={msg} optimistic />
+                ))}
+              </>
             )}
             <div ref={threadBottomRef} />
           </div>
 
-          {/* Reply footer */}
+          {/* ── Compose / Reply footer ──────────────────────────────────── */}
           <div className="border-t border-[#e5e2dc] bg-white px-4 py-3">
-            <div className="rounded-lg border border-[#e0dcd4] bg-[#faf8f5] px-4 py-3">
-              <p className="text-xs text-[#9a9a8a] mb-2 flex items-center gap-1.5">
-                <Phone className="w-3 h-3" />
-                Replies are sent through Spruce
-              </p>
-              {spruceUrl ? (
-                <a href={spruceUrl} target="_blank" rel="noopener noreferrer" className="block">
-                  <Button className="w-full" style={{ backgroundColor: "#2e7d52" }} data-testid="button-reply-in-spruce">
-                    <ExternalLink className="w-3.5 h-3.5 mr-2" />
-                    Reply in Spruce
-                  </Button>
-                </a>
-              ) : (
-                <Button className="w-full" variant="outline" disabled data-testid="button-reply-no-url">
-                  Open Spruce to reply
+            <div className="rounded-lg border border-[#e0dcd4] bg-[#fafaf8] overflow-hidden">
+              <Textarea
+                ref={textareaRef}
+                value={replyText}
+                onChange={(e) => setReplyText(e.target.value)}
+                onKeyDown={handleKeyDown}
+                placeholder="Type a reply… (⌘↵ to send)"
+                className="resize-none border-0 rounded-none text-sm bg-transparent focus-visible:ring-0 min-h-[80px] max-h-[160px]"
+                data-testid="textarea-reply"
+              />
+              <div className="flex items-center justify-between px-3 py-2 border-t border-[#eeeae4]">
+                <div className="flex items-center gap-1.5 text-[10px] text-[#9a9a8a]">
+                  <ShieldCheck className="w-3 h-3" />
+                  {spruceUrl
+                    ? "Sends via Spruce · logged for audit"
+                    : <span className="text-[#b45309]">Stored in ClinIQ only — no Spruce token configured</span>}
+                </div>
+                <Button
+                  size="sm"
+                  disabled={!replyText.trim() || sendReply.isPending}
+                  onClick={handleSend}
+                  style={{ backgroundColor: "#2e7d52" }}
+                  className="text-white"
+                  data-testid="button-send-reply"
+                >
+                  {sendReply.isPending ? (
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Send className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {sendReply.isPending ? "Sending…" : "Send"}
                 </Button>
-              )}
-              <p className="text-[10px] text-[#9a9a8a] mt-2 text-center">
-                ClinIQ logs inbound messages from Spruce. Replies are composed in the Spruce app.
-              </p>
+              </div>
             </div>
           </div>
         </div>
       ) : (
+        /* Empty state */
         <div className="flex-1 flex flex-col items-center justify-center bg-[#f5f2ee]">
           <div className="text-center max-w-xs">
             <div className="w-16 h-16 rounded-full bg-[#e6f4ec] flex items-center justify-center mx-auto mb-4">

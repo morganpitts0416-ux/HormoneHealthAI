@@ -386,6 +386,16 @@ export interface IStorage {
     status: string,
     resolvedByUserId?: number,
   ): Promise<schema.SpruceWorkflowRequest | undefined>;
+  // Patient-link backfill: when a patient is created/updated with a phone,
+  // retroactively links all unmatched Spruce messages + workflow requests for
+  // that clinic whose fromPhone normalizes to the same last-10 digits.
+  backfillSprucePatientLinks(clinicId: number, patientId: number, phone: string): Promise<void>;
+  // Conversation state machine
+  getSpruceConversationState(clinicId: number, conversationKey: string): Promise<schema.SpruceConversationStateRow | null>;
+  upsertSpruceConversationState(clinicId: number, conversationKey: string, data: Partial<Pick<schema.SpruceConversationStateRow, 'state' | 'aiMutedAt' | 'aiMutedByUserId' | 'lastActivityAt'>>): Promise<schema.SpruceConversationStateRow>;
+  // Outbound message audit log
+  createSpruceOutboundMessage(data: schema.InsertSpruceOutboundMessage): Promise<schema.SpruceOutboundMessage>;
+  updateSpruceOutboundDeliveryId(id: number, spruceDeliveryId: string): Promise<void>;
 
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
@@ -4866,4 +4876,106 @@ export interface SpruceConversationMessageRow {
     .where(eq(schema.spruceWorkflowRequests.id, id))
     .returning();
   return row;
+};
+
+// ── backfillSprucePatientLinks ─────────────────────────────────────────────
+// When a patient is created/updated with a phone number, retroactively link
+// all unmatched spruce_messages and spruce_workflow_requests in this clinic
+// whose fromPhone / patientPhone normalizes to the same last-10 digits.
+(DbStorage.prototype as any).backfillSprucePatientLinks = async function(
+  clinicId: number,
+  patientId: number,
+  phone: string,
+): Promise<void> {
+  const digits = (phone || "").replace(/\D/g, "");
+  if (digits.length < 7) return;
+  const last10 = digits.slice(-10);
+
+  // Update spruce_messages
+  await db
+    .update(schema.spruceMessages)
+    .set({ patientId })
+    .where(and(
+      eq(schema.spruceMessages.clinicId, clinicId),
+      isNull(schema.spruceMessages.patientId),
+      sql`regexp_replace(coalesce(${schema.spruceMessages.fromPhone}, ''), '\\D', '', 'g') LIKE ${'%' + last10}`,
+    ));
+
+  // Update spruce_workflow_requests
+  await db
+    .update(schema.spruceWorkflowRequests)
+    .set({ patientId })
+    .where(and(
+      eq(schema.spruceWorkflowRequests.clinicId, clinicId),
+      isNull(schema.spruceWorkflowRequests.patientId),
+      sql`regexp_replace(coalesce(${schema.spruceWorkflowRequests.patientPhone}, ''), '\\D', '', 'g') LIKE ${'%' + last10}`,
+    ));
+};
+
+// ── getSpruceConversationState ────────────────────────────────────────────
+(DbStorage.prototype as any).getSpruceConversationState = async function(
+  clinicId: number,
+  conversationKey: string,
+): Promise<schema.SpruceConversationStateRow | null> {
+  const rows = await db
+    .select()
+    .from(schema.spruceConversationState)
+    .where(and(
+      eq(schema.spruceConversationState.clinicId, clinicId),
+      eq(schema.spruceConversationState.conversationKey, conversationKey),
+    ))
+    .limit(1);
+  return rows[0] ?? null;
+};
+
+// ── upsertSpruceConversationState ─────────────────────────────────────────
+(DbStorage.prototype as any).upsertSpruceConversationState = async function(
+  clinicId: number,
+  conversationKey: string,
+  data: Partial<Pick<schema.SpruceConversationStateRow, 'state' | 'aiMutedAt' | 'aiMutedByUserId' | 'lastActivityAt'>>,
+): Promise<schema.SpruceConversationStateRow> {
+  const now = new Date();
+  const rows = await db
+    .insert(schema.spruceConversationState)
+    .values({
+      clinicId,
+      conversationKey,
+      state: data.state ?? "open",
+      aiMutedAt: data.aiMutedAt ?? null,
+      aiMutedByUserId: data.aiMutedByUserId ?? null,
+      lastActivityAt: data.lastActivityAt ?? now,
+    })
+    .onConflictDoUpdate({
+      target: [schema.spruceConversationState.clinicId, schema.spruceConversationState.conversationKey],
+      set: {
+        ...(data.state !== undefined && { state: data.state }),
+        ...(data.aiMutedAt !== undefined && { aiMutedAt: data.aiMutedAt }),
+        ...(data.aiMutedByUserId !== undefined && { aiMutedByUserId: data.aiMutedByUserId }),
+        lastActivityAt: data.lastActivityAt ?? now,
+      },
+    })
+    .returning();
+  return rows[0];
+};
+
+// ── createSpruceOutboundMessage ───────────────────────────────────────────
+(DbStorage.prototype as any).createSpruceOutboundMessage = async function(
+  data: schema.InsertSpruceOutboundMessage,
+): Promise<schema.SpruceOutboundMessage> {
+  const rows = await db
+    .insert(schema.spruceOutboundMessages)
+    .values(data)
+    .returning();
+  return rows[0];
+};
+
+// ── updateSpruceOutboundDeliveryId ────────────────────────────────────────
+(DbStorage.prototype as any).updateSpruceOutboundDeliveryId = async function(
+  id: number,
+  spruceDeliveryId: string,
+): Promise<void> {
+  await db
+    .update(schema.spruceOutboundMessages)
+    .set({ spruceDeliveryId })
+    .where(eq(schema.spruceOutboundMessages.id, id));
 };

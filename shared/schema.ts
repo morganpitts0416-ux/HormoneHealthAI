@@ -2512,6 +2512,40 @@ export type SpruceMessage = typeof spruceMessages.$inferSelect;
 export const insertSpruceMessageSchema = createInsertSchema(spruceMessages).omit({ id: true, receivedAt: true });
 export type InsertSpruceMessage = z.infer<typeof insertSpruceMessageSchema>;
 
+// ── spruce_conversation_state ──────────────────────────────────────────────
+// One row per conversation (per clinic). Tracks the state machine that
+// governs what the system and AI are allowed to do in each thread.
+// States: open | active | staff_takeover | ai_muted | escalated | resolved
+// Once aiMutedAt is set (staff replied), it is sticky until explicitly cleared.
+export const spruceConversationState = pgTable("spruce_conversation_state", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  conversationKey: varchar("conversation_key", { length: 200 }).notNull(),
+  state: varchar("state", { length: 30 }).notNull().default("open"),
+  aiMutedAt: timestamp("ai_muted_at"),
+  aiMutedByUserId: integer("ai_muted_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+}, (t) => ({ uniqConvKey: uniqueIndex("spruce_conv_state_clinic_key").on(t.clinicId, t.conversationKey) }));
+export type SpruceConversationStateRow = typeof spruceConversationState.$inferSelect;
+
+// ── spruce_outbound_messages ───────────────────────────────────────────────
+// Immutable audit log for every message sent FROM ClinIQ into Spruce.
+// Phase 2: staff-only (sentByAI always false). Phase 4+: AI-generated entries.
+export const spruceOutboundMessages = pgTable("spruce_outbound_messages", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  conversationKey: varchar("conversation_key", { length: 200 }).notNull(),
+  messageBody: text("message_body").notNull(),
+  sentByUserId: integer("sent_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  sentByAI: boolean("sent_by_ai").notNull().default(false),
+  workflowRequestId: integer("workflow_request_id").references(() => spruceWorkflowRequests.id, { onDelete: "set null" }),
+  spruceDeliveryId: varchar("spruce_delivery_id", { length: 200 }),
+  sentAt: timestamp("sent_at").defaultNow().notNull(),
+});
+export type SpruceOutboundMessage = typeof spruceOutboundMessages.$inferSelect;
+export const insertSpruceOutboundMessageSchema = createInsertSchema(spruceOutboundMessages).omit({ id: true, sentAt: true });
+export type InsertSpruceOutboundMessage = z.infer<typeof insertSpruceOutboundMessageSchema>;
+
 // ── spruce_workflow_requests ───────────────────────────────────────────────
 // Created when an inbound Spruce message is classified as a known workflow
 // (medication_refill, appointment, etc.).  These surface in the dashboard
