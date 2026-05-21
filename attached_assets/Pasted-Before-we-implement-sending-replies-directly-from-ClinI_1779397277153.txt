@@ -1,0 +1,122 @@
+Before we implement sending replies directly from ClinIQ into Spruce, I want to clearly define the long-term architecture for “Spruce June.”
+
+Important:
+This request is ONLY about the Spruce Inbox / Spruce June communication system.
+
+Do NOT modify or refactor:
+
+* existing ClinIQ June AI assistant
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* patient summaries
+* auth
+* billing
+* sessions
+* scheduling
+* clinic_memberships
+* existing core ClinIQ functionality
+
+Spruce June should remain a completely separate communication/workflow layer from the existing ClinIQ June AI assistant.
+
+Big-picture goal:
+ClinIQ Inbox should become the unified communication workspace where staff can:
+
+* view inbound Spruce conversations
+* see workflow/task extraction
+* open patient charts directly
+* review workflow state/history
+* eventually reply directly from ClinIQ through the Spruce API
+* eventually allow “Spruce June” to participate in approved workflows
+
+However:
+I do NOT want Spruce June to become an unrestricted medical advice chatbot.
+
+The long-term goal is:
+workflow-based conversational assistance that reduces staff burden while keeping humans fully in control.
+
+Key principles:
+
+1. Human-first architecture
+
+* staff can always take over
+* staff replies immediately mute/pause Spruce June participation in that conversation
+* AI never overrides a human
+* all outbound messages are auditable
+* staff remain the final decision-makers
+
+2. Workflow-based conversational AI
+   Spruce June should eventually become fluid and conversational within workflow boundaries such as:
+
+* refill requests
+* appointment reschedules
+* missed-call follow-up
+* intake requests
+* simple operational questions
+* lab status updates
+* membership questions
+* basic routing/triage
+
+But Spruce June should NOT:
+
+* diagnose
+* prescribe independently
+* provide unrestricted medical advice
+* operate outside clinic-approved workflow boundaries
+
+3. Workflow engine foundation
+   I think the next major architecture phase should focus on:
+
+* conversation state tracking
+* workflow step engine
+* human takeover/mute logic
+* AI-generated conversational responses within workflow guardrails
+* clinic-configurable workflow toggles/settings
+* escalation rules
+* audit logging
+
+4. Inbox evolution plan
+   Please think through the safest phased roadmap for Spruce June:
+
+Phase 1:
+
+* inbound-only workflow extraction (current state)
+
+Phase 2:
+
+* staff replies directly from ClinIQ via Spruce API
+* no AI outbound messaging yet
+
+Phase 3:
+
+* AI-generated draft reply suggestions for staff review/editing
+
+Phase 4:
+
+* limited workflow-based Spruce June auto-replies
+* only for approved workflows
+
+Phase 5:
+
+* more conversational Spruce June interactions within clinic-approved workflow boundaries
+
+5. Important UX principle
+   I do NOT want clinics configuring rigid canned auto-text responses line-by-line.
+
+Instead:
+
+* clinics configure workflow rules/boundaries
+* Spruce June dynamically generates natural, empathetic, human-like responses within those boundaries
+
+Examples:
+
+* missed-call follow-up
+* refill intake
+* appointment rescheduling
+* new patient inquiries
+
+The responses should feel fluid and conversational, not robotic.
+
+Before building direct outbound messaging, please help design the safest and cleanest underlying Inbox + workflow architecture for Spruce June specifically.
