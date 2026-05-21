@@ -294,10 +294,9 @@ export default function SpruceInboxPage() {
     setShowAddPatient(true);
   }
 
-  function handlePatientCreated(patient: Patient) {
+  function handlePatientCreated(_patient: Patient) {
     setShowAddPatient(false);
     refetchConvs();
-    setLocation(`/patients/${patient.id}`);
   }
 
   function groupMessagesByDate(msgs: SpruceMessage[]) {
