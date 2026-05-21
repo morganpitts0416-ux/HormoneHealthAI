@@ -1247,3 +1247,15 @@ CREATE TABLE IF NOT EXISTS june_preferences (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- ── Spruce shared-org routing columns (2025 Q2 update) ────────────────────────
+-- spruceReceivingPhone: E.164 phone number for this clinic's Spruce line.
+-- Primary routing key for the global webhook (/api/integrations/spruce/webhook).
+-- Inbound events are matched via internalEndpoint.rawValue → this column → clinic_id.
+ALTER TABLE clinic_spruce_settings
+  ADD COLUMN IF NOT EXISTS spruce_receiving_phone VARCHAR(30);
+
+-- spruceEventDedupeKey: prevents duplicate workflow requests when Spruce retries.
+-- Format: "<eventType>:<objectId>" truncated to 220 chars, scoped per clinic_id.
+ALTER TABLE spruce_messages
+  ADD COLUMN IF NOT EXISTS spruce_event_dedupe_key VARCHAR(220);
