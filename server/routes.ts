@@ -2387,6 +2387,8 @@ Rules:
       const apiToken = rawToken ?? process.env.SPRUCE_API_TOKEN ?? null;
       if (apiToken && conv?.spruceConversationId) {
         try {
+          // Spruce API body format per developer.sprucehealth.com/reference/postconversationmessage:
+          // { body: [{ type: "text", value: "..." }], internal: false }
           const spruceRes = await fetch(
             `https://api.sprucehealth.com/v1/conversations/${conv.spruceConversationId}/messages`,
             {
@@ -2395,23 +2397,33 @@ Rules:
                 "Authorization": `Bearer ${apiToken}`,
                 "Content-Type": "application/json",
               },
-              body: JSON.stringify({ text: body }),
+              body: JSON.stringify({
+                body: [{ type: "text", value: body }],
+                internal: false,
+              }),
             },
           );
+          const spruceRespText = await spruceRes.text().catch(() => "");
           if (spruceRes.ok) {
             spruceDelivered = true;
-            const spruceData = await spruceRes.json().catch(() => ({}));
+            console.log(`[Spruce/reply] Spruce API 200 OK body="${spruceRespText.slice(0, 300)}"`);
+            let spruceData: any = {};
+            try { spruceData = JSON.parse(spruceRespText); } catch {}
             if (spruceData?.id) {
               await storage.updateSpruceOutboundDeliveryId(outbound.id, spruceData.id);
             }
           } else {
-            console.warn(`[Spruce/reply] Spruce API returned ${spruceRes.status}`);
+            console.warn(
+              `[Spruce/reply] Spruce API returned ${spruceRes.status} ${spruceRes.statusText} ` +
+              `conversationId="${conv?.spruceConversationId}" body="${spruceRespText.slice(0, 500)}"`,
+            );
           }
         } catch (err) {
           console.warn("[Spruce/reply] Spruce API delivery failed (non-fatal):", err);
         }
       } else {
-        console.log("[Spruce/reply] No Spruce API token — message stored in ClinIQ only");
+        if (!apiToken) console.log("[Spruce/reply] No Spruce API token — message stored in ClinIQ only");
+        if (!conv?.spruceConversationId) console.log(`[Spruce/reply] No spruceConversationId for key="${key}" — cannot deliver`);
       }
 
       res.json({ ok: true, outboundId: outbound.id, spruceDelivered });
