@@ -1314,6 +1314,8 @@ ALTER TABLE spruce_conversation_state
 -- All new columns default OFF / null — no behaviour change for existing rows.
 ALTER TABLE clinic_spruce_settings
   ADD COLUMN IF NOT EXISTS spruce_june_acknowledgments_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+ALTER TABLE clinic_spruce_settings
+  ADD COLUMN IF NOT EXISTS general_message_acknowledgment_enabled BOOLEAN NOT NULL DEFAULT FALSE;
 
 CREATE TABLE IF NOT EXISTS spruce_workflow_settings (
   id SERIAL PRIMARY KEY,

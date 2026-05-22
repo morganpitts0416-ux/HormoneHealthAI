@@ -43,6 +43,7 @@ interface SpruceSettings {
   isEnabled: boolean;
   spruceAutoReplyEnabled: boolean;
   spruceJuneAcknowledgmentsEnabled: boolean;
+  generalMessageAcknowledgmentEnabled: boolean;
   spruceOrgId: string | null;
   spruceWebhookEndpointId: string | null;
   spruceReceivingPhone: string | null;
@@ -129,6 +130,7 @@ function SpruceManageDialog({
   const [signingSecret, setSigningSecret] = useState("");
   const [apiToken, setApiToken] = useState("");
   const [juneEnabled, setJuneEnabled] = useState(false);
+  const [generalMsgEnabled, setGeneralMsgEnabled] = useState(false);
   const [juneWorkflowsOpen, setJuneWorkflowsOpen] = useState(false);
   const [simulateOpen, setSimulateOpen] = useState(false);
   const [simulateMsg, setSimulateMsg] = useState("");
@@ -165,6 +167,7 @@ function SpruceManageDialog({
       setEndpointId(settings?.spruceWebhookEndpointId ?? "");
       setReceivingPhone(settings?.spruceReceivingPhone ?? "");
       setJuneEnabled(settings?.spruceJuneAcknowledgmentsEnabled ?? false);
+      setGeneralMsgEnabled(settings?.generalMessageAcknowledgmentEnabled ?? false);
     }
   }, [isLoading, settings, open]);
 
@@ -174,6 +177,7 @@ function SpruceManageDialog({
       setSigningSecret("");
       setApiToken("");
       setJuneEnabled(false);
+      setGeneralMsgEnabled(false);
       setJuneWorkflowsOpen(false);
       setSimulateOpen(false);
       setSimulateMsg("");
@@ -202,6 +206,7 @@ function SpruceManageDialog({
         isEnabled: isEnabled && canEnable, // never save enabled=true when prereqs missing
         spruceAutoReplyEnabled: false,      // always off — superseded by Phase 3A
         spruceJuneAcknowledgmentsEnabled: juneEnabled,
+        generalMessageAcknowledgmentEnabled: generalMsgEnabled,
         spruceOrgId: orgId.trim() || null,
         spruceWebhookEndpointId: endpointId.trim() || null,
         spruceReceivingPhone: receivingPhone.trim() || null,
@@ -500,6 +505,23 @@ function SpruceManageDialog({
                   data-testid="toggle-june-enabled"
                 />
               </div>
+
+              {/* General message acknowledgment toggle — shown when June is enabled */}
+              {juneEnabled && (
+                <div className="flex items-start justify-between gap-4 rounded-md border p-3">
+                  <div>
+                    <p className="text-sm font-medium">General message acknowledgment</p>
+                    <p className="text-xs text-muted-foreground mt-0.5 leading-relaxed">
+                      When on, June acknowledges inbound messages that don't match a specific workflow (e.g. "I have a quick question", "I think I have a UTI"). June responds contextually — logistical messages get a simple handoff; clinical concerns get one focused triage question. All safety gates still apply.
+                    </p>
+                  </div>
+                  <Switch
+                    checked={generalMsgEnabled}
+                    onCheckedChange={setGeneralMsgEnabled}
+                    data-testid="toggle-general-msg-ack"
+                  />
+                </div>
+              )}
 
               {/* Per-workflow settings — shown when June is enabled */}
               {juneEnabled && (

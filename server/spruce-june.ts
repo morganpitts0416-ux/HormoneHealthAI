@@ -129,9 +129,12 @@ export async function shouldJuneAcknowledge(
     return `juneTurnCount=${juneTurnCount} >= maxJuneTurns=${maxTurns} — turn limit reached`;
   }
 
-  // Gate 8: Unclassified messages — don't respond
+  // Gate 8: Unclassified messages — only respond when general acknowledgment is enabled
   if (classification.workflow === "unclassified") {
-    return "workflow=unclassified — June does not respond to unclassified messages";
+    if (!(clinicSettings as any).generalMessageAcknowledgmentEnabled) {
+      return "workflow=unclassified — generalMessageAcknowledgmentEnabled=false";
+    }
+    // General acknowledgment is on — allow through; prompt handles safe response
   }
 
   return null; // All gates passed
@@ -402,9 +405,23 @@ export async function generateJuneAcknowledgment(
       ? "You may ask about 1–2 of the MISSING fields above (highest priority first). Do NOT ask about anything already provided."
       : "Do NOT ask any follow-up questions — acknowledge only and confirm the care team will follow up.";
 
+  // Extra guidance for general/unclassified messages so June reads the message
+  // and responds specifically to what was said rather than giving a canned reply.
+  const generalMessageGuidance = workflowKey === "unclassified" ? `
+IMPORTANT — This is a GENERAL PATIENT MESSAGE not matched to a specific workflow.
+- Read the message carefully and respond to what they actually said. Do NOT be generic.
+- Symptom / health concern → acknowledge warmly + ask 1 focused triage question (symptom onset, severity, fever, etc.). Do NOT diagnose, prescribe, or give medical advice.
+- Wants a callback → ask for a good number or time to reach them.
+- Running late / simple logistical info → pass it along gracefully, no question needed.
+- Anything that sounds urgent or like an emergency → include escalation language (call 911 / go to nearest ER immediately).
+- Always end by letting them know the care team will follow up.
+- Keep it brief — 1–3 sentences maximum.
+` : "";
+
   const userPrompt = `Workflow type: ${workflow}
 ${patientRef}
 ${extractionContext}
+${generalMessageGuidance}
 ${followUpInstruction}
 
 Patient's original message:

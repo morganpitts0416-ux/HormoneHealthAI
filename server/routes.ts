@@ -17974,6 +17974,7 @@ IMPORTANT:
         isEnabled: row.isEnabled,
         spruceAutoReplyEnabled: row.spruceAutoReplyEnabled,
         spruceJuneAcknowledgmentsEnabled: row.spruceJuneAcknowledgmentsEnabled,
+        generalMessageAcknowledgmentEnabled: row.generalMessageAcknowledgmentEnabled,
         spruceOrgId: row.spruceOrgId,
         spruceWebhookEndpointId: row.spruceWebhookEndpointId,
         spruceReceivingPhone: row.spruceReceivingPhone,
@@ -18011,6 +18012,9 @@ IMPORTANT:
       if (req.body.spruceJuneAcknowledgmentsEnabled !== undefined) {
         updates.spruceJuneAcknowledgmentsEnabled = Boolean(req.body.spruceJuneAcknowledgmentsEnabled);
       }
+      if (req.body.generalMessageAcknowledgmentEnabled !== undefined) {
+        updates.generalMessageAcknowledgmentEnabled = Boolean(req.body.generalMessageAcknowledgmentEnabled);
+      }
       if (spruceOrgId !== undefined) updates.spruceOrgId = spruceOrgId?.trim() || null;
       if (spruceWebhookEndpointId !== undefined) updates.spruceWebhookEndpointId = spruceWebhookEndpointId?.trim() || null;
       if (spruceReceivingPhone !== undefined) {
@@ -18033,6 +18037,7 @@ IMPORTANT:
         isEnabled: row.isEnabled,
         spruceAutoReplyEnabled: row.spruceAutoReplyEnabled,
         spruceJuneAcknowledgmentsEnabled: row.spruceJuneAcknowledgmentsEnabled,
+        generalMessageAcknowledgmentEnabled: row.generalMessageAcknowledgmentEnabled,
         spruceOrgId: row.spruceOrgId,
         spruceWebhookEndpointId: row.spruceWebhookEndpointId,
         spruceReceivingPhone: row.spruceReceivingPhone,
@@ -18534,10 +18539,15 @@ IMPORTANT:
         // For multi-turn conversations: if a pending workflow request already exists
         // for this conversation, reuse it rather than creating a duplicate so that
         // the june_turn_count increments correctly across turns.
+        // Also creates a request for unclassified/general messages when the clinic
+        // has generalMessageAcknowledgmentEnabled = true, so staff get a task.
+        const createWorkflowRequest =
+          classification.workflow !== "unclassified" ||
+          (clinicSettings as any).generalMessageAcknowledgmentEnabled === true;
         let createdWorkflowRequestId: number | null = null;
         let existingJuneTurnCount = 0;
         if (
-          classification.workflow !== "unclassified" &&
+          createWorkflowRequest &&
           storedMsg !== null
         ) {
           const convKey = spruceConversationId || fromPhone || null;

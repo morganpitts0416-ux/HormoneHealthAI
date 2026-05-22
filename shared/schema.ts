@@ -2450,6 +2450,11 @@ export const clinicSpruceSettings = pgTable("clinic_spruce_settings", {
   // Default OFF — must be explicitly enabled per clinic.
   // When false, June sends NO outbound messages regardless of workflow settings.
   spruceJuneAcknowledgmentsEnabled: boolean("spruce_june_acknowledgments_enabled").notNull().default(false),
+  // When true, June also acknowledges inbound messages that don't match a specific
+  // workflow (e.g. "Hey I have a question", "I think I have a UTI").
+  // Still subject to all safety gates — no diagnosis/prescribing/medical advice.
+  // Default OFF — clinics opt in explicitly.
+  generalMessageAcknowledgmentEnabled: boolean("general_message_acknowledgment_enabled").notNull().default(false),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -2463,6 +2468,7 @@ export const insertClinicSpruceSettingsSchema = createInsertSchema(clinicSpruceS
   spruceReceivingPhone: z.string().trim().max(30).nullable().optional(),
   spruceAutoReplyEnabled: z.boolean().default(false),
   spruceJuneAcknowledgmentsEnabled: z.boolean().default(false),
+  generalMessageAcknowledgmentEnabled: z.boolean().default(false),
   isEnabled: z.boolean().default(false),
 });
 export type InsertClinicSpruceSettings = z.infer<typeof insertClinicSpruceSettingsSchema>;

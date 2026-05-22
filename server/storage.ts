@@ -4704,6 +4704,7 @@ async function _resolveMandatoryReasons(
   clinicId: number,
   data: Partial<Pick<schema.ClinicSpruceSettings,
     "isEnabled" | "spruceAutoReplyEnabled" | "spruceJuneAcknowledgmentsEnabled"
+    | "generalMessageAcknowledgmentEnabled"
     | "spruceOrgId" | "spruceWebhookEndpointId"
     | "spruceReceivingPhone" | "webhookSecretEncrypted" | "apiTokenEncrypted"
   >>,
