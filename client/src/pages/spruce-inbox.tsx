@@ -108,10 +108,23 @@ function getInitials(firstName: string | null, lastName: string | null, phone: s
   return "?";
 }
 
+/** Returns true if the string looks like a phone number / E.164 value.
+ *  Used to prevent an internal endpoint (clinic number) from leaking into
+ *  the patient-facing display name. */
+function looksLikePhone(s: string): boolean {
+  // E.164 (+12223334444), formatted (222-333-4444), or bare digits ≥7 chars
+  return /^\+?[\d\s\-().]{7,}$/.test(s.trim());
+}
+
 function getDisplayName(conv: SpruceConversation): string {
   if (conv.patientFirstName && conv.patientLastName) return `${conv.patientFirstName} ${conv.patientLastName}`;
-  if (conv.spruceContactName) return conv.spruceContactName;
-  return conv.fromPhone ?? conv.spruceConversationId ?? "Unknown contact";
+  if (conv.patientFirstName) return conv.patientFirstName;
+  // spruceContactName may be a staff sender name on outbound rows — skip if it
+  // looks like a phone number (clinic's internal endpoint leaking through).
+  if (conv.spruceContactName && !looksLikePhone(conv.spruceContactName)) return conv.spruceContactName;
+  // fromPhone here is always the *patient* phone after the storage fix.
+  if (conv.fromPhone) return conv.fromPhone;
+  return "Unknown contact";
 }
 
 function parseNameParts(name: string | null): { firstName: string; lastName: string } | null {
@@ -796,11 +809,20 @@ export default function SpruceInboxPage() {
                 {getInitials(selectedConv.patientFirstName, selectedConv.patientLastName, selectedConv.fromPhone)}
               </div>
               <div>
-                <h2 className="text-sm font-semibold text-[#1c2414] leading-tight">
-                  {getDisplayName(selectedConv)}
-                </h2>
-                {selectedConv.fromPhone && (
-                  <p className="text-xs text-[#7a8060] font-mono leading-tight">{selectedConv.fromPhone}</p>
+                {convsLoading ? (
+                  <>
+                    <div className="h-3.5 w-32 rounded bg-[#e5e2dc] animate-pulse mb-1" />
+                    <div className="h-2.5 w-24 rounded bg-[#eceae5] animate-pulse" />
+                  </>
+                ) : (
+                  <>
+                    <h2 className="text-sm font-semibold text-[#1c2414] leading-tight">
+                      {getDisplayName(selectedConv)}
+                    </h2>
+                    {selectedConv.fromPhone && (
+                      <p className="text-xs text-[#7a8060] font-mono leading-tight">{selectedConv.fromPhone}</p>
+                    )}
+                  </>
                 )}
               </div>
             </div>

@@ -5048,21 +5048,40 @@ export interface SpruceConversationMessageRow {
     .where(eq(schema.spruceConversationState.clinicId, clinicId));
   const stateByKey = new Map(stateRows.map(r => [r.conversationKey, r]));
 
-  // Group by conversation key (conversationId → phone → message id fallback)
+  // Group by conversation key (conversationId → phone → message id fallback).
+  //
+  // Direction-aware phone extraction:
+  //   inbound_patient  → fromPhone = patient, toPhone = clinic
+  //   outbound_staff   → fromPhone = clinic,  toPhone = patient
+  //
+  // We always want the *patient* phone for grouping and display, so we flip
+  // outbound rows.  spruceContactName on outbound rows contains the staff
+  // sender name (not the patient's contact name from Spruce) so we never
+  // inherit it for patient-identity purposes.
+  const isOutboundRow = (dir: string | null) => dir === 'outbound_staff';
+
+  const patientPhoneOf = (row: { fromPhone: string | null; toPhone: string | null; messageDirection: string | null }) =>
+    isOutboundRow(row.messageDirection) ? row.toPhone : row.fromPhone;
+
   const map = new Map<string, SpruceConversationSummary>();
   for (const row of rows) {
-    const key = row.spruceConversationId || row.fromPhone || `msg_${row.id}`;
+    const patientPhone = patientPhoneOf(row);
+    const key = row.spruceConversationId || patientPhone || `msg_${row.id}`;
     if (!map.has(key)) {
       const stateRow = stateByKey.get(key);
       map.set(key, {
         conversationKey: key,
         spruceConversationId: row.spruceConversationId,
-        fromPhone: row.fromPhone,
-        toPhone: row.toPhone,
+        // Always store the external/patient phone in fromPhone so the UI
+        // never accidentally displays the clinic's internal endpoint.
+        fromPhone: patientPhone,
+        toPhone: isOutboundRow(row.messageDirection) ? row.fromPhone : row.toPhone,
         patientId: row.patientId,
         patientFirstName: row.patientFirstName ?? null,
         patientLastName: row.patientLastName ?? null,
-        spruceContactName: row.spruceContactName ?? null,
+        // Only inherit spruceContactName from inbound/unknown rows —
+        // outbound rows carry the staff sender name, not the patient's.
+        spruceContactName: !isOutboundRow(row.messageDirection) ? (row.spruceContactName ?? null) : null,
         lastMessage: row.messageBody,
         lastMessageDirection: row.messageDirection,
         lastMessageAt: row.receivedAt,
@@ -5081,8 +5100,14 @@ export interface SpruceConversationMessageRow {
         existing.patientFirstName = row.patientFirstName ?? null;
         existing.patientLastName = row.patientLastName ?? null;
       }
-      // contact name: take the first non-null value found
-      if (!existing.spruceContactName && row.spruceContactName) {
+      // fromPhone: correct to patient phone if the initial row was outbound
+      // and we now have a better inbound row with the real patient number.
+      if (!existing.fromPhone && patientPhone) {
+        existing.fromPhone = patientPhone;
+      }
+      // contact name: only inherit from inbound/unknown rows (outbound rows
+      // carry staff names, not the patient's Spruce contact name).
+      if (!existing.spruceContactName && row.spruceContactName && !isOutboundRow(row.messageDirection)) {
         existing.spruceContactName = row.spruceContactName;
       }
     }
