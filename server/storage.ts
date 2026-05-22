@@ -1282,29 +1282,64 @@ export class DbStorage implements IStorage {
       .limit(1);
     const hasPortalAccount = portalAccount.length > 0;
 
-    // 2. Most recent *real* Spruce message for this patient (system events with
-    //    messageDirection='unknown' or 'spruce_system_event' are excluded — they
-    //    must not count as a conversation or influence channel selection).
-    const spruceRows = await db
+    // 2. Most recent *real* Spruce message for this patient.
+    //    First try by patientId (fast path — works when phone backfill has run).
+    //    If nothing found, fall back to phone-number matching so clinics that haven't
+    //    completed the backfill still see the correct channel default.
+    //    System events (unknown / spruce_system_event) are always excluded.
+    const spruceBaseConditions = and(
+      eq(schema.spruceMessages.clinicId, clinicId),
+      ne(schema.spruceMessages.messageDirection as any, 'unknown'),
+      ne(schema.spruceMessages.messageDirection as any, 'spruce_system_event'),
+    );
+
+    let latestSpruce: { spruceConversationId: string | null; fromPhone: string | null } | null = null;
+
+    const byIdRows = await db
       .select({
         spruceConversationId: schema.spruceMessages.spruceConversationId,
         fromPhone: schema.spruceMessages.fromPhone,
-        receivedAt: schema.spruceMessages.receivedAt,
-        messageDirection: schema.spruceMessages.messageDirection,
       })
       .from(schema.spruceMessages)
-      .where(
-        and(
-          eq(schema.spruceMessages.clinicId, clinicId),
-          eq(schema.spruceMessages.patientId, patientId),
-          ne(schema.spruceMessages.messageDirection as any, 'unknown'),
-          ne(schema.spruceMessages.messageDirection as any, 'spruce_system_event'),
-        )
-      )
+      .where(and(spruceBaseConditions, eq(schema.spruceMessages.patientId, patientId)))
       .orderBy(desc(schema.spruceMessages.receivedAt))
       .limit(1);
+    latestSpruce = byIdRows[0] ?? null;
 
-    const latestSpruce = spruceRows[0] ?? null;
+    // Phone-number fallback — used when patientId is not stamped on the Spruce row
+    if (!latestSpruce) {
+      const patientPhone = await db
+        .select({
+          phone: schema.patients.phone,
+          messagingPhone: schema.patients.messagingPhone,
+        })
+        .from(schema.patients)
+        .where(eq(schema.patients.id, patientId))
+        .limit(1);
+      const rawPhone = patientPhone[0]?.messagingPhone || patientPhone[0]?.phone || null;
+      if (rawPhone) {
+        const digits = rawPhone.replace(/\D/g, '');
+        const last10 = digits.slice(-10);
+        if (last10.length >= 7) {
+          const byPhoneRows = await db
+            .select({
+              spruceConversationId: schema.spruceMessages.spruceConversationId,
+              fromPhone: schema.spruceMessages.fromPhone,
+            })
+            .from(schema.spruceMessages)
+            .where(
+              and(
+                spruceBaseConditions,
+                sql`regexp_replace(coalesce(${schema.spruceMessages.fromPhone}, ''), '\\D', '', 'g') LIKE ${'%' + last10}`,
+              ),
+            )
+            .orderBy(desc(schema.spruceMessages.receivedAt))
+            .limit(1);
+          latestSpruce = byPhoneRows[0] ?? null;
+        }
+      }
+    }
+
     const hasSpruceConversation = latestSpruce !== null;
     const spruceConversationKey = latestSpruce
       ? (latestSpruce.spruceConversationId ?? latestSpruce.fromPhone ?? null)
@@ -1323,52 +1358,18 @@ export class DbStorage implements IStorage {
     if (hasPortalAccount) availableChannels.push('portal');
     if (hasSpruceConversation) availableChannels.push('spruce');
 
-    // 5. Determine active channel (preference → most recently used → first available)
-    //    "Most recently used" = most recent real message in EITHER direction on each
-    //    channel.  Comparing only patient-inbound timestamps was incorrect: if a staff
-    //    member's last action was a Spruce reply, that channel should still win even
-    //    though no new patient Spruce message has arrived yet.
+    // 5. Determine active channel.
+    //    Priority: explicit patient preference → Spruce (when available) → portal → first available.
+    //    Spruce is preferred by default because most patients message via Spruce SMS and
+    //    replies should follow the channel the patient is already using.
+    //    The patient (or clinician) can override via primaryCommunicationChannel.
     let activeChannel: 'portal' | 'spruce' | null = null;
     if (primaryPref && availableChannels.includes(primaryPref)) {
       activeChannel = primaryPref;
-    } else if (availableChannels.length > 0) {
-      // Most recent real portal message (any sender, real content — excludes internal notes)
-      const latestPortalReal = await db
-        .select({ createdAt: schema.portalMessages.createdAt })
-        .from(schema.portalMessages)
-        .where(
-          and(
-            eq(schema.portalMessages.patientId, patientId),
-            eq(schema.portalMessages.visibility as any, 'patient_visible'),
-            eq(schema.portalMessages.messageType as any, 'message'),
-          )
-        )
-        .orderBy(desc(schema.portalMessages.createdAt))
-        .limit(1);
-
-      // Most recent real Spruce message (inbound or outbound staff — excludes unknown/system)
-      const latestSpruceReal = await db
-        .select({ receivedAt: schema.spruceMessages.receivedAt })
-        .from(schema.spruceMessages)
-        .where(
-          and(
-            eq(schema.spruceMessages.clinicId, clinicId),
-            eq(schema.spruceMessages.patientId, patientId),
-            ne(schema.spruceMessages.messageDirection as any, 'unknown'),
-            ne(schema.spruceMessages.messageDirection as any, 'spruce_system_event'),
-          )
-        )
-        .orderBy(desc(schema.spruceMessages.receivedAt))
-        .limit(1);
-
-      const portalTs = latestPortalReal[0]?.createdAt?.getTime() ?? 0;
-      const spruceTs = latestSpruceReal[0]?.receivedAt?.getTime() ?? 0;
-
-      if (hasPortalAccount && hasSpruceConversation) {
-        activeChannel = spruceTs >= portalTs ? 'spruce' : 'portal';
-      } else {
-        activeChannel = availableChannels[0];
-      }
+    } else if (hasSpruceConversation) {
+      activeChannel = 'spruce';
+    } else {
+      activeChannel = availableChannels[0] ?? null;
     }
 
     return {

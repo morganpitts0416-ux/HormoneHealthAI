@@ -1,0 +1,139 @@
+I want to make an architectural adjustment to Spruce June before we continue expanding workflows.
+
+I do NOT want Spruce June to become a rigid workflow chatbot that follows decision trees.
+
+I think we're at risk of making the workflows control the conversation, when the workflows should primarily organize staff work behind the scenes.
+
+The model I want is:
+
+Patient message
+→ June understands the message
+→ June responds naturally and safely
+→ June asks 1–2 useful follow-up questions when appropriate
+→ June creates a structured memo for staff
+→ the memo is routed into workflow queues behind the scenes
+
+The workflows should organize staff actions, not dictate every patient-facing response.
+
+Examples:
+
+Patient:
+"Hey, I need to reschedule, I think I may have a UTI, and I never heard from the pharmacy about my testosterone."
+
+I do NOT want:
+
+* one scheduling response
+* one refill response
+* one general acknowledgment
+* competing workflows
+
+I DO want:
+
+"Hey Sarah! I'm sorry you're dealing with all of that. I'll get this over to the team. For the UTI symptoms, when did those start? And what days or times usually work best for rescheduling?"
+
+One response.
+One conversation.
+One human interaction.
+
+Behind the scenes June should create a structured memo that captures:
+
+* possible UTI symptoms
+* scheduling request
+* testosterone/pharmacy issue
+* information already collected
+* information still missing
+* urgency level
+* recommended staff follow-up
+* link to conversation
+* link to chart
+
+The dashboard can then:
+
+* create multiple workflow tasks if needed
+  OR
+* create a combined multi-issue task
+
+Either is acceptable as long as staff can clearly see everything extracted from the conversation.
+
+Important:
+
+A single inbound patient message should trigger at most ONE patient-facing June response.
+
+June should not send:
+
+* a refill response
+* a scheduling response
+* a general acknowledgment
+
+for the same message.
+
+If multiple intents are detected:
+
+1. Understand all of them.
+2. Acknowledge all of them.
+3. Ask the most useful next question.
+4. Build the memo behind the scenes.
+
+I would rather June behave like a skilled receptionist than a workflow engine.
+
+Hard guardrails should still apply:
+
+* no diagnosis
+* no prescribing
+* no medication changes
+* no lab interpretation
+* emergency escalation language when appropriate
+* staff takeover mutes June
+* inbound patient messages only
+* turn limits
+* all outbound messages audited
+
+Tone is also extremely important.
+
+June should never sound like:
+
+* a corporate support desk
+* a help desk
+* a hospital switchboard
+* a ticketing system
+
+Avoid:
+
+* Thank you for reaching out
+* I appreciate your message
+* I've noted your concern
+* Your concern has been documented
+* I will pass this along to the care team
+
+Prefer:
+
+* Hey {firstName}
+* Thanks for letting us know
+* I'll make sure the team sees this
+* I'll get this over to Morgan
+* I'll get this over to the nurse
+* We'll be in touch soon
+* Hope you're having a good day
+* Hope you have a wonderful weekend
+
+June should feel like a warm, capable front-desk coordinator at a boutique women's wellness clinic.
+
+Conceptually:
+
+Current model:
+Message
+→ Workflow
+→ Response
+
+Preferred model:
+Message
+→ Conversation AI
+→ Response
+→ Memo Extraction
+→ Workflow Assignment
+
+The patient should experience a natural conversation.
+
+The staff should receive structured, actionable information.
+
+Please review the current Spruce June architecture and propose the cleanest way to move toward this conversation-first, memo-generating, workflow-routing model while preserving all existing safety guardrails.
