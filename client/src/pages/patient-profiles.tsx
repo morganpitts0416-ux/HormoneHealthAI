@@ -2859,69 +2859,111 @@ export default function PatientProfiles() {
                                 ? "ClinIQ Portal"
                                 : deliveryCh === 'spruce' ? "Spruce SMS" : "Spruce SMS";
 
+                              // Derive 1-2 letter initials from senderLabel
+                              const initials = (() => {
+                                const label = item.senderLabel ?? '';
+                                if (!label || label === 'Staff' || label === 'System') return 'ST';
+                                if (label === 'June AI') return 'AI';
+                                if (label === 'Patient') return 'PT';
+                                const parts = label.replace(/^(Dr\.|NP|PA|RN|MD|DO)\s*/i, '').trim().split(/\s+/);
+                                return parts.length >= 2
+                                  ? (parts[0][0] + parts[parts.length - 1][0]).toUpperCase()
+                                  : label.slice(0, 2).toUpperCase();
+                              })();
+
+                              const avatarBg = isOutbound
+                                ? effectivelyViaPortal ? "#2a4a1a" : item.sentByAI ? "#3a2a5a" : "#1a3a5a"
+                                : "#a08060";
+
                               return (
                                 <div
                                   key={item.id}
-                                  className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}
+                                  className={`flex items-end gap-1.5 ${isOutbound ? "justify-end" : "justify-start"}`}
                                   data-testid={`timeline-item-${item.id}`}
                                 >
-                                  <div
-                                    className="max-w-[78%] rounded-xl px-3 py-2 text-xs"
-                                    style={
-                                      isOutbound
-                                        ? effectivelyViaPortal
-                                          ? { backgroundColor: "#3a5a2a", color: "#f0ede8" }
-                                          : item.sentByAI
-                                            ? { backgroundColor: "#5a3a7a", color: "#f5f0ff" }
-                                            : { backgroundColor: "#2a4a6a", color: "#e8f0f8" }
-                                        : effectivelyViaPortal
-                                          ? { backgroundColor: "#f0ede8", color: "#1c1c14" }
-                                          : { backgroundColor: "#e4eef8", color: "#1a2a3a" }
-                                    }
-                                  >
-                                    {/* Channel badge + sender */}
-                                    <div className="flex items-center gap-1 mb-1 flex-wrap">
-                                      <span
-                                        className="text-[9px] font-semibold px-1.5 py-0 rounded leading-[1.6]"
-                                        style={channelBadgeStyle}
-                                      >
-                                        {channelLabel}
-                                      </span>
-                                      {item.sentByAI && (
-                                        <span className="text-[9px] font-semibold px-1 py-0 rounded leading-[1.6]" style={{ backgroundColor: "#e8d8f8", color: "#5a3a7a" }}>
-                                          June AI
-                                        </span>
-                                      )}
-                                      {!isOutbound && (
-                                        <span className="text-[10px] font-medium" style={{ opacity: 0.75 }}>
-                                          {item.senderLabel}
-                                        </span>
-                                      )}
+                                  {/* Inbound: avatar left */}
+                                  {!isOutbound && (
+                                    <div
+                                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
+                                      style={{ backgroundColor: avatarBg, color: "#f5f0e8" }}
+                                      title={item.senderLabel ?? ''}
+                                    >
+                                      {initials}
                                     </div>
-                                    {/* Body */}
-                                    <p className="whitespace-pre-wrap leading-snug">{item.body}</p>
-                                    {/* Footer */}
-                                    <div className="flex items-center justify-between gap-2 mt-1">
-                                      <span className="text-[10px]" style={{ opacity: 0.6 }}>
-                                        {ts}
-                                        {!isOutbound && !item.readAt && isPortal && (
-                                          <span className="ml-1.5 font-medium" style={{ color: "#c07020", opacity: 1 }}>Unread</span>
-                                        )}
-                                      </span>
-                                      {item.source === 'spruce' && item.conversationKey && (
-                                        <Link href={`/spruce-inbox?key=${encodeURIComponent(item.conversationKey)}`}>
-                                          <span
-                                            className="text-[9px] flex items-center gap-0.5 hover:underline"
-                                            style={{ opacity: 0.7 }}
-                                            title="Open conversation in Spruce Inbox"
-                                          >
-                                            <FolderOpen className="w-2.5 h-2.5" />
-                                            Inbox
+                                  )}
+
+                                  <div className="flex flex-col max-w-[74%]" style={{ alignItems: isOutbound ? 'flex-end' : 'flex-start' }}>
+                                    <div
+                                      className="rounded-xl px-3 py-2 text-xs w-full"
+                                      style={
+                                        isOutbound
+                                          ? effectivelyViaPortal
+                                            ? { backgroundColor: "#3a5a2a", color: "#f0ede8" }
+                                            : item.sentByAI
+                                              ? { backgroundColor: "#5a3a7a", color: "#f5f0ff" }
+                                              : { backgroundColor: "#2a4a6a", color: "#e8f0f8" }
+                                          : effectivelyViaPortal
+                                            ? { backgroundColor: "#f0ede8", color: "#1c1c14" }
+                                            : { backgroundColor: "#e4eef8", color: "#1a2a3a" }
+                                      }
+                                    >
+                                      {/* Channel badge */}
+                                      <div className="flex items-center gap-1 mb-1 flex-wrap">
+                                        <span
+                                          className="text-[9px] font-semibold px-1.5 py-0 rounded leading-[1.6]"
+                                          style={channelBadgeStyle}
+                                        >
+                                          {channelLabel}
+                                        </span>
+                                        {item.sentByAI && (
+                                          <span className="text-[9px] font-semibold px-1 py-0 rounded leading-[1.6]" style={{ backgroundColor: "#e8d8f8", color: "#5a3a7a" }}>
+                                            June AI
                                           </span>
-                                        </Link>
-                                      )}
+                                        )}
+                                      </div>
+                                      {/* Body */}
+                                      <p className="whitespace-pre-wrap leading-snug">{item.body}</p>
+                                      {/* Timestamp + unread */}
+                                      <div className="flex items-center justify-between gap-2 mt-1">
+                                        <span className="text-[10px]" style={{ opacity: 0.6 }}>
+                                          {ts}
+                                          {!isOutbound && !item.readAt && isPortal && (
+                                            <span className="ml-1.5 font-medium" style={{ color: "#c07020", opacity: 1 }}>Unread</span>
+                                          )}
+                                        </span>
+                                        {item.source === 'spruce' && item.conversationKey && (
+                                          <Link href={`/spruce-inbox?key=${encodeURIComponent(item.conversationKey)}`}>
+                                            <span
+                                              className="text-[9px] flex items-center gap-0.5 hover:underline"
+                                              style={{ opacity: 0.7 }}
+                                              title="Open in Spruce Inbox"
+                                            >
+                                              <FolderOpen className="w-2.5 h-2.5" />
+                                              Inbox
+                                            </span>
+                                          </Link>
+                                        )}
+                                      </div>
                                     </div>
+                                    {/* Sender name below bubble */}
+                                    <span
+                                      className="text-[9px] mt-0.5 px-1"
+                                      style={{ color: "#9a9a8a" }}
+                                    >
+                                      {item.senderLabel}
+                                    </span>
                                   </div>
+
+                                  {/* Outbound: avatar right */}
+                                  {isOutbound && (
+                                    <div
+                                      className="flex-shrink-0 w-6 h-6 rounded-full flex items-center justify-center text-[9px] font-bold"
+                                      style={{ backgroundColor: avatarBg, color: "#f5f0e8" }}
+                                      title={item.senderLabel ?? ''}
+                                    >
+                                      {initials}
+                                    </div>
+                                  )}
                                 </div>
                               );
                             })}
@@ -2996,38 +3038,36 @@ export default function PatientProfiles() {
                                 })}
                               </div>
                             )}
-                            {/* Message input */}
-                            {(replyContext?.availableChannels ?? []).length === 0 && !replyContext ? null : (
-                              (replyContext?.availableChannels ?? []).length === 0 ? (
-                                <p className="text-[10px] italic" style={{ color: "#9a9a8a" }}>
-                                  No messaging channel linked for this patient. Invite them to the portal or connect a Spruce conversation.
-                                </p>
-                              ) : (
-                                <div className="flex items-end gap-2">
-                                  <textarea
-                                    className="flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-xs min-h-[32px] max-h-20 outline-none focus:ring-1 focus:ring-ring"
-                                    placeholder={activeChannel === 'spruce' ? "Message via Spruce SMS…" : "Message this patient…"}
-                                    rows={1}
-                                    value={messageDraft}
-                                    onChange={(e) => setMessageDraft(e.target.value)}
-                                    onKeyDown={(e) => {
-                                      if (e.key === 'Enter' && !e.shiftKey) {
-                                        e.preventDefault();
-                                        if (messageDraft.trim()) replyMutation.mutate({ body: messageDraft.trim(), channel: activeChannel });
-                                      }
-                                    }}
-                                    data-testid="input-clinician-message"
-                                  />
-                                  <Button
-                                    size="icon"
-                                    onClick={() => { if (messageDraft.trim()) replyMutation.mutate({ body: messageDraft.trim(), channel: activeChannel }); }}
-                                    disabled={!messageDraft.trim() || replyMutation.isPending}
-                                    data-testid="button-clinician-send-message"
-                                  >
-                                    <Send className="w-3.5 h-3.5" />
-                                  </Button>
-                                </div>
-                              )
+                            {/* Message input — always visible; channel picker appears once replyContext loads */}
+                            {replyContext && (replyContext.availableChannels ?? []).length === 0 ? (
+                              <p className="text-[10px] italic py-1" style={{ color: "#9a9a8a" }}>
+                                No messaging channel linked. Invite the patient to the portal or connect a Spruce conversation.
+                              </p>
+                            ) : (
+                              <div className="flex items-end gap-2">
+                                <textarea
+                                  className="flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-xs min-h-[52px] max-h-28 outline-none focus:ring-1 focus:ring-ring"
+                                  placeholder={activeChannel === 'spruce' ? "Message via Spruce SMS…" : "Message this patient…"}
+                                  rows={2}
+                                  value={messageDraft}
+                                  onChange={(e) => setMessageDraft(e.target.value)}
+                                  onKeyDown={(e) => {
+                                    if (e.key === 'Enter' && !e.shiftKey) {
+                                      e.preventDefault();
+                                      if (messageDraft.trim()) replyMutation.mutate({ body: messageDraft.trim(), channel: activeChannel });
+                                    }
+                                  }}
+                                  data-testid="input-clinician-message"
+                                />
+                                <Button
+                                  size="icon"
+                                  onClick={() => { if (messageDraft.trim()) replyMutation.mutate({ body: messageDraft.trim(), channel: activeChannel }); }}
+                                  disabled={!messageDraft.trim() || replyMutation.isPending}
+                                  data-testid="button-clinician-send-message"
+                                >
+                                  {replyMutation.isPending ? <RefreshCw className="w-3.5 h-3.5 animate-spin" /> : <Send className="w-3.5 h-3.5" />}
+                                </Button>
+                              </div>
                             )}
                           </>
                         ) : (
