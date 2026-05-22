@@ -1,0 +1,158 @@
+I agree with the proposed Phase 2 direction and would like to proceed using Option A (thin routing layer). Please keep the existing channel-specific tables and avoid creating a canonical communications table at this stage.
+
+However, I want to clarify the long-term communication architecture before building reply functionality.
+
+Core Philosophy
+
+I do not want staff thinking:
+
+"Do I reply through Spruce or Portal?"
+
+I want staff thinking:
+
+"I'm replying to the patient."
+
+The system should determine the delivery channel while maintaining a single communication history.
+
+Long-Term Model
+
+* Patient Portal Communication Timeline = complete longitudinal communication history
+* Spruce = SMS delivery channel
+* ClinIQ Inbox = clinic-wide communication workspace
+* Patient Chart = patient-specific communication workspace
+
+The Inbox and Patient Chart should both read from the same underlying communication model and remain synchronized automatically.
+
+Unified Communication Timeline
+
+The patient profile should continue evolving toward a single chronological communication timeline containing:
+
+* Spruce SMS
+* Portal messages
+* Staff replies
+* Spruce June messages
+* System communication events
+* Future communication channels
+
+All displayed chronologically with source labels.
+
+Reply Functionality
+
+I would like staff to be able to reply directly from the Patient Chart as well as from the Inbox.
+
+Default behavior:
+
+* Use the most recently active communication channel.
+* Clearly display:
+  "Replying via Spruce SMS"
+  or
+  "Replying via ClinIQ Portal"
+
+If only one channel exists, no channel selector is needed.
+
+If multiple channels exist, allow staff to switch channels.
+
+Portal as the Source of Truth
+
+I think the patient portal should become the complete patient-visible communication history.
+
+When a staff member replies:
+
+1. The reply should ALWAYS be saved into the unified communication timeline.
+2. The reply should ALWAYS appear in the patient’s portal communication history.
+3. The reply should only be transmitted externally through Spruce if Spruce is the active or selected delivery channel.
+
+Example:
+
+Patient texts via Spruce:
+"Can I get a refill?"
+
+Staff replies from ClinIQ:
+"Which pharmacy would you like us to use?"
+
+Result:
+
+* Message appears in the patient communication timeline.
+* Message appears in the patient portal history.
+* Message is delivered through Spruce SMS because Spruce was the active channel.
+
+Portal Reply Example
+
+Patient sends a Portal message.
+
+Staff replies.
+
+Result:
+
+* Message appears in the communication timeline.
+* Message appears in the portal.
+* No Spruce SMS is sent.
+
+Important Distinction
+
+I do NOT want every portal reply automatically sent via Spruce.
+
+I do NOT want every Spruce reply creating duplicate notifications.
+
+I DO want:
+
+* one communication history
+* one timeline
+* one place for staff to review patient communications
+* channel-specific delivery when appropriate
+* visible source labels
+* complete audit history
+
+Clinical Workflow Goal
+
+When I am inside the patient chart reviewing:
+
+* labs
+* encounter notes
+* medications
+* monitoring data
+* prior communications
+
+I should be able to respond to the patient without leaving the chart.
+
+The Inbox remains the clinic-wide communication workspace.
+
+The Patient Chart becomes the patient-specific communication workspace.
+
+Future Consideration
+
+Please also think through adding a future patient-level preference field:
+
+primaryCommunicationChannel
+
+Examples:
+
+* Spruce SMS
+* Portal
+* Email
+
+This is not required for Phase 2 but should be considered when designing the architecture.
+
+Safety / Scope
+
+Keep this isolated to:
+
+* Inbox
+* Portal messaging
+* Spruce messaging
+* Communication timeline architecture
+
+Do NOT modify:
+
+* ClinIQ June
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* auth
+* billing
+* sessions
+* unrelated core ClinIQ systems
+
+Before implementation, please review the existing Portal messaging architecture and propose the cleanest technical approach for making the Patient Portal communication history the longitudinal source of truth while preserving channel-specific delivery behavior.
