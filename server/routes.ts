@@ -2546,6 +2546,32 @@ Rules:
     }
   });
 
+  // POST /api/spruce/conversations/:key/link-patient
+  // Manually links all messages in a conversation to an existing patient.
+  // Body: { patientId: number }
+  app.post("/api/spruce/conversations/:key/link-patient", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const key = decodeURIComponent(req.params.key);
+      const { patientId } = req.body;
+      if (!patientId || typeof patientId !== "number") {
+        return res.status(400).json({ error: "patientId is required" });
+      }
+      // Verify the patient belongs to this clinic
+      const patient = await storage.getPatient(patientId);
+      if (!patient || patient.clinicId !== clinicId) {
+        return res.status(404).json({ error: "Patient not found in this clinic" });
+      }
+      const result = await storage.linkSpruceConversationToPatient(clinicId, key, patientId);
+      console.log(`[Spruce/link-patient] Linked key="${key}" → patientId=${patientId} (${result.updatedMessages} messages updated)`);
+      res.json({ ok: true, updatedMessages: result.updatedMessages, patientId });
+    } catch (err) {
+      console.error("[Spruce/link-patient] Error:", err);
+      res.status(500).json({ error: "Failed to link patient" });
+    }
+  });
+
   // GET /api/spruce/patients/:patientId/conversations
   // Returns all Spruce conversations linked to a specific patient (no archive filter).
   // Used by the patient profile "Spruce History" section.

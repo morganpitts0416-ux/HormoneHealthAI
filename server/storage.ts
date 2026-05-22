@@ -393,6 +393,8 @@ export interface IStorage {
   // Conversation state machine
   getSpruceConversationState(clinicId: number, conversationKey: string): Promise<schema.SpruceConversationStateRow | null>;
   upsertSpruceConversationState(clinicId: number, conversationKey: string, data: Partial<Pick<schema.SpruceConversationStateRow, 'state' | 'aiMutedAt' | 'aiMutedByUserId' | 'lastActivityAt'>>): Promise<schema.SpruceConversationStateRow>;
+  // Manually link all messages in a conversation to a specific patient
+  linkSpruceConversationToPatient(clinicId: number, conversationKey: string, patientId: number): Promise<{ updatedMessages: number }>;
   // Archive a conversation (Phase 3)
   archiveSpruceConversation(clinicId: number, conversationKey: string, archivedByUserId: number | null, source: 'cliniq' | 'spruce' | 'sync', spruceArchiveSyncedAt?: Date | null, spruceArchiveError?: string | null): Promise<schema.SpruceConversationStateRow>;
   // Outbound message audit log
@@ -4928,6 +4930,33 @@ export interface SpruceConversationMessageRow {
       isNull(schema.spruceWorkflowRequests.patientId),
       sql`regexp_replace(coalesce(${schema.spruceWorkflowRequests.patientPhone}, ''), '\\D', '', 'g') LIKE ${'%' + last10}`,
     ));
+};
+
+// ── linkSpruceConversationToPatient ───────────────────────────────────────
+// Manually links all messages in a conversation to a specific patient.
+// Used when auto-matching fails and the clinician knows which patient this is.
+// Overwrites any existing patientId on those messages (intentional override).
+(DbStorage.prototype as any).linkSpruceConversationToPatient = async function(
+  clinicId: number,
+  conversationKey: string,
+  patientId: number,
+): Promise<{ updatedMessages: number }> {
+  // conversationKey is either a spruceConversationId or a fromPhone
+  const result = await db
+    .update(schema.spruceMessages)
+    .set({ patientId })
+    .where(and(
+      eq(schema.spruceMessages.clinicId, clinicId),
+      or(
+        eq(schema.spruceMessages.spruceConversationId, conversationKey),
+        and(
+          isNull(schema.spruceMessages.spruceConversationId),
+          eq(schema.spruceMessages.fromPhone, conversationKey),
+        ),
+      ),
+    ))
+    .returning({ id: schema.spruceMessages.id });
+  return { updatedMessages: result.length };
 };
 
 // ── archiveSpruceConversation ─────────────────────────────────────────────

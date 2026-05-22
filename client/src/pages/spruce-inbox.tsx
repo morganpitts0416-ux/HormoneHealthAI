@@ -311,6 +311,8 @@ export default function SpruceInboxPage() {
   const [sort] = useState<"newest" | "oldest">("newest");
   const [showAddPatient, setShowAddPatient] = useState(false);
   const [addPatientInit, setAddPatientInit] = useState<{ firstName?: string; lastName?: string; phone?: string }>({});
+  const [showLinkPatient, setShowLinkPatient] = useState(false);
+  const [linkSearch, setLinkSearch] = useState("");
   const [replyText, setReplyText] = useState("");
   const [optimisticMsgs, setOptimisticMsgs] = useState<SpruceMessage[]>([]);
   const threadBottomRef = useRef<HTMLDivElement>(null);
@@ -432,6 +434,51 @@ export default function SpruceInboxPage() {
       setSelectedKey(conversations[0].conversationKey);
     }
   }, [conversations, selectedKey]);
+
+  // ── Patient search for manual linking ───────────────────────────────────
+  interface PatientSearchResult {
+    id: number;
+    firstName: string | null;
+    lastName: string | null;
+    dateOfBirth: string | null;
+    phone: string | null;
+  }
+  const { data: patientSearchResults = [] } = useQuery<PatientSearchResult[]>({
+    queryKey: ["/api/patients/search", linkSearch],
+    queryFn: async () => {
+      const q = linkSearch.trim();
+      if (q.length < 2) return [];
+      const res = await fetch(`/api/patients/search?q=${encodeURIComponent(q)}`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: showLinkPatient && linkSearch.trim().length >= 2,
+  });
+
+  // ── Link-patient mutation ────────────────────────────────────────────────
+  const linkPatientMutation = useMutation({
+    mutationFn: async ({ key, patientId }: { key: string; patientId: number }) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/spruce/conversations/${encodeURIComponent(key)}/link-patient`,
+        { patientId },
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to link patient");
+      }
+      return res.json();
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["/api/spruce/conversations"] });
+      setShowLinkPatient(false);
+      setLinkSearch("");
+      toast({ title: "Patient linked", description: `${data.updatedMessages} message${data.updatedMessages !== 1 ? "s" : ""} updated.` });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Link failed", description: err.message });
+    },
+  });
 
   // ── Archive mutation ────────────────────────────────────────────────────
   const archiveMutation = useMutation({
@@ -777,7 +824,7 @@ export default function SpruceInboxPage() {
                 </span>
               )}
               {selectedConv.patientId && (
-                <Link href={`/patients/${selectedConv.patientId}`}>
+                <Link href={`/patients?patient=${selectedConv.patientId}`}>
                   <Button size="sm" variant="outline" data-testid="button-open-chart">
                     <User className="w-3.5 h-3.5 mr-1.5" />
                     Open chart
@@ -822,39 +869,105 @@ export default function SpruceInboxPage() {
               <UserCheck className="w-3.5 h-3.5 text-[#2e7d52] flex-shrink-0" />
               <p className="text-xs text-[#1a6b3c] flex-1">
                 Matched to{" "}
-                <Link href={`/patients/${selectedConv.patientId}`} className="font-semibold underline underline-offset-2">
+                <Link href={`/patients?patient=${selectedConv.patientId}`} className="font-semibold underline underline-offset-2">
                   {selectedConv.patientFirstName} {selectedConv.patientLastName}
                 </Link>
                 {" "}— click their name to open their chart.
               </p>
             </div>
           ) : (
-            <div className="mx-4 mt-3 px-3 py-2 rounded-md bg-[#f0ecf8] border border-[#d4c8ee] flex items-center gap-2 flex-wrap">
-              <User className="w-3.5 h-3.5 text-[#5c4a7a] flex-shrink-0" />
-              <p className="text-xs text-[#3d2e6b] flex-1 min-w-0">
-                {selectedConv.fromPhone ? (
-                  <>
-                    <span className="font-mono font-semibold">{selectedConv.fromPhone}</span>
-                    {selectedConv.spruceContactName ? (
-                      <> — <span className="font-medium">{selectedConv.spruceContactName}</span></>
-                    ) : null}
-                    {" "}not matched to any patient.
-                  </>
-                ) : (
-                  "No phone number — cannot match to a patient."
+            <div className="mx-4 mt-3 rounded-md bg-[#f0ecf8] border border-[#d4c8ee]">
+              {/* Unmatched status row */}
+              <div className="flex items-center gap-2 px-3 py-2 flex-wrap">
+                <User className="w-3.5 h-3.5 text-[#5c4a7a] flex-shrink-0" />
+                <p className="text-xs text-[#3d2e6b] flex-1 min-w-0">
+                  {selectedConv.fromPhone ? (
+                    <>
+                      <span className="font-mono font-semibold">{selectedConv.fromPhone}</span>
+                      {selectedConv.spruceContactName ? (
+                        <> — <span className="font-medium">{selectedConv.spruceContactName}</span></>
+                      ) : null}
+                      {" "}not matched to any patient.
+                    </>
+                  ) : (
+                    "No phone number — cannot match to a patient."
+                  )}
+                </p>
+                {selectedConv.fromPhone && (
+                  <div className="flex items-center gap-1.5 flex-shrink-0">
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-[#5c4a7a] border-[#c4b2e8]"
+                      onClick={() => { setShowLinkPatient(v => !v); setLinkSearch(""); }}
+                      data-testid="button-link-existing-patient"
+                    >
+                      <UserCheck className="w-3.5 h-3.5 mr-1.5" />
+                      Link existing
+                    </Button>
+                    <Button
+                      size="sm"
+                      variant="outline"
+                      className="text-[#5c4a7a] border-[#c4b2e8]"
+                      onClick={() => openAddPatient(selectedConv)}
+                      data-testid="button-add-as-new-patient"
+                    >
+                      <UserPlus className="w-3.5 h-3.5 mr-1.5" />
+                      New patient
+                    </Button>
+                  </div>
                 )}
-              </p>
-              {selectedConv.fromPhone && (
-                <Button
-                  size="sm"
-                  variant="outline"
-                  className="text-[#5c4a7a] border-[#c4b2e8] flex-shrink-0"
-                  onClick={() => openAddPatient(selectedConv)}
-                  data-testid="button-add-as-new-patient"
-                >
-                  <UserPlus className="w-3.5 h-3.5 mr-1.5" />
-                  Add as new patient
-                </Button>
+              </div>
+
+              {/* Inline patient search — shown when "Link existing" is active */}
+              {showLinkPatient && (
+                <div className="border-t border-[#d4c8ee] px-3 py-2.5 space-y-2">
+                  <div className="relative">
+                    <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9a9a8a]" />
+                    <input
+                      autoFocus
+                      value={linkSearch}
+                      onChange={(e) => setLinkSearch(e.target.value)}
+                      placeholder="Search by name or phone…"
+                      className="w-full pl-8 pr-3 py-1.5 text-xs rounded border border-[#c4b2e8] bg-white outline-none focus:ring-1 focus:ring-[#9a7ed0]"
+                      data-testid="input-link-patient-search"
+                    />
+                  </div>
+                  {linkSearch.trim().length < 2 ? (
+                    <p className="text-[10px] text-[#9a9a8a] text-center py-1">Type at least 2 characters to search</p>
+                  ) : patientSearchResults.length === 0 ? (
+                    <p className="text-[10px] text-[#9a9a8a] text-center py-1">No patients found</p>
+                  ) : (
+                    <div className="space-y-1 max-h-40 overflow-y-auto">
+                      {patientSearchResults.slice(0, 8).map((p) => (
+                        <button
+                          key={p.id}
+                          disabled={linkPatientMutation.isPending}
+                          onClick={() => linkPatientMutation.mutate({ key: selectedConv.conversationKey, patientId: p.id })}
+                          data-testid={`button-link-patient-${p.id}`}
+                          className="w-full text-left flex items-center justify-between gap-2 px-2.5 py-1.5 rounded hover:bg-[#e8dff4] transition-colors disabled:opacity-50"
+                        >
+                          <div className="flex items-center gap-2 min-w-0">
+                            <div className="w-6 h-6 rounded-full bg-[#7c5cb4] flex items-center justify-center text-[9px] font-bold text-white flex-shrink-0">
+                              {((p.firstName?.[0] ?? "") + (p.lastName?.[0] ?? "")).toUpperCase() || "?"}
+                            </div>
+                            <div className="min-w-0">
+                              <p className="text-xs font-medium text-[#2d1f4a] truncate">
+                                {[p.firstName, p.lastName].filter(Boolean).join(" ") || "Unnamed patient"}
+                              </p>
+                              {p.phone && <p className="text-[10px] text-[#7a6a9a] font-mono truncate">{p.phone}</p>}
+                            </div>
+                          </div>
+                          {linkPatientMutation.isPending ? (
+                            <RefreshCw className="w-3 h-3 animate-spin text-[#7c5cb4] flex-shrink-0" />
+                          ) : (
+                            <span className="text-[10px] text-[#7c5cb4] font-medium flex-shrink-0">Link</span>
+                          )}
+                        </button>
+                      ))}
+                    </div>
+                  )}
+                </div>
               )}
             </div>
           )}

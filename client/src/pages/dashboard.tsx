@@ -1123,7 +1123,7 @@ export default function Dashboard() {
                           </p>
                         </div>
                         <Link
-                          href={`/patients/${req.patientId}`}
+                          href={`/patients?patient=${req.patientId}`}
                           onClick={() => setSelectedSpruceRequest(null)}
                           className="inline-flex items-center gap-1.5 text-xs font-medium px-2.5 py-1.5 rounded border"
                           style={{ color: "#2e3a20", borderColor: "#b0c898", backgroundColor: "#ffffff" }}
