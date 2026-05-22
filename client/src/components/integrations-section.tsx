@@ -29,6 +29,8 @@ import {
   FlaskConical,
   AlertTriangle,
   ExternalLink,
+  Bot,
+  ShieldAlert,
 } from "lucide-react";
 import { Link } from "wouter";
 
@@ -40,12 +42,32 @@ interface SpruceSettings {
   clinicId?: number;
   isEnabled: boolean;
   spruceAutoReplyEnabled: boolean;
+  spruceJuneAcknowledgmentsEnabled: boolean;
   spruceOrgId: string | null;
   spruceWebhookEndpointId: string | null;
   spruceReceivingPhone: string | null;
   webhookSecretConfigured: boolean;
   apiTokenConfigured: boolean;
 }
+
+interface WorkflowSetting {
+  id?: number;
+  clinicId?: number;
+  workflow: string;
+  allowAcknowledgment: boolean;
+  allowFollowUpQuestion: boolean;
+  maxJuneTurns: number;
+}
+
+const WORKFLOW_LABELS: Record<string, { label: string; description: string }> = {
+  medication_refill: { label: "Medication Refill", description: "Patient requests a prescription refill" },
+  appointment: { label: "Appointment Request", description: "Patient wants to schedule or reschedule a visit" },
+  lab_question: { label: "Lab / Results Question", description: "Patient asks about lab work or test results" },
+  new_patient: { label: "New Patient Inquiry", description: "New patient reaching out for the first time" },
+  intake_form: { label: "Intake Form", description: "Questions about patient intake or onboarding forms" },
+  billing: { label: "Billing / Insurance", description: "Questions about bills, payments, or insurance" },
+  urgent_safety: { label: "Urgent / Safety", description: "Patient reports urgent symptoms or a safety concern" },
+};
 
 function ConfiguredBadge({ yes }: { yes: boolean }) {
   return yes ? (
@@ -106,11 +128,34 @@ function SpruceManageDialog({
   const [receivingPhone, setReceivingPhone] = useState("");
   const [signingSecret, setSigningSecret] = useState("");
   const [apiToken, setApiToken] = useState("");
+  const [juneEnabled, setJuneEnabled] = useState(false);
+  const [juneWorkflowsOpen, setJuneWorkflowsOpen] = useState(false);
   const [simulateOpen, setSimulateOpen] = useState(false);
   const [simulateMsg, setSimulateMsg] = useState("");
   const [simulatePhone, setSimulatePhone] = useState("");
   const [simulateSenderType, setSimulateSenderType] = useState<"patient" | "staff">("patient");
   const [simulateStatus, setSimulateStatus] = useState<SimulateStatus>(null);
+
+  // Per-workflow June settings
+  const { data: workflowSettingsData, refetch: refetchWorkflowSettings } = useQuery<{ settings: Record<string, WorkflowSetting> }>({
+    queryKey: ["/api/spruce/settings/workflows"],
+    enabled: open && juneEnabled,
+  });
+  const workflowSettings = workflowSettingsData?.settings ?? {};
+
+  const workflowToggleMutation = useMutation({
+    mutationFn: async ({ workflow, field, value }: { workflow: string; field: string; value: boolean }) => {
+      const res = await apiRequest("PUT", `/api/spruce/settings/workflows/${workflow}`, { [field]: value });
+      if (!res.ok) throw new Error("Failed to save workflow setting");
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/spruce/settings/workflows"] });
+    },
+    onError: (e: any) => {
+      toast({ variant: "destructive", title: "Save failed", description: e.message });
+    },
+  });
 
   // Populate form from server data when dialog opens
   useEffect(() => {
@@ -119,6 +164,7 @@ function SpruceManageDialog({
       setOrgId(settings?.spruceOrgId ?? "");
       setEndpointId(settings?.spruceWebhookEndpointId ?? "");
       setReceivingPhone(settings?.spruceReceivingPhone ?? "");
+      setJuneEnabled(settings?.spruceJuneAcknowledgmentsEnabled ?? false);
     }
   }, [isLoading, settings, open]);
 
@@ -127,6 +173,8 @@ function SpruceManageDialog({
     if (!open) {
       setSigningSecret("");
       setApiToken("");
+      setJuneEnabled(false);
+      setJuneWorkflowsOpen(false);
       setSimulateOpen(false);
       setSimulateMsg("");
       setSimulatePhone("");
@@ -152,7 +200,8 @@ function SpruceManageDialog({
     mutationFn: async () => {
       const body: Record<string, unknown> = {
         isEnabled: isEnabled && canEnable, // never save enabled=true when prereqs missing
-        spruceAutoReplyEnabled: false,      // always off — not implemented
+        spruceAutoReplyEnabled: false,      // always off — superseded by Phase 3A
+        spruceJuneAcknowledgmentsEnabled: juneEnabled,
         spruceOrgId: orgId.trim() || null,
         spruceWebhookEndpointId: endpointId.trim() || null,
         spruceReceivingPhone: receivingPhone.trim() || null,
@@ -396,19 +445,109 @@ function SpruceManageDialog({
               )}
             </div>
 
-            {/* ── Auto-reply toggle — permanently disabled ──────────────────── */}
-            <div className="flex items-center justify-between gap-4 rounded-md border p-3 opacity-60">
-              <div>
-                <p className="text-sm font-medium">Spruce automated replies</p>
-                <p className="text-xs text-muted-foreground mt-0.5">
-                  Not yet implemented — no patient-facing replies will be sent.
+            <Separator />
+
+            {/* ── Spruce June AI Acknowledgments (Phase 3A) ─────────────────── */}
+            <div className="space-y-3">
+              <div className="flex items-center gap-2">
+                <Bot className="w-4 h-4 text-indigo-500 dark:text-indigo-400 shrink-0" />
+                <p className="text-sm font-semibold">Spruce June AI Acknowledgments</p>
+                <Badge variant="outline" className="text-xs text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700 bg-amber-50 dark:bg-amber-950">
+                  Beta
+                </Badge>
+              </div>
+              <p className="text-xs text-muted-foreground leading-relaxed">
+                June can send a brief, safe acknowledgment to patients when a new message arrives — letting them know the care team will follow up. June never diagnoses, prescribes, or gives clinical advice.
+              </p>
+
+              {/* Safety notice */}
+              <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-3 py-2.5">
+                <ShieldAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
+                  This feature sends outbound messages directly to patients via Spruce. All acknowledgments are templated or AI-generated — review per-workflow settings carefully before enabling. Every workflow is <strong>OFF by default</strong>.
                 </p>
               </div>
-              <Switch
-                checked={false}
-                disabled
-                data-testid="toggle-spruce-auto-reply"
-              />
+
+              {/* Master toggle */}
+              <div className="flex items-center justify-between gap-4 rounded-md border p-3">
+                <div>
+                  <p className="text-sm font-medium">Enable June acknowledgments</p>
+                  <p className="text-xs text-muted-foreground mt-0.5">
+                    Master switch — no acknowledgments are sent while this is off, regardless of per-workflow settings.
+                  </p>
+                </div>
+                <Switch
+                  checked={juneEnabled}
+                  onCheckedChange={(v) => {
+                    setJuneEnabled(v);
+                    if (v) setJuneWorkflowsOpen(true);
+                  }}
+                  data-testid="toggle-june-enabled"
+                />
+              </div>
+
+              {/* Per-workflow settings — shown when June is enabled */}
+              {juneEnabled && (
+                <div className="space-y-2">
+                  <button
+                    type="button"
+                    className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground hover:text-foreground transition-colors w-full text-left"
+                    onClick={() => setJuneWorkflowsOpen(v => !v)}
+                    data-testid="button-toggle-june-workflows"
+                  >
+                    {juneWorkflowsOpen
+                      ? <ChevronDown className="w-3.5 h-3.5" />
+                      : <ChevronRight className="w-3.5 h-3.5" />
+                    }
+                    Per-workflow acknowledgment settings
+                  </button>
+
+                  {juneWorkflowsOpen && (
+                    <div className="rounded-md border bg-muted/20 divide-y">
+                      {Object.entries(WORKFLOW_LABELS).map(([workflow, meta]) => {
+                        const ws = workflowSettings[workflow];
+                        const ackOn = ws?.allowAcknowledgment ?? false;
+                        const followOn = ws?.allowFollowUpQuestion ?? false;
+                        const isSaving = workflowToggleMutation.isPending;
+                        return (
+                          <div key={workflow} className="px-3 py-2.5 space-y-1.5" data-testid={`row-workflow-${workflow}`}>
+                            <div className="flex items-start justify-between gap-3 flex-wrap">
+                              <div className="min-w-0">
+                                <p className="text-xs font-medium">{meta.label}</p>
+                                <p className="text-xs text-muted-foreground">{meta.description}</p>
+                              </div>
+                              <div className="flex items-center gap-1.5 shrink-0">
+                                <span className="text-xs text-muted-foreground">Acknowledge</span>
+                                <Switch
+                                  checked={ackOn}
+                                  disabled={isSaving}
+                                  onCheckedChange={(v) => {
+                                    workflowToggleMutation.mutate({ workflow, field: "allowAcknowledgment", value: v });
+                                  }}
+                                  data-testid={`toggle-ack-${workflow}`}
+                                />
+                              </div>
+                            </div>
+                            {ackOn && (
+                              <div className="flex items-center justify-between gap-3 pl-1">
+                                <p className="text-xs text-muted-foreground">Allow June to ask ≤2 safe follow-up clarifying questions</p>
+                                <Switch
+                                  checked={followOn}
+                                  disabled={isSaving}
+                                  onCheckedChange={(v) => {
+                                    workflowToggleMutation.mutate({ workflow, field: "allowFollowUpQuestion", value: v });
+                                  }}
+                                  data-testid={`toggle-followup-${workflow}`}
+                                />
+                              </div>
+                            )}
+                          </div>
+                        );
+                      })}
+                    </div>
+                  )}
+                </div>
+              )}
             </div>
 
             <Separator />

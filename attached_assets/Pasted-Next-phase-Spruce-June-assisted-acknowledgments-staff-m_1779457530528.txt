@@ -1,0 +1,139 @@
+Next phase: Spruce June assisted acknowledgments + staff memo generation.
+
+Important:
+This is ONLY for the Spruce Inbox / Spruce June communication system.
+
+Do NOT modify:
+
+* existing ClinIQ June
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* auth/billing/sessions
+* core ClinIQ systems
+
+Goal:
+Move toward Spruce June responding to patient messages in a controlled, workflow-based way.
+
+Initial goal:
+When a patient messages in, Spruce June should send a relevant acknowledgment and let the patient know the care team/nurse will follow up. When appropriate, Spruce June can ask 1–2 safe information-gathering questions.
+
+End goal:
+Spruce June collects relevant information and creates a staff-facing memo/task, similar to an assistant taking a sticky note for the team to follow up on.
+
+This should NOT be a broad medical advice chatbot.
+
+Build Phase 3A only:
+
+1. Clinic-level setting
+   Add a clinic-level setting:
+   spruceJuneAcknowledgmentsEnabled
+
+Default OFF.
+
+2. Workflow-level setting
+   Add workflow-level toggles for:
+
+* allowAcknowledgment
+* allowFollowUpQuestion
+* maxJuneTurns
+
+Default:
+
+* acknowledgment OFF
+* follow-up questions OFF
+* maxJuneTurns = 1
+
+3. Direction and human takeover gates
+   Spruce June may only respond if:
+
+* message is inbound from patient/external participant
+* clinic Spruce integration is enabled
+* spruceJuneAcknowledgmentsEnabled = true
+* workflow allows acknowledgment
+* conversation is not in staff_takeover / ai_muted
+* no staff reply has occurred after the patient message
+* workflow confidence is high enough
+* message is not already handled/duplicate
+
+If staff replies, Spruce June must stop participating.
+
+4. Safe acknowledgment behavior
+   For now, Spruce June should only send brief, relevant acknowledgments and safe intake questions.
+
+Examples:
+
+Refill:
+“I can help get this to the care team. Which medication are you needing refilled, and which pharmacy should we use?”
+
+Scheduling:
+“Of course — what days or times usually work best for you? I’ll pass this along so the team can confirm availability.”
+
+Lab question:
+“I’ll get this over to the clinical team. Is there a specific lab or result you’re asking about?”
+
+General:
+“Thanks for reaching out — I’ll make sure this gets to the right person. A team member will follow up.”
+
+Urgent/safety:
+“If this is a medical emergency or you are having severe symptoms, please call 911 or go to the nearest ER. I’ll also flag this for the care team.”
+
+5. Staff-facing memo generation
+   For every recognized workflow, generate/update a staff-facing Spruce June memo.
+
+Memo should include:
+
+* patient name or unmatched phone number
+* workflow type
+* original message summary
+* information collected
+* missing information
+* urgency/priority
+* recommended staff follow-up
+* conversation link
+* patient chart link if matched
+
+This memo/task should populate the appropriate workflow/action queue:
+
+* refill → Medication & Supplement Requests
+* scheduling → Scheduling & Appointment Requests
+* new patient/intake → New Patient / Intake
+* clinical/lab → Clinical Questions / Triage
+* urgent → Urgent / Escalation
+
+6. Audit and visibility
+   Every Spruce June outbound acknowledgment should be stored in:
+
+* spruce_outbound_messages
+* thread timeline
+* conversation audit history
+
+Clearly mark it as:
+sentByAI = true
+sender = Spruce June
+
+7. Safety
+   Spruce June must not:
+
+* diagnose
+* prescribe
+* approve refills
+* change medication doses
+* give unrestricted medical advice
+* answer outside the active workflow boundary
+
+If unsure, Spruce June should acknowledge and escalate to staff.
+
+8. Testing
+   Add simulation tests for:
+
+* patient refill request → June acknowledgment + memo
+* staff message → no June response
+* urgent safety message → emergency language + urgent memo
+* staff takeover conversation → no June response
+* disabled clinic/workflow → no June response
+
+Do not enable this automatically in production.
+Everything should remain OFF by default until manually enabled per clinic/workflow.

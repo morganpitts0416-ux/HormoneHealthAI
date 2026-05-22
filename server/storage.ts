@@ -400,6 +400,13 @@ export interface IStorage {
   // Outbound message audit log
   createSpruceOutboundMessage(data: schema.InsertSpruceOutboundMessage): Promise<schema.SpruceOutboundMessage>;
   updateSpruceOutboundDeliveryId(id: number, spruceDeliveryId: string): Promise<void>;
+  // ── Spruce June Phase 3A ─────────────────────────────────────────────────
+  // Per-clinic, per-workflow June settings
+  getSpruceWorkflowSetting(clinicId: number, workflow: string): Promise<schema.SpruceWorkflowSettings | null>;
+  upsertSpruceWorkflowSetting(clinicId: number, workflow: string, data: { allowAcknowledgment?: boolean; allowFollowUpQuestion?: boolean; maxJuneTurns?: number }): Promise<schema.SpruceWorkflowSettings>;
+  listSpruceWorkflowSettings(clinicId: number): Promise<schema.SpruceWorkflowSettings[]>;
+  // Update June-specific fields on a workflow request
+  updateSpruceWorkflowRequestJune(id: number, data: { juneAckSentAt?: Date; juneMemoText?: string; juneTurnCount?: number }): Promise<void>;
 
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
@@ -5067,4 +5074,76 @@ export interface SpruceConversationMessageRow {
     .update(schema.spruceOutboundMessages)
     .set({ spruceDeliveryId })
     .where(eq(schema.spruceOutboundMessages.id, id));
+};
+
+// ── Spruce June Phase 3A — Workflow Settings ──────────────────────────────
+
+(DbStorage.prototype as any).getSpruceWorkflowSetting = async function(
+  clinicId: number,
+  workflow: string,
+): Promise<schema.SpruceWorkflowSettings | null> {
+  const [row] = await db
+    .select()
+    .from(schema.spruceWorkflowSettings)
+    .where(and(
+      eq(schema.spruceWorkflowSettings.clinicId, clinicId),
+      eq(schema.spruceWorkflowSettings.workflow, workflow),
+    ))
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).upsertSpruceWorkflowSetting = async function(
+  clinicId: number,
+  workflow: string,
+  data: { allowAcknowledgment?: boolean; allowFollowUpQuestion?: boolean; maxJuneTurns?: number },
+): Promise<schema.SpruceWorkflowSettings> {
+  const [row] = await db
+    .insert(schema.spruceWorkflowSettings)
+    .values({
+      clinicId,
+      workflow,
+      allowAcknowledgment: data.allowAcknowledgment ?? false,
+      allowFollowUpQuestion: data.allowFollowUpQuestion ?? false,
+      maxJuneTurns: data.maxJuneTurns ?? 1,
+      updatedAt: new Date(),
+    })
+    .onConflictDoUpdate({
+      target: [schema.spruceWorkflowSettings.clinicId, schema.spruceWorkflowSettings.workflow],
+      set: {
+        ...(data.allowAcknowledgment !== undefined && { allowAcknowledgment: data.allowAcknowledgment }),
+        ...(data.allowFollowUpQuestion !== undefined && { allowFollowUpQuestion: data.allowFollowUpQuestion }),
+        ...(data.maxJuneTurns !== undefined && { maxJuneTurns: data.maxJuneTurns }),
+        updatedAt: new Date(),
+      },
+    })
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).listSpruceWorkflowSettings = async function(
+  clinicId: number,
+): Promise<schema.SpruceWorkflowSettings[]> {
+  return db
+    .select()
+    .from(schema.spruceWorkflowSettings)
+    .where(eq(schema.spruceWorkflowSettings.clinicId, clinicId))
+    .orderBy(schema.spruceWorkflowSettings.workflow);
+};
+
+// ── Spruce June Phase 3A — Workflow Request June fields ───────────────────
+
+(DbStorage.prototype as any).updateSpruceWorkflowRequestJune = async function(
+  id: number,
+  data: { juneAckSentAt?: Date; juneMemoText?: string; juneTurnCount?: number },
+): Promise<void> {
+  const updates: Record<string, unknown> = {};
+  if (data.juneAckSentAt !== undefined) updates.juneAckSentAt = data.juneAckSentAt;
+  if (data.juneMemoText !== undefined) updates.juneMemoText = data.juneMemoText;
+  if (data.juneTurnCount !== undefined) updates.juneTurnCount = data.juneTurnCount;
+  if (Object.keys(updates).length === 0) return;
+  await db
+    .update(schema.spruceWorkflowRequests)
+    .set(updates)
+    .where(eq(schema.spruceWorkflowRequests.id, id));
 };

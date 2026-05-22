@@ -20,6 +20,7 @@ import {
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
 import { runEnhancedSoapPipeline } from "./soap-pipeline";
+import { runJunePipeline } from "./spruce-june";
 import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { detectMaleHormonePatterns } from "./male-hormone-patterns";
@@ -17641,6 +17642,9 @@ IMPORTANT:
 
       if (isEnabled !== undefined) updates.isEnabled = Boolean(isEnabled);
       if (spruceAutoReplyEnabled !== undefined) updates.spruceAutoReplyEnabled = Boolean(spruceAutoReplyEnabled);
+      if (req.body.spruceJuneAcknowledgmentsEnabled !== undefined) {
+        updates.spruceJuneAcknowledgmentsEnabled = Boolean(req.body.spruceJuneAcknowledgmentsEnabled);
+      }
       if (spruceOrgId !== undefined) updates.spruceOrgId = spruceOrgId?.trim() || null;
       if (spruceWebhookEndpointId !== undefined) updates.spruceWebhookEndpointId = spruceWebhookEndpointId?.trim() || null;
       if (spruceReceivingPhone !== undefined) {
@@ -17662,6 +17666,7 @@ IMPORTANT:
         clinicId: row.clinicId,
         isEnabled: row.isEnabled,
         spruceAutoReplyEnabled: row.spruceAutoReplyEnabled,
+        spruceJuneAcknowledgmentsEnabled: row.spruceJuneAcknowledgmentsEnabled,
         spruceOrgId: row.spruceOrgId,
         spruceWebhookEndpointId: row.spruceWebhookEndpointId,
         spruceReceivingPhone: row.spruceReceivingPhone,
@@ -17675,6 +17680,56 @@ IMPORTANT:
       res.status(500).json({ message: "Failed to save Spruce settings" });
     }
   });
+
+  // ── Spruce June Phase 3A — Workflow Settings routes ───────────────────────
+  // GET /api/spruce/settings/workflows — list all per-workflow June settings
+  app.get("/api/spruce/settings/workflows", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const rows = await storage.listSpruceWorkflowSettings(clinicId);
+      // Return rows keyed by workflow for easy consumption by the UI
+      const byWorkflow: Record<string, typeof rows[0]> = {};
+      for (const row of rows) byWorkflow[row.workflow] = row;
+      res.json({ settings: byWorkflow });
+    } catch (err) {
+      console.error("[spruce/workflow-settings] GET error:", err);
+      res.status(500).json({ error: "Failed to load workflow settings" });
+    }
+  });
+
+  // PUT /api/spruce/settings/workflows/:workflow — upsert per-workflow settings
+  app.put("/api/spruce/settings/workflows/:workflow", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const workflow = req.params.workflow;
+      const VALID_WORKFLOWS = [
+        "medication_refill", "lab_question", "appointment", "intake_form",
+        "new_patient", "billing", "urgent_safety", "unclassified",
+      ];
+      if (!VALID_WORKFLOWS.includes(workflow)) {
+        return res.status(400).json({ error: `Unknown workflow type: ${workflow}` });
+      }
+      const { allowAcknowledgment, allowFollowUpQuestion, maxJuneTurns } = req.body;
+      const data: { allowAcknowledgment?: boolean; allowFollowUpQuestion?: boolean; maxJuneTurns?: number } = {};
+      if (allowAcknowledgment !== undefined) data.allowAcknowledgment = Boolean(allowAcknowledgment);
+      if (allowFollowUpQuestion !== undefined) data.allowFollowUpQuestion = Boolean(allowFollowUpQuestion);
+      if (maxJuneTurns !== undefined) {
+        const turns = parseInt(maxJuneTurns, 10);
+        if (isNaN(turns) || turns < 1 || turns > 10) {
+          return res.status(400).json({ error: "maxJuneTurns must be between 1 and 10" });
+        }
+        data.maxJuneTurns = turns;
+      }
+      const row = await storage.upsertSpruceWorkflowSetting(clinicId, workflow, data);
+      res.json(row);
+    } catch (err) {
+      console.error("[spruce/workflow-settings] PUT error:", err);
+      res.status(500).json({ error: "Failed to save workflow setting" });
+    }
+  });
+
 
   // ── Admin: Spruce routing rule CRUD ──────────────────────────────────
   //
@@ -18110,6 +18165,7 @@ IMPORTANT:
         );
 
         // ── Create a workflow request for actionable classifications ──────
+        let createdWorkflowRequestId: number | null = null;
         if (
           classification.workflow !== "unclassified" &&
           storedMsg !== null
@@ -18118,37 +18174,85 @@ IMPORTANT:
             const convUrl = spruceConversationId
               ? `https://app.sprucehealth.com/conversations/${spruceConversationId}`
               : null;
-          await storage.createSpruceWorkflowRequest({
-            clinicId: matchedClinicId,
-            spruceMessageId: storedMsg.id,
-            patientId: matchedPatient?.id ?? null,
-            workflow: classification.workflow,
-            status: "pending",
-            patientPhone: fromPhone || null,
-            patientNameExtracted: matchedPatient
-              ? `${matchedPatient.firstName} ${matchedPatient.lastName}`
-              : null,
-            requestSummary: msgBody ? msgBody.slice(0, 300) : null,
-            spruceConversationUrl: convUrl,
-            resolvedAt: null,
-            resolvedByUserId: null,
-          });
-          console.log(`${tag} created spruce_workflow_requests for workflow="${classification.workflow}"${matchedPatient ? ` patient_id=${matchedPatient.id}` : " (unmatched)"}`);
-        } catch (err) {
-          console.error(`${tag} failed to create spruce_workflow_request:`, err);
+            const wrRow = await storage.createSpruceWorkflowRequest({
+              clinicId: matchedClinicId,
+              spruceMessageId: storedMsg.id,
+              patientId: matchedPatient?.id ?? null,
+              workflow: classification.workflow,
+              status: "pending",
+              patientPhone: fromPhone || null,
+              patientNameExtracted: matchedPatient
+                ? `${matchedPatient.firstName} ${matchedPatient.lastName}`
+                : null,
+              requestSummary: msgBody ? msgBody.slice(0, 300) : null,
+              spruceConversationUrl: convUrl,
+              resolvedAt: null,
+              resolvedByUserId: null,
+            });
+            createdWorkflowRequestId = (wrRow as any)?.id ?? null;
+            console.log(`${tag} created spruce_workflow_requests id=${createdWorkflowRequestId} for workflow="${classification.workflow}"${matchedPatient ? ` patient_id=${matchedPatient.id}` : " (unmatched)"}`);
+          } catch (err) {
+            console.error(`${tag} failed to create spruce_workflow_request:`, err);
+          }
         }
-      }
+
+        // ── Spruce June Phase 3A — Acknowledgment pipeline ────────────────
+        // Fire-and-forget: all gate checks happen inside runJunePipeline.
+        // This block only executes when the clinic-level master switch is ON.
+        // It has NO connection to the ClinIQ June clinical AI (SOAP, transcription,
+        // lab eval, evidence overlay, AI chat, June preferences) — isolated module.
+        if (clinicSettings.spruceJuneAcknowledgmentsEnabled) {
+          const convKey = spruceConversationId ||
+            fromPhone ||
+            `msg_${storedMsg?.id ?? Date.now()}`;
+          const convUrl = spruceConversationId
+            ? `https://app.sprucehealth.com/conversations/${spruceConversationId}`
+            : null;
+          // Decrypt per-clinic Spruce API token; fall back to global env var
+          const spruceApiToken: string | null =
+            (clinicSettings as any).apiTokenEncrypted
+              ? (decryptSecret((clinicSettings as any).apiTokenEncrypted) ?? null)
+              : (process.env.SPRUCE_API_TOKEN ?? null);
+          // Load conversation state so the staff-takeover gate can check it
+          const convState = await storage.getSpruceConversationState(
+            matchedClinicId, convKey,
+          ).catch(() => null);
+          const patientFullName = matchedPatient
+            ? `${matchedPatient.firstName} ${matchedPatient.lastName}`
+            : null;
+          const juneOpenAI = new OpenAI({
+            apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+            baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+          });
+          runJunePipeline({
+            clinicId: matchedClinicId,
+            conversationKey: convKey,
+            spruceConversationId: spruceConversationId || null,
+            messageBody: msgBody || "",
+            messageDirection,
+            classification,
+            workflowRequestId: createdWorkflowRequestId,
+            clinicSettings: clinicSettings as any,
+            convState,
+            patientName: patientFullName,
+            patientId: matchedPatient?.id ?? null,
+            fromPhone: fromPhone || null,
+            spruceConversationUrl: convUrl,
+            apiToken: spruceApiToken,
+            storage,
+            openaiClient: juneOpenAI,
+          }).catch((err) => {
+            console.error(`${tag} runJunePipeline error (non-fatal):`, err);
+          });
+        }
       } // end: else (not outbound_staff) — classification branch
 
-      // ── Spruce auto-reply gate ─────────────────────────────────────────
-      // Outbound Spruce patient replies are BLOCKED until explicitly enabled
-      // per-clinic AND a full implementation is wired in here.
-      // This gate has NO connection to the ClinIQ June clinical AI assistant
-      // (SOAP generation, transcription, lab eval, evidence overlay, AI chat).
-      // Most important rule: if a human staff member has replied in the
-      // conversation (staffRepliedAt set), auto-reply MUST NOT fire.
+      // ── Legacy auto-reply gate — superseded by Phase 3A ───────────────
+      // spruceAutoReplyEnabled is retained for backward compat but is always
+      // a no-op.  Outbound AI messaging is gated by spruceJuneAcknowledgmentsEnabled
+      // (Phase 3A) inside the else block above.
       if (clinicSettings.spruceAutoReplyEnabled) {
-        console.log(`${tag} Spruce auto-reply is enabled for this clinic — outbound dispatch not yet implemented`);
+        console.log(`${tag} spruceAutoReplyEnabled=true (legacy flag) — outbound dispatch handled by Phase 3A pipeline above`);
       }
     } else {
       // No clinic match or clinic has Spruce disabled — store for admin review.

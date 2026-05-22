@@ -1309,3 +1309,25 @@ ALTER TABLE spruce_conversation_state
   ADD COLUMN IF NOT EXISTS archive_source VARCHAR(20),
   ADD COLUMN IF NOT EXISTS spruce_archive_synced_at TIMESTAMP,
   ADD COLUMN IF NOT EXISTS spruce_archive_error TEXT;
+
+-- Phase 3A: Spruce June acknowledgment + staff memo system
+-- All new columns default OFF / null — no behaviour change for existing rows.
+ALTER TABLE clinic_spruce_settings
+  ADD COLUMN IF NOT EXISTS spruce_june_acknowledgments_enabled BOOLEAN NOT NULL DEFAULT FALSE;
+
+CREATE TABLE IF NOT EXISTS spruce_workflow_settings (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  workflow VARCHAR(50) NOT NULL,
+  allow_acknowledgment BOOLEAN NOT NULL DEFAULT FALSE,
+  allow_follow_up_question BOOLEAN NOT NULL DEFAULT FALSE,
+  max_june_turns INTEGER NOT NULL DEFAULT 1,
+  updated_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS spruce_workflow_settings_clinic_workflow_idx
+  ON spruce_workflow_settings(clinic_id, workflow);
+
+ALTER TABLE spruce_workflow_requests
+  ADD COLUMN IF NOT EXISTS june_ack_sent_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS june_memo_text TEXT,
+  ADD COLUMN IF NOT EXISTS june_turn_count INTEGER NOT NULL DEFAULT 0;
