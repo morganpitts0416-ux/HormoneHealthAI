@@ -73,6 +73,41 @@ export interface JunePipelineResult {
   memoText?: string;
   spruceDelivered?: boolean;
   extractedFields?: ExtractedFields | null;
+  intentAnalysis?: IntentAnalysis | null;
+}
+
+// ── Multi-intent types ─────────────────────────────────────────────────────
+
+/**
+ * A single detected intent within a patient message.
+ * One message can contain many intents (e.g. reschedule + UTI + pharmacy).
+ */
+export interface IntentItem {
+  workflow: SpruceWorkflowType;
+  confidence: "high" | "medium" | "low";
+  /** One-sentence plain-English description of this specific issue. */
+  summary: string;
+  /** Fields extracted from the message for this intent. null = not mentioned. */
+  extracted: Record<string, string | null>;
+  /** Field names that are relevant but not yet provided by the patient. */
+  missing: string[];
+}
+
+/**
+ * Full multi-intent analysis of a patient message.
+ * Replaces single-workflow ExtractedFields for response + memo generation.
+ */
+export interface IntentAnalysis {
+  intents: IntentItem[];
+  hasUrgentSafety: boolean;
+  overallUrgency: "routine" | "soon" | "urgent";
+  /**
+   * At most 2 follow-up questions — AI-selected as the most clinically
+   * useful across ALL detected intents.  Never asks about info already given.
+   */
+  bestFollowUpQuestions: string[];
+  /** Primary workflow — urgent_safety takes precedence, otherwise first detected. */
+  primaryWorkflow: SpruceWorkflowType;
 }
 
 // ── Gate checks ───────────────────────────────────────────────────────────
@@ -292,6 +327,130 @@ Rules:
     return { workflow, confidence, fields, missingFields, collectedSummary };
   } catch (err) {
     console.warn("[SpruceJune/extract] Field extraction failed (non-fatal):", err);
+    return null;
+  }
+}
+
+// ── Multi-intent analysis ─────────────────────────────────────────────────
+
+/**
+ * analyzeMessageIntents — single fast AI call that identifies EVERY distinct
+ * issue in a patient message and extracts relevant fields for each one.
+ *
+ * This replaces extractWorkflowFields (single-workflow) for pipeline use.
+ * extractWorkflowFields is kept as a fallback.
+ *
+ * Returns null on any failure so the pipeline gracefully falls back.
+ */
+export async function analyzeMessageIntents(
+  openaiClient: OpenAI,
+  messageBody: string,
+): Promise<IntentAnalysis | null> {
+  const systemPrompt = `You are a clinical message parser for a healthcare clinic. Identify every distinct issue or request in a patient message and extract relevant details. Return ONLY valid JSON — no explanation, no markdown.`;
+
+  const userPrompt = `Read this patient message and identify ALL distinct issues or requests.
+
+Patient message:
+"${messageBody.slice(0, 800)}"
+
+Return this exact JSON structure:
+{
+  "intents": [
+    {
+      "workflow": "medication_refill" | "appointment" | "lab_question" | "billing" | "urgent_safety" | "new_patient" | "intake_form" | "unclassified",
+      "confidence": "high" | "medium" | "low",
+      "summary": "one sentence describing this specific issue",
+      "extracted": {
+        "fieldName": "value (under 60 chars) or null if not mentioned"
+      },
+      "missing": ["list", "of", "important", "details", "not", "yet", "provided"]
+    }
+  ],
+  "hasUrgentSafety": false,
+  "overallUrgency": "routine" | "soon" | "urgent",
+  "bestFollowUpQuestions": ["most useful question 1", "most useful question 2"]
+}
+
+Extraction field guidance per workflow:
+- medication_refill: medication, dose, pharmacy, amountRemaining
+- appointment: appointmentType, preferredTimes, reason, providerPreference
+- lab_question: specificLab, labDate, concern
+- urgent_safety: symptom, severity, duration
+- billing: invoiceRef, amount, concern
+- new_patient: serviceInterest, referralSource, insurance
+
+Rules:
+- List EVERY distinct issue as its own intent object
+- bestFollowUpQuestions: at most 2, only for genuinely missing critical info, never about info already in the message
+- hasUrgentSafety = true if any emergency, severe symptom, or safety concern is present
+- overallUrgency = "urgent" for safety issues, "soon" for clinical symptoms, "routine" for admin tasks`;
+
+  try {
+    const completion = await openaiClient.chat.completions.create({
+      model: "gpt-4o-mini",
+      messages: [
+        { role: "system", content: systemPrompt },
+        { role: "user", content: userPrompt },
+      ],
+      max_tokens: 600,
+      temperature: 0,
+      response_format: { type: "json_object" },
+    });
+
+    const raw = completion.choices[0]?.message?.content?.trim();
+    if (!raw) return null;
+
+    const parsed = JSON.parse(raw) as {
+      intents: Array<{
+        workflow: string;
+        confidence: string;
+        summary: string;
+        extracted: Record<string, string | null>;
+        missing: string[];
+      }>;
+      hasUrgentSafety: boolean;
+      overallUrgency: string;
+      bestFollowUpQuestions: string[];
+    };
+
+    const validWorkflows = new Set<string>([
+      "medication_refill", "lab_question", "appointment", "intake_form",
+      "new_patient", "billing", "urgent_safety", "unclassified",
+    ]);
+    const validConfidences = new Set(["high", "medium", "low"]);
+
+    const intents: IntentItem[] = (parsed.intents ?? []).map((item) => ({
+      workflow: validWorkflows.has(item.workflow)
+        ? (item.workflow as SpruceWorkflowType)
+        : "unclassified",
+      confidence: validConfidences.has(item.confidence)
+        ? (item.confidence as "high" | "medium" | "low")
+        : "low",
+      summary: String(item.summary ?? ""),
+      extracted: (item.extracted && typeof item.extracted === "object") ? item.extracted : {},
+      missing: Array.isArray(item.missing) ? item.missing : [],
+    }));
+
+    if (intents.length === 0) return null;
+
+    // urgent_safety always takes priority as primary intent
+    const primaryIntent =
+      intents.find((i) => i.workflow === "urgent_safety") ?? intents[0];
+
+    return {
+      intents,
+      hasUrgentSafety: Boolean(parsed.hasUrgentSafety),
+      overallUrgency: (["routine", "soon", "urgent"].includes(parsed.overallUrgency)
+        ? parsed.overallUrgency
+        : "routine") as "routine" | "soon" | "urgent",
+      bestFollowUpQuestions: (Array.isArray(parsed.bestFollowUpQuestions)
+        ? parsed.bestFollowUpQuestions
+        : []
+      ).slice(0, 2),
+      primaryWorkflow: primaryIntent.workflow,
+    };
+  } catch (err) {
+    console.warn("[SpruceJune/intents] Intent analysis failed (non-fatal):", err);
     return null;
   }
 }
@@ -519,6 +678,139 @@ function buildFallbackAck(
   }
 
   return ACK_STYLE_GUIDES[workflow] ?? ACK_STYLE_GUIDES.unclassified;
+}
+
+// ── Conversation-first response generation ────────────────────────────────
+
+/**
+ * The system prompt that makes June sound like a warm boutique clinic
+ * receptionist — not a workflow engine, not a help desk.
+ *
+ * This completely replaces the per-workflow ACK_STYLE_GUIDES approach.
+ * Every response goes through this single, consistent voice.
+ */
+const JUNE_RESPONSE_SYSTEM_PROMPT = `You are June, the front-desk coordinator at a boutique women's wellness clinic. You send warm, personal text messages to patients on behalf of the care team.
+
+TONE — THIS IS THE MOST IMPORTANT RULE:
+You are a real, caring person — not a bot, not an auto-reply, not a help desk.
+
+NEVER USE THESE PHRASES (they sound robotic and corporate):
+- "Thank you for reaching out"
+- "I appreciate your message"
+- "I've noted your concern"
+- "Your concern has been documented"
+- "I will pass this along to the care team"
+- "We value your feedback"
+- Any ticketing, support-desk, or automated-system language
+
+PREFERRED NATURAL LANGUAGE:
+- Greet with: "Hey [Name]!" or "Hi [Name],"
+- "Thanks for letting us know"
+- "I'm so sorry you're dealing with all of that"
+- "I'll make sure the team sees this"
+- "I'll get this over to [the team / the nurse / Morgan]"
+- "We'll be in touch soon!"
+- "Hope you feel better soon"
+- "Of course!"
+- "Glad you reached out"
+
+HOW TO STRUCTURE YOUR RESPONSE:
+1. Open with the patient's first name ("Hey Sarah!" or "Hi Sarah,")
+2. Lead with empathy first if they're sick, worried, or stressed
+3. Acknowledge EVERY issue they mentioned — show you read the whole message
+4. Ask at most 1–2 useful follow-up questions (never about info they already gave)
+5. Close with one warm sentence ("We'll be in touch soon!" / "Hope you have a great weekend!")
+
+LENGTH: 2–4 sentences. This is an SMS — keep it short, warm, and human.
+
+STRICT CLINICAL SAFETY RULES:
+- NEVER diagnose, prescribe, approve refills, change medication doses, or give medical advice of any kind
+- NEVER answer clinical questions — the nurse or care team will follow up
+- For any emergency or severe symptom: always include "If this is an emergency, please call 911 or go to your nearest ER right away."
+- Never promise specific timelines, refill approvals, or clinical outcomes`;
+
+/**
+ * generateJuneResponse — conversation-first response that addresses ALL
+ * detected intents in a single, warm, natural message.
+ *
+ * This is the primary response generator. Falls back to generateJuneAcknowledgment
+ * if the AI call fails so the pipeline is always resilient.
+ */
+export async function generateJuneResponse(
+  openaiClient: OpenAI,
+  intentAnalysis: IntentAnalysis,
+  messageBody: string,
+  patientName: string | null,
+  allowFollowUpQuestion: boolean,
+  isLastTurn: boolean,
+): Promise<string> {
+  const firstName = patientName ? patientName.trim().split(/\s+/)[0] : null;
+  const patientRef = firstName
+    ? `The patient's first name is ${firstName}. Use it naturally in your greeting.`
+    : "You don't have the patient's name — skip a name in the greeting.";
+
+  // Build a concise per-intent summary so the model knows what was said
+  const intentLines = intentAnalysis.intents.map((intent, i) => {
+    const knownEntries = Object.entries(intent.extracted).filter(
+      ([, v]) => v !== null && v !== "",
+    );
+    const knownStr = knownEntries.length > 0
+      ? `Already known: ${knownEntries.map(([k, v]) => `${k}=${v}`).join(", ")}`
+      : "No specific details extracted yet";
+    const missingStr = intent.missing.length > 0
+      ? ` | Still missing: ${intent.missing.slice(0, 3).join(", ")}`
+      : "";
+    return `Issue ${i + 1}: ${intent.summary} [${intent.workflow}] — ${knownStr}${missingStr}`;
+  }).join("\n");
+
+  const urgencyInstruction = intentAnalysis.hasUrgentSafety
+    ? `\n⚠️ SAFETY NOTE: This message contains a potential safety concern. You MUST include: "If this is an emergency, please call 911 or go to your nearest ER right away."\n`
+    : "";
+
+  const followUpInstruction = isLastTurn
+    ? "FINAL TURN: Do NOT ask any more questions. Confirm you're passing everything to the team and close warmly."
+    : allowFollowUpQuestion && intentAnalysis.bestFollowUpQuestions.length > 0
+      ? `You may ask 1–2 of these follow-up questions if genuinely useful (never ask about info already given):\n${intentAnalysis.bestFollowUpQuestions.map((q) => `- ${q}`).join("\n")}`
+      : "Do NOT ask follow-up questions — acknowledge and confirm the team will follow up.";
+
+  const userPrompt = `${patientRef}
+${urgencyInstruction}
+ALL ISSUES IN THIS MESSAGE (address every one in your response):
+${intentLines}
+
+${followUpInstruction}
+
+Patient's original message:
+"${messageBody.slice(0, 600)}"
+
+Write a single, warm, natural response. 2–4 sentences. Sound like a real person, not an auto-reply.`;
+
+  try {
+    const completion = await openaiClient.chat.completions.create({
+      model: "gpt-4o",
+      messages: [
+        { role: "system", content: JUNE_RESPONSE_SYSTEM_PROMPT },
+        { role: "user", content: userPrompt },
+      ],
+      max_tokens: 220,
+      temperature: 0.5,
+    });
+    const text = completion.choices[0]?.message?.content?.trim();
+    if (text) return text;
+  } catch (err) {
+    console.warn("[SpruceJune/response] generateJuneResponse failed, falling back:", err);
+  }
+
+  // Fallback to the original single-workflow generator (resilient path)
+  return generateJuneAcknowledgment(
+    openaiClient,
+    intentAnalysis.primaryWorkflow,
+    messageBody,
+    patientName,
+    allowFollowUpQuestion,
+    null,
+    isLastTurn,
+  );
 }
 
 // ── Staff memo generation ─────────────────────────────────────────────────
