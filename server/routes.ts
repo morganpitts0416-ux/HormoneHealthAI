@@ -18618,6 +18618,26 @@ IMPORTANT:
           const patientFullName = matchedPatient
             ? `${matchedPatient.firstName} ${matchedPatient.lastName}`
             : null;
+
+          // ── Gate diagnostic log — every real inbound message emits this ──
+          // All values that will be evaluated by shouldJuneAcknowledge are
+          // printed here so failures can be diagnosed from server logs alone.
+          console.log(
+            `${tag} [JUNE-DIAG] ` +
+            `clinic_id=${matchedClinicId} ` +
+            `spruce_enabled=${clinicSettings.isEnabled} ` +
+            `june_master=${clinicSettings.spruceJuneAcknowledgmentsEnabled} ` +
+            `general_msg_ack=${(clinicSettings as any).generalMessageAcknowledgmentEnabled ?? false} ` +
+            `workflow="${classification.workflow}" ` +
+            `confidence="${classification.confidence}" ` +
+            `direction="${messageDirection}" ` +
+            `conv_state="${convState?.state ?? "none"}" ` +
+            `ai_muted_at="${convState?.aiMutedAt ?? "null"}" ` +
+            `june_turn=${existingJuneTurnCount} ` +
+            `api_token=${spruceApiToken ? "present" : "ABSENT"} ` +
+            `conv_id=${spruceConversationId || "ABSENT"}`,
+          );
+
           const juneOpenAI = new OpenAI({
             apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
             baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
