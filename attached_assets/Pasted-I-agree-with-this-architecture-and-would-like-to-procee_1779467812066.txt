@@ -1,0 +1,75 @@
+I agree with this architecture and would like to proceed, with one clarification:
+
+June Memos should be treated as derived workflow/action items, not patient-visible messages.
+
+Communication timeline:
+
+* portal messages
+* Spruce SMS messages
+* staff replies
+* Spruce June patient-facing replies
+* internal staff notes
+* system events
+
+Dashboard workflow queues:
+
+* June memos
+* refill tasks
+* scheduling tasks
+* new patient/intake tasks
+* clinical triage tasks
+* urgent/escalation tasks
+
+So:
+Message thread = full chronological communication history.
+June Memo = actionable staff-facing sticky note/task derived from the conversation.
+
+June Memos should:
+
+* populate the appropriate dashboard/action queue
+* link back to the related communication thread
+* link to the patient chart if matched
+* remain internal-only
+* never display in the patient portal
+* be preserved for audit/history
+
+Schema clarification:
+Please keep message type and visibility as separate concepts.
+
+messageType examples:
+
+* message
+* internal_note
+* system_event
+* june_memo
+* workflow_note
+
+visibility examples:
+
+* patient_visible
+* internal_only
+
+This gives flexibility for future June memos, workflow notes, escalation events, and system events without accidentally exposing internal items to patients.
+
+Please proceed with Phase 2 using this approach:
+
+* one chronological communication timeline
+* patient-visible vs internal-only separation enforced at query level
+* @mentions and staff notifications
+* portal as longitudinal patient-visible communication history
+* Spruce as a delivery channel
+* Inbox and patient chart sharing the same underlying communication record
+* June Memos as dashboard/action queue items linked back to the communication timeline
+
+Do not modify unrelated systems:
+
+* existing ClinIQ June
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* auth
+* billing
+* sessions
+* unrelated core ClinIQ features

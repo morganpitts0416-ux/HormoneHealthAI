@@ -167,10 +167,18 @@ export interface IStorage {
   getPortalMessages(patientId: number): Promise<PortalMessage[]>;
   createPortalMessage(msg: InsertPortalMessage): Promise<PortalMessage>;
   markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void>;
-  // ── Unified Communication Timeline (portal + Spruce merged, read-only) ───
+  // ── Unified Communication Timeline (portal + Spruce merged) ─────────────
   getPatientCommunicationTimeline(patientId: number, clinicId: number): Promise<CommunicationTimelineItem[]>;
   getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number>;
   getPortalMessageByExternalId(externalMessageId: string): Promise<PortalMessage | undefined>;
+  // ── Phase 2: Internal notes + reply context ──────────────────────────────
+  createInternalNote(data: {
+    patientId: number; clinicId: number; clinicianId: number;
+    content: string; messageType?: string;
+    mentionedUserIds?: number[];
+  }): Promise<PortalMessage>;
+  getReplyContext(patientId: number, clinicId: number): Promise<ReplyContext>;
+  createMessageMention(data: schema.InsertPatientMessageMention): Promise<schema.PatientMessageMention>;
 
   // Saved recipe operations (patient portal)
   getSavedRecipes(patientId: number): Promise<SavedRecipe[]>;
@@ -1125,23 +1133,36 @@ export class DbStorage implements IStorage {
 
   // ── Portal message operations ─────────────────────────────────────────────────
   async getPortalMessages(patientId: number): Promise<PortalMessage[]> {
+    // PATIENT SAFETY GATE: only return patient-visible messages.
+    // Internal notes, memos, and workflow notes are NEVER returned here.
     return await db
       .select()
       .from(schema.portalMessages)
-      .where(eq(schema.portalMessages.patientId, patientId))
+      .where(
+        and(
+          eq(schema.portalMessages.patientId, patientId),
+          eq(schema.portalMessages.visibility, 'patient_visible'),
+        )
+      )
       .orderBy(schema.portalMessages.createdAt);
   }
 
   async createPortalMessage(msg: InsertPortalMessage): Promise<PortalMessage> {
+    // Auto-derive visibility from messageType if not explicitly provided.
+    // This ensures internal notes can never be accidentally set patient_visible.
+    const messageType = (msg as any).messageType ?? 'message';
+    const derivedVisibility = messageType === 'message' ? 'patient_visible' : 'internal_only';
+    const visibility = (msg as any).visibility ?? derivedVisibility;
     const result = await db
       .insert(schema.portalMessages)
-      .values(msg as any)
+      .values({ ...msg, messageType, visibility } as any)
       .returning();
     return result[0];
   }
 
   async markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void> {
-    // Mark messages sent by the OTHER party as read (i.e. the reader is not the sender)
+    // Mark messages sent by the OTHER party as read.
+    // Only mark patient-visible messages (internal notes have no read state for patients).
     const senderToMark = readBySenderType === 'patient' ? 'clinician' : 'patient';
     await db
       .update(schema.portalMessages)
@@ -1150,13 +1171,14 @@ export class DbStorage implements IStorage {
         and(
           eq(schema.portalMessages.patientId, patientId),
           eq(schema.portalMessages.senderType, senderToMark),
+          eq(schema.portalMessages.visibility, 'patient_visible'),
           isNull(schema.portalMessages.readAt)
         )
       );
   }
 
   async getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number> {
-    // Count messages sent by the other party that haven't been read yet
+    // Count patient-visible messages sent by the other party that haven't been read yet.
     const senderToCount = unreadBySenderType === 'patient' ? 'clinician' : 'patient';
     const result = await db
       .select({ cnt: count() })
@@ -1165,6 +1187,7 @@ export class DbStorage implements IStorage {
         and(
           eq(schema.portalMessages.patientId, patientId),
           eq(schema.portalMessages.senderType, senderToCount),
+          eq(schema.portalMessages.visibility, 'patient_visible'),
           isNull(schema.portalMessages.readAt)
         )
       );
@@ -1178,6 +1201,171 @@ export class DbStorage implements IStorage {
       .where(eq(schema.portalMessages.externalMessageId, externalMessageId))
       .limit(1);
     return result[0];
+  }
+
+  // ── Phase 2: Internal notes, mentions, reply context ─────────────────────
+
+  async createMessageMention(data: schema.InsertPatientMessageMention): Promise<schema.PatientMessageMention> {
+    const result = await db
+      .insert(schema.patientMessageMentions)
+      .values(data as any)
+      .returning();
+    return result[0];
+  }
+
+  async createInternalNote(data: {
+    patientId: number; clinicId: number; clinicianId: number;
+    content: string; messageType?: string;
+    mentionedUserIds?: number[];
+  }): Promise<PortalMessage> {
+    const messageType = data.messageType ?? 'internal_note';
+    // All internal types are internal_only; june_memo / workflow_note too
+    const visibility = messageType === 'message' ? 'patient_visible' : 'internal_only';
+
+    const result = await db
+      .insert(schema.portalMessages)
+      .values({
+        patientId: data.patientId,
+        clinicianId: data.clinicianId,
+        senderType: 'clinician',
+        content: data.content,
+        readAt: null,
+        messageType,
+        visibility,
+        deliveryChannel: null,
+        externalDeliveryId: null,
+      } as any)
+      .returning();
+    const msg = result[0];
+
+    // Create mention rows + inbox notifications for each tagged user
+    if (data.mentionedUserIds && data.mentionedUserIds.length > 0) {
+      for (const userId of data.mentionedUserIds) {
+        // Mention record
+        await db.insert(schema.patientMessageMentions).values({
+          clinicId: data.clinicId,
+          patientId: data.patientId,
+          messageId: msg.id,
+          mentionedUserId: userId,
+        } as any);
+
+        // Inbox notification → routes to the tagged staff member's bell
+        const preview = data.content.length > 120
+          ? data.content.slice(0, 120) + '…'
+          : data.content;
+        await db.insert(schema.providerInboxNotifications).values({
+          clinicId: data.clinicId,
+          patientId: data.patientId,
+          providerId: userId,
+          type: 'staff_mention',
+          title: 'You were mentioned in a patient note',
+          message: preview,
+          relatedEntityType: 'portal_message',
+          relatedEntityId: msg.id,
+          severity: 'normal',
+        } as any);
+      }
+    }
+
+    return msg;
+  }
+
+  async getReplyContext(patientId: number, clinicId: number): Promise<ReplyContext> {
+    // 1. Portal account check
+    const portalAccount = await db
+      .select({ id: schema.portalAccounts.id })
+      .from(schema.portalAccounts)
+      .where(eq(schema.portalAccounts.patientId, patientId))
+      .limit(1);
+    const hasPortalAccount = portalAccount.length > 0;
+
+    // 2. Most recent Spruce message for this patient (determines active Spruce conversation)
+    const spruceRows = await db
+      .select({
+        spruceConversationId: schema.spruceMessages.spruceConversationId,
+        fromPhone: schema.spruceMessages.fromPhone,
+        receivedAt: schema.spruceMessages.receivedAt,
+        messageDirection: schema.spruceMessages.messageDirection,
+      })
+      .from(schema.spruceMessages)
+      .where(
+        and(
+          eq(schema.spruceMessages.clinicId, clinicId),
+          eq(schema.spruceMessages.patientId, patientId),
+        )
+      )
+      .orderBy(desc(schema.spruceMessages.receivedAt))
+      .limit(1);
+
+    const latestSpruce = spruceRows[0] ?? null;
+    const hasSpruceConversation = latestSpruce !== null;
+    const spruceConversationKey = latestSpruce
+      ? (latestSpruce.spruceConversationId ?? latestSpruce.fromPhone ?? null)
+      : null;
+
+    // 3. Patient primaryCommunicationChannel override
+    const patientRow = await db
+      .select({ primaryCommunicationChannel: schema.patients.primaryCommunicationChannel })
+      .from(schema.patients)
+      .where(eq(schema.patients.id, patientId))
+      .limit(1);
+    const primaryPref = (patientRow[0]?.primaryCommunicationChannel ?? null) as 'portal' | 'spruce' | null;
+
+    // 4. Determine available channels
+    const availableChannels: Array<'portal' | 'spruce'> = [];
+    if (hasPortalAccount) availableChannels.push('portal');
+    if (hasSpruceConversation) availableChannels.push('spruce');
+
+    // 5. Determine active channel (preference → most recent inbound → first available)
+    let activeChannel: 'portal' | 'spruce' | null = null;
+    if (primaryPref && availableChannels.includes(primaryPref)) {
+      activeChannel = primaryPref;
+    } else if (availableChannels.length > 0) {
+      // Find the most recent inbound message across both channels
+      const latestPortalInbound = await db
+        .select({ createdAt: schema.portalMessages.createdAt })
+        .from(schema.portalMessages)
+        .where(
+          and(
+            eq(schema.portalMessages.patientId, patientId),
+            eq(schema.portalMessages.senderType, 'patient'),
+            eq(schema.portalMessages.visibility, 'patient_visible'),
+          )
+        )
+        .orderBy(desc(schema.portalMessages.createdAt))
+        .limit(1);
+
+      const latestSpruceInbound = await db
+        .select({ receivedAt: schema.spruceMessages.receivedAt })
+        .from(schema.spruceMessages)
+        .where(
+          and(
+            eq(schema.spruceMessages.clinicId, clinicId),
+            eq(schema.spruceMessages.patientId, patientId),
+            eq(schema.spruceMessages.messageDirection, 'inbound_patient'),
+          )
+        )
+        .orderBy(desc(schema.spruceMessages.receivedAt))
+        .limit(1);
+
+      const portalTs = latestPortalInbound[0]?.createdAt?.getTime() ?? 0;
+      const spruceTs = latestSpruceInbound[0]?.receivedAt?.getTime() ?? 0;
+
+      if (hasPortalAccount && hasSpruceConversation) {
+        activeChannel = spruceTs >= portalTs ? 'spruce' : 'portal';
+      } else {
+        activeChannel = availableChannels[0];
+      }
+    }
+
+    return {
+      availableChannels,
+      activeChannel,
+      hasPortalAccount,
+      hasSpruceConversation,
+      spruceConversationKey,
+      primaryCommunicationChannel: primaryPref,
+    };
   }
 
   // ── Clinician Staff ──────────────────────────────────────────────────────────
@@ -4762,9 +4950,27 @@ export interface SpruceConversationSummary {
   archivedAt: Date | null;
 }
 
+// ── ReplyContext ──────────────────────────────────────────────────────────
+// Returned by GET /api/patients/:id/reply-context.
+// Tells the chart composer which channels are available, what the active
+// channel is, and whether the patient has a portal account.
+export interface ReplyContext {
+  availableChannels: Array<'portal' | 'spruce'>
+  // The channel the composer should default to.
+  // Derived from: primaryCommunicationChannel override → most recent inbound source → fallback
+  activeChannel: 'portal' | 'spruce' | null
+  hasPortalAccount: boolean
+  hasSpruceConversation: boolean
+  // Key of the most recently active Spruce conversation for this patient
+  spruceConversationKey: string | null
+  // null = patient has no explicit preference set (auto-derived)
+  primaryCommunicationChannel: 'portal' | 'spruce' | null
+}
+
 // ── CommunicationTimelineItem ─────────────────────────────────────────────
 // Normalized shape for the unified patient communication timeline, merging
-// portal_messages, spruce_messages (inbound), and spruce_outbound_messages.
+// portal_messages (patient-visible + internal), spruce_messages (inbound),
+// and spruce_outbound_messages.
 export interface CommunicationTimelineItem {
   id: string                      // "portal:123" | "spruce_in:456" | "spruce_out:789"
   source: 'portal' | 'spruce'
@@ -4782,6 +4988,15 @@ export interface CommunicationTimelineItem {
   spruceMessageId: string | null
   spruceConversationId: string | null
   spruceDeliveryId: string | null
+  // ── Phase 2 fields ───────────────────────────────────────────────────────
+  // 'message' | 'internal_note' | 'system_event' | 'june_memo' | 'workflow_note'
+  messageType: string
+  // 'patient_visible' | 'internal_only'
+  visibility: string
+  // null | 'portal' | 'spruce'
+  deliveryChannel: string | null
+  // IDs of mentioned staff users (for @mention highlighting in the UI)
+  mentionedUserIds: number[]
 }
 
 export interface SpruceConversationMessageRow {
@@ -5178,34 +5393,71 @@ export interface SpruceConversationMessageRow {
 };
 
 // ── getPatientCommunicationTimeline ───────────────────────────────────────
-// Merges portal_messages, spruce_messages (patient-matched inbound + system
-// events), and spruce_outbound_messages into one chronological timeline.
+// Merges portal_messages (ALL — patient-visible + internal), spruce_messages
+// (patient-matched inbound + system events), and spruce_outbound_messages
+// into one chronological timeline for STAFF.
+//
+// Patient portal uses getPortalMessages() which filters visibility='patient_visible'.
 //
 // Dedup strategy for Spruce outbound:
 //   spruce_messages with messageDirection='outbound_staff' are EXCLUDED.
 //   ClinIQ-sent replies are covered by spruce_outbound_messages (richer
-//   metadata).  Staff messages sent directly from the Spruce app without
-//   going through ClinIQ are a known Phase-1 omission; they will be added
-//   in Phase 2 with proper spruceMessageId ↔ spruceDeliveryId dedup.
+//   metadata).  Phase 2 adds portal_messages rows with deliveryChannel='spruce'
+//   for new replies; old spruce_outbound_messages rows remain for historical data.
 (DbStorage.prototype as any).getPatientCommunicationTimeline = async function(
   patientId: number,
   clinicId: number,
 ): Promise<CommunicationTimelineItem[]> {
   const items: CommunicationTimelineItem[] = [];
 
-  // ── 1. Portal messages ───────────────────────────────────────────────────
+  // ── 1. Portal messages (ALL — includes internal notes, staff replies) ───
   const portalRows = await db
     .select()
     .from(schema.portalMessages)
     .where(eq(schema.portalMessages.patientId, patientId))
     .orderBy(asc(schema.portalMessages.createdAt));
 
+  // Fetch all mention records for this patient in one query
+  const mentionRows = await db
+    .select({
+      messageId: schema.patientMessageMentions.messageId,
+      mentionedUserId: schema.patientMessageMentions.mentionedUserId,
+    })
+    .from(schema.patientMessageMentions)
+    .where(eq(schema.patientMessageMentions.patientId, patientId));
+
+  const mentionsByMessageId = new Map<number, number[]>();
+  for (const m of mentionRows) {
+    const arr = mentionsByMessageId.get(m.messageId) ?? [];
+    arr.push(m.mentionedUserId);
+    mentionsByMessageId.set(m.messageId, arr);
+  }
+
   for (const msg of portalRows) {
+    const messageType = (msg as any).messageType ?? 'message';
+    const visibility = (msg as any).visibility ?? 'patient_visible';
+    const deliveryChannel = (msg as any).deliveryChannel ?? null;
+
+    // For internal notes, direction is 'system' so the UI can render them
+    // differently (centered / amber badge) regardless of senderType.
+    const direction: 'inbound' | 'outbound' | 'system' =
+      messageType !== 'message'
+        ? 'system'
+        : msg.senderType === 'patient' ? 'inbound' : 'outbound';
+
+    const senderLabel =
+      messageType === 'internal_note' ? 'Internal Note'
+      : messageType === 'june_memo'   ? 'June Memo'
+      : messageType === 'workflow_note' ? 'Workflow Note'
+      : messageType === 'system_event'  ? 'System'
+      : msg.senderType === 'patient'    ? 'Patient'
+      : 'Staff';
+
     items.push({
       id: `portal:${msg.id}`,
       source: 'portal',
-      direction: msg.senderType === 'patient' ? 'inbound' : 'outbound',
-      senderLabel: msg.senderType === 'patient' ? 'Patient' : 'Staff',
+      direction,
+      senderLabel,
       body: msg.content,
       timestamp: msg.createdAt.toISOString(),
       conversationKey: null,
@@ -5218,6 +5470,10 @@ export interface SpruceConversationMessageRow {
       spruceMessageId: null,
       spruceConversationId: null,
       spruceDeliveryId: null,
+      messageType,
+      visibility,
+      deliveryChannel,
+      mentionedUserIds: mentionsByMessageId.get(msg.id) ?? [],
     });
   }
 
@@ -5269,10 +5525,18 @@ export interface SpruceConversationMessageRow {
       spruceMessageId: msg.spruceMessageId,
       spruceConversationId: msg.spruceConversationId,
       spruceDeliveryId: null,
+      messageType: 'message',
+      visibility: 'patient_visible',
+      deliveryChannel: 'spruce',
+      mentionedUserIds: [],
     });
   }
 
-  // ── 3. Spruce outbound messages (ClinIQ-sent into Spruce) ────────────────
+  // ── 3. Spruce outbound messages (ClinIQ-sent into Spruce, historical) ────
+  // Phase 2: new outbound replies also write a portal_messages row with
+  // deliveryChannel='spruce'. Old spruce_outbound_messages rows remain here
+  // so historical data is not lost. Future dedup by spruceDeliveryId ↔
+  // externalDeliveryId will eliminate duplicates once Phase 3 stamps them.
   if (convKeySet.size > 0) {
     const convKeys = Array.from(convKeySet);
     const spruceOutRows = await db
@@ -5304,6 +5568,10 @@ export interface SpruceConversationMessageRow {
         spruceMessageId: null,
         spruceConversationId: null,
         spruceDeliveryId: msg.spruceDeliveryId,
+        messageType: 'message',
+        visibility: 'patient_visible',
+        deliveryChannel: 'spruce',
+        mentionedUserIds: [],
       });
     }
   }

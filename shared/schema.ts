@@ -618,6 +618,10 @@ export const patients = pgTable("patients", {
   clinicId: integer("clinic_id"),            // No FK constraint during initial rollout
   primaryProviderId: integer("primary_provider_id"), // No FK constraint during initial rollout
   primaryProvider: varchar("primary_provider", { length: 100 }), // Display name of the assigned provider
+  // ── Phase 2: Communication channel preference ─────────────────────────────
+  // null = auto-derive from most recent inbound message (Phase 2 default)
+  // 'portal' | 'spruce' | 'email' — explicit clinician/patient override (Phase 3)
+  primaryCommunicationChannel: varchar("primary_communication_channel", { length: 20 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });
@@ -843,6 +847,25 @@ export const portalMessages = pgTable("portal_messages", {
   // ID from external system (Spruce, Klara, etc.) — used for deduplication
   externalMessageId: varchar("external_message_id", { length: 100 }),
   createdAt: timestamp("created_at").defaultNow().notNull(),
+  // ── Phase 2: Unified communication + internal notes ───────────────────────
+  // messageType controls how the item is rendered and routed.
+  // 'message'       = patient↔staff reply (portal DM or Spruce-delivered)
+  // 'internal_note' = staff-only note; NEVER exposed to patient
+  // 'system_event'  = automated event logged by the system
+  // 'june_memo'     = actionable June-generated memo for the dashboard queue
+  // 'workflow_note' = routing / escalation note
+  messageType: varchar("message_type", { length: 30 }).notNull().default("message"),
+  // visibility is derived from messageType at write time and used as the portal query gate.
+  // 'patient_visible' = appears in patient portal
+  // 'internal_only'   = staff-facing chart / Inbox only; never in portal
+  visibility: varchar("visibility", { length: 20 }).notNull().default("patient_visible"),
+  // deliveryChannel tracks how a staff-originated message was sent externally.
+  // null    = legacy portal-only row
+  // 'portal'= sent via portal (email notification to patient)
+  // 'spruce'= delivered via Spruce SMS
+  deliveryChannel: varchar("delivery_channel", { length: 20 }),
+  // Spruce message ID once delivery is confirmed (used for dedup on echo webhook)
+  externalDeliveryId: varchar("external_delivery_id", { length: 200 }),
 });
 
 export const insertPortalMessageSchema = createInsertSchema(portalMessages).omit({
@@ -852,6 +875,24 @@ export const insertPortalMessageSchema = createInsertSchema(portalMessages).omit
 
 export type InsertPortalMessage = z.infer<typeof insertPortalMessageSchema>;
 export type PortalMessage = typeof portalMessages.$inferSelect;
+
+// ── patient_message_mentions ───────────────────────────────────────────────
+// One row per @mention inside a portal_messages row (internal notes, memos).
+// Drives staff notifications and @mention highlighting in the timeline.
+export const patientMessageMentions = pgTable("patient_message_mentions", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  messageId: integer("message_id").notNull().references(() => portalMessages.id, { onDelete: "cascade" }),
+  mentionedUserId: integer("mentioned_user_id").notNull().references(() => users.id, { onDelete: "cascade" }),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  acknowledgedAt: timestamp("acknowledged_at"),
+});
+export type PatientMessageMention = typeof patientMessageMentions.$inferSelect;
+export const insertPatientMessageMentionSchema = createInsertSchema(patientMessageMentions).omit({
+  id: true, createdAt: true, acknowledgedAt: true,
+});
+export type InsertPatientMessageMention = z.infer<typeof insertPatientMessageMentionSchema>;
 
 // ─── Saved Recipes (patient portal) ──────────────────────────────────────────
 export const savedRecipes = pgTable("saved_recipes", {

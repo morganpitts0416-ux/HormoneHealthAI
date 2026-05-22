@@ -2400,6 +2400,29 @@ Rules:
         spruceContactName: staffSenderName,
       });
 
+      // 2b. Write to portal_messages (canonical longitudinal record) when patient is known.
+      //     This makes the reply visible in the patient portal history + chart timeline.
+      //     Only written when we have a matched patientId; unmatched contacts are Inbox-only.
+      let portalMsgId: number | null = null;
+      if (conv?.patientId) {
+        try {
+          const portalMsg = await storage.createPortalMessage({
+            patientId: conv.patientId,
+            clinicianId: userId ?? clinicId,   // fallback to clinicId if no user session
+            senderType: 'clinician',
+            content: body,
+            readAt: null,
+            messageType: 'message',
+            visibility: 'patient_visible',
+            deliveryChannel: 'spruce',
+            externalDeliveryId: null,
+          } as any);
+          portalMsgId = portalMsg.id;
+        } catch (err) {
+          console.warn('[Spruce/reply] portal_messages write failed (non-fatal):', err);
+        }
+      }
+
       // 3. Update conversation state → staff_takeover (sticky AI mute)
       const existing = await storage.getSpruceConversationState(clinicId, key);
       await storage.upsertSpruceConversationState(clinicId, key, {
@@ -4825,6 +4848,223 @@ Return ONLY this JSON structure:
     } catch (error) {
       console.error("[communication-timeline] error:", error);
       res.status(500).json({ message: "Failed to fetch communication timeline" });
+    }
+  });
+
+  // GET /api/patients/:id/reply-context — channel picker data for the chart composer
+  app.get("/api/patients/:id/reply-context", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const context = await storage.getReplyContext(patientId, clinicId);
+      res.json(context);
+    } catch (error) {
+      console.error("[reply-context] error:", error);
+      res.status(500).json({ message: "Failed to fetch reply context" });
+    }
+  });
+
+  // POST /api/patients/:id/reply — unified reply: always writes to portal_messages,
+  // routes delivery to portal (email) or Spruce (SMS) based on channel.
+  app.post("/api/patients/:id/reply", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const userId = (req.user as any)?.id ?? null;
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+
+      const { body: messageBody, channel } = req.body;
+      if (!messageBody?.trim()) return res.status(400).json({ message: "body is required" });
+      if (channel !== 'portal' && channel !== 'spruce') {
+        return res.status(400).json({ message: "channel must be 'portal' or 'spruce'" });
+      }
+      const body = messageBody.trim();
+
+      // ── Step 1: ALWAYS write to portal_messages (canonical longitudinal record)
+      const msg = await storage.createPortalMessage({
+        patientId,
+        clinicianId,
+        senderType: 'clinician',
+        content: body,
+        readAt: null,
+        messageType: 'message',
+        visibility: 'patient_visible',
+        deliveryChannel: channel,
+      } as any);
+
+      // ── Step 2: Channel-specific delivery ────────────────────────────────
+      if (channel === 'portal') {
+        // Send portal email notification (fire-and-forget)
+        const portalAccount = await storage.getPortalAccountByPatientId(patientId);
+        const clinician = await storage.getUserById(clinicianId);
+        if (portalAccount?.email && clinician) {
+          sendNewPortalMessageEmail(
+            portalAccount.email,
+            patient.firstName,
+            clinician.clinicName,
+            `${clinician.title} ${clinician.firstName} ${clinician.lastName}`,
+            body,
+            req,
+          ).catch((err) => console.error('[reply] Portal email error:', err));
+        }
+
+      } else {
+        // channel === 'spruce'
+        // Look up the patient's active Spruce conversation
+        const context = await storage.getReplyContext(patientId, clinicId);
+        const key = context.spruceConversationKey;
+        if (!key) {
+          console.warn(`[reply] Spruce channel requested but no conversation key for patient ${patientId}`);
+        } else {
+          // Resolve sender display name from provider profile
+          let staffSenderName: string | null = null;
+          try {
+            const clinicProviders = await storage.getProvidersByClinic(clinicId);
+            const matchedProvider = clinicProviders.find((p) => p.userId === userId);
+            if (matchedProvider) {
+              staffSenderName = matchedProvider.credentials
+                ? `${matchedProvider.displayName}, ${matchedProvider.credentials}`
+                : matchedProvider.displayName;
+            } else {
+              const u = req.user as any;
+              staffSenderName = [u?.title, u?.firstName, u?.lastName].filter(Boolean).join(' ') || null;
+            }
+          } catch { /* non-fatal */ }
+
+          // Write Spruce audit log
+          const outbound = await storage.createSpruceOutboundMessage({
+            clinicId,
+            conversationKey: key,
+            messageBody: body,
+            sentByUserId: userId,
+            sentByAI: false,
+            workflowRequestId: null,
+            spruceDeliveryId: null,
+          });
+
+          // Mirror into spruce_messages for Inbox reads
+          const conversations = await storage.listSpruceConversations(clinicId);
+          const conv = conversations.find((c: any) => c.conversationKey === key);
+          await storage.createSpruceMessage({
+            clinicId,
+            spruceMessageId: `cliniq_reply_${outbound.id}`,
+            spruceConversationId: conv?.spruceConversationId ?? null,
+            fromPhone: conv?.toPhone ?? null,
+            toPhone: conv?.fromPhone ?? null,
+            patientId: conv?.patientId ?? patientId,
+            messageBody: body,
+            eventType: 'cliniq_staff_reply',
+            rawPayload: { source: 'cliniq', outboundMessageId: outbound.id, portalMessageId: msg.id },
+            classifiedWorkflow: null,
+            classificationConfidence: null,
+            messageDirection: 'outbound_staff',
+            staffRepliedAt: new Date(),
+            spruceEventDedupeKey: `cliniq_reply:${outbound.id}`,
+            spruceContactName: staffSenderName,
+          });
+
+          // Update conversation state → staff_takeover (sticky AI mute)
+          const existing = await storage.getSpruceConversationState(clinicId, key);
+          await storage.upsertSpruceConversationState(clinicId, key, {
+            state: 'staff_takeover',
+            aiMutedAt: existing?.aiMutedAt ?? new Date(),
+            aiMutedByUserId: existing?.aiMutedByUserId ?? userId,
+            lastActivityAt: new Date(),
+          });
+
+          // Attempt Spruce API delivery
+          const clinicSettings = await storage.getClinicSpruceSettings(clinicId).catch(() => null);
+          const rawToken = clinicSettings?.apiTokenEncrypted
+            ? (isEncrypted(clinicSettings.apiTokenEncrypted)
+                ? decryptSecret(clinicSettings.apiTokenEncrypted)
+                : clinicSettings.apiTokenEncrypted)
+            : null;
+          const apiToken = rawToken ?? process.env.SPRUCE_API_TOKEN ?? null;
+          if (apiToken && conv?.spruceConversationId) {
+            try {
+              const spruceRes = await fetch(
+                `https://api.sprucehealth.com/v1/conversations/${conv.spruceConversationId}/messages`,
+                {
+                  method: 'POST',
+                  headers: { 'Authorization': `Bearer ${apiToken}`, 'Content-Type': 'application/json' },
+                  body: JSON.stringify({ body: [{ type: 'text', value: body }], internal: false }),
+                },
+              );
+              if (spruceRes.ok) {
+                let spruceData: any = {};
+                try { spruceData = await spruceRes.json(); } catch {}
+                if (spruceData?.id) {
+                  await storage.updateSpruceOutboundDeliveryId(outbound.id, spruceData.id);
+                  // Note: externalDeliveryId stamping on portal_messages is handled via a
+                  // dedicated storage method (Phase 3 dedup). Skip direct DB access here.
+                }
+                console.log(`[reply/spruce] Delivered via Spruce API ok, portalMsgId=${msg.id}`);
+              } else {
+                console.warn(`[reply/spruce] Spruce API ${spruceRes.status} — stored in ClinIQ only`);
+              }
+            } catch (err) {
+              console.warn('[reply/spruce] Spruce API delivery failed (non-fatal):', err);
+            }
+          } else if (!apiToken) {
+            console.log('[reply/spruce] No Spruce API token — stored in ClinIQ only');
+          }
+        }
+      }
+
+      res.json(msg);
+    } catch (error) {
+      console.error("[reply] error:", error);
+      res.status(500).json({ message: "Failed to send reply" });
+    }
+  });
+
+  // POST /api/patients/:id/internal-note — staff-only note with @mention support
+  // NEVER visible in patient portal (visibility = 'internal_only' enforced in storage)
+  app.post("/api/patients/:id/internal-note", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+
+      const { content, messageType, mentionedUserIds } = req.body;
+      if (!content?.trim()) return res.status(400).json({ message: "content is required" });
+
+      // Resolve @mention display names → userIds
+      // Client sends mentionedUserIds as an array of user IDs it resolved from the picker;
+      // server validates they belong to the same clinic to prevent cross-clinic tag exploits.
+      let resolvedMentionIds: number[] = [];
+      if (Array.isArray(mentionedUserIds) && mentionedUserIds.length > 0) {
+        const clinicProviders = await storage.getProvidersByClinic(clinicId);
+        const validUserIds = new Set(clinicProviders.map((p: any) => p.userId).filter(Boolean));
+        resolvedMentionIds = (mentionedUserIds as number[]).filter((id) => validUserIds.has(id));
+      }
+
+      const note = await storage.createInternalNote({
+        patientId,
+        clinicId,
+        clinicianId,
+        content: content.trim(),
+        messageType: messageType ?? 'internal_note',
+        mentionedUserIds: resolvedMentionIds,
+      });
+
+      res.json(note);
+    } catch (error) {
+      console.error("[internal-note] error:", error);
+      res.status(500).json({ message: "Failed to create internal note" });
     }
   });
 

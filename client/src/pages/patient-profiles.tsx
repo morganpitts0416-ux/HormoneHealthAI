@@ -19,7 +19,7 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, CalendarDays, Phone, Paperclip,
-  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive,
+  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
@@ -1276,6 +1276,9 @@ export default function PatientProfiles() {
   const [isDietaryGenerating, setIsDietaryGenerating] = useState(false);
   const [isDietaryError, setIsDietaryError] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
+  const [noteDraft, setNoteDraft] = useState("");
+  const [composerTab, setComposerTab] = useState<'reply' | 'note'>('reply');
+  const [activeChannel, setActiveChannel] = useState<'portal' | 'spruce'>('portal');
   const [showMessages, setShowMessages] = useState(false);
   const [showSpruceHistory, setShowSpruceHistory] = useState(false);
   const [showPortalSection, setShowPortalSection] = useState(false);
@@ -1515,6 +1518,19 @@ export default function PatientProfiles() {
     spruceMessageId: string | null;
     spruceConversationId: string | null;
     spruceDeliveryId: string | null;
+    messageType: string;
+    visibility: string;
+    deliveryChannel: string | null;
+    mentionedUserIds: number[];
+  }
+
+  interface ReplyContext {
+    availableChannels: Array<'portal' | 'spruce'>;
+    activeChannel: 'portal' | 'spruce' | null;
+    hasPortalAccount: boolean;
+    hasSpruceConversation: boolean;
+    spruceConversationKey: string | null;
+    primaryCommunicationChannel: 'portal' | 'spruce' | null;
   }
 
   const { data: messages = [] } = useQuery<PortalMessage[]>({
@@ -1539,6 +1555,17 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient && showMessages,
     refetchInterval: showMessages ? 20000 : false,
+  });
+
+  const { data: replyContext } = useQuery<ReplyContext>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'reply-context'],
+    queryFn: async () => {
+      if (!selectedPatient) return null;
+      const res = await fetch(`/api/patients/${selectedPatient.id}/reply-context`, { credentials: 'include' });
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!selectedPatient && showMessages,
   });
 
   // Spruce conversation history for this patient (shown in portal section)
@@ -1818,9 +1845,16 @@ export default function PatientProfiles() {
     enabled: !!selectedPatient,
   });
 
-  const sendMessageMutation = useMutation({
-    mutationFn: async (content: string) => {
-      const res = await apiRequest("POST", `/api/patients/${selectedPatient!.id}/messages`, { content });
+  // Sync activeChannel from server-derived context whenever it changes
+  useEffect(() => {
+    if (replyContext?.activeChannel) {
+      setActiveChannel(replyContext.activeChannel);
+    }
+  }, [replyContext?.activeChannel]);
+
+  const replyMutation = useMutation({
+    mutationFn: async ({ body, channel }: { body: string; channel: 'portal' | 'spruce' }) => {
+      const res = await apiRequest("POST", `/api/patients/${selectedPatient!.id}/reply`, { body, channel });
       return res.json();
     },
     onSuccess: () => {
@@ -1832,6 +1866,27 @@ export default function PatientProfiles() {
       toast({ title: "Failed to send message", variant: "destructive" });
     },
   });
+
+  const internalNoteMutation = useMutation({
+    mutationFn: async ({ content }: { content: string }) => {
+      const res = await apiRequest("POST", `/api/patients/${selectedPatient!.id}/internal-note`, {
+        content,
+        messageType: 'internal_note',
+        mentionedUserIds: [],
+      });
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'communication-timeline'] });
+      setNoteDraft("");
+    },
+    onError: () => {
+      toast({ title: "Failed to save note", variant: "destructive" });
+    },
+  });
+
+  // Keep legacy mutation around for any remaining callers
+  const sendMessageMutation = replyMutation;
 
   useEffect(() => {
     if (showMessages) {
@@ -2748,9 +2803,37 @@ export default function PatientProfiles() {
                             {timeline.map((item) => {
                               const isOutbound = item.direction === 'outbound';
                               const isSystem = item.direction === 'system';
+                              const isInternalNote = (item.messageType ?? '') === 'internal_note';
                               const ts = new Date(item.timestamp).toLocaleString("en-US", {
                                 month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
                               });
+
+                              // ── Internal staff note — full-width amber card ───────
+                              if (isInternalNote) {
+                                return (
+                                  <div key={item.id} className="flex justify-center" data-testid={`timeline-item-${item.id}`}>
+                                    <div
+                                      className="w-full rounded-lg px-3 py-2 text-xs"
+                                      style={{ backgroundColor: "#fef3c7", color: "#78350f", border: "1px solid #fde68a" }}
+                                    >
+                                      <div className="flex items-center gap-1.5 mb-1 flex-wrap">
+                                        <Lock className="w-2.5 h-2.5 flex-shrink-0" style={{ color: "#b45309" }} />
+                                        <span
+                                          className="text-[9px] font-semibold px-1.5 py-0 rounded leading-[1.6]"
+                                          style={{ backgroundColor: "#fde68a", color: "#92400e" }}
+                                        >
+                                          Internal Note
+                                        </span>
+                                        <span className="text-[10px] font-medium" style={{ opacity: 0.8 }}>
+                                          {item.senderLabel}
+                                        </span>
+                                      </div>
+                                      <p className="whitespace-pre-wrap leading-snug">{item.body}</p>
+                                      <div className="mt-1 text-[10px]" style={{ opacity: 0.6 }}>{ts}</div>
+                                    </div>
+                                  </div>
+                                );
+                              }
 
                               if (isSystem) {
                                 return (
@@ -2766,10 +2849,15 @@ export default function PatientProfiles() {
                               }
 
                               const isPortal = item.source === 'portal';
-                              const channelBadgeStyle = isPortal
+                              // For portal items, use deliveryChannel if present
+                              const deliveryCh = item.deliveryChannel;
+                              const effectivelyViaPortal = isPortal && deliveryCh !== 'spruce';
+                              const channelBadgeStyle = effectivelyViaPortal
                                 ? { backgroundColor: "#d4e8c8", color: "#2a4018" }
                                 : { backgroundColor: "#c8dcf0", color: "#1a3a5a" };
-                              const channelLabel = isPortal ? "ClinIQ Portal" : "Spruce SMS";
+                              const channelLabel = effectivelyViaPortal
+                                ? "ClinIQ Portal"
+                                : deliveryCh === 'spruce' ? "Spruce SMS" : "Spruce SMS";
 
                               return (
                                 <div
@@ -2781,12 +2869,12 @@ export default function PatientProfiles() {
                                     className="max-w-[78%] rounded-xl px-3 py-2 text-xs"
                                     style={
                                       isOutbound
-                                        ? isPortal
+                                        ? effectivelyViaPortal
                                           ? { backgroundColor: "#3a5a2a", color: "#f0ede8" }
                                           : item.sentByAI
                                             ? { backgroundColor: "#5a3a7a", color: "#f5f0ff" }
                                             : { backgroundColor: "#2a4a6a", color: "#e8f0f8" }
-                                        : isPortal
+                                        : effectivelyViaPortal
                                           ? { backgroundColor: "#f0ede8", color: "#1c1c14" }
                                           : { backgroundColor: "#e4eef8", color: "#1a2a3a" }
                                     }
@@ -2842,34 +2930,144 @@ export default function PatientProfiles() {
                         )}
                       </div>
 
-                      {/* Portal reply composer — only when patient has a portal account */}
-                      {portalStatus.hasPortalAccount && (
-                        <div className="border-t px-4 pt-2.5 pb-3" style={{ borderColor: "#d4c9b5" }}>
-                          <p
-                            className="text-[10px] font-semibold uppercase tracking-wide mb-1.5 flex items-center gap-1"
-                            style={{ color: "#7a8a64" }}
+                      {/* Composer — Reply to patient OR Internal staff note */}
+                      <div className="border-t px-4 pt-2.5 pb-3" style={{ borderColor: "#d4c9b5" }}>
+                        {/* Tab bar */}
+                        <div className="flex items-center gap-0 mb-2.5" style={{ borderBottom: "1px solid #e5e0d8" }}>
+                          <button
+                            className="text-[10px] font-semibold px-3 py-1 -mb-px transition-colors"
+                            style={composerTab === 'reply'
+                              ? { color: "#3a5a2a", borderBottom: "2px solid #3a5a2a" }
+                              : { color: "#9a9a8a", borderBottom: "2px solid transparent" }}
+                            onClick={() => setComposerTab('reply')}
+                            data-testid="tab-composer-reply"
                           >
-                            <MessageSquare className="w-2.5 h-2.5" />
-                            Reply via ClinIQ Portal
-                          </p>
-                          <div className="flex items-end gap-2">
-                            <textarea
-                              className="flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-xs min-h-[32px] max-h-20 outline-none focus:ring-1 focus:ring-ring"
-                              placeholder="Message this patient…"
-                              rows={1}
-                              value={messageDraft}
-                              onChange={(e) => setMessageDraft(e.target.value)}
-                              onKeyDown={(e) => {
-                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }
-                              }}
-                              data-testid="input-clinician-message"
-                            />
-                            <Button size="icon" onClick={() => { if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }} disabled={!messageDraft.trim() || sendMessageMutation.isPending} data-testid="button-clinician-send-message">
-                              <Send className="w-3.5 h-3.5" />
-                            </Button>
-                          </div>
+                            <span className="flex items-center gap-1">
+                              <Send className="w-2.5 h-2.5" />
+                              Reply to Patient
+                            </span>
+                          </button>
+                          <button
+                            className="text-[10px] font-semibold px-3 py-1 -mb-px transition-colors"
+                            style={composerTab === 'note'
+                              ? { color: "#b45309", borderBottom: "2px solid #b45309" }
+                              : { color: "#9a9a8a", borderBottom: "2px solid transparent" }}
+                            onClick={() => setComposerTab('note')}
+                            data-testid="tab-composer-internal-note"
+                          >
+                            <span className="flex items-center gap-1">
+                              <Lock className="w-2.5 h-2.5" />
+                              Internal Note
+                            </span>
+                          </button>
                         </div>
-                      )}
+
+                        {composerTab === 'reply' ? (
+                          <>
+                            {/* Channel picker + availability indicators */}
+                            {(replyContext?.availableChannels ?? []).length > 0 && (
+                              <div className="flex items-center gap-1.5 mb-2 flex-wrap">
+                                <span className="text-[9px] uppercase tracking-wide font-semibold" style={{ color: "#9a9a8a" }}>Send via</span>
+                                {(['portal', 'spruce'] as const).map((ch) => {
+                                  const available = (replyContext?.availableChannels ?? []).includes(ch);
+                                  const label = ch === 'portal' ? 'ClinIQ Portal' : 'Spruce SMS';
+                                  const isSelected = activeChannel === ch;
+                                  return (
+                                    <button
+                                      key={ch}
+                                      disabled={!available}
+                                      onClick={() => available && setActiveChannel(ch)}
+                                      className="text-[9px] font-semibold px-2 py-0.5 rounded transition-colors"
+                                      style={
+                                        isSelected && available
+                                          ? ch === 'portal'
+                                            ? { backgroundColor: "#3a5a2a", color: "#f0ede8" }
+                                            : { backgroundColor: "#2a4a6a", color: "#e8f0f8" }
+                                          : available
+                                            ? { backgroundColor: "#f0ede8", color: "#5a5a4a" }
+                                            : { backgroundColor: "#f5f5f0", color: "#b0b0a0", cursor: "not-allowed" }
+                                      }
+                                      title={!available ? `${label} not linked` : undefined}
+                                      data-testid={`button-channel-${ch}`}
+                                    >
+                                      {label}{!available ? ' (not linked)' : ''}
+                                    </button>
+                                  );
+                                })}
+                              </div>
+                            )}
+                            {/* Message input */}
+                            {(replyContext?.availableChannels ?? []).length === 0 && !replyContext ? null : (
+                              (replyContext?.availableChannels ?? []).length === 0 ? (
+                                <p className="text-[10px] italic" style={{ color: "#9a9a8a" }}>
+                                  No messaging channel linked for this patient. Invite them to the portal or connect a Spruce conversation.
+                                </p>
+                              ) : (
+                                <div className="flex items-end gap-2">
+                                  <textarea
+                                    className="flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-xs min-h-[32px] max-h-20 outline-none focus:ring-1 focus:ring-ring"
+                                    placeholder={activeChannel === 'spruce' ? "Message via Spruce SMS…" : "Message this patient…"}
+                                    rows={1}
+                                    value={messageDraft}
+                                    onChange={(e) => setMessageDraft(e.target.value)}
+                                    onKeyDown={(e) => {
+                                      if (e.key === 'Enter' && !e.shiftKey) {
+                                        e.preventDefault();
+                                        if (messageDraft.trim()) replyMutation.mutate({ body: messageDraft.trim(), channel: activeChannel });
+                                      }
+                                    }}
+                                    data-testid="input-clinician-message"
+                                  />
+                                  <Button
+                                    size="icon"
+                                    onClick={() => { if (messageDraft.trim()) replyMutation.mutate({ body: messageDraft.trim(), channel: activeChannel }); }}
+                                    disabled={!messageDraft.trim() || replyMutation.isPending}
+                                    data-testid="button-clinician-send-message"
+                                  >
+                                    <Send className="w-3.5 h-3.5" />
+                                  </Button>
+                                </div>
+                              )
+                            )}
+                          </>
+                        ) : (
+                          /* Internal Note composer */
+                          <>
+                            <div
+                              className="text-[9px] mb-1.5 flex items-center gap-1 font-medium"
+                              style={{ color: "#b45309" }}
+                            >
+                              <Lock className="w-2.5 h-2.5" />
+                              Visible to staff only — never sent to patient
+                            </div>
+                            <div className="flex items-end gap-2">
+                              <textarea
+                                className="flex-1 resize-none rounded-md border px-2.5 py-1.5 text-xs min-h-[32px] max-h-20 outline-none focus:ring-1"
+                                style={{ borderColor: "#fde68a", backgroundColor: "#fffbeb", color: "#78350f" }}
+                                placeholder="Add a staff note…"
+                                rows={1}
+                                value={noteDraft}
+                                onChange={(e) => setNoteDraft(e.target.value)}
+                                onKeyDown={(e) => {
+                                  if (e.key === 'Enter' && !e.shiftKey) {
+                                    e.preventDefault();
+                                    if (noteDraft.trim()) internalNoteMutation.mutate({ content: noteDraft.trim() });
+                                  }
+                                }}
+                                data-testid="input-internal-note"
+                              />
+                              <Button
+                                size="icon"
+                                onClick={() => { if (noteDraft.trim()) internalNoteMutation.mutate({ content: noteDraft.trim() }); }}
+                                disabled={!noteDraft.trim() || internalNoteMutation.isPending}
+                                data-testid="button-save-internal-note"
+                              >
+                                <Save className="w-3.5 h-3.5" />
+                              </Button>
+                            </div>
+                          </>
+                        )}
+                      </div>
                     </div>
                   )}
                 </div>
