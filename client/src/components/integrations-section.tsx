@@ -215,8 +215,10 @@ function SpruceManageDialog({
       }
       return res.json();
     },
-    onSuccess: () => {
-      queryClient.invalidateQueries({ queryKey: ["/api/clinic/spruce-settings"] });
+    onSuccess: (savedSettings: SpruceSettings) => {
+      // Update the cache immediately with the server's response so the
+      // populate useEffect sees the correct value without a stale-data window.
+      queryClient.setQueryData(["/api/clinic/spruce-settings"], savedSettings);
       setSigningSecret("");
       setApiToken("");
       toast({ title: "Spruce settings saved" });
