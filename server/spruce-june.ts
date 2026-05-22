@@ -99,7 +99,13 @@ export async function shouldJuneAcknowledge(
   }
 
   // Gate 3: Workflow-level switch (defaults deny when row absent)
-  if (!workflowSetting?.allowAcknowledgment) {
+  // Exception: unclassified messages bypass this gate when generalMessageAcknowledgmentEnabled=true.
+  // The clinic-level general toggle IS the workflow-level control for unclassified — no separate
+  // spruce_workflow_settings row is required.
+  const isUnclassifiedGeneralEnabled =
+    classification.workflow === "unclassified" &&
+    (clinicSettings as any).generalMessageAcknowledgmentEnabled === true;
+  if (!isUnclassifiedGeneralEnabled && !workflowSetting?.allowAcknowledgment) {
     return `allowAcknowledgment=false for workflow="${classification.workflow}"`;
   }
 
@@ -119,19 +125,21 @@ export async function shouldJuneAcknowledge(
   }
 
   // Gate 6: Workflow confidence
-  if (classification.confidence === "low") {
+  // Unclassified messages always have confidence="low" (no specific workflow matched) —
+  // bypass this gate when general acknowledgment is enabled; the AI prompt enforces safety.
+  if (!isUnclassifiedGeneralEnabled && classification.confidence === "low") {
     return `classification confidence="low" — June requires medium or high confidence`;
   }
 
-  // Gate 7: Turn limit
+  // Gate 7: Turn limit (unclassified defaults to maxJuneTurns=1 when no workflow row exists)
   const maxTurns = workflowSetting?.maxJuneTurns ?? 1;
   if (juneTurnCount >= maxTurns) {
     return `juneTurnCount=${juneTurnCount} >= maxJuneTurns=${maxTurns} — turn limit reached`;
   }
 
-  // Gate 8: Unclassified messages — only respond when general acknowledgment is enabled
+  // Gate 8: Unclassified messages — generalMessageAcknowledgmentEnabled is the gate
   if (classification.workflow === "unclassified") {
-    if (!(clinicSettings as any).generalMessageAcknowledgmentEnabled) {
+    if (!isUnclassifiedGeneralEnabled) {
       return "workflow=unclassified — generalMessageAcknowledgmentEnabled=false";
     }
     // General acknowledgment is on — allow through; prompt handles safe response
