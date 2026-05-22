@@ -61,6 +61,8 @@ export interface JunePipelineInput {
   apiToken: string | null;
   storage: IStorage;
   openaiClient: OpenAI;
+  /** Actual turn index for this conversation (0 = first reply). Defaults to 0. */
+  juneTurnCount?: number;
 }
 
 export interface JunePipelineResult {
@@ -299,6 +301,23 @@ STRICT RULES:
  * Fallback examples used when extraction confidence is low or unavailable.
  * These are style guides — not templates to copy verbatim.
  */
+/**
+ * Closing-turn style guides — used when this is the last allowed June turn.
+ * June wraps up, confirms what it collected, and hands off to the care team.
+ */
+const CLOSING_STYLE_GUIDES: Partial<Record<SpruceWorkflowType, string>> = {
+  medication_refill:
+    "Got it — thank you! I'm passing your refill request over to the care team now. They'll follow up with you shortly.",
+  appointment:
+    "Perfect, thank you! I'm sending this over to the care team. Someone will follow up to confirm your appointment.",
+  lab_question:
+    "Thank you for that information. I'm getting this to the clinical team right now — they'll be in touch soon.",
+  billing:
+    "Thank you — I'm forwarding this to our billing team. They'll follow up with you shortly.",
+  unclassified:
+    "Thank you for that information. A team member will be in touch with you soon.",
+};
+
 const ACK_STYLE_GUIDES: Record<SpruceWorkflowType, string> = {
   medication_refill:
     "Of course — which medication are you needing a refill on? Once I have that, I'll get this over to the care team right away.",
@@ -337,11 +356,16 @@ export async function generateJuneAcknowledgment(
   patientName: string | null,
   allowFollowUpQuestion: boolean,
   extractedFields: ExtractedFields | null = null,
+  isLastTurn: boolean = false,
 ): Promise<string> {
   const workflowKey = (workflow as SpruceWorkflowType) in ACK_STYLE_GUIDES
     ? (workflow as SpruceWorkflowType)
     : "unclassified";
-  const styleGuide = ACK_STYLE_GUIDES[workflowKey];
+
+  // On the last allowed turn, use a closing style guide and never ask questions
+  const styleGuide = isLastTurn
+    ? (CLOSING_STYLE_GUIDES[workflowKey] ?? CLOSING_STYLE_GUIDES.unclassified ?? ACK_STYLE_GUIDES[workflowKey])
+    : ACK_STYLE_GUIDES[workflowKey];
   const patientRef = patientName ? `The patient's name is ${patientName}.` : "";
 
   // Build the known/missing context for the prompt
@@ -357,7 +381,8 @@ export async function generateJuneAcknowledgment(
       extractionContext += `\nINFORMATION ALREADY PROVIDED BY THE PATIENT (do NOT ask about these):\n${knownLines}\n`;
     }
 
-    if (allowFollowUpQuestion && extractedFields.missingFields.length > 0) {
+    // Never suggest more questions on the closing turn
+    if (!isLastTurn && allowFollowUpQuestion && extractedFields.missingFields.length > 0) {
       // Only suggest the highest-priority missing fields
       const priorityList = PRIORITY_MISSING_FIELDS[workflowKey as SpruceWorkflowType] ?? [];
       const prioritised = [
@@ -371,9 +396,11 @@ export async function generateJuneAcknowledgment(
     }
   }
 
-  const followUpInstruction = allowFollowUpQuestion
-    ? "You may ask about 1–2 of the MISSING fields above (highest priority first). Do NOT ask about anything already provided."
-    : "Do NOT ask any follow-up questions — acknowledge only and confirm the care team will follow up.";
+  const followUpInstruction = isLastTurn
+    ? "This is your FINAL message. Do NOT ask any more questions. Warmly confirm what was collected, thank the patient, and let them know the care team will follow up. Keep it brief."
+    : allowFollowUpQuestion
+      ? "You may ask about 1–2 of the MISSING fields above (highest priority first). Do NOT ask about anything already provided."
+      : "Do NOT ask any follow-up questions — acknowledge only and confirm the care team will follow up.";
 
   const userPrompt = `Workflow type: ${workflow}
 ${patientRef}
@@ -405,7 +432,7 @@ Write a brief, warm, natural acknowledgment. Confirm what the patient shared. If
   }
 
   // Fallback: build a basic contextual response from extracted fields
-  return buildFallbackAck(workflowKey, extractedFields, patientName, allowFollowUpQuestion);
+  return buildFallbackAck(workflowKey, extractedFields, patientName, allowFollowUpQuestion, isLastTurn);
 }
 
 function buildFallbackAck(
@@ -413,8 +440,25 @@ function buildFallbackAck(
   extracted: ExtractedFields | null,
   patientName: string | null,
   allowFollowUp: boolean,
+  isLastTurn: boolean = false,
 ): string {
   const greeting = patientName ? `Hi ${patientName.split(" ")[0]}, ` : "";
+
+  // Closing turn — wrap up regardless of what's missing
+  if (isLastTurn) {
+    const closingGuide = CLOSING_STYLE_GUIDES[workflow] ?? CLOSING_STYLE_GUIDES.unclassified ?? "";
+    if (workflow === "medication_refill" && extracted?.fields) {
+      const med = extracted.fields.medication;
+      const pharm = extracted.fields.pharmacy;
+      if (med && pharm) {
+        return `${greeting}Got it — I'm passing your ${med} refill request at ${pharm} over to the care team now. They'll be in touch with you shortly.`;
+      }
+      if (med) {
+        return `${greeting}Got it — I'm getting your ${med} refill request over to the care team now. They'll follow up with you shortly.`;
+      }
+    }
+    return `${greeting}${closingGuide || "Thank you! A team member will be in touch with you shortly."}`;
+  }
 
   if (workflow === "medication_refill" && extracted?.fields) {
     const med = extracted.fields.medication;
@@ -637,8 +681,9 @@ export async function runJunePipeline(
       classification.workflow,
     ).catch(() => null);
 
-    // Load current turn count from the workflow request (if any)
-    const juneTurnCount = 0; // new message = fresh check; workflow request was just created
+    // Use the real turn count passed in from the webhook handler.
+    // Turn 0 = first June reply, Turn 1 = second, etc.
+    const juneTurnCount = input.juneTurnCount ?? 0;
 
     // Gate check — bail early before any AI calls if blocked
     const skipReason = await shouldJuneAcknowledge(input, workflowSetting, juneTurnCount);
@@ -669,6 +714,11 @@ export async function runJunePipeline(
     }
 
     // ── Step 2: Generate acknowledgment (context-aware) ───────────────────
+    // Determine if this is the final allowed turn so June wraps up instead of asking more questions
+    const maxTurns = workflowSetting?.maxJuneTurns ?? 1;
+    const isLastTurn = juneTurnCount + 1 >= maxTurns;
+    console.log(`${tag} turn=${juneTurnCount} maxTurns=${maxTurns} isLastTurn=${isLastTurn}`);
+
     const ackText = await generateJuneAcknowledgment(
       input.openaiClient,
       classification.workflow,
@@ -676,6 +726,7 @@ export async function runJunePipeline(
       input.patientName,
       workflowSetting?.allowFollowUpQuestion ?? false,
       extractedFields,
+      isLastTurn,
     );
 
     // ── Step 3: Generate staff memo (with collected/missing sections) ──────

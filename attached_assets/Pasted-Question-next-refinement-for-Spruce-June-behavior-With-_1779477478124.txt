@@ -1,0 +1,95 @@
+Question/next refinement for Spruce June behavior:
+
+With the current workflow gates, I want to confirm whether Spruce June only responds when a message matches a configured workflow.
+
+Long-term, I do want Spruce June to acknowledge most inbound patient messages, even when they do not clearly fall into a specific workflow.
+
+However, I do NOT want her to become an unrestricted medical advice chatbot.
+
+Desired behavior:
+
+1. Specific workflow match
+   If the message clearly matches a workflow, use that workflow’s acknowledgment/intake behavior.
+
+Examples:
+
+* refill request → collect medication/pharmacy/missing refill details
+* scheduling request → collect preferred days/times
+* lab question → acknowledge and route to clinical team
+* urgent concern → emergency language + escalation
+* missed call → missed-call follow-up
+
+2. No specific workflow match / general message
+   If the message is inbound from a patient but does not confidently match a workflow, Spruce June should still be able to send a general acknowledgment if enabled.
+
+Example:
+“Hey {firstName}, I’ll get this message over to the care team so they can help. A team member will follow up as soon as possible.”
+
+This should create a general staff-facing memo/task, not disappear silently.
+
+3. Intuitive response, not generic canned response
+   Even for general messages, June should read the message and respond in a way that makes sense.
+
+Examples:
+
+Patient:
+“Hey, I have a quick question.”
+June:
+“Hey Sarah — I’ll get this over to the care team so they can help. A team member will follow up as soon as possible.”
+
+Patient:
+“I think I have a UTI. Can someone help?”
+June:
+“Hey Sarah — I’ll get this to the nurse for review. To help them follow up, when did your symptoms start, and are you having fever, chills, back pain, or blood in your urine?”
+
+Patient:
+“I’m running late.”
+June:
+“Thanks for letting us know — I’ll pass this along to the team.”
+
+Patient:
+“Can someone call me?”
+June:
+“Of course — I’ll let the team know you’d like a call back. Is there a good number or time to reach you?”
+
+4. Safety boundaries
+   General acknowledgment mode must still follow all safety gates:
+
+* inbound patient/external messages only
+* clinic Spruce integration enabled
+* Spruce June acknowledgments enabled
+* conversation not in staff_takeover / ai_muted
+* no staff reply after the patient message
+* max June turns respected
+* no diagnosis
+* no prescribing
+* no broad medical advice
+* emergency escalation language when appropriate
+
+5. Settings
+   Please add/plan a clinic-level or workflow-level setting for:
+   General Message Acknowledgment
+
+Default OFF.
+
+This allows clinics to decide whether Spruce June acknowledges unclassified/general messages.
+
+6. Dashboard/memo routing
+   General messages should create a staff-facing memo/task routed to a general Patient Messages / Clinical Inbox queue, not the medication refill queue.
+
+Memo should include:
+
+* patient
+* original message
+* June acknowledgment sent
+* what June asked, if anything
+* suggested staff follow-up
+* urgency/priority
+* link to conversation
+* link to chart if matched
+
+7. Important
+   If confidence is low or the message could be clinical/urgent, June should acknowledge and escalate rather than trying to answer.
+
+Keep this isolated to Spruce June / Spruce Inbox workflows only.
+Do not modify existing ClinIQ June, Ask June, SOAP, transcription, lab evaluation, evidence overlay, auth, billing, sessions, or unrelated core systems.

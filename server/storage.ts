@@ -1,4 +1,4 @@
-import { eq, ne, desc, asc, ilike, or, and, isNull, count, sql, inArray } from "drizzle-orm";
+import { eq, ne, desc, asc, ilike, like, or, and, isNull, count, sql, inArray } from "drizzle-orm";
 import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -422,6 +422,8 @@ export interface IStorage {
   listSpruceWorkflowSettings(clinicId: number): Promise<schema.SpruceWorkflowSettings[]>;
   // Update June-specific fields on a workflow request
   updateSpruceWorkflowRequestJune(id: number, data: { juneAckSentAt?: Date; juneMemoText?: string; juneTurnCount?: number }): Promise<void>;
+  // Find the most recent pending workflow request for a Spruce conversation (for multi-turn)
+  getOpenSpruceWorkflowRequestByConversation(clinicId: number, conversationKey: string): Promise<schema.SpruceWorkflowRequest | null>;
 
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
@@ -5630,4 +5632,25 @@ export interface SpruceConversationMessageRow {
     .update(schema.spruceWorkflowRequests)
     .set(updates)
     .where(eq(schema.spruceWorkflowRequests.id, id));
+};
+
+(DbStorage.prototype as any).getOpenSpruceWorkflowRequestByConversation = async function(
+  clinicId: number,
+  conversationKey: string,
+): Promise<schema.SpruceWorkflowRequest | null> {
+  // Match on the conversation URL which embeds the Spruce conversation ID.
+  // Only return pending requests — resolved ones don't participate in multi-turn.
+  const [row] = await db
+    .select()
+    .from(schema.spruceWorkflowRequests)
+    .where(
+      and(
+        eq(schema.spruceWorkflowRequests.clinicId, clinicId),
+        eq(schema.spruceWorkflowRequests.status, "pending"),
+        like(schema.spruceWorkflowRequests.spruceConversationUrl, `%${conversationKey}%`),
+      ),
+    )
+    .orderBy(desc(schema.spruceWorkflowRequests.createdAt))
+    .limit(1);
+  return row ?? null;
 };

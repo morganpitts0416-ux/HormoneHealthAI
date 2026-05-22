@@ -18531,34 +18531,51 @@ IMPORTANT:
         );
 
         // ── Create a workflow request for actionable classifications ──────
+        // For multi-turn conversations: if a pending workflow request already exists
+        // for this conversation, reuse it rather than creating a duplicate so that
+        // the june_turn_count increments correctly across turns.
         let createdWorkflowRequestId: number | null = null;
+        let existingJuneTurnCount = 0;
         if (
           classification.workflow !== "unclassified" &&
           storedMsg !== null
         ) {
-          try {
-            const convUrl = spruceConversationId
-              ? `https://app.sprucehealth.com/conversations/${spruceConversationId}`
-              : null;
-            const wrRow = await storage.createSpruceWorkflowRequest({
-              clinicId: matchedClinicId,
-              spruceMessageId: storedMsg.id,
-              patientId: matchedPatient?.id ?? null,
-              workflow: classification.workflow,
-              status: "pending",
-              patientPhone: fromPhone || null,
-              patientNameExtracted: matchedPatient
-                ? `${matchedPatient.firstName} ${matchedPatient.lastName}`
-                : null,
-              requestSummary: msgBody ? msgBody.slice(0, 300) : null,
-              spruceConversationUrl: convUrl,
-              resolvedAt: null,
-              resolvedByUserId: null,
-            });
-            createdWorkflowRequestId = (wrRow as any)?.id ?? null;
-            console.log(`${tag} created spruce_workflow_requests id=${createdWorkflowRequestId} for workflow="${classification.workflow}"${matchedPatient ? ` patient_id=${matchedPatient.id}` : " (unmatched)"}`);
-          } catch (err) {
-            console.error(`${tag} failed to create spruce_workflow_request:`, err);
+          const convKey = spruceConversationId || fromPhone || null;
+          // Look for an existing open workflow request for this Spruce conversation
+          const existingWr = convKey
+            ? await storage.getOpenSpruceWorkflowRequestByConversation(matchedClinicId, convKey).catch(() => null)
+            : null;
+
+          if (existingWr && existingWr.workflow === classification.workflow) {
+            // Reuse the existing workflow request — this is a follow-up turn
+            createdWorkflowRequestId = existingWr.id;
+            existingJuneTurnCount = existingWr.juneTurnCount ?? 0;
+            console.log(`${tag} reusing spruce_workflow_requests id=${existingWr.id} (turn=${existingJuneTurnCount}) for workflow="${classification.workflow}"`);
+          } else {
+            try {
+              const convUrl = spruceConversationId
+                ? `https://app.sprucehealth.com/conversations/${spruceConversationId}`
+                : null;
+              const wrRow = await storage.createSpruceWorkflowRequest({
+                clinicId: matchedClinicId,
+                spruceMessageId: storedMsg.id,
+                patientId: matchedPatient?.id ?? null,
+                workflow: classification.workflow,
+                status: "pending",
+                patientPhone: fromPhone || null,
+                patientNameExtracted: matchedPatient
+                  ? `${matchedPatient.firstName} ${matchedPatient.lastName}`
+                  : null,
+                requestSummary: msgBody ? msgBody.slice(0, 300) : null,
+                spruceConversationUrl: convUrl,
+                resolvedAt: null,
+                resolvedByUserId: null,
+              });
+              createdWorkflowRequestId = (wrRow as any)?.id ?? null;
+              console.log(`${tag} created spruce_workflow_requests id=${createdWorkflowRequestId} for workflow="${classification.workflow}"${matchedPatient ? ` patient_id=${matchedPatient.id}` : " (unmatched)"}`);
+            } catch (err) {
+              console.error(`${tag} failed to create spruce_workflow_request:`, err);
+            }
           }
         }
 
@@ -18609,6 +18626,7 @@ IMPORTANT:
             apiToken: spruceApiToken,
             storage,
             openaiClient: juneOpenAI,
+            juneTurnCount: existingJuneTurnCount,
           }).catch((err) => {
             console.error(`${tag} runJunePipeline error (non-fatal):`, err);
           });
