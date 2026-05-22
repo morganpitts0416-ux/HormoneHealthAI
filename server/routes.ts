@@ -20,7 +20,7 @@ import {
 import { PDFExtractionService } from "./pdf-extraction";
 import { ASCVDCalculator } from "./ascvd-calculator";
 import { runEnhancedSoapPipeline } from "./soap-pipeline";
-import { runJunePipeline } from "./spruce-june";
+import { runJunePipeline, shouldJuneAcknowledge } from "./spruce-june";
 import { PREVENTCalculator } from "./prevent-calculator";
 import { StopBangCalculator } from "./stopbang-calculator";
 import { detectMaleHormonePatterns } from "./male-hormone-patterns";
@@ -2789,6 +2789,100 @@ Rules:
         });
       }
 
+      // ── June AI acknowledgment pipeline ──────────────────────────────────
+      // Run June in simulation mode so staff can test AI replies without
+      // requiring full Spruce production configuration.
+      //
+      // Gate overrides for simulation:
+      //   • spruceJuneAcknowledgmentsEnabled = true  (always on in simulator)
+      //   • allowAcknowledgment = true               (synthetic workflow setting)
+      //   • apiToken = null                          (no real Spruce delivery)
+      //   • convState = null                         (no takeover state)
+      //
+      // Real settings are loaded first; the overrides only fill gaps.
+      let juneResult: { skipped: boolean; skipReason?: string; acknowledgmentSent: boolean; acknowledgmentText?: string } = {
+        skipped: true,
+        skipReason: "workflow=unclassified",
+        acknowledgmentSent: false,
+      };
+
+      if (classification.workflow !== "unclassified" && simMessageDirection === "inbound_patient") {
+        try {
+          // Load real clinic settings if they exist, then override critical flags
+          let realSettings: any = null;
+          try { realSettings = await storage.getClinicSpruceSettings(clinicId); } catch {}
+          const simClinicSettings: any = {
+            ...(realSettings ?? {}),
+            isEnabled: true,
+            spruceJuneAcknowledgmentsEnabled: true,
+          };
+
+          const simWorkflowSetting: any = {
+            workflow: classification.workflow,
+            allowAcknowledgment: true,
+            allowFollowUpQuestion: false,
+            maxJuneTurns: 3,
+          };
+
+          const juneOpenAI = new OpenAI({
+            apiKey: process.env.AI_INTEGRATIONS_OPENAI_API_KEY,
+            baseURL: process.env.AI_INTEGRATIONS_OPENAI_BASE_URL,
+          });
+
+          // Pass the synthetic workflowSetting directly to bypass Gate 3 check
+          const skipReason = await shouldJuneAcknowledge(
+            {
+              clinicId,
+              conversationKey: spruceConversationId,
+              spruceConversationId,
+              messageBody: msgBody,
+              messageDirection: simMessageDirection,
+              classification,
+              workflowRequestId: workflowRequest?.id ?? null,
+              clinicSettings: simClinicSettings,
+              convState: null,
+              patientName: simMatchedPatient ? `${simMatchedPatient.firstName} ${simMatchedPatient.lastName}` : null,
+              patientId: simMatchedPatient?.id ?? null,
+              fromPhone,
+              spruceConversationUrl: `https://app.sprucehealth.com/conversations/${spruceConversationId}`,
+              apiToken: null,
+              storage,
+              openaiClient: juneOpenAI,
+            },
+            simWorkflowSetting,
+            0,
+          );
+
+          if (skipReason) {
+            juneResult = { skipped: true, skipReason, acknowledgmentSent: false };
+            console.log(`[Spruce/simulate] June SKIPPED: ${skipReason}`);
+          } else {
+            juneResult = await runJunePipeline({
+              clinicId,
+              conversationKey: spruceConversationId,
+              spruceConversationId,
+              messageBody: msgBody,
+              messageDirection: simMessageDirection,
+              classification,
+              workflowRequestId: workflowRequest?.id ?? null,
+              clinicSettings: simClinicSettings,
+              convState: null,
+              patientName: simMatchedPatient ? `${simMatchedPatient.firstName} ${simMatchedPatient.lastName}` : null,
+              patientId: simMatchedPatient?.id ?? null,
+              fromPhone,
+              spruceConversationUrl: `https://app.sprucehealth.com/conversations/${spruceConversationId}`,
+              apiToken: null,   // no real Spruce delivery in simulation
+              storage,
+              openaiClient: juneOpenAI,
+            });
+            console.log(`[Spruce/simulate] June pipeline result: sent=${juneResult.acknowledgmentSent} skipped=${juneResult.skipped}`);
+          }
+        } catch (juneErr) {
+          console.error("[Spruce/simulate] June pipeline error (non-fatal):", juneErr);
+          juneResult = { skipped: true, skipReason: `pipeline error: ${String(juneErr)}`, acknowledgmentSent: false };
+        }
+      }
+
       res.json({
         ok: true,
         spruceMessage: storedMsg,
@@ -2798,6 +2892,9 @@ Rules:
         patientMatch: simMatchedPatient
           ? { matched: true, patientId: simMatchedPatient.id, name: `${simMatchedPatient.firstName} ${simMatchedPatient.lastName}` }
           : { matched: false },
+        juneAck: juneResult.acknowledgmentSent
+          ? { sent: true, text: juneResult.acknowledgmentText ?? "" }
+          : { sent: false, skipReason: juneResult.skipReason ?? "not triggered" },
       });
     } catch (err) {
       console.error("[Spruce/simulate] Error:", err);

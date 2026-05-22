@@ -2808,6 +2808,23 @@ export default function PatientProfiles() {
                                 month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
                               });
 
+                              // Helper: highlight @mention tokens in text
+                              const renderWithMentions = (text: string | null) => {
+                                if (!text) return null;
+                                const parts = text.split(/(@\S+)/g);
+                                return parts.map((part, i) =>
+                                  part.startsWith('@') ? (
+                                    <span
+                                      key={i}
+                                      className="font-semibold rounded px-0.5"
+                                      style={{ backgroundColor: "#fde68a", color: "#92400e" }}
+                                    >
+                                      {part}
+                                    </span>
+                                  ) : part
+                                );
+                              };
+
                               // ── Internal staff note — full-width amber card ───────
                               if (isInternalNote) {
                                 return (
@@ -2828,7 +2845,7 @@ export default function PatientProfiles() {
                                           {item.senderLabel}
                                         </span>
                                       </div>
-                                      <p className="whitespace-pre-wrap leading-snug">{item.body}</p>
+                                      <p className="whitespace-pre-wrap leading-snug">{renderWithMentions(item.body)}</p>
                                       <div className="mt-1 text-[10px]" style={{ opacity: 0.6 }}>{ts}</div>
                                     </div>
                                   </div>
