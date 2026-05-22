@@ -1365,3 +1365,12 @@ CREATE TABLE IF NOT EXISTS patient_message_mentions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS patient_message_mentions_msg_user_idx
   ON patient_message_mentions(message_id, mentioned_user_id);
+
+-- spruce_messages: atomic dedup guard — prevents concurrent webhook calls for
+-- the same Spruce event from both passing the SELECT-based pre-check and
+-- triggering duplicate June responses.  NULLs are exempt (PostgreSQL unique
+-- indexes treat each NULL as distinct, so rows without a dedupeKey are
+-- unaffected).  CONCURRENTLY avoids locking the table during index build.
+CREATE UNIQUE INDEX CONCURRENTLY IF NOT EXISTS spruce_messages_clinic_dedupe_key_idx
+  ON spruce_messages(clinic_id, spruce_event_dedupe_key)
+  WHERE spruce_event_dedupe_key IS NOT NULL;

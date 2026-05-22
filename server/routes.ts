@@ -18540,7 +18540,19 @@ IMPORTANT:
           spruceContactName: spruceContactName,
         });
         console.log(`${tag} stored spruce_messages id=${storedMsg.id} direction="${messageDirection}"`);
-      } catch (err) {
+      } catch (err: any) {
+        // Unique constraint violation on (clinicId, spruceEventDedupeKey) means a
+        // concurrent webhook call already stored this exact event.  Return early
+        // so June does not fire a second time.  This is the atomic dedup guard
+        // that backs up the SELECT-based pre-check against race conditions.
+        const msg = String(err?.message ?? "").toLowerCase();
+        if (dedupeKey && (msg.includes("unique") || msg.includes("duplicate"))) {
+          console.log(
+            `${tag} DUPLICATE (constraint) dedupeKey="${dedupeKey}" — ` +
+            `concurrent request already stored this event. Skipping June.`,
+          );
+          return;
+        }
         console.error(`${tag} failed to store spruce_message:`, err);
       }
 

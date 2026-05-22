@@ -2560,7 +2560,15 @@ export const spruceMessages = pgTable("spruce_messages", {
   // Null when the contact has no name in Spruce or for staff outbound messages.
   spruceContactName: varchar("spruce_contact_name", { length: 200 }),
   receivedAt: timestamp("received_at").defaultNow().notNull(),
-});
+}, (t) => ({
+  // Atomic dedup guard: two concurrent webhook calls for the same event can
+  // both pass the SELECT-based dedup check.  The unique constraint ensures
+  // only one INSERT succeeds — the second throws, and the webhook handler
+  // catches it and returns early before June fires a second time.
+  // NULLs are allowed (messages without a dedupeKey are unrestricted).
+  uqClinicDedupeKey: uniqueIndex("spruce_messages_clinic_dedupe_key_idx")
+    .on(t.clinicId, t.spruceEventDedupeKey),
+}));
 export type SpruceMessage = typeof spruceMessages.$inferSelect;
 export const insertSpruceMessageSchema = createInsertSchema(spruceMessages).omit({ id: true, receivedAt: true });
 export type InsertSpruceMessage = z.infer<typeof insertSpruceMessageSchema>;
