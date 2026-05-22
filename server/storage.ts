@@ -167,6 +167,8 @@ export interface IStorage {
   getPortalMessages(patientId: number): Promise<PortalMessage[]>;
   createPortalMessage(msg: InsertPortalMessage): Promise<PortalMessage>;
   markPortalMessagesRead(patientId: number, readBySenderType: 'patient' | 'clinician'): Promise<void>;
+  // ── Unified Communication Timeline (portal + Spruce merged, read-only) ───
+  getPatientCommunicationTimeline(patientId: number, clinicId: number): Promise<CommunicationTimelineItem[]>;
   getUnreadPortalMessageCount(patientId: number, unreadBySenderType: 'patient' | 'clinician'): Promise<number>;
   getPortalMessageByExternalId(externalMessageId: string): Promise<PortalMessage | undefined>;
 
@@ -4760,6 +4762,28 @@ export interface SpruceConversationSummary {
   archivedAt: Date | null;
 }
 
+// ── CommunicationTimelineItem ─────────────────────────────────────────────
+// Normalized shape for the unified patient communication timeline, merging
+// portal_messages, spruce_messages (inbound), and spruce_outbound_messages.
+export interface CommunicationTimelineItem {
+  id: string                      // "portal:123" | "spruce_in:456" | "spruce_out:789"
+  source: 'portal' | 'spruce'
+  direction: 'inbound' | 'outbound' | 'system'
+  senderLabel: string             // "Patient" | "Staff" | "June AI"
+  body: string | null             // null for non-text Spruce events
+  timestamp: string               // ISO 8601
+  conversationKey: string | null  // Spruce conversation key for Inbox deep-link
+  patientId: number
+  clinicianId: number | null      // set for portal messages
+  userId: number | null           // set for Spruce outbound (sentByUserId)
+  readAt: string | null           // portal inbound only
+  sentByAI: boolean
+  eventType: string | null        // Spruce eventType for non-text events
+  spruceMessageId: string | null
+  spruceConversationId: string | null
+  spruceDeliveryId: string | null
+}
+
 export interface SpruceConversationMessageRow {
   id: number;
   spruceConversationId: string | null;
@@ -5151,6 +5175,143 @@ export interface SpruceConversationMessageRow {
     .from(schema.spruceWorkflowSettings)
     .where(eq(schema.spruceWorkflowSettings.clinicId, clinicId))
     .orderBy(schema.spruceWorkflowSettings.workflow);
+};
+
+// ── getPatientCommunicationTimeline ───────────────────────────────────────
+// Merges portal_messages, spruce_messages (patient-matched inbound + system
+// events), and spruce_outbound_messages into one chronological timeline.
+//
+// Dedup strategy for Spruce outbound:
+//   spruce_messages with messageDirection='outbound_staff' are EXCLUDED.
+//   ClinIQ-sent replies are covered by spruce_outbound_messages (richer
+//   metadata).  Staff messages sent directly from the Spruce app without
+//   going through ClinIQ are a known Phase-1 omission; they will be added
+//   in Phase 2 with proper spruceMessageId ↔ spruceDeliveryId dedup.
+(DbStorage.prototype as any).getPatientCommunicationTimeline = async function(
+  patientId: number,
+  clinicId: number,
+): Promise<CommunicationTimelineItem[]> {
+  const items: CommunicationTimelineItem[] = [];
+
+  // ── 1. Portal messages ───────────────────────────────────────────────────
+  const portalRows = await db
+    .select()
+    .from(schema.portalMessages)
+    .where(eq(schema.portalMessages.patientId, patientId))
+    .orderBy(asc(schema.portalMessages.createdAt));
+
+  for (const msg of portalRows) {
+    items.push({
+      id: `portal:${msg.id}`,
+      source: 'portal',
+      direction: msg.senderType === 'patient' ? 'inbound' : 'outbound',
+      senderLabel: msg.senderType === 'patient' ? 'Patient' : 'Staff',
+      body: msg.content,
+      timestamp: msg.createdAt.toISOString(),
+      conversationKey: null,
+      patientId: msg.patientId,
+      clinicianId: msg.clinicianId,
+      userId: null,
+      readAt: msg.readAt ? msg.readAt.toISOString() : null,
+      sentByAI: false,
+      eventType: null,
+      spruceMessageId: null,
+      spruceConversationId: null,
+      spruceDeliveryId: null,
+    });
+  }
+
+  // ── 2. Spruce inbound messages (patient-matched, excl. outbound_staff) ───
+  const spruceInRows = await db
+    .select()
+    .from(schema.spruceMessages)
+    .where(
+      and(
+        eq(schema.spruceMessages.clinicId, clinicId),
+        eq(schema.spruceMessages.patientId, patientId),
+        ne(schema.spruceMessages.messageDirection as any, 'outbound_staff'),
+      ),
+    )
+    .orderBy(asc(schema.spruceMessages.receivedAt));
+
+  // Collect conversation keys for the outbound lookup below
+  const convKeySet = new Set<string>();
+  for (const msg of spruceInRows) {
+    const key = msg.spruceConversationId ?? msg.fromPhone ?? null;
+    if (key) convKeySet.add(key);
+  }
+
+  for (const msg of spruceInRows) {
+    const convKey = msg.spruceConversationId ?? msg.fromPhone ?? null;
+    const hasBody = !!msg.messageBody;
+    // Non-text events (attachments, calls, etc.) are system-type items
+    const direction: 'inbound' | 'system' =
+      hasBody && msg.messageDirection === 'inbound_patient' ? 'inbound' : 'system';
+    const senderLabel =
+      direction === 'inbound'
+        ? (msg.spruceContactName ?? 'Patient')
+        : 'System';
+
+    items.push({
+      id: `spruce_in:${msg.id}`,
+      source: 'spruce',
+      direction,
+      senderLabel,
+      body: msg.messageBody,
+      timestamp: msg.receivedAt.toISOString(),
+      conversationKey: convKey,
+      patientId,
+      clinicianId: null,
+      userId: null,
+      readAt: null,
+      sentByAI: false,
+      eventType: msg.eventType,
+      spruceMessageId: msg.spruceMessageId,
+      spruceConversationId: msg.spruceConversationId,
+      spruceDeliveryId: null,
+    });
+  }
+
+  // ── 3. Spruce outbound messages (ClinIQ-sent into Spruce) ────────────────
+  if (convKeySet.size > 0) {
+    const convKeys = Array.from(convKeySet);
+    const spruceOutRows = await db
+      .select()
+      .from(schema.spruceOutboundMessages)
+      .where(
+        and(
+          eq(schema.spruceOutboundMessages.clinicId, clinicId),
+          inArray(schema.spruceOutboundMessages.conversationKey, convKeys),
+        ),
+      )
+      .orderBy(asc(schema.spruceOutboundMessages.sentAt));
+
+    for (const msg of spruceOutRows) {
+      items.push({
+        id: `spruce_out:${msg.id}`,
+        source: 'spruce',
+        direction: 'outbound',
+        senderLabel: msg.sentByAI ? 'June AI' : 'Staff',
+        body: msg.messageBody,
+        timestamp: msg.sentAt.toISOString(),
+        conversationKey: msg.conversationKey,
+        patientId,
+        clinicianId: null,
+        userId: msg.sentByUserId,
+        readAt: null,
+        sentByAI: msg.sentByAI,
+        eventType: null,
+        spruceMessageId: null,
+        spruceConversationId: null,
+        spruceDeliveryId: msg.spruceDeliveryId,
+      });
+    }
+  }
+
+  // ── 4. Sort all items chronologically ────────────────────────────────────
+  items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
+
+  return items;
 };
 
 // ── Spruce June Phase 3A — Workflow Request June fields ───────────────────

@@ -4809,6 +4809,25 @@ Return ONLY this JSON structure:
     }
   });
 
+  // GET /api/patients/:id/communication-timeline — unified portal + Spruce timeline
+  app.get("/api/patients/:id/communication-timeline", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ message: "Invalid patient id" });
+      // Verify the patient belongs to this clinic (same guard as all patient endpoints)
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (!clinicId) return res.status(400).json({ message: "No clinic context" });
+      const timeline = await storage.getPatientCommunicationTimeline(patientId, clinicId);
+      res.json(timeline);
+    } catch (error) {
+      console.error("[communication-timeline] error:", error);
+      res.status(500).json({ message: "Failed to fetch communication timeline" });
+    }
+  });
+
   // POST /api/patients/:id/messages — clinician replies to patient
   app.post("/api/patients/:id/messages", requireAuth, async (req, res) => {
     try {

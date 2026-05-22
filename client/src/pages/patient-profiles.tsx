@@ -1498,6 +1498,25 @@ export default function PatientProfiles() {
     createdAt: string;
   }
 
+  interface TimelineItem {
+    id: string;
+    source: 'portal' | 'spruce';
+    direction: 'inbound' | 'outbound' | 'system';
+    senderLabel: string;
+    body: string | null;
+    timestamp: string;
+    conversationKey: string | null;
+    patientId: number;
+    clinicianId: number | null;
+    userId: number | null;
+    readAt: string | null;
+    sentByAI: boolean;
+    eventType: string | null;
+    spruceMessageId: string | null;
+    spruceConversationId: string | null;
+    spruceDeliveryId: string | null;
+  }
+
   const { data: messages = [] } = useQuery<PortalMessage[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'messages'],
     queryFn: async () => {
@@ -1508,6 +1527,18 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient && showMessages,
     refetchInterval: showMessages ? 15000 : false,
+  });
+
+  const { data: timeline = [], isLoading: timelineLoading } = useQuery<TimelineItem[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'communication-timeline'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/communication-timeline`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient && showMessages,
+    refetchInterval: showMessages ? 20000 : false,
   });
 
   // Spruce conversation history for this patient (shown in portal section)
@@ -1794,6 +1825,7 @@ export default function PatientProfiles() {
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'messages'] });
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient?.id, 'communication-timeline'] });
       setMessageDraft("");
     },
     onError: () => {
@@ -1805,7 +1837,7 @@ export default function PatientProfiles() {
     if (showMessages) {
       messageBottomRef.current?.scrollIntoView({ behavior: "smooth" });
     }
-  }, [messages, showMessages]);
+  }, [timeline, showMessages]);
 
   const inviteMutation = useMutation({
     mutationFn: async ({ patientId, email }: { patientId: number; email: string }) => {
@@ -2629,8 +2661,7 @@ export default function PatientProfiles() {
                     <p className="text-xs font-semibold uppercase tracking-wide" style={{ color: "#a0a880" }}>
                       Patient Portal Engagement
                     </p>
-                    {portalStatus.hasPortalAccount && (
-                      <button
+                    <button
                         onClick={() => setShowMessages(v => !v)}
                         data-testid="button-toggle-messages"
                         className="flex items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium transition-colors"
@@ -2651,7 +2682,6 @@ export default function PatientProfiles() {
                           </span>
                         )}
                       </button>
-                    )}
                   </div>
 
                   {/* Engagement stats row */}
@@ -2700,152 +2730,148 @@ export default function PatientProfiles() {
                     )}
                   </div>
 
-                  {/* Inline message thread — appears when Messages button toggled */}
-                  {showMessages && portalStatus.hasPortalAccount && (
-                    <div className="border-t px-4 pt-3 pb-3 space-y-3" style={{ borderColor: "#d4c9b5" }}>
-                      <div className="space-y-2.5 max-h-56 overflow-y-auto pr-1">
-                        {messages.length === 0 ? (
-                          <p className="text-xs text-muted-foreground text-center py-4">
-                            No messages yet. Send the first message below.
-                          </p>
-                        ) : (
-                          messages.map((msg) => {
-                            const isClinician = msg.senderType === 'clinician';
-                            return (
-                              <div key={msg.id} className={`flex ${isClinician ? "justify-end" : "justify-start"}`}>
-                                <div className={cn("max-w-[75%] rounded-xl px-3 py-2 text-xs", isClinician ? "bg-primary text-primary-foreground" : "bg-muted text-foreground")}>
-                                  {!isClinician && (
-                                    <p className="text-[10px] font-medium text-muted-foreground mb-1">{selectedPatient!.firstName}</p>
-                                  )}
-                                  <p className="whitespace-pre-wrap">{msg.content}</p>
-                                  <p className={cn("text-[10px] mt-1", isClinician ? "text-primary-foreground/60" : "text-muted-foreground")}>
-                                    {new Date(msg.createdAt).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" })}
-                                    {!isClinician && !msg.readAt && <span className="ml-2 text-amber-600 font-medium">Unread</span>}
-                                  </p>
-                                </div>
-                              </div>
-                            );
-                          })
-                        )}
-                        <div ref={messageBottomRef} />
-                      </div>
-                      <div className="flex items-end gap-2 border-t pt-2.5" style={{ borderColor: "#d4c9b5" }}>
-                        <textarea
-                          className="flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-xs min-h-[32px] max-h-20 outline-none focus:ring-1 focus:ring-ring"
-                          placeholder="Message this patient…"
-                          rows={1}
-                          value={messageDraft}
-                          onChange={(e) => setMessageDraft(e.target.value)}
-                          onKeyDown={(e) => {
-                            if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }
-                          }}
-                          data-testid="input-clinician-message"
-                        />
-                        <Button size="icon" onClick={() => { if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }} disabled={!messageDraft.trim() || sendMessageMutation.isPending} data-testid="button-clinician-send-message">
-                          <Send className="w-3.5 h-3.5" />
-                        </Button>
-                      </div>
-                    </div>
-                  )}
-
-                  {/* ── Spruce Communication History ─────────────────── */}
-                  <div className="border-t" style={{ borderColor: "#d4c9b5" }}>
-                    <button
-                      onClick={() => setShowSpruceHistory(v => !v)}
-                      data-testid="button-toggle-spruce-history"
-                      className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left"
-                    >
-                      <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#a0a880" }}>
-                        <MessageSquare className="w-3 h-3" />
-                        Spruce Communication History
-                      </span>
-                      <ChevronDown
-                        className="w-3.5 h-3.5 flex-shrink-0 transition-transform duration-150"
-                        style={{ color: "#b0b8a0", transform: showSpruceHistory ? "rotate(0deg)" : "rotate(-90deg)" }}
-                      />
-                    </button>
-
-                    {showSpruceHistory && (
-                      <div className="px-4 pb-3">
-                        {spruceConvsLoading ? (
-                          <div className="flex items-center justify-center py-4">
+                  {/* ── Unified Communication Timeline ───────────────── */}
+                  {showMessages && (
+                    <div className="border-t" style={{ borderColor: "#d4c9b5" }}>
+                      {/* Timeline scroll area */}
+                      <div className="max-h-80 overflow-y-auto px-4 pt-3 pb-2 space-y-2" data-testid="communication-timeline">
+                        {timelineLoading ? (
+                          <div className="flex items-center justify-center py-8">
                             <RefreshCw className="w-4 h-4 animate-spin" style={{ color: "#a0a880" }} />
                           </div>
-                        ) : spruceConvs.length === 0 ? (
-                          <p className="text-xs text-center py-3" style={{ color: "#9a9a8a" }}>
-                            No Spruce conversations linked to this patient.
+                        ) : timeline.length === 0 ? (
+                          <p className="text-xs text-center py-6" style={{ color: "#9a9a8a" }}>
+                            No messages yet across any channel.
                           </p>
                         ) : (
-                          <div className="space-y-1.5 mt-1">
-                            {spruceConvs.map((conv) => {
-                              const spruceUrl = conv.spruceConversationId
-                                ? `https://app.sprucehealth.com/conversations/${conv.spruceConversationId}`
-                                : null;
+                          <>
+                            {timeline.map((item) => {
+                              const isOutbound = item.direction === 'outbound';
+                              const isSystem = item.direction === 'system';
+                              const ts = new Date(item.timestamp).toLocaleString("en-US", {
+                                month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
+                              });
+
+                              if (isSystem) {
+                                return (
+                                  <div key={item.id} className="flex justify-center" data-testid={`timeline-item-${item.id}`}>
+                                    <span
+                                      className="text-[10px] italic px-2.5 py-0.5 rounded-full"
+                                      style={{ backgroundColor: "#f0ede8", color: "#8a8878" }}
+                                    >
+                                      {item.eventType ?? 'Non-text event'} · {ts}
+                                    </span>
+                                  </div>
+                                );
+                              }
+
+                              const isPortal = item.source === 'portal';
+                              const channelBadgeStyle = isPortal
+                                ? { backgroundColor: "#d4e8c8", color: "#2a4018" }
+                                : { backgroundColor: "#c8dcf0", color: "#1a3a5a" };
+                              const channelLabel = isPortal ? "ClinIQ Portal" : "Spruce SMS";
+
                               return (
                                 <div
-                                  key={conv.conversationKey}
-                                  className="rounded-md border px-3 py-2 flex items-start gap-2.5"
-                                  style={{ borderColor: "#ddd8d0", backgroundColor: "#fefdfb" }}
-                                  data-testid={`spruce-conv-${conv.conversationKey}`}
+                                  key={item.id}
+                                  className={`flex ${isOutbound ? "justify-end" : "justify-start"}`}
+                                  data-testid={`timeline-item-${item.id}`}
                                 >
-                                  <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#7a8a64" }} />
-                                  <div className="flex-1 min-w-0">
-                                    <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap">
-                                      <span className="text-xs font-medium truncate" style={{ color: "#1c2414" }}>
-                                        {conv.fromPhone ?? conv.spruceContactName ?? conv.conversationKey}
+                                  <div
+                                    className="max-w-[78%] rounded-xl px-3 py-2 text-xs"
+                                    style={
+                                      isOutbound
+                                        ? isPortal
+                                          ? { backgroundColor: "#3a5a2a", color: "#f0ede8" }
+                                          : item.sentByAI
+                                            ? { backgroundColor: "#5a3a7a", color: "#f5f0ff" }
+                                            : { backgroundColor: "#2a4a6a", color: "#e8f0f8" }
+                                        : isPortal
+                                          ? { backgroundColor: "#f0ede8", color: "#1c1c14" }
+                                          : { backgroundColor: "#e4eef8", color: "#1a2a3a" }
+                                    }
+                                  >
+                                    {/* Channel badge + sender */}
+                                    <div className="flex items-center gap-1 mb-1 flex-wrap">
+                                      <span
+                                        className="text-[9px] font-semibold px-1.5 py-0 rounded leading-[1.6]"
+                                        style={channelBadgeStyle}
+                                      >
+                                        {channelLabel}
                                       </span>
-                                      <span className="text-[10px] flex-shrink-0" style={{ color: "#9a9a8a" }}>
-                                        {new Date(conv.lastMessageAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
-                                      </span>
+                                      {item.sentByAI && (
+                                        <span className="text-[9px] font-semibold px-1 py-0 rounded leading-[1.6]" style={{ backgroundColor: "#e8d8f8", color: "#5a3a7a" }}>
+                                          June AI
+                                        </span>
+                                      )}
+                                      {!isOutbound && (
+                                        <span className="text-[10px] font-medium" style={{ opacity: 0.75 }}>
+                                          {item.senderLabel}
+                                        </span>
+                                      )}
                                     </div>
-                                    {conv.lastMessage && (
-                                      <p className="text-[11px] truncate leading-snug" style={{ color: "#5a6040" }}>
-                                        {conv.lastMessageDirection === "outbound_staff" && (
-                                          <span className="font-medium" style={{ color: "#2e7d52" }}>You: </span>
+                                    {/* Body */}
+                                    <p className="whitespace-pre-wrap leading-snug">{item.body}</p>
+                                    {/* Footer */}
+                                    <div className="flex items-center justify-between gap-2 mt-1">
+                                      <span className="text-[10px]" style={{ opacity: 0.6 }}>
+                                        {ts}
+                                        {!isOutbound && !item.readAt && isPortal && (
+                                          <span className="ml-1.5 font-medium" style={{ color: "#c07020", opacity: 1 }}>Unread</span>
                                         )}
-                                        {conv.lastMessage}
-                                      </p>
-                                    )}
-                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
-                                      <span className="text-[10px]" style={{ color: "#7a8060" }}>
-                                        {conv.messageCount} msg{conv.messageCount !== 1 ? "s" : ""}
                                       </span>
-                                      {conv.hasStaffReply && (
-                                        <span className="inline-flex items-center gap-0.5 text-[10px] text-[#1d4ed8] bg-[#eff6ff] px-1.5 py-0.5 rounded">
-                                          <CheckCircle2 className="w-2.5 h-2.5" />
-                                          Replied
-                                        </span>
-                                      )}
-                                      {conv.isArchived && (
-                                        <span className="inline-flex items-center gap-0.5 text-[10px] text-[#78716c] bg-[#f5f5f4] px-1.5 py-0.5 rounded">
-                                          <Archive className="w-2.5 h-2.5" />
-                                          Archived
-                                        </span>
+                                      {item.source === 'spruce' && item.conversationKey && (
+                                        <Link href={`/spruce-inbox?key=${encodeURIComponent(item.conversationKey)}`}>
+                                          <span
+                                            className="text-[9px] flex items-center gap-0.5 hover:underline"
+                                            style={{ opacity: 0.7 }}
+                                            title="Open conversation in Spruce Inbox"
+                                          >
+                                            <FolderOpen className="w-2.5 h-2.5" />
+                                            Inbox
+                                          </span>
+                                        </Link>
                                       )}
                                     </div>
-                                  </div>
-                                  <div className="flex items-center gap-0.5 flex-shrink-0">
-                                    {spruceUrl && (
-                                      <a href={spruceUrl} target="_blank" rel="noopener noreferrer" title="Open in Spruce">
-                                        <Button size="icon" variant="ghost" className="w-6 h-6" data-testid={`button-spruce-ext-${conv.conversationKey}`}>
-                                          <ExternalLink className="w-3 h-3" />
-                                        </Button>
-                                      </a>
-                                    )}
-                                    <Link href={`/spruce-inbox?key=${encodeURIComponent(conv.conversationKey)}`}>
-                                      <Button size="icon" variant="ghost" className="w-6 h-6" title="Open in ClinIQ inbox" data-testid={`button-spruce-inbox-${conv.conversationKey}`}>
-                                        <FolderOpen className="w-3 h-3" />
-                                      </Button>
-                                    </Link>
                                   </div>
                                 </div>
                               );
                             })}
-                          </div>
+                            <div ref={messageBottomRef} />
+                          </>
                         )}
                       </div>
-                    )}
-                  </div>
+
+                      {/* Portal reply composer — only when patient has a portal account */}
+                      {portalStatus.hasPortalAccount && (
+                        <div className="border-t px-4 pt-2.5 pb-3" style={{ borderColor: "#d4c9b5" }}>
+                          <p
+                            className="text-[10px] font-semibold uppercase tracking-wide mb-1.5 flex items-center gap-1"
+                            style={{ color: "#7a8a64" }}
+                          >
+                            <MessageSquare className="w-2.5 h-2.5" />
+                            Reply via ClinIQ Portal
+                          </p>
+                          <div className="flex items-end gap-2">
+                            <textarea
+                              className="flex-1 resize-none rounded-md border border-input bg-background px-2.5 py-1.5 text-xs min-h-[32px] max-h-20 outline-none focus:ring-1 focus:ring-ring"
+                              placeholder="Message this patient…"
+                              rows={1}
+                              value={messageDraft}
+                              onChange={(e) => setMessageDraft(e.target.value)}
+                              onKeyDown={(e) => {
+                                if (e.key === 'Enter' && !e.shiftKey) { e.preventDefault(); if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }
+                              }}
+                              data-testid="input-clinician-message"
+                            />
+                            <Button size="icon" onClick={() => { if (messageDraft.trim()) sendMessageMutation.mutate(messageDraft.trim()); }} disabled={!messageDraft.trim() || sendMessageMutation.isPending} data-testid="button-clinician-send-message">
+                              <Send className="w-3.5 h-3.5" />
+                            </Button>
+                          </div>
+                        </div>
+                      )}
+                    </div>
+                  )}
                 </div>
               )}
 
