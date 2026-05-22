@@ -2554,14 +2554,17 @@ Rules:
     try {
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const userId = (req.user as any)?.id as number;
       const key = decodeURIComponent(req.params.key);
-      const { patientId } = req.body;
-      if (!patientId || typeof patientId !== "number") {
+      const patientId = typeof req.body.patientId === "number"
+        ? req.body.patientId
+        : parseInt(req.body.patientId, 10);
+      if (!patientId || isNaN(patientId)) {
         return res.status(400).json({ error: "patientId is required" });
       }
       // Verify the patient belongs to this clinic
-      const patient = await storage.getPatient(patientId);
-      if (!patient || patient.clinicId !== clinicId) {
+      const patient = await storage.getPatient(patientId, userId, clinicId);
+      if (!patient) {
         return res.status(404).json({ error: "Patient not found in this clinic" });
       }
       const result = await storage.linkSpruceConversationToPatient(clinicId, key, patientId);
