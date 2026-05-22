@@ -1,0 +1,67 @@
+Before proceeding with Phase 2, I want to clarify one important requirement:
+
+We need internal staff messaging / internal notes inside the patient communication timeline.
+
+Use case:
+If I am reviewing a patient message and need to tell my nurse something like:
+“@Sarah can you call her and confirm her progesterone dose before we refill?”
+I want to be able to tag a staff member so they are notified.
+
+This internal message/note should:
+
+* appear chronologically inside the patient communication timeline for staff
+* be clearly labeled “Internal”
+* never be visible to the patient in the portal
+* support @mentions/tagging of staff members
+* notify the tagged staff member
+* remain tied to the patient and/or conversation context
+* be auditable
+
+This means we need a clear distinction between:
+
+1. Patient-visible communications
+   Examples:
+
+* portal messages
+* Spruce SMS messages
+* staff replies to patient
+* Spruce June patient-facing replies
+
+2. Internal-only communication/events
+   Examples:
+
+* internal staff notes
+* @mentions
+* nurse handoff notes
+* workflow routing notes
+* June memos
+* escalation notes
+* assignment notes
+
+Please add/future-proof the architecture with fields such as:
+
+* visibility: patient_visible | internal_only
+  or
+* isPatientVisible boolean
+
+Important:
+Internal-only messages must NEVER show in the patient portal, but they should show in the staff-facing patient chart timeline and Inbox context.
+
+Also, when adding internal notes:
+
+* support @staff mentions
+* create a notification/task for the tagged user
+* preserve audit trail with createdByUserId, createdAt, patientId, conversation/context if available
+
+This should fit into the unified communication timeline concept.
+
+I still agree with the overall Phase 2 direction:
+
+* portal_messages becomes the longitudinal patient-visible communication record
+* Spruce remains a delivery channel
+* Inbox remains the operational workspace
+* Patient chart remains the patient-specific workspace
+
+But we must not accidentally expose internal notes, workflow memos, or staff tags to patients.
+
+Please account for this before building Phase 2.
