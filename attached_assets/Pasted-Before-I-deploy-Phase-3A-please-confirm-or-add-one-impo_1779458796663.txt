@@ -1,0 +1,46 @@
+Before I deploy Phase 3A, please confirm or add one important intelligence layer:
+
+Spruce June should not behave like a rigid autoresponder. She needs to extract information already present in the patient’s message before generating her acknowledgment/follow-up question.
+
+Example:
+Patient says:
+“I need a refill on my testosterone.”
+
+Bad response:
+“I can help with that. What medication are you referring to?”
+
+Better response:
+“I can help get that refill request started for your testosterone. Which pharmacy should we use?”
+
+For the refill workflow, please make sure Spruce June:
+
+1. Extracts known fields from the patient message before responding:
+
+   * medication name
+   * dose/frequency if mentioned
+   * pharmacy if mentioned
+   * amount remaining if mentioned
+   * side effects/concerns if mentioned
+2. Stores extracted fields in the workflow memo/context.
+3. Only asks for missing information.
+4. Does not ask the patient to repeat information they already gave.
+5. Updates the staff-facing June memo with:
+
+   * collected information
+   * missing information
+   * recommended staff follow-up
+6. Uses natural, conversational wording, not rigid canned templates.
+7. Falls back safely if extraction confidence is low.
+
+Examples:
+Patient: “I need a refill on testosterone.”
+June: “Of course — I can help get that testosterone refill request to the care team. Which pharmacy should we use?”
+
+Patient: “I need my progesterone 100 mg sent to Walgreens.”
+June: “Got it — progesterone 100 mg to Walgreens. About how many doses do you have left, and are you having any side effects or concerns?”
+
+Patient: “I’m out of semaglutide and use Madison Pharmacy.”
+June: “Thanks for letting us know. I’ll flag this for the care team since you’re out. What dose are you currently taking?”
+
+Please keep this isolated to Spruce June only.
+Do not touch existing ClinIQ June, Ask June, SOAP, transcription, lab evaluation, evidence overlay, auth, billing, sessions, or other core ClinIQ features.
