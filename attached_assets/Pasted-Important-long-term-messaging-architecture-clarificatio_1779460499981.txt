@@ -1,0 +1,72 @@
+Important long-term messaging architecture clarification:
+
+I want Spruce messages and ClinIQ portal messages to flow into one seamless patient communication timeline.
+
+The goal is NOT separate disconnected threads where staff have to decide, “Do I look in Spruce, the Inbox, or the patient profile?”
+
+Desired experience:
+
+If a patient:
+
+* texts via Spruce at 9:30 AM
+* staff responds at 9:35 AM
+* patient messages via the ClinIQ portal at 4:00 PM
+* patient texts the Spruce number again at 6:00 PM
+
+Then staff should see all of those messages in one chronological flow.
+
+Each message should be clearly labeled by source/channel:
+
+* Spruce SMS
+* ClinIQ Portal
+* future email/phone/etc.
+
+Staff should be able to view the same unified communication timeline from:
+
+1. the main ClinIQ Inbox
+2. the patient’s profile under Messages / Portal & Messages
+
+Important architectural principle:
+Messages should not be duplicated into separate disconnected UI silos.
+
+Instead, there should eventually be a channel-agnostic communication layer/timeline where:
+
+* Spruce messages feed in
+* portal messages feed in
+* outbound staff replies feed in
+* future Spruce June messages feed in
+* future workflow summaries/audit events can attach
+
+Reply behavior:
+Staff should be able to respond from either:
+
+* the main Inbox
+* the patient profile Messages section
+
+The system should route the outbound reply through the appropriate channel.
+
+For example:
+
+* If replying to a Spruce SMS conversation, send via Spruce API.
+* If replying to a ClinIQ portal message, send via the portal messaging system.
+* If both channels are available, allow clear channel selection or default to the most recent channel in that conversation, with the channel visibly labeled.
+
+Important:
+Do not build the full generalized messaging system yet if that is too large.
+
+For now, please design the architecture direction so the current Spruce Inbox work does not become a silo that conflicts with the existing portal messages system.
+
+Please inspect the existing patient profile Messages / Portal & Messages implementation and propose how Spruce messages can be included there without breaking existing portal messaging.
+
+Keep this isolated to messaging/inbox architecture.
+
+Do NOT modify:
+
+* existing ClinIQ June
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* auth/billing/sessions
+* core unrelated ClinIQ systems.
