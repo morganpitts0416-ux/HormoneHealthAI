@@ -19,7 +19,7 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, CalendarDays, Phone, Paperclip,
-  LayoutDashboard, FolderOpen, FlaskConical, Home,
+  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
@@ -1277,6 +1277,7 @@ export default function PatientProfiles() {
   const [isDietaryError, setIsDietaryError] = useState(false);
   const [messageDraft, setMessageDraft] = useState("");
   const [showMessages, setShowMessages] = useState(false);
+  const [showSpruceHistory, setShowSpruceHistory] = useState(false);
   const [showPortalSection, setShowPortalSection] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
   const [showEncounters, setShowEncounters] = useState(false);
@@ -1507,6 +1508,33 @@ export default function PatientProfiles() {
     },
     enabled: !!selectedPatient && showMessages,
     refetchInterval: showMessages ? 15000 : false,
+  });
+
+  // Spruce conversation history for this patient (shown in portal section)
+  interface SpruceConvSummary {
+    conversationKey: string;
+    spruceConversationId: string | null;
+    fromPhone: string | null;
+    patientFirstName: string | null;
+    patientLastName: string | null;
+    spruceContactName: string | null;
+    lastMessage: string | null;
+    lastMessageDirection: string | null;
+    lastMessageAt: string;
+    messageCount: number;
+    hasStaffReply: boolean;
+    isArchived?: boolean;
+    archivedAt?: string | null;
+  }
+  const { data: spruceConvs = [], isLoading: spruceConvsLoading } = useQuery<SpruceConvSummary[]>({
+    queryKey: ['/api/spruce/patients', selectedPatient?.id, 'conversations'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/spruce/patients/${selectedPatient.id}/conversations`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient && showSpruceHistory,
   });
 
   const { data: unreadData } = useQuery<{ count: number }>({
@@ -2719,6 +2747,105 @@ export default function PatientProfiles() {
                       </div>
                     </div>
                   )}
+
+                  {/* ── Spruce Communication History ─────────────────── */}
+                  <div className="border-t" style={{ borderColor: "#d4c9b5" }}>
+                    <button
+                      onClick={() => setShowSpruceHistory(v => !v)}
+                      data-testid="button-toggle-spruce-history"
+                      className="w-full flex items-center justify-between gap-2 px-4 py-2.5 text-left"
+                    >
+                      <span className="flex items-center gap-1.5 text-xs font-semibold uppercase tracking-wide" style={{ color: "#a0a880" }}>
+                        <MessageSquare className="w-3 h-3" />
+                        Spruce Communication History
+                      </span>
+                      <ChevronDown
+                        className="w-3.5 h-3.5 flex-shrink-0 transition-transform duration-150"
+                        style={{ color: "#b0b8a0", transform: showSpruceHistory ? "rotate(0deg)" : "rotate(-90deg)" }}
+                      />
+                    </button>
+
+                    {showSpruceHistory && (
+                      <div className="px-4 pb-3">
+                        {spruceConvsLoading ? (
+                          <div className="flex items-center justify-center py-4">
+                            <RefreshCw className="w-4 h-4 animate-spin" style={{ color: "#a0a880" }} />
+                          </div>
+                        ) : spruceConvs.length === 0 ? (
+                          <p className="text-xs text-center py-3" style={{ color: "#9a9a8a" }}>
+                            No Spruce conversations linked to this patient.
+                          </p>
+                        ) : (
+                          <div className="space-y-1.5 mt-1">
+                            {spruceConvs.map((conv) => {
+                              const spruceUrl = conv.spruceConversationId
+                                ? `https://app.sprucehealth.com/conversations/${conv.spruceConversationId}`
+                                : null;
+                              return (
+                                <div
+                                  key={conv.conversationKey}
+                                  className="rounded-md border px-3 py-2 flex items-start gap-2.5"
+                                  style={{ borderColor: "#ddd8d0", backgroundColor: "#fefdfb" }}
+                                  data-testid={`spruce-conv-${conv.conversationKey}`}
+                                >
+                                  <MessageSquare className="w-3.5 h-3.5 flex-shrink-0 mt-0.5" style={{ color: "#7a8a64" }} />
+                                  <div className="flex-1 min-w-0">
+                                    <div className="flex items-center justify-between gap-2 mb-0.5 flex-wrap">
+                                      <span className="text-xs font-medium truncate" style={{ color: "#1c2414" }}>
+                                        {conv.fromPhone ?? conv.spruceContactName ?? conv.conversationKey}
+                                      </span>
+                                      <span className="text-[10px] flex-shrink-0" style={{ color: "#9a9a8a" }}>
+                                        {new Date(conv.lastMessageAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
+                                      </span>
+                                    </div>
+                                    {conv.lastMessage && (
+                                      <p className="text-[11px] truncate leading-snug" style={{ color: "#5a6040" }}>
+                                        {conv.lastMessageDirection === "outbound_staff" && (
+                                          <span className="font-medium" style={{ color: "#2e7d52" }}>You: </span>
+                                        )}
+                                        {conv.lastMessage}
+                                      </p>
+                                    )}
+                                    <div className="flex items-center gap-1.5 mt-1 flex-wrap">
+                                      <span className="text-[10px]" style={{ color: "#7a8060" }}>
+                                        {conv.messageCount} msg{conv.messageCount !== 1 ? "s" : ""}
+                                      </span>
+                                      {conv.hasStaffReply && (
+                                        <span className="inline-flex items-center gap-0.5 text-[10px] text-[#1d4ed8] bg-[#eff6ff] px-1.5 py-0.5 rounded">
+                                          <CheckCircle2 className="w-2.5 h-2.5" />
+                                          Replied
+                                        </span>
+                                      )}
+                                      {conv.isArchived && (
+                                        <span className="inline-flex items-center gap-0.5 text-[10px] text-[#78716c] bg-[#f5f5f4] px-1.5 py-0.5 rounded">
+                                          <Archive className="w-2.5 h-2.5" />
+                                          Archived
+                                        </span>
+                                      )}
+                                    </div>
+                                  </div>
+                                  <div className="flex items-center gap-0.5 flex-shrink-0">
+                                    {spruceUrl && (
+                                      <a href={spruceUrl} target="_blank" rel="noopener noreferrer" title="Open in Spruce">
+                                        <Button size="icon" variant="ghost" className="w-6 h-6" data-testid={`button-spruce-ext-${conv.conversationKey}`}>
+                                          <ExternalLink className="w-3 h-3" />
+                                        </Button>
+                                      </a>
+                                    )}
+                                    <Link href={`/spruce-inbox?key=${encodeURIComponent(conv.conversationKey)}`}>
+                                      <Button size="icon" variant="ghost" className="w-6 h-6" title="Open in ClinIQ inbox" data-testid={`button-spruce-inbox-${conv.conversationKey}`}>
+                                        <FolderOpen className="w-3 h-3" />
+                                      </Button>
+                                    </Link>
+                                  </div>
+                                </div>
+                              );
+                            })}
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
                 </div>
               )}
 

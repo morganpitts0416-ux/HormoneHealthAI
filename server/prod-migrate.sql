@@ -1301,3 +1301,11 @@ CREATE TABLE IF NOT EXISTS spruce_outbound_messages (
   spruce_delivery_id VARCHAR(200),
   sent_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+
+-- Phase 3: Archive support for Spruce conversation state
+ALTER TABLE spruce_conversation_state
+  ADD COLUMN IF NOT EXISTS archived_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS archived_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL,
+  ADD COLUMN IF NOT EXISTS archive_source VARCHAR(20),
+  ADD COLUMN IF NOT EXISTS spruce_archive_synced_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS spruce_archive_error TEXT;

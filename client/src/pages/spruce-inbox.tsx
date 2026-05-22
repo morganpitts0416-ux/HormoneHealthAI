@@ -50,6 +50,9 @@ interface SpruceConversation {
   lastMessageAt: string;
   messageCount: number;
   hasStaffReply: boolean;
+  // Archive state (Phase 3)
+  isArchived?: boolean;
+  archivedAt?: string | null;
 }
 
 interface SpruceMessage {
@@ -430,21 +433,61 @@ export default function SpruceInboxPage() {
     }
   }, [conversations, selectedKey]);
 
+  // ── Archive mutation ────────────────────────────────────────────────────
+  const archiveMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/spruce/conversations/${encodeURIComponent(key)}/archive`,
+        {},
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error(err.error || "Failed to archive");
+      }
+      return res.json() as Promise<{ ok: boolean; archivedAt: string; spruceArchived: boolean; spruceArchiveError: string | null }>;
+    },
+    onSuccess: (data, key) => {
+      qc.invalidateQueries({ queryKey: ["/api/spruce/conversations"] });
+      // If we were viewing the now-archived thread, clear selection
+      if (selectedKey === key && activeView !== "archived") {
+        setSelectedKey(null);
+      }
+      if (data.spruceArchiveError) {
+        toast({
+          title: "Archived in ClinIQ",
+          description: `Note: Spruce sync failed — ${data.spruceArchiveError}. The conversation is archived locally.`,
+        });
+      } else if (data.spruceArchived) {
+        toast({ title: "Archived", description: "Conversation archived in ClinIQ and Spruce." });
+      } else {
+        toast({ title: "Archived", description: "Conversation archived in ClinIQ." });
+      }
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Archive failed", description: err.message });
+    },
+  });
+
   // ── View filtering ──────────────────────────────────────────────────────
-  const urgentConvs = conversations.filter(isUrgent);
-  const unmatchedConvs = conversations.filter((c) => !c.patientId);
-  const repliedConvs = conversations.filter((c) => c.hasStaffReply);
+  // Non-archived views exclude archived conversations; archived view shows only archived.
+  const activeConvs = conversations.filter((c) => !c.isArchived);
+  const urgentConvs = activeConvs.filter(isUrgent);
+  const unmatchedConvs = activeConvs.filter((c) => !c.patientId);
+  const repliedConvs = activeConvs.filter((c) => c.hasStaffReply);
+  const archivedConvs = conversations.filter((c) => c.isArchived);
 
   const filtered = conversations
     .filter((c) => {
+      // Archive view — show only archived
+      if (activeView === "archived") return !!c.isArchived;
+      // All other views — never show archived conversations
+      if (c.isArchived) return false;
       if (activeView === "unmatched" && c.patientId) return false;
-      if (activeView === "unmatched" && !c.patientId) { /* pass through */ }
       if (activeView === "urgent" && !isUrgent(c)) return false;
       if (activeView === "assigned" && !c.patientId) return false;
       // "unread" = no staff reply yet (inbound, not yet responded)
       if (activeView === "unread" && c.hasStaffReply) return false;
-      // "archived" = stub — show nothing (future state)
-      if (activeView === "archived") return false;
       const name = getDisplayName(c).toLowerCase();
       const phone = (c.fromPhone ?? "").toLowerCase();
       const q = search.toLowerCase();
@@ -556,7 +599,7 @@ export default function SpruceInboxPage() {
           <NavItem
             icon={Inbox}
             label="All Conversations"
-            count={conversations.length}
+            count={activeConvs.length}
             active={activeView === "all"}
             onClick={() => { setActiveView("all"); }}
             testId="nav-all"
@@ -564,7 +607,7 @@ export default function SpruceInboxPage() {
           <NavItem
             icon={MessageCircle}
             label="Unread"
-            count={conversations.filter((c) => !c.hasStaffReply).length}
+            count={activeConvs.filter((c) => !c.hasStaffReply).length}
             active={activeView === "unread"}
             onClick={() => { setActiveView("unread"); setSelectedKey(null); }}
             testId="nav-unread"
@@ -606,6 +649,7 @@ export default function SpruceInboxPage() {
           <NavItem
             icon={Archive}
             label="Archived"
+            count={archivedConvs.length > 0 ? archivedConvs.length : undefined}
             active={activeView === "archived"}
             onClick={() => { setActiveView("archived"); setSelectedKey(null); }}
             testId="nav-archived"
@@ -715,6 +759,17 @@ export default function SpruceInboxPage() {
             </div>
 
             <div className="flex items-center gap-2 flex-wrap">
+              {selectedConv.isArchived && (
+                <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#78716c] bg-[#f5f5f4] px-2 py-1 rounded-full border border-[#e7e5e4]">
+                  <Archive className="w-2.5 h-2.5" />
+                  Archived
+                  {selectedConv.archivedAt && (
+                    <span className="ml-0.5 text-[#a8a29e]">
+                      · {new Date(selectedConv.archivedAt).toLocaleDateString([], { month: "short", day: "numeric" })}
+                    </span>
+                  )}
+                </span>
+              )}
               {isStaffTakeover && (
                 <span className="inline-flex items-center gap-1 text-[10px] font-medium text-[#92400e] bg-[#fef3c7] px-2 py-1 rounded-full border border-[#f6d860]">
                   <Lock className="w-2.5 h-2.5" />
@@ -736,6 +791,23 @@ export default function SpruceInboxPage() {
                     Open in Spruce
                   </Button>
                 </a>
+              )}
+              {!selectedConv.isArchived && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={archiveMutation.isPending}
+                  onClick={() => archiveMutation.mutate(selectedConv.conversationKey)}
+                  data-testid="button-archive-conversation"
+                  className="text-[#78716c] border-[#d6d3d1]"
+                >
+                  {archiveMutation.isPending ? (
+                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                  ) : (
+                    <Archive className="w-3.5 h-3.5 mr-1.5" />
+                  )}
+                  {archiveMutation.isPending ? "Archiving…" : "Archive"}
+                </Button>
               )}
               <div className="flex items-center gap-1.5 text-xs text-[#7a8060]">
                 <MessageCircle className="w-3.5 h-3.5" />

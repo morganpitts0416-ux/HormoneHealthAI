@@ -393,6 +393,8 @@ export interface IStorage {
   // Conversation state machine
   getSpruceConversationState(clinicId: number, conversationKey: string): Promise<schema.SpruceConversationStateRow | null>;
   upsertSpruceConversationState(clinicId: number, conversationKey: string, data: Partial<Pick<schema.SpruceConversationStateRow, 'state' | 'aiMutedAt' | 'aiMutedByUserId' | 'lastActivityAt'>>): Promise<schema.SpruceConversationStateRow>;
+  // Archive a conversation (Phase 3)
+  archiveSpruceConversation(clinicId: number, conversationKey: string, archivedByUserId: number | null, source: 'cliniq' | 'spruce' | 'sync', spruceArchiveSyncedAt?: Date | null, spruceArchiveError?: string | null): Promise<schema.SpruceConversationStateRow>;
   // Outbound message audit log
   createSpruceOutboundMessage(data: schema.InsertSpruceOutboundMessage): Promise<schema.SpruceOutboundMessage>;
   updateSpruceOutboundDeliveryId(id: number, spruceDeliveryId: string): Promise<void>;
@@ -4738,6 +4740,9 @@ export interface SpruceConversationSummary {
   lastMessageAt: Date;
   messageCount: number;
   hasStaffReply: boolean;
+  // Archive state (Phase 3)
+  isArchived: boolean;
+  archivedAt: Date | null;
 }
 
 export interface SpruceConversationMessageRow {
@@ -4779,11 +4784,22 @@ export interface SpruceConversationMessageRow {
     .where(eq(schema.spruceMessages.clinicId, clinicId))
     .orderBy(desc(schema.spruceMessages.receivedAt));
 
+  // Fetch all conversation state rows for this clinic (for archive state)
+  const stateRows = await db
+    .select({
+      conversationKey: schema.spruceConversationState.conversationKey,
+      archivedAt: schema.spruceConversationState.archivedAt,
+    })
+    .from(schema.spruceConversationState)
+    .where(eq(schema.spruceConversationState.clinicId, clinicId));
+  const stateByKey = new Map(stateRows.map(r => [r.conversationKey, r]));
+
   // Group by conversation key (conversationId → phone → message id fallback)
   const map = new Map<string, SpruceConversationSummary>();
   for (const row of rows) {
     const key = row.spruceConversationId || row.fromPhone || `msg_${row.id}`;
     if (!map.has(key)) {
+      const stateRow = stateByKey.get(key);
       map.set(key, {
         conversationKey: key,
         spruceConversationId: row.spruceConversationId,
@@ -4798,6 +4814,8 @@ export interface SpruceConversationMessageRow {
         lastMessageAt: row.receivedAt,
         messageCount: 1,
         hasStaffReply: row.staffRepliedAt !== null,
+        isArchived: stateRow?.archivedAt != null,
+        archivedAt: stateRow?.archivedAt ?? null,
       });
     } else {
       const existing = map.get(key)!;
@@ -4910,6 +4928,48 @@ export interface SpruceConversationMessageRow {
       isNull(schema.spruceWorkflowRequests.patientId),
       sql`regexp_replace(coalesce(${schema.spruceWorkflowRequests.patientPhone}, ''), '\\D', '', 'g') LIKE ${'%' + last10}`,
     ));
+};
+
+// ── archiveSpruceConversation ─────────────────────────────────────────────
+// Sets archivedAt + audit fields on the conversation state row.
+// Uses upsert so it works even if no state row exists yet.
+// Safe: never deletes messages — archive is a display flag only.
+(DbStorage.prototype as any).archiveSpruceConversation = async function(
+  clinicId: number,
+  conversationKey: string,
+  archivedByUserId: number | null,
+  source: 'cliniq' | 'spruce' | 'sync',
+  spruceArchiveSyncedAt?: Date | null,
+  spruceArchiveError?: string | null,
+): Promise<schema.SpruceConversationStateRow> {
+  const now = new Date();
+  const rows = await db
+    .insert(schema.spruceConversationState)
+    .values({
+      clinicId,
+      conversationKey,
+      state: "archived",
+      archivedAt: now,
+      archivedByUserId: archivedByUserId ?? null,
+      archiveSource: source,
+      spruceArchiveSyncedAt: spruceArchiveSyncedAt ?? null,
+      spruceArchiveError: spruceArchiveError ?? null,
+      lastActivityAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [schema.spruceConversationState.clinicId, schema.spruceConversationState.conversationKey],
+      set: {
+        state: "archived",
+        archivedAt: now,
+        archivedByUserId: archivedByUserId ?? null,
+        archiveSource: source,
+        spruceArchiveSyncedAt: spruceArchiveSyncedAt ?? null,
+        spruceArchiveError: spruceArchiveError ?? null,
+        lastActivityAt: now,
+      },
+    })
+    .returning();
+  return rows[0];
 };
 
 // ── getSpruceConversationState ────────────────────────────────────────────

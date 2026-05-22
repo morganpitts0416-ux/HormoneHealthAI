@@ -2463,6 +2463,109 @@ Rules:
     }
   });
 
+  // POST /api/spruce/conversations/:key/archive
+  // Archives the conversation locally and attempts to archive in Spruce API.
+  // Safety: ClinIQ archive always happens even if Spruce API fails.
+  // No messages are deleted. Archive is a display-only flag.
+  app.post("/api/spruce/conversations/:key/archive", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const userId = (req.user as any)?.id ?? null;
+      const key = decodeURIComponent(req.params.key);
+
+      // Resolve spruceConversationId from the key (needed for Spruce API call)
+      const conversations = await storage.listSpruceConversations(clinicId);
+      const conv = conversations.find((c) => c.conversationKey === key);
+      if (!conv) return res.status(404).json({ error: "Conversation not found" });
+
+      // 1. Attempt Spruce API archive (optional — safe to fail)
+      let spruceArchived = false;
+      let spruceArchiveError: string | null = null;
+      let spruceArchiveSyncedAt: Date | null = null;
+
+      const clinicSettings = await storage.getClinicSpruceSettings(clinicId).catch(() => null);
+      const rawToken = clinicSettings?.apiTokenEncrypted
+        ? (isEncrypted(clinicSettings.apiTokenEncrypted) ? decryptSecret(clinicSettings.apiTokenEncrypted) : clinicSettings.apiTokenEncrypted)
+        : null;
+      const apiToken = rawToken ?? process.env.SPRUCE_API_TOKEN ?? null;
+
+      if (apiToken && conv.spruceConversationId) {
+        try {
+          // Spruce API: PATCH /v1/conversations/:id with { archived: true }
+          const spruceRes = await fetch(
+            `https://api.sprucehealth.com/v1/conversations/${conv.spruceConversationId}`,
+            {
+              method: "PATCH",
+              headers: {
+                "Authorization": `Bearer ${apiToken}`,
+                "Content-Type": "application/json",
+              },
+              body: JSON.stringify({ archived: true }),
+            },
+          );
+          const respText = await spruceRes.text().catch(() => "");
+          if (spruceRes.ok) {
+            spruceArchived = true;
+            spruceArchiveSyncedAt = new Date();
+            console.log(`[Spruce/archive] Spruce API 200 OK for convId="${conv.spruceConversationId}"`);
+          } else {
+            spruceArchiveError = `Spruce API ${spruceRes.status}: ${respText.slice(0, 200)}`;
+            console.warn(`[Spruce/archive] Spruce API returned ${spruceRes.status} for convId="${conv.spruceConversationId}": ${respText.slice(0, 300)}`);
+          }
+        } catch (err: any) {
+          spruceArchiveError = `Network error: ${err?.message ?? "unknown"}`;
+          console.warn("[Spruce/archive] Spruce API call failed (non-fatal):", err);
+        }
+      } else {
+        if (!apiToken) console.log("[Spruce/archive] No Spruce API token — archiving in ClinIQ only");
+        if (!conv.spruceConversationId) console.log(`[Spruce/archive] No spruceConversationId for key="${key}"`);
+      }
+
+      // 2. Archive locally — always happens regardless of Spruce API result
+      const stateRow = await storage.archiveSpruceConversation(
+        clinicId,
+        key,
+        userId,
+        "cliniq",
+        spruceArchiveSyncedAt,
+        spruceArchiveError,
+      );
+
+      console.log(`[Spruce/archive] Archived conversation key="${key}" clinicId=${clinicId} userId=${userId} spruceArchived=${spruceArchived}`);
+
+      res.json({
+        ok: true,
+        archivedAt: stateRow.archivedAt,
+        spruceArchived,
+        spruceArchiveError,
+      });
+    } catch (err) {
+      console.error("[Spruce/archive] Error:", err);
+      res.status(500).json({ error: "Failed to archive conversation" });
+    }
+  });
+
+  // GET /api/spruce/patients/:patientId/conversations
+  // Returns all Spruce conversations linked to a specific patient (no archive filter).
+  // Used by the patient profile "Spruce History" section.
+  app.get("/api/spruce/patients/:patientId/conversations", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const patientId = parseInt(req.params.patientId);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patientId" });
+
+      const all = await storage.listSpruceConversations(clinicId);
+      const patientConvs = all.filter((c) => c.patientId === patientId);
+
+      res.json(patientConvs);
+    } catch (err) {
+      console.error("[Spruce/patient-convs] Error:", err);
+      res.status(500).json({ error: "Failed to fetch patient conversations" });
+    }
+  });
+
   // POST /api/spruce/rematch-patients — re-run phone matching for all unmatched
   // Spruce messages + workflow requests in this clinic.  Safe to call repeatedly.
   app.post("/api/spruce/rematch-patients", requireAuth, async (req, res) => {

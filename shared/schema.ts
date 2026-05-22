@@ -2525,6 +2525,12 @@ export const spruceConversationState = pgTable("spruce_conversation_state", {
   aiMutedAt: timestamp("ai_muted_at"),
   aiMutedByUserId: integer("ai_muted_by_user_id").references(() => users.id, { onDelete: "set null" }),
   lastActivityAt: timestamp("last_activity_at").defaultNow().notNull(),
+  // ── Archive fields (Phase 3) ───────────────────────────────────────────────
+  archivedAt: timestamp("archived_at"),
+  archivedByUserId: integer("archived_by_user_id").references(() => users.id, { onDelete: "set null" }),
+  archiveSource: varchar("archive_source", { length: 20 }),  // 'cliniq' | 'spruce' | 'sync'
+  spruceArchiveSyncedAt: timestamp("spruce_archive_synced_at"),
+  spruceArchiveError: text("spruce_archive_error"),
 }, (t) => ({ uniqConvKey: uniqueIndex("spruce_conv_state_clinic_key").on(t.clinicId, t.conversationKey) }));
 export type SpruceConversationStateRow = typeof spruceConversationState.$inferSelect;
 
