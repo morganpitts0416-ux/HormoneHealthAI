@@ -368,6 +368,7 @@ export interface IStorage {
   findPatientByPhoneForClinic(phone: string, clinicId: number): Promise<{ id: number; firstName: string; lastName: string } | null>;
   findSpruceClinicId(phoneLineId?: string | null, teamId?: string | null, toPhone?: string | null): Promise<number | null>;
   findSpruceMessageByDedupeKey(clinicId: number, dedupeKey: string): Promise<schema.SpruceMessage | null>;
+  findSpruceOutboundByDeliveryId(clinicId: number, spruceDeliveryId: string): Promise<schema.SpruceOutboundMessage | null>;
   createSpruceRoutingRule(data: schema.InsertSpruceRoutingRule & { clinicId: number }): Promise<schema.SpruceRoutingRule>;
   updateSpruceRoutingRule(id: number, data: Partial<schema.InsertSpruceRoutingRule>): Promise<schema.SpruceRoutingRule | undefined>;
   deleteSpruceRoutingRule(id: number): Promise<void>;
@@ -4830,6 +4831,23 @@ async function _resolveMandatoryReasons(
       and(
         eq(schema.spruceMessages.clinicId, clinicId),
         eq(schema.spruceMessages.spruceEventDedupeKey, dedupeKey),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).findSpruceOutboundByDeliveryId = async function(
+  clinicId: number,
+  spruceDeliveryId: string,
+): Promise<schema.SpruceOutboundMessage | null> {
+  const [row] = await db
+    .select()
+    .from(schema.spruceOutboundMessages)
+    .where(
+      and(
+        eq(schema.spruceOutboundMessages.clinicId, clinicId),
+        eq(schema.spruceOutboundMessages.spruceDeliveryId, spruceDeliveryId),
       ),
     )
     .limit(1);

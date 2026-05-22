@@ -18515,6 +18515,37 @@ IMPORTANT:
         }
       }
 
+      // ── Echo suppression ──────────────────────────────────────────────
+      // When ClinIQ sends a message via the Spruce API (June ack or staff
+      // reply), Spruce fires a webhook back for the outbound message.
+      // That echo arrives as direction="outbound" / senderType="user" —
+      // identical to a real staff reply.  If we stored it we'd show the
+      // same message twice in the inbox.
+      //
+      // Guard: check whether spruceMessageId (the Spruce object ID in the
+      // echo) already exists as a spruceDeliveryId in our outbound table.
+      // updateSpruceOutboundDeliveryId is awaited before Spruce can even
+      // generate and deliver the echo, so the delivery ID will already be
+      // persisted by the time this check runs.
+      if (messageDirection === "outbound_staff" && spruceMessageId) {
+        try {
+          const knownOutbound = await (storage as any).findSpruceOutboundByDeliveryId(
+            matchedClinicId,
+            spruceMessageId,
+          );
+          if (knownOutbound) {
+            console.log(
+              `${tag} ECHO suppressed: spruceMessageId="${spruceMessageId}" matches ` +
+              `spruce_outbound_messages id=${knownOutbound.id} sentByAI=${knownOutbound.sentByAI} ` +
+              `— skipping storage to prevent duplicate inbox display.`,
+            );
+            return;
+          }
+        } catch (err) {
+          console.warn(`${tag} echo-suppression check error (continuing):`, err);
+        }
+      }
+
       // ── Persist the message (all directions) ──────────────────────────
       // Staff outbound messages are stored for audit / conversation threading
       // but do NOT generate workflow requests.
