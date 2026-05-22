@@ -2382,7 +2382,7 @@ Rules:
       //    Use the conversation key to resolve phone/conversationId context.
       const conversations = await storage.listSpruceConversations(clinicId);
       const conv = conversations.find((c) => c.conversationKey === key);
-      await storage.createSpruceMessage({
+      const mirroredMsg = await storage.createSpruceMessage({
         clinicId,
         spruceMessageId: `cliniq_reply_${outbound.id}`,
         spruceConversationId: conv?.spruceConversationId ?? null,
@@ -2442,6 +2442,16 @@ Rules:
             try { spruceData = JSON.parse(spruceRespText); } catch {}
             if (spruceData?.id) {
               await storage.updateSpruceOutboundDeliveryId(outbound.id, spruceData.id);
+              // Stamp the mirror row with the real Spruce message ID + a dedupeKey
+              // that matches what Spruce will send in its echo webhook.  The existing
+              // findSpruceMessageByDedupeKey check then suppresses the duplicate.
+              if (mirroredMsg?.id) {
+                await storage.updateSpruceMessageEchoIds(
+                  mirroredMsg.id,
+                  spruceData.id,
+                  `conversationItem.created:${spruceData.id}`,
+                ).catch((e) => console.warn("[Spruce/reply] updateSpruceMessageEchoIds failed (non-fatal):", e));
+              }
             }
           } else {
             console.warn(

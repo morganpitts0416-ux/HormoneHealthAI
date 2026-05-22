@@ -400,6 +400,10 @@ export interface IStorage {
   // Outbound message audit log
   createSpruceOutboundMessage(data: schema.InsertSpruceOutboundMessage): Promise<schema.SpruceOutboundMessage>;
   updateSpruceOutboundDeliveryId(id: number, spruceDeliveryId: string): Promise<void>;
+  // After Spruce API confirms delivery, stamp the mirrored spruce_messages row
+  // with the real Spruce message ID + matching dedupeKey so that Spruce's echo
+  // webhook is suppressed by the existing dedup check.
+  updateSpruceMessageEchoIds(id: number, spruceMessageId: string, dedupeKey: string): Promise<void>;
   // ── Spruce June Phase 3A ─────────────────────────────────────────────────
   // Per-clinic, per-workflow June settings
   getSpruceWorkflowSetting(clinicId: number, workflow: string): Promise<schema.SpruceWorkflowSettings | null>;
@@ -5074,6 +5078,22 @@ export interface SpruceConversationMessageRow {
     .update(schema.spruceOutboundMessages)
     .set({ spruceDeliveryId })
     .where(eq(schema.spruceOutboundMessages.id, id));
+};
+
+// ── updateSpruceMessageEchoIds ────────────────────────────────────────────
+// Stamps the mirrored spruce_messages row (created by ClinIQ reply / June ack)
+// with the real Spruce-assigned message ID and a matching dedupeKey so that
+// when Spruce echoes the message back via webhook the existing dedup check
+// (findSpruceMessageByDedupeKey) finds this row and suppresses the duplicate.
+(DbStorage.prototype as any).updateSpruceMessageEchoIds = async function(
+  id: number,
+  spruceMessageId: string,
+  dedupeKey: string,
+): Promise<void> {
+  await db
+    .update(schema.spruceMessages)
+    .set({ spruceMessageId, spruceEventDedupeKey: dedupeKey })
+    .where(eq(schema.spruceMessages.id, id));
 };
 
 // ── Spruce June Phase 3A — Workflow Settings ──────────────────────────────

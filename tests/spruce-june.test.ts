@@ -81,6 +81,7 @@ function makeStorage(overrides: Record<string, unknown> = {}) {
     createSpruceMessage: async () => ({ id: 100, clinicId: 1 }),
     updateSpruceWorkflowRequestJune: async () => {},
     updateSpruceOutboundDeliveryId: async () => {},
+    updateSpruceMessageEchoIds: async () => {},
     ...overrides,
   } as any;
 }

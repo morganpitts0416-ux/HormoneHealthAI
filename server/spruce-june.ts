@@ -700,7 +700,7 @@ export async function runJunePipeline(
     });
 
     // Mirror into spruceMessages so the inbox thread shows the June message
-    await storage.createSpruceMessage({
+    const mirroredAck = await storage.createSpruceMessage({
       clinicId,
       spruceMessageId: `june_ack_${outbound.id}`,
       spruceConversationId: input.spruceConversationId,
@@ -750,6 +750,14 @@ export async function runJunePipeline(
       if (deliveryResult.ok) {
         if (deliveryResult.deliveryId) {
           await storage.updateSpruceOutboundDeliveryId(outbound.id, deliveryResult.deliveryId);
+          // Stamp the mirror row so Spruce's echo webhook is suppressed by dedup
+          if (mirroredAck?.id) {
+            await storage.updateSpruceMessageEchoIds(
+              mirroredAck.id,
+              deliveryResult.deliveryId,
+              `conversationItem.created:${deliveryResult.deliveryId}`,
+            ).catch((e) => console.warn(`${tag} updateSpruceMessageEchoIds failed (non-fatal):`, e));
+          }
         }
         console.log(`${tag} Spruce API delivery OK deliveryId=${deliveryResult.deliveryId}`);
       } else {
