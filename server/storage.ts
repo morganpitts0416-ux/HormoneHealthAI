@@ -1282,8 +1282,8 @@ export class DbStorage implements IStorage {
     const hasPortalAccount = portalAccount.length > 0;
 
     // 2. Most recent *real* Spruce message for this patient (system events with
-    //    messageDirection='unknown' are excluded — they must not count as a
-    //    conversation or influence channel selection).
+    //    messageDirection='unknown' or 'spruce_system_event' are excluded — they
+    //    must not count as a conversation or influence channel selection).
     const spruceRows = await db
       .select({
         spruceConversationId: schema.spruceMessages.spruceConversationId,
@@ -1297,6 +1297,7 @@ export class DbStorage implements IStorage {
           eq(schema.spruceMessages.clinicId, clinicId),
           eq(schema.spruceMessages.patientId, patientId),
           ne(schema.spruceMessages.messageDirection as any, 'unknown'),
+          ne(schema.spruceMessages.messageDirection as any, 'spruce_system_event'),
         )
       )
       .orderBy(desc(schema.spruceMessages.receivedAt))
@@ -1353,6 +1354,7 @@ export class DbStorage implements IStorage {
             eq(schema.spruceMessages.clinicId, clinicId),
             eq(schema.spruceMessages.patientId, patientId),
             ne(schema.spruceMessages.messageDirection as any, 'unknown'),
+            ne(schema.spruceMessages.messageDirection as any, 'spruce_system_event'),
           )
         )
         .orderBy(desc(schema.spruceMessages.receivedAt))
@@ -5522,6 +5524,7 @@ export interface SpruceConversationMessageRow {
         eq(schema.spruceMessages.clinicId, clinicId),
         eq(schema.spruceMessages.patientId, patientId),
         ne(schema.spruceMessages.messageDirection as any, 'outbound_staff'),
+        ne(schema.spruceMessages.messageDirection as any, 'spruce_system_event'),
       ),
     )
     .orderBy(asc(schema.spruceMessages.receivedAt));

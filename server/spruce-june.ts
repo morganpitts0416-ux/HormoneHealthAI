@@ -88,9 +88,12 @@ export async function shouldJuneAcknowledge(
 ): Promise<string | null> {
   const { messageDirection, classification, clinicSettings, convState } = input;
 
-  // Gate 1: Only respond to inbound patient messages
-  if (messageDirection !== "inbound_patient" && messageDirection !== "unknown") {
-    return `direction=${messageDirection} — June only responds to inbound patient messages`;
+  // Gate 1: Only respond to inbound patient messages.
+  // "unknown" direction is no longer allowed — system events now have their own
+  // "spruce_system_event" kind and must never reach June. "unknown" is kept as
+  // a fallback but blocked here so ambiguous payloads don't trigger responses.
+  if (messageDirection !== "inbound_patient") {
+    return `direction="${messageDirection}" — June only responds to inbound_patient messages`;
   }
 
   // Gate 2: Clinic-level master switch

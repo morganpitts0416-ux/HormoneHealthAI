@@ -18434,39 +18434,67 @@ IMPORTANT:
       ) || null;
       const toPhoneExtracted: string = toPhone ?? "";
 
-      // ── Direction detection ────────────────────────────────────────────
-      // Determine if this message was sent by an internal staff member or by the
-      // external patient/contact.  We check two complementary Spruce payload fields:
+      // ── Message kind detection ────────────────────────────────────────
+      // Three possible kinds in a Spruce webhook:
       //
-      //   obj.direction   — "inbound" (patient → clinic) | "outbound" (clinic → patient)
-      //   obj.sender.type — "user"     = internal Spruce user (staff member)
-      //                     "external" = external participant (patient/contact)
-      //   obj.author.type — alternative field for the same concept
+      //   inbound_patient     — real patient/external message (classify, run June)
+      //   outbound_staff      — real human staff reply (store, staffRepliedAt,
+      //                         transition to staff_takeover, block June)
+      //   spruce_system_event — Spruce automation / action events: workflow
+      //                         assignments, archives, team assignments, tag changes,
+      //                         internal notes, conversation state changes.
+      //                         Store as audit only. NEVER classify, create workflow
+      //                         requests, set staffRepliedAt, transition to
+      //                         staff_takeover, or trigger June.
       //
-      // Classification is SKIPPED for outbound_staff to prevent false workflow
-      // requests (e.g. staff saying "Your refill was sent" triggering a refill task).
-      // On unknown direction we err on the side of classifying (never drop a real
-      // patient request because the payload was ambiguous).
+      // Signals checked (in priority order):
+      //   obj.direction       "inbound" | "outbound" | "none" (none = system)
+      //   obj.sender.type     "user" | "external" | "system" | ""
+      //   obj.author.type     alternative sender type field
+      //   obj.isInternalNote  true = internal note, never patient-visible
+      //   msgBody patterns    Spruce embeds readable text in automation events
+      //   eventType prefix    conversation.* (no body) = state-change event
+
       const rawDirectionField: string = (obj?.direction ?? "").toLowerCase();
       const senderTypeField: string = (
         obj?.sender?.type ?? obj?.author?.type ?? ""
       ).toLowerCase();
 
-      const isStaffMessage: boolean =
-        rawDirectionField === "outbound" || senderTypeField === "user";
-      const isPatientMessage: boolean =
-        rawDirectionField === "inbound" || senderTypeField === "external";
+      // System event detection — evaluated BEFORE staff/patient split so that
+      // automation events attributed to a staff user are not mis-classified as
+      // real staff outbound messages triggering staff_takeover.
+      const isSystemEvent: boolean = (
+        rawDirectionField === "none" ||
+        obj?.isInternalNote === true ||
+        senderTypeField === "system" ||
+        /workflow\s+.+?assigned this conversation/i.test(msgBody) ||
+        /archived and unassigned this conversation/i.test(msgBody) ||
+        /assigned this conversation to\b/i.test(msgBody) ||
+        /\bunassigned this conversation\b/i.test(msgBody) ||
+        // conversation-level events with no body are state transitions, not messages
+        (eventType.startsWith("conversation.") &&
+          !eventType.startsWith("conversationItem.") &&
+          !msgBody.trim())
+      );
 
-      const messageDirection: "inbound_patient" | "outbound_staff" | "unknown" =
-        isStaffMessage
-          ? "outbound_staff"
-          : isPatientMessage
-            ? "inbound_patient"
-            : "unknown";
+      const isStaffMessage: boolean =
+        !isSystemEvent && (rawDirectionField === "outbound" || senderTypeField === "user");
+      const isPatientMessage: boolean =
+        !isSystemEvent && (rawDirectionField === "inbound" || senderTypeField === "external");
+
+      const messageDirection: "inbound_patient" | "outbound_staff" | "spruce_system_event" | "unknown" =
+        isSystemEvent
+          ? "spruce_system_event"
+          : isStaffMessage
+            ? "outbound_staff"
+            : isPatientMessage
+              ? "inbound_patient"
+              : "unknown";
 
       console.log(
-        `${tag} message direction="${messageDirection}" ` +
-        `(rawDirection="${rawDirectionField}" senderType="${senderTypeField}")`,
+        `${tag} message kind="${messageDirection}" ` +
+        `(rawDirection="${rawDirectionField}" senderType="${senderTypeField}" ` +
+        `isSystemEvent=${isSystemEvent})`,
       );
 
       // ── Patient matching ───────────────────────────────────────────────
@@ -18516,17 +18544,40 @@ IMPORTANT:
         console.error(`${tag} failed to store spruce_message:`, err);
       }
 
-      // ── Direction gate — skip classification for staff outbound messages ──
-      // Staff replies (e.g. "Your refill was sent", "We'll call you back") often
-      // contain the same keywords as patient requests.  Classifying them would
-      // create false workflow requests in the dashboard inbox.
-      if (messageDirection === "outbound_staff") {
+      // ── Direction gate ────────────────────────────────────────────────
+      if (messageDirection === "spruce_system_event") {
+        // Spruce automation / action event — store only, skip everything else.
+        // MUST NOT classify, create workflow requests, set staffRepliedAt,
+        // transition to staff_takeover, or trigger June.
         console.log(
-          `${tag} SKIPPING classification — outbound_staff message detected. ` +
-          `No workflow request will be created. staffRepliedAt set on message id=${storedMsg?.id ?? "n/a"}.`,
+          `${tag} SYSTEM EVENT — skipping classification, workflow request, ` +
+          `staff_takeover, and June. Stored as audit record id=${storedMsg?.id ?? "n/a"}.`,
         );
-        // Still run the auto-reply gate below (it will correctly be a no-op since
-        // auto-reply must not fire for staff-sent messages either).
+        return; // nothing further for this event
+      }
+
+      if (messageDirection === "outbound_staff") {
+        // Real human staff reply — skip classification to prevent false workflow
+        // requests, and transition the conversation to staff_takeover so June
+        // stops responding until the conversation is explicitly reset.
+        console.log(
+          `${tag} OUTBOUND STAFF reply — skipping classification. ` +
+          `staffRepliedAt set on message id=${storedMsg?.id ?? "n/a"}. ` +
+          `Transitioning conversation to staff_takeover.`,
+        );
+        const convKey = spruceConversationId || fromPhone || null;
+        if (convKey) {
+          try {
+            await storage.upsertSpruceConversationState(matchedClinicId, convKey, {
+              state: "staff_takeover",
+              lastActivityAt: new Date(),
+            });
+            console.log(`${tag} conversation state → staff_takeover (conv="${convKey}")`);
+          } catch (err) {
+            console.warn(`${tag} failed to set staff_takeover state (non-fatal):`, err);
+          }
+        }
+        // Fall through to the auto-reply gate below (it will correctly no-op).
       } else {
         // ── Classify the message into a workflow ─────────────────────────
         // Keyword-pattern classification only — no outbound AI replies yet.

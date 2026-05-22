@@ -253,7 +253,10 @@ function ConversationRow({
 
 function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: boolean }) {
   const isStaff = msg.messageDirection === "outbound_staff";
-  const isSystem = msg.messageDirection === "unknown" || !msg.messageDirection;
+  const isSystem =
+    msg.messageDirection === "spruce_system_event" ||
+    msg.messageDirection === "unknown" ||
+    !msg.messageDirection;
 
   if (isSystem) {
     return (
@@ -608,10 +611,15 @@ export default function SpruceInboxPage() {
   }
 
   // A message is a Spruce system/action event (not a real patient or staff message)
-  // when messageDirection is "unknown" — these are workflow assignments, archives,
-  // conversation state changes, etc.  They should not render as chat bubbles.
+  // when messageDirection is "spruce_system_event" (new) or the legacy "unknown".
+  // These are workflow assignments, archives, team assignments, tag changes, etc.
+  // They render as small muted system chips — never as full chat bubbles.
   function isSpruceSystemEvent(msg: SpruceMessage): boolean {
-    return msg.messageDirection === "unknown" || !msg.messageDirection;
+    return (
+      msg.messageDirection === "spruce_system_event" ||
+      msg.messageDirection === "unknown" ||
+      !msg.messageDirection
+    );
   }
 
   function groupMessagesByDate(msgs: SpruceMessage[]) {
