@@ -301,7 +301,7 @@ STRICT RULES:
  */
 const ACK_STYLE_GUIDES: Record<SpruceWorkflowType, string> = {
   medication_refill:
-    "Of course — I can help get that testosterone refill request to the care team. Which pharmacy should we use?",
+    "Of course — which medication are you needing a refill on? Once I have that, I'll get this over to the care team right away.",
   appointment:
     "Of course — what days or times usually work best for you? I'll pass this along so the team can confirm availability.",
   lab_question:
@@ -323,7 +323,7 @@ const ACK_STYLE_GUIDES: Record<SpruceWorkflowType, string> = {
  * June will prioritise these when choosing what to ask.
  */
 const PRIORITY_MISSING_FIELDS: Partial<Record<SpruceWorkflowType, string[]>> = {
-  medication_refill: ["pharmacy", "medication", "dose", "amountRemaining"],
+  medication_refill: ["medication", "pharmacy", "dose", "amountRemaining"],
   appointment:       ["appointmentType", "preferredTimes", "reason"],
   lab_question:      ["specificLab", "concern"],
   billing:           ["concern", "invoiceRef"],
@@ -428,6 +428,11 @@ function buildFallbackAck(
     if (med) {
       return `${greeting}I can help get that ${med} refill request to the care team. They'll follow up with you shortly.`;
     }
+    // Medication not specified — ask for it first before anything else
+    if (allowFollowUp) {
+      return `${greeting}I can help with your refill request. Which medication are you needing a refill on?`;
+    }
+    return `${greeting}I can help with your refill request. A team member will follow up with you shortly.`;
   }
 
   if (workflow === "urgent_safety") {
