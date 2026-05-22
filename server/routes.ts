@@ -17977,6 +17977,7 @@ IMPORTANT:
         clinicId: row.clinicId,
         isEnabled: row.isEnabled,
         spruceAutoReplyEnabled: row.spruceAutoReplyEnabled,
+        spruceJuneAcknowledgmentsEnabled: row.spruceJuneAcknowledgmentsEnabled,
         spruceOrgId: row.spruceOrgId,
         spruceWebhookEndpointId: row.spruceWebhookEndpointId,
         spruceReceivingPhone: row.spruceReceivingPhone,
