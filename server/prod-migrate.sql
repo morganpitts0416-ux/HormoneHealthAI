@@ -1331,3 +1331,35 @@ ALTER TABLE spruce_workflow_requests
   ADD COLUMN IF NOT EXISTS june_ack_sent_at TIMESTAMP,
   ADD COLUMN IF NOT EXISTS june_memo_text TEXT,
   ADD COLUMN IF NOT EXISTS june_turn_count INTEGER NOT NULL DEFAULT 0;
+
+-- ── Phase 2: Unified communication timeline ───────────────────────────────
+-- portal_messages: message classification, patient-safety visibility gate,
+-- channel routing label, and external dedup ID.
+-- Defaults are set to the pre-existing behaviour so all existing rows remain
+-- fully functional with no data changes required.
+ALTER TABLE portal_messages
+  ADD COLUMN IF NOT EXISTS message_type VARCHAR(30) NOT NULL DEFAULT 'message';
+ALTER TABLE portal_messages
+  ADD COLUMN IF NOT EXISTS visibility VARCHAR(20) NOT NULL DEFAULT 'patient_visible';
+ALTER TABLE portal_messages
+  ADD COLUMN IF NOT EXISTS delivery_channel VARCHAR(20);
+ALTER TABLE portal_messages
+  ADD COLUMN IF NOT EXISTS external_delivery_id VARCHAR(200);
+
+-- patients: optional clinician-set preferred outbound channel (portal | spruce).
+-- NULL = auto-derived from most-recent inbound activity.
+ALTER TABLE patients
+  ADD COLUMN IF NOT EXISTS primary_communication_channel VARCHAR(20);
+
+-- patient_message_mentions: records which staff users were @-mentioned in an
+-- internal note, and drives staff_mention inbox notifications.
+CREATE TABLE IF NOT EXISTS patient_message_mentions (
+  id SERIAL PRIMARY KEY,
+  clinic_id INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  patient_id INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  message_id INTEGER NOT NULL REFERENCES portal_messages(id) ON DELETE CASCADE,
+  mentioned_user_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS patient_message_mentions_msg_user_idx
+  ON patient_message_mentions(message_id, mentioned_user_id);
