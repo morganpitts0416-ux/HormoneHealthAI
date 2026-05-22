@@ -2801,19 +2801,22 @@ Rules:
       // Real settings are loaded first; the overrides only fill gaps.
       let juneResult: { skipped: boolean; skipReason?: string; acknowledgmentSent: boolean; acknowledgmentText?: string } = {
         skipped: true,
-        skipReason: "workflow=unclassified",
+        skipReason: "outbound or not inbound_patient",
         acknowledgmentSent: false,
       };
 
-      if (classification.workflow !== "unclassified" && simMessageDirection === "inbound_patient") {
+      if (simMessageDirection === "inbound_patient") {
         try {
-          // Load real clinic settings if they exist, then override critical flags
+          // Load real clinic settings if they exist, then override critical flags.
+          // generalMessageAcknowledgmentEnabled is forced true so unclassified messages
+          // can be simulated even before the clinic has saved that setting.
           let realSettings: any = null;
           try { realSettings = await storage.getClinicSpruceSettings(clinicId); } catch {}
           const simClinicSettings: any = {
             ...(realSettings ?? {}),
             isEnabled: true,
             spruceJuneAcknowledgmentsEnabled: true,
+            generalMessageAcknowledgmentEnabled: true,
           };
 
           const simWorkflowSetting: any = {
