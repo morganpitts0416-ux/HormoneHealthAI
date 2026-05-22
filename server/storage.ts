@@ -1279,7 +1279,9 @@ export class DbStorage implements IStorage {
       .limit(1);
     const hasPortalAccount = portalAccount.length > 0;
 
-    // 2. Most recent Spruce message for this patient (determines active Spruce conversation)
+    // 2. Most recent *real* Spruce message for this patient (system events with
+    //    messageDirection='unknown' are excluded — they must not count as a
+    //    conversation or influence channel selection).
     const spruceRows = await db
       .select({
         spruceConversationId: schema.spruceMessages.spruceConversationId,
@@ -1292,6 +1294,7 @@ export class DbStorage implements IStorage {
         and(
           eq(schema.spruceMessages.clinicId, clinicId),
           eq(schema.spruceMessages.patientId, patientId),
+          ne(schema.spruceMessages.messageDirection as any, 'unknown'),
         )
       )
       .orderBy(desc(schema.spruceMessages.receivedAt))
@@ -1316,40 +1319,45 @@ export class DbStorage implements IStorage {
     if (hasPortalAccount) availableChannels.push('portal');
     if (hasSpruceConversation) availableChannels.push('spruce');
 
-    // 5. Determine active channel (preference → most recent inbound → first available)
+    // 5. Determine active channel (preference → most recently used → first available)
+    //    "Most recently used" = most recent real message in EITHER direction on each
+    //    channel.  Comparing only patient-inbound timestamps was incorrect: if a staff
+    //    member's last action was a Spruce reply, that channel should still win even
+    //    though no new patient Spruce message has arrived yet.
     let activeChannel: 'portal' | 'spruce' | null = null;
     if (primaryPref && availableChannels.includes(primaryPref)) {
       activeChannel = primaryPref;
     } else if (availableChannels.length > 0) {
-      // Find the most recent inbound message across both channels
-      const latestPortalInbound = await db
+      // Most recent real portal message (any sender, real content — excludes internal notes)
+      const latestPortalReal = await db
         .select({ createdAt: schema.portalMessages.createdAt })
         .from(schema.portalMessages)
         .where(
           and(
             eq(schema.portalMessages.patientId, patientId),
-            eq(schema.portalMessages.senderType, 'patient'),
-            eq(schema.portalMessages.visibility, 'patient_visible'),
+            eq(schema.portalMessages.visibility as any, 'patient_visible'),
+            eq(schema.portalMessages.messageType as any, 'message'),
           )
         )
         .orderBy(desc(schema.portalMessages.createdAt))
         .limit(1);
 
-      const latestSpruceInbound = await db
+      // Most recent real Spruce message (inbound or outbound staff — excludes unknown/system)
+      const latestSpruceReal = await db
         .select({ receivedAt: schema.spruceMessages.receivedAt })
         .from(schema.spruceMessages)
         .where(
           and(
             eq(schema.spruceMessages.clinicId, clinicId),
             eq(schema.spruceMessages.patientId, patientId),
-            eq(schema.spruceMessages.messageDirection, 'inbound_patient'),
+            ne(schema.spruceMessages.messageDirection as any, 'unknown'),
           )
         )
         .orderBy(desc(schema.spruceMessages.receivedAt))
         .limit(1);
 
-      const portalTs = latestPortalInbound[0]?.createdAt?.getTime() ?? 0;
-      const spruceTs = latestSpruceInbound[0]?.receivedAt?.getTime() ?? 0;
+      const portalTs = latestPortalReal[0]?.createdAt?.getTime() ?? 0;
+      const spruceTs = latestSpruceReal[0]?.receivedAt?.getTime() ?? 0;
 
       if (hasPortalAccount && hasSpruceConversation) {
         activeChannel = spruceTs >= portalTs ? 'spruce' : 'portal';

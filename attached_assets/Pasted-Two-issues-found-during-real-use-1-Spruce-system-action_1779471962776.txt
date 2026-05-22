@@ -1,0 +1,38 @@
+Two issues found during real use:
+
+1. Spruce system/action events are cluttering the conversation thread.
+
+Example:
+“Workflow ‘assign to Women’s Wellness’ assigned this conversation to MEMBERS…”
+
+These are Spruce system events, not patient/staff messages.
+
+Please update the conversation timeline rendering so Spruce system/action events are hidden from the normal message thread by default.
+
+Desired behavior:
+
+* Patient/staff text messages remain visible.
+* Spruce system events like assignment/archive/unassign/workflow actions should not display as full chat bubbles.
+* If needed, show them only under a “Show system events” toggle or render them as small muted audit events.
+* Do not delete them from storage — just change normal UI display.
+* Keep them available for audit/debugging if needed.
+
+2. Replying from patient profile chose the wrong channel.
+
+I replied from the patient profile timeline. The last active communication was through Spruce, but the reply only went to the portal.
+
+Expected behavior:
+
+* If the most recent active communication channel is Spruce SMS, the patient profile composer should default to “Replying via Spruce SMS.”
+* If Spruce is selected, the reply should send through Spruce API AND be saved to the unified timeline/portal history.
+* If Portal is selected, the reply should only send through Portal.
+* The selected channel should be very visible before sending.
+* Staff should be able to switch channels manually if both are available.
+
+Please debug activeChannel derivation in /api/patients/:id/reply-context and make sure Spruce is selected when the latest relevant patient/staff communication was via Spruce.
+
+Important:
+Spruce system events should NOT count as the “latest active channel.” Only real patient/staff communication messages should determine the default channel.
+
+Keep this isolated to Spruce Inbox / patient communication timeline / reply channel behavior.
+Do not modify existing ClinIQ June, Ask June, SOAP, transcription, labs, evidence overlay, auth, billing, or unrelated core systems.

@@ -1280,6 +1280,7 @@ export default function PatientProfiles() {
   const [composerTab, setComposerTab] = useState<'reply' | 'note'>('reply');
   const [activeChannel, setActiveChannel] = useState<'portal' | 'spruce'>('portal');
   const [showMessages, setShowMessages] = useState(false);
+  const [showTimelineSystemEvents, setShowTimelineSystemEvents] = useState(false);
   const [showSpruceHistory, setShowSpruceHistory] = useState(false);
   const [showPortalSection, setShowPortalSection] = useState(false);
   const [showOrders, setShowOrders] = useState(false);
@@ -2800,10 +2801,34 @@ export default function PatientProfiles() {
                           </p>
                         ) : (
                           <>
+                            {/* System events toggle — shown only when there are hideable system events */}
+                            {(() => {
+                              const hiddenCount = timeline.filter(
+                                (i) => i.direction === 'system' && (i.messageType ?? '') !== 'internal_note'
+                              ).length;
+                              if (hiddenCount === 0) return null;
+                              return (
+                                <div className="flex justify-center pb-1">
+                                  <button
+                                    onClick={() => setShowTimelineSystemEvents((v) => !v)}
+                                    className="text-[10px] underline-offset-2 hover:underline transition-colors"
+                                    style={{ color: "#9a9a8a" }}
+                                    data-testid="button-toggle-timeline-system-events"
+                                  >
+                                    {showTimelineSystemEvents
+                                      ? "Hide system events"
+                                      : `${hiddenCount} system event${hiddenCount !== 1 ? "s" : ""} hidden · Show`}
+                                  </button>
+                                </div>
+                              );
+                            })()}
                             {timeline.map((item) => {
                               const isOutbound = item.direction === 'outbound';
                               const isSystem = item.direction === 'system';
                               const isInternalNote = (item.messageType ?? '') === 'internal_note';
+
+                              // Hide system events (non-internal-note) unless toggled on
+                              if (isSystem && !isInternalNote && !showTimelineSystemEvents) return null;
                               const ts = new Date(item.timestamp).toLocaleString("en-US", {
                                 month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
                               });

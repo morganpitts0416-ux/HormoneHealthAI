@@ -253,6 +253,20 @@ function ConversationRow({
 
 function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: boolean }) {
   const isStaff = msg.messageDirection === "outbound_staff";
+  const isSystem = msg.messageDirection === "unknown" || !msg.messageDirection;
+
+  if (isSystem) {
+    return (
+      <div className="flex justify-center my-1 px-4" data-testid={`msg-${msg.id}`}>
+        <span
+          className="text-[10px] italic px-2.5 py-0.5 rounded-full"
+          style={{ backgroundColor: "#f0ede8", color: "#8a8878" }}
+        >
+          {msg.messageBody ?? msg.eventType ?? "System event"} · {formatMessageTime(msg.receivedAt)}
+        </span>
+      </div>
+    );
+  }
 
   if (isStaff) {
     const senderName = msg.spruceContactName ?? null;
@@ -328,6 +342,7 @@ export default function SpruceInboxPage() {
   const [linkSearch, setLinkSearch] = useState("");
   const [replyText, setReplyText] = useState("");
   const [optimisticMsgs, setOptimisticMsgs] = useState<SpruceMessage[]>([]);
+  const [showSystemEvents, setShowSystemEvents] = useState(false);
   const threadBottomRef = useRef<HTMLDivElement>(null);
   const textareaRef = useRef<HTMLTextAreaElement>(null);
 
@@ -592,6 +607,13 @@ export default function SpruceInboxPage() {
     }
   }
 
+  // A message is a Spruce system/action event (not a real patient or staff message)
+  // when messageDirection is "unknown" — these are workflow assignments, archives,
+  // conversation state changes, etc.  They should not render as chat bubbles.
+  function isSpruceSystemEvent(msg: SpruceMessage): boolean {
+    return msg.messageDirection === "unknown" || !msg.messageDirection;
+  }
+
   function groupMessagesByDate(msgs: SpruceMessage[]) {
     const groups: { dateLabel: string; messages: SpruceMessage[] }[] = [];
     for (const msg of msgs) {
@@ -605,7 +627,9 @@ export default function SpruceInboxPage() {
     return groups;
   }
 
-  const messageGroups = groupMessagesByDate(messages);
+  const systemEvents = messages.filter(isSpruceSystemEvent);
+  const realMessages = messages.filter((m) => !isSpruceSystemEvent(m));
+  const messageGroups = groupMessagesByDate(showSystemEvents ? messages : realMessages);
 
   // View labels for the empty state
   const viewLabel: Record<SidebarView, string> = {
@@ -1007,6 +1031,20 @@ export default function SpruceInboxPage() {
               </div>
             ) : (
               <>
+                {/* System events toggle — shown only when there are system events */}
+                {systemEvents.length > 0 && (
+                  <div className="flex justify-center mb-1 px-4">
+                    <button
+                      onClick={() => setShowSystemEvents((v) => !v)}
+                      className="text-[10px] text-[#9a9a8a] hover:text-[#6a6a5a] underline-offset-2 hover:underline transition-colors"
+                      data-testid="button-toggle-system-events"
+                    >
+                      {showSystemEvents
+                        ? "Hide system events"
+                        : `${systemEvents.length} system event${systemEvents.length !== 1 ? "s" : ""} hidden · Show`}
+                    </button>
+                  </div>
+                )}
                 {messageGroups.map((group) => (
                   <div key={group.dateLabel}>
                     <DateDivider label={group.dateLabel} />
