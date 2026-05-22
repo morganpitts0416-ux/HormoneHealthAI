@@ -354,6 +354,19 @@ function SpruceManageDialog({
               </div>
 
               {/* API Token — write-only */}
+              {/* Warning: Spruce enabled but API token not yet configured */}
+              {settings?.isEnabled && !settings?.apiTokenConfigured && (
+                <div
+                  className="flex items-start gap-2 rounded-md px-3 py-2 text-xs"
+                  style={{ backgroundColor: "#fef3c7", color: "#92400e", border: "1px solid #fde68a" }}
+                  data-testid="banner-spruce-token-missing"
+                >
+                  <AlertTriangle className="w-3.5 h-3.5 shrink-0 mt-0.5" />
+                  <span>
+                    <strong>API token required for outbound messages.</strong> Staff replies and June acknowledgments will be stored in ClinIQ but cannot be delivered to Spruce until an API token is saved.
+                  </span>
+                </div>
+              )}
               <div className="space-y-1.5">
                 <Label htmlFor="spruce-api-token" className="text-xs font-medium">
                   API Token{" "}

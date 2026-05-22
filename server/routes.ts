@@ -2432,13 +2432,13 @@ Rules:
         lastActivityAt: new Date(),
       });
 
-      // 4. Attempt Spruce API delivery (stub until SPRUCE_API_TOKEN is set)
+      // 4. Attempt Spruce API delivery using the clinic-scoped encrypted token only.
+      //    No global SPRUCE_API_TOKEN fallback — each clinic must configure its own.
       let spruceDelivered = false;
       const clinicSettings = await storage.getClinicSpruceSettings(clinicId).catch(() => null);
-      const rawToken = clinicSettings?.apiTokenEncrypted
-        ? (isEncrypted(clinicSettings.apiTokenEncrypted) ? decryptSecret(clinicSettings.apiTokenEncrypted) : clinicSettings.apiTokenEncrypted)
+      const apiToken = (clinicSettings?.apiTokenEncrypted && isEncrypted(clinicSettings.apiTokenEncrypted))
+        ? decryptSecret(clinicSettings.apiTokenEncrypted)
         : null;
-      const apiToken = rawToken ?? process.env.SPRUCE_API_TOKEN ?? null;
       if (apiToken && conv?.spruceConversationId) {
         try {
           // Spruce API body format per developer.sprucehealth.com/reference/postconversationmessage:
@@ -2519,10 +2519,9 @@ Rules:
       let spruceArchiveSyncedAt: Date | null = null;
 
       const clinicSettings = await storage.getClinicSpruceSettings(clinicId).catch(() => null);
-      const rawToken = clinicSettings?.apiTokenEncrypted
-        ? (isEncrypted(clinicSettings.apiTokenEncrypted) ? decryptSecret(clinicSettings.apiTokenEncrypted) : clinicSettings.apiTokenEncrypted)
+      const apiToken = (clinicSettings?.apiTokenEncrypted && isEncrypted(clinicSettings.apiTokenEncrypted))
+        ? decryptSecret(clinicSettings.apiTokenEncrypted)
         : null;
-      const apiToken = rawToken ?? process.env.SPRUCE_API_TOKEN ?? null;
 
       if (apiToken && conv.spruceConversationId) {
         try {
@@ -5078,14 +5077,11 @@ Return ONLY this JSON structure:
             lastActivityAt: new Date(),
           });
 
-          // Attempt Spruce API delivery
+          // Attempt Spruce API delivery using the clinic-scoped encrypted token only.
           const clinicSettings = await storage.getClinicSpruceSettings(clinicId).catch(() => null);
-          const rawToken = clinicSettings?.apiTokenEncrypted
-            ? (isEncrypted(clinicSettings.apiTokenEncrypted)
-                ? decryptSecret(clinicSettings.apiTokenEncrypted)
-                : clinicSettings.apiTokenEncrypted)
+          const apiToken = (clinicSettings?.apiTokenEncrypted && isEncrypted(clinicSettings.apiTokenEncrypted))
+            ? decryptSecret(clinicSettings.apiTokenEncrypted)
             : null;
-          const apiToken = rawToken ?? process.env.SPRUCE_API_TOKEN ?? null;
           if (apiToken && conv?.spruceConversationId) {
             try {
               const spruceRes = await fetch(
@@ -18578,11 +18574,13 @@ IMPORTANT:
           const convUrl = spruceConversationId
             ? `https://app.sprucehealth.com/conversations/${spruceConversationId}`
             : null;
-          // Decrypt per-clinic Spruce API token; fall back to global env var
+          // Decrypt clinic-scoped Spruce API token — no global env var fallback.
+          // If the clinic hasn't configured a token, apiToken=null and runJunePipeline
+          // will store the acknowledgment internally without attempting Spruce delivery.
           const spruceApiToken: string | null =
-            (clinicSettings as any).apiTokenEncrypted
+            ((clinicSettings as any).apiTokenEncrypted && isEncrypted((clinicSettings as any).apiTokenEncrypted))
               ? (decryptSecret((clinicSettings as any).apiTokenEncrypted) ?? null)
-              : (process.env.SPRUCE_API_TOKEN ?? null);
+              : null;
           // Load conversation state so the staff-takeover gate can check it
           const convState = await storage.getSpruceConversationState(
             matchedClinicId, convKey,
