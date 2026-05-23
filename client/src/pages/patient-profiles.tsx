@@ -1231,6 +1231,41 @@ function PatientChartPanel({
   );
 }
 
+// ── June Memo "Mark complete" button — own component so it can use hooks ──
+function JuneMemoCompleteButton({ requestId, patientId }: { requestId: number; patientId: number }) {
+  const { toast } = useToast();
+  const completeMutation = useMutation({
+    mutationFn: () =>
+      apiRequest("PATCH", `/api/spruce-requests/${requestId}/status`, { status: "complete" }),
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "communication-timeline"] });
+      toast({ title: "Marked complete", description: "June memo resolved." });
+    },
+    onError: () => {
+      toast({ title: "Error", description: "Could not mark memo complete.", variant: "destructive" });
+    },
+  });
+
+  return (
+    <Button
+      size="sm"
+      variant="outline"
+      className="h-6 px-2 text-[9px] flex items-center gap-1"
+      style={{ color: "#4a3a6e", borderColor: "#c4b8e0" }}
+      disabled={completeMutation.isPending}
+      onClick={() => completeMutation.mutate()}
+      data-testid={`button-june-memo-complete-${requestId}`}
+    >
+      {completeMutation.isPending ? (
+        <Loader2 className="w-2.5 h-2.5 animate-spin" />
+      ) : (
+        <Check className="w-2.5 h-2.5" />
+      )}
+      Mark complete
+    </Button>
+  );
+}
+
 export default function PatientProfiles() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -1523,6 +1558,8 @@ export default function PatientProfiles() {
     visibility: string;
     deliveryChannel: string | null;
     mentionedUserIds: number[];
+    spruceWorkflowRequestId: number | null;
+    spruceWorkflowRequestStatus: string | null;
   }
 
   interface ReplyContext {
@@ -2849,6 +2886,53 @@ export default function PatientProfiles() {
                                   ) : part
                                 );
                               };
+
+                              // ── June memo — full-width purple AI card with "Mark complete" ──
+                              const isJuneMemo = (item.messageType ?? '') === 'june_memo';
+                              if (isJuneMemo) {
+                                const isAlreadyComplete = item.spruceWorkflowRequestStatus === 'complete';
+                                return (
+                                  <div key={item.id} className="flex justify-center" data-testid={`timeline-item-${item.id}`}>
+                                    <div
+                                      className="w-full rounded-lg px-3 py-2 text-xs"
+                                      style={{ backgroundColor: "#f3f0fb", color: "#3b2a6e", border: "1px solid #c4b8e0" }}
+                                    >
+                                      <div className="flex items-center justify-between gap-2 flex-wrap mb-1.5">
+                                        <div className="flex items-center gap-1.5">
+                                          <Sparkles className="w-2.5 h-2.5 flex-shrink-0" style={{ color: "#7c5cbf" }} />
+                                          <span className="text-[9px] font-semibold px-1.5 py-0 rounded leading-[1.6]" style={{ backgroundColor: "#e0d8f8", color: "#4a3a8a" }}>
+                                            June Memo
+                                          </span>
+                                          {item.eventType && (
+                                            <span className="text-[9px] font-medium px-1.5 py-0 rounded leading-[1.6]" style={{ backgroundColor: "#ede8ff", color: "#5a4a8a" }}>
+                                              {item.eventType.replace(/_/g, ' ').replace(/\b\w/g, c => c.toUpperCase())}
+                                            </span>
+                                          )}
+                                          {isAlreadyComplete && (
+                                            <span className="text-[9px] font-medium px-1.5 py-0 rounded leading-[1.6]" style={{ backgroundColor: "#d4e8c4", color: "#2a4018" }}>
+                                              Completed
+                                            </span>
+                                          )}
+                                        </div>
+                                        {!isAlreadyComplete && item.spruceWorkflowRequestId && (
+                                          <JuneMemoCompleteButton requestId={item.spruceWorkflowRequestId} patientId={item.patientId} />
+                                        )}
+                                      </div>
+                                      <p className="whitespace-pre-wrap leading-snug">{item.body}</p>
+                                      <div className="flex items-center justify-between mt-1.5">
+                                        <span className="text-[10px]" style={{ opacity: 0.6 }}>{ts}</span>
+                                        {item.conversationKey && (
+                                          <Link href={`/spruce-inbox?key=${encodeURIComponent(item.conversationKey)}`}>
+                                            <span className="text-[9px] flex items-center gap-0.5 hover:underline" style={{ color: "#7c5cbf" }}>
+                                              <FolderOpen className="w-2.5 h-2.5" /> Open in Inbox
+                                            </span>
+                                          </Link>
+                                        )}
+                                      </div>
+                                    </div>
+                                  </div>
+                                );
+                              }
 
                               // ── Internal staff note — full-width amber card ───────
                               if (isInternalNote) {

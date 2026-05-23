@@ -1133,20 +1133,25 @@ export default function Dashboard() {
                 </div>
               )}
 
-              {/* Spruce conversation link */}
-              {selectedSpruceRequest.spruceConversationUrl && (
-                <a
-                  href={selectedSpruceRequest.spruceConversationUrl}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="flex items-center gap-2 text-sm font-medium rounded-md px-3 py-2 border"
-                  style={{ color: "#4a3a6e", borderColor: "#c4b8e0" }}
-                  data-testid="link-open-spruce-conversation"
-                >
-                  <ExternalLink className="w-3.5 h-3.5" />
-                  Open conversation in Spruce
-                </a>
-              )}
+              {/* ClinIQ Inbox deep-link — opens the conversation inside ClinIQ */}
+              {selectedSpruceRequest.spruceConversationUrl && (() => {
+                const convKey = selectedSpruceRequest.spruceConversationUrl.split('/conversations/')[1] ?? null;
+                if (!convKey) return null;
+                return (
+                  <button
+                    className="flex items-center gap-2 text-sm font-medium rounded-md px-3 py-2 border w-full text-left"
+                    style={{ color: "#4a3a6e", borderColor: "#c4b8e0", backgroundColor: "#f8f5ff" }}
+                    data-testid="link-open-spruce-conversation"
+                    onClick={() => {
+                      setSelectedSpruceRequest(null);
+                      setLocation(`/spruce-inbox?key=${encodeURIComponent(convKey)}`);
+                    }}
+                  >
+                    <MessageCircle className="w-3.5 h-3.5 flex-shrink-0" />
+                    Open conversation in ClinIQ Inbox
+                  </button>
+                );
+              })()}
 
               {/* Action buttons */}
               <div className="border-t pt-3" style={{ borderColor: "#ede8df" }}>

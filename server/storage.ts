@@ -1,4 +1,4 @@
-import { eq, ne, desc, asc, ilike, like, or, and, isNull, count, sql, inArray } from "drizzle-orm";
+import { eq, ne, desc, asc, ilike, like, or, and, isNull, isNotNull, count, sql, inArray } from "drizzle-orm";
 import { getSeedAsEntries } from "./medication-seed.js";
 import { drizzle } from "drizzle-orm/node-postgres";
 import pg from "pg";
@@ -5004,7 +5004,7 @@ export interface ReplyContext {
 // portal_messages (patient-visible + internal), spruce_messages (inbound),
 // and spruce_outbound_messages.
 export interface CommunicationTimelineItem {
-  id: string                      // "portal:123" | "spruce_in:456" | "spruce_out:789"
+  id: string                      // "portal:123" | "spruce_in:456" | "spruce_out:789" | "june_memo:101"
   source: 'portal' | 'spruce'
   direction: 'inbound' | 'outbound' | 'system'
   senderLabel: string             // "Patient" | "Staff" | "June AI"
@@ -5016,7 +5016,7 @@ export interface CommunicationTimelineItem {
   userId: number | null           // set for Spruce outbound (sentByUserId)
   readAt: string | null           // portal inbound only
   sentByAI: boolean
-  eventType: string | null        // Spruce eventType for non-text events
+  eventType: string | null        // Spruce eventType for non-text events; workflow name for june_memo
   spruceMessageId: string | null
   spruceConversationId: string | null
   spruceDeliveryId: string | null
@@ -5029,6 +5029,9 @@ export interface CommunicationTimelineItem {
   deliveryChannel: string | null
   // IDs of mentioned staff users (for @mention highlighting in the UI)
   mentionedUserIds: number[]
+  // ── Phase 3A fields (june_memo items only) ───────────────────────────────
+  spruceWorkflowRequestId: number | null
+  spruceWorkflowRequestStatus: string | null
 }
 
 export interface SpruceConversationMessageRow {
@@ -5531,6 +5534,8 @@ export interface SpruceConversationMessageRow {
       visibility,
       deliveryChannel,
       mentionedUserIds: mentionsByMessageId.get(msg.id) ?? [],
+      spruceWorkflowRequestId: null,
+      spruceWorkflowRequestStatus: null,
     });
   }
 
@@ -5587,6 +5592,8 @@ export interface SpruceConversationMessageRow {
       visibility: 'patient_visible',
       deliveryChannel: 'spruce',
       mentionedUserIds: [],
+      spruceWorkflowRequestId: null,
+      spruceWorkflowRequestStatus: null,
     });
   }
 
@@ -5630,11 +5637,56 @@ export interface SpruceConversationMessageRow {
         visibility: 'patient_visible',
         deliveryChannel: 'spruce',
         mentionedUserIds: [],
+        spruceWorkflowRequestId: null,
+        spruceWorkflowRequestStatus: null,
       });
     }
   }
 
-  // ── 4. Sort all items chronologically ────────────────────────────────────
+  // ── 4. June memos from spruce_workflow_requests ───────────────────────────
+  // Requests matched to this patient that have an AI-generated staff memo.
+  const juneMemoRows = await db
+    .select()
+    .from(schema.spruceWorkflowRequests)
+    .where(
+      and(
+        eq(schema.spruceWorkflowRequests.clinicId, clinicId),
+        eq(schema.spruceWorkflowRequests.patientId, patientId),
+        isNotNull(schema.spruceWorkflowRequests.juneMemoText),
+      ),
+    )
+    .orderBy(asc(schema.spruceWorkflowRequests.createdAt));
+
+  for (const req of juneMemoRows) {
+    items.push({
+      id: `june_memo:${req.id}`,
+      source: 'portal' as const,
+      direction: 'system' as const,
+      senderLabel: 'June',
+      body: req.juneMemoText ?? '',
+      timestamp: (req.juneAckSentAt ?? req.createdAt).toISOString(),
+      conversationKey: req.spruceConversationUrl
+        ? (req.spruceConversationUrl.split('/conversations/')[1] ?? null)
+        : null,
+      patientId,
+      clinicianId: null,
+      userId: null,
+      readAt: null,
+      sentByAI: true,
+      eventType: req.workflow,
+      spruceMessageId: null,
+      spruceConversationId: null,
+      spruceDeliveryId: null,
+      messageType: 'june_memo',
+      visibility: 'internal_only',
+      deliveryChannel: null,
+      mentionedUserIds: [],
+      spruceWorkflowRequestId: req.id,
+      spruceWorkflowRequestStatus: req.status,
+    });
+  }
+
+  // ── 5. Sort all items chronologically ────────────────────────────────────
   items.sort((a, b) => new Date(a.timestamp).getTime() - new Date(b.timestamp).getTime());
 
   return items;
