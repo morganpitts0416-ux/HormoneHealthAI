@@ -13,6 +13,7 @@ import {
   FlaskConical,
   HeartPulse,
   ChevronRight,
+  ChevronDown,
   Settings,
   MessageSquare,
   ShoppingBag,
@@ -153,12 +154,12 @@ const SPRUCE_WORKFLOW_LABELS: Record<string, string> = {
   unclassified: "Inbound message",
 };
 
-// ── CompactQueueTile ──────────────────────────────────────────────────────────
-// Reusable wrapper for dashboard workflow queue tiles. Shows a compact header
-// with count badge + "View all" link, then renders children as the preview rows.
-// When empty, shows a minimal cleared state instead of a tall placeholder.
+// ── CollapsibleQueueTile ──────────────────────────────────────────────────────
+// Dashboard workflow queue tile. All tiles start collapsed by default.
+// Count badge is always visible in the header — even when collapsed.
+// Clicking the header row toggles expand/collapse; "View all" link is separate.
 
-function CompactQueueTile({
+function CollapsibleQueueTile({
   icon,
   label,
   count,
@@ -187,55 +188,71 @@ function CompactQueueTile({
   emptyLabel: string;
   children?: React.ReactNode;
 }) {
+  const [collapsed, setCollapsed] = useState(true);
   return (
     <div
       className="rounded-xl overflow-hidden border"
       style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}
       data-testid={testId}
     >
-      {/* Tile header */}
+      {/* Tile header — click anywhere to toggle */}
       <div
-        className="flex items-center justify-between px-4 py-2.5 border-b"
-        style={{ borderColor: "#ede8df", backgroundColor: !isEmpty ? accentBg : "#faf8f5" }}
+        className="flex items-center justify-between px-4 py-2.5 cursor-pointer select-none"
+        style={{ backgroundColor: !isEmpty ? accentBg : "#faf8f5" }}
+        onClick={() => setCollapsed(c => !c)}
       >
-        <div className="flex items-center gap-2">
-          <span style={{ color: !isEmpty ? accentColor : "#a0a880" }}>{icon}</span>
-          <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>{label}</span>
+        <div className="flex items-center gap-2 min-w-0">
+          <span style={{ color: !isEmpty ? accentColor : "#a0a880" }} className="flex-shrink-0">{icon}</span>
+          <span className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{label}</span>
           {count > 0 && (
             <span
-              className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold"
+              className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold flex-shrink-0"
               style={{ backgroundColor: accentColor, color: accentBg }}
             >
               {count}
             </span>
           )}
           {countLabel && count > 0 && (
-            <span className="text-xs" style={{ color: accentColor }}>{countLabel}</span>
+            <span className="text-xs hidden sm:inline flex-shrink-0" style={{ color: accentColor }}>{countLabel}</span>
           )}
         </div>
-        <button
-          className="text-xs font-medium flex items-center gap-1"
-          style={{ color: accentColor }}
-          onClick={onViewAll}
+        <div
+          className="flex items-center gap-2 flex-shrink-0"
+          onClick={e => e.stopPropagation()}
         >
-          {viewAllLabel} <ArrowRight className="w-3 h-3" />
-        </button>
+          <button
+            className="text-xs font-medium flex items-center gap-1"
+            style={{ color: accentColor }}
+            onClick={onViewAll}
+          >
+            {viewAllLabel} <ArrowRight className="w-3 h-3" />
+          </button>
+          <ChevronDown
+            className="w-4 h-4 transition-transform"
+            style={{
+              color: accentColor,
+              transform: collapsed ? "rotate(0deg)" : "rotate(180deg)",
+            }}
+          />
+        </div>
       </div>
 
-      {/* Body */}
-      {isLoading ? (
-        <div className="space-y-2 p-3">
-          {[1, 2].map(i => <div key={i} className="h-10 rounded-lg animate-pulse" style={{ backgroundColor: "#f0ece5" }} />)}
-        </div>
-      ) : isEmpty ? (
-        <div className="flex items-center gap-2 px-4 py-3">
-          <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "#b0c090" }} />
-          <p className="text-sm" style={{ color: "#a0a880" }}>{emptyLabel}</p>
-        </div>
-      ) : (
-        <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
-          {children}
-        </div>
+      {/* Body — hidden when collapsed */}
+      {!collapsed && (
+        isLoading ? (
+          <div className="space-y-2 p-3">
+            {[1, 2].map(i => <div key={i} className="h-10 rounded-lg animate-pulse" style={{ backgroundColor: "#f0ece5" }} />)}
+          </div>
+        ) : isEmpty ? (
+          <div className="flex items-center gap-2 px-4 py-3">
+            <CheckCircle2 className="w-4 h-4 flex-shrink-0" style={{ color: "#b0c090" }} />
+            <p className="text-sm" style={{ color: "#a0a880" }}>{emptyLabel}</p>
+          </div>
+        ) : (
+          <div className="divide-y" style={{ borderColor: "#f0ece5" }}>
+            {children}
+          </div>
+        )
       )}
     </div>
   );
@@ -288,6 +305,7 @@ export default function Dashboard() {
   useFirstVisitTour();
 
   const [selectedSpruceRequest, setSelectedSpruceRequest] = useState<SpruceWorkflowRequestRow | null>(null);
+  const [notesCollapsed, setNotesCollapsed] = useState(true);
 
   const { data: patients = [] } = useQuery<Patient[]>({
     queryKey: ["/api/patients/search"],
@@ -361,8 +379,15 @@ export default function Dashboard() {
   const pendingRefillRequests = notifications?.pendingRefillRequests ?? [];
   const pendingSpruceRequests = notifications?.pendingSpruceRequests ?? [];
 
-  // Combined list for the "Medication & Supplement Requests" widget. Each row
-  // is tagged so the renderer can show the right icon and action buttons.
+  // ── Categorize Spruce requests by workflow so each tile gets only its items ──
+  const medicationSpruceRequests = pendingSpruceRequests.filter(r => r.workflow === "medication_refill");
+  const appointmentSpruceRequests = pendingSpruceRequests.filter(r => r.workflow === "appointment");
+  const urgentSpruceRequests = pendingSpruceRequests.filter(r => r.workflow === "urgent_safety");
+  const generalSpruceRequests = pendingSpruceRequests.filter(r =>
+    !["urgent_safety", "medication_refill", "appointment"].includes(r.workflow)
+  );
+
+  // Medication & Supplement tile: orders + portal refills + Spruce medication_refill only.
   type CombinedRequestRow =
     | { kind: "order"; sortAt: number; row: PendingOrderRow }
     | { kind: "refill"; sortAt: number; row: PendingRefillRequestRow }
@@ -378,15 +403,33 @@ export default function Dashboard() {
       sortAt: new Date(r.createdAt).getTime() || 0,
       row: r,
     })),
-    ...pendingSpruceRequests.map(s => ({
+    ...medicationSpruceRequests.map(s => ({
       kind: "spruce" as const,
       sortAt: new Date(s.createdAt).getTime() || 0,
       row: s,
     })),
   ].sort((a, b) => b.sortAt - a.sortAt);
 
+  // Messages tile: portal unread + general Spruce (unclassified, lab questions, etc.)
+  type CombinedMessageEntry =
+    | { kind: "portal"; sortAt: number; row: typeof unreadMessages[0] }
+    | { kind: "spruce"; sortAt: number; row: SpruceWorkflowRequestRow };
+  const combinedMessages: CombinedMessageEntry[] = [
+    ...unreadMessages.map(m => ({
+      kind: "portal" as const,
+      sortAt: new Date(m.lastAt).getTime() || 0,
+      row: m,
+    })),
+    ...generalSpruceRequests.map(r => ({
+      kind: "spruce" as const,
+      sortAt: new Date(r.createdAt).getTime() || 0,
+      row: r,
+    })),
+  ].sort((a, b) => b.sortAt - a.sortAt);
+
   const totalNotifications =
-    unreadMessages.length + combinedRequests.length + pendingSubmissions.length;
+    combinedMessages.length + combinedRequests.length +
+    appointmentSpruceRequests.length + urgentSpruceRequests.length + pendingSubmissions.length;
 
   // ── Open SOAP Notes (unsigned encounters) — provider-scoped, switchable.
   // Defaults to the signed-in user; the Select lets you view another
@@ -469,45 +512,40 @@ export default function Dashboard() {
         <TodaysAppointmentsWidget />
 
         {/* ══════════════════════════════════════════════════════════
-            OPEN SOAP NOTES — unsigned encounters, switchable by provider.
-            Defaults to the signed-in user; the Select switches to any
-            other provider/staff member in the clinic. Drafts (transcripts
-            without a patient yet) appear with an amber "Needs patient"
-            badge; clicking routes to /encounters with the right query.
+            OPEN SOAP NOTES — collapsible, collapsed by default.
         ══════════════════════════════════════════════════════════ */}
-        <div data-testid="open-notes-panel">
-          <div className="flex items-center justify-between mb-3 flex-wrap gap-2">
+        <div
+          className="rounded-xl overflow-hidden border"
+          style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}
+          data-testid="open-notes-panel"
+        >
+          {/* Collapsible header */}
+          <div
+            className="flex items-center justify-between px-4 py-3 cursor-pointer select-none"
+            style={{ backgroundColor: openNotes.length > 0 ? "#edf4e4" : "#faf8f5" }}
+            onClick={() => setNotesCollapsed(c => !c)}
+          >
             <div className="flex items-center gap-2">
-              <div
-                className="w-7 h-7 rounded-lg flex items-center justify-center"
-                style={{ backgroundColor: openNotes.length > 0 ? "#2e3a20" : "#d4c9b5" }}
-              >
-                <FileText
-                  className="w-4 h-4"
-                  style={{ color: openNotes.length > 0 ? "#e8ddd0" : "#7a8a64" }}
-                />
-              </div>
-              <span className="text-base font-semibold" style={{ color: "#1c2414" }}>
-                Open SOAP Notes
-              </span>
+              <FileText className="w-4 h-4 flex-shrink-0" style={{ color: openNotes.length > 0 ? "#2e3a20" : "#a0a880" }} />
+              <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Open SOAP Notes</span>
               {openNotes.length > 0 && (
                 <span
-                  className="inline-flex items-center justify-center min-w-6 h-6 px-2 rounded-full text-xs font-bold text-white"
-                  style={{ backgroundColor: "#c0392b" }}
+                  className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold"
+                  style={{ backgroundColor: "#c0392b", color: "#ffffff" }}
                   data-testid="badge-open-notes-count"
                 >
                   {openNotes.length}
                 </span>
               )}
             </div>
-            <div className="flex items-center gap-2 flex-wrap">
+            <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
               <span className="text-xs" style={{ color: "#7a8a64" }}>Provider</span>
               <Select
                 value={String(effectiveOpenNotesProviderId ?? "")}
                 onValueChange={(v) => setOpenNotesProviderId(v ? Number(v) : null)}
               >
                 <SelectTrigger
-                  className="w-56 h-9"
+                  className="w-44 h-8 text-xs"
                   style={{ backgroundColor: "#ffffff", borderColor: "#d4c9b5", color: "#1c2414" }}
                   data-testid="select-open-notes-provider"
                 >
@@ -523,34 +561,35 @@ export default function Dashboard() {
                   ))}
                 </SelectContent>
               </Select>
+              <ChevronDown
+                className="w-4 h-4 transition-transform"
+                style={{
+                  color: "#5a7040",
+                  transform: notesCollapsed ? "rotate(0deg)" : "rotate(180deg)",
+                }}
+              />
             </div>
           </div>
 
-          <div
-            className="rounded-xl border overflow-hidden"
-            style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}
-          >
-            {openNotesLoading ? (
+          {/* Expandable body */}
+          {!notesCollapsed && (
+            openNotesLoading ? (
               <div className="flex items-center justify-center py-10" style={{ color: "#7a8a64" }}>
                 <Loader2 className="w-4 h-4 animate-spin mr-2" />
                 Loading open notes…
               </div>
             ) : openNotes.length === 0 ? (
-              <div className="flex flex-col items-center justify-center py-10 px-4 text-center">
-                <CheckCircle2 className="w-8 h-8 mb-2" style={{ color: "#a0a880" }} />
+              <div className="flex flex-col items-center justify-center py-8 px-4 text-center">
+                <CheckCircle2 className="w-7 h-7 mb-2" style={{ color: "#a0a880" }} />
                 <p className="text-sm" style={{ color: "#1c2414" }}>No open notes</p>
-                <p className="text-xs mt-1" style={{ color: "#7a8a64" }}>
-                  All encounters for this provider have been signed.
-                </p>
+                <p className="text-xs mt-1" style={{ color: "#7a8a64" }}>All encounters for this provider have been signed.</p>
               </div>
             ) : (
               <div className="max-h-80 overflow-y-auto divide-y" style={{ borderColor: "#f0ece5" }}>
                 {openNotes.map((item) => {
                   if (item.kind === "draft") {
                     const created = new Date(item.createdAt);
-                    const createdLabel = created.toLocaleString(undefined, {
-                      month: "short", day: "numeric", hour: "numeric", minute: "2-digit",
-                    });
+                    const createdLabel = created.toLocaleString(undefined, { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
                     const preview = item.transcription.replace(/\s+/g, " ").slice(0, 140);
                     return (
                       <button
@@ -566,30 +605,19 @@ export default function Dashboard() {
                         </div>
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-2 flex-wrap">
-                            <span className="text-sm font-semibold" style={{ color: "#7a5c20" }}>
-                              Transcription draft
-                            </span>
-                            <span className="text-xs" style={{ color: "#a08456" }}>·</span>
-                            <span className="text-xs" style={{ color: "#a08456" }}>{createdLabel}</span>
-                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>
-                              {item.visitType}
-                            </Badge>
-                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20" }}>
-                              Needs patient
-                            </Badge>
+                            <span className="text-sm font-semibold" style={{ color: "#7a5c20" }}>Transcription draft</span>
+                            <span className="text-xs" style={{ color: "#a08456" }}>· {createdLabel}</span>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>{item.visitType}</Badge>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20" }}>Needs patient</Badge>
                           </div>
-                          <p className="text-xs mt-1 truncate" style={{ color: "#a08456" }}>
-                            {preview}{item.transcription.length > 140 ? "…" : ""}
-                          </p>
+                          <p className="text-xs mt-1 truncate" style={{ color: "#a08456" }}>{preview}{item.transcription.length > 140 ? "…" : ""}</p>
                         </div>
                         <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4a75a" }} />
                       </button>
                     );
                   }
-
                   const enc = item;
-                  const visit = new Date(enc.visitDate);
-                  const visitLabel = visit.toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
+                  const visitLabel = new Date(enc.visitDate).toLocaleDateString(undefined, { month: "short", day: "numeric", year: "numeric" });
                   return (
                     <button
                       key={`enc-${enc.id}`}
@@ -603,28 +631,17 @@ export default function Dashboard() {
                       </div>
                       <div className="flex-1 min-w-0">
                         <div className="flex items-center gap-2 flex-wrap">
-                          <span className="text-sm font-semibold truncate" style={{ color: "#1c2414" }} data-testid={`text-patient-${enc.id}`}>
-                            {enc.patientFirstName} {enc.patientLastName}
-                          </span>
-                          <span className="text-xs" style={{ color: "#7a8a64" }}>·</span>
-                          <span className="text-xs" style={{ color: "#7a8a64" }}>{visitLabel}</span>
-                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>
-                            {enc.visitType}
-                          </Badge>
+                          <span className="text-sm font-semibold truncate" style={{ color: "#1c2414" }} data-testid={`text-patient-${enc.id}`}>{enc.patientFirstName} {enc.patientLastName}</span>
+                          <span className="text-xs" style={{ color: "#7a8a64" }}>· {visitLabel}</span>
+                          <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>{enc.visitType}</Badge>
                           {enc.soapGeneratedAt ? (
-                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>
-                              SOAP drafted · unsigned
-                            </Badge>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>SOAP drafted · unsigned</Badge>
                           ) : (
-                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>
-                              Awaiting SOAP
-                            </Badge>
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>Awaiting SOAP</Badge>
                           )}
                         </div>
                         {enc.chiefComplaint && (
-                          <p className="text-xs mt-1 truncate" style={{ color: "#7a8a64" }}>
-                            {enc.chiefComplaint}
-                          </p>
+                          <p className="text-xs mt-1 truncate" style={{ color: "#7a8a64" }}>{enc.chiefComplaint}</p>
                         )}
                       </div>
                       <ChevronRight className="w-4 h-4 flex-shrink-0" style={{ color: "#c4b9a5" }} />
@@ -632,15 +649,14 @@ export default function Dashboard() {
                   );
                 })}
               </div>
-            )}
-          </div>
+            )
+          )}
         </div>
 
         {/* ══════════════════════════════════════════════════════════
-            WORKFLOW QUEUES — compact count-summary tiles.
-            Each tile shows count + top preview items + "View all" link.
-            Full detail remains accessible via linked views / dialogs.
-            Urgent queue pins to top when non-zero.
+            WORKFLOW QUEUES — categorized, collapsible tiles.
+            Each tile starts collapsed; count badge is always visible.
+            Urgent safety concerns pin to the top as a persistent alert.
         ══════════════════════════════════════════════════════════ */}
         <div id="notifications-anchor" data-testid="notifications-panel">
           <div className="flex items-center justify-between mb-3">
@@ -664,120 +680,138 @@ export default function Dashboard() {
             )}
           </div>
 
-          {/* ── Urgent Spruce requests — pinned tile, only when non-zero ── */}
-          {(() => {
-            const urgentRequests = pendingSpruceRequests.filter(r => r.workflow === "urgent_safety");
-            if (urgentRequests.length === 0) return null;
-            return (
-              <div
-                className="rounded-xl border mb-4 overflow-hidden"
-                style={{ borderColor: "#fca5a5", backgroundColor: "#fff5f5" }}
-                data-testid="tile-urgent-queue"
-              >
-                <div className="flex items-center justify-between px-4 py-2.5 border-b" style={{ borderColor: "#fca5a5" }}>
-                  <div className="flex items-center gap-2">
-                    <AlertCircle className="w-4 h-4" style={{ color: "#b91c1c" }} />
-                    <span className="text-sm font-bold" style={{ color: "#7f1d1d" }}>Urgent — Safety Concerns</span>
-                    <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#b91c1c", color: "#fff" }}>
-                      {urgentRequests.length}
-                    </span>
-                  </div>
-                  <button
-                    className="text-xs font-semibold flex items-center gap-1"
-                    style={{ color: "#b91c1c" }}
-                    onClick={() => setLocation("/spruce-inbox")}
-                  >
-                    Open Inbox <ArrowRight className="w-3 h-3" />
-                  </button>
+          {/* ── Urgent / Safety — pinned full-width alert, always expanded ── */}
+          {urgentSpruceRequests.length > 0 && (
+            <div
+              className="rounded-xl border mb-3 overflow-hidden"
+              style={{ borderColor: "#fca5a5", backgroundColor: "#fff5f5" }}
+              data-testid="tile-urgent-queue"
+            >
+              <div className="flex items-center justify-between px-4 py-2.5" style={{ borderBottom: "1px solid #fca5a5" }}>
+                <div className="flex items-center gap-2">
+                  <AlertCircle className="w-4 h-4 flex-shrink-0" style={{ color: "#b91c1c" }} />
+                  <span className="text-sm font-bold" style={{ color: "#7f1d1d" }}>Urgent — Safety Concerns</span>
+                  <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#b91c1c", color: "#fff" }}>
+                    {urgentSpruceRequests.length}
+                  </span>
                 </div>
-                <div className="divide-y" style={{ borderColor: "#fecaca" }}>
-                  {urgentRequests.slice(0, 3).map((req) => {
-                    const name = req.patientFirstName && req.patientLastName
-                      ? `${req.patientFirstName} ${req.patientLastName}`
-                      : req.patientNameExtracted ?? req.patientPhone ?? "Unknown";
-                    return (
-                      <button
-                        key={req.id}
-                        className="w-full text-left px-4 py-2.5 flex items-center gap-3"
-                        style={{ backgroundColor: "transparent" }}
-                        onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#fee2e2")}
-                        onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                        onClick={() => setSelectedSpruceRequest(req)}
-                        data-testid={`notification-urgent-${req.id}`}
-                      >
-                        <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ backgroundColor: "#fca5a5", color: "#7f1d1d" }}>
-                          {name[0]}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <span className="text-sm font-semibold truncate block" style={{ color: "#7f1d1d" }}>{name}</span>
-                          {req.requestSummary && (
-                            <span className="text-xs truncate block" style={{ color: "#991b1b" }}>{req.requestSummary}</span>
-                          )}
-                        </div>
-                        <span className="text-[10px] flex-shrink-0" style={{ color: "#b91c1c" }}>{timeAgo(req.createdAt)}</span>
-                        <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#fca5a5" }} />
-                      </button>
-                    );
-                  })}
-                </div>
+                <button
+                  className="text-xs font-semibold flex items-center gap-1"
+                  style={{ color: "#b91c1c" }}
+                  onClick={() => setLocation("/spruce-inbox")}
+                >
+                  Open Inbox <ArrowRight className="w-3 h-3" />
+                </button>
               </div>
-            );
-          })()}
+              <div className="divide-y" style={{ borderColor: "#fecaca" }}>
+                {urgentSpruceRequests.slice(0, 3).map((req) => {
+                  const name = req.patientFirstName && req.patientLastName
+                    ? `${req.patientFirstName} ${req.patientLastName}`
+                    : req.patientNameExtracted ?? req.patientPhone ?? "Unknown";
+                  return (
+                    <button
+                      key={req.id}
+                      className="w-full text-left px-4 py-2.5 flex items-center gap-3 hover-elevate"
+                      onClick={() => setSelectedSpruceRequest(req)}
+                      data-testid={`notification-urgent-${req.id}`}
+                    >
+                      <div className="w-7 h-7 rounded-full flex items-center justify-center text-xs font-bold flex-shrink-0" style={{ backgroundColor: "#fca5a5", color: "#7f1d1d" }}>{name[0]}</div>
+                      <div className="flex-1 min-w-0">
+                        <span className="text-sm font-semibold truncate block" style={{ color: "#7f1d1d" }}>{name}</span>
+                        {req.requestSummary && <span className="text-xs truncate block" style={{ color: "#991b1b" }}>{req.requestSummary}</span>}
+                      </div>
+                      <span className="text-[10px] flex-shrink-0" style={{ color: "#b91c1c" }}>{timeAgo(req.createdAt)}</span>
+                      <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#fca5a5" }} />
+                    </button>
+                  );
+                })}
+              </div>
+            </div>
+          )}
 
-          {/* ── Compact 2×2 queue tiles ─────────────────────────────────── */}
+          {/* ── 2×2 collapsible queue tiles ──────────────────────────────── */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
 
-            {/* Patient Messages */}
-            <CompactQueueTile
+            {/* ① Messages: unread portal + general Spruce (unclassified, lab questions, etc.) */}
+            <CollapsibleQueueTile
               icon={<MessageSquare className="w-4 h-4" />}
-              label="Patient Messages"
-              count={unreadMessages.reduce((s, r) => s + r.count, 0)}
-              countLabel={`${unreadMessages.length} patient${unreadMessages.length !== 1 ? "s" : ""}`}
+              label="Messages"
+              count={combinedMessages.length}
+              countLabel={[
+                unreadMessages.length > 0 ? `${unreadMessages.length} portal` : "",
+                generalSpruceRequests.length > 0 ? `${generalSpruceRequests.length} Spruce` : "",
+              ].filter(Boolean).join(", ")}
               accentColor="#2e3a20"
               accentBg="#edf4e4"
-              viewAllLabel="All patients"
-              onViewAll={() => setLocation("/patients")}
+              viewAllLabel="Open Inbox"
+              onViewAll={() => setLocation("/spruce-inbox")}
               isLoading={notifLoading}
-              testId="tile-patient-messages"
-              isEmpty={unreadMessages.length === 0}
+              testId="tile-messages"
+              isEmpty={combinedMessages.length === 0}
               emptyLabel="No unread messages"
             >
-              {unreadMessages.slice(0, 3).map((row) => (
-                <button
-                  key={`msg-${row.patientId}`}
-                  data-testid={`notification-message-${row.patientId}`}
-                  className="w-full text-left px-4 py-2 flex items-center gap-2.5 transition-colors"
-                  style={{ backgroundColor: "transparent" }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f4f8ee")}
-                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                  onClick={() => goToPatient(row.patientId, "messages")}
-                >
-                  <PatientInitials first={row.patientFirstName} last={row.patientLastName} />
-                  <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                      {row.patientFirstName} {row.patientLastName}
-                    </p>
-                    <p className="text-xs" style={{ color: "#7a8a64" }}>
-                      {row.count} unread
-                    </p>
-                  </div>
-                  <span className="text-xs flex-shrink-0" style={{ color: "#a0a880" }}>{timeAgo(row.lastAt)}</span>
-                  <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: "#2e3a20" }} />
-                </button>
-              ))}
-              {unreadMessages.length > 3 && (
+              {combinedMessages.slice(0, 4).map((entry) => {
+                if (entry.kind === "portal") {
+                  const row = entry.row;
+                  return (
+                    <button
+                      key={`msg-${row.patientId}`}
+                      data-testid={`notification-message-${row.patientId}`}
+                      className="w-full text-left px-4 py-2 flex items-center gap-2.5 hover-elevate"
+                      onClick={() => goToPatient(row.patientId, "messages")}
+                    >
+                      <PatientInitials first={row.patientFirstName} last={row.patientLastName} />
+                      <div className="flex-1 min-w-0">
+                        <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{row.patientFirstName} {row.patientLastName}</p>
+                        <p className="text-xs" style={{ color: "#7a8a64" }}>{row.count} unread · Portal</p>
+                      </div>
+                      <span className="text-xs flex-shrink-0" style={{ color: "#a0a880" }}>{timeAgo(row.lastAt)}</span>
+                      <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: "#2e3a20" }} />
+                    </button>
+                  );
+                }
+                const req = entry.row;
+                const name = req.patientFirstName && req.patientLastName
+                  ? `${req.patientFirstName} ${req.patientLastName}`
+                  : req.patientNameExtracted ?? req.patientPhone ?? "Unknown";
+                return (
+                  <button
+                    key={`spruce-msg-${req.id}`}
+                    data-testid={`notification-spruce-msg-${req.id}`}
+                    className="w-full text-left px-4 py-2 flex items-center gap-2.5 hover-elevate"
+                    onClick={() => setSelectedSpruceRequest(req)}
+                  >
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#4a3a6e" }}>
+                      {name[0]}
+                    </div>
+                    <div className="flex-1 min-w-0">
+                      <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{name}</p>
+                      <p className="text-xs truncate" style={{ color: "#7a8a64" }}>{SPRUCE_WORKFLOW_LABELS[req.workflow] ?? req.workflow} · Spruce</p>
+                    </div>
+                    <span className="text-[10px] flex-shrink-0" style={{ color: "#a0a880" }}>{timeAgo(req.createdAt)}</span>
+                  </button>
+                );
+              })}
+              {combinedMessages.length > 4 && (
                 <p className="text-xs px-4 py-2" style={{ color: "#7a8a64" }}>
-                  +{unreadMessages.length - 3} more — <button className="underline" onClick={() => setLocation("/patients")}>view all</button>
+                  +{combinedMessages.length - 4} more — <button className="underline" onClick={() => setLocation("/spruce-inbox")}>view all</button>
                 </p>
               )}
-            </CompactQueueTile>
+            </CollapsibleQueueTile>
 
-            {/* Medication & Supplement Requests */}
-            <CompactQueueTile
+            {/* ② Medication & Supplement Requests */}
+            <CollapsibleQueueTile
               icon={<ShoppingBag className="w-4 h-4" />}
               label="Medication & Supplement Requests"
               count={combinedRequests.length}
-              countLabel={combinedRequests.length > 0 ? `${pendingOrders.length} order${pendingOrders.length !== 1 ? "s" : ""}, ${pendingRefillRequests.length} refill${pendingRefillRequests.length !== 1 ? "s" : ""}` : ""}
+              countLabel={combinedRequests.length > 0
+                ? [
+                    pendingOrders.length > 0 ? `${pendingOrders.length} order${pendingOrders.length !== 1 ? "s" : ""}` : "",
+                    (pendingRefillRequests.length + medicationSpruceRequests.length) > 0
+                      ? `${pendingRefillRequests.length + medicationSpruceRequests.length} refill${(pendingRefillRequests.length + medicationSpruceRequests.length) !== 1 ? "s" : ""}`
+                      : "",
+                  ].filter(Boolean).join(", ")
+                : ""}
               accentColor="#7a5c20"
               accentBg="#fef8ed"
               viewAllLabel="View all"
@@ -797,24 +831,13 @@ export default function Dashboard() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <ShoppingBag className="w-3 h-3 flex-shrink-0" style={{ color: "#7a5c20" }} />
-                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                              {order.patientFirstName} {order.patientLastName}
-                            </p>
+                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{order.patientFirstName} {order.patientLastName}</p>
                           </div>
-                          <p className="text-xs" style={{ color: "#7a8a64" }}>
-                            {order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)}
-                          </p>
+                          <p className="text-xs" style={{ color: "#7a8a64" }}>{order.items.length} item{order.items.length !== 1 ? "s" : ""} · ${parseFloat(order.subtotal).toFixed(2)}</p>
                         </div>
-                        <Button
-                          size="sm"
-                          data-testid={`button-fulfill-order-${order.id}`}
-                          className="h-7 px-2 text-xs gap-1"
-                          style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                          onClick={() => fulfillOrderMutation.mutate(order.id)}
-                          disabled={fulfillOrderMutation.isPending}
-                        >
-                          <CheckCircle2 className="w-3 h-3" />
-                          Fulfill
+                        <Button size="sm" data-testid={`button-fulfill-order-${order.id}`} className="h-7 px-2 text-xs gap-1" style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
+                          onClick={() => fulfillOrderMutation.mutate(order.id)} disabled={fulfillOrderMutation.isPending}>
+                          <CheckCircle2 className="w-3 h-3" /> Fulfill
                         </Button>
                       </div>
                     </div>
@@ -831,24 +854,13 @@ export default function Dashboard() {
                         <div className="flex-1 min-w-0">
                           <div className="flex items-center gap-1.5">
                             <Pill className="w-3 h-3 flex-shrink-0" style={{ color: "#2e5a7a" }} />
-                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                              {(firstName || lastName) ? `${firstName} ${lastName}`.trim() : "Patient"}
-                            </p>
+                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{(firstName || lastName) ? `${firstName} ${lastName}`.trim() : "Patient"}</p>
                           </div>
-                          <p className="text-xs truncate" style={{ color: "#7a8a64" }} data-testid={`text-refill-message-${refill.id}`}>
-                            {refill.message}
-                          </p>
+                          <p className="text-xs truncate" style={{ color: "#7a8a64" }} data-testid={`text-refill-message-${refill.id}`}>{refill.message}</p>
                         </div>
-                        <Button
-                          size="sm"
-                          data-testid={`button-handle-refill-${refill.id}`}
-                          className="h-7 px-2 text-xs gap-1"
-                          style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
-                          onClick={() => dismissRefillMutation.mutate(refill.id)}
-                          disabled={dismissRefillMutation.isPending}
-                        >
-                          <CheckCircle2 className="w-3 h-3" />
-                          Done
+                        <Button size="sm" data-testid={`button-handle-refill-${refill.id}`} className="h-7 px-2 text-xs gap-1" style={{ backgroundColor: "#2e3a20", color: "#ffffff" }}
+                          onClick={() => dismissRefillMutation.mutate(refill.id)} disabled={dismissRefillMutation.isPending}>
+                          <CheckCircle2 className="w-3 h-3" /> Done
                         </Button>
                       </div>
                     </div>
@@ -859,90 +871,59 @@ export default function Dashboard() {
                   ? `${spruceReq.patientFirstName} ${spruceReq.patientLastName}`
                   : spruceReq.patientNameExtracted ?? spruceReq.patientPhone ?? "Unknown";
                 return (
-                  <button
-                    key={`spruce-${spruceReq.id}`}
-                    data-testid={`notification-spruce-${spruceReq.id}`}
-                    className="w-full text-left px-4 py-2 flex items-center gap-2.5"
-                    style={{ backgroundColor: "transparent" }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f5f3fa")}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                    onClick={() => setSelectedSpruceRequest(spruceReq)}
-                  >
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#4a3a6e" }}>
-                      {sprucePatientName[0]}
-                    </div>
+                  <button key={`spruce-rx-${spruceReq.id}`} data-testid={`notification-spruce-${spruceReq.id}`}
+                    className="w-full text-left px-4 py-2 flex items-center gap-2.5 hover-elevate"
+                    onClick={() => setSelectedSpruceRequest(spruceReq)}>
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#7a5c20" }}>{sprucePatientName[0]}</div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }} data-testid={`text-spruce-patient-name-${spruceReq.id}`}>
-                        {sprucePatientName}
-                      </p>
-                      <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
-                        {SPRUCE_WORKFLOW_LABELS[spruceReq.workflow] ?? spruceReq.workflow}
-                      </p>
+                      <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{sprucePatientName}</p>
+                      <p className="text-xs truncate" style={{ color: "#7a8a64" }}>Medication refill · Spruce</p>
                     </div>
                     <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#c4b9a5" }} />
                   </button>
                 );
               })}
               {combinedRequests.length > 3 && (
-                <p className="text-xs px-4 py-2" style={{ color: "#7a8a64" }}>
-                  +{combinedRequests.length - 3} more
-                </p>
+                <p className="text-xs px-4 py-2" style={{ color: "#7a8a64" }}>+{combinedRequests.length - 3} more</p>
               )}
-            </CompactQueueTile>
+            </CollapsibleQueueTile>
 
-            {/* Spruce Conversations */}
-            <CompactQueueTile
-              icon={<MessageCircle className="w-4 h-4" />}
-              label="Spruce Conversations"
-              count={pendingSpruceRequests.filter(r => r.workflow !== "urgent_safety").length}
-              countLabel="inbound requests"
-              accentColor="#4a3a6e"
-              accentBg="#f0ecf8"
+            {/* ③ Appointment Requests — Spruce appointment workflow */}
+            <CollapsibleQueueTile
+              icon={<Calendar className="w-4 h-4" />}
+              label="Appointment Requests"
+              count={appointmentSpruceRequests.length}
+              accentColor="#2e5a7a"
+              accentBg="#e8f0f8"
               viewAllLabel="Open Inbox"
               onViewAll={() => setLocation("/spruce-inbox")}
               isLoading={notifLoading}
-              testId="tile-spruce-conversations"
-              isEmpty={pendingSpruceRequests.filter(r => r.workflow !== "urgent_safety").length === 0}
-              emptyLabel="No pending Spruce requests"
+              testId="tile-appointment-requests"
+              isEmpty={appointmentSpruceRequests.length === 0}
+              emptyLabel="No pending appointment requests"
             >
-              {pendingSpruceRequests.filter(r => r.workflow !== "urgent_safety").slice(0, 3).map((req) => {
+              {appointmentSpruceRequests.slice(0, 3).map((req) => {
                 const name = req.patientFirstName && req.patientLastName
                   ? `${req.patientFirstName} ${req.patientLastName}`
                   : req.patientNameExtracted ?? req.patientPhone ?? "Unknown";
-                const isMatched = !!(req.patientId);
                 return (
-                  <button
-                    key={req.id}
-                    className="w-full text-left px-4 py-2 flex items-center gap-2.5"
-                    style={{ backgroundColor: "transparent" }}
-                    onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f5f3fa")}
-                    onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                    onClick={() => setSelectedSpruceRequest(req)}
-                    data-testid={`notification-spruce-${req.id}`}
-                  >
-                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0"
-                      style={{ backgroundColor: isMatched ? "#2e3a20" : "#4a3a6e" }}>
-                      {name[0]}
-                    </div>
+                  <button key={`appt-${req.id}`} data-testid={`notification-appt-request-${req.id}`}
+                    className="w-full text-left px-4 py-2 flex items-center gap-2.5 hover-elevate"
+                    onClick={() => setSelectedSpruceRequest(req)}>
+                    <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#2e5a7a" }}>{name[0]}</div>
                     <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-1.5">
-                        <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{name}</p>
-                        {isMatched && (
-                          <UserCheck className="w-3 h-3 flex-shrink-0" style={{ color: "#2e3a20" }} />
-                        )}
-                      </div>
-                      <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
-                        {SPRUCE_WORKFLOW_LABELS[req.workflow] ?? req.workflow}
-                      </p>
+                      <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{name}</p>
+                      <p className="text-xs truncate" style={{ color: "#7a8a64" }}>{req.requestSummary ?? "Appointment request"}</p>
                     </div>
                     <span className="text-[10px] flex-shrink-0" style={{ color: "#a0a880" }}>{timeAgo(req.createdAt)}</span>
+                    <ChevronRight className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#c4b9a5" }} />
                   </button>
                 );
               })}
-            </CompactQueueTile>
+            </CollapsibleQueueTile>
 
-            {/* Form Submissions */}
-            <CompactQueueTile
+            {/* ④ Form Submissions */}
+            <CollapsibleQueueTile
               icon={<ClipboardList className="w-4 h-4" />}
               label="Form Submissions"
               count={pendingSubmissions.length}
@@ -957,38 +938,21 @@ export default function Dashboard() {
               emptyLabel="No pending submissions"
             >
               {pendingSubmissions.slice(0, 3).map((sub) => (
-                <div
-                  key={`sub-${sub.id}`}
-                  data-testid={`notification-submission-${sub.id}`}
-                  className="px-4 py-2 flex items-center gap-2.5 cursor-pointer"
-                  style={{ backgroundColor: "transparent" }}
-                  onMouseEnter={e => (e.currentTarget.style.backgroundColor = "#f4f6ff")}
-                  onMouseLeave={e => (e.currentTarget.style.backgroundColor = "transparent")}
-                  onClick={() => setPreviewSubId(sub.id)}
-                >
+                <div key={`sub-${sub.id}`} data-testid={`notification-submission-${sub.id}`}
+                  className="px-4 py-2 flex items-center gap-2.5 cursor-pointer hover-elevate"
+                  onClick={() => setPreviewSubId(sub.id)}>
                   <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#e8e4f0", color: "#4a5568" }}>
                     {(sub.submitterName?.trim()?.[0] ?? "A").toUpperCase()}
                   </div>
                   <div className="flex-1 min-w-0">
-                    <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
-                      {sub.submitterName ?? "Anonymous"}
-                    </p>
-                    <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
-                      {(sub as any).formName ?? "Form submission"}
-                    </p>
+                    <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{sub.submitterName ?? "Anonymous"}</p>
+                    <p className="text-xs truncate" style={{ color: "#7a8a64" }}>{(sub as any).formName ?? "Form submission"}</p>
                   </div>
                   <div className="flex items-center gap-1 flex-shrink-0">
                     <span className="text-xs" style={{ color: "#a0a880" }}>{timeAgo(sub.submittedAt)}</span>
-                    <Button
-                      size="icon"
-                      variant="ghost"
-                      data-testid={`button-dismiss-submission-${sub.id}`}
-                      onClick={(e) => {
-                        e.stopPropagation();
-                        markReviewedMutation.mutate(sub.id);
-                      }}
-                      disabled={markReviewedMutation.isPending}
-                    >
+                    <Button size="icon" variant="ghost" data-testid={`button-dismiss-submission-${sub.id}`}
+                      onClick={(e) => { e.stopPropagation(); markReviewedMutation.mutate(sub.id); }}
+                      disabled={markReviewedMutation.isPending}>
                       <X className="h-3.5 w-3.5" />
                     </Button>
                   </div>
@@ -999,7 +963,7 @@ export default function Dashboard() {
                   +{pendingSubmissions.length - 3} more — <button className="underline" onClick={() => setLocation("/form-submissions")}>view all</button>
                 </p>
               )}
-            </CompactQueueTile>
+            </CollapsibleQueueTile>
 
           </div>
         </div>
@@ -1236,6 +1200,7 @@ export default function Dashboard() {
 
 function TodaysAppointmentsWidget() {
   const [, setLocation] = useLocation();
+  const [collapsed, setCollapsed] = useState(true);
   const { start, end } = (() => {
     const s = new Date(); s.setHours(0, 0, 0, 0);
     const e = new Date(); e.setHours(23, 59, 59, 999);
@@ -1257,9 +1222,13 @@ function TodaysAppointmentsWidget() {
 
   return (
     <div className="rounded-xl overflow-hidden border" style={{ borderColor: "#d4c9b5", backgroundColor: "#ffffff" }}>
-      <div className="flex items-center justify-between px-4 py-3 border-b" style={{ borderColor: "#ede8df", backgroundColor: "#faf8f5" }}>
+      <div
+        className="flex items-center justify-between px-4 py-3 cursor-pointer select-none"
+        style={{ backgroundColor: "#faf8f5" }}
+        onClick={() => setCollapsed(c => !c)}
+      >
         <div className="flex items-center gap-2">
-          <Calendar className="w-4 h-4" style={{ color: sorted.length > 0 ? "#2e3a20" : "#a0a880" }} />
+          <Calendar className="w-4 h-4 flex-shrink-0" style={{ color: sorted.length > 0 ? "#2e3a20" : "#a0a880" }} />
           <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Today's Appointments</span>
           {sorted.length > 0 && (
             <span className="inline-flex items-center justify-center px-1.5 py-0.5 rounded-full text-xs font-bold" style={{ backgroundColor: "#2e3a20", color: "#e8ddd0" }}>
@@ -1267,39 +1236,45 @@ function TodaysAppointmentsWidget() {
             </span>
           )}
         </div>
-        <button
-          onClick={() => setLocation("/appointments")}
-          className="text-xs font-medium hover:underline"
-          style={{ color: "#5a7040" }}
-          data-testid="link-view-schedule"
-        >
-          View schedule →
-        </button>
+        <div className="flex items-center gap-2 flex-shrink-0" onClick={e => e.stopPropagation()}>
+          <button
+            onClick={() => setLocation("/appointments")}
+            className="text-xs font-medium"
+            style={{ color: "#5a7040" }}
+            data-testid="link-view-schedule"
+          >
+            View schedule →
+          </button>
+          <ChevronDown
+            className="w-4 h-4 transition-transform"
+            style={{ color: "#5a7040", transform: collapsed ? "rotate(0deg)" : "rotate(180deg)" }}
+          />
+        </div>
       </div>
-      <div className="p-3">
-        {isLoading && <div className="text-xs text-muted-foreground">Loading…</div>}
-        {!isLoading && sorted.length === 0 && (
-          <div className="text-sm text-muted-foreground py-4 text-center">No appointments today.</div>
-        )}
-        {sorted.length > 0 && (
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
-            {sorted.slice(0, 9).map((a: any) => {
-              const t = new Date(a.appointmentStart).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
-              return (
-                <div key={a.id} className="border rounded-md px-3 py-2 hover-elevate cursor-pointer" onClick={() => setLocation("/appointments")} data-testid={`row-today-appt-${a.id}`}>
-                  <div className="text-xs font-semibold" style={{ color: "#5a7040" }}>{t}</div>
-                  <div className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>
-                    {a.patientName || a.serviceType || "Appointment"}
+      {!collapsed && (
+        <div className="p-3">
+          {isLoading && <div className="text-xs text-muted-foreground">Loading…</div>}
+          {!isLoading && sorted.length === 0 && (
+            <div className="text-sm text-muted-foreground py-4 text-center">No appointments today.</div>
+          )}
+          {sorted.length > 0 && (
+            <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-2">
+              {sorted.slice(0, 9).map((a: any) => {
+                const t = new Date(a.appointmentStart).toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit" });
+                return (
+                  <div key={a.id} className="border rounded-md px-3 py-2 hover-elevate cursor-pointer" onClick={() => setLocation("/appointments")} data-testid={`row-today-appt-${a.id}`}>
+                    <div className="text-xs font-semibold" style={{ color: "#5a7040" }}>{t}</div>
+                    <div className="text-sm font-medium truncate" style={{ color: "#1c2414" }}>{a.patientName || a.serviceType || "Appointment"}</div>
+                    {a.serviceType && a.patientName && (
+                      <div className="text-xs text-muted-foreground truncate">{a.serviceType}</div>
+                    )}
                   </div>
-                  {a.serviceType && a.patientName && (
-                    <div className="text-xs text-muted-foreground truncate">{a.serviceType}</div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
-      </div>
+                );
+              })}
+            </div>
+          )}
+        </div>
+      )}
     </div>
   );
 }

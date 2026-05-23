@@ -123,8 +123,8 @@ export function AppHeader() {
               <NavButton
                 icon={Inbox}
                 label="Inbox"
-                onClick={() => setLocation("/inbox")}
-                active={location === "/inbox"}
+                onClick={() => setLocation("/spruce-inbox")}
+                active={location === "/spruce-inbox"}
                 testId="nav-inbox"
               />
               {unreadTotal > 0 && (
@@ -225,7 +225,7 @@ export function AppHeader() {
                     <MobileNavButton icon={ShieldCheck} label="Admin" onClick={() => setLocation("/admin")} active={location === "/admin"} />
                   )}
                   <MobileNavButton icon={CalendarDays} label="Schedule" onClick={() => setLocation("/scheduling")} active={location === "/scheduling" || location === "/appointments"} />
-                  <MobileNavButton icon={Inbox} label={unreadTotal > 0 ? `Inbox (${unreadTotal > 99 ? "99+" : unreadTotal})` : "Inbox"} onClick={() => setLocation("/inbox")} active={location === "/inbox"} />
+                  <MobileNavButton icon={Inbox} label={unreadTotal > 0 ? `Inbox (${unreadTotal > 99 ? "99+" : unreadTotal})` : "Inbox"} onClick={() => setLocation("/spruce-inbox")} active={location === "/spruce-inbox"} />
                   <div className="pt-2 mt-1 border-t" style={{ borderColor: "#d4c9b5" }}>
                     <p className="text-[10px] uppercase tracking-wider px-2 pb-1" style={{ color: "#7a8a64" }}>Settings</p>
                   </div>
