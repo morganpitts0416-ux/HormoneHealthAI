@@ -652,8 +652,8 @@ export default function SpruceInboxPage() {
   return (
     <div className="flex flex-1 min-h-0">
 
-      {/* ══ Left nav sidebar ════════════════════════════════════════════════ */}
-      <div className="w-[220px] flex-shrink-0 flex flex-col border-r border-[#e5e2dc] bg-[#faf8f5]">
+      {/* ══ Left nav sidebar — hidden on mobile ════════════════════════════ */}
+      <div className="w-[220px] flex-shrink-0 hidden md:flex flex-col border-r border-[#e5e2dc] bg-[#faf8f5]">
         {/* Header */}
         <div className="px-3 pt-4 pb-3 border-b border-[#eeeae4]">
           <div className="flex items-center justify-between mb-3">
@@ -759,7 +759,54 @@ export default function SpruceInboxPage() {
       </div>
 
       {/* ══ Conversation list panel ══════════════════════════════════════════ */}
-      <div className="w-[280px] flex-shrink-0 flex flex-col bg-white border-r border-[#e5e2dc]">
+      {/* Mobile: full-width, hidden once a conversation is open.
+          Desktop: fixed 280px, always visible. */}
+      <div className={`flex-col bg-white border-r border-[#e5e2dc] md:w-[280px] md:flex-shrink-0 ${selectedKey ? "hidden md:flex" : "flex w-full"}`}>
+        {/* Mobile-only filter chip row — replaces the hidden sidebar nav */}
+        <div className="flex md:hidden items-center gap-1.5 px-3 py-2 border-b border-[#eeeae4] overflow-x-auto no-scrollbar">
+          <button
+            onClick={() => setLocation("/dashboard")}
+            className="flex items-center gap-1 text-[10px] font-medium px-2 py-1 rounded-full bg-[#f0ede8] text-[#4a5a40] flex-shrink-0"
+            data-testid="button-back-dashboard-mobile"
+          >
+            <ChevronLeft className="w-3 h-3" />
+            Back
+          </button>
+          {(["all", "unread", "urgent", "assigned", "unmatched", "archived"] as SidebarView[]).map((v) => {
+            const counts: Record<SidebarView, number | undefined> = {
+              all: activeConvs.length,
+              unread: activeConvs.filter((c) => !c.hasStaffReply).length,
+              urgent: urgentConvs.length,
+              assigned: repliedConvs.length,
+              unmatched: unmatchedConvs.length,
+              archived: archivedConvs.length || undefined,
+            };
+            const labels: Record<SidebarView, string> = {
+              all: "All", unread: "Unread", urgent: "Urgent",
+              assigned: "Assigned", unmatched: "Unmatched", archived: "Archived",
+            };
+            const cnt = counts[v];
+            if (v === "urgent" && !urgentConvs.length) return null;
+            return (
+              <button
+                key={v}
+                onClick={() => { setActiveView(v); }}
+                className={`flex items-center gap-1 text-[10px] font-medium px-2.5 py-1 rounded-full flex-shrink-0 transition-colors ${
+                  activeView === v
+                    ? "bg-[#2e7d52] text-white"
+                    : "bg-[#f0ede8] text-[#4a5a40]"
+                }`}
+                data-testid={`mobile-filter-${v}`}
+              >
+                {labels[v]}
+                {cnt !== undefined && cnt > 0 && (
+                  <span className={`text-[9px] font-bold ${activeView === v ? "text-white/80" : "text-[#7a8060]"}`}>{cnt}</span>
+                )}
+              </button>
+            );
+          })}
+        </div>
+
         {/* Panel header */}
         <div className="px-3 py-2.5 border-b border-[#eeeae4] bg-[#fdfcfa]">
           <div className="flex items-center justify-between mb-2">
@@ -832,8 +879,17 @@ export default function SpruceInboxPage() {
       {selectedConv ? (
         <div className="flex-1 flex flex-col min-w-0">
           {/* Thread header */}
-          <div className="flex items-center justify-between px-5 py-3 bg-white border-b border-[#e5e2dc] flex-wrap gap-2">
-            <div className="flex items-center gap-3">
+          <div className="flex items-center justify-between px-3 md:px-5 py-3 bg-white border-b border-[#e5e2dc] flex-wrap gap-2">
+            <div className="flex items-center gap-2 md:gap-3">
+              {/* Mobile back-to-list button */}
+              <button
+                className="flex md:hidden items-center justify-center w-8 h-8 rounded-full hover:bg-[#f0ede8] transition-colors flex-shrink-0"
+                onClick={() => setSelectedKey(null)}
+                data-testid="button-back-conversations-mobile"
+                aria-label="Back to conversations"
+              >
+                <ChevronLeft className="w-4 h-4 text-[#4a5a40]" />
+              </button>
               <div
                 className="w-9 h-9 rounded-full flex items-center justify-center text-sm font-semibold text-white flex-shrink-0"
                 style={{ backgroundColor: selectedConv.patientId ? "#2e7d52" : "#5c4a7a" }}
@@ -879,17 +935,18 @@ export default function SpruceInboxPage() {
               )}
               {selectedConv.patientId && (
                 <Link href={`/patients?patient=${selectedConv.patientId}`}>
-                  <Button size="sm" variant="outline" data-testid="button-open-chart">
-                    <User className="w-3.5 h-3.5 mr-1.5" />
-                    Open chart
+                  {/* Desktop: show label; Mobile: icon-only */}
+                  <Button size="sm" variant="outline" data-testid="button-open-chart" title="Open chart">
+                    <User className="w-3.5 h-3.5 md:mr-1.5" />
+                    <span className="hidden md:inline">Open chart</span>
                   </Button>
                 </Link>
               )}
               {spruceUrl && (
                 <a href={spruceUrl} target="_blank" rel="noopener noreferrer">
-                  <Button size="sm" variant="outline" data-testid="button-open-spruce">
-                    <ExternalLink className="w-3.5 h-3.5 mr-1.5" />
-                    Open in Spruce
+                  <Button size="sm" variant="outline" data-testid="button-open-spruce" title="Open in Spruce">
+                    <ExternalLink className="w-3.5 h-3.5 md:mr-1.5" />
+                    <span className="hidden md:inline">Open in Spruce</span>
                   </Button>
                 </a>
               )}
@@ -901,16 +958,18 @@ export default function SpruceInboxPage() {
                   onClick={() => archiveMutation.mutate(selectedConv.conversationKey)}
                   data-testid="button-archive-conversation"
                   className="text-[#78716c] border-[#d6d3d1]"
+                  title="Archive conversation"
                 >
                   {archiveMutation.isPending ? (
-                    <RefreshCw className="w-3.5 h-3.5 mr-1.5 animate-spin" />
+                    <RefreshCw className="w-3.5 h-3.5 md:mr-1.5 animate-spin" />
                   ) : (
-                    <Archive className="w-3.5 h-3.5 mr-1.5" />
+                    <Archive className="w-3.5 h-3.5 md:mr-1.5" />
                   )}
-                  {archiveMutation.isPending ? "Archiving…" : "Archive"}
+                  <span className="hidden md:inline">{archiveMutation.isPending ? "Archiving…" : "Archive"}</span>
                 </Button>
               )}
-              <div className="flex items-center gap-1.5 text-xs text-[#7a8060]">
+              {/* Message count — hidden on smallest screens to save space */}
+              <div className="hidden sm:flex items-center gap-1.5 text-xs text-[#7a8060]">
                 <MessageCircle className="w-3.5 h-3.5" />
                 <span>{selectedConv.messageCount} message{selectedConv.messageCount !== 1 ? "s" : ""}</span>
               </div>
@@ -1070,7 +1129,7 @@ export default function SpruceInboxPage() {
           </div>
 
           {/* ── Compose / Reply footer ──────────────────────────────────── */}
-          <div className="border-t border-[#e5e2dc] bg-white px-4 pt-3 pb-[72px]">
+          <div className="border-t border-[#e5e2dc] bg-white px-3 md:px-4 pt-3 pb-4 md:pb-[72px]">
             <div className="rounded-lg border border-[#e0dcd4] bg-[#fafaf8] overflow-hidden">
               <Textarea
                 ref={textareaRef}
