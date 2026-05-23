@@ -269,7 +269,7 @@ export class PDFExtractionService {
           { role: 'system', content: SYSTEM_PROMPT },
           {
             role: 'user',
-            content: `Extract all lab values from this report:\n\n${text.slice(0, 12000)}${USER_PROMPT_SUFFIX}`,
+            content: `Extract all lab values from this report:\n\n${text.slice(0, 30000)}${USER_PROMPT_SUFFIX}`,
           },
         ],
         response_format: { type: 'json_object' },
