@@ -459,9 +459,13 @@ export default function SpruceInboxPage() {
     setReplyText("");
   }, [selectedKey]);
 
-  // Auto-select first conversation when list loads
+  // Auto-select first conversation when list loads — desktop only.
+  // On mobile the two-panel layout doesn't exist: the list and thread
+  // alternate full-screen, so we must NOT auto-select or the back button
+  // (which calls setSelectedKey(null)) would immediately re-select
+  // conversations[0] and trap the user in the thread view.
   useEffect(() => {
-    if (!selectedKey && conversations.length > 0) {
+    if (!selectedKey && conversations.length > 0 && window.innerWidth >= 768) {
       setSelectedKey(conversations[0].conversationKey);
     }
   }, [conversations, selectedKey]);
@@ -1129,7 +1133,7 @@ export default function SpruceInboxPage() {
           </div>
 
           {/* ── Compose / Reply footer ──────────────────────────────────── */}
-          <div className="border-t border-[#e5e2dc] bg-white px-3 md:px-4 pt-3 pb-4 md:pb-[72px]">
+          <div className="border-t border-[#e5e2dc] bg-white px-3 md:px-4 pt-3 pb-20 md:pb-[72px]">
             <div className="rounded-lg border border-[#e0dcd4] bg-[#fafaf8] overflow-hidden">
               <Textarea
                 ref={textareaRef}
