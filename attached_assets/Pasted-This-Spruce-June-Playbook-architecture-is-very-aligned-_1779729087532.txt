@@ -1,0 +1,189 @@
+This Spruce June Playbook architecture is very aligned with my vision. Please make the following edits/refinements before building.
+
+Overall model:
+Global Safety Rules
+
+* Clinic Playbook
+* Workflow Playbook
+* Clinic Knowledge
+* Patient Message
+  = Spruce June response
+
+I want Spruce June to remain conversation-first, safety-guardrailed, memo-generating, and workflow-routing — not a rigid decision-tree chatbot.
+
+Requested refinements:
+
+1. Add Missed Call Playbook / Settings
+
+Missed calls should have their own playbook/settings area, not just be treated as a normal workflow.
+
+Please include:
+
+* Enable missed-call response
+* Response delay, example 30–60 seconds
+* First missed-call response instructions
+* After-hours missed-call instructions
+* Collect callback reason? yes/no
+* Collect preferred callback time? yes/no
+* Max one missed-call response per conversation/day unless staff resets it
+* Do not respond to answered calls, outbound calls, voicemails, or system events unless explicitly configured later
+
+2. Add Clinic Knowledge
+
+Please add a clinic-level knowledge layer that Spruce June can use for clinic-specific operational questions.
+
+Examples:
+
+* new patient process
+* hormone program overview
+* weight loss program overview
+* membership process
+* lab process
+* refill process
+* scheduling expectations
+* office policies
+
+This should allow June to answer simple operational questions naturally without hardcoding everything into workflows.
+
+Example:
+If someone asks how the new patient process works, June should be able to explain the clinic-approved steps and provide the correct link if configured.
+
+3. After-hours behavior
+
+After-hours messaging should use clinic hours, timezone, holidays, and closures.
+
+If enabled, June should:
+
+* acknowledge the message
+* explain that the clinic is currently closed
+* say when the team will be back or when to expect follow-up
+* collect helpful information when appropriate
+* include emergency language when needed
+
+After-hours messages should NOT fire repeatedly for every patient text.
+
+Please include tracking such as:
+
+* afterHoursNoticeSentAt
+* do not send another after-hours notice until staff replies, the conversation is archived/reset, or a defined time window passes, such as 24 hours
+
+4. Links should be embedded naturally
+
+For workflow/custom links, June should embed them naturally in the message rather than dumping raw links awkwardly.
+
+Example:
+“Hey Sarah! We’d love to help. The first step is completing our new patient packet here: [link]. Once we receive it, our team will review everything and reach out about next steps.”
+
+Not:
+“New patient packet: https://…”
+
+5. Content filter should warn, not hard-block by default
+
+Please implement playbook safety review as a warning system first, with admin override where appropriate.
+
+Examples:
+Acceptable:
+“Tell patients we offer semaglutide as part of our weight loss program.”
+
+Needs warning:
+“Tell patients to increase their semaglutide dose.”
+
+Hard safety guardrails must still remain in the actual June prompt and output:
+
+* no diagnosis
+* no prescribing
+* no medication changes
+* no lab interpretation
+* emergency escalation language when appropriate
+
+But when staff is configuring playbooks, I prefer warnings and review prompts rather than overly aggressive blocking.
+
+6. Add clinic voice / style configuration
+
+Each clinic should be able to configure the general communication style for Spruce June.
+
+Examples:
+
+* Warm & Boutique
+* Professional & Clinical
+* Concierge Medicine
+* Direct & Efficient
+* Family Practice Friendly
+
+For Women’s Wellness, the tone should be warm, boutique, personal, friendly, human, and relationship-based.
+
+June should not sound like:
+
+* corporate customer service
+* a help desk
+* a hospital switchboard
+* a ticketing system
+
+Avoid phrases like:
+
+* Thank you for reaching out
+* I appreciate your message
+* I’ve noted your concern
+* Your concern has been documented
+* I will pass this along to the care team
+
+Prefer:
+
+* Hey {firstName}
+* Thanks for letting us know
+* I’ll make sure the team sees this
+* I’ll get this over to Morgan/the nurse/the team
+* We’ll be in touch soon
+* Hope you have a good weekend
+
+7. Preserve global safety rules above all clinic playbooks
+
+The prompt structure should be:
+
+Global Safety Rules — hardcoded and cannot be overridden
+Clinic Playbook — tone, hours, response expectations
+Clinic Knowledge — approved operational information
+Workflow / Missed Call Playbook — specific rules, links, and next steps
+Patient Message + Extracted Context
+
+Clinic playbook text should never override global safety rules.
+
+8. Staff memo/task
+
+When a playbook is used, the staff-facing memo should include:
+
+* which playbook/workflow was used
+* whether message was after-hours
+* what June said or linked
+* what information was collected
+* what information is still missing
+* urgency level
+* recommended staff follow-up
+* link to conversation
+* link to patient chart if matched
+
+9. Build sequence
+
+Please propose the safest build sequence before coding.
+
+Suggested:
+T1 — Schema: clinic playbook, workflow playbooks, clinic knowledge, missed-call settings
+T2 — Storage/routes/settings UI
+T3 — Prompt injection with feature flag
+T4 — After-hours and missed-call gates
+T5 — Staff memo/task updates
+
+Please keep this isolated to Spruce June / Spruce Inbox / clinic playbook settings only.
+
+Do not modify:
+
+* existing ClinIQ June
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* auth
+* billing
+* sessions
+* unrelated core ClinIQ systems.
