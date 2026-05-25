@@ -1374,3 +1374,130 @@ CREATE UNIQUE INDEX IF NOT EXISTS patient_message_mentions_msg_user_idx
 CREATE UNIQUE INDEX IF NOT EXISTS spruce_messages_clinic_dedupe_key_idx
   ON spruce_messages(clinic_id, spruce_event_dedupe_key)
   WHERE spruce_event_dedupe_key IS NOT NULL;
+
+-- ── Spruce June Playbook (T001) ───────────────────────────────────────────
+-- 7 new tables + 2 new conv-state columns.
+-- All IF NOT EXISTS / ADD COLUMN IF NOT EXISTS — safe to run multiple times.
+-- All automation tables default isEnabled=FALSE — zero behaviour activates
+-- without explicit clinic opt-in. Playbook tables are schema-only until a
+-- clinic sets playbookEnabled=TRUE via the settings UI.
+
+-- clinic_june_playbook: one row per clinic, controls all playbook settings.
+CREATE TABLE IF NOT EXISTS clinic_june_playbook (
+  id                       SERIAL PRIMARY KEY,
+  clinic_id                INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  playbook_enabled         BOOLEAN NOT NULL DEFAULT FALSE,
+  clinic_display_name      VARCHAR(200),
+  timezone                 VARCHAR(100),
+  business_hours           JSONB,
+  holiday_closures         JSONB,
+  after_hours_enabled      BOOLEAN NOT NULL DEFAULT FALSE,
+  after_hours_instructions TEXT,
+  emergency_language       TEXT,
+  voice_style              VARCHAR(50),
+  additional_tone_guidance TEXT,
+  expected_response_time   TEXT,
+  general_handoff_language TEXT,
+  provider_naming_preference TEXT,
+  updated_at               TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS clinic_june_playbook_clinic_idx
+  ON clinic_june_playbook(clinic_id);
+
+-- clinic_knowledge_entries: per-clinic knowledge base topics June can reference.
+CREATE TABLE IF NOT EXISTS clinic_knowledge_entries (
+  id          SERIAL PRIMARY KEY,
+  clinic_id   INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  topic_key   VARCHAR(100) NOT NULL,
+  topic_label VARCHAR(200) NOT NULL,
+  content     TEXT NOT NULL,
+  link        VARCHAR(500),
+  link_label  VARCHAR(200),
+  is_enabled  BOOLEAN NOT NULL DEFAULT TRUE,
+  sort_order  INTEGER NOT NULL DEFAULT 0,
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS clinic_knowledge_clinic_topic_idx
+  ON clinic_knowledge_entries(clinic_id, topic_key);
+
+-- spruce_workflow_playbooks: per-clinic, per-workflow AI instructions for June.
+CREATE TABLE IF NOT EXISTS spruce_workflow_playbooks (
+  id                    SERIAL PRIMARY KEY,
+  clinic_id             INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  workflow              VARCHAR(50) NOT NULL,
+  is_enabled            BOOLEAN NOT NULL DEFAULT FALSE,
+  playbook_instructions TEXT,
+  custom_links          JSONB,
+  expected_next_step    TEXT,
+  handoff_notes         TEXT,
+  updated_at            TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE UNIQUE INDEX IF NOT EXISTS spruce_workflow_playbook_clinic_workflow_idx
+  ON spruce_workflow_playbooks(clinic_id, workflow);
+
+-- clinic_automation_workflows: defines proactive outbound sequences.
+-- Schema-only in this release — no execution logic is wired.
+CREATE TABLE IF NOT EXISTS clinic_automation_workflows (
+  id                          SERIAL PRIMARY KEY,
+  clinic_id                   INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  name                        VARCHAR(200) NOT NULL,
+  description                 TEXT,
+  trigger_type                VARCHAR(50) NOT NULL,
+  trigger_conditions          JSONB,
+  stop_on_staff_reply         BOOLEAN NOT NULL DEFAULT TRUE,
+  stop_on_patient_response    BOOLEAN NOT NULL DEFAULT TRUE,
+  max_enrollments_per_patient INTEGER NOT NULL DEFAULT 1,
+  cooldown_hours              INTEGER NOT NULL DEFAULT 72,
+  is_enabled                  BOOLEAN NOT NULL DEFAULT FALSE,
+  cloned_from_template_id     INTEGER,
+  created_at                  TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at                  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- clinic_workflow_steps: ordered steps for a clinic_automation_workflow.
+CREATE TABLE IF NOT EXISTS clinic_workflow_steps (
+  id          SERIAL PRIMARY KEY,
+  workflow_id INTEGER NOT NULL REFERENCES clinic_automation_workflows(id) ON DELETE CASCADE,
+  step_order  INTEGER NOT NULL,
+  step_type   VARCHAR(50) NOT NULL,
+  config      JSONB NOT NULL,
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- clinic_workflow_enrollments: one row per patient per workflow run.
+CREATE TABLE IF NOT EXISTS clinic_workflow_enrollments (
+  id                    SERIAL PRIMARY KEY,
+  clinic_id             INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  workflow_id           INTEGER NOT NULL REFERENCES clinic_automation_workflows(id) ON DELETE CASCADE,
+  patient_id            INTEGER REFERENCES patients(id) ON DELETE SET NULL,
+  patient_phone         VARCHAR(30),
+  spruce_conversation_key VARCHAR(200),
+  trigger_source        JSONB,
+  current_step_order    INTEGER NOT NULL DEFAULT 1,
+  status                VARCHAR(30) NOT NULL DEFAULT 'active',
+  lead_status           VARCHAR(30),
+  next_action_at        TIMESTAMP,
+  enrolled_at           TIMESTAMP NOT NULL DEFAULT NOW(),
+  completed_at          TIMESTAMP,
+  stopped_reason        TEXT
+);
+
+-- clinic_workflow_execution_log: immutable audit trail — append-only.
+CREATE TABLE IF NOT EXISTS clinic_workflow_execution_log (
+  id                  SERIAL PRIMARY KEY,
+  enrollment_id       INTEGER NOT NULL REFERENCES clinic_workflow_enrollments(id) ON DELETE CASCADE,
+  step_id             INTEGER REFERENCES clinic_workflow_steps(id) ON DELETE SET NULL,
+  step_order          INTEGER NOT NULL,
+  step_type           VARCHAR(50) NOT NULL,
+  outcome             VARCHAR(20) NOT NULL,
+  outbound_message_id INTEGER REFERENCES spruce_outbound_messages(id) ON DELETE SET NULL,
+  notes               TEXT,
+  executed_at         TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- spruce_conversation_state: two new columns for after-hours dedup and
+-- workflow enrollment tracking. Both nullable — existing rows unaffected.
+ALTER TABLE spruce_conversation_state
+  ADD COLUMN IF NOT EXISTS after_hours_notice_sent_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS active_workflow_enrollment_id INTEGER;
