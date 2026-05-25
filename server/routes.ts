@@ -18307,7 +18307,8 @@ IMPORTANT:
       const clinicId = getEffectiveClinicId(req);
       if (!clinicId) return res.status(400).json({ error: "No clinic context" });
       const rows = await storage.getAllSpruceWorkflowPlaybooks(clinicId);
-      res.json(rows);
+      const playbooks = Object.fromEntries(rows.map(r => [r.workflow, r]));
+      res.json({ playbooks });
     } catch (err) {
       console.error("[workflow-playbooks] GET error:", err);
       res.status(500).json({ error: "Failed to load workflow playbooks" });
