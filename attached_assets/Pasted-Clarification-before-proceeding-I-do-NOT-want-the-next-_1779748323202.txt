@@ -1,0 +1,150 @@
+Clarification before proceeding:
+
+I do NOT want the next phase to be a hardcoded “New Patient Intake workflow.”
+
+The next phase should be a customizable Form Workflow Builder.
+
+Clinics should be able to create multiple workflows triggered by different ClinIQ form submissions, and each workflow should be customized according to that specific form.
+
+Examples:
+
+* New Patient Intake form submitted → send Spruce SMS asking preferred consultation days/times, wait for response, follow up if no response, create New Patient Scheduling task
+* Symptoms Follow-Up Quiz submitted → notify nurse, create clinical follow-up task, optionally send patient an acknowledgment
+* Weight Loss Check-In form submitted → create provider review task, optionally send a portal/Spruce message
+* Consent/Intake form submitted → notify staff or update status, no patient message needed
+
+Core concept:
+
+Create Form Workflow
+→ Select trigger form
+→ Add steps in chosen order
+→ Configure each step
+→ Enable workflow
+
+This should be clinic-specific and fully customizable.
+
+Required features for this phase:
+
+1. Trigger
+   Workflow trigger should be:
+
+* specific ClinIQ form submitted
+
+The clinic should choose which form triggers the workflow.
+
+A clinic may have multiple form workflows, each tied to a different form.
+
+2. Workflow builder steps
+   The clinic should be able to add steps in whatever order they choose.
+
+Possible step types:
+
+* notify staff member
+* assign to staff member
+* create dashboard task/memo
+* send Spruce SMS
+* send portal message
+* add internal note
+* wait/delay
+* if/then branch
+* update lead/patient status
+* stop workflow
+
+3. Wait/delay steps
+   Wait time must be customizable per workflow/step:
+
+* 3 hours
+* 24 hours
+* 2 days
+* etc.
+
+Do not hardcode 24 hours globally.
+
+4. If/Then branching
+   The builder should support branching logic such as:
+
+* if patient responds
+* if patient does not respond within wait period
+* if staff replies
+* if task is completed
+* if appointment is scheduled
+* if form response contains a certain answer
+* if patient is matched/unmatched
+
+Example:
+Wait 24 hours.
+If patient responded → create task and stop.
+If no response → send follow-up SMS.
+
+5. Message sending options
+   For send-message steps, the clinic should be able to choose:
+
+* Static template message
+* Instruct June
+* Spruce June draft for staff review before sending
+
+Details:
+
+**Static template message**
+
+* Clinic writes the exact message that will be sent.
+* Message is sent as written.
+
+**Instruct June**
+
+* Clinic provides instructions, goals, context, or guidance for June directly within the workflow step.
+* June should compose the actual message dynamically based on:
+
+  * the workflow context
+  * the triggering form submission
+  * prior conversation history (when available)
+  * patient responses
+  * clinic-specific context
+* June should not simply fill in a template.
+* June should interpret what the patient submitted or replied and generate a natural, humanized, contextually appropriate message.
+* This allows June to adapt the conversation instead of sending a potentially irrelevant canned response.
+* Clinics should not be required to go back to the playbook to add workflow-specific messaging instructions.
+* Workflow-level instructions should be configurable directly within the workflow builder.
+
+**Spruce June draft for staff review before sending**
+
+* June generates a recommended message draft.
+* Staff reviews, edits if desired, and manually approves before sending.
+
+Messages should use the clinic’s Spruce number when Spruce is selected and should write to the unified communication timeline.
+
+6. Stop conditions
+   Each workflow should support configurable stop conditions:
+
+* patient responds
+* staff replies
+* task completed
+* appointment scheduled
+* max attempts reached
+* manually stopped
+
+7. Default OFF
+   All workflows must default OFF.
+   No workflow should run unless explicitly created/enabled by that clinic.
+
+8. Templates are okay, but not hardcoded behavior
+   We can include cloneable templates later, such as:
+
+* New Patient Intake Follow-Up
+* Symptom Follow-Up Review
+* Weight Loss Check-In Review
+
+But these should be templates that clinics can edit, not hardcoded behavior.
+
+9. Safety / scope
+
+* Clinic-scoped only
+* No global workflows
+* All outbound messages audited
+* Use clinic-scoped Spruce API token
+* Respect staff_takeover / ai_muted where applicable
+* Do not apply one workflow’s wait/follow-up behavior to other forms or workflows
+* Do not build missed-call or after-hours workflows in this phase unless they are only planned, not activated
+* Do not modify existing ClinIQ June, Ask June, SOAP, transcription, lab evaluation, evidence overlay, auth, billing, sessions, or unrelated core systems
+
+Please revise the next phase plan around building the foundation for a customizable Form Workflow Builder triggered by ClinIQ form submissions.
