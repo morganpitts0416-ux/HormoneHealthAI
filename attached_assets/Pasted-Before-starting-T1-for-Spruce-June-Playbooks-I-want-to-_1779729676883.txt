@@ -1,0 +1,69 @@
+Before starting T1 for Spruce June Playbooks, I want to add one important architectural consideration:
+
+ClinIQ should eventually be able to replace some GHL-style follow-up workflows using the integrated Spruce clinic number.
+
+Example current workflow:
+
+* ClinIQ new patient intake form is submitted from the website
+* GHL sends SMS #1 asking what day/time works for the initial consultation
+* Wait 24 hours for patient response
+* If patient responds, send confirmation-style reply and notify staff
+* If no response, send follow-up SMS
+* Wait another 24 hours
+* Send one more follow-up
+* If still no response, mark lead inactive/lost or needs manual review
+
+I would rather this happen inside ClinIQ using Spruce, so patients receive messages from the real clinic number instead of a separate GHL number.
+
+Please account for this in the Spruce June / Playbook architecture before building T1.
+
+This means we may need a broader ClinIQ workflow engine concept in addition to Spruce June playbooks:
+
+Triggers:
+
+* new patient intake form submitted
+* missed call
+* after-hours message
+* incoming Spruce message
+* incomplete intake
+* no patient response after X hours
+* future: lab result posted, appointment missed, etc.
+
+Actions:
+
+* send Spruce SMS
+* wait for patient response
+* branch if response/no response
+* create dashboard memo/task
+* assign to staff
+* mark lead inactive/lost/manual review
+* stop workflow when staff takes over
+* stop workflow when patient responds
+* stop workflow when appointment is scheduled
+
+Important:
+This should still use the same Spruce clinic-specific API token and communication timeline.
+
+For the new patient intake example:
+
+* Trigger should be ClinIQ form submission
+* Message should go through Spruce
+* Patient response should come back through the Spruce webhook
+* The workflow should continue/stop based on response
+* Staff should see a New Patient / Intake memo/task
+* All messages should appear in the unified communication timeline
+* No separate GHL number should be introduced
+
+Please review whether the proposed T1 tables should include support for:
+
+* outbound campaign/workflow steps
+* wait/delay steps
+* response detection
+* stop conditions
+* follow-up attempts
+* lead status
+* workflow enrollment records
+
+I’m not asking to build the full GHL replacement yet, but I do not want the playbook schema to be too narrow if we are moving toward clinic-specific automated follow-up workflows.
+
+Please propose whether T1 should be adjusted before building.
