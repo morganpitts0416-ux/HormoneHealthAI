@@ -1,0 +1,116 @@
+Next architecture layer for Spruce June:
+
+We need clinic-specific rules/playbooks so Spruce June can respond according to each clinic’s real policies, hours, links, and workflows.
+
+Goal:
+Spruce June should not only classify messages generally. She needs to know the clinic-specific way to respond.
+
+Examples:
+
+1. New patient inquiry
+   If someone sounds like they want to become a new patient, Spruce June should respond with that clinic’s approved first steps.
+
+For Women’s Wellness, this may include:
+
+* explain that the first step is completing the new patient packet/intake
+* provide the clinic-specific new patient packet link
+* explain that the team will review it and follow up
+* ask what service they are interested in if not already clear
+
+Example tone:
+“Hey Sarah! We’d love to help. The first step is filling out our new patient packet here: [link]. Once that’s submitted, our team will review it and reach out about next steps.”
+
+2. After-hours/weekend behavior
+   Spruce June needs clinic hours and timezone so she knows when the office is closed.
+
+If a patient messages after hours or on a weekend, June should:
+
+* still acknowledge the message
+* let them know the clinic is currently closed
+* say when the team will be back / when they can expect follow-up
+* collect helpful information if appropriate
+* include emergency language when needed
+
+Example:
+“Hey Sarah! We’re currently closed for the weekend, but I’ll make sure the team sees this when we’re back in the office Monday. If this is urgent or you’re having severe symptoms, please call 911 or go to the nearest ER.”
+
+3. Clinic-specific configuration needed
+   Please design clinic-specific Spruce June settings/playbooks.
+
+Possible settings:
+
+* clinic timezone
+* business hours by day
+* closed days/weekends
+* holiday closures
+* after-hours response enabled
+* after-hours response instructions
+* emergency/escalation language
+* new patient packet link
+* membership/intake link
+* scheduling link if applicable
+* refill policy language
+* expected response time language
+* provider/team naming preferences
+* preferred tone/instructions
+* workflow-specific instructions
+
+4. Workflow/playbook model
+   I think Spruce June needs a clinic-level “playbook” plus workflow-specific rules.
+
+Clinic-level playbook:
+
+* tone
+* hours
+* general handoff language
+* emergency language
+* team/provider names
+* default response expectations
+
+Workflow-specific playbooks:
+
+* new patient inquiry
+* after-hours general message
+* refill request
+* scheduling request
+* missed call follow-up
+* billing/membership
+* lab question
+* urgent/escalation
+
+5. Important design principle
+   Spruce June should stay conversation-first and human-sounding.
+
+The clinic config should provide rules, links, and boundaries — not rigid canned messages.
+
+June should still generate natural replies that fit the patient’s message.
+
+6. Staff memo/task
+   When clinic-specific rules are used, the staff-facing memo should include:
+
+* which playbook/workflow was used
+* what link/instructions were sent
+* what info June collected
+* what still needs staff follow-up
+* urgency level
+* link to conversation and chart
+
+7. Safety
+   Do not allow clinics to configure June into giving medical advice, diagnosing, prescribing, or making medication changes.
+
+Clinic-specific rules should still stay within global safety guardrails:
+
+* no diagnosis
+* no prescribing
+* no medication changes
+* no lab interpretation
+* emergency escalation when appropriate
+* staff takeover mutes June
+* all outbound messages audited
+
+8. Scope
+   For now, please propose the safest architecture first before building.
+
+Keep this isolated to Spruce June / Spruce Inbox settings and workflow playbooks.
+
+Do not modify existing ClinIQ June, Ask June, SOAP, transcription, lab evaluation, evidence overlay, auth, billing, sessions, or unrelated core systems.

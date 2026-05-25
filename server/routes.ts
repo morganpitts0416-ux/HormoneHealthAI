@@ -2307,6 +2307,34 @@ Rules:
     }
   });
 
+  // GET /api/spruce/conversations/:key/workflow-request — latest June task for this conversation
+  app.get("/api/spruce/conversations/:key/workflow-request", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const key = decodeURIComponent(req.params.key);
+      const request = await storage.getLatestSpruceWorkflowRequest(clinicId, key);
+      res.json(request ?? null);
+    } catch (err) {
+      console.error("[Spruce/workflow-request] Error:", err);
+      res.status(500).json({ error: "Failed to fetch workflow request" });
+    }
+  });
+
+  // POST /api/spruce/conversations/:key/mark-replied — dismiss from "Unreplied" without sending
+  app.post("/api/spruce/conversations/:key/mark-replied", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const key = decodeURIComponent(req.params.key);
+      await storage.markSpruceConversationReplied(clinicId, key);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[Spruce/mark-replied] Error:", err);
+      res.status(500).json({ error: "Failed to mark as replied" });
+    }
+  });
+
   // GET /api/spruce/conversations/:key/state — conversation state machine row
   app.get("/api/spruce/conversations/:key/state", requireAuth, async (req, res) => {
     try {

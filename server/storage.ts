@@ -425,6 +425,10 @@ export interface IStorage {
   updateSpruceWorkflowRequestJune(id: number, data: { juneAckSentAt?: Date; juneMemoText?: string; juneTurnCount?: number }): Promise<void>;
   // Find the most recent pending workflow request for a Spruce conversation (for multi-turn)
   getOpenSpruceWorkflowRequestByConversation(clinicId: number, conversationKey: string): Promise<schema.SpruceWorkflowRequest | null>;
+  // Find the most recent workflow request (any status) for display in the thread UI
+  getLatestSpruceWorkflowRequest(clinicId: number, conversationKey: string): Promise<schema.SpruceWorkflowRequest | null>;
+  // Mark all unreplied messages in a conversation as replied (for manually dismissing from "Unreplied" view)
+  markSpruceConversationReplied(clinicId: number, conversationKey: string): Promise<void>;
 
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
@@ -5728,4 +5732,46 @@ export interface SpruceConversationMessageRow {
     .orderBy(desc(schema.spruceWorkflowRequests.createdAt))
     .limit(1);
   return row ?? null;
+};
+
+(DbStorage.prototype as any).getLatestSpruceWorkflowRequest = async function(
+  clinicId: number,
+  conversationKey: string,
+): Promise<schema.SpruceWorkflowRequest | null> {
+  // Returns the most recent workflow request regardless of status (for UI display).
+  const [row] = await db
+    .select()
+    .from(schema.spruceWorkflowRequests)
+    .where(
+      and(
+        eq(schema.spruceWorkflowRequests.clinicId, clinicId),
+        like(schema.spruceWorkflowRequests.spruceConversationUrl, `%${conversationKey}%`),
+      ),
+    )
+    .orderBy(desc(schema.spruceWorkflowRequests.createdAt))
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).markSpruceConversationReplied = async function(
+  clinicId: number,
+  conversationKey: string,
+): Promise<void> {
+  // Sets staffRepliedAt = now() on all messages for this conversation that have
+  // not yet been marked replied.  Matches on spruceConversationId OR phone
+  // so both ID-keyed and phone-keyed conversations are handled.
+  await db
+    .update(schema.spruceMessages)
+    .set({ staffRepliedAt: new Date() })
+    .where(
+      and(
+        eq(schema.spruceMessages.clinicId, clinicId),
+        isNull(schema.spruceMessages.staffRepliedAt),
+        or(
+          eq(schema.spruceMessages.spruceConversationId, conversationKey),
+          eq(schema.spruceMessages.fromPhone, conversationKey),
+          eq(schema.spruceMessages.toPhone, conversationKey),
+        ),
+      ),
+    );
 };

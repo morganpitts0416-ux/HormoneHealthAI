@@ -23,6 +23,8 @@ import {
   ShieldAlert,
   Archive,
   Users,
+  ClipboardList,
+  MailCheck,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -74,6 +76,18 @@ interface SpruceMessage {
 interface ConvState {
   state: string;
   aiMutedAt: string | null;
+}
+
+interface WorkflowRequest {
+  id: number;
+  workflow: string;
+  status: string;
+  requestSummary: string | null;
+  juneMemoText: string | null;
+  juneAckSentAt: string | null;
+  createdAt: string;
+  resolvedAt: string | null;
+  spruceConversationUrl: string | null;
 }
 
 // ── Sidebar view type ──────────────────────────────────────────────────────────
@@ -384,6 +398,21 @@ export default function SpruceInboxPage() {
     enabled: !!selectedKey,
   });
 
+  // ── Workflow request (June task) for selected conversation ─────────────
+  const { data: workflowRequest, refetch: refetchWorkflow } = useQuery<WorkflowRequest | null>({
+    queryKey: ["/api/spruce/conversations", selectedKey, "workflow-request"],
+    queryFn: async () => {
+      if (!selectedKey) return null;
+      const res = await fetch(
+        `/api/spruce/conversations/${encodeURIComponent(selectedKey)}/workflow-request`,
+        { credentials: "include" },
+      );
+      if (!res.ok) return null;
+      return res.json();
+    },
+    enabled: !!selectedKey,
+  });
+
   // ── Conversation state ──────────────────────────────────────────────────
   const { data: convState, refetch: refetchState } = useQuery<ConvState>({
     queryKey: ["/api/spruce/conversations", selectedKey, "state"],
@@ -443,6 +472,37 @@ export default function SpruceInboxPage() {
     onError: (err: Error) => {
       setOptimisticMsgs([]);
       toast({ variant: "destructive", title: "Send failed", description: err.message });
+    },
+  });
+
+  // ── Mark conversation replied (dismiss from "Unreplied" without sending) ──
+  const markRepliedMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const res = await apiRequest("POST", `/api/spruce/conversations/${encodeURIComponent(key)}/mark-replied`, {});
+      if (!res.ok) throw new Error("Failed to mark as replied");
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchConvs();
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to mark as replied" });
+    },
+  });
+
+  // ── Mark June workflow task complete ────────────────────────────────────
+  const markWorkflowCompleteMutation = useMutation({
+    mutationFn: async (requestId: number) => {
+      const res = await apiRequest("PATCH", `/api/spruce-requests/${requestId}/status`, { status: "complete" });
+      if (!res.ok) throw new Error("Failed to mark task complete");
+      return res.json();
+    },
+    onSuccess: () => {
+      refetchWorkflow();
+      queryClient.invalidateQueries({ queryKey: ["/api/clinician-notifications"] });
+    },
+    onError: () => {
+      toast({ variant: "destructive", title: "Failed to mark task complete" });
     },
   });
 
@@ -646,7 +706,7 @@ export default function SpruceInboxPage() {
   // View labels for the empty state
   const viewLabel: Record<SidebarView, string> = {
     all: "All Conversations",
-    unread: "Unread",
+    unread: "Unreplied",
     assigned: "Assigned to Me",
     unmatched: "Unmatched",
     urgent: "Urgent",
@@ -702,7 +762,7 @@ export default function SpruceInboxPage() {
           />
           <NavItem
             icon={MessageCircle}
-            label="Unread"
+            label="Unreplied"
             count={activeConvs.filter((c) => !c.hasStaffReply).length}
             active={activeView === "unread"}
             onClick={() => { setActiveView("unread"); setSelectedKey(null); }}
@@ -786,7 +846,7 @@ export default function SpruceInboxPage() {
               archived: archivedConvs.length || undefined,
             };
             const labels: Record<SidebarView, string> = {
-              all: "All", unread: "Unread", urgent: "Urgent",
+              all: "All", unread: "Unreplied", urgent: "Urgent",
               assigned: "Assigned", unmatched: "Unmatched", archived: "Archived",
             };
             const cnt = counts[v];
@@ -954,6 +1014,24 @@ export default function SpruceInboxPage() {
                   </Button>
                 </a>
               )}
+              {!selectedConv.hasStaffReply && (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={markRepliedMutation.isPending}
+                  onClick={() => markRepliedMutation.mutate(selectedConv.conversationKey)}
+                  data-testid="button-mark-replied"
+                  className="text-[#2e7d52] border-[#b6d9c3]"
+                  title="Mark as replied — remove from Unreplied view"
+                >
+                  {markRepliedMutation.isPending ? (
+                    <RefreshCw className="w-3.5 h-3.5 md:mr-1.5 animate-spin" />
+                  ) : (
+                    <MailCheck className="w-3.5 h-3.5 md:mr-1.5" />
+                  )}
+                  <span className="hidden md:inline">Mark replied</span>
+                </Button>
+              )}
               {!selectedConv.isArchived && (
                 <Button
                   size="sm"
@@ -1088,6 +1166,66 @@ export default function SpruceInboxPage() {
               )}
             </div>
           )}
+
+          {/* ── June task card (shown when a workflow request exists) ──────── */}
+          {workflowRequest && (() => {
+            const isComplete = workflowRequest.status === "complete";
+            const workflowLabels: Record<string, string> = {
+              medication_refill: "Medication Refill",
+              intake_form: "Intake Form",
+              new_patient: "New Patient",
+              appointment: "Appointment",
+              lab_question: "Lab Question",
+              billing: "Billing",
+              urgent_safety: "Urgent / Safety",
+              unclassified: "General Request",
+            };
+            const label = workflowLabels[workflowRequest.workflow] ?? workflowRequest.workflow;
+            return (
+              <div className={`mx-4 mt-2 rounded-md border px-3 py-2.5 ${isComplete ? "bg-[#f0f7f2] border-[#b6d9c3]" : "bg-[#fffbeb] border-[#f6d860]"}`}>
+                <div className="flex items-start gap-2">
+                  <ClipboardList className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${isComplete ? "text-[#2e7d52]" : "text-[#92400e]"}`} />
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-2 flex-wrap">
+                      <span className={`text-[10px] font-semibold uppercase tracking-wide ${isComplete ? "text-[#2e7d52]" : "text-[#92400e]"}`}>
+                        June Task · {label}
+                      </span>
+                      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
+                        isComplete
+                          ? "bg-[#dcf4e7] text-[#1a6b3c]"
+                          : "bg-[#fef3c7] text-[#92400e]"
+                      }`}>
+                        {isComplete ? <CheckCircle2 className="w-2.5 h-2.5" /> : <AlertTriangle className="w-2.5 h-2.5" />}
+                        {isComplete ? "Complete" : "Pending"}
+                      </span>
+                    </div>
+                    {(workflowRequest.juneMemoText || workflowRequest.requestSummary) && (
+                      <p className="text-[11px] text-[#3a4630] mt-1 leading-snug">
+                        {workflowRequest.juneMemoText || workflowRequest.requestSummary}
+                      </p>
+                    )}
+                  </div>
+                  {!isComplete && (
+                    <Button
+                      size="sm"
+                      disabled={markWorkflowCompleteMutation.isPending}
+                      onClick={() => markWorkflowCompleteMutation.mutate(workflowRequest.id)}
+                      data-testid="button-mark-task-complete"
+                      className="flex-shrink-0 text-[11px]"
+                      style={{ backgroundColor: "#2e7d52", color: "#fff" }}
+                    >
+                      {markWorkflowCompleteMutation.isPending ? (
+                        <RefreshCw className="w-3 h-3 animate-spin" />
+                      ) : (
+                        <CheckCircle2 className="w-3 h-3 mr-1" />
+                      )}
+                      {markWorkflowCompleteMutation.isPending ? "Saving…" : "Mark complete"}
+                    </Button>
+                  )}
+                </div>
+              </div>
+            );
+          })()}
 
           {/* Message thread */}
           <div className="flex-1 overflow-y-auto py-4">
