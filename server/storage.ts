@@ -5794,7 +5794,7 @@ export interface SpruceConversationMessageRow {
 // ── Spruce June Playbook implementations ─────────────────────────────────
 
 (DbStorage.prototype as any).getClinicJunePlaybook = async function(clinicId: number): Promise<schema.ClinicJunePlaybook | null> {
-  const [row] = await this.db
+  const [row] = await db
     .select()
     .from(schema.clinicJunePlaybook)
     .where(eq(schema.clinicJunePlaybook.clinicId, clinicId))
@@ -5804,7 +5804,7 @@ export interface SpruceConversationMessageRow {
 
 (DbStorage.prototype as any).upsertClinicJunePlaybook = async function(clinicId: number, data: Partial<schema.InsertClinicJunePlaybook>): Promise<schema.ClinicJunePlaybook> {
   const payload = { ...data, clinicId, updatedAt: new Date() };
-  const [row] = await this.db
+  const [row] = await db
     .insert(schema.clinicJunePlaybook)
     .values(payload)
     .onConflictDoUpdate({
@@ -5816,7 +5816,7 @@ export interface SpruceConversationMessageRow {
 };
 
 (DbStorage.prototype as any).getClinicKnowledgeEntries = async function(clinicId: number): Promise<schema.ClinicKnowledgeEntry[]> {
-  return this.db
+  return db
     .select()
     .from(schema.clinicKnowledgeEntries)
     .where(eq(schema.clinicKnowledgeEntries.clinicId, clinicId))
@@ -5825,7 +5825,7 @@ export interface SpruceConversationMessageRow {
 
 (DbStorage.prototype as any).upsertClinicKnowledgeEntry = async function(clinicId: number, data: schema.InsertClinicKnowledgeEntry): Promise<schema.ClinicKnowledgeEntry> {
   const payload = { ...data, clinicId, updatedAt: new Date() };
-  const [row] = await this.db
+  const [row] = await db
     .insert(schema.clinicKnowledgeEntries)
     .values(payload)
     .onConflictDoUpdate({
@@ -5837,7 +5837,7 @@ export interface SpruceConversationMessageRow {
 };
 
 (DbStorage.prototype as any).deleteClinicKnowledgeEntry = async function(id: number, clinicId: number): Promise<boolean> {
-  const result = await this.db
+  const result = await db
     .delete(schema.clinicKnowledgeEntries)
     .where(
       and(
@@ -5850,7 +5850,7 @@ export interface SpruceConversationMessageRow {
 };
 
 (DbStorage.prototype as any).getSpruceWorkflowPlaybook = async function(clinicId: number, workflow: string): Promise<schema.SpruceWorkflowPlaybook | null> {
-  const [row] = await this.db
+  const [row] = await db
     .select()
     .from(schema.spruceWorkflowPlaybooks)
     .where(
@@ -5864,7 +5864,7 @@ export interface SpruceConversationMessageRow {
 };
 
 (DbStorage.prototype as any).getAllSpruceWorkflowPlaybooks = async function(clinicId: number): Promise<schema.SpruceWorkflowPlaybook[]> {
-  return this.db
+  return db
     .select()
     .from(schema.spruceWorkflowPlaybooks)
     .where(eq(schema.spruceWorkflowPlaybooks.clinicId, clinicId))
@@ -5873,7 +5873,7 @@ export interface SpruceConversationMessageRow {
 
 (DbStorage.prototype as any).upsertSpruceWorkflowPlaybook = async function(clinicId: number, workflow: string, data: Partial<schema.InsertSpruceWorkflowPlaybook>): Promise<schema.SpruceWorkflowPlaybook> {
   const payload = { ...data, clinicId, workflow, updatedAt: new Date() };
-  const [row] = await this.db
+  const [row] = await db
     .insert(schema.spruceWorkflowPlaybooks)
     .values(payload)
     .onConflictDoUpdate({
@@ -5885,7 +5885,7 @@ export interface SpruceConversationMessageRow {
 };
 
 (DbStorage.prototype as any).setAfterHoursNoticeSentAt = async function(clinicId: number, conversationKey: string, sentAt: Date): Promise<void> {
-  await this.db
+  await db
     .update(schema.spruceConversationState)
     .set({ afterHoursNoticeSentAt: sentAt })
     .where(

@@ -196,8 +196,9 @@ function PlaybookTab() {
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/clinic/june-playbook"] });
-      setSaveWarning(data.warning ?? null);
-      toast({ title: data.warning ? "Saved with notice" : "Playbook saved", description: data.warning ?? undefined });
+      const warnText = data.warnings?.length ? data.warnings.join(" | ") : null;
+      setSaveWarning(warnText);
+      toast({ title: warnText ? "Saved with notice" : "Playbook saved", description: warnText ?? undefined });
     },
     onError: (e: any) => {
       toast({ variant: "destructive", title: "Save failed", description: e.message });
@@ -896,8 +897,9 @@ function WorkflowPlaybookCard({
     },
     onSuccess: (data) => {
       queryClient.invalidateQueries({ queryKey: ["/api/spruce/settings/workflow-playbooks"] });
-      if (data.warning) {
-        toast({ title: "Saved with notice", description: data.warning });
+      const warnText = data.warnings?.length ? data.warnings.join(" | ") : null;
+      if (warnText) {
+        toast({ title: "Saved with notice", description: warnText });
       } else {
         toast({ title: `${meta.label} playbook saved` });
       }
