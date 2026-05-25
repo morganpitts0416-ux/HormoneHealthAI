@@ -30,6 +30,9 @@ import type {
   ClinicSpruceSettings,
   SpruceConversationStateRow,
   SpruceWorkflowSettings,
+  ClinicJunePlaybook,
+  ClinicKnowledgeEntry,
+  SpruceWorkflowPlaybook,
 } from "../shared/schema.js";
 
 // ── Types ─────────────────────────────────────────────────────────────────
@@ -76,6 +79,113 @@ export interface JunePipelineResult {
   intentAnalysis?: IntentAnalysis | null;
 }
 
+// ── Playbook context ───────────────────────────────────────────────────────
+
+/**
+ * Loaded once per pipeline run, before any AI calls.
+ * Null fields mean "no configuration — use June's built-in defaults."
+ */
+export interface PlaybookContext {
+  clinicPlaybook: ClinicJunePlaybook | null;
+  knowledgeEntries: ClinicKnowledgeEntry[];
+  workflowPlaybook: SpruceWorkflowPlaybook | null;
+  /** True when current wall-clock time is outside configured business hours. */
+  isAfterHours: boolean;
+  /** True when today is a configured holiday closure. */
+  isHoliday: boolean;
+}
+
+/**
+ * Returns true if the current time is within the clinic's configured business hours.
+ * Returns true (assume open) when no timezone or businessHours is configured.
+ */
+function isWithinBusinessHours(playbook: ClinicJunePlaybook, now: Date = new Date()): boolean {
+  if (!playbook.timezone || !playbook.businessHours) return true;
+
+  const tz = playbook.timezone as string;
+  const hours = playbook.businessHours as Record<string, { open: string; close: string } | null>;
+
+  try {
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      weekday: "short",
+      hour: "2-digit",
+      minute: "2-digit",
+      hour12: false,
+    }).formatToParts(now);
+
+    const weekday = parts.find(p => p.type === "weekday")?.value?.toLowerCase().slice(0, 3) ?? "";
+    const hour = parseInt(parts.find(p => p.type === "hour")?.value ?? "0", 10);
+    const minute = parseInt(parts.find(p => p.type === "minute")?.value ?? "0", 10);
+
+    const dayConfig = hours[weekday];
+    if (dayConfig === undefined) return true;  // key absent = not configured = assume open
+    if (dayConfig === null) return false;       // null = clinic closed this day
+
+    const [openH, openM] = dayConfig.open.split(":").map(Number);
+    const [closeH, closeM] = dayConfig.close.split(":").map(Number);
+    const nowMins = hour * 60 + minute;
+    return nowMins >= openH * 60 + openM && nowMins < closeH * 60 + closeM;
+  } catch {
+    return true; // parsing error = assume open (fail open for safety)
+  }
+}
+
+/**
+ * Returns true when today (in the clinic's timezone) is in the holidayClosures list.
+ */
+function isTodayHoliday(playbook: ClinicJunePlaybook, now: Date = new Date()): boolean {
+  if (!playbook.holidayClosures || !playbook.timezone) return false;
+  const holidays = playbook.holidayClosures as string[];
+  if (!Array.isArray(holidays) || holidays.length === 0) return false;
+
+  try {
+    const tz = playbook.timezone as string;
+    const parts = new Intl.DateTimeFormat("en-US", {
+      timeZone: tz,
+      year: "numeric", month: "2-digit", day: "2-digit",
+    }).formatToParts(now);
+    const y = parts.find(p => p.type === "year")?.value ?? "";
+    const m = parts.find(p => p.type === "month")?.value ?? "";
+    const d = parts.find(p => p.type === "day")?.value ?? "";
+    const isoDate = `${y}-${m}-${d}`;
+    return holidays.includes(isoDate);
+  } catch {
+    return false;
+  }
+}
+
+/**
+ * Loads all three playbook tables for a clinic + workflow in parallel.
+ * Never throws — any fetch failure returns null/[] and logs a warning.
+ */
+async function loadPlaybookContext(
+  storage: IStorage,
+  clinicId: number,
+  workflow: string,
+): Promise<PlaybookContext> {
+  const [clinicPlaybook, knowledgeEntries, workflowPlaybook] = await Promise.all([
+    (storage as any).getClinicJunePlaybook(clinicId).catch((e: any) => {
+      console.warn("[SpruceJune/playbook] getClinicJunePlaybook failed (non-fatal):", e?.message);
+      return null;
+    }),
+    (storage as any).getClinicKnowledgeEntries(clinicId).catch((e: any) => {
+      console.warn("[SpruceJune/playbook] getClinicKnowledgeEntries failed (non-fatal):", e?.message);
+      return [];
+    }),
+    (storage as any).getSpruceWorkflowPlaybook(clinicId, workflow).catch((e: any) => {
+      console.warn("[SpruceJune/playbook] getSpruceWorkflowPlaybook failed (non-fatal):", e?.message);
+      return null;
+    }),
+  ]);
+
+  const now = new Date();
+  const isAfterHours = clinicPlaybook ? !isWithinBusinessHours(clinicPlaybook, now) : false;
+  const isHoliday = clinicPlaybook ? isTodayHoliday(clinicPlaybook, now) : false;
+
+  return { clinicPlaybook, knowledgeEntries, workflowPlaybook, isAfterHours, isHoliday };
+}
+
 // ── Multi-intent types ─────────────────────────────────────────────────────
 
 /**
@@ -120,6 +230,7 @@ export async function shouldJuneAcknowledge(
   input: JunePipelineInput,
   workflowSetting: SpruceWorkflowSettings | null,
   juneTurnCount: number,
+  playbookCtx?: PlaybookContext | null,
 ): Promise<string | null> {
   const { messageDirection, classification, clinicSettings, convState } = input;
 
@@ -183,7 +294,125 @@ export async function shouldJuneAcknowledge(
     // General acknowledgment is on — allow through; prompt handles safe response
   }
 
+  // Gate 9 (T4): After-hours gate — only applies when playbookEnabled=true
+  // If the clinic has a playbook configured and the current time is outside business hours:
+  //   - afterHoursEnabled=false → block completely (silent outside hours)
+  //   - afterHoursEnabled=true → allow through; pipeline generates after-hours message
+  //     BUT dedup: if an after-hours notice was already sent in this conversation within 24h, skip.
+  if (playbookCtx?.clinicPlaybook?.playbookEnabled) {
+    const closed = playbookCtx.isAfterHours || playbookCtx.isHoliday;
+    if (closed) {
+      if (!playbookCtx.clinicPlaybook.afterHoursEnabled) {
+        return "after_hours: clinic is closed and afterHoursEnabled=false — June silent";
+      }
+      // After-hours enabled — check 24h dedup
+      const sentAt = convState?.afterHoursNoticeSentAt;
+      if (sentAt) {
+        const hoursAgo = (Date.now() - new Date(sentAt).getTime()) / 3_600_000;
+        if (hoursAgo < 24) {
+          return `after_hours: notice already sent ${hoursAgo.toFixed(1)}h ago — dedup skip`;
+        }
+      }
+      // Fall through — pipeline will use after-hours instructions
+    }
+  }
+
   return null; // All gates passed
+}
+
+// ── Playbook-aware system prompt builder ──────────────────────────────────
+
+const VOICE_STYLE_DESC: Record<string, string> = {
+  warm_boutique:
+    "Warm, boutique-clinic style — personal and unhurried, like a trusted concierge who knows each patient by name",
+  professional_clinical:
+    "Professional and clinical — warm but precise, authoritative without being cold or transactional",
+  concierge:
+    "White-glove concierge style — highly personal, anticipate patient needs, attentive to every detail",
+  direct_efficient:
+    "Direct and efficient — friendly, clear, get to the point without being curt",
+  family_practice:
+    "Friendly family-practice style — approachable, caring, community-focused, like a neighbor who's also a nurse",
+};
+
+/**
+ * Builds the dynamic June system prompt when a clinic playbook is active.
+ * Falls back to the static JUNE_RESPONSE_SYSTEM_PROMPT when playbookEnabled=false.
+ */
+function buildJuneSystemPrompt(ctx: PlaybookContext | null): string {
+  if (!ctx?.clinicPlaybook?.playbookEnabled) return JUNE_RESPONSE_SYSTEM_PROMPT;
+
+  const pb = ctx.clinicPlaybook;
+  const voiceDesc = VOICE_STYLE_DESC[pb.voiceStyle ?? ""] ?? VOICE_STYLE_DESC.warm_boutique;
+  const clinicRef = pb.clinicDisplayName ?? "the care team";
+  const closed = ctx.isAfterHours || ctx.isHoliday;
+
+  // Knowledge base section — only enabled entries, sorted, capped at 8 entries
+  const enabledKnowledge = (ctx.knowledgeEntries ?? [])
+    .filter(e => e.isEnabled)
+    .slice(0, 8);
+  const knowledgeSection = enabledKnowledge.length > 0
+    ? `\n\nCLINIC KNOWLEDGE BASE (use this to answer operational questions accurately):\n` +
+      enabledKnowledge
+        .map(e => {
+          const linkPart = e.link ? ` — Link: ${e.link}${e.linkLabel ? ` (label: "${e.linkLabel}")` : ""}` : "";
+          return `• ${e.topicLabel}: ${e.content.slice(0, 400)}${linkPart}`;
+        })
+        .join("\n")
+    : "";
+
+  // Workflow playbook section
+  const wb = ctx.workflowPlaybook;
+  const workflowSection = wb?.isEnabled
+    ? (() => {
+        const parts: string[] = ["\n\nWORKFLOW-SPECIFIC GUIDANCE:"];
+        if (wb.playbookInstructions) parts.push(wb.playbookInstructions);
+        if (wb.expectedNextStep) parts.push(`Tell the patient: "${wb.expectedNextStep}"`);
+        const links = wb.customLinks as Array<{ label: string; url: string }> | null;
+        if (links?.length) {
+          parts.push(
+            `Embed these links naturally in-sentence (never as a raw list):\n` +
+            links.map(l => `  - "${l.label}": ${l.url}`).join("\n"),
+          );
+        }
+        return parts.join("\n");
+      })()
+    : "";
+
+  // After-hours section
+  const afterHoursSection = closed && pb.afterHoursEnabled
+    ? `\n\nAFTER-HOURS CONTEXT:\nThe clinic is currently closed. Acknowledge kindly that the office is closed and set appropriate expectations.${pb.afterHoursInstructions ? "\n" + pb.afterHoursInstructions : ""}\nAlways direct emergencies to 911 — never promise urgent clinical attention.`
+    : "";
+
+  // Optional custom instructions from clinic
+  const customSection = [
+    pb.additionalToneGuidance ? `ADDITIONAL TONE GUIDANCE:\n${pb.additionalToneGuidance}` : "",
+    pb.expectedResponseTime ? `RESPONSE TIME EXPECTATION: When relevant, mention "${pb.expectedResponseTime}"` : "",
+    pb.generalHandoffLanguage ? `PREFERRED HANDOFF LANGUAGE: "${pb.generalHandoffLanguage}"` : "",
+    pb.providerNamingPreference ? `PROVIDER NAMING: ${pb.providerNamingPreference}` : "",
+    pb.emergencyLanguage ? `EMERGENCY LANGUAGE (use instead of default 911 language): "${pb.emergencyLanguage}"` : "",
+  ].filter(Boolean).join("\n");
+
+  return `You are June, a front-desk assistant at ${clinicRef}. You send warm, human messages to patients on behalf of the care team.
+
+VOICE & TONE: ${voiceDesc}
+
+GLOBAL SAFETY RULES (NEVER violate — these override all other instructions):
+- Do NOT diagnose, prescribe, approve refills, change medication doses, or give medical advice of any kind
+- Do NOT answer clinical questions — the nurse or care team will always follow up
+- For any emergency or safety concern, always include: "${pb.emergencyLanguage ?? "If this is an emergency, please call 911 or go to your nearest ER right away."}"
+- Never make promises about timelines, refill approvals, or clinical outcomes
+- NEVER ask the patient for information they already provided
+- Do NOT ask more than 1–2 follow-up questions per message${knowledgeSection}${workflowSection}${afterHoursSection}
+
+${customSection}
+
+FORMATTING RULES:
+- Use the patient's first name naturally in the greeting
+- Lead with empathy when the patient is sick, worried, or stressed
+- Be brief: 2–4 sentences — this is SMS
+- Sound like a real, caring human — never robotic or like an auto-reply
+- NEVER use: "Thank you for reaching out", "I appreciate your message", "I understand your concern", "Your concern has been documented"`;
 }
 
 // ── Field extraction ──────────────────────────────────────────────────────
@@ -743,6 +972,7 @@ export async function generateJuneResponse(
   patientName: string | null,
   allowFollowUpQuestion: boolean,
   isLastTurn: boolean,
+  playbookCtx?: PlaybookContext | null,
 ): Promise<string> {
   const firstName = patientName ? patientName.trim().split(/\s+/)[0] : null;
   const patientRef = firstName
@@ -785,11 +1015,13 @@ Patient's original message:
 
 Write a single, warm, natural response. 2–4 sentences. Sound like a real person, not an auto-reply.`;
 
+  const systemPrompt = buildJuneSystemPrompt(playbookCtx ?? null);
+
   try {
     const completion = await openaiClient.chat.completions.create({
       model: "gpt-4o",
       messages: [
-        { role: "system", content: JUNE_RESPONSE_SYSTEM_PROMPT },
+        { role: "system", content: systemPrompt },
         { role: "user", content: userPrompt },
       ],
       max_tokens: 220,
@@ -829,6 +1061,12 @@ export interface MemoInput {
   spruceConversationUrl: string | null;
   juneAckText?: string;
   extractedFields?: ExtractedFields | null;
+  // T5 enrichment fields
+  isAfterHours?: boolean;
+  playbookUsed?: boolean;
+  voiceStyle?: string | null;
+  workflowHandoffNotes?: string | null;
+  intentAnalysis?: IntentAnalysis | null;
 }
 
 export async function generateJuneMemo(
@@ -858,6 +1096,21 @@ export async function generateJuneMemo(
     }
   }
 
+  const {
+    isAfterHours, playbookUsed, voiceStyle, workflowHandoffNotes, intentAnalysis,
+  } = input;
+
+  const afterHoursLine = isAfterHours ? "⚠️ AFTER HOURS — message received outside business hours" : "";
+  const playbookLine = playbookUsed
+    ? `Playbook active (voice: ${voiceStyle ?? "default"})`
+    : "Playbook: not active (built-in defaults used)";
+
+  const intentSummaryLines = intentAnalysis?.intents?.length
+    ? intentAnalysis.intents.map((i, idx) =>
+        `  ${idx + 1}. [${i.workflow}/${i.confidence}] ${i.summary}`,
+      ).join("\n")
+    : null;
+
   const userPrompt = `Generate a staff-facing memo for the following patient message.
 
 WORKFLOW: ${workflow}
@@ -865,6 +1118,7 @@ PATIENT: ${patientName ?? "Unmatched — phone " + (patientPhone ?? "unknown")}
 PATIENT ID: ${patientId ? `ClinIQ #${patientId}` : "Not matched to a patient"}
 PATIENT PHONE: ${patientPhone ?? "unknown"}
 SPRUCE CONVERSATION: ${spruceConversationUrl ?? "N/A"}
+${afterHoursLine ? afterHoursLine + "\n" : ""}${playbookLine}
 
 PATIENT MESSAGE:
 "${messageBody.slice(0, 600)}"
@@ -877,6 +1131,8 @@ INFORMATION COLLECTED FROM MESSAGE:
 
 INFORMATION STILL MISSING:
   ${missingSection}
+${intentSummaryLines ? `\nALL DETECTED INTENTS:\n${intentSummaryLines}` : ""}
+${workflowHandoffNotes ? `\nHANDOFF NOTES (from clinic playbook):\n  ${workflowHandoffNotes}` : ""}
 
 Write a structured staff memo with exactly these sections:
 - PATIENT
@@ -885,7 +1141,7 @@ Write a structured staff memo with exactly these sections:
 - INFORMATION COLLECTED
 - MISSING INFORMATION
 - URGENCY (routine / soon / urgent)
-- RECOMMENDED STAFF ACTION
+- RECOMMENDED STAFF ACTION${workflowHandoffNotes ? " (incorporate handoff notes above)" : ""}
 - CONVERSATION LINK`;
 
   try {
@@ -1002,18 +1258,26 @@ export async function runJunePipeline(
   try {
     const { storage, classification, conversationKey, clinicId } = input;
 
-    // Load workflow-level settings (null = row absent → defaults deny)
-    const workflowSetting = await storage.getSpruceWorkflowSetting(
-      clinicId,
-      classification.workflow,
-    ).catch(() => null);
+    // Load workflow-level settings AND playbook context in parallel.
+    // Both are required before the gate check — fail-safe: null = use defaults.
+    const [workflowSetting, playbookCtx] = await Promise.all([
+      storage.getSpruceWorkflowSetting(clinicId, classification.workflow).catch(() => null),
+      loadPlaybookContext(storage, clinicId, classification.workflow),
+    ]);
+
+    const playbookEnabled = playbookCtx.clinicPlaybook?.playbookEnabled ?? false;
+    console.log(
+      `${tag} playbookEnabled=${playbookEnabled} ` +
+      `isAfterHours=${playbookCtx.isAfterHours} isHoliday=${playbookCtx.isHoliday}`,
+    );
 
     // Use the real turn count passed in from the webhook handler.
     // Turn 0 = first June reply, Turn 1 = second, etc.
     const juneTurnCount = input.juneTurnCount ?? 0;
 
-    // Gate check — bail early before any AI calls if blocked
-    const skipReason = await shouldJuneAcknowledge(input, workflowSetting, juneTurnCount);
+    // Gate check — bail early before any AI calls if blocked.
+    // Gate 9 (after-hours) is included here via playbookCtx.
+    const skipReason = await shouldJuneAcknowledge(input, workflowSetting, juneTurnCount, playbookCtx);
     if (skipReason) {
       console.log(`${tag} June SKIPPED: ${skipReason}`);
       return { skipped: true, skipReason, acknowledgmentSent: false };
@@ -1040,23 +1304,45 @@ export async function runJunePipeline(
       console.log(`${tag} Field extraction returned null — using generic prompts`);
     }
 
-    // ── Step 2: Generate acknowledgment (context-aware) ───────────────────
+    // ── Step 2: Generate acknowledgment (context-aware + playbook-aware) ──
     // Determine if this is the final allowed turn so June wraps up instead of asking more questions
     const maxTurns = workflowSetting?.maxJuneTurns ?? 1;
     const isLastTurn = juneTurnCount + 1 >= maxTurns;
     console.log(`${tag} turn=${juneTurnCount} maxTurns=${maxTurns} isLastTurn=${isLastTurn}`);
 
-    const ackText = await generateJuneAcknowledgment(
-      input.openaiClient,
-      classification.workflow,
-      input.messageBody,
-      input.patientName,
-      workflowSetting?.allowFollowUpQuestion ?? false,
-      extractedFields,
-      isLastTurn,
-    );
+    // Try multi-intent analysis first (richer response); fall back to single-workflow ack
+    let ackText: string;
+    let intentAnalysis: IntentAnalysis | null = null;
 
-    // ── Step 3: Generate staff memo (with collected/missing sections) ──────
+    try {
+      intentAnalysis = await analyzeMessageIntents(input.openaiClient, input.messageBody);
+    } catch {
+      intentAnalysis = null;
+    }
+
+    if (intentAnalysis && intentAnalysis.intents.length > 0) {
+      ackText = await generateJuneResponse(
+        input.openaiClient,
+        intentAnalysis,
+        input.messageBody,
+        input.patientName,
+        workflowSetting?.allowFollowUpQuestion ?? false,
+        isLastTurn,
+        playbookCtx,  // T3: inject playbook context into response prompt
+      );
+    } else {
+      ackText = await generateJuneAcknowledgment(
+        input.openaiClient,
+        classification.workflow,
+        input.messageBody,
+        input.patientName,
+        workflowSetting?.allowFollowUpQuestion ?? false,
+        extractedFields,
+        isLastTurn,
+      );
+    }
+
+    // ── Step 3: Generate staff memo (with collected/missing + T5 enrichment)
     const memoText = await generateJuneMemo(input.openaiClient, {
       workflow: classification.workflow,
       messageBody: input.messageBody,
@@ -1067,6 +1353,14 @@ export async function runJunePipeline(
       spruceConversationUrl: input.spruceConversationUrl,
       juneAckText: ackText,
       extractedFields,
+      // T5 enrichment
+      isAfterHours: playbookCtx.isAfterHours || playbookCtx.isHoliday,
+      playbookUsed: playbookEnabled,
+      voiceStyle: playbookCtx.clinicPlaybook?.voiceStyle ?? null,
+      workflowHandoffNotes: playbookCtx.workflowPlaybook?.isEnabled
+        ? playbookCtx.workflowPlaybook.handoffNotes ?? null
+        : null,
+      intentAnalysis,
     });
 
     // ── Step 4: Audit + Spruce delivery ───────────────────────────────────
@@ -1154,9 +1448,24 @@ export async function runJunePipeline(
       );
     }
 
+    // T4: After-hours dedup stamp — if we sent an after-hours notice, record it
+    // so Gate 9 suppresses re-sends within the next 24 hours for this conversation.
+    const sentAfterHours =
+      playbookEnabled &&
+      (playbookCtx.isAfterHours || playbookCtx.isHoliday) &&
+      (playbookCtx.clinicPlaybook?.afterHoursEnabled ?? false);
+    if (sentAfterHours) {
+      await (storage as any).setAfterHoursNoticeSentAt(clinicId, conversationKey, new Date()).catch(
+        (e: any) => console.warn(`${tag} setAfterHoursNoticeSentAt failed (non-fatal):`, e),
+      );
+      console.log(`${tag} after-hours notice stamped on conv state`);
+    }
+
     console.log(
       `${tag} June pipeline complete — ` +
-      `ackLen=${ackText.length} memoLen=${memoText.length} spruceDelivered=${spruceDelivered}`,
+      `ackLen=${ackText.length} memoLen=${memoText.length} ` +
+      `spruceDelivered=${spruceDelivered} playbookUsed=${playbookEnabled} ` +
+      `afterHours=${sentAfterHours}`,
     );
 
     return {
@@ -1166,6 +1475,7 @@ export async function runJunePipeline(
       memoText,
       spruceDelivered,
       extractedFields,
+      intentAnalysis,
     };
   } catch (err: any) {
     console.error(`[SpruceJune] Pipeline error (non-fatal):`, err);

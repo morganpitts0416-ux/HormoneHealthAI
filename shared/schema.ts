@@ -2592,6 +2592,14 @@ export const spruceConversationState = pgTable("spruce_conversation_state", {
   archiveSource: varchar("archive_source", { length: 20 }),  // 'cliniq' | 'spruce' | 'sync'
   spruceArchiveSyncedAt: timestamp("spruce_archive_synced_at"),
   spruceArchiveError: text("spruce_archive_error"),
+  // ── Playbook / Workflow Engine extensions ─────────────────────────────────
+  // Set when June sends an after-hours notice for this conversation.
+  // Used to prevent repeated after-hours messages (24h dedup window).
+  afterHoursNoticeSentAt: timestamp("after_hours_notice_sent_at"),
+  // If a clinic_automation_workflow is running against this conversation,
+  // stores the enrollment ID so the webhook handler can advance/stop it.
+  // Plain integer (no FK) to avoid circular dependency with enrollments table.
+  activeWorkflowEnrollmentId: integer("active_workflow_enrollment_id"),
 }, (t) => ({ uniqConvKey: uniqueIndex("spruce_conv_state_clinic_key").on(t.clinicId, t.conversationKey) }));
 export type SpruceConversationStateRow = typeof spruceConversationState.$inferSelect;
 
@@ -2679,3 +2687,298 @@ export const spruceWorkflowRequests = pgTable("spruce_workflow_requests", {
 export type SpruceWorkflowRequest = typeof spruceWorkflowRequests.$inferSelect;
 export const insertSpruceWorkflowRequestSchema = createInsertSchema(spruceWorkflowRequests).omit({ id: true, createdAt: true });
 export type InsertSpruceWorkflowRequest = z.infer<typeof insertSpruceWorkflowRequestSchema>;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// SPRUCE JUNE PLAYBOOK LAYER
+// Clinic-configurable AI context: voice, hours, knowledge, workflow instructions.
+// These tables shape HOW June responds — they are completely separate from the
+// workflow engine tables below which control WHEN and WHETHER automated messages fire.
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── clinic_june_playbook ───────────────────────────────────────────────────
+// One row per clinic. Controls the global Spruce June AI persona, business
+// hours, after-hours behavior, voice style, and response expectations.
+// All fields are nullable — absent = use June's built-in defaults.
+// playbookEnabled is the feature flag: false (default) = legacy behavior.
+export const clinicJunePlaybook = pgTable("clinic_june_playbook", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  // ── Feature flag ─────────────────────────────────────────────────────────
+  // When false, June ignores all playbook data and uses its built-in prompts.
+  playbookEnabled: boolean("playbook_enabled").notNull().default(false),
+  // ── Clinic identity (injected into June's voice) ──────────────────────────
+  // e.g. "the Women's Wellness team" — used in June's closing lines
+  clinicDisplayName: varchar("clinic_display_name", { length: 200 }),
+  // ── Timezone + business hours ─────────────────────────────────────────────
+  // IANA timezone string, e.g. "America/Chicago"
+  timezone: varchar("timezone", { length: 100 }),
+  // jsonb shape: { mon: { open: "09:00", close: "17:00" } | null, tue: …, … sun: … }
+  // null for a day = closed that day. Missing key = use clinic default.
+  businessHours: jsonb("business_hours"),
+  // jsonb shape: string[] of ISO date strings, e.g. ["2025-12-25", "2026-01-01"]
+  holidayClosures: jsonb("holiday_closures"),
+  // ── After-hours behavior ──────────────────────────────────────────────────
+  // When true, June sends an after-hours acknowledgment outside business hours.
+  // When false (default), June is completely silent outside business hours.
+  afterHoursEnabled: boolean("after_hours_enabled").notNull().default(false),
+  // Clinic-authored after-hours message guidance (max 500 chars enforced at API).
+  // Must not contain prescribing/diagnosis language (server validates on save).
+  afterHoursInstructions: text("after_hours_instructions"),
+  // ── Emergency language ────────────────────────────────────────────────────
+  // Overrides June's built-in "call 911" language. If null, June uses its default.
+  emergencyLanguage: text("emergency_language"),
+  // ── Voice / style ─────────────────────────────────────────────────────────
+  // Preset voice style. Controls tone adjectives injected into the system prompt.
+  // Values: 'warm_boutique' | 'professional_clinical' | 'concierge' |
+  //         'direct_efficient' | 'family_practice'
+  voiceStyle: varchar("voice_style", { length: 50 }),
+  // Additional freeform tone guidance (max 300 chars). e.g. "Always use first names."
+  additionalToneGuidance: text("additional_tone_guidance"),
+  // ── Response expectations (set patient expectations in June's messages) ────
+  // e.g. "within 1 business day" — June mentions this naturally when relevant
+  expectedResponseTime: text("expected_response_time"),
+  // General handoff closing line. e.g. "The Women's Wellness team will be in touch."
+  generalHandoffLanguage: text("general_handoff_language"),
+  // ── Provider naming (how June refers to staff) ────────────────────────────
+  // e.g. "refer to providers by first name only" or "always use Dr. [LastName]"
+  providerNamingPreference: text("provider_naming_preference"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqClinicPlaybook: uniqueIndex("clinic_june_playbook_clinic_idx").on(t.clinicId),
+}));
+export type ClinicJunePlaybook = typeof clinicJunePlaybook.$inferSelect;
+export const insertClinicJunePlaybookSchema = createInsertSchema(clinicJunePlaybook).omit({ id: true, updatedAt: true });
+export type InsertClinicJunePlaybook = z.infer<typeof insertClinicJunePlaybookSchema>;
+
+// ── clinic_knowledge_entries ───────────────────────────────────────────────
+// Clinic-specific knowledge base. Each row is a topic June can reference when
+// a patient asks an operational question (new patient process, programs, etc.).
+// June uses these to give accurate, clinic-approved answers instead of generic replies.
+export const clinicKnowledgeEntries = pgTable("clinic_knowledge_entries", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  // Short machine key, e.g. "new_patient_process", "hormone_program", "refill_policy"
+  topicKey: varchar("topic_key", { length: 100 }).notNull(),
+  // Human-readable label shown in the settings UI, e.g. "New Patient Process"
+  topicLabel: varchar("topic_label", { length: 200 }).notNull(),
+  // The actual knowledge content June draws from (max 2000 chars enforced at API)
+  content: text("content").notNull(),
+  // Optional URL June can embed naturally when answering questions about this topic
+  link: varchar("link", { length: 500 }),
+  // Display label for the link, e.g. "New Patient Packet"
+  linkLabel: varchar("link_label", { length: 200 }),
+  // When false, June ignores this entry entirely
+  isEnabled: boolean("is_enabled").notNull().default(true),
+  // Controls display order in the settings UI (lower = first)
+  sortOrder: integer("sort_order").notNull().default(0),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqClinicTopic: uniqueIndex("clinic_knowledge_clinic_topic_idx").on(t.clinicId, t.topicKey),
+}));
+export type ClinicKnowledgeEntry = typeof clinicKnowledgeEntries.$inferSelect;
+export const insertClinicKnowledgeEntrySchema = createInsertSchema(clinicKnowledgeEntries).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClinicKnowledgeEntry = z.infer<typeof insertClinicKnowledgeEntrySchema>;
+
+// ── spruce_workflow_playbooks ──────────────────────────────────────────────
+// Per-clinic, per-workflow AI instructions for inbound Spruce conversations.
+// Controls what June says, what links it embeds, and what staff memo notes
+// are added for each workflow type (medication_refill, appointment, etc.).
+// One row per (clinic_id, workflow). Absent row = June uses built-in behavior.
+export const spruceWorkflowPlaybooks = pgTable("spruce_workflow_playbooks", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  // Matches spruceWorkflowRequests.workflow values
+  workflow: varchar("workflow", { length: 50 }).notNull(),
+  // When false, this playbook is ignored even if a row exists
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  // Clinic-authored instructions for June (max 1000 chars, server-validated).
+  // Example: "For refill requests, always confirm pharmacy name before routing."
+  playbookInstructions: text("playbook_instructions"),
+  // jsonb array of { label: string, url: string } — June embeds these naturally
+  // in-sentence rather than dumping raw URLs. e.g. [{ label: "New Patient Packet", url: "https://…" }]
+  customLinks: jsonb("custom_links"),
+  // What June tells the patient will happen next.
+  // e.g. "The team will follow up within 1 business day to confirm scheduling."
+  expectedNextStep: text("expected_next_step"),
+  // Added verbatim to the staff memo's RECOMMENDED ACTION section
+  handoffNotes: text("handoff_notes"),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+}, (t) => ({
+  uniqClinicWorkflowPlaybook: uniqueIndex("spruce_workflow_playbook_clinic_workflow_idx").on(t.clinicId, t.workflow),
+}));
+export type SpruceWorkflowPlaybook = typeof spruceWorkflowPlaybooks.$inferSelect;
+export const insertSpruceWorkflowPlaybookSchema = createInsertSchema(spruceWorkflowPlaybooks).omit({ id: true, updatedAt: true });
+export type InsertSpruceWorkflowPlaybook = z.infer<typeof insertSpruceWorkflowPlaybookSchema>;
+
+// ═══════════════════════════════════════════════════════════════════════════
+// CLINIC AUTOMATION WORKFLOW ENGINE
+// Schema-only in this release — no execution logic is wired yet.
+// These tables define proactive outbound sequences (new patient follow-up,
+// missed-call response, etc.) that clinics can configure and enable.
+//
+// KEY DESIGN PRINCIPLES:
+//   • isEnabled defaults to FALSE — zero behavior activates without explicit opt-in
+//   • Every behavior is per-workflow; nothing applies globally across workflows
+//   • The workflow engine and Spruce June are independent layers
+//   • All outbound messages use the clinic's own Spruce API token
+//   • All messages appear in the unified communication timeline
+// ═══════════════════════════════════════════════════════════════════════════
+
+// ── clinic_automation_workflows ────────────────────────────────────────────
+// Defines a clinic's automated messaging workflow.
+// Examples: "New Patient Intake Follow-Up", "Missed Call Response"
+// Each workflow has a trigger type and an ordered sequence of steps.
+export const clinicAutomationWorkflows = pgTable("clinic_automation_workflows", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  // What fires this workflow. Values:
+  //   'form_submitted'      — a ClinIQ intake form submission
+  //   'missed_call'         — a missed inbound Spruce call event
+  //   'after_hours_message' — inbound patient message outside business hours
+  //   'inbound_message'     — any inbound Spruce message (filter by workflow type)
+  //   'no_patient_response' — patient hasn't replied after X hours (sub-workflow)
+  //   'manual'              — staff manually enrolls a patient
+  triggerType: varchar("trigger_type", { length: 50 }).notNull(),
+  // jsonb bag of trigger-specific conditions.
+  // form_submitted:      { formId: number }
+  // inbound_message:     { workflow: string }  — e.g. { workflow: "new_patient" }
+  // missed_call:         {}  — fires on any missed call
+  // after_hours_message: {}  — fires on any after-hours inbound message
+  // manual:              {}
+  triggerConditions: jsonb("trigger_conditions"),
+  // Stop running this workflow when staff sends a reply in Spruce (default true).
+  stopOnStaffReply: boolean("stop_on_staff_reply").notNull().default(true),
+  // Stop running this workflow when the patient sends any reply (default true).
+  stopOnPatientResponse: boolean("stop_on_patient_response").notNull().default(true),
+  // Maximum number of times a patient can be enrolled in this workflow.
+  // Prevents re-enrollment spam. 0 = unlimited.
+  maxEnrollmentsPerPatient: integer("max_enrollments_per_patient").notNull().default(1),
+  // Minimum hours that must pass before the same patient can be re-enrolled.
+  cooldownHours: integer("cooldown_hours").notNull().default(72),
+  // FALSE by default — clinic must explicitly enable each workflow.
+  isEnabled: boolean("is_enabled").notNull().default(false),
+  // Source template this workflow was cloned from (for future template library).
+  clonedFromTemplateId: integer("cloned_from_template_id"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type ClinicAutomationWorkflow = typeof clinicAutomationWorkflows.$inferSelect;
+export const insertClinicAutomationWorkflowSchema = createInsertSchema(clinicAutomationWorkflows).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertClinicAutomationWorkflow = z.infer<typeof insertClinicAutomationWorkflowSchema>;
+
+// ── clinic_workflow_steps ──────────────────────────────────────────────────
+// Ordered steps for a clinic_automation_workflow.
+// The executor processes steps in ascending stepOrder.
+// Branch steps redirect execution to yesNextStep or noNextStep.
+export const clinicWorkflowSteps = pgTable("clinic_workflow_steps", {
+  id: serial("id").primaryKey(),
+  workflowId: integer("workflow_id").notNull().references(() => clinicAutomationWorkflows.id, { onDelete: "cascade" }),
+  // 1-based ordering. Gaps are allowed (e.g. 10, 20, 30) for easy insertion.
+  stepOrder: integer("step_order").notNull(),
+  // Step type determines how config is interpreted. Values:
+  //   'send_message'      — compose and send an outbound Spruce SMS
+  //   'wait'              — pause execution for N hours or until patient responds
+  //   'branch'            — conditional: check response_received / no_response
+  //   'create_task'       — insert a provider_inbox_notification for staff
+  //   'update_lead_status'— mark the enrollment's leadStatus field
+  //   'stop'              — explicitly end the workflow enrollment
+  stepType: varchar("step_type", { length: 50 }).notNull(),
+  // jsonb config varies by stepType:
+  //
+  // send_message: {
+  //   messageTemplate: string,   — static text with {firstName} / {clinicName} tokens
+  //   useJuneToCompose: boolean  — when true, June drafts the message using playbook context
+  // }
+  // wait: {
+  //   delayHours: number,           — how long to wait before proceeding
+  //   waitForPatientResponse: boolean — if true, advance early when patient replies
+  // }
+  // branch: {
+  //   condition: 'response_received' | 'no_response',
+  //   yesNextStep: number,  — stepOrder to jump to when condition is true
+  //   noNextStep: number    — stepOrder to jump to when condition is false
+  // }
+  // create_task: {
+  //   taskTitle: string,
+  //   severity: 'normal' | 'high',
+  //   assignToRole: string  — 'any' | 'provider' | 'admin'
+  // }
+  // update_lead_status: {
+  //   status: 'active' | 'inactive' | 'manual_review' | 'converted' | 'lost'
+  // }
+  // stop: {}
+  config: jsonb("config").notNull(),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type ClinicWorkflowStep = typeof clinicWorkflowSteps.$inferSelect;
+export const insertClinicWorkflowStepSchema = createInsertSchema(clinicWorkflowSteps).omit({ id: true, createdAt: true });
+export type InsertClinicWorkflowStep = z.infer<typeof insertClinicWorkflowStepSchema>;
+
+// ── clinic_workflow_enrollments ────────────────────────────────────────────
+// One row per patient per workflow run. Tracks where the patient is in the
+// step sequence and whether the workflow has completed/stopped.
+export const clinicWorkflowEnrollments = pgTable("clinic_workflow_enrollments", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  workflowId: integer("workflow_id").notNull().references(() => clinicAutomationWorkflows.id, { onDelete: "cascade" }),
+  // Nullable — unmatched callers (no ClinIQ patient record) can still be enrolled.
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  // Phone number used to match / send messages when patientId is null.
+  patientPhone: varchar("patient_phone", { length: 30 }),
+  // The Spruce conversation key for this enrollment (used to detect responses).
+  spruceConversationKey: varchar("spruce_conversation_key", { length: 200 }),
+  // jsonb bag describing what caused enrollment.
+  // { type: 'form', formId: 5, submissionId: 123 }
+  // { type: 'missed_call', spruceMessageId: 456 }
+  // { type: 'manual', enrolledByUserId: 7 }
+  triggerSource: jsonb("trigger_source"),
+  // Current position in the step sequence (stepOrder of the NEXT step to run).
+  currentStepOrder: integer("current_step_order").notNull().default(1),
+  // Enrollment lifecycle status. Values:
+  //   'active'              — workflow is running
+  //   'paused'              — manually paused by staff
+  //   'completed'           — reached a stop step or exhausted all steps
+  //   'stopped_by_staff'    — staff replied → auto-stopped
+  //   'stopped_by_response' — patient replied → auto-stopped
+  //   'failed'              — execution error; needs manual review
+  status: varchar("status", { length: 30 }).notNull().default("active"),
+  // Lead status updated by update_lead_status steps.
+  leadStatus: varchar("lead_status", { length: 30 }),
+  // When the next step should execute (for wait steps).
+  nextActionAt: timestamp("next_action_at"),
+  enrolledAt: timestamp("enrolled_at").defaultNow().notNull(),
+  completedAt: timestamp("completed_at"),
+  // Human-readable reason for stopping. e.g. "Staff replied via Spruce"
+  stoppedReason: text("stopped_reason"),
+});
+export type ClinicWorkflowEnrollment = typeof clinicWorkflowEnrollments.$inferSelect;
+export const insertClinicWorkflowEnrollmentSchema = createInsertSchema(clinicWorkflowEnrollments).omit({ id: true, enrolledAt: true });
+export type InsertClinicWorkflowEnrollment = z.infer<typeof insertClinicWorkflowEnrollmentSchema>;
+
+// ── clinic_workflow_execution_log ──────────────────────────────────────────
+// Immutable audit trail. One row per step execution attempt.
+// Never deleted or updated — append-only.
+export const clinicWorkflowExecutionLog = pgTable("clinic_workflow_execution_log", {
+  id: serial("id").primaryKey(),
+  enrollmentId: integer("enrollment_id").notNull().references(() => clinicWorkflowEnrollments.id, { onDelete: "cascade" }),
+  stepId: integer("step_id").references(() => clinicWorkflowSteps.id, { onDelete: "set null" }),
+  stepOrder: integer("step_order").notNull(),
+  stepType: varchar("step_type", { length: 50 }).notNull(),
+  // Result of this execution attempt. Values:
+  //   'executed'  — step ran and succeeded
+  //   'skipped'   — branch condition skipped this step
+  //   'failed'    — step threw an error
+  //   'stopped'   — workflow was stopped before this step ran
+  outcome: varchar("outcome", { length: 20 }).notNull(),
+  // FK to spruce_outbound_messages if this step sent a message
+  outboundMessageId: integer("outbound_message_id").references(() => spruceOutboundMessages.id, { onDelete: "set null" }),
+  // Free-text notes: error messages, branch conditions met, etc.
+  notes: text("notes"),
+  executedAt: timestamp("executed_at").defaultNow().notNull(),
+});
+export type ClinicWorkflowExecutionLog = typeof clinicWorkflowExecutionLog.$inferSelect;
+export const insertClinicWorkflowExecutionLogSchema = createInsertSchema(clinicWorkflowExecutionLog).omit({ id: true, executedAt: true });
+export type InsertClinicWorkflowExecutionLog = z.infer<typeof insertClinicWorkflowExecutionLogSchema>;

@@ -1,0 +1,140 @@
+I like the revised architecture, but I want to clarify a few important things before approving T1.
+
+1. Workflows must be clinic-configurable and optional
+
+Not every clinic will want automated follow-up workflows running.
+
+Each automation workflow should have:
+
+* isEnabled default false
+* clinic-specific configuration
+* trigger-specific setup
+* ability to pause/disable
+* ability to clone from a default template but customize per clinic
+
+Please do not assume every clinic wants GHL-style follow-up sequences.
+
+2. The “wait 24 hours + follow-up” behavior should NOT apply globally
+
+That type of sequence should only apply to specific workflows where the clinic enables it.
+
+For my clinic, I only want that kind of follow-up sequence for:
+
+New Patient Intake Form Submitted
+
+I do NOT want that same 24-hour follow-up behavior applied automatically to:
+
+* missed calls
+* refill requests
+* clinical questions
+* after-hours messages
+* general messages
+
+Each workflow should define its own:
+
+* steps
+* waits/delays
+* stop conditions
+* follow-up count
+* retry timing
+* completion/lost/manual review logic
+
+3. New Patient Intake workflow example
+
+For Women’s Wellness, the workflow should eventually support:
+
+Trigger:
+ClinIQ new patient intake form submitted
+
+Step 1:
+Send Spruce SMS from the clinic number asking what day/time works for the initial consultation.
+
+Wait:
+24 hours for patient response.
+
+If patient responds:
+Send warm acknowledgment that the information is going to the team and create a New Patient Scheduling task.
+
+If no response:
+Send follow-up SMS.
+
+Wait:
+Another 24 hours.
+
+If still no response:
+Send one final follow-up or mark lead as manual review/inactive/lost depending on clinic settings.
+
+Important:
+This should use the clinic’s Spruce number, not a GHL number.
+
+4. Missed call workflow should be separate
+
+Missed call follow-up should NOT inherit the new patient 24-hour follow-up sequence.
+
+For missed calls, I may only want:
+
+* one immediate text after missed call
+* no repeated follow-ups
+* no 24-hour sequence unless specifically configured
+
+5. Spruce June still needs to be more human and comprehension-based
+
+I want Spruce June to read and understand what the patient is saying, not just map every message into rigid workflows.
+
+Example:
+Patient says:
+“Can y’all send in a muscle relaxer? I hurt my back.”
+
+Current response:
+“Hey there, I see that you may need assistance. I will make sure this message gets to the right person and your care team will follow up with you soon.”
+
+That is safe, but it still sounds generic.
+
+Better:
+“Hey Sarah, I’m sorry you hurt your back. I’ll get this over to the nurse so they can review it and follow up with you. If you’re having severe pain, weakness, numbness, or trouble walking, please don’t wait — seek urgent care.”
+
+This is still safe:
+
+* no diagnosis
+* no prescribing
+* no med approval
+* routes to nurse
+* gives appropriate escalation language
+
+But it sounds more human and context-aware.
+
+6. Architecture principle
+
+Please keep the workflow engine separate from June’s conversational intelligence.
+
+Workflow engine:
+
+* triggers
+* waits
+* follow-ups
+* stop conditions
+* task creation
+* lead status
+
+Spruce June:
+
+* reads message
+* understands intent/context
+* responds warmly within safety guardrails
+* asks useful follow-up questions
+* generates staff memo
+* routes memo/task appropriately
+
+7. T1 approval with clarification
+
+I’m okay with adding the 7-table T1 schema if it is additive only and does not activate behavior yet.
+
+But please make sure:
+
+* all automation workflows default OFF
+* no workflow runs unless explicitly enabled by that clinic
+* wait/follow-up behavior is defined per workflow, not globally
+* missed call workflow remains separate from new patient follow-up workflow
+* workflow engine does not make Spruce June sound robotic
+
+Please confirm these clarifications before coding T1.

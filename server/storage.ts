@@ -430,6 +430,21 @@ export interface IStorage {
   // Mark all unreplied messages in a conversation as replied (for manually dismissing from "Unreplied" view)
   markSpruceConversationReplied(clinicId: number, conversationKey: string): Promise<void>;
 
+  // ── Spruce June Playbook (T1 tables) ─────────────────────────────────────
+  // clinic_june_playbook — one row per clinic
+  getClinicJunePlaybook(clinicId: number): Promise<schema.ClinicJunePlaybook | null>;
+  upsertClinicJunePlaybook(clinicId: number, data: Partial<schema.InsertClinicJunePlaybook>): Promise<schema.ClinicJunePlaybook>;
+  // clinic_knowledge_entries — any number per clinic
+  getClinicKnowledgeEntries(clinicId: number): Promise<schema.ClinicKnowledgeEntry[]>;
+  upsertClinicKnowledgeEntry(clinicId: number, data: schema.InsertClinicKnowledgeEntry): Promise<schema.ClinicKnowledgeEntry>;
+  deleteClinicKnowledgeEntry(id: number, clinicId: number): Promise<boolean>;
+  // spruce_workflow_playbooks — one row per (clinic, workflow)
+  getSpruceWorkflowPlaybook(clinicId: number, workflow: string): Promise<schema.SpruceWorkflowPlaybook | null>;
+  getAllSpruceWorkflowPlaybooks(clinicId: number): Promise<schema.SpruceWorkflowPlaybook[]>;
+  upsertSpruceWorkflowPlaybook(clinicId: number, workflow: string, data: Partial<schema.InsertSpruceWorkflowPlaybook>): Promise<schema.SpruceWorkflowPlaybook>;
+  // After-hours notice dedup — stamps afterHoursNoticeSentAt on conv state
+  setAfterHoursNoticeSentAt(clinicId: number, conversationKey: string, sentAt: Date): Promise<void>;
+
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
   upsertClinicalBlockDefaults(clinicId: number, providerId: number, data: schema.UpdateClinicalBlockDefaults): Promise<schema.ClinicalBlockDefaultsRow>;
@@ -5772,6 +5787,111 @@ export interface SpruceConversationMessageRow {
           eq(schema.spruceMessages.fromPhone, conversationKey),
           eq(schema.spruceMessages.toPhone, conversationKey),
         ),
+      ),
+    );
+};
+
+// ── Spruce June Playbook implementations ─────────────────────────────────
+
+(DbStorage.prototype as any).getClinicJunePlaybook = async function(clinicId: number): Promise<schema.ClinicJunePlaybook | null> {
+  const [row] = await this.db
+    .select()
+    .from(schema.clinicJunePlaybook)
+    .where(eq(schema.clinicJunePlaybook.clinicId, clinicId))
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).upsertClinicJunePlaybook = async function(clinicId: number, data: Partial<schema.InsertClinicJunePlaybook>): Promise<schema.ClinicJunePlaybook> {
+  const payload = { ...data, clinicId, updatedAt: new Date() };
+  const [row] = await this.db
+    .insert(schema.clinicJunePlaybook)
+    .values(payload)
+    .onConflictDoUpdate({
+      target: schema.clinicJunePlaybook.clinicId,
+      set: { ...data, updatedAt: new Date() },
+    })
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).getClinicKnowledgeEntries = async function(clinicId: number): Promise<schema.ClinicKnowledgeEntry[]> {
+  return this.db
+    .select()
+    .from(schema.clinicKnowledgeEntries)
+    .where(eq(schema.clinicKnowledgeEntries.clinicId, clinicId))
+    .orderBy(asc(schema.clinicKnowledgeEntries.sortOrder), asc(schema.clinicKnowledgeEntries.id));
+};
+
+(DbStorage.prototype as any).upsertClinicKnowledgeEntry = async function(clinicId: number, data: schema.InsertClinicKnowledgeEntry): Promise<schema.ClinicKnowledgeEntry> {
+  const payload = { ...data, clinicId, updatedAt: new Date() };
+  const [row] = await this.db
+    .insert(schema.clinicKnowledgeEntries)
+    .values(payload)
+    .onConflictDoUpdate({
+      target: [schema.clinicKnowledgeEntries.clinicId, schema.clinicKnowledgeEntries.topicKey],
+      set: { ...data, updatedAt: new Date() },
+    })
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).deleteClinicKnowledgeEntry = async function(id: number, clinicId: number): Promise<boolean> {
+  const result = await this.db
+    .delete(schema.clinicKnowledgeEntries)
+    .where(
+      and(
+        eq(schema.clinicKnowledgeEntries.id, id),
+        eq(schema.clinicKnowledgeEntries.clinicId, clinicId),
+      ),
+    )
+    .returning({ id: schema.clinicKnowledgeEntries.id });
+  return result.length > 0;
+};
+
+(DbStorage.prototype as any).getSpruceWorkflowPlaybook = async function(clinicId: number, workflow: string): Promise<schema.SpruceWorkflowPlaybook | null> {
+  const [row] = await this.db
+    .select()
+    .from(schema.spruceWorkflowPlaybooks)
+    .where(
+      and(
+        eq(schema.spruceWorkflowPlaybooks.clinicId, clinicId),
+        eq(schema.spruceWorkflowPlaybooks.workflow, workflow),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).getAllSpruceWorkflowPlaybooks = async function(clinicId: number): Promise<schema.SpruceWorkflowPlaybook[]> {
+  return this.db
+    .select()
+    .from(schema.spruceWorkflowPlaybooks)
+    .where(eq(schema.spruceWorkflowPlaybooks.clinicId, clinicId))
+    .orderBy(asc(schema.spruceWorkflowPlaybooks.workflow));
+};
+
+(DbStorage.prototype as any).upsertSpruceWorkflowPlaybook = async function(clinicId: number, workflow: string, data: Partial<schema.InsertSpruceWorkflowPlaybook>): Promise<schema.SpruceWorkflowPlaybook> {
+  const payload = { ...data, clinicId, workflow, updatedAt: new Date() };
+  const [row] = await this.db
+    .insert(schema.spruceWorkflowPlaybooks)
+    .values(payload)
+    .onConflictDoUpdate({
+      target: [schema.spruceWorkflowPlaybooks.clinicId, schema.spruceWorkflowPlaybooks.workflow],
+      set: { ...data, updatedAt: new Date() },
+    })
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).setAfterHoursNoticeSentAt = async function(clinicId: number, conversationKey: string, sentAt: Date): Promise<void> {
+  await this.db
+    .update(schema.spruceConversationState)
+    .set({ afterHoursNoticeSentAt: sentAt })
+    .where(
+      and(
+        eq(schema.spruceConversationState.clinicId, clinicId),
+        eq(schema.spruceConversationState.conversationKey, conversationKey),
       ),
     );
 };

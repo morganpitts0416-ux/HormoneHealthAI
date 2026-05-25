@@ -18133,6 +18133,228 @@ IMPORTANT:
   });
 
 
+  // ── Spruce June Playbook CRUD ──────────────────────────────────────────
+  //
+  // GET  /api/clinic/june-playbook               — read clinic playbook (or null)
+  // PUT  /api/clinic/june-playbook               — upsert clinic playbook
+  // GET  /api/clinic/knowledge-entries           — list all knowledge entries
+  // POST /api/clinic/knowledge-entries           — create entry (upsert by topicKey)
+  // PUT  /api/clinic/knowledge-entries/:id       — update entry by id
+  // DELETE /api/clinic/knowledge-entries/:id     — delete entry by id
+  // GET  /api/spruce/settings/workflow-playbooks — list all workflow playbooks
+  // PUT  /api/spruce/settings/workflow-playbooks/:workflow — upsert workflow playbook
+
+  const PLAYBOOK_FLAG_PHRASES = [
+    "diagnose", "prescribe", "prescription", "increase dose", "decrease dose",
+    "change your medication", "recommend medication", "test results mean",
+    "you have ", "you are diagnosed", "you should take",
+  ];
+  function flagPlaybookContent(text: string): string[] {
+    const lower = text.toLowerCase();
+    return PLAYBOOK_FLAG_PHRASES.filter(phrase => lower.includes(phrase));
+  }
+
+  app.get("/api/clinic/june-playbook", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const row = await storage.getClinicJunePlaybook(clinicId);
+      res.json(row ?? null);
+    } catch (err) {
+      console.error("[june-playbook] GET error:", err);
+      res.status(500).json({ error: "Failed to load playbook" });
+    }
+  });
+
+  app.put("/api/clinic/june-playbook", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+
+      const ALLOWED = [
+        "playbookEnabled", "clinicDisplayName", "timezone", "businessHours",
+        "holidayClosures", "afterHoursEnabled", "afterHoursInstructions",
+        "emergencyLanguage", "voiceStyle", "additionalToneGuidance",
+        "expectedResponseTime", "generalHandoffLanguage", "providerNamingPreference",
+      ];
+      const data: Record<string, any> = {};
+      for (const key of ALLOWED) {
+        if (Object.prototype.hasOwnProperty.call(req.body, key)) {
+          data[key] = req.body[key];
+        }
+      }
+
+      const warnings: string[] = [];
+      for (const field of ["afterHoursInstructions", "additionalToneGuidance", "generalHandoffLanguage"]) {
+        if (data[field] && typeof data[field] === "string") {
+          const flags = flagPlaybookContent(data[field]);
+          warnings.push(...flags.map(f => `"${field}" contains flagged phrase: "${f}"`));
+        }
+      }
+
+      const voiceStyleValues = ["warm_boutique", "professional_clinical", "concierge", "direct_efficient", "family_practice"];
+      if (data.voiceStyle !== undefined && data.voiceStyle !== null && !voiceStyleValues.includes(data.voiceStyle)) {
+        return res.status(400).json({ error: `Invalid voiceStyle. Must be one of: ${voiceStyleValues.join(", ")}` });
+      }
+
+      const row = await storage.upsertClinicJunePlaybook(clinicId, data);
+      res.json({ ...row, warnings: warnings.length > 0 ? warnings : undefined });
+    } catch (err) {
+      console.error("[june-playbook] PUT error:", err);
+      res.status(500).json({ error: "Failed to save playbook" });
+    }
+  });
+
+  app.get("/api/clinic/knowledge-entries", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const entries = await storage.getClinicKnowledgeEntries(clinicId);
+      res.json(entries);
+    } catch (err) {
+      console.error("[knowledge-entries] GET error:", err);
+      res.status(500).json({ error: "Failed to load knowledge entries" });
+    }
+  });
+
+  app.post("/api/clinic/knowledge-entries", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const { topicKey, topicLabel, content, link, linkLabel, isEnabled, sortOrder } = req.body;
+      if (!topicKey || typeof topicKey !== "string" || !topicKey.trim()) {
+        return res.status(400).json({ error: "topicKey is required" });
+      }
+      if (!topicLabel || typeof topicLabel !== "string" || !topicLabel.trim()) {
+        return res.status(400).json({ error: "topicLabel is required" });
+      }
+      if (!content || typeof content !== "string" || !content.trim()) {
+        return res.status(400).json({ error: "content is required" });
+      }
+      if (content.length > 2000) {
+        return res.status(400).json({ error: "content must be 2000 characters or fewer" });
+      }
+      const flags = flagPlaybookContent(content);
+      const warnings = flags.map(f => `content contains flagged phrase: "${f}"`);
+
+      const entry = await storage.upsertClinicKnowledgeEntry(clinicId, {
+        clinicId,
+        topicKey: topicKey.trim().toLowerCase().replace(/\s+/g, "_"),
+        topicLabel: topicLabel.trim(),
+        content: content.trim(),
+        link: link || null,
+        linkLabel: linkLabel || null,
+        isEnabled: isEnabled !== undefined ? Boolean(isEnabled) : true,
+        sortOrder: typeof sortOrder === "number" ? sortOrder : 0,
+      });
+      res.status(201).json({ ...entry, warnings: warnings.length > 0 ? warnings : undefined });
+    } catch (err) {
+      console.error("[knowledge-entries] POST error:", err);
+      res.status(500).json({ error: "Failed to create knowledge entry" });
+    }
+  });
+
+  app.put("/api/clinic/knowledge-entries/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+
+      const existing = (await storage.getClinicKnowledgeEntries(clinicId)).find(e => e.id === id);
+      if (!existing) return res.status(404).json({ error: "Knowledge entry not found" });
+
+      const { topicLabel, content, link, linkLabel, isEnabled, sortOrder } = req.body;
+      const update: any = { clinicId, topicKey: existing.topicKey, topicLabel: existing.topicLabel, content: existing.content };
+      if (topicLabel !== undefined) update.topicLabel = topicLabel;
+      if (content !== undefined) {
+        if (content.length > 2000) return res.status(400).json({ error: "content must be 2000 characters or fewer" });
+        update.content = content;
+      }
+      if (link !== undefined) update.link = link;
+      if (linkLabel !== undefined) update.linkLabel = linkLabel;
+      if (isEnabled !== undefined) update.isEnabled = Boolean(isEnabled);
+      if (sortOrder !== undefined) update.sortOrder = Number(sortOrder);
+
+      const flags = flagPlaybookContent(update.content ?? "");
+      const warnings = flags.map(f => `content contains flagged phrase: "${f}"`);
+
+      const updated = await storage.upsertClinicKnowledgeEntry(clinicId, update);
+      res.json({ ...updated, warnings: warnings.length > 0 ? warnings : undefined });
+    } catch (err) {
+      console.error("[knowledge-entries] PUT error:", err);
+      res.status(500).json({ error: "Failed to update knowledge entry" });
+    }
+  });
+
+  app.delete("/api/clinic/knowledge-entries/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const id = parseInt(req.params.id, 10);
+      if (!Number.isFinite(id)) return res.status(400).json({ error: "Invalid id" });
+      const deleted = await storage.deleteClinicKnowledgeEntry(id, clinicId);
+      if (!deleted) return res.status(404).json({ error: "Knowledge entry not found" });
+      res.json({ deleted: true });
+    } catch (err) {
+      console.error("[knowledge-entries] DELETE error:", err);
+      res.status(500).json({ error: "Failed to delete knowledge entry" });
+    }
+  });
+
+  app.get("/api/spruce/settings/workflow-playbooks", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const rows = await storage.getAllSpruceWorkflowPlaybooks(clinicId);
+      res.json(rows);
+    } catch (err) {
+      console.error("[workflow-playbooks] GET error:", err);
+      res.status(500).json({ error: "Failed to load workflow playbooks" });
+    }
+  });
+
+  app.put("/api/spruce/settings/workflow-playbooks/:workflow", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const workflow = req.params.workflow;
+      const VALID_WORKFLOWS = [
+        "medication_refill", "lab_question", "appointment", "intake_form",
+        "new_patient", "billing", "urgent_safety", "unclassified",
+      ];
+      if (!VALID_WORKFLOWS.includes(workflow)) {
+        return res.status(400).json({ error: `Unknown workflow: ${workflow}` });
+      }
+      const { isEnabled, playbookInstructions, customLinks, expectedNextStep, handoffNotes } = req.body;
+      const data: Record<string, any> = {};
+      if (isEnabled !== undefined) data.isEnabled = Boolean(isEnabled);
+      if (playbookInstructions !== undefined) {
+        if (typeof playbookInstructions === "string" && playbookInstructions.length > 1000) {
+          return res.status(400).json({ error: "playbookInstructions must be 1000 characters or fewer" });
+        }
+        data.playbookInstructions = playbookInstructions;
+      }
+      if (customLinks !== undefined) data.customLinks = customLinks;
+      if (expectedNextStep !== undefined) data.expectedNextStep = expectedNextStep;
+      if (handoffNotes !== undefined) data.handoffNotes = handoffNotes;
+
+      const warnings: string[] = [];
+      for (const field of ["playbookInstructions", "handoffNotes"]) {
+        if (data[field] && typeof data[field] === "string") {
+          const flags = flagPlaybookContent(data[field]);
+          warnings.push(...flags.map(f => `"${field}" contains flagged phrase: "${f}"`));
+        }
+      }
+
+      const row = await storage.upsertSpruceWorkflowPlaybook(clinicId, workflow, data);
+      res.json({ ...row, warnings: warnings.length > 0 ? warnings : undefined });
+    } catch (err) {
+      console.error("[workflow-playbooks] PUT error:", err);
+      res.status(500).json({ error: "Failed to save workflow playbook" });
+    }
+  });
+
   // ── Admin: Spruce routing rule CRUD ──────────────────────────────────
   //
   // GET  /api/admin/spruce-routing          — list rules for the current clinic
