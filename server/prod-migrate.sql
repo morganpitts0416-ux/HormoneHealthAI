@@ -1501,3 +1501,61 @@ CREATE TABLE IF NOT EXISTS clinic_workflow_execution_log (
 ALTER TABLE spruce_conversation_state
   ADD COLUMN IF NOT EXISTS after_hours_notice_sent_at TIMESTAMP,
   ADD COLUMN IF NOT EXISTS active_workflow_enrollment_id INTEGER;
+
+-- ── Form Workflow Builder (Layer 1) ─────────────────────────────────────────
+-- Schema-only. No execution engine is wired in Layer 1.
+-- All four tables are idempotent (IF NOT EXISTS / ADD COLUMN IF NOT EXISTS).
+
+-- form_workflows: one row per clinic-defined workflow.
+-- enabled defaults FALSE — workflows are off until explicitly turned on.
+CREATE TABLE IF NOT EXISTS form_workflows (
+  id               SERIAL PRIMARY KEY,
+  clinic_id        INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  name             VARCHAR(200) NOT NULL,
+  description      TEXT,
+  trigger_form_id  INTEGER REFERENCES intake_forms(id) ON DELETE SET NULL,
+  enabled          BOOLEAN NOT NULL DEFAULT FALSE,
+  stop_conditions  JSONB NOT NULL DEFAULT '[]',
+  created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at       TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- form_workflow_steps: ordered steps within a workflow.
+-- config is pure JSONB — shape depends on step_type.
+-- if_then_branch stores trueBranch/falseBranch inline as JSONB arrays.
+CREATE TABLE IF NOT EXISTS form_workflow_steps (
+  id          SERIAL PRIMARY KEY,
+  workflow_id INTEGER NOT NULL REFERENCES form_workflows(id) ON DELETE CASCADE,
+  position    INTEGER NOT NULL DEFAULT 0,
+  step_type   VARCHAR(40) NOT NULL,
+  config      JSONB NOT NULL DEFAULT '{}',
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- form_workflow_runs: stub table for Layer 2 execution engine.
+-- Layer 1 creates the schema; Layer 2 writes rows. No rows written in Layer 1.
+CREATE TABLE IF NOT EXISTS form_workflow_runs (
+  id                    SERIAL PRIMARY KEY,
+  workflow_id           INTEGER NOT NULL REFERENCES form_workflows(id) ON DELETE CASCADE,
+  clinic_id             INTEGER NOT NULL REFERENCES clinics(id) ON DELETE CASCADE,
+  submission_id         INTEGER REFERENCES form_submissions(id) ON DELETE SET NULL,
+  status                VARCHAR(20) NOT NULL DEFAULT 'pending',
+  current_step_position INTEGER NOT NULL DEFAULT 0,
+  stopped_reason        TEXT,
+  started_at            TIMESTAMP,
+  completed_at          TIMESTAMP,
+  created_at            TIMESTAMP NOT NULL DEFAULT NOW()
+);
+
+-- form_workflow_step_states: per-step execution state within a run (stub for Layer 2).
+CREATE TABLE IF NOT EXISTS form_workflow_step_states (
+  id          SERIAL PRIMARY KEY,
+  run_id      INTEGER NOT NULL REFERENCES form_workflow_runs(id) ON DELETE CASCADE,
+  step_position INTEGER NOT NULL,
+  step_type   VARCHAR(40) NOT NULL,
+  status      VARCHAR(20) NOT NULL DEFAULT 'pending',
+  result_json JSONB,
+  executed_at TIMESTAMP,
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
