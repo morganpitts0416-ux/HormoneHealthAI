@@ -1167,9 +1167,8 @@ export default function SpruceInboxPage() {
             </div>
           )}
 
-          {/* ── June task card (shown when a workflow request exists) ──────── */}
-          {workflowRequest && (() => {
-            const isComplete = workflowRequest.status === "complete";
+          {/* ── June task card (pending only — disappears when marked complete) ── */}
+          {workflowRequest && workflowRequest.status !== "complete" && (() => {
             const workflowLabels: Record<string, string> = {
               medication_refill: "Medication Refill",
               intake_form: "Intake Form",
@@ -1182,21 +1181,17 @@ export default function SpruceInboxPage() {
             };
             const label = workflowLabels[workflowRequest.workflow] ?? workflowRequest.workflow;
             return (
-              <div className={`mx-4 mt-2 rounded-md border px-3 py-2.5 ${isComplete ? "bg-[#f0f7f2] border-[#b6d9c3]" : "bg-[#fffbeb] border-[#f6d860]"}`}>
+              <div className="mx-4 mt-2 rounded-md border px-3 py-2.5 bg-[#fffbeb] border-[#f6d860]">
                 <div className="flex items-start gap-2">
-                  <ClipboardList className={`w-3.5 h-3.5 mt-0.5 flex-shrink-0 ${isComplete ? "text-[#2e7d52]" : "text-[#92400e]"}`} />
+                  <ClipboardList className="w-3.5 h-3.5 mt-0.5 flex-shrink-0 text-[#92400e]" />
                   <div className="flex-1 min-w-0">
                     <div className="flex items-center gap-2 flex-wrap">
-                      <span className={`text-[10px] font-semibold uppercase tracking-wide ${isComplete ? "text-[#2e7d52]" : "text-[#92400e]"}`}>
+                      <span className="text-[10px] font-semibold uppercase tracking-wide text-[#92400e]">
                         June Task · {label}
                       </span>
-                      <span className={`inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full ${
-                        isComplete
-                          ? "bg-[#dcf4e7] text-[#1a6b3c]"
-                          : "bg-[#fef3c7] text-[#92400e]"
-                      }`}>
-                        {isComplete ? <CheckCircle2 className="w-2.5 h-2.5" /> : <AlertTriangle className="w-2.5 h-2.5" />}
-                        {isComplete ? "Complete" : "Pending"}
+                      <span className="inline-flex items-center gap-1 text-[10px] font-medium px-1.5 py-0.5 rounded-full bg-[#fef3c7] text-[#92400e]">
+                        <AlertTriangle className="w-2.5 h-2.5" />
+                        Pending
                       </span>
                     </div>
                     {(workflowRequest.juneMemoText || workflowRequest.requestSummary) && (
@@ -1205,23 +1200,21 @@ export default function SpruceInboxPage() {
                       </p>
                     )}
                   </div>
-                  {!isComplete && (
-                    <Button
-                      size="sm"
-                      disabled={markWorkflowCompleteMutation.isPending}
-                      onClick={() => markWorkflowCompleteMutation.mutate(workflowRequest.id)}
-                      data-testid="button-mark-task-complete"
-                      className="flex-shrink-0 text-[11px]"
-                      style={{ backgroundColor: "#2e7d52", color: "#fff" }}
-                    >
-                      {markWorkflowCompleteMutation.isPending ? (
-                        <RefreshCw className="w-3 h-3 animate-spin" />
-                      ) : (
-                        <CheckCircle2 className="w-3 h-3 mr-1" />
-                      )}
-                      {markWorkflowCompleteMutation.isPending ? "Saving…" : "Mark complete"}
-                    </Button>
-                  )}
+                  <Button
+                    size="sm"
+                    disabled={markWorkflowCompleteMutation.isPending}
+                    onClick={() => markWorkflowCompleteMutation.mutate(workflowRequest.id)}
+                    data-testid="button-mark-task-complete"
+                    className="flex-shrink-0 text-[11px]"
+                    style={{ backgroundColor: "#2e7d52", color: "#fff" }}
+                  >
+                    {markWorkflowCompleteMutation.isPending ? (
+                      <RefreshCw className="w-3 h-3 animate-spin" />
+                    ) : (
+                      <CheckCircle2 className="w-3 h-3 mr-1" />
+                    )}
+                    {markWorkflowCompleteMutation.isPending ? "Saving…" : "Mark complete"}
+                  </Button>
                 </div>
               </div>
             );
