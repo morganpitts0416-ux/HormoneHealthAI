@@ -18711,6 +18711,46 @@ IMPORTANT:
         obj?.sender?.type ?? obj?.author?.type ?? ""
       ).toLowerCase();
 
+      // ── Call event detection ───────────────────────────────────────────
+      // Spruce sends phone call events as conversationItem.created with an
+      // obj.type of "phone_call" (or similar).  We must distinguish:
+      //   • Missed call  — June SHOULD respond (follow up with the patient)
+      //   • Answered call — June must NOT respond (the call was handled live)
+      //
+      // Detection uses a layered approach so we catch both legacy and current
+      // Spruce payload shapes:
+      //   obj.callStatus  "missed" | "answered" | "no_answer" | "busy" | ...
+      //   obj.type        "phone_call" (present on most call events)
+      //   obj.answered    bool (some payload shapes)
+      //   msgBody patterns  "Missed call", "Incoming call", "Call ended", etc.
+      const callStatusField: string = (obj?.callStatus ?? "").toLowerCase();
+      const objTypeField: string    = (obj?.type ?? "").toLowerCase();
+      const isCallEvent: boolean =
+        objTypeField === "phone_call" ||
+        objTypeField === "call" ||
+        callStatusField !== "" ||
+        /\bmissed\s+call\b|\bincoming\s+call\b|\bcall\s+ended\b|\bcall\s+duration\b|\banswered\s+call\b/i.test(msgBody);
+
+      // A missed call is one where nobody picked up — June should reach out.
+      const isMissedCall: boolean =
+        isCallEvent && (
+          callStatusField === "missed" ||
+          callStatusField === "no_answer" ||
+          callStatusField === "busy" ||
+          obj?.answered === false ||
+          (/\bmissed\s+call\b/i.test(msgBody) && !/\banswered\b/i.test(msgBody))
+        );
+
+      // An answered call is one where the patient spoke with someone — June
+      // must NOT follow up since the conversation was handled live.
+      const isAnsweredCall: boolean =
+        isCallEvent && !isMissedCall;
+
+      console.log(
+        `${tag} call detection: isCallEvent=${isCallEvent} isMissedCall=${isMissedCall} ` +
+        `isAnsweredCall=${isAnsweredCall} callStatus="${callStatusField}" objType="${objTypeField}"`,
+      );
+
       // System event detection — evaluated BEFORE staff/patient split so that
       // automation events attributed to a staff user are not mis-classified as
       // real staff outbound messages triggering staff_takeover.
@@ -18722,6 +18762,10 @@ IMPORTANT:
         /archived and unassigned this conversation/i.test(msgBody) ||
         /assigned this conversation to\b/i.test(msgBody) ||
         /\bunassigned this conversation\b/i.test(msgBody) ||
+        // Answered calls — call was handled live, June must stay silent.
+        // Missed calls are NOT system events; they fall through to inbound_patient
+        // so June can follow up.
+        isAnsweredCall ||
         // conversation-level events with no body are state transitions, not messages
         (eventType.startsWith("conversation.") &&
           !eventType.startsWith("conversationItem.") &&
@@ -18877,7 +18921,7 @@ IMPORTANT:
         // Keyword-pattern classification only — no outbound AI replies yet.
         // Spruce auto-reply requires spruceAutoReplyEnabled=true AND a full implementation.
         // This is completely separate from the ClinIQ June clinical AI assistant.
-        const classification = classifySpruceMessage(msgBody);
+        const classification = classifySpruceMessage(msgBody, isMissedCall);
         console.log(
           `${tag} classified as workflow="${classification.workflow}" ` +
           `confidence="${classification.confidence}" direction="${messageDirection}"`,
@@ -19037,9 +19081,13 @@ IMPORTANT:
   // Pure keyword-pattern classification — no LLM, no outbound side-effects.
   // Returns a workflow name + confidence level so callers can decide whether
   // to create a workflow request or silently ignore the message.
-  function classifySpruceMessage(text: string): { workflow: string; confidence: string } {
+  function classifySpruceMessage(text: string, isMissedCallEvent?: boolean): { workflow: string; confidence: string } {
+    // Missed call events are classified directly — no text body needed.
+    if (isMissedCallEvent) return { workflow: "missed_call", confidence: "high" };
     const t = (text ?? "").toLowerCase();
     if (!t.trim()) return { workflow: "unclassified", confidence: "low" };
+    // Text-based missed call detection as fallback (e.g. "Missed call" in body)
+    if (/\bmissed\s+call\b/i.test(t)) return { workflow: "missed_call", confidence: "high" };
 
     // Urgent safety — always checked first regardless of other matches.
     if (/chest\s*pain|suicid|heart\s*attack|stroke|emergency|911|bleeding severely|severe\s*pain/.test(t)) {
