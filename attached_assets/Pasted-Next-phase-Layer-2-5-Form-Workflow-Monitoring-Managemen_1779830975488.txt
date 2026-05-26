@@ -1,0 +1,180 @@
+Next phase: Layer 2.5 — Form Workflow Monitoring & Management
+
+Important:
+Do NOT expand the workflow engine to new trigger types yet.
+
+Do NOT build:
+
+* missed-call workflows
+* after-hours workflows
+* appointment/no-show workflows
+* lab-result workflows
+* marketing campaign workflows
+* new automation behavior beyond form-submission workflows already built
+
+Layer 2.5 should focus only on visibility, monitoring, logs, and safe manual controls for the existing Form Workflow Execution Engine.
+
+Goal:
+Before we add more workflow types, I need staff/admins to be able to answer:
+
+* Did this workflow fire?
+* Which patient/form submission triggered it?
+* Where is the patient in the workflow?
+* What message was sent?
+* Is the workflow waiting?
+* Why did it stop?
+* Did it fail?
+* Can I manually stop/pause/resume it safely?
+
+Please build Layer 2.5 with the following scope:
+
+1. Workflow Run Viewer
+
+Inside Account → Form Workflows, each workflow should show a Runs/Activity area.
+
+For each workflow, show:
+
+* Active runs
+* Waiting runs
+* Completed runs
+* Stopped runs
+* Failed runs
+* Drafts awaiting approval if applicable
+
+Each run should show:
+
+* patient/contact name if available
+* patient phone/email if available
+* triggering form
+* submission timestamp
+* current step
+* current status
+* next action due time if waiting
+* stopped reason if stopped
+* error summary if failed
+
+2. Individual Run Detail View
+
+Clicking a run should show a chronological execution timeline.
+
+Examples:
+
+* Workflow enrolled
+* Form submitted
+* Initial Spruce SMS sent
+* Internal note created
+* Staff notified
+* Wait scheduled for 24 hours
+* Patient replied
+* Branch chosen: response_received
+* Task created
+* Workflow stopped/completed
+* Error occurred / retry scheduled
+
+3. Step Logs
+
+Use the existing workflow execution log table.
+
+Each step/action should display:
+
+* timestamp
+* step type
+* status: completed / waiting / skipped / failed / retried
+* message text or summary when applicable
+* delivery channel: Spruce / Portal / internal
+* error details when applicable
+* retry count if applicable
+
+4. Manual Controls
+
+Add safe manual controls for active/waiting runs:
+
+* Stop workflow
+* Pause workflow
+* Resume workflow
+* Retry failed step
+* Skip current step
+* Send pending June draft after staff review if applicable
+
+Controls should be permissioned/admin or owner-level where appropriate.
+
+Every manual action should be logged in the execution log.
+
+5. Safety Rules for Manual Controls
+
+Manual controls must not bypass safety or audit requirements.
+
+* Stopping should not delete history.
+* Skipping should log who skipped and why.
+* Retrying should not double-send unless intentionally confirmed.
+* Sending a draft should still write to the unified timeline and outbound audit log.
+* Any outbound Spruce message must still use the clinic-scoped encrypted Spruce API token.
+* Staff takeover / ai_muted rules should still be respected unless the user intentionally resumes/restarts.
+
+6. Workflow Activity Summary
+
+For each workflow, show simple operational counts:
+
+* total runs
+* active
+* waiting
+* completed
+* failed
+* stopped
+* response received
+* no response
+
+Basic analytics only for now. No complex reporting yet.
+
+7. Patient Chart Visibility
+
+In the patient chart communication timeline or workflow area, staff should be able to see if the patient is currently enrolled in an active form workflow.
+
+Example:
+“Active workflow: New Patient Intake Follow-Up — waiting for patient response until tomorrow at 10:00 AM.”
+
+Include a link to open the workflow run detail.
+
+8. Dashboard Visibility
+
+If a workflow creates a task/memo, it should continue to appear in the appropriate dashboard queue.
+
+Do not duplicate full workflow runs on the dashboard unless action is needed.
+
+Dashboard = actionable work.
+Workflow Run Viewer = workflow monitoring/history.
+
+9. Deployment Safety
+
+Please keep this isolated to:
+
+* Form Workflow Builder
+* Form Workflow Execution Engine
+* Workflow run monitoring/logs/manual controls
+
+Do NOT modify:
+
+* existing ClinIQ June
+* Ask June
+* SOAP generation
+* transcription
+* lab evaluation
+* evidence overlay
+* auth
+* billing
+* sessions
+* Spruce June prompt behavior
+* Spruce webhook behavior
+* unrelated core ClinIQ systems
+
+10. Before coding
+
+Please first propose the implementation plan for Layer 2.5, including:
+
+* files to change
+* whether any schema changes are needed
+* route changes
+* UI changes
+* how manual controls are permissioned
+* how duplicate sending will be prevented
+* what will remain future/not built yet
