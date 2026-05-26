@@ -1,11 +1,15 @@
 /**
- * workflow-engine.ts — Layer 2: Form Workflow Execution Engine
+ * workflow-engine.ts — Layer 2 + 2.5: Form Workflow Execution Engine
  *
  * Exports:
  *   enrollWorkflow(storage, opts)     — called fire-and-forget from both form submit endpoints
  *   processWaitingSteps(storage)      — called every 60s by the background runner in routes.ts
  *   notifyPatientResponse(storage, …) — called from Spruce inbound webhook + portal message creation
  *   notifyStaffReply(storage, …)      — called from staff reply routes
+ *   pauseRun(storage, runId, actorId, note?)   — Layer 2.5 manual control
+ *   resumeRun(storage, runId, actorId, note?)  — Layer 2.5 manual control
+ *   retryStep(storage, runId, stepPos, actorId, note?)  — Layer 2.5 manual control
+ *   skipStep(storage, runId, stepPos, actorId, reason, note?)  — Layer 2.5 manual control
  *
  * Safety guarantees:
  *   • Workflows default OFF — enrollWorkflow checks enabled=true before doing anything
@@ -72,6 +76,24 @@ function makeOpenAI(): OpenAI {
       : "http://localhost:1106/modelfarm/openai",
     apiKey: process.env.OPENAI_API_KEY ?? "modelfarm",
   });
+}
+
+// ── Milestone helper ───────────────────────────────────────────────────────
+
+async function logMilestone(
+  storage: IStorage,
+  run: { patientId: number | null; clinicId: number },
+  context: RunContext,
+  content: string,
+): Promise<void> {
+  if (!run.patientId) return;
+  const clinicianId = context.clinicianId;
+  if (!clinicianId || clinicianId <= 0) return;
+  try {
+    await (storage as any).logWorkflowMilestone(run.patientId, clinicianId, content);
+  } catch (err) {
+    console.warn("[workflow-engine] logMilestone failed (non-fatal):", err);
+  }
 }
 
 // ── Enrollment ─────────────────────────────────────────────────────────────
@@ -143,7 +165,10 @@ export async function enrollWorkflow(
 
   console.log(`[workflow-engine] enrolled: workflow=${workflow.id} run=${run.id} patient=${patientId ?? "unknown"} form=${formId}`);
 
-  // 5. Execute synchronously from step 0
+  // 5. Write enrollment milestone to communication timeline
+  await logMilestone(storage, run, contextJson, `Workflow started: "${workflow.name}" triggered by ${contextJson.formName ?? "form submission"}`);
+
+  // 6. Execute synchronously from step 0
   await executeRun(storage, run.id);
 }
 
@@ -201,6 +226,7 @@ async function executeRun(storage: IStorage, runId: number, fromPosition?: numbe
           completedAt: new Date(),
         });
         console.log(`[workflow-engine] run=${runId} STOPPED at step=${i} reason=${result.log?.reason}`);
+        await logMilestone(storage, run, context, `Workflow stopped at step ${i + 1}: ${String(result.log?.reason ?? "stop_workflow")}`);
         return;
       }
 
@@ -247,6 +273,7 @@ async function executeRun(storage: IStorage, runId: number, fromPosition?: numbe
     completedAt: new Date(),
   });
   console.log(`[workflow-engine] run=${runId} COMPLETED`);
+  await logMilestone(storage, run, context, "Workflow completed: all steps finished successfully");
 }
 
 // ── Step dispatcher ────────────────────────────────────────────────────────
@@ -643,6 +670,8 @@ async function executeSendSpruceSms(
     console.warn("[workflow-engine] Spruce API delivery error (non-fatal):", err?.message);
   }
 
+  await logMilestone(storage, run, context, `Workflow: follow-up SMS sent to ${context.patientName ?? "patient"} via Spruce`);
+
   return {
     log: {
       outcome: "sent",
@@ -709,6 +738,8 @@ async function executeSendPortalMessage(
     externalDeliveryId: null,
     externalMessageId: `workflow_step:${run.id}:${stepPosition}`,
   } as any);
+
+  await logMilestone(storage, run, context, `Workflow: portal message sent to ${context.patientName ?? "patient"}`);
 
   return {
     log: {
@@ -890,6 +921,92 @@ export async function notifyPatientResponse(
       console.warn(`[workflow-engine] notifyPatientResponse run=${run.id} error:`, err?.message);
     }
   }
+}
+
+// ── Layer 2.5: Manual control exports ─────────────────────────────────────
+
+export async function pauseRun(
+  storage: IStorage,
+  runId: number,
+  actorId: number | null,
+  note?: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const run = await (storage as any).getWorkflowRun(runId);
+  if (!run) return { ok: false, message: "Run not found" };
+  if (!["running", "waiting"].includes(run.status)) {
+    return { ok: false, message: `Run is ${run.status} — cannot pause` };
+  }
+  const context = (run.contextJson ?? {}) as RunContext;
+  await (storage as any).pauseWorkflowRun(runId);
+  await logMilestone(storage, run, context, `Workflow paused by staff${note ? `: ${note}` : ""}`);
+  return { ok: true };
+}
+
+export async function resumeRun(
+  storage: IStorage,
+  runId: number,
+  actorId: number | null,
+  note?: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const run = await (storage as any).getWorkflowRun(runId);
+  if (!run) return { ok: false, message: "Run not found" };
+  if (run.status !== "paused") {
+    return { ok: false, message: `Run is ${run.status} — not paused` };
+  }
+  const context = (run.contextJson ?? {}) as RunContext;
+  await (storage as any).resumeWorkflowRun(runId);
+  await logMilestone(storage, run, context, `Workflow resumed by staff${note ? `: ${note}` : ""}`);
+  // Re-execute from current position
+  executeRun(storage, runId).catch(e =>
+    console.error(`[workflow-engine] resumeRun background exec error run=${runId}:`, e),
+  );
+  return { ok: true };
+}
+
+export async function retryStep(
+  storage: IStorage,
+  runId: number,
+  stepPos: number,
+  actorId: number | null,
+  note?: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const run = await (storage as any).getWorkflowRun(runId);
+  if (!run) return { ok: false, message: "Run not found" };
+  const reset = await (storage as any).retryWorkflowStep(runId, stepPos);
+  if (!reset) return { ok: false, message: "Step is not in failed state" };
+  const context = (run.contextJson ?? {}) as RunContext;
+  await logMilestone(storage, run, context, `Workflow: step ${stepPos + 1} retried by staff${note ? `: ${note}` : ""}`);
+  // Re-execute from the retried step
+  executeRun(storage, runId, stepPos).catch(e =>
+    console.error(`[workflow-engine] retryStep background exec error run=${runId}:`, e),
+  );
+  return { ok: true };
+}
+
+export async function skipStep(
+  storage: IStorage,
+  runId: number,
+  stepPos: number,
+  actorId: number | null,
+  reason: string,
+  note?: string,
+): Promise<{ ok: boolean; message?: string }> {
+  const run = await (storage as any).getWorkflowRun(runId);
+  if (!run) return { ok: false, message: "Run not found" };
+  if (["stopped", "completed", "failed"].includes(run.status)) {
+    return { ok: false, message: `Run is ${run.status}` };
+  }
+  const context = (run.contextJson ?? {}) as RunContext;
+  await (storage as any).skipWorkflowStep(runId, stepPos, actorId, reason);
+  await logMilestone(
+    storage, run, context,
+    `Workflow: step ${stepPos + 1} skipped by staff${reason ? ` — ${reason}` : ""}${note ? ` (${note})` : ""}`,
+  );
+  // Continue from next step
+  executeRun(storage, runId, stepPos + 1).catch(e =>
+    console.error(`[workflow-engine] skipStep background exec error run=${runId}:`, e),
+  );
+  return { ok: true };
 }
 
 export async function notifyStaffReply(

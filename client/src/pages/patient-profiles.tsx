@@ -19,7 +19,7 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, CalendarDays, Phone, Paperclip,
-  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save,
+  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
@@ -1606,6 +1606,26 @@ export default function PatientProfiles() {
     enabled: !!selectedPatient && showMessages,
   });
 
+  // Active workflow runs for the patient banner
+  interface ActiveWorkflowRun {
+    id: number;
+    status: string;
+    workflowName: string;
+    startedAt: string | null;
+    createdAt: string;
+  }
+  const { data: activeWorkflows = [] } = useQuery<ActiveWorkflowRun[]>({
+    queryKey: ['/api/patients', selectedPatient?.id, 'active-workflows'],
+    queryFn: async () => {
+      if (!selectedPatient) return [];
+      const res = await fetch(`/api/patients/${selectedPatient.id}/active-workflows`, { credentials: 'include' });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!selectedPatient,
+    refetchInterval: 30000,
+  });
+
   // Spruce conversation history for this patient (shown in portal section)
   interface SpruceConvSummary {
     conversationKey: string;
@@ -2655,6 +2675,39 @@ export default function PatientProfiles() {
                   </Button>
                 </div>
               </div>
+
+              {/* ── Active workflow runs banner ───────────────────────── */}
+              {activeWorkflows.length > 0 && (
+                <div
+                  className="flex items-center gap-2 px-3 py-2 rounded-md border border-blue-200 dark:border-blue-800 bg-blue-50 dark:bg-blue-950/40 flex-wrap"
+                  data-testid="banner-active-workflows"
+                >
+                  <Zap className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0" />
+                  <p className="text-xs text-blue-800 dark:text-blue-300 font-medium flex-1 min-w-0">
+                    {activeWorkflows.length === 1
+                      ? `1 workflow running: ${activeWorkflows[0].workflowName}`
+                      : `${activeWorkflows.length} workflows running`}
+                  </p>
+                  <div className="flex flex-wrap gap-1.5">
+                    {activeWorkflows.map(run => (
+                      <Badge
+                        key={run.id}
+                        variant="outline"
+                        className={`text-xs capitalize ${
+                          run.status === "paused"
+                            ? "text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700"
+                            : run.status === "waiting"
+                            ? "text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700"
+                            : "text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700"
+                        }`}
+                        data-testid={`badge-workflow-run-${run.id}`}
+                      >
+                        {activeWorkflows.length > 1 ? run.workflowName : run.status}
+                      </Badge>
+                    ))}
+                  </div>
+                </div>
+              )}
 
               {/* ── Patient Chart (always at top) ─────────────────────── */}
               <PatientChartPanel

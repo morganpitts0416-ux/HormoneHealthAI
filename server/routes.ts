@@ -2,7 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import crypto from "crypto";
 import { encryptSecret, decryptSecret, isEncrypted } from "./crypto-utils";
-import { enrollWorkflow, processWaitingSteps, notifyPatientResponse, notifyStaffReply } from "./workflow-engine";
+import { enrollWorkflow, processWaitingSteps, notifyPatientResponse, notifyStaffReply, pauseRun, resumeRun, retryStep, skipStep } from "./workflow-engine";
 import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
@@ -19460,6 +19460,130 @@ IMPORTANT:
     } catch (err) {
       console.error("[workflow-runs] POST draft/send error:", err);
       res.status(500).json({ error: "Failed to send draft" });
+    }
+  });
+
+  // ── Layer 2.5: Workflow monitoring & manual control routes ────────────────
+
+  // GET /api/workflow-runs/:runId/steps — step state timeline for RunDetailPanel
+  app.get("/api/workflow-runs/:runId/steps", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const runId = parseInt(req.params.runId);
+      if (isNaN(runId)) return res.status(400).json({ error: "Invalid runId" });
+      const run = await (storage as any).getWorkflowRun(runId);
+      if (!run || run.clinicId !== clinicId) return res.status(404).json({ error: "Run not found" });
+      const steps = await (storage as any).listStepStatesByRun(runId);
+      res.json(steps);
+    } catch (err) {
+      console.error("[workflow-runs] GET :runId/steps error:", err);
+      res.status(500).json({ error: "Failed to list step states" });
+    }
+  });
+
+  // POST /api/workflow-runs/:runId/pause
+  app.post("/api/workflow-runs/:runId/pause", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const actorId = (req.user as any)?.id ?? null;
+      const runId = parseInt(req.params.runId);
+      if (isNaN(runId)) return res.status(400).json({ error: "Invalid runId" });
+      const run = await (storage as any).getWorkflowRun(runId);
+      if (!run || run.clinicId !== clinicId) return res.status(404).json({ error: "Run not found" });
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() || undefined : undefined;
+      const result = await pauseRun(storage, runId, actorId, note);
+      if (!result.ok) return res.status(400).json({ error: result.message });
+      res.json({ ok: true, runId });
+    } catch (err) {
+      console.error("[workflow-runs] POST :runId/pause error:", err);
+      res.status(500).json({ error: "Failed to pause run" });
+    }
+  });
+
+  // POST /api/workflow-runs/:runId/resume
+  app.post("/api/workflow-runs/:runId/resume", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const actorId = (req.user as any)?.id ?? null;
+      const runId = parseInt(req.params.runId);
+      if (isNaN(runId)) return res.status(400).json({ error: "Invalid runId" });
+      const run = await (storage as any).getWorkflowRun(runId);
+      if (!run || run.clinicId !== clinicId) return res.status(404).json({ error: "Run not found" });
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() || undefined : undefined;
+      const result = await resumeRun(storage, runId, actorId, note);
+      if (!result.ok) return res.status(400).json({ error: result.message });
+      res.json({ ok: true, runId });
+    } catch (err) {
+      console.error("[workflow-runs] POST :runId/resume error:", err);
+      res.status(500).json({ error: "Failed to resume run" });
+    }
+  });
+
+  // POST /api/workflow-runs/:runId/retry/:stepPos
+  app.post("/api/workflow-runs/:runId/retry/:stepPos", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const actorId = (req.user as any)?.id ?? null;
+      const runId = parseInt(req.params.runId);
+      const stepPos = parseInt(req.params.stepPos);
+      if (isNaN(runId) || isNaN(stepPos)) return res.status(400).json({ error: "Invalid params" });
+      const run = await (storage as any).getWorkflowRun(runId);
+      if (!run || run.clinicId !== clinicId) return res.status(404).json({ error: "Run not found" });
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() || undefined : undefined;
+      const result = await retryStep(storage, runId, stepPos, actorId, note);
+      if (!result.ok) return res.status(400).json({ error: result.message });
+      res.json({ ok: true, runId, stepPos });
+    } catch (err) {
+      console.error("[workflow-runs] POST :runId/retry/:stepPos error:", err);
+      res.status(500).json({ error: "Failed to retry step" });
+    }
+  });
+
+  // POST /api/workflow-runs/:runId/skip/:stepPos
+  app.post("/api/workflow-runs/:runId/skip/:stepPos", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const actorId = (req.user as any)?.id ?? null;
+      const runId = parseInt(req.params.runId);
+      const stepPos = parseInt(req.params.stepPos);
+      if (isNaN(runId) || isNaN(stepPos)) return res.status(400).json({ error: "Invalid params" });
+      const run = await (storage as any).getWorkflowRun(runId);
+      if (!run || run.clinicId !== clinicId) return res.status(404).json({ error: "Run not found" });
+      const reason = typeof req.body?.reason === "string" ? req.body.reason.trim() : "";
+      const note = typeof req.body?.note === "string" ? req.body.note.trim() || undefined : undefined;
+      const result = await skipStep(storage, runId, stepPos, actorId, reason, note);
+      if (!result.ok) return res.status(400).json({ error: result.message });
+      res.json({ ok: true, runId, stepPos });
+    } catch (err) {
+      console.error("[workflow-runs] POST :runId/skip/:stepPos error:", err);
+      res.status(500).json({ error: "Failed to skip step" });
+    }
+  });
+
+  // GET /api/patients/:patientId/active-workflows — active workflow banner in patient chart
+  app.get("/api/patients/:patientId/active-workflows", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const patientId = parseInt(req.params.patientId);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patientId" });
+      const runs = await (storage as any).listActiveRunsForPatient(clinicId, patientId);
+      // Enrich with workflow name
+      const enriched = await Promise.all(
+        runs.map(async (run: any) => {
+          const wf = await (storage as any).getFormWorkflow(run.workflowId, clinicId).catch(() => null);
+          return { ...run, workflowName: wf?.name ?? `Workflow #${run.workflowId}` };
+        }),
+      );
+      res.json(enriched);
+    } catch (err) {
+      console.error("[active-workflows] error:", err);
+      res.status(500).json({ error: "Failed to fetch active workflows" });
     }
   });
 

@@ -3066,6 +3066,8 @@ export const formWorkflowRuns = pgTable("form_workflow_runs", {
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   currentStepPosition: integer("current_step_position").notNull().default(0),
   stoppedReason: text("stopped_reason"),
+  // Layer 2.5: staff manually paused the run
+  pausedAt: timestamp("paused_at"),
   startedAt: timestamp("started_at"),
   completedAt: timestamp("completed_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),

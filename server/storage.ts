@@ -474,6 +474,13 @@ export interface IStorage {
   hasPatientRespondedSince(clinicId: number, patientId: number, since: Date): Promise<boolean>;
   createWorkflowInboxNotification(data: { clinicId: number; patientId?: number | null; providerId?: number | null; type: string; title: string; message: string; severity?: string; relatedEntityId?: number | null }): Promise<void>;
   listFormWorkflowRunsByWorkflow(workflowId: number, clinicId: number): Promise<schema.FormWorkflowRun[]>;
+  // ── Layer 2.5: monitoring & manual controls ──────────────────────────────
+  listStepStatesByRun(runId: number): Promise<schema.FormWorkflowStepState[]>;
+  pauseWorkflowRun(runId: number): Promise<void>;
+  resumeWorkflowRun(runId: number): Promise<void>;
+  retryWorkflowStep(runId: number, stepPos: number): Promise<boolean>;
+  skipWorkflowStep(runId: number, stepPos: number, actorId: number | null, reason: string): Promise<void>;
+  logWorkflowMilestone(patientId: number, clinicianId: number, content: string): Promise<void>;
   getIntakeFormsForClinic(clinicId: number): Promise<Pick<schema.IntakeForm, "id" | "name" | "status">[]>;
 
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
@@ -6296,4 +6303,114 @@ export interface SpruceConversationMessageRow {
     )
     .orderBy(desc(schema.formWorkflowRuns.createdAt))
     .limit(100);
+};
+
+// ── Layer 2.5: monitoring & manual controls ────────────────────────────────
+
+(DbStorage.prototype as any).listStepStatesByRun = async function(
+  runId: number,
+): Promise<schema.FormWorkflowStepState[]> {
+  return db
+    .select()
+    .from(schema.formWorkflowStepStates)
+    .where(eq(schema.formWorkflowStepStates.runId, runId))
+    .orderBy(asc(schema.formWorkflowStepStates.stepPosition));
+};
+
+(DbStorage.prototype as any).pauseWorkflowRun = async function(runId: number): Promise<void> {
+  await db
+    .update(schema.formWorkflowRuns)
+    .set({ status: "paused", pausedAt: new Date() } as any)
+    .where(
+      and(
+        eq(schema.formWorkflowRuns.id, runId),
+        sql`${schema.formWorkflowRuns.status} IN ('running','waiting')`,
+      ),
+    );
+};
+
+(DbStorage.prototype as any).resumeWorkflowRun = async function(runId: number): Promise<void> {
+  await db
+    .update(schema.formWorkflowRuns)
+    .set({ status: "running", pausedAt: null } as any)
+    .where(
+      and(
+        eq(schema.formWorkflowRuns.id, runId),
+        eq(schema.formWorkflowRuns.status, "paused"),
+      ),
+    );
+};
+
+// Returns true if step was eligible for retry (was failed) and was reset.
+(DbStorage.prototype as any).retryWorkflowStep = async function(
+  runId: number,
+  stepPos: number,
+): Promise<boolean> {
+  const result = await db
+    .update(schema.formWorkflowStepStates)
+    .set({ status: "pending", lockedAt: null, executedAt: null, resultJson: null })
+    .where(
+      and(
+        eq(schema.formWorkflowStepStates.runId, runId),
+        eq(schema.formWorkflowStepStates.stepPosition, stepPos),
+        eq(schema.formWorkflowStepStates.status, "failed"),
+      ),
+    )
+    .returning({ id: schema.formWorkflowStepStates.id });
+  return result.length > 0;
+};
+
+(DbStorage.prototype as any).skipWorkflowStep = async function(
+  runId: number,
+  stepPos: number,
+  actorId: number | null,
+  reason: string,
+): Promise<void> {
+  const existing = await (this as any).getWorkflowStepState(runId, stepPos);
+  const auditJson = { manualAction: "skip", actorId, reason, at: new Date().toISOString() };
+
+  if (existing) {
+    await db
+      .update(schema.formWorkflowStepStates)
+      .set({
+        status: "skipped",
+        executedAt: new Date(),
+        lockedAt: null,
+        resultJson: { ...(existing.resultJson as any ?? {}), ...auditJson },
+      })
+      .where(eq(schema.formWorkflowStepStates.id, existing.id));
+  } else {
+    await db.insert(schema.formWorkflowStepStates).values({
+      runId,
+      stepPosition: stepPos,
+      stepType: "manual_skip",
+      status: "skipped",
+      executedAt: new Date(),
+      resultJson: auditJson,
+    });
+  }
+  // Advance the run pointer past this step
+  await db
+    .update(schema.formWorkflowRuns)
+    .set({ currentStepPosition: stepPos + 1 })
+    .where(eq(schema.formWorkflowRuns.id, runId));
+};
+
+(DbStorage.prototype as any).logWorkflowMilestone = async function(
+  patientId: number,
+  clinicianId: number,
+  content: string,
+): Promise<void> {
+  await db.insert(schema.portalMessages).values({
+    patientId,
+    clinicianId,
+    senderType: "clinician",
+    content,
+    readAt: null,
+    messageType: "system_event",
+    visibility: "internal_only",
+    deliveryChannel: null,
+    externalDeliveryId: null,
+    externalMessageId: null,
+  });
 };

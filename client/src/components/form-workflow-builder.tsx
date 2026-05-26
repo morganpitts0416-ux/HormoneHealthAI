@@ -18,10 +18,14 @@ import {
   AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle,
 } from "@/components/ui/alert-dialog";
 import {
+  Tabs, TabsContent, TabsList, TabsTrigger,
+} from "@/components/ui/tabs";
+import {
   Plus, Trash2, ChevronDown, ChevronUp, ChevronRight, ArrowLeft,
   Bell, UserCheck, ClipboardList, MessageSquare, FileText, StickyNote,
   Clock, GitBranch, RefreshCw, StopCircle, Loader2, Pencil, Info,
-  Zap,
+  Zap, Pause, Play, SkipForward, Activity, CheckCircle2, XCircle,
+  AlertCircle, RotateCcw,
 } from "lucide-react";
 
 // ── Types ──────────────────────────────────────────────────────────────────
@@ -689,6 +693,486 @@ function AddStepMenu({ onSelect, onClose }: { onSelect: (t: StepType) => void; o
   );
 }
 
+// ── Run monitoring types ────────────────────────────────────────────────────
+
+interface WorkflowRun {
+  id: number;
+  workflowId: number;
+  clinicId: number;
+  submissionId: number | null;
+  patientId: number | null;
+  status: "running" | "waiting" | "paused" | "completed" | "stopped" | "failed";
+  currentStepPosition: number;
+  stoppedReason: string | null;
+  pausedAt: string | null;
+  startedAt: string | null;
+  completedAt: string | null;
+  createdAt: string;
+  contextJson: {
+    patientName?: string;
+    patientId?: number;
+    formName?: string;
+    clinicianId?: number;
+  } | null;
+}
+
+interface WorkflowStepState {
+  id: number;
+  runId: number;
+  stepPosition: number;
+  stepType: string;
+  status: "pending" | "running" | "completed" | "failed" | "waiting" | "skipped";
+  dueAt: string | null;
+  lockedAt: string | null;
+  executedAt: string | null;
+  resultJson: Record<string, any> | null;
+  createdAt: string;
+}
+
+// ── Status helpers ──────────────────────────────────────────────────────────
+
+function RunStatusBadge({ status }: { status: WorkflowRun["status"] }) {
+  const cfg: Record<WorkflowRun["status"], { label: string; className: string }> = {
+    running:   { label: "Running",   className: "text-blue-700 dark:text-blue-400 border-blue-300 dark:border-blue-700" },
+    waiting:   { label: "Waiting",   className: "text-amber-700 dark:text-amber-400 border-amber-300 dark:border-amber-700" },
+    paused:    { label: "Paused",    className: "text-purple-700 dark:text-purple-400 border-purple-300 dark:border-purple-700" },
+    completed: { label: "Completed", className: "text-green-700 dark:text-green-400 border-green-300 dark:border-green-700" },
+    stopped:   { label: "Stopped",   className: "text-muted-foreground" },
+    failed:    { label: "Failed",    className: "text-destructive border-destructive/40" },
+  };
+  const c = cfg[status] ?? cfg.stopped;
+  return <Badge variant="outline" className={`text-xs ${c.className}`}>{c.label}</Badge>;
+}
+
+function StepStatusIcon({ status }: { status: WorkflowStepState["status"] }) {
+  switch (status) {
+    case "completed": return <CheckCircle2 className="w-3.5 h-3.5 text-green-600 dark:text-green-400 shrink-0" />;
+    case "failed":    return <XCircle className="w-3.5 h-3.5 text-destructive shrink-0" />;
+    case "running":   return <Loader2 className="w-3.5 h-3.5 text-blue-500 animate-spin shrink-0" />;
+    case "waiting":   return <Clock className="w-3.5 h-3.5 text-amber-500 shrink-0" />;
+    case "skipped":   return <SkipForward className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
+    default:          return <AlertCircle className="w-3.5 h-3.5 text-muted-foreground shrink-0" />;
+  }
+}
+
+function fmtTs(iso: string | null | undefined): string {
+  if (!iso) return "—";
+  const d = new Date(iso);
+  return d.toLocaleString(undefined, { month: "short", day: "numeric", hour: "2-digit", minute: "2-digit" });
+}
+
+function fmtDuration(start: string | null, end: string | null): string {
+  if (!start || !end) return "";
+  const ms = new Date(end).getTime() - new Date(start).getTime();
+  if (ms < 0) return "";
+  const s = Math.floor(ms / 1000);
+  if (s < 60) return `${s}s`;
+  const m = Math.floor(s / 60);
+  if (m < 60) return `${m}m ${s % 60}s`;
+  const h = Math.floor(m / 60);
+  return `${h}h ${m % 60}m`;
+}
+
+// ── ManualActionDialog ──────────────────────────────────────────────────────
+
+function ManualActionDialog({
+  open,
+  onOpenChange,
+  title,
+  description,
+  confirmLabel,
+  confirmVariant = "default",
+  requireReason,
+  onConfirm,
+  isPending,
+}: {
+  open: boolean;
+  onOpenChange: (v: boolean) => void;
+  title: string;
+  description: string;
+  confirmLabel: string;
+  confirmVariant?: "default" | "destructive";
+  requireReason?: boolean;
+  onConfirm: (note: string) => void;
+  isPending?: boolean;
+}) {
+  const [note, setNote] = useState("");
+
+  function handleConfirm() {
+    if (requireReason && !note.trim()) return;
+    onConfirm(note.trim());
+    setNote("");
+  }
+
+  return (
+    <Dialog open={open} onOpenChange={v => { onOpenChange(v); if (!v) setNote(""); }}>
+      <DialogContent className="sm:max-w-md">
+        <DialogHeader>
+          <DialogTitle>{title}</DialogTitle>
+        </DialogHeader>
+        <div className="space-y-3 py-1">
+          <p className="text-sm text-muted-foreground">{description}</p>
+          <div>
+            <Label className="text-xs font-medium">
+              {requireReason ? "Reason" : "Note (optional)"}
+              {requireReason && <span className="text-destructive ml-0.5">*</span>}
+            </Label>
+            <Textarea
+              value={note}
+              onChange={e => setNote(e.target.value)}
+              placeholder={requireReason ? "Briefly describe why..." : "Optional reason or note for audit log..."}
+              className="text-sm resize-none mt-1"
+              rows={2}
+              data-testid="input-action-note"
+            />
+          </div>
+        </div>
+        <DialogFooter>
+          <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isPending}>Cancel</Button>
+          <Button
+            variant={confirmVariant}
+            onClick={handleConfirm}
+            disabled={isPending || (requireReason && !note.trim())}
+            data-testid="btn-confirm-action"
+          >
+            {isPending ? <Loader2 className="w-3.5 h-3.5 animate-spin mr-1.5" /> : null}
+            {confirmLabel}
+          </Button>
+        </DialogFooter>
+      </DialogContent>
+    </Dialog>
+  );
+}
+
+// ── RunDetailPanel ──────────────────────────────────────────────────────────
+
+function RunDetailPanel({ runId, onBack }: { runId: number; onBack: () => void }) {
+  const { toast } = useToast();
+  const qc = useQueryClient();
+  const [dialog, setDialog] = useState<{
+    type: "pause" | "resume" | "stop" | "retry" | "skip";
+    stepPos?: number;
+  } | null>(null);
+
+  const { data: run, isLoading: runLoading } = useQuery<WorkflowRun>({
+    queryKey: ["/api/workflow-runs", runId],
+    queryFn: async () => {
+      const res = await fetch(`/api/workflow-runs/${runId}`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load run");
+      const data = await res.json();
+      return data.run ?? data;
+    },
+    refetchInterval: 8000,
+  });
+
+  const { data: stepStates = [] } = useQuery<WorkflowStepState[]>({
+    queryKey: ["/api/workflow-runs", runId, "steps"],
+    queryFn: async () => {
+      const res = await fetch(`/api/workflow-runs/${runId}/steps`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load steps");
+      return res.json();
+    },
+    refetchInterval: 8000,
+  });
+
+  const actionMutation = useMutation({
+    mutationFn: async ({ path, body }: { path: string; body?: object }) => {
+      const res = await apiRequest("POST", path, body ?? {});
+      if (!res.ok) throw new Error((await res.json().catch(() => ({}))).error ?? "Action failed");
+      return res.json();
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/workflow-runs", runId] });
+      qc.invalidateQueries({ queryKey: ["/api/workflow-runs", runId, "steps"] });
+      setDialog(null);
+      toast({ title: "Action completed" });
+    },
+    onError: (e: any) => toast({ variant: "destructive", title: "Action failed", description: e.message }),
+  });
+
+  function execAction(note: string) {
+    if (!dialog) return;
+    switch (dialog.type) {
+      case "pause":
+        return actionMutation.mutate({ path: `/api/workflow-runs/${runId}/pause`, body: { note } });
+      case "resume":
+        return actionMutation.mutate({ path: `/api/workflow-runs/${runId}/resume`, body: { note } });
+      case "stop":
+        return actionMutation.mutate({ path: `/api/workflow-runs/${runId}/stop`, body: { reason: note || "Manually stopped by staff", note } });
+      case "retry":
+        return actionMutation.mutate({ path: `/api/workflow-runs/${runId}/retry/${dialog.stepPos}`, body: { note } });
+      case "skip":
+        return actionMutation.mutate({ path: `/api/workflow-runs/${runId}/skip/${dialog.stepPos}`, body: { reason: note, note } });
+    }
+  }
+
+  const dialogMeta: Record<string, { title: string; description: string; confirmLabel: string; confirmVariant?: "default" | "destructive"; requireReason?: boolean }> = {
+    pause:  { title: "Pause workflow run", description: "The run will be held at the current step. You can resume it at any time.", confirmLabel: "Pause" },
+    resume: { title: "Resume workflow run", description: "Execution will continue from where it left off.", confirmLabel: "Resume" },
+    stop:   { title: "Stop workflow run", description: "This permanently stops the run. It cannot be restarted.", confirmLabel: "Stop run", confirmVariant: "destructive", requireReason: false },
+    retry:  { title: "Retry failed step", description: "The step will be reset to pending and re-executed immediately.", confirmLabel: "Retry step" },
+    skip:   { title: "Skip step", description: "The step will be marked as skipped and execution will advance to the next step.", confirmLabel: "Skip step", requireReason: false },
+  };
+
+  if (runLoading) {
+    return (
+      <div className="flex items-center justify-center py-16">
+        <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+      </div>
+    );
+  }
+  if (!run) return null;
+
+  const isActive = ["running", "waiting"].includes(run.status);
+  const isPaused = run.status === "paused";
+  const ctx = run.contextJson ?? {};
+
+  return (
+    <div className="space-y-4">
+      {/* Header */}
+      <div className="flex items-center gap-2 flex-wrap">
+        <Button size="icon" variant="ghost" onClick={onBack} data-testid="btn-back-to-runs">
+          <ArrowLeft className="w-4 h-4" />
+        </Button>
+        <div className="flex-1 min-w-0">
+          <p className="text-xs font-semibold">Run #{run.id}</p>
+          <p className="text-xs text-muted-foreground">
+            {ctx.patientName ?? "Unknown patient"}{ctx.formName ? ` · ${ctx.formName}` : ""}
+          </p>
+        </div>
+        <RunStatusBadge status={run.status} />
+      </div>
+
+      {/* Run meta */}
+      <Card>
+        <CardContent className="pt-3 pb-3 space-y-1.5">
+          <div className="grid grid-cols-2 gap-x-4 gap-y-1 text-xs">
+            <div className="text-muted-foreground">Started</div>
+            <div>{fmtTs(run.startedAt ?? run.createdAt)}</div>
+            {run.completedAt && <>
+              <div className="text-muted-foreground">Ended</div>
+              <div>{fmtTs(run.completedAt)}</div>
+              <div className="text-muted-foreground">Duration</div>
+              <div>{fmtDuration(run.startedAt ?? run.createdAt, run.completedAt)}</div>
+            </>}
+            {run.stoppedReason && <>
+              <div className="text-muted-foreground">Reason</div>
+              <div className="break-words">{run.stoppedReason}</div>
+            </>}
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Manual controls */}
+      {(isActive || isPaused) && (
+        <div className="flex items-center gap-2 flex-wrap">
+          <p className="text-xs font-medium text-muted-foreground mr-1">Controls:</p>
+          {isActive && (
+            <Button size="sm" variant="outline" onClick={() => setDialog({ type: "pause" })} data-testid="btn-run-pause">
+              <Pause className="w-3.5 h-3.5 mr-1.5" /> Pause
+            </Button>
+          )}
+          {isPaused && (
+            <Button size="sm" variant="outline" onClick={() => setDialog({ type: "resume" })} data-testid="btn-run-resume">
+              <Play className="w-3.5 h-3.5 mr-1.5" /> Resume
+            </Button>
+          )}
+          <Button
+            size="sm"
+            variant="outline"
+            className="text-destructive border-destructive/40"
+            onClick={() => setDialog({ type: "stop" })}
+            data-testid="btn-run-stop"
+          >
+            <StopCircle className="w-3.5 h-3.5 mr-1.5" /> Stop run
+          </Button>
+        </div>
+      )}
+
+      {/* Step timeline */}
+      <div className="space-y-1.5">
+        <p className="text-xs font-semibold text-muted-foreground uppercase tracking-wide">Step Timeline</p>
+        {stepStates.length === 0 ? (
+          <div className="text-center py-6 text-muted-foreground border border-dashed rounded-md">
+            <p className="text-xs">No step states recorded yet — execution may still be in progress.</p>
+          </div>
+        ) : (
+          <div className="space-y-1">
+            {stepStates
+              .filter(s => s.stepPosition < 9000)
+              .map(s => (
+              <Card key={s.id} className="rounded-md" data-testid={`step-state-${s.stepPosition}`}>
+                <CardContent className="pt-2 pb-2 px-3">
+                  <div className="flex items-start gap-2">
+                    <StepStatusIcon status={s.status} />
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-xs font-medium">
+                          Step {s.stepPosition + 1} — {STEP_META[s.stepType as StepType]?.label ?? s.stepType}
+                        </p>
+                        <Badge variant="outline" className="text-xs capitalize">{s.status}</Badge>
+                      </div>
+                      {s.executedAt && (
+                        <p className="text-xs text-muted-foreground mt-0.5">{fmtTs(s.executedAt)}</p>
+                      )}
+                      {s.dueAt && s.status === "waiting" && (
+                        <p className="text-xs text-amber-600 dark:text-amber-400 mt-0.5">
+                          Due: {fmtTs(s.dueAt)}
+                        </p>
+                      )}
+                      {s.resultJson?.outcome && (
+                        <p className="text-xs text-muted-foreground mt-0.5 font-mono">
+                          {String(s.resultJson.outcome)}
+                          {s.resultJson.bodyPreview ? ` — "${s.resultJson.bodyPreview}"` : ""}
+                          {s.resultJson.error ? ` — Error: ${s.resultJson.error}` : ""}
+                        </p>
+                      )}
+                    </div>
+                    {/* Per-step manual actions */}
+                    <div className="flex items-center gap-1 shrink-0">
+                      {s.status === "failed" && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Retry step"
+                          onClick={() => setDialog({ type: "retry", stepPos: s.stepPosition })}
+                          data-testid={`btn-retry-step-${s.stepPosition}`}
+                        >
+                          <RotateCcw className="w-3.5 h-3.5 text-amber-600" />
+                        </Button>
+                      )}
+                      {(isActive || isPaused) && !["completed", "skipped"].includes(s.status) && (
+                        <Button
+                          size="icon"
+                          variant="ghost"
+                          title="Skip step"
+                          onClick={() => setDialog({ type: "skip", stepPos: s.stepPosition })}
+                          data-testid={`btn-skip-step-${s.stepPosition}`}
+                        >
+                          <SkipForward className="w-3.5 h-3.5 text-muted-foreground" />
+                        </Button>
+                      )}
+                    </div>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </div>
+        )}
+      </div>
+
+      {/* Manual action dialog */}
+      {dialog && (
+        <ManualActionDialog
+          open={!!dialog}
+          onOpenChange={v => !v && setDialog(null)}
+          title={dialogMeta[dialog.type].title}
+          description={dialogMeta[dialog.type].description}
+          confirmLabel={dialogMeta[dialog.type].confirmLabel}
+          confirmVariant={dialogMeta[dialog.type].confirmVariant}
+          requireReason={dialogMeta[dialog.type].requireReason}
+          onConfirm={execAction}
+          isPending={actionMutation.isPending}
+        />
+      )}
+    </div>
+  );
+}
+
+// ── WorkflowRunsTab ─────────────────────────────────────────────────────────
+
+function WorkflowRunsTab({ workflowId }: { workflowId: number }) {
+  const [selectedRunId, setSelectedRunId] = useState<number | null>(null);
+
+  const { data: runs = [], isLoading } = useQuery<WorkflowRun[]>({
+    queryKey: ["/api/form-workflows", workflowId, "runs"],
+    queryFn: async () => {
+      const res = await fetch(`/api/form-workflows/${workflowId}/runs`, { credentials: "include" });
+      if (!res.ok) throw new Error("Failed to load runs");
+      return res.json();
+    },
+    refetchInterval: 15000,
+  });
+
+  if (selectedRunId !== null) {
+    return <RunDetailPanel runId={selectedRunId} onBack={() => setSelectedRunId(null)} />;
+  }
+
+  const active    = runs.filter(r => ["running", "waiting", "paused"].includes(r.status));
+  const completed = runs.filter(r => r.status === "completed");
+  const stopped   = runs.filter(r => ["stopped", "failed"].includes(r.status));
+
+  return (
+    <div className="space-y-4">
+      {/* Summary stats */}
+      <div className="grid grid-cols-4 gap-2">
+        {[
+          { label: "Total", value: runs.length, color: "" },
+          { label: "Active", value: active.length, color: active.length > 0 ? "text-blue-700 dark:text-blue-400" : "" },
+          { label: "Completed", value: completed.length, color: "" },
+          { label: "Stopped", value: stopped.length, color: stopped.length > 0 ? "text-destructive" : "" },
+        ].map(stat => (
+          <div key={stat.label} className="rounded-md border px-3 py-2 text-center">
+            <p className={`text-lg font-semibold font-mono ${stat.color}`}>{stat.value}</p>
+            <p className="text-xs text-muted-foreground">{stat.label}</p>
+          </div>
+        ))}
+      </div>
+
+      {isLoading ? (
+        <div className="flex items-center justify-center py-12">
+          <Loader2 className="w-5 h-5 animate-spin text-muted-foreground" />
+        </div>
+      ) : runs.length === 0 ? (
+        <div className="flex flex-col items-center justify-center py-12 text-center border border-dashed rounded-md text-muted-foreground">
+          <Activity className="w-8 h-8 mb-3 opacity-30" />
+          <p className="text-sm font-medium">No runs yet</p>
+          <p className="text-xs mt-1">
+            Runs appear here automatically when the workflow executes after a form submission.
+          </p>
+        </div>
+      ) : (
+        <div className="space-y-1.5">
+          {runs.map(run => {
+            const ctx = run.contextJson ?? {};
+            return (
+              <Card
+                key={run.id}
+                className="rounded-md hover-elevate cursor-pointer"
+                onClick={() => setSelectedRunId(run.id)}
+                data-testid={`run-card-${run.id}`}
+              >
+                <CardContent className="pt-2.5 pb-2.5 px-3">
+                  <div className="flex items-center gap-3 flex-wrap">
+                    <div className="flex-1 min-w-0">
+                      <div className="flex items-center gap-2 flex-wrap">
+                        <p className="text-xs font-medium">Run #{run.id}</p>
+                        <RunStatusBadge status={run.status} />
+                      </div>
+                      <p className="text-xs text-muted-foreground mt-0.5 truncate">
+                        {ctx.patientName ?? "Unknown patient"}{ctx.formName ? ` · ${ctx.formName}` : ""}
+                      </p>
+                    </div>
+                    <div className="text-right shrink-0">
+                      <p className="text-xs text-muted-foreground">{fmtTs(run.createdAt)}</p>
+                      {run.completedAt && (
+                        <p className="text-xs text-muted-foreground">
+                          {fmtDuration(run.startedAt ?? run.createdAt, run.completedAt)}
+                        </p>
+                      )}
+                    </div>
+                    <ChevronRight className="w-3.5 h-3.5 text-muted-foreground shrink-0" />
+                  </div>
+                </CardContent>
+              </Card>
+            );
+          })}
+        </div>
+      )}
+    </div>
+  );
+}
+
 // ── WorkflowEditor ─────────────────────────────────────────────────────────
 
 function WorkflowEditor({
@@ -721,6 +1205,7 @@ function WorkflowEditor({
   const [stopConditions, setStopConditions] = useState<string[]>([]);
   const [steps, setSteps]             = useState<LocalStep[]>([]);
   const [addMenuOpen, setAddMenuOpen] = useState(false);
+  const [activeTab, setActiveTab] = useState<"settings" | "steps" | "runs">("settings");
 
   useEffect(() => {
     if (!wf) return;
@@ -822,6 +1307,14 @@ function WorkflowEditor({
         </Badge>
       </div>
 
+      <Tabs value={activeTab} onValueChange={v => setActiveTab(v as typeof activeTab)}>
+        <TabsList className="w-full">
+          <TabsTrigger value="settings" className="flex-1" data-testid="tab-workflow-settings">Settings</TabsTrigger>
+          <TabsTrigger value="steps" className="flex-1" data-testid="tab-workflow-steps">Steps</TabsTrigger>
+          <TabsTrigger value="runs" className="flex-1" data-testid="tab-workflow-runs">Runs & Activity</TabsTrigger>
+        </TabsList>
+
+        <TabsContent value="settings" className="mt-4">
       {/* Settings card */}
       <Card>
         <CardContent className="pt-4 pb-4 space-y-4">
@@ -931,7 +1424,9 @@ function WorkflowEditor({
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
 
+        <TabsContent value="steps" className="mt-4">
       {/* Step builder card */}
       <Card>
         <CardContent className="pt-4 pb-4 space-y-3">
@@ -947,7 +1442,6 @@ function WorkflowEditor({
             <Info className="w-3.5 h-3.5 text-blue-600 dark:text-blue-400 shrink-0 mt-0.5" />
             <p className="text-xs text-blue-800 dark:text-blue-300 leading-relaxed">
               Steps are saved separately from settings. Click <strong>Save Steps</strong> after making changes to the step list.
-              The workflow will not execute until Layer 2 (execution engine) is built.
             </p>
           </div>
 
@@ -1003,6 +1497,12 @@ function WorkflowEditor({
           </div>
         </CardContent>
       </Card>
+        </TabsContent>
+
+        <TabsContent value="runs" className="mt-4">
+          <WorkflowRunsTab workflowId={workflowId} />
+        </TabsContent>
+      </Tabs>
     </div>
   );
 }
@@ -1093,13 +1593,6 @@ function WorkflowList({ onEdit }: { onEdit: (id: number) => void }) {
         <Button size="sm" onClick={() => setCreateOpen(true)} data-testid="btn-create-workflow">
           <Plus className="w-3.5 h-3.5 mr-1.5" /> New Workflow
         </Button>
-      </div>
-
-      <div className="flex items-start gap-2 rounded-md bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-800 px-3 py-2.5">
-        <Info className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
-        <p className="text-xs text-amber-800 dark:text-amber-300 leading-relaxed">
-          <strong>Builder phase:</strong> You can create and configure workflows now. Automated execution (sending messages, creating tasks, wait/delay, branching) will be active in the next phase.
-        </p>
       </div>
 
       {workflows.length === 0 ? (

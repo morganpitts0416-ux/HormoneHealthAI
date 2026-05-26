@@ -1573,3 +1573,5 @@ CREATE TABLE IF NOT EXISTS form_workflow_step_states (
 -- Layer 2 additions
 ALTER TABLE form_workflow_step_states ADD COLUMN IF NOT EXISTS due_at TIMESTAMP;
 ALTER TABLE form_workflow_step_states ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP;
+-- Layer 2.5 additions
+ALTER TABLE form_workflow_runs ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP;
