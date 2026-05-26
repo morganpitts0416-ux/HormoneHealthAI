@@ -2982,3 +2982,105 @@ export const clinicWorkflowExecutionLog = pgTable("clinic_workflow_execution_log
 export type ClinicWorkflowExecutionLog = typeof clinicWorkflowExecutionLog.$inferSelect;
 export const insertClinicWorkflowExecutionLogSchema = createInsertSchema(clinicWorkflowExecutionLog).omit({ id: true, executedAt: true });
 export type InsertClinicWorkflowExecutionLog = z.infer<typeof insertClinicWorkflowExecutionLogSchema>;
+
+// ── Form Workflow Builder ──────────────────────────────────────────────────
+// Clinic-defined automation workflows triggered by a specific form submission.
+// Layer 1: schema + builder UI only. Execution engine is Layer 2/3.
+
+// form_workflows: one row per clinic-defined workflow.
+// trigger_form_id references the intake_forms table — the specific form whose
+// submission fires this workflow.
+// stop_conditions: jsonb array of condition keys, e.g.
+//   ["patient_responds", "staff_replies", "max_attempts_reached"]
+// steps_json is NOT stored here — steps live in form_workflow_steps for ordering.
+export const formWorkflows = pgTable("form_workflows", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  name: varchar("name", { length: 200 }).notNull(),
+  description: text("description"),
+  // Which form submission triggers this workflow (null = any form — not used in L1)
+  triggerFormId: integer("trigger_form_id").references(() => intakeForms.id, { onDelete: "set null" }),
+  // false = workflow is saved but will NOT execute (default)
+  enabled: boolean("enabled").notNull().default(false),
+  // jsonb: string[] of stop condition keys
+  stopConditions: jsonb("stop_conditions").default([]),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FormWorkflow = typeof formWorkflows.$inferSelect;
+export const insertFormWorkflowSchema = createInsertSchema(formWorkflows).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFormWorkflow = z.infer<typeof insertFormWorkflowSchema>;
+
+// form_workflow_steps: ordered steps within a workflow.
+// step_type values: notify_staff | assign_staff | create_task | send_spruce_sms |
+//   send_portal_message | add_internal_note | wait_delay |
+//   if_then_branch | update_status | stop_workflow
+//
+// config: jsonb — shape depends on step_type:
+//   notify_staff:        { staffUserId?: number, message?: string }
+//   assign_staff:        { staffUserId?: number, note?: string }
+//   create_task:         { title: string, assigneeUserId?: number, priority?: string }
+//   send_spruce_sms:     { mode: "static"|"june"|"june_draft", staticMessage?: string,
+//                          juneInstructions?: string }
+//   send_portal_message: { mode: "static"|"june", message?: string,
+//                          juneInstructions?: string }
+//   add_internal_note:   { content: string }
+//   wait_delay:          { amount: number, unit: "hours"|"days" }
+//   if_then_branch:      { condition: string, conditionDetail?: string }
+//   update_status:       { statusField: string, statusValue: string }
+//   stop_workflow:       { reason?: string }
+//
+// For if_then_branch, the true/false sub-steps are stored inline in config as
+// trueBranch: StepConfig[] and falseBranch: StepConfig[] (Layer 1 stores these
+// as jsonb; Layer 2 will execute them). This keeps the schema simple and avoids
+// a self-referential FK for the builder.
+export const formWorkflowSteps = pgTable("form_workflow_steps", {
+  id: serial("id").primaryKey(),
+  workflowId: integer("workflow_id").notNull().references(() => formWorkflows.id, { onDelete: "cascade" }),
+  position: integer("position").notNull().default(0),
+  stepType: varchar("step_type", { length: 40 }).notNull(),
+  // All step-specific configuration stored as jsonb
+  config: jsonb("config").notNull().default({}),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+  updatedAt: timestamp("updated_at").defaultNow().notNull(),
+});
+export type FormWorkflowStep = typeof formWorkflowSteps.$inferSelect;
+export const insertFormWorkflowStepSchema = createInsertSchema(formWorkflowSteps).omit({ id: true, createdAt: true, updatedAt: true });
+export type InsertFormWorkflowStep = z.infer<typeof insertFormWorkflowStepSchema>;
+
+// form_workflow_runs: one record per workflow execution (stub for Layer 2).
+// Created in Layer 1 schema so Layer 2 can add the execution engine without
+// a schema migration. Not written to in Layer 1.
+// status values: pending | running | completed | stopped | failed
+export const formWorkflowRuns = pgTable("form_workflow_runs", {
+  id: serial("id").primaryKey(),
+  workflowId: integer("workflow_id").notNull().references(() => formWorkflows.id, { onDelete: "cascade" }),
+  clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
+  // The form submission that triggered this run
+  submissionId: integer("submission_id").references(() => formSubmissions.id, { onDelete: "set null" }),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  currentStepPosition: integer("current_step_position").notNull().default(0),
+  stoppedReason: text("stopped_reason"),
+  startedAt: timestamp("started_at"),
+  completedAt: timestamp("completed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type FormWorkflowRun = typeof formWorkflowRuns.$inferSelect;
+export const insertFormWorkflowRunSchema = createInsertSchema(formWorkflowRuns).omit({ id: true, createdAt: true });
+export type InsertFormWorkflowRun = z.infer<typeof insertFormWorkflowRunSchema>;
+
+// form_workflow_step_states: per-step execution state within a run (stub for Layer 2).
+// status values: pending | running | completed | skipped | failed
+export const formWorkflowStepStates = pgTable("form_workflow_step_states", {
+  id: serial("id").primaryKey(),
+  runId: integer("run_id").notNull().references(() => formWorkflowRuns.id, { onDelete: "cascade" }),
+  stepPosition: integer("step_position").notNull(),
+  stepType: varchar("step_type", { length: 40 }).notNull(),
+  status: varchar("status", { length: 20 }).notNull().default("pending"),
+  resultJson: jsonb("result_json"),
+  executedAt: timestamp("executed_at"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+});
+export type FormWorkflowStepState = typeof formWorkflowStepStates.$inferSelect;
+export const insertFormWorkflowStepStateSchema = createInsertSchema(formWorkflowStepStates).omit({ id: true, createdAt: true });
+export type InsertFormWorkflowStepState = z.infer<typeof insertFormWorkflowStepStateSchema>;

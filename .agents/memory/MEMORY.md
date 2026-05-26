@@ -1,0 +1,2 @@
+- [Storage prototype pattern](storage-prototype-pattern.md) — all DbStorage methods must use module-level `db` export, never `this.db`; prototype-patched at file bottom
+- [Form Workflow Builder L1](form-workflow-builder-l1.md) — Layer 1 (schema+UI) complete; Layer 2 (execution engine) not yet built

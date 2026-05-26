@@ -19122,6 +19122,140 @@ IMPORTANT:
 
   // ─── End Spruce Integration ───────────────────────────────────────────
 
+  // ═══════════════════════════════════════════════════════════════════════
+  // Form Workflow Builder (Layer 1) — CRUD for clinic-defined form workflows
+  // GET    /api/form-workflows                     — list all for clinic
+  // POST   /api/form-workflows                     — create new workflow
+  // GET    /api/form-workflows/:id                 — get single workflow + steps
+  // PUT    /api/form-workflows/:id                 — update workflow metadata
+  // DELETE /api/form-workflows/:id                 — delete workflow + steps
+  // PUT    /api/form-workflows/:id/steps           — replace all steps (atomic)
+  // GET    /api/form-workflows/forms               — list clinic intake forms (for trigger picker)
+  // ═══════════════════════════════════════════════════════════════════════
+
+  app.get("/api/form-workflows/forms", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const forms = await storage.getIntakeFormsForClinic(clinicId);
+      res.json(forms);
+    } catch (err) {
+      console.error("[form-workflows] GET forms error:", err);
+      res.status(500).json({ error: "Failed to load forms" });
+    }
+  });
+
+  app.get("/api/form-workflows", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const workflows = await storage.listFormWorkflows(clinicId);
+      res.json(workflows);
+    } catch (err) {
+      console.error("[form-workflows] GET list error:", err);
+      res.status(500).json({ error: "Failed to load workflows" });
+    }
+  });
+
+  app.post("/api/form-workflows", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const { name, description, triggerFormId, enabled, stopConditions } = req.body;
+      if (!name || typeof name !== "string" || !name.trim()) {
+        return res.status(400).json({ error: "name is required" });
+      }
+      const workflow = await storage.createFormWorkflow(clinicId, {
+        name: name.trim().slice(0, 200),
+        description: description?.trim() ?? null,
+        triggerFormId: triggerFormId ?? null,
+        enabled: Boolean(enabled ?? false),
+        stopConditions: Array.isArray(stopConditions) ? stopConditions : [],
+      });
+      res.status(201).json(workflow);
+    } catch (err) {
+      console.error("[form-workflows] POST error:", err);
+      res.status(500).json({ error: "Failed to create workflow" });
+    }
+  });
+
+  app.get("/api/form-workflows/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+      const [workflow, steps] = await Promise.all([
+        storage.getFormWorkflow(id, clinicId),
+        storage.listFormWorkflowSteps(id),
+      ]);
+      if (!workflow) return res.status(404).json({ error: "Workflow not found" });
+      res.json({ ...workflow, steps });
+    } catch (err) {
+      console.error("[form-workflows] GET :id error:", err);
+      res.status(500).json({ error: "Failed to load workflow" });
+    }
+  });
+
+  app.put("/api/form-workflows/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+      const { name, description, triggerFormId, enabled, stopConditions } = req.body;
+      const data: Record<string, any> = {};
+      if (name !== undefined) data.name = String(name).trim().slice(0, 200);
+      if (description !== undefined) data.description = description?.trim() ?? null;
+      if (triggerFormId !== undefined) data.triggerFormId = triggerFormId ?? null;
+      if (enabled !== undefined) data.enabled = Boolean(enabled);
+      if (stopConditions !== undefined) data.stopConditions = Array.isArray(stopConditions) ? stopConditions : [];
+      const workflow = await storage.updateFormWorkflow(id, clinicId, data);
+      if (!workflow) return res.status(404).json({ error: "Workflow not found" });
+      res.json(workflow);
+    } catch (err) {
+      console.error("[form-workflows] PUT :id error:", err);
+      res.status(500).json({ error: "Failed to update workflow" });
+    }
+  });
+
+  app.delete("/api/form-workflows/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+      const deleted = await storage.deleteFormWorkflow(id, clinicId);
+      if (!deleted) return res.status(404).json({ error: "Workflow not found" });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[form-workflows] DELETE :id error:", err);
+      res.status(500).json({ error: "Failed to delete workflow" });
+    }
+  });
+
+  app.put("/api/form-workflows/:id/steps", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+      const workflow = await storage.getFormWorkflow(id, clinicId);
+      if (!workflow) return res.status(404).json({ error: "Workflow not found" });
+      const { steps } = req.body;
+      if (!Array.isArray(steps)) return res.status(400).json({ error: "steps must be an array" });
+      const saved = await storage.replaceFormWorkflowSteps(id, steps.map((s: any, i: number) => ({
+        position: i,
+        stepType: String(s.stepType ?? "stop_workflow"),
+        config: s.config ?? {},
+      })));
+      res.json(saved);
+    } catch (err) {
+      console.error("[form-workflows] PUT :id/steps error:", err);
+      res.status(500).json({ error: "Failed to save steps" });
+    }
+  });
+
   const httpServer = createServer(app);
   return httpServer;
 }

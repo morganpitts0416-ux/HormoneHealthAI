@@ -445,6 +445,16 @@ export interface IStorage {
   // After-hours notice dedup — stamps afterHoursNoticeSentAt on conv state
   setAfterHoursNoticeSentAt(clinicId: number, conversationKey: string, sentAt: Date): Promise<void>;
 
+  // ── Form Workflow Builder (Layer 1) ────────────────────────────────────────
+  listFormWorkflows(clinicId: number): Promise<schema.FormWorkflow[]>;
+  getFormWorkflow(id: number, clinicId: number): Promise<schema.FormWorkflow | null>;
+  createFormWorkflow(clinicId: number, data: Omit<schema.InsertFormWorkflow, "clinicId">): Promise<schema.FormWorkflow>;
+  updateFormWorkflow(id: number, clinicId: number, data: Partial<Omit<schema.InsertFormWorkflow, "clinicId">>): Promise<schema.FormWorkflow | null>;
+  deleteFormWorkflow(id: number, clinicId: number): Promise<boolean>;
+  listFormWorkflowSteps(workflowId: number): Promise<schema.FormWorkflowStep[]>;
+  replaceFormWorkflowSteps(workflowId: number, steps: Omit<schema.InsertFormWorkflowStep, "workflowId">[]): Promise<schema.FormWorkflowStep[]>;
+  getIntakeFormsForClinic(clinicId: number): Promise<Pick<schema.IntakeForm, "id" | "name" | "status">[]>;
+
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
   getClinicalBlockDefaults(clinicId: number, providerId: number): Promise<schema.ClinicalBlockDefaultsRow | null>;
   upsertClinicalBlockDefaults(clinicId: number, providerId: number, data: schema.UpdateClinicalBlockDefaults): Promise<schema.ClinicalBlockDefaultsRow>;
@@ -5894,4 +5904,75 @@ export interface SpruceConversationMessageRow {
         eq(schema.spruceConversationState.conversationKey, conversationKey),
       ),
     );
+};
+
+// ── Form Workflow Builder (Layer 1) ────────────────────────────────────────
+
+(DbStorage.prototype as any).listFormWorkflows = async function(clinicId: number): Promise<schema.FormWorkflow[]> {
+  return db
+    .select()
+    .from(schema.formWorkflows)
+    .where(eq(schema.formWorkflows.clinicId, clinicId))
+    .orderBy(asc(schema.formWorkflows.createdAt));
+};
+
+(DbStorage.prototype as any).getFormWorkflow = async function(id: number, clinicId: number): Promise<schema.FormWorkflow | null> {
+  const [row] = await db
+    .select()
+    .from(schema.formWorkflows)
+    .where(and(eq(schema.formWorkflows.id, id), eq(schema.formWorkflows.clinicId, clinicId)))
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).createFormWorkflow = async function(clinicId: number, data: Omit<schema.InsertFormWorkflow, "clinicId">): Promise<schema.FormWorkflow> {
+  const [row] = await db
+    .insert(schema.formWorkflows)
+    .values({ ...data, clinicId, updatedAt: new Date() })
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).updateFormWorkflow = async function(id: number, clinicId: number, data: Partial<Omit<schema.InsertFormWorkflow, "clinicId">>): Promise<schema.FormWorkflow | null> {
+  const [row] = await db
+    .update(schema.formWorkflows)
+    .set({ ...data, updatedAt: new Date() })
+    .where(and(eq(schema.formWorkflows.id, id), eq(schema.formWorkflows.clinicId, clinicId)))
+    .returning();
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).deleteFormWorkflow = async function(id: number, clinicId: number): Promise<boolean> {
+  const result = await db
+    .delete(schema.formWorkflows)
+    .where(and(eq(schema.formWorkflows.id, id), eq(schema.formWorkflows.clinicId, clinicId)))
+    .returning({ id: schema.formWorkflows.id });
+  return result.length > 0;
+};
+
+(DbStorage.prototype as any).listFormWorkflowSteps = async function(workflowId: number): Promise<schema.FormWorkflowStep[]> {
+  return db
+    .select()
+    .from(schema.formWorkflowSteps)
+    .where(eq(schema.formWorkflowSteps.workflowId, workflowId))
+    .orderBy(asc(schema.formWorkflowSteps.position));
+};
+
+(DbStorage.prototype as any).replaceFormWorkflowSteps = async function(workflowId: number, steps: Omit<schema.InsertFormWorkflowStep, "workflowId">[]): Promise<schema.FormWorkflowStep[]> {
+  return db.transaction(async (tx) => {
+    await tx.delete(schema.formWorkflowSteps).where(eq(schema.formWorkflowSteps.workflowId, workflowId));
+    if (steps.length === 0) return [];
+    return tx
+      .insert(schema.formWorkflowSteps)
+      .values(steps.map((s, i) => ({ ...s, workflowId, position: i, updatedAt: new Date() })))
+      .returning();
+  });
+};
+
+(DbStorage.prototype as any).getIntakeFormsForClinic = async function(clinicId: number): Promise<Pick<schema.IntakeForm, "id" | "name" | "status">[]> {
+  return db
+    .select({ id: schema.intakeForms.id, name: schema.intakeForms.name, status: schema.intakeForms.status })
+    .from(schema.intakeForms)
+    .where(eq(schema.intakeForms.clinicId, clinicId))
+    .orderBy(asc(schema.intakeForms.name));
 };
