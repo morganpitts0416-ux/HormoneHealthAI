@@ -5081,7 +5081,7 @@ Return ONLY this JSON structure:
           // Mirror into spruce_messages for Inbox reads
           const conversations = await storage.listSpruceConversations(clinicId);
           const conv = conversations.find((c: any) => c.conversationKey === key);
-          await storage.createSpruceMessage({
+          const mirroredMsg = await storage.createSpruceMessage({
             clinicId,
             spruceMessageId: `cliniq_reply_${outbound.id}`,
             spruceConversationId: conv?.spruceConversationId ?? null,
@@ -5128,8 +5128,17 @@ Return ONLY this JSON structure:
                 try { spruceData = await spruceRes.json(); } catch {}
                 if (spruceData?.id) {
                   await storage.updateSpruceOutboundDeliveryId(outbound.id, spruceData.id);
-                  // Note: externalDeliveryId stamping on portal_messages is handled via a
-                  // dedicated storage method (Phase 3 dedup). Skip direct DB access here.
+                  // Stamp the mirror row with the real Spruce message ID so that
+                  // the dedupeKey-based echo suppression can also catch it.
+                  // (The race-condition-safe mirror fallback handles cases where
+                  // the echo arrives before this stamp completes.)
+                  if (mirroredMsg?.id) {
+                    await storage.updateSpruceMessageEchoIds(
+                      mirroredMsg.id,
+                      spruceData.id,
+                      `conversationItem.created:${spruceData.id}`,
+                    ).catch((e: any) => console.warn('[reply/spruce] updateSpruceMessageEchoIds failed (non-fatal):', e));
+                  }
                 }
                 console.log(`[reply/spruce] Delivered via Spruce API ok, portalMsgId=${msg.id}`);
               } else {
@@ -18838,6 +18847,32 @@ IMPORTANT:
           }
         } catch (err) {
           console.warn(`${tag} echo-suppression check error (continuing):`, err);
+        }
+
+        // ── Fallback echo check (race-condition-safe) ──────────────────────
+        // The delivery-ID stamp above can lose a race: Spruce fires the echo
+        // webhook nearly simultaneously with returning the API response, so
+        // the DB write from updateSpruceOutboundDeliveryId may not have
+        // completed yet.  The mirror spruce_messages row (marked
+        // rawPayload->>'source' = 'cliniq') is always written BEFORE the
+        // Spruce API call, so it is always in the DB by webhook arrival time.
+        if (spruceConversationId && msgBody) {
+          try {
+            const mirrorRow = await (storage as any).findSpruceEchoMirrorByConvAndBody(
+              matchedClinicId,
+              spruceConversationId,
+              msgBody,
+            );
+            if (mirrorRow) {
+              console.log(
+                `${tag} ECHO suppressed (mirror fallback): body="${msgBody.slice(0, 60)}" ` +
+                `matches ClinIQ mirror row id=${mirrorRow.id} — skipping duplicate.`,
+              );
+              return;
+            }
+          } catch (err) {
+            console.warn(`${tag} echo-mirror fallback check error (continuing):`, err);
+          }
         }
       }
 

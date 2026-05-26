@@ -369,6 +369,11 @@ export interface IStorage {
   findSpruceClinicId(phoneLineId?: string | null, teamId?: string | null, toPhone?: string | null): Promise<number | null>;
   findSpruceMessageByDedupeKey(clinicId: number, dedupeKey: string): Promise<schema.SpruceMessage | null>;
   findSpruceOutboundByDeliveryId(clinicId: number, spruceDeliveryId: string): Promise<schema.SpruceOutboundMessage | null>;
+  // Fallback echo-suppression check immune to the race condition between
+  // API-response stamping and webhook arrival.  The mirror spruce_messages row
+  // is always written BEFORE the Spruce API call, so this check always finds it
+  // regardless of timing.
+  findSpruceEchoMirrorByConvAndBody(clinicId: number, spruceConversationId: string, messageBody: string): Promise<schema.SpruceMessage | null>;
   createSpruceRoutingRule(data: schema.InsertSpruceRoutingRule & { clinicId: number }): Promise<schema.SpruceRoutingRule>;
   updateSpruceRoutingRule(id: number, data: Partial<schema.InsertSpruceRoutingRule>): Promise<schema.SpruceRoutingRule | undefined>;
   deleteSpruceRoutingRule(id: number): Promise<void>;
@@ -4878,6 +4883,35 @@ async function _resolveMandatoryReasons(
       and(
         eq(schema.spruceOutboundMessages.clinicId, clinicId),
         eq(schema.spruceOutboundMessages.spruceDeliveryId, spruceDeliveryId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+};
+
+// ── findSpruceEchoMirrorByConvAndBody ────────────────────────────────────
+// Race-condition-safe echo suppression fallback.
+// The mirror spruce_messages row (rawPayload->>'source' = 'cliniq') is
+// always written BEFORE the outgoing Spruce API call, so it is guaranteed
+// to exist by the time the echo webhook arrives — unlike the delivery-ID
+// stamp which is set AFTER the API response and can lose the race.
+(DbStorage.prototype as any).findSpruceEchoMirrorByConvAndBody = async function(
+  clinicId: number,
+  spruceConversationId: string,
+  messageBody: string,
+): Promise<schema.SpruceMessage | null> {
+  const cutoff = new Date(Date.now() - 5 * 60 * 1000); // 5-minute window
+  const [row] = await db
+    .select()
+    .from(schema.spruceMessages)
+    .where(
+      and(
+        eq(schema.spruceMessages.clinicId, clinicId),
+        eq(schema.spruceMessages.spruceConversationId, spruceConversationId),
+        eq(schema.spruceMessages.messageBody as any, messageBody),
+        eq(schema.spruceMessages.messageDirection as any, "outbound_staff"),
+        sql`${schema.spruceMessages.rawPayload}->>'source' = 'cliniq'`,
+        sql`${schema.spruceMessages.receivedAt} >= ${cutoff}`,
       ),
     )
     .limit(1);
