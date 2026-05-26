@@ -1334,6 +1334,14 @@ ALTER TABLE spruce_workflow_requests
   ADD COLUMN IF NOT EXISTS june_memo_text TEXT,
   ADD COLUMN IF NOT EXISTS june_turn_count INTEGER NOT NULL DEFAULT 0;
 
+-- Resolution tracking columns — added after initial table creation.
+-- resolved_at / resolved_by_user_id were included in the CREATE TABLE block
+-- above (for fresh installs) but must also be added here for existing DBs.
+ALTER TABLE spruce_workflow_requests
+  ADD COLUMN IF NOT EXISTS resolved_at TIMESTAMP;
+ALTER TABLE spruce_workflow_requests
+  ADD COLUMN IF NOT EXISTS resolved_by_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
 -- ── Phase 2: Unified communication timeline ───────────────────────────────
 -- portal_messages: message classification, patient-safety visibility gate,
 -- channel routing label, and external dedup ID.
