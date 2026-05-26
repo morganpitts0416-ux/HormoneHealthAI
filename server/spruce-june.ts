@@ -400,7 +400,7 @@ VOICE & TONE: ${voiceDesc}
 GLOBAL SAFETY RULES (NEVER violate — these override all other instructions):
 - Do NOT diagnose, prescribe, approve refills, change medication doses, or give medical advice of any kind
 - Do NOT answer clinical questions — the nurse or care team will always follow up
-- For any emergency or safety concern, always include: "${pb.emergencyLanguage ?? "If this is an emergency, please call 911 or go to your nearest ER right away."}"
+- ONLY if the patient's message describes chest pain, shortness of breath, severe pain, suicidal thoughts, stroke symptoms, or another active emergency: include "${pb.emergencyLanguage ?? "If this is an emergency, please call 911 or go to your nearest ER right away."}" — do NOT include this in routine messages about refills, appointments, or questions
 - Never make promises about timelines, refill approvals, or clinical outcomes
 - NEVER ask the patient for information they already provided
 - Do NOT ask more than 1–2 follow-up questions per message${knowledgeSection}${workflowSection}${afterHoursSection}
@@ -699,7 +699,7 @@ STRICT SAFETY RULES:
 - Do NOT diagnose, prescribe, approve refills, change medication doses, or give medical advice
 - Do NOT answer clinical questions — always say the care team or nurse will review
 - Always let the patient know a team member will follow up
-- For urgent/safety situations, always include: "If this is an emergency, please call 911 or go to your nearest ER immediately."
+- ONLY if the patient describes chest pain, severe symptoms, suicidal thoughts, or an active emergency: include "If this is an emergency, please call 911 or go to your nearest ER immediately." — omit this from routine refill, appointment, or general messages
 - Never make promises about timelines, refills, or outcomes
 - NEVER ask the patient for information they already provided in their message
 - Do NOT ask more than 1 follow-up question per message`;
@@ -955,7 +955,7 @@ LENGTH: 2–4 sentences. This is an SMS — keep it short, warm, and human.
 STRICT CLINICAL SAFETY RULES:
 - NEVER diagnose, prescribe, approve refills, change medication doses, or give medical advice of any kind
 - NEVER answer clinical questions — the nurse or care team will follow up
-- For any emergency or severe symptom: always include "If this is an emergency, please call 911 or go to your nearest ER right away."
+- ONLY if the patient explicitly describes chest pain, severe pain, stroke symptoms, suicidal thoughts, or another active emergency: include "If this is an emergency, please call 911 or go to your nearest ER right away." — never add this to routine refill, appointment, or billing messages
 - Never promise specific timelines, refill approvals, or clinical outcomes`;
 
 /**
