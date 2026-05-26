@@ -2,6 +2,7 @@ import type { Express, Request, Response, NextFunction } from "express";
 import { createServer, type Server } from "http";
 import crypto from "crypto";
 import { encryptSecret, decryptSecret, isEncrypted } from "./crypto-utils";
+import { enrollWorkflow, processWaitingSteps, notifyPatientResponse, notifyStaffReply } from "./workflow-engine";
 import fs from "fs";
 import path from "path";
 import { execFile } from "child_process";
@@ -5600,6 +5601,17 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       });
 
       await storage.updatePatientFormAssignment(assignmentId, { status: "completed" });
+
+      // Fire-and-forget: form workflow engine enrollment
+      setImmediate(() =>
+        enrollWorkflow(storage, {
+          submissionId: submission.id,
+          formId: assignment.formId,
+          clinicId: (form as any).clinicId ?? 0,
+          patientId,
+          responses: responses ?? {},
+        }).catch(e => console.warn("[workflow-engine] portal enroll error:", e)),
+      );
 
       // Fire-and-forget: GoHighLevel inbound webhook (portal submissions)
       console.log(`[GHL Webhook] portal form ${form.id} sub ${submission.id} — enabled=${(form as any).ghlWebhookEnabled} urlSet=${!!(form as any).ghlWebhookUrl}`);
@@ -13588,6 +13600,17 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         }
       }
 
+      // Fire-and-forget: form workflow engine enrollment
+      setImmediate(() =>
+        enrollWorkflow(storage, {
+          submissionId: submission.id,
+          formId: pub.formId,
+          clinicId: form.clinicId,
+          patientId: resolvedPatientId ?? null,
+          responses: responses ?? {},
+        }).catch(e => console.warn("[workflow-engine] public enroll error:", e)),
+      );
+
       // Fire-and-forget: GoHighLevel inbound webhook
       console.log(`[GHL Webhook] public form ${form.id} sub ${submission.id} — enabled=${form.ghlWebhookEnabled} urlSet=${!!form.ghlWebhookUrl}`);
       if (form.ghlWebhookEnabled && form.ghlWebhookUrl) {
@@ -18950,8 +18973,22 @@ IMPORTANT:
             console.warn(`${tag} failed to set staff_takeover state (non-fatal):`, err);
           }
         }
+        // Fire-and-forget: notify workflow engine of staff reply (may stop active runs)
+        if (matchedPatient?.id) {
+          setImmediate(() =>
+            notifyStaffReply(storage, matchedClinicId, matchedPatient.id)
+              .catch(e => console.warn("[workflow-engine] notifyStaffReply error:", e)),
+          );
+        }
         // Fall through to the auto-reply gate below (it will correctly no-op).
       } else {
+        // Fire-and-forget: notify workflow engine of patient response (may stop active runs)
+        if (matchedPatient?.id) {
+          setImmediate(() =>
+            notifyPatientResponse(storage, matchedClinicId, matchedPatient.id)
+              .catch(e => console.warn("[workflow-engine] notifyPatientResponse error:", e)),
+          );
+        }
         // ── Classify the message into a workflow ─────────────────────────
         // Keyword-pattern classification only — no outbound AI replies yet.
         // Spruce auto-reply requires spruceAutoReplyEnabled=true AND a full implementation.
@@ -19338,6 +19375,100 @@ IMPORTANT:
       res.status(500).json({ error: "Failed to save steps" });
     }
   });
+
+  // ── Layer 2: Workflow Run Management Routes ──────────────────────────────
+
+  // GET /api/form-workflows/:id/runs — list recent runs for a workflow (audit log)
+  app.get("/api/form-workflows/:id/runs", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid id" });
+      const workflow = await storage.getFormWorkflow(id, clinicId);
+      if (!workflow) return res.status(404).json({ error: "Workflow not found" });
+      const runs = await (storage as any).listFormWorkflowRunsByWorkflow(id, clinicId);
+      res.json(runs);
+    } catch (err) {
+      console.error("[form-workflows] GET :id/runs error:", err);
+      res.status(500).json({ error: "Failed to list runs" });
+    }
+  });
+
+  // GET /api/workflow-runs/:runId — get a single run (avoids :id conflict above)
+  app.get("/api/workflow-runs/:runId", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const runId = parseInt(req.params.runId);
+      if (isNaN(runId)) return res.status(400).json({ error: "Invalid runId" });
+      const run = await (storage as any).getWorkflowRun(runId);
+      if (!run || run.clinicId !== clinicId) return res.status(404).json({ error: "Run not found" });
+      res.json({ run, stepStates: [] });
+    } catch (err) {
+      console.error("[workflow-runs] GET :runId error:", err);
+      res.status(500).json({ error: "Failed to get run" });
+    }
+  });
+
+  // POST /api/workflow-runs/:runId/stop — manually stop an active run
+  app.post("/api/workflow-runs/:runId/stop", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const runId = parseInt(req.params.runId);
+      if (isNaN(runId)) return res.status(400).json({ error: "Invalid runId" });
+      const run = await (storage as any).getWorkflowRun(runId);
+      if (!run || run.clinicId !== clinicId) return res.status(404).json({ error: "Run not found" });
+      if (["stopped", "completed", "failed"].includes(run.status)) {
+        return res.status(400).json({ error: `Run is already ${run.status}` });
+      }
+      const reason = String(req.body?.reason ?? "Manually stopped by staff");
+      await (storage as any).updateWorkflowRun(runId, {
+        status: "stopped",
+        stoppedReason: reason,
+        completedAt: new Date(),
+      });
+      res.json({ ok: true, runId, reason });
+    } catch (err) {
+      console.error("[workflow-runs] POST :runId/stop error:", err);
+      res.status(500).json({ error: "Failed to stop run" });
+    }
+  });
+
+  // POST /api/workflow-runs/:runId/draft/:stepPos/send — staff approves a june_draft step
+  app.post("/api/workflow-runs/:runId/draft/:stepPos/send", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const runId = parseInt(req.params.runId);
+      const stepPos = parseInt(req.params.stepPos);
+      if (isNaN(runId) || isNaN(stepPos)) return res.status(400).json({ error: "Invalid params" });
+      const run = await (storage as any).getWorkflowRun(runId);
+      if (!run || run.clinicId !== clinicId) return res.status(404).json({ error: "Run not found" });
+      const { message } = req.body;
+      if (!message || typeof message !== "string" || !message.trim()) {
+        return res.status(400).json({ error: "message is required" });
+      }
+      await (storage as any).upsertWorkflowStepState(runId, stepPos, {
+        stepType: "send_spruce_sms",
+        status: "completed",
+        executedAt: new Date(),
+        resultJson: { outcome: "draft_approved_by_staff", bodyPreview: message.slice(0, 80) },
+      });
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[workflow-runs] POST draft/send error:", err);
+      res.status(500).json({ error: "Failed to send draft" });
+    }
+  });
+
+  // ── Background runner: process due wait_delay steps every 60 seconds ──────
+  setInterval(() => {
+    processWaitingSteps(storage).catch(e =>
+      console.error("[workflow-engine] processWaitingSteps error:", e),
+    );
+  }, 60_000);
 
   const httpServer = createServer(app);
   return httpServer;

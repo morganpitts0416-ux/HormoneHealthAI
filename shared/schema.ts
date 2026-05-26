@@ -3058,6 +3058,11 @@ export const formWorkflowRuns = pgTable("form_workflow_runs", {
   clinicId: integer("clinic_id").notNull().references(() => clinics.id, { onDelete: "cascade" }),
   // The form submission that triggered this run
   submissionId: integer("submission_id").references(() => formSubmissions.id, { onDelete: "set null" }),
+  // Layer 2: patient context
+  patientId: integer("patient_id").references(() => patients.id, { onDelete: "set null" }),
+  // Layer 2: snapshot of form + patient context at enrollment time
+  // { formId, formName, clinicianId, patientId, patientName, patientPhone, responses }
+  contextJson: jsonb("context_json"),
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   currentStepPosition: integer("current_step_position").notNull().default(0),
   stoppedReason: text("stopped_reason"),
@@ -3076,9 +3081,14 @@ export const formWorkflowStepStates = pgTable("form_workflow_step_states", {
   runId: integer("run_id").notNull().references(() => formWorkflowRuns.id, { onDelete: "cascade" }),
   stepPosition: integer("step_position").notNull(),
   stepType: varchar("step_type", { length: 40 }).notNull(),
+  // status: pending | running | waiting | completed | skipped | failed
   status: varchar("status", { length: 20 }).notNull().default("pending"),
   resultJson: jsonb("result_json"),
   executedAt: timestamp("executed_at"),
+  // Layer 2: wait_delay target time — background runner queries WHERE due_at <= NOW()
+  dueAt: timestamp("due_at"),
+  // Layer 2: optimistic lock — set atomically before execution; prevents double-fire
+  lockedAt: timestamp("locked_at"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
 export type FormWorkflowStepState = typeof formWorkflowStepStates.$inferSelect;

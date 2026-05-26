@@ -1555,6 +1555,9 @@ CREATE TABLE IF NOT EXISTS form_workflow_runs (
   completed_at          TIMESTAMP,
   created_at            TIMESTAMP NOT NULL DEFAULT NOW()
 );
+-- Layer 2 additions
+ALTER TABLE form_workflow_runs ADD COLUMN IF NOT EXISTS patient_id INTEGER REFERENCES patients(id) ON DELETE SET NULL;
+ALTER TABLE form_workflow_runs ADD COLUMN IF NOT EXISTS context_json JSONB;
 
 -- form_workflow_step_states: per-step execution state within a run (stub for Layer 2).
 CREATE TABLE IF NOT EXISTS form_workflow_step_states (
@@ -1567,3 +1570,6 @@ CREATE TABLE IF NOT EXISTS form_workflow_step_states (
   executed_at TIMESTAMP,
   created_at  TIMESTAMP NOT NULL DEFAULT NOW()
 );
+-- Layer 2 additions
+ALTER TABLE form_workflow_step_states ADD COLUMN IF NOT EXISTS due_at TIMESTAMP;
+ALTER TABLE form_workflow_step_states ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP;

@@ -458,6 +458,22 @@ export interface IStorage {
   deleteFormWorkflow(id: number, clinicId: number): Promise<boolean>;
   listFormWorkflowSteps(workflowId: number): Promise<schema.FormWorkflowStep[]>;
   replaceFormWorkflowSteps(workflowId: number, steps: Omit<schema.InsertFormWorkflowStep, "workflowId">[]): Promise<schema.FormWorkflowStep[]>;
+  // ── Layer 2: workflow execution engine ──────────────────────────────────
+  findEnabledWorkflowForForm(clinicId: number, formId: number): Promise<schema.FormWorkflow | null>;
+  createWorkflowRun(data: schema.InsertFormWorkflowRun): Promise<schema.FormWorkflowRun>;
+  getWorkflowRun(id: number): Promise<schema.FormWorkflowRun | null>;
+  updateWorkflowRun(id: number, data: Partial<Pick<schema.FormWorkflowRun, "status" | "currentStepPosition" | "stoppedReason" | "completedAt" | "contextJson">>): Promise<void>;
+  getWorkflowRunBySubmission(workflowId: number, submissionId: number): Promise<schema.FormWorkflowRun | null>;
+  listWaitingStepStates(limit: number): Promise<schema.FormWorkflowStepState[]>;
+  getWorkflowStepState(runId: number, stepPosition: number): Promise<schema.FormWorkflowStepState | null>;
+  upsertWorkflowStepState(runId: number, stepPosition: number, data: { stepType: string; status: string; executedAt?: Date | null; resultJson?: any; dueAt?: Date | null; lockedAt?: Date | null }): Promise<schema.FormWorkflowStepState>;
+  lockWaitingStep(id: number): Promise<boolean>;
+  clearWaitingStepLock(id: number): Promise<void>;
+  listActiveRunsForPatient(clinicId: number, patientId: number): Promise<schema.FormWorkflowRun[]>;
+  findSpruceConversationByPatient(clinicId: number, patientId: number): Promise<{ conversationKey: string; spruceConversationId: string | null; fromPhone: string | null; toPhone: string | null } | null>;
+  hasPatientRespondedSince(clinicId: number, patientId: number, since: Date): Promise<boolean>;
+  createWorkflowInboxNotification(data: { clinicId: number; patientId?: number | null; providerId?: number | null; type: string; title: string; message: string; severity?: string; relatedEntityId?: number | null }): Promise<void>;
+  listFormWorkflowRunsByWorkflow(workflowId: number, clinicId: number): Promise<schema.FormWorkflowRun[]>;
   getIntakeFormsForClinic(clinicId: number): Promise<Pick<schema.IntakeForm, "id" | "name" | "status">[]>;
 
   // ── Clinical Block Defaults (per-clinician ROS/PE customization) ─────────
@@ -6009,4 +6025,275 @@ export interface SpruceConversationMessageRow {
     .from(schema.intakeForms)
     .where(eq(schema.intakeForms.clinicId, clinicId))
     .orderBy(asc(schema.intakeForms.name));
+};
+
+// ── Layer 2: Form Workflow Execution Engine ─────────────────────────────────
+
+(DbStorage.prototype as any).findEnabledWorkflowForForm = async function(
+  clinicId: number,
+  formId: number,
+): Promise<schema.FormWorkflow | null> {
+  const [row] = await db
+    .select()
+    .from(schema.formWorkflows)
+    .where(
+      and(
+        eq(schema.formWorkflows.clinicId, clinicId),
+        eq(schema.formWorkflows.triggerFormId, formId),
+        eq(schema.formWorkflows.enabled, true),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).createWorkflowRun = async function(
+  data: schema.InsertFormWorkflowRun,
+): Promise<schema.FormWorkflowRun> {
+  const [row] = await db
+    .insert(schema.formWorkflowRuns)
+    .values(data)
+    .returning();
+  return row;
+};
+
+(DbStorage.prototype as any).getWorkflowRun = async function(
+  id: number,
+): Promise<schema.FormWorkflowRun | null> {
+  const [row] = await db
+    .select()
+    .from(schema.formWorkflowRuns)
+    .where(eq(schema.formWorkflowRuns.id, id))
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).updateWorkflowRun = async function(
+  id: number,
+  data: Partial<Pick<schema.FormWorkflowRun, "status" | "currentStepPosition" | "stoppedReason" | "completedAt" | "contextJson">>,
+): Promise<void> {
+  await db
+    .update(schema.formWorkflowRuns)
+    .set(data as any)
+    .where(eq(schema.formWorkflowRuns.id, id));
+};
+
+(DbStorage.prototype as any).getWorkflowRunBySubmission = async function(
+  workflowId: number,
+  submissionId: number,
+): Promise<schema.FormWorkflowRun | null> {
+  const [row] = await db
+    .select()
+    .from(schema.formWorkflowRuns)
+    .where(
+      and(
+        eq(schema.formWorkflowRuns.workflowId, workflowId),
+        eq(schema.formWorkflowRuns.submissionId, submissionId),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).listWaitingStepStates = async function(
+  limit: number,
+): Promise<schema.FormWorkflowStepState[]> {
+  return db
+    .select()
+    .from(schema.formWorkflowStepStates)
+    .where(
+      and(
+        eq(schema.formWorkflowStepStates.status, "waiting"),
+        isNotNull(schema.formWorkflowStepStates.dueAt),
+        sql`${schema.formWorkflowStepStates.dueAt} <= NOW()`,
+        isNull(schema.formWorkflowStepStates.lockedAt),
+      ),
+    )
+    .orderBy(asc(schema.formWorkflowStepStates.dueAt))
+    .limit(limit);
+};
+
+(DbStorage.prototype as any).getWorkflowStepState = async function(
+  runId: number,
+  stepPosition: number,
+): Promise<schema.FormWorkflowStepState | null> {
+  const [row] = await db
+    .select()
+    .from(schema.formWorkflowStepStates)
+    .where(
+      and(
+        eq(schema.formWorkflowStepStates.runId, runId),
+        eq(schema.formWorkflowStepStates.stepPosition, stepPosition),
+      ),
+    )
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).upsertWorkflowStepState = async function(
+  runId: number,
+  stepPosition: number,
+  data: { stepType: string; status: string; executedAt?: Date | null; resultJson?: any; dueAt?: Date | null; lockedAt?: Date | null },
+): Promise<schema.FormWorkflowStepState> {
+  const existing = await (this as any).getWorkflowStepState(runId, stepPosition);
+  if (existing) {
+    const [row] = await db
+      .update(schema.formWorkflowStepStates)
+      .set({
+        status: data.status,
+        ...(data.executedAt !== undefined ? { executedAt: data.executedAt } : {}),
+        ...(data.resultJson !== undefined ? { resultJson: data.resultJson } : {}),
+        ...(data.dueAt !== undefined ? { dueAt: data.dueAt } : {}),
+        ...(data.lockedAt !== undefined ? { lockedAt: data.lockedAt } : {}),
+      })
+      .where(eq(schema.formWorkflowStepStates.id, existing.id))
+      .returning();
+    return row;
+  }
+  const [row] = await db
+    .insert(schema.formWorkflowStepStates)
+    .values({
+      runId,
+      stepPosition,
+      stepType: data.stepType,
+      status: data.status,
+      executedAt: data.executedAt ?? null,
+      resultJson: data.resultJson ?? null,
+      dueAt: data.dueAt ?? null,
+      lockedAt: data.lockedAt ?? null,
+    })
+    .returning();
+  return row;
+};
+
+// Atomic optimistic lock for the background runner.
+// Returns true if the lock was acquired (this process owns the step).
+(DbStorage.prototype as any).lockWaitingStep = async function(
+  id: number,
+): Promise<boolean> {
+  const result = await db
+    .update(schema.formWorkflowStepStates)
+    .set({ lockedAt: new Date() })
+    .where(
+      and(
+        eq(schema.formWorkflowStepStates.id, id),
+        isNull(schema.formWorkflowStepStates.lockedAt),
+        eq(schema.formWorkflowStepStates.status, "waiting"),
+      ),
+    )
+    .returning({ id: schema.formWorkflowStepStates.id });
+  return result.length > 0;
+};
+
+(DbStorage.prototype as any).clearWaitingStepLock = async function(id: number): Promise<void> {
+  await db
+    .update(schema.formWorkflowStepStates)
+    .set({ lockedAt: null })
+    .where(eq(schema.formWorkflowStepStates.id, id));
+};
+
+(DbStorage.prototype as any).listActiveRunsForPatient = async function(
+  clinicId: number,
+  patientId: number,
+): Promise<schema.FormWorkflowRun[]> {
+  return db
+    .select()
+    .from(schema.formWorkflowRuns)
+    .where(
+      and(
+        eq(schema.formWorkflowRuns.clinicId, clinicId),
+        eq(schema.formWorkflowRuns.patientId, patientId),
+        eq(schema.formWorkflowRuns.status, "running"),
+      ),
+    );
+};
+
+(DbStorage.prototype as any).findSpruceConversationByPatient = async function(
+  clinicId: number,
+  patientId: number,
+): Promise<{ conversationKey: string; spruceConversationId: string | null; fromPhone: string | null; toPhone: string | null } | null> {
+  const [row] = await db
+    .select({
+      conversationKey: schema.spruceConversations.conversationKey,
+      spruceConversationId: schema.spruceConversations.spruceConversationId,
+      fromPhone: schema.spruceConversations.fromPhone,
+      toPhone: schema.spruceConversations.toPhone,
+    })
+    .from(schema.spruceConversations)
+    .where(
+      and(
+        eq(schema.spruceConversations.clinicId, clinicId),
+        eq(schema.spruceConversations.patientId, patientId),
+      ),
+    )
+    .orderBy(desc(schema.spruceConversations.lastMessageAt))
+    .limit(1);
+  return row ?? null;
+};
+
+(DbStorage.prototype as any).hasPatientRespondedSince = async function(
+  clinicId: number,
+  patientId: number,
+  since: Date,
+): Promise<boolean> {
+  // Check spruce_messages for inbound patient message after the given time
+  const [spruceRow] = await db
+    .select({ id: schema.spruceMessages.id })
+    .from(schema.spruceMessages)
+    .where(
+      and(
+        eq(schema.spruceMessages.clinicId, clinicId),
+        eq(schema.spruceMessages.patientId, patientId),
+        eq(schema.spruceMessages.messageDirection as any, "inbound_patient"),
+        sql`${schema.spruceMessages.receivedAt} > ${since}`,
+      ),
+    )
+    .limit(1);
+  if (spruceRow) return true;
+  // Also check portal_messages for patient-sent messages
+  const [portalRow] = await db
+    .select({ id: schema.portalMessages.id })
+    .from(schema.portalMessages)
+    .where(
+      and(
+        eq(schema.portalMessages.patientId, patientId),
+        eq(schema.portalMessages.senderType as any, "patient"),
+        sql`${schema.portalMessages.createdAt} > ${since}`,
+      ),
+    )
+    .limit(1);
+  return !!portalRow;
+};
+
+(DbStorage.prototype as any).createWorkflowInboxNotification = async function(
+  data: { clinicId: number; patientId?: number | null; providerId?: number | null; type: string; title: string; message: string; severity?: string; relatedEntityId?: number | null },
+): Promise<void> {
+  await db.insert(schema.providerInboxNotifications).values({
+    clinicId: data.clinicId,
+    patientId: data.patientId ?? null,
+    providerId: data.providerId ?? null,
+    type: data.type,
+    title: data.title,
+    message: data.message,
+    severity: data.severity ?? "normal",
+    relatedEntityType: data.relatedEntityId ? "patient" : null,
+    relatedEntityId: data.relatedEntityId ?? null,
+  });
+};
+
+(DbStorage.prototype as any).listFormWorkflowRunsByWorkflow = async function(
+  workflowId: number,
+  clinicId: number,
+): Promise<schema.FormWorkflowRun[]> {
+  return db
+    .select()
+    .from(schema.formWorkflowRuns)
+    .where(
+      and(
+        eq(schema.formWorkflowRuns.workflowId, workflowId),
+        eq(schema.formWorkflowRuns.clinicId, clinicId),
+      ),
+    )
+    .orderBy(desc(schema.formWorkflowRuns.createdAt))
+    .limit(100);
 };
