@@ -1,0 +1,158 @@
+Yes, I think we are ready to plan Layer 2.
+
+Layer 2 should be the Form Workflow Execution Engine.
+
+Goal:
+Make the workflows created in Layer 1 actually run when a selected ClinIQ form is submitted.
+
+Scope for Layer 2:
+
+* form submission trigger
+* workflow enrollment
+* execute immediate steps
+* process wait/delay steps
+* branch on patient response/no response
+* stop conditions
+* execution logs
+* dashboard task/memo creation
+* outbound Spruce/portal message delivery through existing audited paths
+
+Important:
+Do NOT build a full visual workflow builder redesign right now. The builder UI already exists from Layer 1.
+
+Please first propose the safest implementation plan for Layer 2 before coding.
+
+Requirements:
+
+1. Trigger on form submission
+   When a ClinIQ form is submitted, check whether that clinic has an enabled form workflow for that specific form.
+
+If yes:
+
+* create a form_workflow_run
+* create initial step state(s)
+* begin executing the workflow
+
+If no enabled workflow:
+
+* do nothing
+
+2. Default OFF / clinic scoped
+
+* no workflow should run unless explicitly enabled by that clinic
+* workflow must only trigger for forms belonging to that clinic
+* no cross-clinic access
+
+3. Step execution
+   Support these step types first:
+
+* notify staff member
+* assign to staff member
+* create dashboard task/memo
+* add internal note
+* send Spruce SMS
+* send portal message
+* wait/delay
+* if/then branch
+* update status
+* stop workflow
+
+4. Wait/delay processing
+   We need a safe background job/runner that checks for due workflow steps.
+
+It should process:
+
+* wait 3 hours
+* wait 24 hours
+* wait 2 days
+* etc.
+
+Do not hardcode 24 hours.
+
+5. Response detection
+   Patient responses should be able to stop or advance the workflow.
+
+Examples:
+
+* if patient responds through Spruce → workflow can branch/stop
+* if patient responds through portal → workflow can branch/stop
+* if staff replies → workflow should stop/pause if configured
+
+6. If/Then branching
+   Support simple branching first:
+
+* if patient responded
+* if no patient response after wait period
+* if staff replied
+* if task completed
+* if patient is matched/unmatched
+* future: if form answer equals X
+
+7. Outbound messages
+   Outbound messages must use existing audited paths:
+
+* Spruce SMS through clinic-scoped Spruce API token
+* portal message through existing portal messaging path
+* all messages saved to unified communication timeline
+* no duplicate/echo bubbles
+
+8. June options for message steps
+   For send-message steps, respect the selected mode:
+
+* static template message
+* Instruct June
+* June draft for staff review
+
+If “Instruct June” is selected:
+June should generate a natural message using:
+
+* step instructions
+* clinic playbook
+* triggering form submission
+* patient/context if available
+* safety guardrails
+
+If “June draft for staff review” is selected:
+
+* create a draft/task for staff approval
+* do not send automatically
+
+9. Stop conditions
+   Honor configured stop conditions:
+
+* patient responds
+* staff replies
+* task completed
+* appointment scheduled
+* max attempts reached
+* manually stopped
+
+10. Execution logs
+    Every workflow action should be logged:
+
+* run started
+* step executed
+* message sent
+* wait scheduled
+* branch chosen
+* workflow stopped
+* error encountered
+
+11. Safety
+
+* all workflows default OFF
+* no clinical advice unless staff-approved
+* no diagnosis/prescribing/med changes
+* staff_takeover / ai_muted respected
+* all outbound messages audited
+* graceful failure if Spruce token missing
+
+12. Deployment safety
+    Please propose the implementation plan before coding, including:
+
+* files to change
+* routes needed
+* background runner design
+* how to prevent duplicate step execution
+* how to retry failed steps safely
+* what will remain future/not built yet
