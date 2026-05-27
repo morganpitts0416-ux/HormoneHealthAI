@@ -136,6 +136,25 @@ export function createOpsRouter(): Router {
         });
       }
       const { token, email, password, firstName, lastName } = req.body ?? {};
+
+      // ── TEMPORARY DEBUG — logs only lengths + SHA-256 prefixes, never the raw token ──
+      {
+        const envLen   = envToken.length;
+        const subLen   = typeof token === "string" ? token.length : -1;
+        const envHash  = crypto.createHash("sha256").update(envToken).digest("hex").slice(0, 8);
+        const subHash  = typeof token === "string"
+          ? crypto.createHash("sha256").update(token).digest("hex").slice(0, 8)
+          : "N/A";
+        const exact    = token === envToken;
+        const trimmed  = typeof token === "string" && token.trim() === envToken.trim();
+        const revision = process.env.K_REVISION ?? process.env.CLOUD_RUN_REVISION ?? "unknown";
+        console.log(
+          "[ops/bootstrap/debug]",
+          JSON.stringify({ envLen, subLen, envHash, subHash, exact, trimmed, revision })
+        );
+      }
+      // ── END TEMPORARY DEBUG ────────────────────────────────────────────────────
+
       if (!token || token !== envToken) {
         await logOpsAudit({
           adminId: null,
