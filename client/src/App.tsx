@@ -57,6 +57,9 @@ import BusinessAssociateAgreement from "@/pages/baa";
 import HelpCenter from "@/pages/help";
 import JoinClinicPage from "@/pages/join-clinic";
 import ExternalReviewerWorkspace from "@/pages/external-reviewer-workspace";
+import OpsLogin from "@/pages/ops/login";
+import OpsBootstrap from "@/pages/ops/bootstrap";
+import OpsDashboard from "@/pages/ops/dashboard";
 import { BaaGate } from "@/components/baa-gate";
 import { BillingGate } from "@/components/billing-gate";
 import { SessionTimeoutModal } from "@/components/session-timeout-modal";
@@ -342,6 +345,10 @@ function Router() {
       <Route path="/portal/refill-request" component={PortalRefillRequest} />
       <Route path="/staff-set-password" component={StaffSetPassword} />
       <Route path="/join-clinic" component={JoinClinicPage} />
+      {/* ── Ops Portal — standalone, no clinician auth wrapper ── */}
+      <Route path="/ops/bootstrap" component={OpsBootstrap} />
+      <Route path="/ops/dashboard" component={OpsDashboard} />
+      <Route path="/ops" component={OpsLogin} />
       <Route>
         {() => <RootRedirect />}
       </Route>

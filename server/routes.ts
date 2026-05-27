@@ -1,4 +1,5 @@
 import type { Express, Request, Response, NextFunction } from "express";
+import { registerOpsRoutes } from "./ops";
 import { createServer, type Server } from "http";
 import crypto from "crypto";
 import { encryptSecret, decryptSecret, isEncrypted } from "./crypto-utils";
@@ -19593,6 +19594,9 @@ IMPORTANT:
       console.error("[workflow-engine] processWaitingSteps error:", e),
     );
   }, 60_000);
+
+  // ── Ops Portal (isolated — feature-flagged by OPS_PORTAL_ENABLED) ──────────
+  registerOpsRoutes(app);
 
   const httpServer = createServer(app);
   return httpServer;

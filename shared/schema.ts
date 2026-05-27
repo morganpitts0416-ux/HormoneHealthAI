@@ -1,7 +1,7 @@
 import { z } from "zod";
 import { sql } from "drizzle-orm";
 import { createInsertSchema } from "drizzle-zod";
-import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, time, uniqueIndex } from "drizzle-orm/pg-core";
+import { pgTable, serial, varchar, text, timestamp, jsonb, integer, boolean, real, time, uniqueIndex, index } from "drizzle-orm/pg-core";
 
 // Patient Demographics & ASCVD Risk Factors Schema
 export const patientDemographicsSchema = z.object({
@@ -3096,3 +3096,70 @@ export const formWorkflowStepStates = pgTable("form_workflow_step_states", {
 export type FormWorkflowStepState = typeof formWorkflowStepStates.$inferSelect;
 export const insertFormWorkflowStepStateSchema = createInsertSchema(formWorkflowStepStates).omit({ id: true, createdAt: true });
 export type InsertFormWorkflowStepState = z.infer<typeof insertFormWorkflowStepStateSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
+// Platform Admin / Ops Portal
+// Additive-only — does not alter any existing table.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const platformAdmins = pgTable("platform_admins", {
+  id: serial("id").primaryKey(),
+  email: text("email").notNull().unique(),
+  passwordHash: text("password_hash").notNull(),
+  passwordChangedAt: timestamp("password_changed_at"),
+  firstName: text("first_name").notNull(),
+  lastName: text("last_name").notNull(),
+  role: text("role").notNull().default("admin"),       // 'owner' | 'admin' | 'viewer'
+  status: text("status").notNull().default("active"),  // 'active' | 'suspended' | 'invited'
+  mfaSecretEncrypted: text("mfa_secret_encrypted"),    // AES-256-GCM encrypted
+  mfaEnabled: boolean("mfa_enabled").notNull().default(false),
+  failedLoginCount: integer("failed_login_count").notNull().default(0),
+  lockedUntil: timestamp("locked_until"),
+  createdById: integer("created_by_id"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+  lastLoginAt: timestamp("last_login_at"),
+  lastLoginIp: text("last_login_ip"),
+  lastLoginUserAgent: text("last_login_user_agent"),
+}, (t) => ({
+  emailIdx: index("platform_admins_email_idx").on(t.email),
+}));
+export type PlatformAdmin = typeof platformAdmins.$inferSelect;
+export const insertPlatformAdminSchema = createInsertSchema(platformAdmins).omit({
+  id: true, createdAt: true, updatedAt: true,
+});
+export type InsertPlatformAdmin = z.infer<typeof insertPlatformAdminSchema>;
+
+// Session tokens for ops portal — completely separate from clinician express-session.
+// Identified by a UUIDv4 stored in the 'ops.sid' cookie (httpOnly, sameSite=strict).
+export const opsSessions = pgTable("ops_sessions", {
+  id: text("id").primaryKey(),
+  adminId: integer("admin_id").notNull().references(() => platformAdmins.id, { onDelete: "cascade" }),
+  expiresAt: timestamp("expires_at").notNull(),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+}, (t) => ({
+  adminIdx: index("ops_sessions_admin_id_idx").on(t.adminId),
+  expiresIdx: index("ops_sessions_expires_at_idx").on(t.expiresAt),
+}));
+
+// Append-only audit trail for all platform-admin (ops) actions.
+export const opsAuditLog = pgTable("ops_audit_log", {
+  id: serial("id").primaryKey(),
+  adminId: integer("admin_id").references(() => platformAdmins.id, { onDelete: "set null" }),
+  action: text("action").notNull(),
+  targetType: text("target_type"),
+  targetId: text("target_id"),
+  details: jsonb("details"),
+  ipAddress: text("ip_address"),
+  userAgent: text("user_agent"),
+  createdAt: timestamp("created_at").notNull().defaultNow(),
+  updatedAt: timestamp("updated_at").notNull().defaultNow(),
+}, (t) => ({
+  adminIdx: index("ops_audit_log_admin_id_idx").on(t.adminId),
+  actionIdx: index("ops_audit_log_action_idx").on(t.action),
+  createdIdx: index("ops_audit_log_created_at_idx").on(t.createdAt),
+  targetIdx: index("ops_audit_log_target_idx").on(t.targetType, t.targetId),
+}));
+export type OpsAuditEntry = typeof opsAuditLog.$inferSelect;

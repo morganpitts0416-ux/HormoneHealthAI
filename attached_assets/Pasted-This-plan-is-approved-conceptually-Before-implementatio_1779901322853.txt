@@ -1,0 +1,50 @@
+This plan is approved conceptually. Before implementation, make these required adjustments:
+
+1. Store `mfa_secret` encrypted, not plain text.
+2. Add `password_changed_at` to `platform_admins`.
+3. Add `failed_login_count` and `locked_until` to `platform_admins`.
+4. Add `last_login_user_agent` in addition to `last_login_ip`.
+5. Add `updated_at` to both `platform_admins` and `ops_audit_log` if consistent with our schema patterns.
+6. Add indexes for:
+
+   * platform_admins.email
+   * ops_audit_log.admin_id
+   * ops_audit_log.action
+   * ops_audit_log.created_at
+   * ops_audit_log.target_type + target_id
+7. POST /api/ops/bootstrap should require both:
+
+   * OPS_BOOTSTRAP_TOKEN
+   * OPS_PORTAL_ENABLED=true
+8. After bootstrap succeeds, log BOOTSTRAP_OWNER_CREATED in ops_audit_log.
+9. Login should use bcrypt and should have account lockout logic.
+10. Ops session cookie must be separate from clinician session cookie.
+11. Ops routes must never read from req.user or clinician auth middleware.
+12. Do not expose patient_id, patient names, lab data, SOAP note content, transcripts, uploaded documents, portal messages, or clinical note text anywhere in this version.
+13. For /api/ops/users, only show platform account metadata, not clinical patient/user relationships beyond clinic membership and role.
+14. For /api/ops/security-events, only show security/audit metadata. Do not include PHI-containing audit details.
+15. Add pagination to all list routes.
+16. Add search/filter support only on non-PHI fields.
+17. Add server-side role enforcement:
+
+* owner can manage admins
+* admin can view compliance/clinic/user/security records
+* viewer is read-only
+
+18. Add explicit audit events for:
+
+* OPS_LOGIN_SUCCESS
+* OPS_LOGIN_FAILED
+* OPS_LOGOUT
+* OPS_ADMIN_CREATED
+* OPS_ADMIN_UPDATED
+* OPS_BAA_VIEWED
+* OPS_CLINICS_VIEWED
+* OPS_USERS_VIEWED
+* OPS_SECURITY_EVENTS_VIEWED
+* OPS_AUDIT_LOG_VIEWED
+
+19. Do not modify existing clinic auth, patient tables, patient routes, clinician sessions, or existing features.
+20. Use additive-only migrations: CREATE TABLE IF NOT EXISTS and CREATE INDEX IF NOT EXISTS only.
+21. Put all ops code in isolated files/modules so it can be removed or disabled cleanly.
+22. After implementation, provide a verification checklist and confirm that disabling OPS_PORTAL_ENABLED hides frontend routes and blocks backend routes with 404.
