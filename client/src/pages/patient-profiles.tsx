@@ -1377,7 +1377,7 @@ export default function PatientProfiles() {
   const [mergeDiscardId, setMergeDiscardId] = useState<number | null>(null);
   const [mergeSearch, setMergeSearch] = useState("");
   const messageBottomRef = useRef<HTMLDivElement>(null);
-  const urlParamApplied = useRef(false);
+  const urlParamApplied = useRef<string | null>(null);
   const pendingOpenLabId = useRef<number | null>(null);
 
   // Auto-generate patient-specific dietary guidance when the publish dialog opens.
@@ -1422,15 +1422,23 @@ export default function PatientProfiles() {
 
   // Auto-select patient from URL param (e.g. ?patient=123&tab=encounters&lab=456)
   useEffect(() => {
-    if (urlParamApplied.current || allPatients.length === 0) return;
     const params = new URLSearchParams(searchStr);
     const patientId = params.get("patient");
     const tab = params.get("tab");
     const labId = params.get("lab");
     if (!patientId) return;
+    // Skip only if this exact patient ID was already applied — not a blanket latch.
+    // This lets the search bar navigate to different patients in the same session.
+    if (urlParamApplied.current === patientId) return;
+    if (allPatients.length === 0) return;
     const found = allPatients.find(p => p.id === Number(patientId));
-    if (!found) return;
-    urlParamApplied.current = true;
+    if (!found) {
+      // Patient not yet in local list (e.g. just added by another team member).
+      // Force a cache refresh so the background refetch includes the new patient.
+      queryClient.invalidateQueries({ queryKey: ['/api/patients/search', ''] });
+      return;
+    }
+    urlParamApplied.current = patientId;
     setSelectedPatient(found);
     if (labId) pendingOpenLabId.current = Number(labId);
     if (tab === "messages") setShowMessages(true);
