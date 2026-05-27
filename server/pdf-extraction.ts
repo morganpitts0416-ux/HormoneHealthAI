@@ -135,7 +135,7 @@ EXTRACTION RULES:
    - Total Cholesterol: Cholesterol, Chol, CHOL, TC
    - Triglycerides: TG, TRIG, Trigs
    - ApoB: Apolipoprotein B, Apo B, Apo-B, ApoB-100, Apolipoprotein B-100, Apo B-100
-   - Lp(a): Lipoprotein (a), Lipoprotein(a), Lipoprotein A, Lipoprotein a, LP(a), LP(A), LPA, Lp-a, Lp a, Lp[a], LIPOPROTEIN A, lipoprotein little a, Lipoprotein(A)
+   - Lp(a): Lipoprotein (a), Lipoprotein(a), Lipoprotein A, Lipoprotein a, LP(a), LP(A), LPA, Lp-a, Lp a, Lp[a], LIPOPROTEIN A, lipoprotein little a, Lipoprotein(A), Lipoprotien (a), Lipoprotien(a), Lipoprotien A, Lipoprotien a, LIPOPROTIEN A, Lipoprotein-a, Lipo Protein (a), Lipo-protein (a)
    - Testosterone: Total Testosterone, Testosterone Total, Serum Testosterone
    - Free Testosterone: Free T, Free Testosterone (Direct), Free Testosterone (Calc)
    - SHBG: Sex Hormone Binding Globulin
