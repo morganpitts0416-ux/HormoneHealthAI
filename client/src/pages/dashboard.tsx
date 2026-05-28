@@ -83,6 +83,17 @@ interface PendingSubmissionRow {
   formName?: string;
 }
 
+interface SpruceUnrepliedConv {
+  conversationKey: string;
+  patientId: number | null;
+  patientFirstName: string | null;
+  patientLastName: string | null;
+  fromPhone: string | null;
+  spruceContactName: string | null;
+  lastMessage: string | null;
+  lastMessageAt: string;
+}
+
 interface SpruceWorkflowRequestRow {
   id: number;
   clinicId: number;
@@ -363,6 +374,15 @@ export default function Dashboard() {
     refetchInterval: 30 * 1000,
   });
 
+  // ── Spruce unreplied conversations (Phase 2 dashboard widget) ─────────────
+  // Read-only fetch of conversations waiting for a staff reply.
+  // Isolated query — touches no other data, no mutations.
+  const { data: spruceUnreplied = [], isLoading: spruceUnrepliedLoading } =
+    useQuery<SpruceUnrepliedConv[]>({
+      queryKey: ["/api/spruce/conversations/unreplied-summary"],
+      refetchInterval: 30 * 1000,
+    });
+
   const markReviewedMutation = useMutation({
     mutationFn: async (submissionId: number) => {
       const res = await apiRequest("PATCH", `/api/intake-forms/submissions/${submissionId}/review`);
@@ -429,7 +449,8 @@ export default function Dashboard() {
 
   const totalNotifications =
     combinedMessages.length + combinedRequests.length +
-    appointmentSpruceRequests.length + urgentSpruceRequests.length + pendingSubmissions.length;
+    appointmentSpruceRequests.length + urgentSpruceRequests.length +
+    pendingSubmissions.length + spruceUnreplied.length;
 
   // ── Open SOAP Notes (unsigned encounters) — provider-scoped, switchable.
   // Defaults to the signed-in user; the Select lets you view another
@@ -964,6 +985,84 @@ export default function Dashboard() {
                 </p>
               )}
             </CollapsibleQueueTile>
+
+            {/* ⑤ Spruce — Awaiting Reply */}
+            {(() => {
+              const looksLikePhone = (s: string) => /^\+?[\d\s\-().]{7,}$/.test(s.trim());
+              const getSpruceDisplayName = (c: SpruceUnrepliedConv) => {
+                if (c.patientFirstName && c.patientLastName) return `${c.patientFirstName} ${c.patientLastName}`;
+                if (c.patientFirstName) return c.patientFirstName;
+                if (c.spruceContactName && !looksLikePhone(c.spruceContactName)) return c.spruceContactName;
+                return c.fromPhone ?? "Unknown contact";
+              };
+              const isMatched = (c: SpruceUnrepliedConv) => !!c.patientId;
+              return (
+                <CollapsibleQueueTile
+                  icon={<MessageCircle className="w-4 h-4" />}
+                  label="Spruce — Awaiting Reply"
+                  count={spruceUnreplied.length}
+                  countLabel={spruceUnreplied.length > 0 ? `${spruceUnreplied.length} unreplied` : ""}
+                  accentColor="#3d2e6b"
+                  accentBg="#f0ecf8"
+                  viewAllLabel="Open Inbox"
+                  onViewAll={() => setLocation("/spruce-inbox")}
+                  isLoading={spruceUnrepliedLoading}
+                  testId="tile-spruce-unreplied"
+                  isEmpty={spruceUnreplied.length === 0}
+                  emptyLabel="No conversations awaiting reply"
+                >
+                  {spruceUnreplied.slice(0, 4).map((conv) => {
+                    const name = getSpruceDisplayName(conv);
+                    const initials = conv.patientFirstName && conv.patientLastName
+                      ? `${conv.patientFirstName[0]}${conv.patientLastName[0]}`
+                      : name.slice(-2).toUpperCase();
+                    const preview = conv.lastMessage
+                      ? conv.lastMessage.replace(/\s+/g, " ").trim().slice(0, 70)
+                      : null;
+                    return (
+                      <button
+                        key={`spruce-unread-${conv.conversationKey}`}
+                        data-testid={`notification-spruce-unreplied-${conv.conversationKey}`}
+                        className="w-full text-left px-4 py-2 flex items-center gap-2.5 hover-elevate"
+                        onClick={() => setLocation("/spruce-inbox")}
+                      >
+                        <div
+                          className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0"
+                          style={{
+                            backgroundColor: isMatched(conv) ? "#e0d8f5" : "#d4c8ee",
+                            color: "#3d2e6b",
+                          }}
+                        >
+                          {initials}
+                        </div>
+                        <div className="flex-1 min-w-0">
+                          <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>
+                            {name}
+                          </p>
+                          {preview && (
+                            <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
+                              {preview}{conv.lastMessage && conv.lastMessage.length > 70 ? "…" : ""}
+                            </p>
+                          )}
+                        </div>
+                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
+                          <span className="text-[10px]" style={{ color: "#a0a880" }}>{timeAgo(conv.lastMessageAt)}</span>
+                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#3d2e6b" }} />
+                        </div>
+                      </button>
+                    );
+                  })}
+                  {spruceUnreplied.length > 4 && (
+                    <p className="text-xs px-4 py-2" style={{ color: "#7a8a64" }}>
+                      +{spruceUnreplied.length - 4} more —{" "}
+                      <button className="underline" onClick={() => setLocation("/spruce-inbox")}>
+                        view all
+                      </button>
+                    </p>
+                  )}
+                </CollapsibleQueueTile>
+              );
+            })()}
 
           </div>
         </div>

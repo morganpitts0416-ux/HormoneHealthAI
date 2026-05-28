@@ -2322,6 +2322,42 @@ Rules:
     }
   });
 
+  // GET /api/spruce/conversations/unreplied-summary — lightweight list for the
+  // dashboard "Awaiting Reply" widget.  Returns conversations that have an
+  // inbound patient message as their most recent activity AND have not yet
+  // received any staff reply.  Read-only; uses existing listSpruceConversations
+  // and filters in-process — no additional DB queries, no data mutations.
+  //
+  // IMPORTANT: registered BEFORE the /:key/* routes so Express does not
+  // accidentally treat "unreplied-summary" as a conversation key.
+  app.get("/api/spruce/conversations/unreplied-summary", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const all = await storage.listSpruceConversations(clinicId);
+      const unreplied = all.filter(c =>
+        !c.isArchived &&
+        !c.hasStaffReply &&
+        c.lastMessageDirection === "inbound_patient",
+      );
+      res.json(
+        unreplied.slice(0, 20).map(c => ({
+          conversationKey:    c.conversationKey,
+          patientId:          c.patientId,
+          patientFirstName:   c.patientFirstName,
+          patientLastName:    c.patientLastName,
+          fromPhone:          c.fromPhone,
+          spruceContactName:  c.spruceContactName,
+          lastMessage:        c.lastMessage,
+          lastMessageAt:      c.lastMessageAt,
+        })),
+      );
+    } catch (err) {
+      console.error("[Spruce/unreplied-summary] Error:", err);
+      res.status(500).json({ error: "Failed to fetch unreplied conversations" });
+    }
+  });
+
   // GET /api/spruce/conversations/:key/messages — messages for one conversation
   app.get("/api/spruce/conversations/:key/messages", requireAuth, async (req, res) => {
     try {
