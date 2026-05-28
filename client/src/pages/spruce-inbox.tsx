@@ -755,7 +755,6 @@ export default function SpruceInboxPage() {
           <NavItem
             icon={Inbox}
             label="All Conversations"
-            count={activeConvs.length}
             active={activeView === "all"}
             onClick={() => { setActiveView("all"); }}
             testId="nav-all"
@@ -805,7 +804,6 @@ export default function SpruceInboxPage() {
           <NavItem
             icon={Archive}
             label="Archived"
-            count={archivedConvs.length > 0 ? archivedConvs.length : undefined}
             active={activeView === "archived"}
             onClick={() => { setActiveView("archived"); setSelectedKey(null); }}
             testId="nav-archived"
