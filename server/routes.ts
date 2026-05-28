@@ -5455,7 +5455,16 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       // Get patient directly (portal session already proves ownership)
       const patient = await storage.getPatientById(patientId);
       if (!patient) return res.status(404).json({ message: "Patient not found" });
-      const clinicianId = patient.userId;
+
+      // patient.userId is nullable in multi-clinic setups; fall back to any active clinic member
+      let clinicianId: number | null = patient.userId ?? null;
+      if (!clinicianId && patient.clinicId) {
+        const members = await storage.getClinicMembers(patient.clinicId);
+        if (members.length > 0) clinicianId = members[0].userId;
+      }
+      if (!clinicianId) {
+        return res.status(400).json({ message: "Your account is not yet assigned to a clinician. Please contact your clinic." });
+      }
 
       // Create order record
       const order = await storage.createSupplementOrder({
@@ -5469,7 +5478,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       // Build itemized message body
       const itemLines = items.map((it: any) =>
-        `• ${it.name} (${it.dose}) × ${it.quantity} — $${it.lineTotal.toFixed(2)}`
+        `• ${it.name} (${it.dose}) × ${it.quantity} — $${Number(it.lineTotal ?? 0).toFixed(2)}`
       ).join('\n');
       const messageBody = [
         `Hi, I'd like to request a supplement order. Please charge my card on file.\n`,
