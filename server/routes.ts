@@ -44,6 +44,42 @@ import {
   type ExternalProvider,
 } from "./external-messaging";
 import { storage, chartReviewStorage, db as storageDb, setupClinicForNewUser, updateClinicSeats, createProviderWithMembership, updateClinicPlanFromStripe } from "./storage";
+import rateLimit from "express-rate-limit";
+import { logPhiAccess, ipFromReq, uaFromReq } from "./phi-audit";
+
+// ── Auth rate limiters (Phase 1 HIPAA hardening) ─────────────────────────────
+// Applied only to login/password-reset endpoints; no global limiting.
+// skipSuccessfulRequests=true so normal logins don't count toward the window.
+const clinicianLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many login attempts. Please wait 15 minutes and try again." },
+  skipSuccessfulRequests: true,
+});
+const clinicianPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests. Please wait 15 minutes and try again." },
+});
+const portalLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 10,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many login attempts. Please wait 15 minutes and try again." },
+  skipSuccessfulRequests: true,
+});
+const portalPasswordLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many requests. Please wait 15 minutes and try again." },
+});
 
 /**
  * Converts a family-history intake field response into human-readable strings
@@ -553,7 +589,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Login — checks clinician accounts first (via passport), then staff accounts
-  app.post("/api/auth/login", (req, res, next) => {
+  app.post("/api/auth/login", clinicianLoginLimiter, (req, res, next) => {
     passport.authenticate("local", async (err: any, user: any, info: any) => {
       if (err) return next(err);
 
@@ -994,7 +1030,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
     }
   });
   // Forgot password — sends reset link to email
-  app.post("/api/auth/forgot-password", async (req, res) => {
+  app.post("/api/auth/forgot-password", clinicianPasswordLimiter, async (req, res) => {
     try {
       const { email } = req.body;
       if (!email) return res.status(400).json({ message: "Email is required" });
@@ -1058,7 +1094,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
   });
 
   // Reset password using a valid token
-  app.post("/api/auth/reset-password", async (req, res) => {
+  app.post("/api/auth/reset-password", clinicianPasswordLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;
       if (!token || !password) {
@@ -1578,16 +1614,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         console.warn('[API] Female clinician customization lookup failed (continuing with defaults):', e);
       }
 
-      // Debug: Log hormone values received
-      console.log('[API] Female hormone values received:', {
-        estradiol: labs.estradiol,
-        progesterone: labs.progesterone,
-        fsh: labs.fsh,
-        lh: labs.lh,
-        testosterone: labs.testosterone,
-        menstrualPhase: labs.menstrualPhase,
-        onHRT: labs.onHRT
-      });
+      // Hormone field presence check (values intentionally omitted from logs)
 
       // Step 1: Detect red flags using female-specific logic
       const redFlags = [
@@ -2735,7 +2762,7 @@ Rules:
       const spruceConversationId: string = data.conversation_id;
       const fromPhone: string = data.from.phone_number;
 
-      console.log(`${tag} senderType="${senderType}" direction="${simMessageDirection}" msgBody="${msgBody.slice(0, 80)}"`);
+      console.log(`${tag} senderType="${senderType}" direction="${simMessageDirection}" msgId="${spruceMessageId}"`);
 
       // ── Patient matching (same logic as real webhook) ─────────────────────
       // Uses the provided patientPhone to search for an existing ClinIQ patient
@@ -2746,8 +2773,8 @@ Rules:
           simMatchedPatient = await storage.findPatientByPhoneForClinic(fromPhone, clinicId);
           console.log(
             simMatchedPatient
-              ? `${tag} patient matched: id=${simMatchedPatient.id} "${simMatchedPatient.firstName} ${simMatchedPatient.lastName}"`
-              : `${tag} no patient match for ${fromPhone} — unmatched contact`,
+              ? `${tag} patient matched: id=${simMatchedPatient.id}`
+              : `${tag} no patient match — unmatched contact`,
           );
         } catch (err) {
           console.warn(`${tag} patient lookup error:`, err);
@@ -2966,10 +2993,9 @@ Rules:
       const clinicId = getEffectiveClinicId(req);
       const q = (req.query.q as string) || '';
       const gender = req.query.gender as string | undefined;
-      console.log(`[DEBUG] /api/patients/search — clinicianId=${clinicianId}, clinicId=${clinicId}, q="${q}"`);
+      logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_patient_list", ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
       if (!q || q.length < 1) {
         const allPatients = await storage.getAllPatients(clinicianId, clinicId);
-        console.log(`[DEBUG] /api/patients/search — returned ${allPatients.length} patients for clinicId=${clinicId ?? 'legacy:'+clinicianId}`);
         return res.json(allPatients);
       }
       const patients = await storage.searchPatients(q, clinicianId, gender, clinicId);
@@ -2989,6 +3015,7 @@ Rules:
       if (!patient) {
         return res.status(404).json({ error: "Patient not found" });
       }
+      logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_patient_profile", patientId: id, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
       const labHistory = await storage.getLabResultsByPatient(id);
       res.json({ patient, labHistory });
     } catch (error) {
@@ -3116,6 +3143,7 @@ Rules:
       const id = parseInt(req.params.id);
       const patient = await storage.getPatient(id, clinicianId, clinicId);
       if (!patient) return res.status(404).json({ error: "Patient not found" });
+      logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_lab_results", patientId: id, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
       const labs = await storage.getLabResultsByPatient(id);
       res.json(labs);
     } catch (error) {
@@ -4242,7 +4270,7 @@ Return ONLY this JSON structure:
   });
 
   // ── Portal: Patient login ──────────────────────────────────────────────────
-  app.post("/api/portal/login", async (req, res) => {
+  app.post("/api/portal/login", portalLoginLimiter, async (req, res) => {
     try {
       const rawEmail = req.body?.email;
       const password = req.body?.password;
@@ -4282,7 +4310,7 @@ Return ONLY this JSON structure:
   });
 
   // ── Portal: Forgot password ────────────────────────────────────────────────
-  app.post("/api/portal/forgot-password", async (req, res) => {
+  app.post("/api/portal/forgot-password", portalPasswordLimiter, async (req, res) => {
     try {
       const rawEmail = req.body?.email;
       if (!rawEmail || typeof rawEmail !== "string") return res.status(400).json({ message: "Email is required" });
@@ -4332,7 +4360,7 @@ Return ONLY this JSON structure:
   });
 
   // ── Portal: Reset password ─────────────────────────────────────────────────
-  app.post("/api/portal/reset-password", async (req, res) => {
+  app.post("/api/portal/reset-password", portalPasswordLimiter, async (req, res) => {
     try {
       const { token, password } = req.body;
       if (!token || !password) return res.status(400).json({ message: "Token and password are required" });
@@ -4468,6 +4496,7 @@ Return ONLY this JSON structure:
   app.get("/api/portal/account/documents", requirePortalAuth, async (req, res) => {
     try {
       const patientId = (req.session as any).portalPatientId as number;
+      logPhiAccess({ actorType: "patient_portal", actorId: patientId, action: "portal_view_documents", patientId, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
 
       const [submissions, encounters] = await Promise.all([
         storage.getFormSubmissionsByPatient(patientId),
@@ -4618,6 +4647,7 @@ Return ONLY this JSON structure:
   app.get("/api/portal/labs", requirePortalAuth, async (req, res) => {
     try {
       const patientId = (req.session as any).portalPatientId as number;
+      logPhiAccess({ actorType: "patient_portal", actorId: patientId, action: "portal_view_labs", patientId, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
       const labs = await storage.getLabResultsByPatient(patientId);
       // Load all protocols for this patient so we can attach clinicianNotes + dietaryGuidance per lab
       const protocols = await storage.getAllPublishedProtocols(patientId);
@@ -6117,6 +6147,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
       const doc = await storage.getPatientDocument(docId, clinicId);
       if (!doc || doc.patientId !== patientId) return res.status(404).json({ message: "Document not found" });
+      logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "download_patient_document", patientId, resourceId: String(docId), ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
 
       const buf = Buffer.from(doc.fileData, 'base64');
       res.setHeader('Content-Type', doc.mimeType);
@@ -7750,6 +7781,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicId = getEffectiveClinicId(req);
       const encounter = await storage.getEncounter(parseInt(req.params.id), clinicianId, clinicId);
       if (!encounter) return res.status(404).json({ message: "Encounter not found" });
+      logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_encounter", resourceId: req.params.id, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
       res.json(encounter);
     } catch (err) {
       res.status(500).json({ message: "Failed to load encounter" });
@@ -10770,6 +10802,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     try {
       const portalPatientId = (req.session as any).portalPatientId;
       if (!portalPatientId) return res.status(401).json({ message: "Portal authentication required" });
+      logPhiAccess({ actorType: "patient_portal", actorId: portalPatientId, action: "portal_view_encounters", patientId: portalPatientId, ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
       const encounters = await storage.getPublishedEncountersByPatient(portalPatientId);
       res.json(encounters);
     } catch (err) {

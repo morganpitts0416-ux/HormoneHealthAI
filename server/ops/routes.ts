@@ -2,11 +2,22 @@ import { Router } from "express";
 import type { Request, Response } from "express";
 import crypto from "crypto";
 import bcrypt from "bcrypt";
+import rateLimit from "express-rate-limit";
 import { db } from "../storage";
 import { platformAdmins, opsSessions, opsAuditLog } from "@shared/schema";
 import { eq, and, gt, desc, sql } from "drizzle-orm";
 import { logOpsAudit } from "./audit";
 import { requireOpsEnabled, requireOpsAuth, requireOpsRole } from "./middleware";
+
+// ── Rate limiter — ops portal login only (5 attempts / 15 min / IP) ─────────
+const opsLoginLimiter = rateLimit({
+  windowMs: 15 * 60 * 1000,
+  max: 5,
+  standardHeaders: true,
+  legacyHeaders: false,
+  message: { message: "Too many login attempts. Please wait 15 minutes and try again." },
+  skipSuccessfulRequests: true,
+});
 
 // ── Constants ────────────────────────────────────────────────────────────────
 const LOCK_THRESHOLD = 5;
@@ -219,7 +230,7 @@ export function createOpsRouter(): Router {
   });
 
   // ── POST /auth/login ────────────────────────────────────────────────────
-  router.post("/auth/login", requireOpsEnabled, async (req, res) => {
+  router.post("/auth/login", requireOpsEnabled, opsLoginLimiter, async (req, res) => {
     const ip = getIp(req);
     const ua = getUA(req);
     const { email, password } = req.body ?? {};

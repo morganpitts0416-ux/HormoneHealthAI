@@ -1639,3 +1639,25 @@ CREATE INDEX IF NOT EXISTS ops_audit_log_admin_id_idx  ON ops_audit_log (admin_i
 CREATE INDEX IF NOT EXISTS ops_audit_log_action_idx    ON ops_audit_log (action);
 CREATE INDEX IF NOT EXISTS ops_audit_log_created_at_idx ON ops_audit_log (created_at);
 CREATE INDEX IF NOT EXISTS ops_audit_log_target_idx    ON ops_audit_log (target_type, target_id);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- phi_access_log: append-only audit trail for every PHI read event.
+-- Writes are fire-and-forget; failures are logged but never surface to clients.
+-- Covers: patient profile views, lab result views, encounter views,
+--         document downloads, and equivalent patient-portal endpoints.
+-- ─────────────────────────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS phi_access_log (
+  id          SERIAL PRIMARY KEY,
+  accessed_at TIMESTAMP NOT NULL DEFAULT NOW(),
+  actor_type  TEXT NOT NULL,   -- 'clinician' | 'patient_portal' | 'ops_admin'
+  actor_id    INTEGER,         -- clinician id or patient id
+  clinic_id   INTEGER,
+  action      TEXT NOT NULL,   -- e.g. 'view_patient_profile' | 'view_lab_results'
+  patient_id  INTEGER,
+  resource_id TEXT,            -- encounter id, document id, etc.
+  ip_address  TEXT,
+  user_agent  TEXT
+);
+CREATE INDEX IF NOT EXISTS phi_access_log_actor_idx       ON phi_access_log (actor_type, actor_id);
+CREATE INDEX IF NOT EXISTS phi_access_log_patient_idx     ON phi_access_log (patient_id);
+CREATE INDEX IF NOT EXISTS phi_access_log_accessed_at_idx ON phi_access_log (accessed_at);

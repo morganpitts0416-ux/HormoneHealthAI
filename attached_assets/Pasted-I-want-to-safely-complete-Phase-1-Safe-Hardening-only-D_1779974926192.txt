@@ -1,0 +1,57 @@
+I want to safely complete Phase 1 Safe Hardening only.
+
+Do not touch MFA, idle timeout, application-layer document encryption, patient chart access, or any existing auth/session refactor yet.
+
+Phase 1 approved items only:
+
+1. Add Helmet security headers safely:
+
+   * install/use helmet
+   * contentSecurityPolicy: false for now
+   * hsts enabled only in production
+   * do not break Vite/dev assets
+
+2. Add SESSION_SECRET production enforcement:
+
+   * if NODE_ENV === "production" and SESSION_SECRET is missing, fail startup clearly
+   * do not change the existing SESSION_SECRET value
+   * do not rotate session secrets
+
+3. Remove PHI from console logs:
+
+   * replace clinical value logs with non-PHI operational messages
+   * do not remove useful error logging
+   * do not log patient names, DOBs, lab values, SOAP content, transcripts, messages, or document contents
+
+4. Add rate limiting only to auth endpoints:
+
+   * clinician login
+   * patient portal login
+   * password reset/request endpoints
+   * ops login if applicable
+   * do not add global rate limiting
+   * use conservative limits so normal users are not blocked
+
+5. Expand audit logging for PHI read routes:
+
+   * patient list/profile views
+   * lab result views
+   * SOAP note/chart note views
+   * patient document downloads
+   * portal document downloads if applicable
+   * additive logging only; do not alter route behavior or returned data
+
+Safety requirements:
+
+* No destructive migrations.
+* No DROP statements.
+* No renaming columns.
+* No changes to existing patient data.
+* No changes to clinician login behavior except rate limiting.
+* No changes to patient portal login behavior except rate limiting.
+* No changes to feature behavior.
+* Keep all changes isolated and additive.
+* Update prod-migrate.sql only if a new table/column/index is truly required.
+* If any database change is needed, show me the exact SQL first.
+* Before implementation, provide the exact file list and route list you plan to modify.
+* After implementation, provide a verification checklist proving clinician login, patient portal login, existing sessions, and main app features still work.

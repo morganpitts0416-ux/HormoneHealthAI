@@ -1981,17 +1981,8 @@ export class FemaleClinicalLogicEngine {
     const patientAge = labs.demographics?.age;
     const isAge35Plus = patientAge !== undefined && patientAge >= 35;
     
-    // Debug logging for hormone pattern evaluation
-    console.log('[Clinical Logic] Hormone Pattern Evaluation Debug:', {
-      patientAge,
-      isAge35Plus,
-      fsh: labs.fsh,
-      estradiol: labs.estradiol,
-      progesterone: labs.progesterone,
-      menstrualPhase: labs.menstrualPhase,
-      hasHotFlashes: labs.hotFlashes,
-      hasNightSweats: labs.nightSweats,
-    });
+    // Operational marker — individual hormone values intentionally omitted from logs
+    console.log('[Clinical Logic] evaluating hormone patterns age35Plus=' + isAge35Plus);
     
     if (isAge35Plus) {
       // One-winner-per-subset system: only the most clinically specific pattern fires
@@ -2285,9 +2276,9 @@ export class FemaleClinicalLogicEngine {
       // ════════════════════════════════════════════════════════════════
 
       // Pattern 5: FSH-Based Perimenopause / Menopause Staging (always fires if FSH ≥25)
-      console.log('[Clinical Logic] Pattern 5 Check - FSH:', labs.fsh, 'Is >=25?', labs.fsh !== undefined && labs.fsh >= 25);
+      // Pattern 5 threshold check — FSH value omitted from log
       if (labs.fsh !== undefined && labs.fsh >= 25) {
-        console.log('[Clinical Logic] Pattern 5 MATCHED - Perimenopause/Menopause detected with FSH:', labs.fsh);
+        // Pattern 5 matched — Perimenopause/Menopause (FSH value omitted from log)
         const isPostmenopausal = labs.menstrualPhase === 'postmenopausal';
         const symptomsPresent: string[] = [];
         if (labs.hotFlashes) symptomsPresent.push('hot flashes');

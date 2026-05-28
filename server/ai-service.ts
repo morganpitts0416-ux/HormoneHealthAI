@@ -264,13 +264,8 @@ ACTIONS
         max_completion_tokens: 2500,
       });
 
-      console.log('[AI Service] Response object:', JSON.stringify(response, null, 2));
-      console.log('[AI Service] Choices array:', response.choices);
-      console.log('[AI Service] First choice:', response.choices[0]);
-      
       const summary = response.choices[0]?.message?.content;
       console.log('[AI Service] Patient summary generated, length:', summary?.length || 0);
-      console.log('[AI Service] Patient summary content:', summary);
 
       return annotatePatientSummary(summary || this.getDefaultPatientSummary(), therapyContext);
     } catch (error) {

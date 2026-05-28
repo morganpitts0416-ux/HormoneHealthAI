@@ -1,4 +1,5 @@
 import express, { type Request, Response, NextFunction } from "express";
+import helmet from "helmet";
 import session from "express-session";
 import connectPgSimple from "connect-pg-simple";
 import fs from "fs";
@@ -83,6 +84,18 @@ const app = express();
 
 // Trust the reverse proxy so secure session cookies work over HTTPS in production
 app.set("trust proxy", 1);
+
+// ── Security headers (Phase 1 HIPAA hardening) ────────────────────────────
+// CSP is disabled for now (Vite inline scripts / HMR require it);
+// HSTS is only active in production so local dev isn't affected.
+app.use(
+  helmet({
+    contentSecurityPolicy: false,
+    hsts: process.env.NODE_ENV === "production"
+      ? { maxAge: 31536000, includeSubDomains: true }
+      : false,
+  }),
+);
 
 declare module 'http' {
   interface IncomingMessage {
@@ -196,6 +209,17 @@ app.use((req, res, next) => {
 });
 
 (async () => {
+  // ── SESSION_SECRET production enforcement ──────────────────────────────
+  // A missing secret in production falls back to a hardcoded string, making
+  // all sessions forgeable. Fail fast so operators see the problem immediately.
+  if (process.env.NODE_ENV === "production" && !process.env.SESSION_SECRET) {
+    console.error(
+      "[startup] FATAL: SESSION_SECRET environment variable is not set. " +
+      "Refusing to start in production without a strong session secret.",
+    );
+    process.exit(1);
+  }
+
   try {
     console.log("[startup] running ensureSchema…");
     await ensureSchema();

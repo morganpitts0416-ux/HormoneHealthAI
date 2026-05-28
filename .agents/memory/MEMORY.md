@@ -1,2 +1,3 @@
 - [Storage prototype pattern](storage-prototype-pattern.md) — all DbStorage methods must use module-level `db` export, never `this.db`; prototype-patched at file bottom
 - [Form Workflow Builder L1](form-workflow-builder-l1.md) — All 4 layers (schema, storage, routes, UI) complete; Layer 2 (execution engine) not yet built
+- [HIPAA Phase 1 hardening](hipaa-phase1.md) — helmet, rate limiters, PHI log cleanup, phi_access_log audit table all added; what's still pending for later phases
