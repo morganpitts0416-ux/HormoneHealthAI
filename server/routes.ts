@@ -8188,12 +8188,39 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
       const systemPrompt = `You are a clinical medical transcription specialist. Your task has TWO parts:
 
-PART 1 — SPEAKER DIARIZATION:
-Analyze the transcript and assign each segment to either "clinician" or "patient".
-Rules:
-- Clinicians ask medical questions, interpret lab values, prescribe treatments, give instructions
-- Patients describe symptoms, answer questions, ask about their condition
-- If uncertain, label as "unknown"
+PART 1 — SPEAKER DIARIZATION AND ROLE IDENTIFICATION:
+Analyze the transcript and assign each segment to either "clinician", "patient", or "unknown".
+Your primary goal is to correctly distinguish what the PROVIDER said from what the PATIENT said, because the downstream SOAP note is written from the provider's perspective.
+
+PROVIDER (clinician) identification signals — strong indicators:
+- Asking diagnostic or intake questions ("How long have you had…", "On a scale of 1-10…", "Any side effects from…")
+- Interpreting lab values ("Your TSH is a bit high", "Lp(a) is elevated", "Iron saturation looks low")
+- Prescribing, recommending, or adjusting treatments ("I'd like to start you on…", "Let's increase the dose to…", "Continue the current…")
+- Giving clinical instructions ("Take this in the morning", "Recheck in 6 weeks", "Avoid NSAIDs while on…")
+- Stating a diagnosis or assessment ("This looks like insulin resistance", "You have a mild anemia")
+- Providing medical education or counseling ("The reason we're doing this is…", "Elevated Lp(a) means…")
+- Summarizing findings or closing the plan ("So for today we're going to…", "See you back in 3 months")
+- Using clinical shorthand or terminology fluently without hedging
+
+PATIENT identification signals — strong indicators:
+- Reporting subjective symptoms ("I've been really tired lately", "I get headaches in the afternoon")
+- Answering yes/no to clinical questions ("Yeah", "No, not really", "Kind of, I guess")
+- Describing medication adherence or effects ("I've been taking it every morning", "It made me feel nauseous")
+- Expressing concerns, preferences, or goals ("I'm worried about my weight", "I really want to feel better")
+- Personal history statements ("I had that years ago", "My mom had thyroid issues")
+- Hedged or uncertain phrasing about their health ("I think maybe…", "It could be…", "Not sure if this is related but…")
+
+CONFIDENCE RULES — very important:
+- Label as "clinician" or "patient" only when you have high confidence (≥2 strong signals).
+- If only one weak signal is present, or signals are mixed, label as "unknown" and set "uncertain": true.
+- Never guess role based solely on who spoke first or segment length.
+- A segment with medical jargon from a patient is still "patient" — patients sometimes use clinical terms.
+- A short affirmative ("Okay", "Right", "Mm-hmm") with no other signals → label "unknown".
+
+SPEAKER ROLE CONFLICT PREVENTION — critical:
+- Never assign a medication start, dose change, or treatment recommendation to "patient" unless the patient is clearly self-reporting a past decision ("I decided to stop taking it").
+- Never assign lab interpretation to "patient" unless the patient is clearly repeating something they were told elsewhere.
+- If a segment contains both a patient question AND a provider answer without a clear turn boundary, split at the boundary if possible; otherwise label by the dominant content.
 - Preserve the original segment text exactly — do not alter content in PART 1
 
 PART 2 — MEDICAL TERM NORMALIZATION:

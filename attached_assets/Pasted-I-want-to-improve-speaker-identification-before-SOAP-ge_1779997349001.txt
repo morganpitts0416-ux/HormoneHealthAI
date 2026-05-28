@@ -1,0 +1,35 @@
+I want to improve speaker identification before SOAP generation without replacing our current prompt system.
+
+Please audit the transcription/diarization pipeline and add a provider/patient speaker normalization step before clinical extraction and SOAP generation.
+
+Goal:
+The model should better distinguish what the provider said versus what the patient said, because the SOAP note should be written from the provider’s perspective and should not confuse patient statements with provider assessment/plan.
+
+Please preserve all current transcription, extraction, SOAP, evidence overlay, and formatting behavior. This should be an additive preprocessing/normalization layer only.
+
+Add a step after raw transcript/diarization and before fact extraction:
+
+SPEAKER ROLE NORMALIZATION
+
+Rules:
+1. Identify likely provider speaker based on clinical language, questioning pattern, instructions, medication/lab interpretation, treatment recommendations, and closing plan language.
+2. Identify likely patient speaker based on symptom reporting, answers to questions, personal history, medication adherence reports, concerns, preferences, and subjective responses.
+3. Rename generic speakers like Speaker 1 / Speaker 2 to Provider / Patient when confidence is high.
+4. If confidence is uncertain, preserve the original speaker labels and add a low-confidence flag rather than guessing.
+5. Never allow patient statements to become provider recommendations unless the provider clearly confirms or recommends them.
+6. Never allow provider counseling or plan details to be omitted simply because the speaker label was uncertain.
+7. During SOAP generation, prioritize provider statements for Assessment & Plan.
+8. Patient statements should primarily inform Subjective/HPI unless confirmed by provider discussion.
+9. Add a final pre-SOAP check for speaker-role conflicts:
+   - medication plan attributed to patient only
+   - lab interpretation attributed to patient only
+   - treatment recommendation without provider confirmation
+   - patient concern converted into diagnosis
+   - provider education omitted because of bad speaker labeling
+
+Please show me:
+1. Where diarization currently happens.
+2. Where speaker labels are passed into extraction/SOAP.
+3. The safest place to insert this normalization step.
+4. The exact code/prompt changes made.
+5. Confirmation that the existing SOAP prompt/settings were preserved.

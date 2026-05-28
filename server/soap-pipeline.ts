@@ -1,5 +1,109 @@
 import OpenAI from "openai";
 
+// ─────────────────────────────────────────────────────────────────────────────
+// SPEAKER ROLE NORMALIZATION — additive preprocessing layer
+// Applied before every diarized → text conversion so that downstream prompts
+// always receive clean CLINICIAN / PATIENT / UNKNOWN labels regardless of
+// what the diarization stage returned.
+// ─────────────────────────────────────────────────────────────────────────────
+
+// Patterns whose presence in a segment strongly suggest the CLINICIAN speaker.
+const CLINICIAN_SIGNALS = [
+  /\b(I'?d like to|let'?s (start|increase|decrease|add|try|hold|stop|continue)|I'?ll (send|order|prescribe|refer|check)|plan (to|was)|recommend(ed)?|we('?ll| will) (start|add|monitor|recheck|adjust|follow))\b/i,
+  /\b(your (TSH|T3|T4|A1C|ferritin|testosterone|estradiol|progesterone|LDL|HDL|Lp\(a\)|ApoB|hs-CRP|insulin|glucose|iron saturation|DHEA|cortisol|SHBG|PSA|CBC|CMP|BMP|labs?|levels?|results?)|labs? (show|reveal|indicate|are|look))\b/i,
+  /\b(elevated|low|normal range|borderline|mildly|significantly|optimal(ly)?|within normal|out of range|concerning for|consistent with|suggestive of|likely|differential)\b/i,
+  /\b(dose|titrat|taper|mg|mcg|mL|units?|twice (daily|a week)|once (daily|a week|weekly|monthly)|every (day|morning|evening|night|other day|\d+ (hours?|days?|weeks?)))\b/i,
+  /\b(recheck|follow.?up|return (in|to)|see (you|her|him) (back|in)|office visit|next (visit|appointment|labs?)|labs? in \d|weeks?|months?)\b/i,
+  /\b(diagnosis|diagnos(ed|is|tic)|assessment|impression|the reason (we'?re|I'?m)|indicated for|works by|mechanism|treatment (goal|plan|option))\b/i,
+];
+
+// Patterns whose presence in a segment strongly suggest the PATIENT speaker.
+const PATIENT_SIGNALS = [
+  /\b(I'?ve been (feeling|having|getting|taking|noticing|experiencing)|I (feel|have|get|notice|think|wonder|worry)|my (energy|mood|sleep|weight|pain|head|stomach|hair|skin|period|cycle))\b/i,
+  /\b(yeah|yep|no( not really)?|kind of|I guess|I think (so|maybe)|not sure|maybe|possibly|I don'?t know|I haven'?t|I'?m not)\b/i,
+  /\b(it (made|makes|has been making) me|I (stopped|started|forgot|missed|ran out)|I'?ve been (on it|taking it|using it)|side effect(s)? (from|of)|it (bothers?|upsets?|hurts?))\b/i,
+  /\b(my (mom|dad|sister|brother|family|grandmother|grandfather) (had|has|was diagnosed)|I had (that|it|surgery|a procedure) (years? ago|when I was|in \d{4})|history of)\b/i,
+  /\b(I'?m (worried|concerned|hoping|trying to|struggling|frustrated|tired of)|that'?s (scary|good to know|reassuring|a lot)|I didn'?t (know|realize|think))\b/i,
+];
+
+// Labels that are clearly generic / hardware-assigned and need reclassification.
+const GENERIC_SPEAKER_RE = /^(speaker[_\s]?\d+|spk_\d+|s\d+|speaker[_\s]?[a-z]|unknown|spk)$/i;
+
+interface SpeakerNormResult {
+  normalized: any[];
+  conflicts: string[];
+}
+
+/**
+ * Normalize speaker labels on a diarized utterance array.
+ *
+ * Steps:
+ * 1. Remap any generic hardware-style labels ("Speaker 1", "SPEAKER_00", etc.)
+ *    to "clinician" / "patient" / "unknown" using heuristic signal matching.
+ * 2. Flag utterances that carry role-conflict risk (medication/lab content
+ *    attributed to "patient") so downstream prompts can weight them correctly.
+ * 3. Never mutate utterances that already have validated labels — only fill
+ *    in gaps or reclassify generic labels.
+ */
+function normalizeSpeakerRoles(diarized: any[]): SpeakerNormResult {
+  if (!diarized || diarized.length === 0) return { normalized: [], conflicts: [] };
+
+  const conflicts: string[] = [];
+
+  // ── Step 1: resolve generic labels via heuristic scoring ──────────────────
+  const normalized = diarized.map((u: any) => {
+    const speaker: string = (u.speaker ?? "unknown").toString().trim().toLowerCase();
+    const isGenericOrUnknown = speaker === "unknown" || GENERIC_SPEAKER_RE.test(speaker);
+
+    if (!isGenericOrUnknown) {
+      // Already has a real label — keep it, but normalise casing to lowercase
+      return { ...u, speaker: speaker === "clinician" ? "clinician" : speaker === "patient" ? "patient" : "unknown" };
+    }
+
+    // Generic label — score by signals
+    const text: string = (u.normalizedText ?? u.text ?? "").toString();
+    const clinicianScore = CLINICIAN_SIGNALS.filter(re => re.test(text)).length;
+    const patientScore   = PATIENT_SIGNALS.filter(re => re.test(text)).length;
+
+    let resolvedSpeaker = "unknown";
+    let uncertain = true;
+
+    if (clinicianScore >= 2 && clinicianScore > patientScore) {
+      resolvedSpeaker = "clinician";
+      uncertain = false;
+    } else if (patientScore >= 2 && patientScore > clinicianScore) {
+      resolvedSpeaker = "patient";
+      uncertain = false;
+    } else if (clinicianScore === 1 && patientScore === 0) {
+      resolvedSpeaker = "clinician";
+      uncertain = true; // low-confidence upgrade
+    } else if (patientScore === 1 && clinicianScore === 0) {
+      resolvedSpeaker = "patient";
+      uncertain = true;
+    }
+
+    return { ...u, speaker: resolvedSpeaker, uncertain: uncertain || (u.uncertain ?? false), _speakerResolved: true };
+  });
+
+  // ── Step 2: speaker-role conflict detection ────────────────────────────────
+  const MEDICATION_PLAN_RE = /\b(start(ing)?|initiat(e|ing)|prescri(be|bing)|recommend(ing)?|titrat|increas(e|ing)|decreas(e|ing)|add(ing)?|adjust(ing)?) (the |a |your )?(dose|medication|supplement|treatment|therapy|[a-z]+(ine|ide|ole|ate|mab|zole|pril|artan|statin|mycin)\b)/i;
+  const LAB_INTERPRETATION_RE = /\b(your |the )?(TSH|T3|T4|LDL|HDL|ApoB|Lp\(a\)|ferritin|testosterone|estradiol|A1C|hs-CRP|CBC|CMP|glucose|insulin|iron saturation|DHEA|cortisol|SHBG|PSA) (is |are |looks?|shows?|came back|resulted|came in)\b/i;
+
+  for (const u of normalized) {
+    const text: string = (u.normalizedText ?? u.text ?? "").toString();
+    if (u.speaker === "patient") {
+      if (MEDICATION_PLAN_RE.test(text)) {
+        conflicts.push(`[ID:${u.id ?? "?"}] Medication plan language attributed to PATIENT — verify speaker assignment: "${text.slice(0, 120)}"`);
+      }
+      if (LAB_INTERPRETATION_RE.test(text)) {
+        conflicts.push(`[ID:${u.id ?? "?"}] Lab interpretation attributed to PATIENT — likely misattributed: "${text.slice(0, 120)}"`);
+      }
+    }
+  }
+
+  return { normalized, conflicts };
+}
+
 async function retryOnRateLimit<T>(fn: () => Promise<T>, maxRetries = 2): Promise<T> {
   for (let attempt = 0; attempt <= maxRetries; attempt++) {
     try {
@@ -103,9 +207,16 @@ async function medicalNormalizationAndInference(
   diarized: any[],
   diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>
 ): Promise<NormalizedExtraction> {
-  const diarizedInput = diarized.length > 0
-    ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+  // ── Speaker role normalization (additive preprocessing) ───────────────────
+  const { normalized: diarizedNorm, conflicts: speakerConflicts } = normalizeSpeakerRoles(diarized);
+
+  const diarizedInput = diarizedNorm.length > 0
+    ? diarizedNorm.map((u: any) => `${u.speaker.toUpperCase()}${u.uncertain ? "[?]" : ""}: ${u.normalizedText ?? u.text}`).join('\n')
     : transcriptText;
+
+  const speakerConflictContext = speakerConflicts.length > 0
+    ? `\nSPEAKER ROLE CONFLICTS DETECTED — review carefully before attributing to provider or patient:\n${speakerConflicts.map(c => `  ⚠ ${c}`).join('\n')}\n`
+    : "";
 
   const systemPrompt = `You are a clinical intelligence engine specializing in medical normalization, context inference, and plan-decision classification.
 
@@ -476,8 +587,8 @@ Return this exact JSON structure:
 
   const userPrompt = `STRUCTURED EXTRACTION (from prior pipeline stage):
 ${JSON.stringify(extraction, null, 2)}${bundlesBlock}
-
-TRANSCRIPT:
+${speakerConflictContext}
+TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment):
 ${diarizedInput}`;
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
@@ -524,9 +635,16 @@ async function generateSoapSections(
   historicalContext?: string,
   diagnosisBundles?: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>
 ): Promise<PipelineOutput> {
-  const diarizedInput = diarized.length > 0
-    ? diarized.map((u: any) => `${u.speaker.toUpperCase()}: ${u.normalizedText ?? u.text}`).join('\n')
+  // ── Speaker role normalization (additive preprocessing) ───────────────────
+  const { normalized: diarizedNorm2, conflicts: speakerConflicts2 } = normalizeSpeakerRoles(diarized);
+
+  const diarizedInput = diarizedNorm2.length > 0
+    ? diarizedNorm2.map((u: any) => `${u.speaker.toUpperCase()}${u.uncertain ? "[?]" : ""}: ${u.normalizedText ?? u.text}`).join('\n')
     : transcriptText;
+
+  const speakerConflictContext2 = speakerConflicts2.length > 0
+    ? `\nSPEAKER ROLE CONFLICTS DETECTED — these segments have medication or lab content attributed to PATIENT; verify before using in Assessment/Plan:\n${speakerConflicts2.map(c => `  ⚠ ${c}`).join('\n')}\n`
+    : "";
 
   const normalizedMedsContext = normalized.medications_normalized.length
     ? `\nNORMALIZED MEDICATIONS:\n${normalized.medications_normalized.map(m =>
@@ -1340,8 +1458,8 @@ PATIENT vs. CLINICIAN IDENTITY (apply while drafting — never include this head
   const userPrompt = `Visit Type: ${encounter.visitType}
 Chief Complaint: ${encounter.chiefComplaint || "Not specified"}
 Visit Date: ${new Date(encounter.visitDate).toLocaleDateString()}${patientLine}${historicalBlock}${labContext}${extractionSummary}${patternContext}${medicationContext}${normalizedMedsContext}${conditionsContext}${preventativeContext}${symptomTimelineContext}${planClassification}${futureConsiderationsContext}${exploratoryContext}${treatmentRationaleContext}${bundleContext}${hpiElements}${patientPerspective}${providerReasoning}${educationProvided}${patientDecisions}
-
-TRANSCRIPT:
+${speakerConflictContext2}
+TRANSCRIPT (CLINICIAN[?] = uncertain speaker assignment — treat with extra care in Assessment/Plan):
 ${diarizedInput}
 
 Generate the SOAP note following all rules above. The HPI must be a DETAILED RECONSTRUCTION of the clinical encounter, not a compressed summary.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} Flag uncertain items and non-duplicate recommendations in needs_clinician_review.
