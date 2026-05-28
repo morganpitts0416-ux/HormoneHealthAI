@@ -1,36 +1,40 @@
 /**
- * Returns true if the visitor is on the real production app subdomain.
- * Dev / Replit preview environments are never treated as the app subdomain.
+ * Domain routing helpers for the ClinIQ dual-domain setup.
+ *
+ * realignlabeval.com  — the underlying live deployment; no domain logic fires here
+ * cliniqapp.ai        — marketing/branding overlay; shows landing page only
+ * app.cliniqapp.ai    — full app entry point; unauthenticated → /login
+ * localhost / Replit  — dev mode; no domain logic fires
+ */
+
+const MARKETING_DOMAINS = ["cliniqapp.ai", "www.cliniqapp.ai"];
+const APP_SUBDOMAIN = "app.cliniqapp.ai";
+
+/**
+ * True only when the visitor is on app.cliniqapp.ai.
+ * Never true on localhost, Replit preview, or realignlabeval.com.
  */
 export function isAppSubdomain(): boolean {
   const h = window.location.hostname;
-  if (
-    h === "localhost" ||
-    h.includes("replit")
-  ) return false;
-  return h.startsWith("app.");
+  return h === APP_SUBDOMAIN;
 }
 
 /**
- * Returns true if we are on the public marketing domain (not the app subdomain,
- * not localhost, not a Replit preview URL).
+ * True only when the visitor is on cliniqapp.ai (the branding overlay).
+ * Never true on localhost, Replit preview, or realignlabeval.com.
  */
 export function isMarketingDomain(): boolean {
   const h = window.location.hostname;
-  if (h === "localhost" || h.includes("replit")) return false;
-  return !h.startsWith("app.");
+  return MARKETING_DOMAINS.includes(h);
 }
 
 /**
  * Returns the full URL for an app-side path.
  *
- * - On the marketing domain  → https://app.<host><path>
- * - On the app subdomain     → <path>  (relative — already there)
- * - On localhost / Replit    → <path>  (relative — dev mode)
+ * - On cliniqapp.ai (marketing domain) → https://app.cliniqapp.ai<path>
+ * - Everywhere else (app subdomain, realignlabeval.com, localhost, Replit) → relative path
  */
 export function appUrl(path: string): string {
-  const h = window.location.hostname;
-  if (h === "localhost" || h.includes("replit")) return path;
-  if (!h.startsWith("app.")) return `https://app.${h}${path}`;
+  if (isMarketingDomain()) return `https://${APP_SUBDOMAIN}${path}`;
   return path;
 }
