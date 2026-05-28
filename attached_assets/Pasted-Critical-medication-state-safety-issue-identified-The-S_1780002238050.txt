@@ -1,0 +1,222 @@
+Critical medication-state safety issue identified.
+
+The SOAP/extraction pipeline is currently conflating:
+
+* medications discussed
+* medication comparisons
+* hypothetical treatment options
+* historical medications
+* possible future medications
+  with:
+* ACTIVE CURRENT MEDICATIONS
+
+This caused the note to hallucinate:
+
+* Phentermine 37.5 mg
+* Adderall 10 mg
+* Bupropion
+
+as active medications when they were only discussed conversationally.
+
+This is a clinical safety issue and must be corrected before deployment.
+
+Please preserve all existing SOAP/transcription structure. This should be an additive medication-state grounding rule only.
+
+Add a new medication classification layer BEFORE medication insertion into:
+
+* current medication list
+* A&P medication section
+* medication reconciliation
+* patient summary
+
+MEDICATION STATE CLASSIFICATION RULES
+
+Every medication mention must first be classified into ONE of these states:
+
+1. ACTIVE_CURRENT
+   Medication the patient is currently taking.
+
+Requires strong evidence such as:
+
+* “currently taking”
+* “on”
+* “takes”
+* “using”
+* “continue”
+* refill discussion
+* dose/frequency confirmation
+* explicit medication reconciliation
+
+2. NEWLY_PRESCRIBED
+   Medication explicitly initiated during this encounter.
+
+Requires:
+
+* provider recommendation + plan
+* dosage
+* initiation language
+  Examples:
+* “start tirzepatide 2.5 mg weekly”
+* “will initiate”
+* “prescribed”
+
+3. HISTORICAL
+   Previously used medication, not current.
+
+Examples:
+
+* “previously took”
+* “used in the past”
+* “was on”
+* “had success with”
+
+4. DISCUSSED_ONLY
+   Medication discussed for comparison, education, counseling, side effects, differential discussion, or hypothetical future consideration.
+
+Examples:
+
+* “like phentermine”
+* “some patients use…”
+* “if mood worsens we could consider…”
+* “discussed stimulant versus GLP-1 medications”
+
+DISCUSSED_ONLY medications must NEVER populate:
+
+* current meds
+* active medication list
+* medication reconciliation
+* discharge meds
+* treatment plan
+  unless later explicitly prescribed.
+
+5. UNCERTAIN
+   Insufficient evidence to determine medication state.
+
+UNCERTAIN medications must NOT be added to the active medication list automatically.
+
+Additional safety rules:
+
+1. Medication mentions inside educational counseling or comparisons are NOT active medications.
+
+2. Medication names appearing without explicit patient usage confirmation should default to DISCUSSED_ONLY, not ACTIVE_CURRENT.
+
+3. Do not infer medication usage from conversational context alone.
+
+4. The medication reconciliation section should be conservative and evidence-based.
+
+5. When uncertain, omit from active medications rather than hallucinate.
+
+6. Add a final medication hallucination check before note finalization:
+
+   * compare active meds against explicit transcript evidence
+   * remove unsupported medications
+   * flag inferred-only medications internally
+
+Please show:
+
+1. Where medications are currently extracted/classified.
+2. The safest insertion point for medication-state classification.
+3. Exact code/prompt changes.
+4. Before/after test using the Kiiurstian encounter.
+5. Confirmation that discussed-only medications no longer populate the active medication list.
+
+ 
+
+Add this as a targeted additive safety layer before deployment. Do not replace or rewrite the current SOAP prompt system.
+
+Problem:
+The SOAP generator is making two opposite errors:
+
+1. It is adding medications to current meds that were only discussed conversationally.
+2. It is failing to carry forward actual encounter problems into the A&P, such as obesity/weight management, elevated BP/hypertension risk, and mood/depression monitoring.
+
+Please add a pre-finalization reconciliation step called:
+
+FINAL CLINICAL RECONCILIATION CHECK
+
+This step should run after SOAP generation but before saving/returning the final note.
+
+It should verify:
+
+1. Every major clinical issue discussed in HPI appears in A&P unless explicitly marked as not clinically relevant.
+   Examples:
+
+* weight management / obesity / postpartum weight resistance
+* elevated BP / hypertension risk
+* mood symptoms / depression monitoring
+* micronutrient concerns such as vitamin D or iron deficiency
+* medication initiation such as tirzepatide
+
+2. Do not merge distinct problems into one vague diagnosis like “metabolic dysregulation” if specific clinical issues were discussed.
+3. Prefer specific clinically billable/documentable diagnoses when supported:
+
+* Obesity or weight gain/weight management
+* Elevated blood pressure reading or family history of hypertension
+* Vitamin D deficiency screening / fatigue if discussed
+* Iron deficiency screening / fatigue if discussed
+* Mood changes/depression monitoring if discussed
+
+4. The A&P should include separate numbered problems when clinically distinct.
+5. The A&P should not omit:
+
+* the reason for visit
+* newly prescribed medications
+* monitoring instructions
+* follow-up plan
+* clinically relevant counseling
+
+6. Medication safety:
+   Before finalizing current medications, classify every medication mention as:
+
+* ACTIVE_CURRENT
+* NEWLY_PRESCRIBED
+* HISTORICAL
+* DISCUSSED_ONLY
+* UNCERTAIN
+
+Only ACTIVE_CURRENT and NEWLY_PRESCRIBED medications may populate medication lists or active treatment plans.
+
+DISCUSSED_ONLY examples must never be added as current meds:
+
+* phentermine discussed as a stimulant comparison
+* Adderall discussed as stimulant example
+* bupropion discussed as possible future option for mood/cravings
+
+7. If a medication is mentioned only as an example, comparison, counseling point, or possible future option, it must remain out of the active med list.
+8. Add a “problem coverage check”:
+   Compare HPI clinical topics against A&P diagnoses/plans.
+   If HPI includes a clinically relevant issue and A&P does not address it, add a concise A&P item or counseling/monitoring line.
+
+For the Kiiurstian Foster test case, expected A&P coverage should include something closer to:
+
+1. Obesity / postpartum weight gain / weight management
+
+* Difficulty losing weight since childbirth 7 months ago; prior success with weight loss medication.
+  Plan: Start tirzepatide 2.5 mg SQ weekly if clinically appropriate. Counsel on GLP-1 risks/benefits, nutrition, protein intake, hydration, constipation prevention, and follow-up.
+
+2. Elevated blood pressure reading / family history of hypertension
+
+* BP 130/80 with strong family history of hypertension.
+  Plan: Monitor BP. Discussed weight loss may improve BP. Consider antihypertensive therapy if persistently elevated.
+
+3. Fatigue / possible vitamin D or iron deficiency / lab review pending
+
+* Symptoms and history raise concern for possible deficiency.
+  Plan: Review pending labs and supplement as indicated.
+
+4. Mood monitoring / depression risk counseling
+
+* Discussed potential mood changes/craving changes with GLP-1 therapy.
+  Plan: Monitor mood. Consider treatment if depressive symptoms emerge or worsen.
+
+Do not fabricate current medications.
+
+Please show:
+
+1. Exact file(s) changed.
+2. Exact insertion point.
+3. Whether this is prompt-only, code-level, or both.
+4. Before/after output for this encounter.
+5. Confirmation that current SOAP structure and evidence overlay behavior were preserved.
+
+  
