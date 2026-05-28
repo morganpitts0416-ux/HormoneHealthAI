@@ -13,7 +13,7 @@ const CLINICIAN_SIGNALS = [
   /\b(your (TSH|T3|T4|A1C|ferritin|testosterone|estradiol|progesterone|LDL|HDL|Lp\(a\)|ApoB|hs-CRP|insulin|glucose|iron saturation|DHEA|cortisol|SHBG|PSA|CBC|CMP|BMP|labs?|levels?|results?)|labs? (show|reveal|indicate|are|look))\b/i,
   /\b(elevated|low|normal range|borderline|mildly|significantly|optimal(ly)?|within normal|out of range|concerning for|consistent with|suggestive of|likely|differential)\b/i,
   /\b(dose|titrat|taper|mg|mcg|mL|units?|twice (daily|a week)|once (daily|a week|weekly|monthly)|every (day|morning|evening|night|other day|\d+ (hours?|days?|weeks?)))\b/i,
-  /\b(recheck|follow.?up|return (in|to)|see (you|her|him) (back|in)|office visit|next (visit|appointment|labs?)|labs? in \d|weeks?|months?)\b/i,
+  /\b(recheck|follow.?up|return (in|to)|see (you|her|him) (back|in)|office visit|next (visit|appointment|labs?)|labs? in \d+)\b/i,
   /\b(diagnosis|diagnos(ed|is|tic)|assessment|impression|the reason (we'?re|I'?m)|indicated for|works by|mechanism|treatment (goal|plan|option))\b/i,
 ];
 
@@ -24,6 +24,8 @@ const PATIENT_SIGNALS = [
   /\b(it (made|makes|has been making) me|I (stopped|started|forgot|missed|ran out)|I'?ve been (on it|taking it|using it)|side effect(s)? (from|of)|it (bothers?|upsets?|hurts?))\b/i,
   /\b(my (mom|dad|sister|brother|family|grandmother|grandfather) (had|has|was diagnosed)|I had (that|it|surgery|a procedure) (years? ago|when I was|in \d{4})|history of)\b/i,
   /\b(I'?m (worried|concerned|hoping|trying to|struggling|frustrated|tired of)|that'?s (scary|good to know|reassuring|a lot)|I didn'?t (know|realize|think))\b/i,
+  // Patient reporting their own lab value, asking what it means, or asking what they should do
+  /\b(my (TSH|T3|T4|LDL|HDL|Lp\(a\)|ApoB|ferritin|testosterone|estradiol|A1C|hs-CRP|insulin|glucose|DHEA|cortisol|SHBG|PSA|iron|cholesterol|triglycerides?|B12|vitamin D|levels?|labs?|results?) (is |are |was |came|shows?)|does that mean (I should|we should|I need)|should I (start|stop|increase|decrease|take|add|try)|is that (bad|good|normal|concerning|serious|okay))\b/i,
 ];
 
 // Labels that are clearly generic / hardware-assigned and need reclassification.
@@ -86,17 +88,19 @@ function normalizeSpeakerRoles(diarized: any[]): SpeakerNormResult {
   });
 
   // ── Step 2: speaker-role conflict detection ────────────────────────────────
-  const MEDICATION_PLAN_RE = /\b(start(ing)?|initiat(e|ing)|prescri(be|bing)|recommend(ing)?|titrat|increas(e|ing)|decreas(e|ing)|add(ing)?|adjust(ing)?) (the |a |your )?(dose|medication|supplement|treatment|therapy|[a-z]+(ine|ide|ole|ate|mab|zole|pril|artan|statin|mycin)\b)/i;
+  const MEDICATION_PLAN_RE = /\b(start(ing)?|initiat(e|ing)|prescri(be|bing)|recommend(ing)?|titrat|increas(e|ing)|decreas(e|ing)|add(ing)?|adjust(ing)?) (the |a |your |my )?(dose|medication|supplement|treatment|therapy|[a-z]+(ine|ide|ole|ate|mab|zole|pril|artan|statin|mycin)\b)/i;
   const LAB_INTERPRETATION_RE = /\b(your |the )?(TSH|T3|T4|LDL|HDL|ApoB|Lp\(a\)|ferritin|testosterone|estradiol|A1C|hs-CRP|CBC|CMP|glucose|insulin|iron saturation|DHEA|cortisol|SHBG|PSA) (is |are |looks?|shows?|came back|resulted|came in)\b/i;
 
   for (const u of normalized) {
     const text: string = (u.normalizedText ?? u.text ?? "").toString();
-    if (u.speaker === "patient") {
+    // Flag medication plan or lab interpretation language on any segment NOT clearly
+    // attributed to the clinician — covers both "patient" and "unknown" (uncertain) segments.
+    if (u.speaker === "patient" || u.speaker === "unknown") {
       if (MEDICATION_PLAN_RE.test(text)) {
-        conflicts.push(`[ID:${u.id ?? "?"}] Medication plan language attributed to PATIENT — verify speaker assignment: "${text.slice(0, 120)}"`);
+        conflicts.push(`[ID:${u.id ?? "?"}][${u.speaker.toUpperCase()}] Medication plan language on non-clinician segment — verify speaker: "${text.slice(0, 120)}"`);
       }
       if (LAB_INTERPRETATION_RE.test(text)) {
-        conflicts.push(`[ID:${u.id ?? "?"}] Lab interpretation attributed to PATIENT — likely misattributed: "${text.slice(0, 120)}"`);
+        conflicts.push(`[ID:${u.id ?? "?"}][${u.speaker.toUpperCase()}] Lab interpretation on non-clinician segment — likely misattributed: "${text.slice(0, 120)}"`);
       }
     }
   }
