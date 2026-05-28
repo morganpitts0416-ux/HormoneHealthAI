@@ -5221,10 +5221,15 @@ export interface SpruceConversationMessageRow {
         existing.patientFirstName = row.patientFirstName ?? null;
         existing.patientLastName = row.patientLastName ?? null;
       }
-      // fromPhone: correct to patient phone if the initial row was outbound
-      // and we now have a better inbound row with the real patient number.
-      if (!existing.fromPhone && patientPhone) {
-        existing.fromPhone = patientPhone;
+      // fromPhone: inbound_patient rows are the authoritative source for the
+      // patient's phone — Spruce always puts the external participant's number
+      // in fromPhone on inbound events.  Outbound / system rows may carry the
+      // clinic's own number (from internalEndpoint.rawValue) as patientPhone;
+      // we must override that whenever we encounter a reliable inbound row.
+      if (row.messageDirection === 'inbound_patient' && patientPhone) {
+        existing.fromPhone = patientPhone;          // always prefer inbound
+      } else if (!existing.fromPhone && patientPhone) {
+        existing.fromPhone = patientPhone;          // fallback: fill if empty
       }
       // contact name: only inherit from inbound/unknown rows (outbound rows
       // carry staff names, not the patient's Spruce contact name).
