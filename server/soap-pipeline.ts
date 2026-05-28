@@ -241,6 +241,42 @@ For every medication mentioned in the extraction or transcript:
 - Classify confidence: explicit (directly stated), strongly_implied (clear from context), requires_confirmation (uncertain)
 - Identify the likely indication when inferable from context
 
+MEDICATION STATE SAFETY GATE — CLASSIFY CAREFULLY: MISCLASSIFICATION IS A PATIENT SAFETY ERROR
+These five states are mutually exclusive and strictly defined. When in doubt, default to "discussed" — never upgrade to "current" without clear evidence the patient is actively taking it today.
+
+  ACTIVE_CURRENT → status: "current"
+    Patient IS currently taking this medication, prescribed by any provider.
+    REQUIRED evidence: patient says "I take it" / "I'm on it" / dose+frequency stated as ongoing / refill requested / labs reviewed in context of managing it / continuation confirmed by provider.
+    Example: "I've been taking metformin 500 mg twice a day for about a year" → current.
+
+  NEWLY_PRESCRIBED → status: "new"
+    Provider commits to prescribing this medication AT THIS VISIT. Patient agreement implied or stated.
+    REQUIRED evidence: "I'm going to start you on..." / "let's begin..." / "I'll send that in..." / "I'm prescribing..."
+    Example: "Let's start semaglutide 0.25 mg weekly" → new.
+
+  ADJUSTED → status: "adjusted"
+    Patient is currently on this medication AND the dose, route, or frequency is being changed at this visit.
+
+  DISCONTINUED → status: "discontinued"
+    Provider explicitly stops a medication the patient was previously on.
+    A medication the patient mentions they used in the past and stopped → DISCONTINUED, not "current".
+
+  DISCUSSED_ONLY → status: "discussed"
+    The medication was MENTIONED, CONSIDERED, or EXPLORED in conversation but:
+      - The patient is NOT currently taking it, AND
+      - The provider did NOT commit to prescribing it at this visit.
+    This includes: options presented, alternatives named, patient questions about a drug, historical interest, contingency options ("if X doesn't work we could try Y"), and any medication where the prescribing decision was deferred, declined, or unresolved.
+
+    CRITICAL EXAMPLES — the following MUST be classified as "discussed", never as "current":
+    - "Have you ever tried phentermine?" → discussed
+    - "Adderall is an option we could consider" → discussed
+    - "Bupropion can also help with weight, we might look at that" → discussed
+    - "Some patients do well on [drug], but let's see how you do first" → discussed
+    - "If the GLP-1 doesn't work, we could add topiramate" → discussed
+    - Any drug mentioned as a future possibility, a contingency, or an option the patient is still weighing → discussed
+
+    PATIENT SAFETY RULE: A medication classified as "discussed" MUST NEVER be added to "explicitly_decided_plan_items". It belongs ONLY in "exploratory_discussions" (STATE C) if there is no specific committed trigger, or "discussed_but_not_decided" (STATE B) if deferred with a specific trigger. It must NEVER populate an active medication list.
+
 ═══════════════════════════════════════
 PART 2 — CONDITION INFERENCE
 ═══════════════════════════════════════
@@ -530,6 +566,8 @@ If a medication has status = "current" AND it was referenced in ANY clinical con
 "Continue [medication name] [dose] [route] [frequency] — reviewed and continued at this visit"
 The threshold is LOW. If the medication was brought up in any way that indicates it is part of this patient's active treatment plan, it belongs in explicitly_decided_plan_items. A medication is considered "discussed" even if it was mentioned in a single sentence. Do NOT require extensive discussion — ANY acknowledgment in a clinical context counts. Failing to include it means the note-writing stage will silently omit it from the Assessment/Plan, which is unacceptable.
 
+SAFETY EXCLUSION — NON-NEGOTIABLE: This rule applies ONLY to medications classified as status = "current" or status = "adjusted". Medications classified as status = "discussed" are DISCUSSED_ONLY items — they must NEVER be added to "explicitly_decided_plan_items" regardless of how many times or how extensively they were mentioned in the transcript. Adding a discussed-only medication to explicitly_decided_plan_items is a patient safety error that causes hallucinated active medications in the clinical note. When a medication's status is "discussed", route it to "exploratory_discussions" (STATE C) or "discussed_but_not_decided" (STATE B) only — never to STATE A.
+
 Return this exact JSON structure:
 {
   "medications_normalized": [...],
@@ -749,6 +787,25 @@ This rule applies to ALL of the following:
 - Any treatment that is part of this patient's active plan of care
 
 There are NO exceptions. A medication listed only in Current Medications but absent from A/P is an incomplete, deficient note. A medication acknowledged in the transcript but missing from the HPI narrative is a documentation failure. The note is not complete until every clinically referenced item appears in all four applicable locations.
+
+════════════════════════════════════════
+MEDICATION STATUS GATE — PATIENT SAFETY — GOVERNS ALL FOUR LOCATIONS
+════════════════════════════════════════
+The NORMALIZED MEDICATIONS context tags every medication with its classified status. These status values CONTROL where a medication may and may not appear. This gate applies BEFORE the Four-Location Mandate — it restricts which medications the mandate covers.
+
+  status = "current"   → ACTIVE: Four-Location Mandate applies in full (Current Meds + HPI + A/P + Care Plan)
+  status = "adjusted"  → ACTIVE + CHANGED: Current Meds (prior dose) + A/P (dose change) + HPI + Care Plan
+  status = "new"       → NEWLY PRESCRIBED THIS VISIT: A/P + HPI + Care Plan ONLY — NEVER in Current Medications (Current Medications = what the patient walked in already taking)
+  status = "discontinued" → HPI mention only (patient was previously on it, now stopped)
+  status = "discussed" → DISCUSSED_ONLY: HPI narrative only, as a brief factual mention — NEVER in Current Medications, NEVER as an active numbered Assessment/Plan item, NEVER in the Care Plan as an active instruction
+
+HARD RULE — DISCUSSED_ONLY MEDICATIONS:
+If a medication's status in the NORMALIZED MEDICATIONS list is "discussed", it is NOT an active medication for this patient. No matter how many times it appears in the transcript, it MUST NOT appear in:
+- The Current Medications section
+- Any numbered Assessment/Plan item as a treatment being prescribed or continued
+- The Care Plan as an active medication instruction
+A discussed medication belongs in the HPI as a single factual clause only: "[Drug] was discussed as [a future option / an alternative / a contingency / a past consideration]."
+This gate overrides the Four-Location Mandate for discussed-status medications. The Four-Location Mandate governs only ACTIVE medications (status = current, adjusted) and newly prescribed medications (status = new).
 
 ════════════════════════════════════════
 CORE RULES — NON-NEGOTIABLE
@@ -1469,7 +1526,16 @@ ${diarizedInput}
 Generate the SOAP note following all rules above. The HPI must be a DETAILED RECONSTRUCTION of the clinical encounter, not a compressed summary.${patientName ? ` The patient's name is "${patientName}" — use this name (NOT the clinician's name) when referring to the patient in the note.` : ""} Flag uncertain items and non-duplicate recommendations in needs_clinician_review.
 
 FINAL STEP — MANDATORY BEFORE RETURNING OUTPUT:
-Scan the entire transcript one more time. For every medication (prescription, OTC, supplement), dose change, conditional plan, follow-up lab, or clinical recommendation mentioned — confirm it appears in the Assessment & Plan. If anything is missing, add it now. Return only the final complete note — never the initial draft.`;
+Scan the entire transcript one more time. For every medication (prescription, OTC, supplement), dose change, conditional plan, follow-up lab, or clinical recommendation mentioned — confirm it appears in the Assessment & Plan. If anything is missing, add it now. Return only the final complete note — never the initial draft.
+
+FINAL CLINICAL RECONCILIATION CHECK — HPI-TO-ASSESSMENT COVERAGE (additive — perform after the scan above):
+Read back through the HPI you have written. For every major clinical topic, symptom cluster, or concern described in the HPI, verify a corresponding numbered Assessment/Plan entry exists. The HPI and Assessment must cover the same ground. Apply these specific checks:
+- Weight management / obesity / BMI / GLP-1 / appetite discussion in HPI → Assessment MUST contain a weight or obesity diagnosis entry (E66.x / overweight / metabolic)
+- Elevated BP / HTN risk / blood pressure concern / cardiovascular finding in HPI → Assessment MUST contain a BP or HTN entry (I10 or cardiovascular risk item)
+- Mood / depression / anxiety / psychiatric medications / emotional wellbeing in HPI → Assessment MUST contain a psychiatric or mood entry (F32.x / F41.x / mood monitoring)
+- Micronutrient / lab deficiency / metabolic lab findings in HPI (vitamin D, B12, ferritin, A1c, lipids, hormones) → each clinically significant finding discussed must appear in a corresponding Assessment entry or be nested under the relevant diagnosis item
+- Any symptom discussed with clinical depth (fatigue, low libido, sleep, cognitive changes, pain, GI symptoms) → must have an Assessment entry (not just HPI mention)
+If any major HPI topic has no Assessment coverage — ADD the Assessment entry before returning output. A complete note means the Assessment accounts for every clinical problem the HPI describes.`;
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
@@ -1552,6 +1618,21 @@ CHECK FOR:
 19. CAUSAL LANGUAGE ACCURACY: Does the note correctly distinguish confirmed causation from temporal association and coincidence? Specifically: (a) are symptoms that pre-date a medication incorrectly attributed to that medication? (b) does the note say a medication "is causing" a symptom when the provider only expressed uncertainty or possibility? (c) are temporally associated symptoms described without appropriate hedging language ("appears to worsen," "may be contributing," "temporally associated with")? If the note makes overconfident causal claims unsupported by the transcript, flag as important and revise to use nuanced causal language matching the provider's actual certainty level.
 20. ICD-10 CODE ACCURACY FOR RULE-OUT AND EVALUATION ITEMS: When an Assessment item is labeled as "potential," "possible," "rule out," "evaluating for," or uses similar hedged language, the ICD-10 code assigned MUST reflect the presenting symptom or sign — NOT the confirmed disease code. Specific disease codes are only appropriate when the provider has confirmed or strongly implied the diagnosis. Examples of incorrect coding: using K85.80 (acute pancreatitis) for a visit where the plan is to order enzyme labs to rule it out; using J45.x (asthma) for "possible reactive airway disease under evaluation"; using K50.x (Crohn's) for "rule out inflammatory bowel disease." For unconfirmed diagnoses being evaluated, use the appropriate symptom or sign code (e.g., R10.13 for epigastric pain, R19.7 for diarrhea, K59.9 for intestinal disorder unspecified). If the note assigns a confirmed disease ICD-10 code to an item explicitly described as a rule-out, possible, or under-evaluation diagnosis, flag as important and revise to use the appropriate symptom or sign code.
 21. STATE C ELEVATION CHECK: Does the Assessment contain numbered items for treatments or interventions that were discussed only as contingencies — "if needed," "if the current approach fails," "pending evaluation," "as an alternative if X doesn't work"? These are STATE C exploratory discussions and must NOT appear as numbered Assessment entries. They belong as a single clause in the HPI: "Alternative [treatment] was discussed as a contingency option if [current approach] proves insufficient." If a numbered Assessment item contains a treatment that was framed only as a contingency (never committed to, no specific deferral trigger the provider intends to act on), flag as important and remove that item from the Assessment, integrating it as an HPI clause instead.
+
+22. FINAL CLINICAL RECONCILIATION — HPI-TO-ASSESSMENT COVERAGE: Does every major clinical problem, symptom cluster, or concern described in the HPI have a corresponding numbered Assessment/Plan entry? The HPI and Assessment must tell the same clinical story. Apply these specific required coverages:
+   a) Weight management / obesity / BMI / GLP-1 / appetite discussion in HPI → must have weight or obesity Assessment entry (E66.x or metabolic item)
+   b) Elevated BP / hypertension risk / cardiovascular concern / blood pressure finding in HPI → must have BP/HTN Assessment entry (I10 or CV risk item)
+   c) Mood / depression / anxiety / psychiatric medication / emotional wellbeing in HPI → must have psychiatric or mood monitoring Assessment entry
+   d) Micronutrient deficiency / significant lab finding discussed in HPI (vitamin D, B12, ferritin, A1c, lipids, hormones) → each clinically significant finding must appear in a corresponding Assessment entry or be nested under the relevant diagnosis
+   e) Any symptom discussed with clinical depth (fatigue, low libido, sleep disturbance, cognitive changes, pain, GI symptoms) → must have an Assessment entry, not just HPI mention
+   If a major HPI topic has no Assessment coverage and it was discussed with clinical depth, flag as CRITICAL and add the Assessment entry with appropriate ICD-10 code and clinical reasoning.
+
+23. DISCUSSED_ONLY MEDICATION CONTAMINATION — PATIENT SAFETY: Does the Current Medications section or any numbered Assessment/Plan item contain a medication that was discussed but is NOT an active prescription for this patient? Check the NORMALIZED MEDICATIONS list — any item with status = "discussed" must NOT appear in:
+   - The Current Medications section
+   - Any numbered Assessment/Plan item as a treatment being prescribed or continued
+   - The Care Plan as an active medication instruction
+   Medications that were mentioned as options to consider, future possibilities, historical trials, contingency alternatives, or patient questions ("have you tried X?") are DISCUSSED_ONLY and must not contaminate active medication lists.
+   If a discussed-only medication appears in Current Medications or as an active A/P item, flag as CRITICAL and remove it from those locations. It may remain as a brief HPI clause only: "[Drug] was discussed as [a future option / an alternative / a past consideration]."
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
