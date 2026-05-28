@@ -19369,6 +19369,8 @@ IMPORTANT:
         position: i,
         stepType: String(s.stepType ?? "stop_workflow"),
         config: s.config ?? {},
+        branchTrueSteps: Array.isArray(s.branchTrueSteps) ? s.branchTrueSteps : null,
+        branchFalseSteps: Array.isArray(s.branchFalseSteps) ? s.branchFalseSteps : null,
       })));
       res.json(saved);
     } catch (err) {
