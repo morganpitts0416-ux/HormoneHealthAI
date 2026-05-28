@@ -129,33 +129,37 @@ export function createOpsRouter(): Router {
     const ip = getIp(req);
     const ua = getUA(req);
     try {
-      const envToken = process.env.OPS_BOOTSTRAP_TOKEN;
+      // Trim the stored secret — Replit's secret vault can silently add a
+      // trailing newline or spaces, which causes an exact-match false negative
+      // even when the user copies the value correctly.
+      const envToken = (process.env.OPS_BOOTSTRAP_TOKEN ?? "").trim();
       if (!envToken) {
         return res.status(503).json({
           message: "Bootstrap not configured — OPS_BOOTSTRAP_TOKEN secret is not set",
         });
       }
       const { token, email, password, firstName, lastName } = req.body ?? {};
+      // Trim the submitted token too — catches any browser/paste whitespace.
+      const submittedToken = typeof token === "string" ? token.trim() : "";
 
       // ── TEMPORARY DEBUG — logs only lengths + SHA-256 prefixes, never the raw token ──
       {
         const envLen   = envToken.length;
-        const subLen   = typeof token === "string" ? token.length : -1;
+        const subLen   = submittedToken.length;
         const envHash  = crypto.createHash("sha256").update(envToken).digest("hex").slice(0, 8);
-        const subHash  = typeof token === "string"
-          ? crypto.createHash("sha256").update(token).digest("hex").slice(0, 8)
+        const subHash  = submittedToken.length > 0
+          ? crypto.createHash("sha256").update(submittedToken).digest("hex").slice(0, 8)
           : "N/A";
-        const exact    = token === envToken;
-        const trimmed  = typeof token === "string" && token.trim() === envToken.trim();
+        const exact    = submittedToken === envToken;
         const revision = process.env.K_REVISION ?? process.env.CLOUD_RUN_REVISION ?? "unknown";
         console.log(
           "[ops/bootstrap/debug]",
-          JSON.stringify({ envLen, subLen, envHash, subHash, exact, trimmed, revision })
+          JSON.stringify({ envLen, subLen, envHash, subHash, exact, revision })
         );
       }
       // ── END TEMPORARY DEBUG ────────────────────────────────────────────────────
 
-      if (!token || token !== envToken) {
+      if (!submittedToken || submittedToken !== envToken) {
         await logOpsAudit({
           adminId: null,
           action: "OPS_BOOTSTRAP_FAILED",
