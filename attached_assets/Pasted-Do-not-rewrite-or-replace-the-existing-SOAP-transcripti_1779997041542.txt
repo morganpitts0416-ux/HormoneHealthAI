@@ -1,0 +1,92 @@
+Do not rewrite or replace the existing SOAP/transcription prompt system.
+
+This needs to be a small additive patch that preserves all current SOAP parameters, formatting rules, evidence overlay behavior, diagnosis structure, HPI/A&P organization, provider voice rules, and existing safety/completeness rules.
+
+Problem:
+The A&P occasionally drifts into AI-generated interpretive prose instead of grounded provider documentation. When transcript detail is limited, the model sometimes fills space with speculative wording, vague counseling language, or dramatic risk summaries. We need to tighten grounding without undoing the existing structure.
+
+Please first locate the current SOAP generation system prompt in `server/soap-pipeline.ts`.
+
+Add a new rule block immediately AFTER the existing global/core SOAP rules and BEFORE the section-specific HPI/A&P reconstruction rules.
+
+Title the new block:
+
+ANTI-DRIFT / SOURCE-GROUNDED CLINICAL DOCUMENTATION RULES
+
+Add these rules:
+
+1. Preserve all existing SOAP structure and formatting rules. These rules are additive only.
+
+2. The note must remain tightly grounded to the transcript, extracted facts, documented lab values, provider statements, and clearly discussed plan.
+
+3. Do not invent, embellish, or over-interpret clinical reasoning that was not clearly discussed.
+
+4. If transcript detail is limited, make the A&P shorter and more conservative — do not fill gaps with generalized medical prose.
+
+5. Avoid dramatic or health-article style language such as:
+
+   * “necessitating cardiovascular focus”
+   * “posing increased stroke risk”
+   * “counterbalance”
+   * “genetic risk vector”
+   * “mitigates immediate concern”
+   * “currently impacting functionality”
+   * “good effect”
+   * “supported by good ApoB levels”
+
+6. Use provider-authentic documentation language:
+
+   * “Reviewed…”
+   * “Discussed…”
+   * “Recommended…”
+   * “Continue…”
+   * “Monitor…”
+   * “Recheck…”
+   * “Patient reports…”
+
+7. Education and counseling should be documented only if actually discussed in the encounter or clearly present in extracted facts.
+
+8. Do not convert mild abnormalities into exaggerated risk narratives.
+
+9. For labs, state the finding and plan plainly. Do not add speculative purpose unless the provider discussed it.
+
+10. The A&P should sound like an experienced clinician documenting a visit, not an AI explaining a medical topic.
+
+11. When uncertain, understate rather than elaborate.
+
+12. Before finalizing the SOAP note, perform a “drift check”:
+
+* Remove unsupported interpretations.
+* Remove generalized filler.
+* Remove dramatic risk language.
+* Preserve all actual diagnoses, plans, medication instructions, counseling, follow-up, and labs discussed.
+
+Example:
+
+BAD:
+“Rena Green presents with a complex profile involving iron deficiency and elevated lipoprotein A posing increased CV and stroke risk, necessitating cardiovascular health focus.”
+
+GOOD:
+“Reviewed labs showing low iron saturation and elevated Lp(a). Discussed cardiovascular risk reduction and continued monitoring.”
+
+BAD:
+“This was recommended to possibly enhance her hair health and counterbalance the low iron saturation detected.”
+
+GOOD:
+“Iron saturation 15%. Recommended starting iron supplementation.”
+
+BAD:
+“Current cholesterol is slightly elevated, supported by good ApoB levels, which mitigates immediate concern.”
+
+GOOD:
+“Cholesterol mildly elevated. ApoB acceptable. Lp(a) elevated; continue risk-factor optimization and monitoring.”
+
+Important implementation instruction:
+Do not remove, rewrite, reorder, or simplify the current prompt blocks unless absolutely necessary. This should be a targeted additive guardrail only.
+
+After making the change, show me:
+
+1. The exact file changed.
+2. The exact insertion location.
+3. The new block added.
+4. Confirmation that no existing SOAP rules were removed.
