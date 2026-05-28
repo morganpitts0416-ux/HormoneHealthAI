@@ -1575,3 +1575,67 @@ ALTER TABLE form_workflow_step_states ADD COLUMN IF NOT EXISTS due_at TIMESTAMP;
 ALTER TABLE form_workflow_step_states ADD COLUMN IF NOT EXISTS locked_at TIMESTAMP;
 -- Layer 2.5 additions
 ALTER TABLE form_workflow_runs ADD COLUMN IF NOT EXISTS paused_at TIMESTAMP;
+
+-- form_workflow_steps: branch columns added for if_then_branch step type.
+-- Stores inline sub-step configs as JSONB arrays; used by the Layer 2 engine.
+ALTER TABLE form_workflow_steps ADD COLUMN IF NOT EXISTS branch_true_steps  JSONB;
+ALTER TABLE form_workflow_steps ADD COLUMN IF NOT EXISTS branch_false_steps JSONB;
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Platform Admin / Ops Portal tables
+-- Additive-only — no existing table is altered here.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- platform_admins: one row per ops-portal user (separate from clinic staff).
+CREATE TABLE IF NOT EXISTS platform_admins (
+  id                    SERIAL PRIMARY KEY,
+  email                 TEXT NOT NULL UNIQUE,
+  password_hash         TEXT NOT NULL,
+  password_changed_at   TIMESTAMP,
+  first_name            TEXT NOT NULL,
+  last_name             TEXT NOT NULL,
+  role                  TEXT NOT NULL DEFAULT 'admin',
+  status                TEXT NOT NULL DEFAULT 'active',
+  mfa_secret_encrypted  TEXT,
+  mfa_enabled           BOOLEAN NOT NULL DEFAULT FALSE,
+  failed_login_count    INTEGER NOT NULL DEFAULT 0,
+  locked_until          TIMESTAMP,
+  created_by_id         INTEGER,
+  created_at            TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at            TIMESTAMP NOT NULL DEFAULT NOW(),
+  last_login_at         TIMESTAMP,
+  last_login_ip         TEXT,
+  last_login_user_agent TEXT
+);
+CREATE INDEX IF NOT EXISTS platform_admins_email_idx ON platform_admins (email);
+
+-- ops_sessions: session tokens for the ops portal (separate from clinic sessions).
+-- Identified by a UUIDv4 stored in the ops.sid cookie (httpOnly, sameSite=strict).
+CREATE TABLE IF NOT EXISTS ops_sessions (
+  id         TEXT PRIMARY KEY,
+  admin_id   INTEGER NOT NULL REFERENCES platform_admins(id) ON DELETE CASCADE,
+  expires_at TIMESTAMP NOT NULL,
+  ip_address TEXT,
+  user_agent TEXT,
+  created_at TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ops_sessions_admin_id_idx  ON ops_sessions (admin_id);
+CREATE INDEX IF NOT EXISTS ops_sessions_expires_at_idx ON ops_sessions (expires_at);
+
+-- ops_audit_log: append-only trail of all platform-admin actions.
+CREATE TABLE IF NOT EXISTS ops_audit_log (
+  id          SERIAL PRIMARY KEY,
+  admin_id    INTEGER REFERENCES platform_admins(id) ON DELETE SET NULL,
+  action      TEXT NOT NULL,
+  target_type TEXT,
+  target_id   TEXT,
+  details     JSONB,
+  ip_address  TEXT,
+  user_agent  TEXT,
+  created_at  TIMESTAMP NOT NULL DEFAULT NOW(),
+  updated_at  TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS ops_audit_log_admin_id_idx  ON ops_audit_log (admin_id);
+CREATE INDEX IF NOT EXISTS ops_audit_log_action_idx    ON ops_audit_log (action);
+CREATE INDEX IF NOT EXISTS ops_audit_log_created_at_idx ON ops_audit_log (created_at);
+CREATE INDEX IF NOT EXISTS ops_audit_log_target_idx    ON ops_audit_log (target_type, target_id);
