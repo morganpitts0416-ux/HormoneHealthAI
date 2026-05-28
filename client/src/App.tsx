@@ -228,6 +228,11 @@ function RootRedirect() {
     if (isLoading) return;
     if (user) {
       setLocation("/dashboard");
+      return;
+    }
+    // On app.cliniqapp.ai, unauthenticated visitors go straight to /login
+    if (checkAppSubdomain()) {
+      setLocation("/login");
     }
   }, [user, isLoading, setLocation]);
 
@@ -248,7 +253,10 @@ function RootRedirect() {
     );
   }
 
-  // Unauthenticated — show the marketing homepage (with Features nav, Sign In, etc.)
+  // On app subdomain, unauthenticated — blank while /login redirect fires
+  if (checkAppSubdomain()) return null;
+
+  // On marketing domain (cliniqapp.ai) — show the marketing homepage
   return <Landing />;
 }
 
