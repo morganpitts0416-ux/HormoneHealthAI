@@ -184,6 +184,10 @@ interface NormalizedExtraction {
     item: string;
     deferred_reason: string;
     deferred_trigger: "next_visit" | "labs_pending" | "patient_consideration" | "specialist_evaluation" | "insurance_approval" | "condition_stabilization" | "symptom_progression" | "other";
+    education_summary?: string;
+    patient_response_summary?: string;
+    provider_reasoning_summary?: string;
+    follow_up_or_reassessment_plan?: string;
   }>;
   exploratory_discussions: string[];
   treatment_rationale: Array<{
@@ -509,12 +513,18 @@ This is CRITICAL for recommendation quality. Classify every discussed action ite
 STATE A — "explicitly_decided_plan_items": Provider clearly and definitively committed to this action. Patient agreed or provider stated it as a decision. → Add as a string to this array.
    Trigger phrases: "I'm going to start you on", "let's do", "we'll begin", "I'll order", "I'm prescribing", "continue current dose", "we decided to"
 
-STATE B — "discussed_but_not_decided": Topic was raised AND definitively deferred — a specific reason or trigger for deferral is identifiable. → Add as a string to "discussed_but_not_decided" AND as an object to "future_considerations" with deferred_reason and deferred_trigger.
+STATE B — "discussed_but_not_decided": Topic was raised AND definitively deferred — a specific reason or trigger for deferral is identifiable. → Add as a string to "discussed_but_not_decided" AND as an object to "future_considerations" with deferred_reason, deferred_trigger, and the four inline content fields below.
    Trigger phrases: "once labs come back", "we'll revisit at next visit", "if symptoms worsen", "once you decide", "pending specialist", "once insurance approves", "after we stabilize X first", "come back and we'll discuss"
    Deferred trigger values: next_visit | labs_pending | patient_consideration | specialist_evaluation | insurance_approval | condition_stabilization | symptom_progression | other
    PATIENT HESITATION RULE — CRITICAL: When a substantive clinical discussion occurred (provider provided education or reviewed risks/benefits, patient expressed hesitation/apprehension/concerns/preferences, and a deliberate shared decision was reached to defer), this IS STATE B with deferred_trigger = "patient_consideration" — NOT STATE C. Patient hesitation as the deferral reason is a specific, identifiable trigger.
    Example → STATE B: "Provider reviewed GLP-1 therapy including risks, benefits, and expected timeline. Patient expressed apprehension about starting medication. Provider and patient agreed together to address hormone optimization first and revisit GLP-1 therapy at a future visit." The deliberateness of the shared deferral decision — not the open-endedness of timing — is what makes this STATE B.
    DEPTH TEST: If the discussion involved provider education AND a patient response (hesitation, concern, or expressed preference) AND a deliberate deferral outcome — it is STATE B regardless of how open-ended the return timeline is.
+   INLINE CONTENT FIELDS — populate these for every STATE B future_considerations object so each deferred discussion is self-contained:
+     education_summary: what the provider explained about this treatment — mechanism, risks, benefits, expected timeline, alternatives considered. Be specific: "GLP-1 mechanism, expected 10–15% weight loss, injection requirements, common GI side effects, and timeline to effect reviewed." Omit only if no substantive education occurred.
+     patient_response_summary: the patient's specific response — hesitation expressed, concerns raised, questions asked, preferences stated. Be verbatim or close paraphrase: "Patient expressed apprehension about injectable therapy; preferred to optimize hormones before adding further interventions." Omit only if patient made no substantive statement.
+     provider_reasoning_summary: the provider's stated rationale for the shared deferral and what was chosen instead: "Provider agreed to defer GLP-1 pending hormonal optimization response; plan to reassess at follow-up." Omit only if not captured.
+     follow_up_or_reassessment_plan: the specific trigger or timeframe for revisiting: "Reassess GLP-1 candidacy at next follow-up after evaluating hormone optimization response." Omit only if no specific plan was stated.
+   MULTI-TREATMENT VISITS — ATTRIBUTION RULE: In visits where multiple treatments are discussed and deferred (e.g., estradiol deferred pending mammogram, GLP-1 deferred for patient hesitation, statin deferred for lifestyle trial), each future_considerations object MUST populate its inline fields independently from the others. Do NOT share or cross-reference inline fields between separate STATE B objects. Each object must be fully self-contained so the note writer can attribute education, patient response, and follow-up plan to the correct treatment without inference.
 
 STATE C — "exploratory_discussions": Theoretical or speculative discussion — possibilities floated conversationally with no near-term commitment or specific deferral trigger. → Add to "exploratory_discussions" ONLY. Do NOT add to discussed_but_not_decided.
    Trigger phrases: "someday we might think about", "just so you're aware that option exists", "theoretically we could", conversational musings about distant future possibilities with no specific plan
@@ -593,7 +603,11 @@ Return this exact JSON structure:
     {
       "item": "what was discussed",
       "deferred_reason": "specific reason for deferral in plain language",
-      "deferred_trigger": "next_visit|labs_pending|patient_consideration|specialist_evaluation|insurance_approval|condition_stabilization|symptom_progression|other"
+      "deferred_trigger": "next_visit|labs_pending|patient_consideration|specialist_evaluation|insurance_approval|condition_stabilization|symptom_progression|other",
+      "education_summary": "what the provider explained — mechanism, risks, benefits, expected timeline, alternatives considered (omit if no substantive education occurred)",
+      "patient_response_summary": "what the patient expressed — specific hesitation, concerns raised, questions asked, preferences stated (omit if patient made no substantive statement)",
+      "provider_reasoning_summary": "provider's stated rationale for the shared deferral decision and what approach was chosen instead (omit if not captured in transcript)",
+      "follow_up_or_reassessment_plan": "specific condition or timeframe under which this will be revisited — e.g. 'recheck ferritin in 8 weeks', 'reassess at next visit after hormone optimization', 'once mammogram results are available' (omit if no specific plan stated)"
     }
   ],
   "exploratory_discussions": ["STATE C — conversational/theoretical possibilities with no near-term plan"],
@@ -717,9 +731,14 @@ async function generateSoapSections(
     : "";
 
   const futureConsiderationsContext = normalized.future_considerations?.length
-    ? `\nFUTURE CONSIDERATIONS (STATE B — deferred with specific trigger; MUST receive a numbered Assessment/Plan entry; Plan line must name the deferral reason):\n${normalized.future_considerations.map(f =>
-        `- ${f.item} | deferred because: ${f.deferred_reason} | trigger type: ${f.deferred_trigger}`
-      ).join('\n')}`
+    ? `\nFUTURE CONSIDERATIONS (STATE B — deferred with specific trigger; MUST receive a numbered Assessment/Plan entry; Plan line must name the deferral reason):\n${normalized.future_considerations.map(f => {
+        const lines = [`- ${f.item} | deferred because: ${f.deferred_reason} | trigger type: ${f.deferred_trigger}`];
+        if (f.education_summary) lines.push(`  education: ${f.education_summary}`);
+        if (f.patient_response_summary) lines.push(`  patient response: ${f.patient_response_summary}`);
+        if (f.provider_reasoning_summary) lines.push(`  provider reasoning: ${f.provider_reasoning_summary}`);
+        if (f.follow_up_or_reassessment_plan) lines.push(`  follow-up plan: ${f.follow_up_or_reassessment_plan}`);
+        return lines.join('\n');
+      }).join('\n')}`
     : "";
 
   const exploratoryContext = normalized.exploratory_discussions?.length
@@ -1122,6 +1141,7 @@ STATE B — FUTURE CONSIDERATION (deferred with specific trigger):
   - Iron infusion (oral retry preferred): "IV iron infusion was discussed as an option given ferritin [X] ng/mL and inadequate response to prior supplementation. Patient preferred to retry oral iron with improved compliance and dietary optimization before committing to infusion. Plan to recheck ferritin in 8 weeks; infusion to be reconsidered if oral therapy remains insufficient."
   - GLP-1 therapy (apprehension): "GLP-1 receptor agonist therapy was reviewed as a potential option for weight management given BMI [X] and insulin resistance pattern. Risks, benefits, and injection requirements were discussed. Patient expressed apprehension about starting injectable therapy at this time, preferring to first address hormonal optimization. Shared decision made to defer GLP-1 initiation; to be reassessed at follow-up."
   EXAMPLE OF INCORRECT DOCUMENTATION (applies to any of the above): "Discussed potential future use of [medication]." (This is medicolegally deficient — it erases the clinical conversation that actually occurred.)
+  INLINE FIELD PRIORITY RULE: Each STATE B item in the FUTURE CONSIDERATIONS context above carries inline fields (education, patient response, provider reasoning, follow-up plan) when the normalization stage captured them. For each STATE B Assessment entry, prefer these inline fields as the primary source for writing the clinical reasoning paragraph — they are already attributed to this specific treatment. The global EDUCATION PROVIDED, PATIENT DECISIONS, PATIENT PERSPECTIVE STATEMENTS, and PROVIDER REASONING blocks supplement STATE B items only when the inline fields are sparse or absent. Do NOT duplicate counseling language: if the substance is already expressed through the inline fields, do not restate it again from the global blocks. Each treatment's clinical story belongs in its own Assessment entry, drawn from its own inline fields.
 
 STATE C — EXPLORATORY DISCUSSION (conversational possibility, no near-term plan):
 - Brief mention in HPI narrative only, if clinically relevant: "Future hormonal pellet therapy was discussed in passing as a long-term option"
