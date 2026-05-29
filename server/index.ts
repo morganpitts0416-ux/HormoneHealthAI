@@ -97,6 +97,14 @@ app.use(
   }),
 );
 
+// Public form pages (/f/:token) must be embeddable in iframes on external
+// websites. Helmet sets X-Frame-Options: SAMEORIGIN globally, which blocks
+// that. Remove it specifically for these routes so the embed code works.
+app.use("/f", (_req, res, next) => {
+  res.removeHeader("X-Frame-Options");
+  next();
+});
+
 declare module 'http' {
   interface IncomingMessage {
     rawBody: unknown
