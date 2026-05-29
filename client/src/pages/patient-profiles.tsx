@@ -1379,6 +1379,7 @@ export default function PatientProfiles() {
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef<string | null>(null);
   const pendingOpenLabId = useRef<number | null>(null);
+  const urlLabApplied = useRef<number | null>(null);
 
   // Auto-generate patient-specific dietary guidance when the publish dialog opens.
   // The endpoint pulls directly from this lab's interpretations + lab values, so
@@ -1427,9 +1428,27 @@ export default function PatientProfiles() {
     const tab = params.get("tab");
     const labId = params.get("lab");
     if (!patientId) return;
+
+    const patientAlreadyApplied = urlParamApplied.current === patientId;
+
+    // Always queue a new lab ID even if the patient was already selected.
+    // Without this, navigating back to the same patient after an evaluation
+    // silently drops the ?lab= param and the modal never opens.
+    if (labId && Number(labId) !== urlLabApplied.current) {
+      urlLabApplied.current = Number(labId);
+      pendingOpenLabId.current = Number(labId);
+      // If the patient was already selected, the labs query is already active.
+      // Invalidate it so fresh data (including the just-saved lab) comes back
+      // and triggers the lab-open effect below.
+      if (patientAlreadyApplied) {
+        queryClient.invalidateQueries({ queryKey: ['/api/patients', Number(patientId), 'labs'] });
+      }
+    }
+
+    if (patientAlreadyApplied) return;
+
     // Skip only if this exact patient ID was already applied — not a blanket latch.
     // This lets the search bar navigate to different patients in the same session.
-    if (urlParamApplied.current === patientId) return;
     if (allPatients.length === 0) return;
     const found = allPatients.find(p => p.id === Number(patientId));
     if (!found) {
@@ -1440,7 +1459,6 @@ export default function PatientProfiles() {
     }
     urlParamApplied.current = patientId;
     setSelectedPatient(found);
-    if (labId) pendingOpenLabId.current = Number(labId);
     if (tab === "messages") setShowMessages(true);
     if (tab === "orders") setShowOrders(true);
     if (tab === "encounters") setShowEncounters(true);
