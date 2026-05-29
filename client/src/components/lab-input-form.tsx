@@ -1492,7 +1492,21 @@ export function LabInputForm({ onSubmit, isLoading = false, initialValues = {}, 
                             data-testid="input-lpa"
                           />
                         </FormControl>
-                        <span className="text-sm text-muted-foreground whitespace-nowrap">mg/dL</span>
+                        <FormField
+                          control={form.control}
+                          name="lpaUnit"
+                          render={({ field: unitField }) => (
+                            <Select value={unitField.value ?? 'nmol/L'} onValueChange={unitField.onChange}>
+                              <SelectTrigger className="w-24" data-testid="select-lpa-unit">
+                                <SelectValue />
+                              </SelectTrigger>
+                              <SelectContent>
+                                <SelectItem value="nmol/L">nmol/L</SelectItem>
+                                <SelectItem value="mg/dL">mg/dL</SelectItem>
+                              </SelectContent>
+                            </Select>
+                          )}
+                        />
                       </div>
                       <FormMessage />
                     </FormItem>

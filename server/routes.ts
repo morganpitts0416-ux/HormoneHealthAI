@@ -1400,7 +1400,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         adjustedRisk = PREVENTCalculator.calculateAdjustedRisk(
           preventRisk?.tenYearASCVD ?? 0,
           labs.apoB,
-          labs.lpa
+          labs.lpa,
+          labs.lpaUnit as string | undefined
         ) || undefined;
         console.log('[API] Male Adjusted Risk Assessment:', adjustedRisk ? 
           `Base: ${adjustedRisk.baseASCVDRisk.toFixed(1)}%, Category: ${adjustedRisk.riskCategory} → ${adjustedRisk.adjustedCategory}` : 
@@ -1876,7 +1877,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         adjustedRisk = PREVENTCalculator.calculateAdjustedRisk(
           preventRisk?.tenYearASCVD ?? 0,
           labs.apoB,
-          labs.lpa
+          labs.lpa,
+          labs.lpaUnit as string | undefined
         ) || undefined;
         console.log('[API] Adjusted Risk Assessment:', adjustedRisk ? 
           `Base: ${adjustedRisk.baseASCVDRisk.toFixed(1)}%, Category: ${adjustedRisk.riskCategory} → ${adjustedRisk.adjustedCategory}` : 
@@ -12749,6 +12751,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         onStatins: z.boolean().default(false),
         apoB: z.number().optional(),
         lpa: z.number().optional(),
+        lpaUnit: z.enum(['mg/dL', 'nmol/L']).optional(),
       });
       const parsed = inputSchema.safeParse(req.body);
       if (!parsed.success) {
@@ -12782,7 +12785,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       if (!result) return res.status(400).json({ message: "Could not calculate risk with provided inputs" });
       let adjusted = null;
       if (i.apoB !== undefined || i.lpa !== undefined) {
-        adjusted = PREVENTCalculator.calculateAdjustedRisk(result.tenYearASCVD, i.apoB, i.lpa);
+        adjusted = PREVENTCalculator.calculateAdjustedRisk(result.tenYearASCVD, i.apoB, i.lpa, i.lpaUnit);
       }
       res.json({ result, adjusted });
     } catch (err: any) {

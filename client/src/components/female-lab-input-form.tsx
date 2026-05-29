@@ -909,9 +909,18 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
                     <FormLabel className="text-xs font-medium uppercase">Lp(a)</FormLabel>
                     <div className="flex items-center gap-2">
                       <FormControl><Input type="number" step="1" placeholder="30" {...field} onChange={(e) => field.onChange(e.target.value ? parseInt(e.target.value) : undefined)} value={field.value ?? ''} data-testid="input-lpa-female" /></FormControl>
-                      <span className="text-sm text-muted-foreground">mg/dL</span>
+                      <FormField control={form.control} name="lpaUnit" render={({ field: unitField }) => (
+                        <Select value={unitField.value ?? 'nmol/L'} onValueChange={unitField.onChange}>
+                          <SelectTrigger className="w-24" data-testid="select-lpa-unit-female">
+                            <SelectValue />
+                          </SelectTrigger>
+                          <SelectContent>
+                            <SelectItem value="nmol/L">nmol/L</SelectItem>
+                            <SelectItem value="mg/dL">mg/dL</SelectItem>
+                          </SelectContent>
+                        </Select>
+                      )} />
                     </div>
-                    <p className="text-xs text-muted-foreground">&lt;50 mg/dL optimal</p>
                   </FormItem>
                 )} />
               </div>

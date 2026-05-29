@@ -977,7 +977,7 @@ export async function generatePatientWellnessPDF(
       ]);
     }
     if (adjustedRisk.lpaValue !== undefined) {
-      const isNmolL = adjustedRisk.lpaValue >= 200;
+      const isNmolL = adjustedRisk.lpaUnit === 'nmol/L';
       const lpaUnit = isNmolL ? 'nmol/L' : 'mg/dL';
       const lpaStatusText = adjustedRisk.lpaStatus === 'elevated' ? 'Elevated' 
         : adjustedRisk.lpaStatus === 'borderline' ? 'Borderline' : 'Normal';

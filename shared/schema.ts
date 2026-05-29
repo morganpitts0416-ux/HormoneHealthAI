@@ -72,6 +72,7 @@ export const adjustedRiskAssessmentSchema = z.object({
   lpaValue: z.number().optional(),
   apoBValue: z.number().optional(),
   lpaStatus: z.enum(['normal', 'borderline', 'elevated']).optional(),
+  lpaUnit: z.enum(['mg/dL', 'nmol/L']).optional(),
   apoBStatus: z.enum(['normal', 'borderline', 'elevated']).optional(),
   baseASCVDRisk: z.number(), // 10-year ASCVD risk percentage
   riskCategory: z.enum(['low', 'borderline', 'intermediate', 'high']),
@@ -135,6 +136,7 @@ export const labValuesSchema = z.object({
   triglycerides: z.number().optional(),
   apoB: z.number().optional(), // Apolipoprotein B
   lpa: z.number().optional(), // Lipoprotein(a)
+  lpaUnit: z.enum(['mg/dL', 'nmol/L']).optional(), // unit for lpa value
   
   // Hormones
   testosterone: z.number().optional(),
@@ -235,6 +237,7 @@ export const femaleLabValuesSchema = z.object({
   triglycerides: z.number().optional(),
   apoB: z.number().optional(), // Apolipoprotein B
   lpa: z.number().optional(), // Lipoprotein(a)
+  lpaUnit: z.enum(['mg/dL', 'nmol/L']).optional(), // unit for lpa value
   
   // Cardiovascular Assessment
   cacScore: z.number().optional(), // Coronary Artery Calcium score (if available)

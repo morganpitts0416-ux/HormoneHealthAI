@@ -291,7 +291,7 @@ export async function generateLabReportPDF(
         markerRows.push(['ApoB', `${ar.apoBValue} mg/dL`, apoBStatus, ar.apoBStatus === 'elevated' ? 'Risk Enhancer' : ar.apoBStatus === 'borderline' ? 'Risk-Enhancing' : 'Normal']);
       }
       if (hasLpa) {
-        const isNmol = ar.lpaValue! >= 200;
+        const isNmol = ar.lpaUnit === 'nmol/L';
         const lpaUnit = isNmol ? 'nmol/L' : 'mg/dL';
         const lpaStatus = ar.lpaStatus === 'elevated'
           ? (isNmol ? 'Elevated (≥125 nmol/L)' : 'Elevated (≥50 mg/dL)')

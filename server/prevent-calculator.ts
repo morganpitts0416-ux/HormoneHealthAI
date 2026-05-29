@@ -493,7 +493,8 @@ export class PREVENTCalculator {
   static calculateAdjustedRisk(
     tenYearASCVD: number,
     apoB?: number,
-    lpa?: number
+    lpa?: number,
+    lpaUnit?: string
   ): AdjustedRiskAssessment | null {
     // Must have at least one marker to provide adjusted assessment
     if (apoB === undefined && lpa === undefined) {
@@ -518,9 +519,14 @@ export class PREVENTCalculator {
     let lpaStatus: 'normal' | 'borderline' | 'elevated' = 'normal';
     let lpaIsNmolL = false;
     if (lpa !== undefined) {
-      // Unit detection: values ≥200 are almost certainly nmol/L
-      lpaIsNmolL = lpa >= 200;
-      
+      // Use explicit unit when provided; fall back to heuristic for legacy data
+      // (≥200 is almost certainly nmol/L — mg/dL rarely exceeds 150)
+      if (lpaUnit) {
+        lpaIsNmolL = lpaUnit === 'nmol/L';
+      } else {
+        lpaIsNmolL = lpa >= 200;
+      }
+
       if (lpaIsNmolL) {
         // nmol/L scale (ACC/AHA 2019): <75 normal | 75–124 borderline | ≥125 elevated = RISK ENHANCER
         if (lpa >= 125) lpaStatus = 'elevated';
@@ -638,6 +644,7 @@ export class PREVENTCalculator {
       lpaValue: lpa,
       apoBValue: apoB,
       lpaStatus,
+      lpaUnit: lpaIsNmolL ? 'nmol/L' : 'mg/dL',
       apoBStatus,
       baseASCVDRisk: baseRiskPercent,
       riskCategory,

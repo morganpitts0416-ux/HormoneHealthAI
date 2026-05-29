@@ -50,6 +50,7 @@ export interface ExtractedLabValues {
   triglycerides?: number;
   apoB?: number;
   lpa?: number;
+  lpaUnit?: string; // 'mg/dL' or 'nmol/L' — extracted from the lab report unit column
 
   // Hormones
   testosterone?: number;
@@ -135,7 +136,8 @@ EXTRACTION RULES:
    - Total Cholesterol: Cholesterol, Chol, CHOL, TC
    - Triglycerides: TG, TRIG, Trigs
    - ApoB: Apolipoprotein B, Apo B, Apo-B, ApoB-100, Apolipoprotein B-100, Apo B-100
-   - Lp(a): Lipoprotein (a), Lipoprotein(a), Lipoprotein A, Lipoprotein a, LP(a), LP(A), LPA, Lp-a, Lp a, Lp[a], LIPOPROTEIN A, lipoprotein little a, Lipoprotein(A), Lipoprotien (a), Lipoprotien(a), Lipoprotien A, Lipoprotien a, LIPOPROTIEN A, Lipoprotein-a, Lipo Protein (a), Lipo-protein (a)
+   - Lp(a): Lipoprotein (a), Lipoprotein(a), Lipoprotein A, Lipoprotein a, LP(a), LP(A), LPA, Lp-a, Lp a, Lp[a], LIPOPROTEIN A, lipoprotein little a, Lipoprotein(A), Lipoprotien (a), Lipoprotien(a), Lipoprotien A, Lipoprotien a, LIPOPROTIEN A, Lipoprotein-a, Lipo Protein (a), Lipo-protein (a), Lp(a) Serum, Lp(a), Serum, LIPOPROTEIN (a) SERUM, LIPOPROTEIN (a), SERUM, Lipoprotein (a) Serum, Lipoprotein(a) Serum, Lipoprotein(a), Serum, LP(a) SERUM, Lp(a) Particle, Lipoprotein-Associated, Lipoprotein, Little a
+     IMPORTANT for Lp(a): Many labs report this as "< 14 mg/dL" or "< 75 nmol/L" (a less-than result indicating below the detection limit). This is a RESULT, not a reference range — extract the number (e.g. "< 14" → lpa: 14). Also capture the unit from the unit column: if the unit column shows "mg/dL" set lpaUnit to "mg/dL"; if it shows "nmol/L" set lpaUnit to "nmol/L".
    - Testosterone: Total Testosterone, Testosterone Total, Serum Testosterone
    - Free Testosterone: Free T, Free Testosterone (Direct), Free Testosterone (Calc)
    - SHBG: Sex Hormone Binding Globulin
@@ -202,6 +204,7 @@ Return this JSON structure (include ONLY fields you found):
   "triglycerides": number,
   "apoB": number,
   "lpa": number,
+  "lpaUnit": "mg/dL or nmol/L",
   "testosterone": number,
   "freeTestosterone": number,
   "estradiol": number,

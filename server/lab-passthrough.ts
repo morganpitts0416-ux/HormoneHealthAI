@@ -287,7 +287,26 @@ export function appendPassthroughInterpretations(
 
     // Resolve range: clinician override (matched by displayName) wins, else default.
     const customRange = customLookup.get(meta.displayName.toLowerCase());
-    const defaultRange = defaultRangeForKey(labKey, gender);
+    let defaultRange = defaultRangeForKey(labKey, gender);
+
+    // Lp(a): override the default nmol/L range when the user entered mg/dL values.
+    // lab-marker-defaults stores nmol/L thresholds; mg/dL has different cutoffs.
+    if (labKey === 'lpa' && !customRange?.isCustom) {
+      const enteredUnit = (labs as any).lpaUnit as string | undefined;
+      if (enteredUnit === 'mg/dL') {
+        defaultRange = {
+          markerKey: 'lpa',
+          displayName: 'Lipoprotein(a)',
+          unit: 'mg/dL',
+          optimalMin: 0,
+          optimalMax: 30,  // <30 mg/dL = optimal (ACC/AHA 2019)
+          normalMin: 0,
+          normalMax: 50,   // 30–49 mg/dL = borderline; ≥50 = abnormal/elevated
+          isCustom: false,
+        };
+      }
+    }
+
     const resolved: ResolvedRange | undefined =
       customRange?.isCustom ? customRange : defaultRange || customRange;
 
