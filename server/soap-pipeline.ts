@@ -512,6 +512,9 @@ STATE A — "explicitly_decided_plan_items": Provider clearly and definitively c
 STATE B — "discussed_but_not_decided": Topic was raised AND definitively deferred — a specific reason or trigger for deferral is identifiable. → Add as a string to "discussed_but_not_decided" AND as an object to "future_considerations" with deferred_reason and deferred_trigger.
    Trigger phrases: "once labs come back", "we'll revisit at next visit", "if symptoms worsen", "once you decide", "pending specialist", "once insurance approves", "after we stabilize X first", "come back and we'll discuss"
    Deferred trigger values: next_visit | labs_pending | patient_consideration | specialist_evaluation | insurance_approval | condition_stabilization | symptom_progression | other
+   PATIENT HESITATION RULE — CRITICAL: When a substantive clinical discussion occurred (provider provided education or reviewed risks/benefits, patient expressed hesitation/apprehension/concerns/preferences, and a deliberate shared decision was reached to defer), this IS STATE B with deferred_trigger = "patient_consideration" — NOT STATE C. Patient hesitation as the deferral reason is a specific, identifiable trigger.
+   Example → STATE B: "Provider reviewed GLP-1 therapy including risks, benefits, and expected timeline. Patient expressed apprehension about starting medication. Provider and patient agreed together to address hormone optimization first and revisit GLP-1 therapy at a future visit." The deliberateness of the shared deferral decision — not the open-endedness of timing — is what makes this STATE B.
+   DEPTH TEST: If the discussion involved provider education AND a patient response (hesitation, concern, or expressed preference) AND a deliberate deferral outcome — it is STATE B regardless of how open-ended the return timeline is.
 
 STATE C — "exploratory_discussions": Theoretical or speculative discussion — possibilities floated conversationally with no near-term commitment or specific deferral trigger. → Add to "exploratory_discussions" ONLY. Do NOT add to discussed_but_not_decided.
    Trigger phrases: "someday we might think about", "just so you're aware that option exists", "theoretically we could", conversational musings about distant future possibilities with no specific plan
@@ -519,6 +522,7 @@ STATE C — "exploratory_discussions": Theoretical or speculative discussion —
      "if needed after the GI evaluation", "if symptoms don't resolve we could consider", "as an alternative if [X] doesn't work", "if the specialist recommends it", "something to keep in mind if things change"
    KEY TEST: Ask — was there a definitive plan to pursue this, or was it mentioned only as a contingency that may never happen? If it's a contingency with no committed timeline or trigger that the provider intends to act on, it is STATE C.
    DISTINCTION FROM STATE B: STATE B requires the provider to have a clear intention to do this thing — the only question is WHEN (pending a lab, a follow-up, patient decision). STATE C is when the provider is NOT committed to ever doing it — it was mentioned as a possibility, option, or "if things go that way" contingency.
+   DEPTH EXCEPTION — STATE C DOES NOT APPLY to substantive discussions: if the provider provided meaningful education (explained risks, benefits, mechanism, or expectations), the patient responded with specific concerns or hesitation, and a deliberate shared decision was reached regarding deferral — even if the return timeline is open-ended — classify as STATE B (patient_consideration or condition_stabilization trigger). STATE C is reserved for genuinely passing or speculative mentions with no meaningful clinical exchange.
 
 STATE D — "clinically_relevant_followup": Items NOT discussed but clinically relevant given context. → Add to this array only. Never appears in Plan.
    Examples: Preventative screenings suggested by age/risk, monitoring implied by medication class, follow-up labs implied by treatment changes
@@ -797,14 +801,15 @@ The NORMALIZED MEDICATIONS context tags every medication with its classified sta
   status = "adjusted"  → ACTIVE + CHANGED: Current Meds (prior dose) + A/P (dose change) + HPI + Care Plan
   status = "new"       → NEWLY PRESCRIBED THIS VISIT: A/P + HPI + Care Plan ONLY — NEVER in Current Medications (Current Medications = what the patient walked in already taking)
   status = "discontinued" → HPI mention only (patient was previously on it, now stopped)
-  status = "discussed" → DISCUSSED_ONLY: HPI narrative only, as a brief factual mention — NEVER in Current Medications, NEVER as an active numbered Assessment/Plan item, NEVER in the Care Plan as an active instruction
+  status = "discussed" → DISCUSSED_ONLY: HPI narrative only for brief/passing mentions — NEVER in Current Medications, NEVER in the Care Plan as an active instruction, NEVER as an active prescribing item. Exception: when a substantive clinical discussion occurred (STATE B — see HARD RULE below), a deferred-language Assessment entry is appropriate to preserve the medical record of the discussion.
 
 HARD RULE — DISCUSSED_ONLY MEDICATIONS:
 If a medication's status in the NORMALIZED MEDICATIONS list is "discussed", it is NOT an active medication for this patient. No matter how many times it appears in the transcript, it MUST NOT appear in:
 - The Current Medications section
-- Any numbered Assessment/Plan item as a treatment being prescribed or continued
+- Any numbered Assessment/Plan item as a treatment being PRESCRIBED OR CONTINUED (active prescribing language)
 - The Care Plan as an active medication instruction
-A discussed medication belongs in the HPI as a single factual clause only: "[Drug] was discussed as [a future option / an alternative / a contingency / a past consideration]."
+CARVE-OUT FOR STATE B DISCUSSED MEDICATIONS: If a discussed medication was the subject of a substantive clinical conversation classified as STATE B (discussed_but_not_decided) — involving meaningful education, patient-expressed concerns or hesitation, and a deliberate shared decision to defer — it MAY appear as a numbered Assessment item. The Assessment entry documents the DISCUSSION and DEFERRAL, not an active treatment. The Plan line must use clearly deferred language: "GLP-1 therapy reviewed at this visit; patient and provider discussed risks, benefits, and timing. Patient expressed [concerns/apprehension]. Deferred at patient's request; to be revisited when [condition]. No prescription issued at this time." This is clinically and medicolegally necessary — a substantive clinical conversation must be captured in the medical record even when no prescription resulted.
+For discussed medications that were only briefly or casually mentioned (STATE C — genuinely passing mentions): the HPI single-clause rule applies: "[Drug] was discussed as [a future option / an alternative / a contingency / a past consideration]."
 This gate overrides the Four-Location Mandate for discussed-status medications. The Four-Location Mandate governs only ACTIVE medications (status = current, adjusted) and newly prescribed medications (status = new).
 
 ════════════════════════════════════════
@@ -1101,15 +1106,22 @@ STATE B — FUTURE CONSIDERATION (deferred with specific trigger):
 - Do NOT write "patient declined" unless the patient explicitly declined
 - Do NOT write "options discussed" as the only Plan line — name what the options are and why they were deferred
 - Name the specific trigger: "pending DEXA results before initiating bisphosphonate", "patient considering and will follow up", "deferred pending insurance authorization"
+- EDUCATION AND SDM IN STATE B ITEMS — REQUIRED: When the deferral involved a substantive clinical discussion, the Assessment reasoning paragraph MUST capture the substance of that conversation. Do NOT compress a meaningful educational discussion into a single vague line. Specifically document:
+  → What was reviewed or explained (the treatment option, its mechanism, expected effects, risks/benefits, alternatives considered)
+  → What the patient expressed (specific hesitation, apprehension, concerns raised, questions asked, preferences stated)
+  → The clinical rationale for the shared deferral decision (why the provider and patient agreed to defer, what approach was chosen instead, and under what conditions the deferred treatment will be revisited)
+  EXAMPLE OF CORRECT STATE B DOCUMENTATION: "GLP-1 receptor agonist therapy was reviewed in depth at this visit as a potential option for weight management given BMI [X] and insulin resistance pattern. Risks, benefits, expected timeline to effect, and injection requirements were discussed. Patient expressed apprehension about starting injectable therapy at this time and preference to first optimize hormonal balance before adding further interventions. Shared decision made to defer GLP-1 initiation pending response to hormone optimization; to be reassessed at follow-up."
+  EXAMPLE OF INCORRECT STATE B DOCUMENTATION: "Discussed potential future use of GLP-1 medication." (This is medicolegally deficient — it erases the clinical conversation that actually occurred.)
 
 STATE C — EXPLORATORY DISCUSSION (conversational possibility, no near-term plan):
 - Brief mention in HPI narrative only, if clinically relevant: "Future hormonal pellet therapy was discussed in passing as a long-term option"
 - Do NOT create a numbered Assessment entry
 - Do NOT add to needs_clinician_review as a clinical recommendation
-- One clause in the HPI is sufficient — do not elevate to a clinical plan item
+- One clause in the HPI is sufficient for genuinely passing or speculative mentions — do not elevate to a clinical plan item
 - CONTINGENCY LANGUAGE IS STATE C: When an alternative treatment was mentioned only as something to consider "if needed" or "if the current approach doesn't work" or "pending evaluation," it is STATE C — not STATE B. The provider has not committed to it. Do not give it an Assessment entry.
   Examples of STATE C contingency language: "if needed post-evaluation", "as an option if X doesn't resolve", "if the specialist recommends switching", "we could try Y if Z fails", "tirzepatide is an option if semaglutide can't be tolerated long-term"
   These belong in ONE clause in the HPI: "Alternative [treatment] was discussed as a contingency option if [condition]." Never as a numbered Assessment item.
+- SUBSTANTIVE STATE C DISCUSSIONS — DOCUMENTATION EXCEPTION: When a STATE C discussion involved meaningful clinical education (risks/benefits reviewed, mechanism explained), patient-expressed concerns or hesitation, or a deliberate shared decision about timing — the HPI must document the substance of that conversation, not just a single clause. This may require 2-3 sentences: what was explained, what the patient expressed, and what the deliberate outcome was. A clinically meaningful conversation that shaped patient understanding and the visit's decision-making is not equivalent to a casual passing mention, even when no treatment was committed.
 
 STATE D — CLINICALLY RELEVANT (not discussed, provider flag only):
 - Add to needs_clinician_review only, never in the note body

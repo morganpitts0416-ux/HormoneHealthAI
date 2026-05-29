@@ -1,0 +1,69 @@
+ Please do not make prompt changes blindly. First identify exactly which rule(s) are causing these discussion-based elements to be omitted, then propose the minimal change necessary to fix the issue without affecting the existing HPI reconstruction improvements.  
+
+Before making any changes, please review the existing SOAP note generation rules carefully.
+
+IMPORTANT: I do NOT want to revert any of the improvements that have already been made to the SOAP generation system. The current notes are significantly better than previous versions, particularly regarding HPI reconstruction, provider voice, chronological documentation, and avoiding transcript-style summaries. Any changes should be additive and should preserve all existing SOAP note improvements.
+
+The issue I am seeing is not that the note is inaccurate. The issue is that some clinically relevant portions of the encounter are being omitted because they appear to be treated as secondary discussions rather than important components of the visit.
+
+The SOAP note should function as a complete medical record of the encounter. It should allow a clinician to return months later and accurately understand:
+
+* What concerns were discussed
+* What treatment options were reviewed
+* What education was provided
+* How the patient responded to recommendations
+* What questions, concerns, hesitations, or preferences the patient expressed
+* What decisions were made
+* Why those decisions were made
+* What was intentionally deferred for future consideration
+
+The goal is NOT to make notes longer, more verbose, or embellished.
+
+The goal IS to ensure clinically meaningful conversations are not lost simply because they did not result in an immediate prescription, diagnosis change, or intervention.
+
+Example:
+
+A patient presents primarily for hormonal concerns and weight gain. During the visit, a meaningful discussion occurs regarding GLP-1 medications as a potential future treatment option. Risks, benefits, expectations, or general counseling may be reviewed. The patient expresses apprehension about starting medication immediately. Through shared decision-making, the patient and provider decide to first address hormone optimization and revisit GLP-1 therapy later if needed.
+
+Currently, the generated note may only contain a brief statement in the Assessment & Plan such as:
+
+"Discussed potential future use of GLP-1 medication."
+
+While technically accurate, this does not adequately document the actual clinical conversation that occurred.
+
+The SOAP note should preserve:
+
+* That GLP-1 therapy was discussed
+* That education and counseling occurred
+* The patient's response or concerns
+* The patient's hesitation or apprehension
+* The reasoning behind deferring treatment
+* The agreed-upon next steps
+* The shared decision-making process
+
+More broadly, this should apply to ALL clinically relevant treatment discussions, including but not limited to:
+
+* Medications that were discussed but not started
+* Hormone therapy discussions
+* Weight loss treatment discussions
+* Supplement recommendations
+* Diagnostic testing discussions
+* Preventive care discussions
+* Alternative treatment options
+* Referral discussions
+* Future treatment planning
+
+A medication or treatment option should not disappear from the clinical narrative simply because it remained in a "discussed" state rather than becoming a "current" medication.
+
+The note should remain concise, professional, and medically appropriate. However, it should not be compressed to the point that clinically important conversations, patient preferences, provider counseling, and the rationale behind decisions are lost.
+
+Please review the SOAP generation prompt and identify where these discussion-based portions of the encounter are being filtered out or under-prioritized. Then make the smallest, safest prompt modifications necessary to improve capture of:
+
+1. Treatment discussions
+2. Counseling and education
+3. Patient concerns or hesitation
+4. Shared decision-making
+5. Deferred treatment plans
+6. Clinical reasoning behind decisions
+
+while preserving all existing SOAP note improvements and avoiding regressions in note quality.
