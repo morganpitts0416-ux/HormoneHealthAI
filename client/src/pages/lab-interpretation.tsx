@@ -164,7 +164,12 @@ export default function LabInterpretation() {
           console.log('[Frontend] Auto-saved interpretation to patient profile, labId:', saved?.id);
           const labParam = saved?.id ? `&lab=${saved.id}` : '';
           setLocation(`/patients?patient=${pid}${labParam}`);
-        }).catch(err => console.error('[Frontend] Auto-save failed:', err));
+        }).catch(err => {
+          console.error('[Frontend] Auto-save failed:', err);
+          // Navigate to the patient profile even if the save failed so the
+          // user never gets stuck on the evaluation screen.
+          setLocation(`/patients?patient=${pid}`);
+        });
       } else if (labValues.patientName) {
         // Auto-create a patient profile from the name typed in the form
         (async () => {

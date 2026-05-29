@@ -165,7 +165,12 @@ export default function FemaleLabInterpretation() {
           console.log('[Frontend] Auto-saved interpretation to patient profile, labId:', saved?.id);
           const labParam = saved?.id ? `&lab=${saved.id}` : '';
           setLocation(`/patients?patient=${pid}${labParam}`);
-        }).catch(err => console.error('[Frontend] Auto-save failed:', err));
+        }).catch(err => {
+          console.error('[Frontend] Auto-save failed:', err);
+          // Navigate to the patient profile even if the save failed so the
+          // user never gets stuck on the evaluation screen.
+          setLocation(`/patients?patient=${pid}`);
+        });
       } else if (labValues.patientName) {
         // Auto-create a patient profile from the name typed in the form
         (async () => {
@@ -678,10 +683,41 @@ export default function FemaleLabInterpretation() {
                 {/* 6. Hormone Pattern Assessment (Testosterone Patterns + Perimenopause Assessment rows) */}
                 <FemaleHormonePatternCard interpretations={interpretationResult.interpretations} />
 
-                {/* 7. Clinical Phenotype Assessment (pattern-level female hormone recognition) */}
-                {interpretationResult.clinicalPhenotypes && interpretationResult.clinicalPhenotypes.length > 0 && (
-                  <FemaleHormoneAssessmentCard phenotypes={interpretationResult.clinicalPhenotypes} />
-                )}
+                {/* 7a. Female Hormone Pattern Recognition — sex-hormone phenotypes only
+                    (Menopausal Transition, Estrogen Dominance, Low Androgen / High SHBG) */}
+                {interpretationResult.clinicalPhenotypes && (() => {
+                  const HORMONE_PHENOTYPE_NAMES = new Set([
+                    'Menopausal Transition',
+                    'Estrogen Dominance / Impaired Clearance',
+                    'Low Androgen Availability / High SHBG Perimenopause',
+                  ]);
+                  const hormonePhenotypes = interpretationResult.clinicalPhenotypes!.filter(
+                    p => HORMONE_PHENOTYPE_NAMES.has(p.name)
+                  );
+                  return hormonePhenotypes.length > 0 ? (
+                    <FemaleHormoneAssessmentCard
+                      phenotypes={hormonePhenotypes}
+                      title="Female Hormone Pattern Recognition"
+                      description="Sex hormone axis patterns — estrogen, progesterone, and androgen dynamics"
+                      testId="card-female-hormone-phenotypes"
+                    />
+                  ) : null;
+                })()}
+
+                {/* 7b. Clinical Phenotype Assessment — metabolic & non-hormone phenotypes only */}
+                {interpretationResult.clinicalPhenotypes && (() => {
+                  const HORMONE_PHENOTYPE_NAMES = new Set([
+                    'Menopausal Transition',
+                    'Estrogen Dominance / Impaired Clearance',
+                    'Low Androgen Availability / High SHBG Perimenopause',
+                  ]);
+                  const metabolicPhenotypes = interpretationResult.clinicalPhenotypes!.filter(
+                    p => !HORMONE_PHENOTYPE_NAMES.has(p.name)
+                  );
+                  return metabolicPhenotypes.length > 0 ? (
+                    <FemaleHormoneAssessmentCard phenotypes={metabolicPhenotypes} />
+                  ) : null;
+                })()}
 
                 {/* 8. Phenotype Assessment — Insulin Resistance Screening */}
                 {interpretationResult.insulinResistance && interpretationResult.insulinResistance.likelihood !== 'none' && (

@@ -471,7 +471,19 @@ interface ClinicalPhenotype {
   supportingFindings: string[];
 }
 
-export function FemaleHormoneAssessmentCard({ phenotypes }: { phenotypes: ClinicalPhenotype[] }) {
+export function FemaleHormoneAssessmentCard({
+  phenotypes,
+  title = 'Clinical Phenotype Assessment',
+  description = 'Detected clinical patterns driving supplement and treatment recommendations',
+  testId = 'card-female-hormone-assessment',
+}: {
+  phenotypes: ClinicalPhenotype[];
+  title?: string;
+  description?: string;
+  testId?: string;
+}) {
+  if (phenotypes.length === 0) return null;
+
   const confidenceStyles = {
     high: 'border-purple-300 bg-purple-50/50 dark:bg-purple-950/20 dark:border-purple-800',
     moderate: 'border-indigo-200 bg-indigo-50/30 dark:bg-indigo-950/20 dark:border-indigo-800',
@@ -484,14 +496,14 @@ export function FemaleHormoneAssessmentCard({ phenotypes }: { phenotypes: Clinic
   };
 
   return (
-    <Card data-testid="card-female-hormone-assessment">
+    <Card data-testid={testId}>
       <CardHeader>
         <div className="flex items-center gap-2">
           <Dna className="w-5 h-5 text-purple-600" />
-          <CardTitle>Clinical Phenotype Assessment</CardTitle>
+          <CardTitle>{title}</CardTitle>
         </div>
         <CardDescription>
-          Detected clinical patterns driving supplement and treatment recommendations
+          {description}
         </CardDescription>
       </CardHeader>
       <CardContent>
