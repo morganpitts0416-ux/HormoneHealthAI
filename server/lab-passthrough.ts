@@ -110,10 +110,28 @@ const MARKER_META: Record<string, MarkerMeta> = {
   homocysteine: { displayName: "Homocysteine", unit: "µmol/L", panel: "inflammation" },
 
   // Iron studies
-  iron: { displayName: "Iron", unit: "µg/dL", panel: "iron", aliases: ["Serum Iron"] },
-  tibc: { displayName: "TIBC", unit: "µg/dL", panel: "iron", aliases: ["TIBC (Iron Binding Capacity)", "Total Iron Binding Capacity", "Iron Binding Capacity", "Iron Binding Cap", "Iron Bind Cap", "Iron Bind. Cap"] },
-  ironSaturation: { displayName: "Iron Saturation (TSAT)", unit: "%", panel: "iron", aliases: ["Transferrin Saturation", "% Saturation", "Iron Sat", "TSAT", "Percent Saturation", "Iron % Saturation", "Iron Percent Saturation", "Transferrin Sat"] },
-  ferritin: { displayName: "Ferritin", unit: "ng/mL", panel: "iron" },
+  iron: { displayName: "Iron", unit: "µg/dL", panel: "iron", aliases: [
+    "Serum Iron", "Iron Serum", "Iron Total", "Iron, Total", "Iron, Serum",
+    "Iron (Fe)", "Fe, Serum", "Fe Serum", "Iron-Serum", "Serum Fe",
+    "Iron (Total)", "Iron (Serum)", "Iron Total Serum", "Iron Level",
+  ]},
+  tibc: { displayName: "TIBC", unit: "µg/dL", panel: "iron", aliases: [
+    "TIBC", "Total Iron Binding Capacity", "Iron Binding Capacity",
+    "Iron Binding Cap", "Iron Binding Cap.", "Iron Bind. Cap.", "Iron Bind Cap",
+    "Iron Binding Capacity Total", "Iron Binding Capacity, Total",
+    "Total Iron Binding Cap", "Iron Binding", "Total Iron Binding",
+    "Iron Binding Capacity (TIBC)", "TIBC (Iron Binding Capacity)",
+    "Iron Binding Cap Total",
+  ]},
+  ironSaturation: { displayName: "Iron Saturation (TSAT)", unit: "%", panel: "iron", aliases: [
+    "% Saturation", "Percent Saturation", "Iron Saturation", "Iron Sat", "Iron Sat.",
+    "Iron % Saturation", "Iron, % Saturation", "% Iron Saturation",
+    "Transferrin Saturation", "Transferrin Sat", "Transferrin Sat.",
+    "TSAT", "T-Sat", "Iron %", "Sat %", "% Sat", "% Sat.", "Sat. %",
+    "Percent Sat", "Iron Percent Saturation", "% Iron Sat",
+    "Saturation (Iron)", "Iron Saturation %",
+  ]},
+  ferritin: { displayName: "Ferritin", unit: "ng/mL", panel: "iron", aliases: ["Serum Ferritin", "Ferritin, Serum"] },
 
   // Metabolic / Glycemic
   a1c: { displayName: "Hemoglobin A1c", unit: "%", panel: "metabolic", aliases: ["HbA1c", "A1c"] },

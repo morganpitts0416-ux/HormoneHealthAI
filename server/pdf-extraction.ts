@@ -153,9 +153,10 @@ EXTRACTION RULES:
    - Total T3: T3 Total, Triiodothyronine Total, Total Triiodothyronine
    - Anti-Thyroglobulin: Anti-TG, Anti-Tg Ab, Thyroglobulin Antibodies, TgAb
    - Homocysteine: HOMOCYSTEINE, Homocyst, HCY, Plasma Homocysteine
-   - Iron: Serum Iron, Fe
-   - TIBC: Total Iron Binding Capacity, Iron Binding Cap, Iron Binding Capacity, Iron Bind Cap, Iron Bind. Cap, TIBC (Iron Binding Capacity)
-   - Iron Saturation: % Saturation, Transferrin Saturation, Iron Sat, TSAT, Iron %, Percent Saturation, Iron Percent Saturation, Transferrin Sat
+   - Iron (→ field "iron"): Serum Iron, Iron Serum, Iron Total, Iron, Total, Iron (Fe), Fe, Iron, Serum, Iron Total Serum, Fe Serum, Iron-Serum, Serum Fe, Iron (Total), Iron (Serum), IRON, FE, Iron Level, Iron Studies Iron
+   - TIBC (→ field "tibc"): Total Iron Binding Capacity, TIBC, Iron Binding Capacity, Iron Binding Cap, Iron Binding Cap., Iron Bind. Cap., Iron Bind Cap, Iron Binding Capacity Total, Iron Binding Capacity, Total, Total Iron Binding Cap, Iron Binding, Total Iron Binding, Iron Binding Capacity (TIBC), TIBC (Iron Binding Capacity), Iron Binding Cap Total
+   - Iron Saturation (→ field "ironSaturation"): % Saturation, Percent Saturation, Iron Saturation, Iron Sat, Iron Sat., Iron % Saturation, Iron, % Saturation, % Iron Saturation, Transferrin Saturation, Transferrin Sat, Transferrin Sat., TSAT, T-Sat, Iron %, Sat %, % Sat, % Sat., Sat. %, Percent Sat, Iron Percent Saturation, % Iron Sat, Saturation (Iron), Iron Saturation %
+   NOTE — Iron Saturation is always a RESULT percentage (the patient's actual measured saturation, typically 10–60%). The number after "% Saturation" on the same line is the RESULT. Extract it as a plain number (e.g. "28%" → 28). Do NOT confuse this with reference range percentages printed separately.
    - Ferritin: Serum Ferritin
    - Vitamin D: 25-OH Vitamin D, 25-Hydroxyvitamin D, Vitamin D 25-Hydroxy, Calcidiol
    - Vitamin B12: B12, Cobalamin, Cyanocobalamin
