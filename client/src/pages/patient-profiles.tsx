@@ -1378,8 +1378,9 @@ export default function PatientProfiles() {
   const [mergeSearch, setMergeSearch] = useState("");
   const messageBottomRef = useRef<HTMLDivElement>(null);
   const urlParamApplied = useRef<string | null>(null);
-  const pendingOpenLabId = useRef<number | null>(null);
-  const urlLabApplied = useRef<number | null>(null);
+  // Tracks the lab ID we have already auto-opened from the URL ?lab= param so
+  // we don't re-open it each time `labs` or `selectedPatient` changes.
+  const urlLabOpened = useRef<number | null>(null);
 
   // Auto-generate patient-specific dietary guidance when the publish dialog opens.
   // The endpoint pulls directly from this lab's interpretations + lab values, so
@@ -1431,18 +1432,13 @@ export default function PatientProfiles() {
 
     const patientAlreadyApplied = urlParamApplied.current === patientId;
 
-    // Always queue a new lab ID even if the patient was already selected.
-    // Without this, navigating back to the same patient after an evaluation
-    // silently drops the ?lab= param and the modal never opens.
-    if (labId && Number(labId) !== urlLabApplied.current) {
-      urlLabApplied.current = Number(labId);
-      pendingOpenLabId.current = Number(labId);
-      // If the patient was already selected, the labs query is already active.
-      // Invalidate it so fresh data (including the just-saved lab) comes back
-      // and triggers the lab-open effect below.
-      if (patientAlreadyApplied) {
-        queryClient.invalidateQueries({ queryKey: ['/api/patients', Number(patientId), 'labs'] });
-      }
+    // When a ?lab= param is present (deep-link from lab-interpretation), always
+    // invalidate the patient's labs cache so the newly-saved evaluation is
+    // fetched — whether the patient was already selected or this is a fresh
+    // navigation.  The URL-driven modal-open effect below handles the actual
+    // opening once the data arrives.
+    if (labId) {
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', Number(patientId), 'labs'] });
     }
 
     if (patientAlreadyApplied) return;
@@ -1485,16 +1481,26 @@ export default function PatientProfiles() {
     enabled: !!selectedPatient,
   });
 
-  // Open the lab detail modal once labs are loaded after a ?lab= deep-link
-  // (pendingOpenLabId is set by the URL param handler above when ?lab=ID is present)
+  // URL-driven lab modal opening — fires whenever selectedPatient, labs, or the
+  // search string changes.  Reads the ?lab= param directly from the URL so
+  // there is no ref-ordering dependency.  urlLabOpened guards against
+  // re-opening the same lab on every labs update.
   useEffect(() => {
-    if (!pendingOpenLabId.current || labs.length === 0) return;
-    const labToOpen = labs.find(l => l.id === pendingOpenLabId.current);
+    if (!selectedPatient || labsLoading) return;
+    const params = new URLSearchParams(searchStr);
+    const labIdStr = params.get("lab");
+    if (!labIdStr) return;
+    const labId = Number(labIdStr);
+    if (isNaN(labId)) return;
+    if (urlLabOpened.current === labId) return; // already opened this lab
+    const labToOpen = labs.find(l => l.id === labId);
     if (labToOpen) {
-      pendingOpenLabId.current = null;
+      urlLabOpened.current = labId;
       setViewingLab(labToOpen);
     }
-  }, [labs]);
+    // If the lab isn't in the list yet (stale cache / in-flight refetch),
+    // the effect will re-run when `labs` updates with the fresh server data.
+  }, [selectedPatient, labs, labsLoading, searchStr]);
 
   const { data: simpleLabs = [] } = useQuery<SimpleLabUpload[]>({
     queryKey: ['/api/patients', selectedPatient?.id, 'simple-labs'],
