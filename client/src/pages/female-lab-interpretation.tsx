@@ -147,7 +147,20 @@ export default function FemaleLabInterpretation() {
           interpretationResult: data,
         }).then(async (res) => {
           const saved = await res.json().catch(() => ({}));
-          queryClient.invalidateQueries({ queryKey: [`/api/patients/${pid}/labs`] });
+          // Pre-populate the labs cache with the newly saved lab so that
+          // patient-profiles can open the modal immediately without waiting
+          // for a background refetch. The server returns the full LabResult
+          // object, so this data is complete.
+          if (saved?.id) {
+            queryClient.setQueryData(
+              ['/api/patients', pid, 'labs'],
+              (old: any[] | undefined) => {
+                const existing = Array.isArray(old) ? old : [];
+                return existing.some(l => l.id === saved.id) ? existing : [...existing, saved];
+              }
+            );
+          }
+          queryClient.invalidateQueries({ queryKey: ['/api/patients', pid, 'labs'] });
           queryClient.invalidateQueries({ queryKey: ['/api/patients'] });
           console.log('[Frontend] Auto-saved interpretation to patient profile, labId:', saved?.id);
           const labParam = saved?.id ? `&lab=${saved.id}` : '';
