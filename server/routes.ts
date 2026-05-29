@@ -2035,7 +2035,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const dietRelevantKeys: Array<[string, string, string]> = [
         ['hemoglobin', 'Hemoglobin', 'g/dL'],
         ['ferritin', 'Ferritin', 'ng/mL'],
-        ['ironSat', 'Iron Saturation', '%'],
+        ['ironSaturation', 'Iron Saturation', '%'],
         ['vitaminD', 'Vitamin D', 'ng/mL'],
         ['vitaminB12', 'Vitamin B12', 'pg/mL'],
         ['folate', 'Folate', 'ng/mL'],

@@ -164,7 +164,14 @@ export const labValuesSchema = z.object({
   hsCRP: z.number().optional(), // High-Sensitivity C-Reactive Protein (mg/dL)
   vitaminD: z.number().optional(), // 25-hydroxyvitamin D (ng/mL)
   vitaminB12: z.number().optional(), // Vitamin B12 (pg/mL)
-  
+  folate: z.number().optional(),
+
+  // Iron Panel
+  ferritin: z.number().optional(),
+  iron: z.number().optional(),
+  tibc: z.number().optional(), // Total Iron Binding Capacity (µg/dL)
+  ironSaturation: z.number().optional(), // Transferrin Saturation / % Saturation (%)
+
   // Previous PSA for velocity calculation
   previousPsa: z.number().optional(),
   monthsSinceLastPsa: z.number().optional(),
