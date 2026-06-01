@@ -1,0 +1,271 @@
+PRIVACY POLICY UPDATE REQUEST – CLINIQ
+
+Please update the Privacy Policy to reflect the current functionality and compliance posture of the ClinIQ platform. This is not a cosmetic update. The policy should accurately disclose how patient, provider, and healthcare organization data is collected, processed, stored, transmitted, and protected.
+
+The revised Privacy Policy should incorporate the following additions and revisions:
+
+---
+
+1. HIPAA & PROTECTED HEALTH INFORMATION
+
+---
+
+Add a dedicated section titled:
+
+"HIPAA and Protected Health Information (PHI)"
+
+Include language substantially similar to:
+
+ClinIQ provides software and technology services to healthcare providers and healthcare organizations. In the course of providing these services, ClinIQ may receive, process, store, transmit, and maintain Protected Health Information ("PHI") on behalf of covered entities and healthcare organizations.
+
+When acting on behalf of a covered entity, ClinIQ serves as a Business Associate as defined by the Health Insurance Portability and Accountability Act of 1996 ("HIPAA") and complies with applicable Business Associate Agreements ("BAAs").
+
+ClinIQ implements administrative, technical, and physical safeguards designed to protect PHI in accordance with applicable laws and industry standards.
+
+Nothing in this Privacy Policy limits any rights or obligations established under HIPAA or an applicable Business Associate Agreement.
+
+---
+
+2. ARTIFICIAL INTELLIGENCE & AUTOMATED PROCESSING
+
+---
+
+Add a dedicated section titled:
+
+"Artificial Intelligence and Automated Processing"
+
+Include language substantially similar to:
+
+ClinIQ utilizes artificial intelligence technologies to support healthcare workflow automation, clinical documentation, transcription processing, note generation, summarization, clinical data organization, and decision-support functions.
+
+AI-generated outputs are intended to assist healthcare professionals and are not intended to replace independent clinical judgment, diagnosis, treatment decisions, or professional medical advice.
+
+ClinIQ may utilize AI service providers operating under contractual privacy and security obligations, including Business Associate Agreements where applicable.
+
+Healthcare providers remain solely responsible for reviewing, verifying, and approving clinical information before it is incorporated into patient records or relied upon in patient care.
+
+---
+
+3. AUDIO RECORDING & TRANSCRIPTION DISCLOSURE
+
+---
+
+Add a dedicated section titled:
+
+"Audio Recording, Transcription, and Clinical Documentation"
+
+Include language substantially similar to:
+
+ClinIQ may process audio recordings, encounter recordings, voice inputs, transcriptions, speaker attribution information, and generated clinical documentation in order to facilitate healthcare documentation and workflow automation.
+
+Such information may be used to generate encounter notes, summaries, SOAP documentation, and related clinical records.
+
+ClinIQ does not sell audio recordings or transcription data.
+
+Audio recordings and associated transcripts are protected using industry-standard safeguards and are accessible only to authorized users with appropriate permissions.
+
+---
+
+4. DATA OWNERSHIP
+
+---
+
+Add a dedicated section titled:
+
+"Ownership of Healthcare Data"
+
+Include language substantially similar to:
+
+Healthcare organizations and providers retain ownership of patient medical records, clinical documentation, laboratory data, encounter information, communications, and Protected Health Information entered into or generated through the platform.
+
+ClinIQ does not claim ownership of patient medical records or provider-generated clinical content.
+
+ClinIQ retains ownership of its software, source code, platform architecture, workflows, algorithms, user interface elements, trademarks, intellectual property, and proprietary technologies.
+
+---
+
+5. SUBPROCESSORS AND SERVICE PROVIDERS
+
+---
+
+Add a dedicated section titled:
+
+"Service Providers and Subprocessors"
+
+Include language substantially similar to:
+
+ClinIQ utilizes carefully selected third-party service providers to support platform functionality, including cloud hosting, artificial intelligence processing, communications delivery, payment processing, infrastructure management, analytics, and security services.
+
+Examples may include:
+
+• Google Cloud Platform (cloud infrastructure and hosting)
+• OpenAI (AI-assisted processing under a Business Associate Agreement with zero-retention configuration where applicable)
+• Stripe (payment processing)
+• Resend (transactional email delivery)
+• ElevenLabs (voice synthesis services)
+
+Where Protected Health Information may be processed by a service provider, ClinIQ maintains appropriate contractual safeguards, including Business Associate Agreements where applicable and available.
+
+Certain service providers may receive only limited operational data necessary to perform their services.
+
+ClinIQ does not authorize service providers to use customer data for independent marketing purposes.
+
+---
+
+6. EMAIL COMMUNICATIONS DISCLOSURE
+
+---
+
+Add language clarifying:
+
+Transactional email providers may be used for account notifications, invitations, password resets, authentication workflows, and similar operational communications.
+
+ClinIQ does not intentionally transmit Protected Health Information through transactional email systems that are not operating under a Business Associate Agreement.
+
+Users should avoid transmitting sensitive medical information through email unless specifically instructed by their healthcare provider.
+
+---
+
+7. VOICE SERVICES DISCLOSURE
+
+---
+
+Add language clarifying:
+
+ClinIQ may utilize voice synthesis technologies to provide voice-based user experiences and interactions.
+
+Voice synthesis providers are used solely to generate audio responses and are not used as ClinIQ's primary transcription or clinical documentation systems.
+
+ClinIQ does not intentionally transmit Protected Health Information to voice synthesis providers unless appropriate safeguards and contractual protections are in place.
+
+---
+
+8. SECURITY & BREACH RESPONSE
+
+---
+
+Expand the security section substantially.
+
+Add language:
+
+ClinIQ employs administrative, technical, and organizational safeguards designed to protect information from unauthorized access, disclosure, alteration, or destruction.
+
+These safeguards may include:
+
+• Access controls
+• Authentication systems
+• Role-based permissions
+• Encryption in transit
+• Encryption at rest where applicable
+• Audit logging
+• Monitoring and incident response procedures
+
+In the event of a security incident involving personal information or Protected Health Information, ClinIQ will investigate, mitigate, and provide notifications as required by applicable law and contractual obligations.
+
+ClinIQ does not guarantee that any system is completely immune from security risks.
+
+---
+
+9. PATIENT MESSAGING DISCLAIMER
+
+---
+
+Add:
+
+Communications sent through patient portals, messaging systems, forms, or electronic communication features are not continuously monitored.
+
+Patients should not use ClinIQ messaging tools to report emergencies or urgent medical conditions.
+
+For medical emergencies, users should call 911 or seek immediate emergency medical care.
+
+---
+
+10. DATA RETENTION
+
+---
+
+Replace vague retention language with:
+
+ClinIQ retains information for as long as necessary to provide services, comply with legal obligations, enforce contractual rights, resolve disputes, and satisfy healthcare record retention requirements.
+
+Retention periods may vary based upon applicable federal law, state law, healthcare regulations, contractual obligations, and healthcare organization policies.
+
+Upon termination of services, ClinIQ may retain certain information for legally required retention periods, backup recovery purposes, security investigations, compliance obligations, and legitimate business operations.
+
+---
+
+11. DE-IDENTIFIED & AGGREGATED DATA
+
+---
+
+Add:
+
+ClinIQ may create de-identified, anonymized, or aggregated information that cannot reasonably identify an individual patient.
+
+Such information may be used for:
+
+• Platform improvement
+• Analytics
+• Product development
+• Quality improvement
+• Security monitoring
+• Operational benchmarking
+
+ClinIQ will not attempt to re-identify de-identified information except as permitted by law.
+
+---
+
+12. MULTI-TENANT DATA SEGREGATION
+
+---
+
+Add:
+
+ClinIQ operates as a multi-tenant healthcare platform serving multiple healthcare organizations.
+
+The platform is designed with logical access controls and data segregation mechanisms intended to restrict organizations from accessing information belonging to other organizations.
+
+Users are granted access only to information authorized by their healthcare organization and permission settings.
+
+---
+
+13. TELEHEALTH SERVICES
+
+---
+
+Add:
+
+Where enabled by a healthcare organization, ClinIQ may facilitate telehealth communications, virtual visits, and related healthcare interactions.
+
+Telehealth services are provided by healthcare providers and healthcare organizations, not by ClinIQ.
+
+ClinIQ provides the technology platform and does not practice medicine, diagnose conditions, prescribe treatments, or establish provider-patient relationships.
+
+---
+
+14. CHILDREN'S INFORMATION
+
+---
+
+Add:
+
+ClinIQ may process information relating to minors when authorized by a parent, guardian, healthcare provider, or healthcare organization and when permitted by applicable law.
+
+Such information is handled in accordance with applicable privacy and healthcare regulations.
+
+---
+
+15. CONSISTENCY REVIEW
+
+---
+
+After all updates are complete:
+
+1. Remove any language suggesting ClinIQ owns patient medical records.
+2. Remove any language implying ClinIQ practices medicine.
+3. Ensure references to AI, transcription, recordings, patient portals, messaging, and healthcare data are consistent throughout the policy.
+4. Ensure all references to third-party providers are consistent with current architecture.
+5. Ensure all HIPAA references align with ClinIQ's Business Associate obligations.
+6. Ensure language accurately reflects OpenAI BAA coverage and current zero-retention configuration.
+7. Ensure language reflects that Resend is used only for operational communications and not for transmitting PHI.
+8. Ensure language reflects that ElevenLabs is used for voice synthesis rather than transcription or medical record generation.
