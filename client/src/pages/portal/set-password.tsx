@@ -227,6 +227,9 @@ export default function PortalSetPassword() {
                     I have read and understand the above. I know that this portal does not replace my care team, and that I should call 911 in a medical emergency. I agree to the{" "}
                     <a href="/portal/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#5a7040", textDecoration: "underline" }}>
                       Patient Portal Terms of Use
+                    </a>{" "}and{" "}
+                    <a href="/portal/privacy" target="_blank" rel="noopener noreferrer" style={{ color: "#5a7040", textDecoration: "underline" }}>
+                      Privacy Notice
                     </a>.
                   </span>
                 </label>
