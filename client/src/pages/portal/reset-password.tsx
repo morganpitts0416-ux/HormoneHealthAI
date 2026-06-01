@@ -1,5 +1,5 @@
 import { useState } from "react";
-import { useLocation } from "wouter";
+import { useLocation, Link } from "wouter";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest } from "@/lib/queryClient";
 import { Button } from "@/components/ui/button";
@@ -163,10 +163,19 @@ export default function PortalResetPassword() {
         </div>
       </div>
 
-      <div className="py-5 text-center border-t" style={{ borderColor: "#e8ddd0" }}>
+      <div className="py-5 text-center border-t space-y-2" style={{ borderColor: "#e8ddd0" }}>
         <p className="text-xs" style={{ color: "#b0b8a0" }}>
           Powered by ClinIQ
         </p>
+        <div className="flex items-center justify-center gap-4 text-xs" style={{ color: "#9aaa84" }}>
+          <Link href="/portal/terms">
+            <span className="cursor-pointer hover:underline">Terms of Use</span>
+          </Link>
+          <span>·</span>
+          <Link href="/portal/privacy">
+            <span className="cursor-pointer hover:underline">Privacy Notice</span>
+          </Link>
+        </div>
       </div>
     </div>
   );

@@ -357,6 +357,16 @@ export default function Login() {
                 <br />
                 Contact your care team if you need help signing in.
               </p>
+
+              <div className="mt-4 flex items-center justify-center gap-4 text-xs" style={{ color: "#9aaa84" }}>
+                <Link href="/portal/terms">
+                  <span className="cursor-pointer hover:underline">Terms of Use</span>
+                </Link>
+                <span>·</span>
+                <Link href="/portal/privacy">
+                  <span className="cursor-pointer hover:underline">Privacy Notice</span>
+                </Link>
+              </div>
             </>
           )}
 

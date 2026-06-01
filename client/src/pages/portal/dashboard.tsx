@@ -284,12 +284,21 @@ export default function PortalDashboard() {
         </section>
 
         {/* Privacy footer */}
-        <div className="text-center pt-4">
+        <div className="text-center pt-4 space-y-2">
           <p className="text-xs" style={{ color: "#b0b8a0" }}>
             Your data is private and accessible only to you and your care team.
             <br />
             Powered by ClinIQ.
           </p>
+          <div className="flex items-center justify-center gap-4 text-xs" style={{ color: "#9aaa84" }}>
+            <Link href="/portal/terms">
+              <span className="cursor-pointer hover:underline">Terms of Use</span>
+            </Link>
+            <span>·</span>
+            <Link href="/portal/privacy">
+              <span className="cursor-pointer hover:underline">Privacy Notice</span>
+            </Link>
+          </div>
         </div>
       </main>
 
