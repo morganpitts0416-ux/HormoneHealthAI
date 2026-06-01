@@ -1,0 +1,130 @@
+PATIENT PORTAL TERMS OF USE
+
+Effective Date: June 1, 2026
+
+These Patient Portal Terms of Use ("Terms") govern your access to and use of the ClinIQ Patient Portal ("Portal"). By accessing, registering for, or using the Portal, you agree to these Terms.
+
+1. PURPOSE OF THE PORTAL
+
+The ClinIQ Patient Portal is provided to help patients securely access information made available by their healthcare provider, including:
+
+• Laboratory results
+• Educational information
+• Wellness recommendations
+• Messages from providers
+• Appointment information
+• Forms and questionnaires
+• Other health-related information chosen by your healthcare provider
+
+The Portal is intended to support communication and engagement with your healthcare provider and is not a substitute for professional medical care.
+
+2. RELATIONSHIP TO YOUR HEALTHCARE PROVIDER
+
+ClinIQ provides technology services only.
+
+ClinIQ is not a healthcare provider and does not practice medicine.
+
+ClinIQ does not diagnose conditions, prescribe medications, provide treatment recommendations, establish provider-patient relationships, or make healthcare decisions.
+
+All healthcare services are provided solely by your healthcare provider.
+
+3. NO MEDICAL ADVICE
+
+Information presented through the Portal is provided for informational and educational purposes only.
+
+You should not make changes to medications, supplements, treatments, or healthcare decisions based solely on information displayed in the Portal.
+
+Always consult your healthcare provider regarding medical concerns, treatment decisions, or questions about your health information.
+
+4. AI-ASSISTED INFORMATION
+
+Certain summaries, explanations, educational materials, wellness recommendations, administrative communications, and informational content displayed through the Portal may be generated or assisted by artificial intelligence technologies.
+
+Artificial intelligence systems may generate inaccurate, incomplete, outdated, or incorrect information.
+
+AI-assisted content is provided solely to support patient understanding and engagement and should not be relied upon as medical advice.
+
+Healthcare providers remain solely responsible for patient care and medical decision-making.
+
+5. PATIENT MESSAGING
+
+The Portal may allow electronic communications with your healthcare provider.
+
+You understand and agree that:
+
+• Messages may not be reviewed immediately.
+• Messages may become part of your medical record.
+• Providers determine appropriate response methods and response times.
+• Certain issues may require an office visit, telehealth appointment, or emergency care.
+
+6. MEDICAL EMERGENCIES
+
+THE PORTAL IS NOT AN EMERGENCY SERVICE.
+
+Do not use the Portal to report emergencies, urgent symptoms, severe reactions, chest pain, suicidal thoughts, breathing difficulties, or other urgent medical concerns.
+
+If you believe you are experiencing a medical emergency:
+
+• Call 911 immediately.
+• Contact emergency services.
+• Go to the nearest emergency department.
+
+Neither ClinIQ nor your healthcare provider guarantees immediate review of Portal messages.
+
+7. APPOINTMENTS
+
+Appointment requests, scheduling tools, and appointment information displayed through the Portal are subject to provider availability and clinic policies.
+
+Submitting a request does not guarantee an appointment.
+
+8. ACCOUNT SECURITY
+
+You are responsible for maintaining the confidentiality of your Portal credentials.
+
+You agree to:
+
+• Use a secure password.
+• Protect your account information.
+• Notify your healthcare provider if you suspect unauthorized access.
+
+9. AUTHORIZED REPRESENTATIVES
+
+Parents, guardians, caregivers, healthcare proxies, and other authorized representatives may be granted Portal access when permitted by applicable law and approved by the healthcare provider.
+
+10. SERVICE AVAILABILITY
+
+ClinIQ does not guarantee uninterrupted access to the Portal.
+
+The Portal may become unavailable due to maintenance, technical issues, internet outages, security incidents, or events beyond ClinIQ's control.
+
+11. LIMITATION OF LIABILITY
+
+To the fullest extent permitted by law, ClinIQ shall not be liable for:
+
+• Medical decisions
+• Clinical outcomes
+• Delayed message review
+• Provider actions or omissions
+• Treatment decisions
+• Diagnostic decisions
+• Prescription decisions
+• Emergency situations
+• Temporary service interruptions
+
+12. CHANGES TO THESE TERMS
+
+ClinIQ may modify these Terms from time to time.
+
+Continued use of the Portal after changes become effective constitutes acceptance of the revised Terms.
+
+13. CONTACT
+
+Questions regarding your healthcare should be directed to your healthcare provider.
+
+Questions regarding the Portal may be directed to:
+
+[support@cliniqapp.ai](mailto:support@cliniqapp.ai)
+
+14. ACCEPTANCE
+
+By creating an account or using the Portal, you acknowledge that you have read, understood, and agree to these Terms.

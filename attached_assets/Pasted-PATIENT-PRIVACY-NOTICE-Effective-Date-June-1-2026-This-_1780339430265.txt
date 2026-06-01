@@ -1,0 +1,83 @@
+PATIENT PRIVACY NOTICE
+
+Effective Date: June 1, 2026
+
+This Privacy Notice explains how ClinIQ processes information made available through the ClinIQ Patient Portal.
+
+1. INFORMATION WE PROCESS
+
+The Portal may display information provided by your healthcare provider, including:
+
+• Contact information
+• Appointment information
+• Laboratory results
+• Forms and questionnaires
+• Provider communications
+• Educational content
+• Wellness recommendations
+• Other healthcare information chosen by your provider
+
+2. HOW INFORMATION IS USED
+
+Information may be processed to:
+
+• Provide Portal access
+• Display health information
+• Facilitate communications
+• Support appointment management
+• Improve patient engagement
+• Provide educational content
+• Support authorized healthcare operations
+
+3. AI-ASSISTED FEATURES
+
+ClinIQ may use artificial intelligence technologies to assist with educational content, summaries, explanations, administrative communications, workflow automation, and patient engagement features.
+
+AI systems are intended to support communication and understanding and do not replace healthcare professionals.
+
+4. HOW INFORMATION IS PROTECTED
+
+ClinIQ employs administrative, technical, and organizational safeguards designed to protect information from unauthorized access, use, or disclosure.
+
+No system can guarantee absolute security.
+
+5. WHO MAY ACCESS INFORMATION
+
+Access may be granted to:
+
+• You
+• Authorized representatives
+• Members of your healthcare provider's organization
+• Service providers supporting ClinIQ operations when necessary to provide services
+
+ClinIQ does not sell patient information.
+
+6. COMMUNICATIONS
+
+The Portal may send notifications regarding:
+
+• Account activity
+• Appointment reminders
+• Provider communications
+• Portal activity
+• Administrative updates
+
+Certain communications may be delivered electronically through email, SMS, or Portal notifications.
+
+7. YOUR HEALTHCARE PROVIDER
+
+Your healthcare provider remains responsible for medical care, clinical decisions, and management of your healthcare records.
+
+ClinIQ provides technology services supporting access to information.
+
+8. CHANGES TO THIS NOTICE
+
+This Privacy Notice may be updated periodically.
+
+Updated versions will be posted within the Portal or on the ClinIQ website.
+
+9. CONTACT
+
+Questions regarding this Privacy Notice may be directed to:
+
+[support@cliniqapp.ai](mailto:support@cliniqapp.ai)

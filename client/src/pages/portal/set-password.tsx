@@ -224,7 +224,10 @@ export default function PortalSetPassword() {
                     </div>
                   </div>
                   <span className="text-xs leading-relaxed" style={{ color: "#3d4a30" }}>
-                    I have read and understand the above. I know that this portal does not replace my care team, and that I should call 911 in a medical emergency.
+                    I have read and understand the above. I know that this portal does not replace my care team, and that I should call 911 in a medical emergency. I agree to the{" "}
+                    <a href="/portal/terms" target="_blank" rel="noopener noreferrer" style={{ color: "#5a7040", textDecoration: "underline" }}>
+                      Patient Portal Terms of Use
+                    </a>.
                   </span>
                 </label>
 
