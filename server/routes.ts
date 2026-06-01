@@ -9465,6 +9465,249 @@ RULES:
     }
   }
 
+  // ── Provider Personalization Pass ─────────────────────────────────────────
+  // Runs after the main SOAP generation. Combines two clinical tasks into a
+  // single constrained LLM pass:
+  //   1. Reorganize Assessment & Plan items under custom diagnosis bundles
+  //      (merge duplicates, add ICD codes from bundles where missing).
+  //   2. Apply the clinician's active Teach June rules (always-on instructions
+  //      and transcript-triggered rules).
+  // Constraints: only A/P restructuring + June rules. Never rewrites HPI,
+  // Subjective, or Objective. Never removes clinical findings. Never alters
+  // medication states. Never adds facts not in the note or transcript.
+  async function applyProviderPersonalizationPass(
+    noteText: string,
+    clinicianId: number,
+    clinicId: number | null,
+    transcriptText: string,
+    extraction: any,
+    diagnosisBundles: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
+    openai: OpenAI,
+  ): Promise<{ note: string; bundlesApplied: string[]; juneTriggersApplied: string[]; changed: boolean }> {
+    const noop = { note: noteText, bundlesApplied: [], juneTriggersApplied: [], changed: false };
+
+    // Load active June preferences
+    let instructions: schema.JunePreference[] = [];
+    let firedTriggers: schema.JunePreference[] = [];
+    let snippets: schema.JunePreference[] = [];
+    try {
+      const all = await storage.getJunePreferences(clinicianId);
+      const active = all.filter((p: schema.JunePreference) => p.isActive && p.category !== "pronunciation");
+      instructions = active.filter((p: schema.JunePreference) => p.category === "instruction");
+      const triggers = active.filter((p: schema.JunePreference) => p.category === "trigger");
+      snippets = active.filter((p: schema.JunePreference) => p.category === "snippet");
+      const haystack = transcriptText.toLowerCase();
+      firedTriggers = triggers.filter((t: schema.JunePreference) => {
+        if (!t.triggerPhrases) return false;
+        const phrases = t.triggerPhrases.split(",").map((s: string) => s.trim().toLowerCase()).filter(Boolean);
+        return phrases.some((phrase: string) => haystack.includes(phrase));
+      });
+    } catch {
+      // Prefs unavailable — still try diagnosis bundles
+    }
+
+    const hasBundles = diagnosisBundles.length > 0;
+    const hasJuneRules = instructions.length + firedTriggers.length > 0;
+    if (!hasBundles && !hasJuneRules) return noop;
+
+    // Build diagnosis bundle context block
+    let bundleBlock = "";
+    if (hasBundles) {
+      const bundleLines = diagnosisBundles.map(b => {
+        const codeStr = b.codes.map(c => `${c.code} ${c.name}`).join("; ");
+        const aliasStr = b.aliases.length ? ` [also known as: ${b.aliases.join(", ")}]` : "";
+        return `• "${b.title}"${aliasStr}: ICD codes — ${codeStr || "none configured"}`;
+      });
+      bundleBlock = `\nCUSTOM DIAGNOSIS BUNDLES — use these to label and consolidate Assessment/Plan items:\n${bundleLines.join("\n")}\nFor each A/P item, check whether it matches a bundle by condition name, alias, or clinical category. If it does, use the bundle title as the diagnosis label. Group related items under one bundle entry and merge genuinely duplicated plan lines.`;
+    }
+
+    // Build June rules context block
+    let prefBlock = "";
+    if (hasJuneRules) {
+      const lines: string[] = [];
+      if (instructions.length) {
+        lines.push("\nALWAYS-ON DOCUMENTATION RULES (apply to every note):");
+        instructions.forEach((p: schema.JunePreference) => lines.push(`• ${p.instruction}`));
+      }
+      if (firedTriggers.length) {
+        lines.push("\nTRIGGER RULES (activated because their trigger phrase appears in this transcript):");
+        firedTriggers.forEach((p: schema.JunePreference) => lines.push(`• ${p.label}: ${p.instruction}`));
+      }
+      if (snippets.length) {
+        lines.push("\nCONTEXT SNIPPETS (use when a trigger rule calls for them):");
+        snippets.forEach((p: schema.JunePreference) => lines.push(`• ${p.label}:\n  ${p.instruction}`));
+      }
+      prefBlock = lines.join("\n");
+    }
+
+    try {
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o",
+        messages: [
+          {
+            role: "system",
+            content: `You are a clinical documentation specialist performing a targeted Provider Personalization Pass on a completed SOAP note.
+
+Your job is narrow and specific. You may apply only the following two categories of changes — no more:
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CATEGORY 1 — ASSESSMENT/PLAN REORGANIZATION (only if custom diagnosis bundles are provided)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Match each A/P item to a custom bundle by condition name, alias, or clinical category.
+• If matched, use the bundle title as the diagnosis label for that item.
+• Group all items that belong to the same bundle under one consolidated numbered entry.
+• Merge only genuinely duplicated plan lines — identical or near-identical instructions for the same medication/supplement appearing more than once.
+• Preserve ICD codes already in the note. Add ICD codes from the matching bundle if absent.
+• Preserve every A/P item — do not remove any numbered item, clinical finding, follow-up instruction, or medication detail.
+• Do not restructure HPI, Subjective, or Objective in any way.
+• Do not alter the Current Medications section (names, doses, routes, frequencies, statuses).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+CATEGORY 2 — JUNE PREFERENCE RULES (only if provider rules are provided)
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Apply always-on instructions and fired trigger rules surgically — modify only the section(s) each rule pertains to.
+• Trigger rules: apply only if the required content is supported by what is already in the note or transcript. Do not add clinical facts absent from both sources.
+• If a preference is already satisfied, leave that section untouched.
+• Never fabricate clinical facts, lab values, symptoms, or diagnoses not in the note or transcript.
+• Never remove documented findings, diagnoses, medications, or plan items.
+• Never change medication states (current / new / adjusted / discontinued / discussed).
+
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+FORMAT RULES
+━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
+• Preserve all section headers exactly as they appear in the original note.
+• Return the complete note — all sections — not just the modified parts.
+• Output only the note text. No preamble, commentary, or postscript.`,
+          },
+          {
+            role: "user",
+            content: `${bundleBlock}${prefBlock}\n\n---\nORIGINAL NOTE:\n${noteText}\n\n---\nVISIT TRANSCRIPT (context for trigger rules only — do not introduce facts not supported by the note):\n${transcriptText.slice(0, 6000)}\n\n---\nPerform the Provider Personalization Pass now. Return the complete updated note.`,
+          },
+        ],
+      });
+
+      const refined = completion.choices[0].message.content?.trim() ?? "";
+      if (!refined) return noop;
+
+      // Detect which bundles appear in the refined note (A/P section)
+      const noteLC = refined.toLowerCase();
+      const appliedBundles = diagnosisBundles
+        .filter(b =>
+          noteLC.includes(b.title.toLowerCase()) ||
+          b.aliases.some(a => a && noteLC.includes(a.toLowerCase()))
+        )
+        .map(b => b.title);
+
+      const juneApplied = [
+        ...instructions.map((p: schema.JunePreference) => p.label),
+        ...firedTriggers.map((p: schema.JunePreference) => p.label),
+      ];
+
+      console.log(`[Provider Personalization Pass] bundles=${appliedBundles.length} juneRules=${juneApplied.length}`);
+      return { note: refined, bundlesApplied: appliedBundles, juneTriggersApplied: juneApplied, changed: true };
+    } catch (err) {
+      console.warn("[Provider Personalization Pass] Failed, using original note:", err);
+      return noop;
+    }
+  }
+
+  // ── SOAP Validation Gate ───────────────────────────────────────────────────
+  // Read-only post-generation check. Returns structured JSON reporting whether
+  // custom diagnosis bundles and June rules were reflected in the final note,
+  // and flagging any detected drift or unsupported content.
+  // This function NEVER edits the note.
+  async function runSoapValidationGate(
+    noteText: string,
+    diagnosisBundles: Array<{ title: string; codes: { code: string; name: string }[]; aliases: string[] }>,
+    clinicianId: number,
+    transcriptText: string,
+    extraction: any,
+    openai: OpenAI,
+  ): Promise<{
+    status: "pass" | "warn" | "flag";
+    bundle_checks: Array<{ bundle: string; found: boolean; location: string }>;
+    june_rule_checks: Array<{ rule: string; category: string; triggered: boolean; reflected_in_note: boolean }>;
+    drift_flags: string[];
+    summary: string;
+  } | null> {
+    try {
+      // Load fired June rules for the validation check
+      const juneRulesForValidation: Array<{ label: string; category: string; instruction: string }> = [];
+      try {
+        const all = await storage.getJunePreferences(clinicianId);
+        const active = all.filter((p: schema.JunePreference) => p.isActive && p.category !== "pronunciation" && p.category !== "snippet");
+        const instructions = active.filter((p: schema.JunePreference) => p.category === "instruction");
+        const triggers = active.filter((p: schema.JunePreference) => p.category === "trigger");
+        const haystack = transcriptText.toLowerCase();
+        const fired = triggers.filter((t: schema.JunePreference) => {
+          if (!t.triggerPhrases) return false;
+          return t.triggerPhrases.split(",").map((s: string) => s.trim().toLowerCase()).filter(Boolean).some((ph: string) => haystack.includes(ph));
+        });
+        instructions.forEach((p: schema.JunePreference) => juneRulesForValidation.push({ label: p.label, category: "always-on", instruction: p.instruction }));
+        fired.forEach((p: schema.JunePreference) => juneRulesForValidation.push({ label: p.label, category: "triggered", instruction: p.instruction }));
+      } catch { /* proceed without June rule checks */ }
+
+      const hasAnythingToCheck = diagnosisBundles.length > 0 || juneRulesForValidation.length > 0;
+      if (!hasAnythingToCheck) return null;
+
+      const bundleContext = diagnosisBundles.length > 0
+        ? `\nCUSTOM DIAGNOSIS BUNDLES TO CHECK:\n${diagnosisBundles.map(b => `• "${b.title}" (aliases: ${b.aliases.join(", ") || "none"})`).join("\n")}`
+        : "";
+      const juneContext = juneRulesForValidation.length > 0
+        ? `\nJUNE PREFERENCE RULES TO CHECK:\n${juneRulesForValidation.map(r => `• [${r.category}] ${r.label}: ${r.instruction}`).join("\n")}`
+        : "";
+
+      const completion = await openai.chat.completions.create({
+        model: "gpt-4o-mini",
+        messages: [
+          {
+            role: "system",
+            content: `You are a clinical documentation validator. Analyze a SOAP note against provider-defined requirements and return a structured validation report.
+
+Return ONLY valid JSON — no preamble, no explanation, no markdown code fences.
+
+Return this exact structure:
+{
+  "status": "pass" | "warn" | "flag",
+  "bundle_checks": [
+    { "bundle": "<bundle title>", "found": true|false, "location": "<A/P item number or heading, or empty string if not found>" }
+  ],
+  "june_rule_checks": [
+    { "rule": "<rule label>", "category": "always-on"|"triggered", "triggered": true|false, "reflected_in_note": true|false }
+  ],
+  "drift_flags": ["<concrete drift issue if any>"],
+  "summary": "<1–2 sentence summary of the validation result>"
+}
+
+STATUS:
+- "pass": all bundles present (or none expected), all fired June rules reflected, no drift
+- "warn": 1–2 minor issues — a bundle absent, a June rule not fully reflected, or a minor drift concern
+- "flag": multiple bundles missing, critical June rule absent, or clear unsupported clinical content
+
+DRIFT — flag only concrete, verifiable problems (not stylistic issues):
+• A medication appears in A/P as active/new but is not mentioned in the transcript at all
+• A diagnosis is stated as confirmed but was never discussed in the transcript
+• A clinical finding is stated as fact with no basis in the note or transcript
+• A risk narrative substantially exceeds what the transcript or labs support`,
+          },
+          {
+            role: "user",
+            content: `${bundleContext}${juneContext}\n\n---\nNOTE TO VALIDATE:\n${noteText.slice(0, 12000)}\n\n---\nTRANSCRIPT EXCERPT:\n${transcriptText.slice(0, 4000)}\n\n---\nReturn only the JSON validation report.`,
+          },
+        ],
+        response_format: { type: "json_object" },
+      });
+
+      const raw = completion.choices[0].message.content?.trim() ?? "{}";
+      const parsed = JSON.parse(raw);
+      console.log(`[SOAP Validation Gate] status=${parsed.status ?? "unknown"} drift_flags=${parsed.drift_flags?.length ?? 0}`);
+      return parsed;
+    } catch (err) {
+      console.warn("[SOAP Validation Gate] Failed silently:", err);
+      return null;
+    }
+  }
+
   // ── Shared helper: build historical patient context for AI note generation ──
   // Pulls last 5 prior completed notes + chart data + recent vitals + recent labs.
   // Both generate-soap and generate-template-note use this.
@@ -10243,27 +10486,57 @@ Return a JSON object:
         diagnosisBundles,
       });
 
-      // ── June refinement pass (post-processing) ────────────────────────────
-      // Only runs when the clinician has active preferences set up.
-      // Applies always-on instructions and any trigger rules fired by the
-      // transcript. Skips silently if no active prefs or the pass fails.
-      const juneRefinement = await applyJuneRefinement(
+      // ── Provider Personalization Pass (post-generation) ───────────────────
+      // Single constrained pass that handles both diagnosis bundle A/P
+      // reorganization and June preference rules. Replaces the previous
+      // June-only refinement pass for the main SOAP pipeline.
+      // Runs silently on failure so the note is never lost.
+      const personalization = await applyProviderPersonalizationPass(
         soapNote.fullNote ?? "",
         getClinicianId(req),
+        clinicId,
         transcriptText,
+        freshExtraction,
+        diagnosisBundles,
         openai,
       );
-      if (juneRefinement.applied.length > 0) {
-        soapNote = { ...soapNote, fullNote: juneRefinement.note };
-        console.log(`[SOAP] June refinement applied (${juneRefinement.applied.join(", ")})`);
+      if (personalization.changed) {
+        soapNote = { ...soapNote, fullNote: personalization.note };
+        if (personalization.bundlesApplied.length > 0)
+          console.log(`[SOAP] Personalization: bundles applied (${personalization.bundlesApplied.join(", ")})`);
+        if (personalization.juneTriggersApplied.length > 0)
+          console.log(`[SOAP] Personalization: June rules applied (${personalization.juneTriggersApplied.join(", ")})`);
       }
 
-      const updated = await storage.updateEncounter(id, clinicianId, {
-        soapNote,
-        soapGeneratedAt: new Date(),
-      }, clinicId);
+      // ── SOAP Validation Gate (read-only) ──────────────────────────────────
+      // Checks whether custom diagnoses and June rules were reflected in the
+      // final note. Returns structured JSON — never edits the note.
+      // Runs in parallel with the DB write since it doesn't affect storage.
+      const [updated, validationGate] = await Promise.all([
+        storage.updateEncounter(id, clinicianId, {
+          soapNote,
+          soapGeneratedAt: new Date(),
+        }, clinicId),
+        runSoapValidationGate(
+          soapNote.fullNote ?? "",
+          diagnosisBundles,
+          getClinicianId(req),
+          transcriptText,
+          freshExtraction,
+          openai,
+        ),
+      ]);
 
-      res.json({ soapNote, encounter: updated, medicationMatches: autoMedMatches, diarizedTranscript: diarized, clinicalExtraction: freshExtraction, junePrefsApplied: juneRefinement.applied });
+      res.json({
+        soapNote,
+        encounter: updated,
+        medicationMatches: autoMedMatches,
+        diarizedTranscript: diarized,
+        clinicalExtraction: freshExtraction,
+        junePrefsApplied: personalization.juneTriggersApplied,
+        bundlesApplied: personalization.bundlesApplied,
+        validationGate,
+      });
 
       // ── Stage 5: Evidence — fire-and-forget after SOAP response is sent ────
       // Runs in background so the clinician gets SOAP immediately.

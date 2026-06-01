@@ -6,9 +6,10 @@ import {
   Mic, Upload, FileText, FlaskConical, ChevronLeft, Plus,
   Sparkles, Send, CheckCircle2, Circle, AlertCircle, Trash2,
   Save, Eye, EyeOff, Calendar, User, Stethoscope, ClipboardList,
-  ChevronRight, RefreshCw, X, BookOpen, Download, Clock,
+  ChevronRight, ChevronDown, RefreshCw, X, BookOpen, Download, Clock,
   TriangleAlert, ExternalLink, Square, MicOff, ShieldCheck, Copy, Check,
   Layers, Pill, Lightbulb, ListPlus, Lock, Unlock, PenLine, FileDown,
+  Brain, Tag,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -730,6 +731,18 @@ export function EncounterEditor({
     (encounter?.patternMatch as PatternMatchResult | null) ?? null
   );
   const [validationResult, setValidationResult] = useState<ValidationResult | null>(null);
+  const [soapValidationGate, setSoapValidationGate] = useState<{
+    status: "pass" | "warn" | "flag";
+    bundle_checks: Array<{ bundle: string; found: boolean; location: string }>;
+    june_rule_checks: Array<{ rule: string; category: string; triggered: boolean; reflected_in_note: boolean }>;
+    drift_flags: string[];
+    summary: string;
+  } | null>(null);
+  const [personalizationSummary, setPersonalizationSummary] = useState<{
+    bundlesApplied: string[];
+    juneTriggersApplied: string[];
+  } | null>(null);
+  const [gateExpanded, setGateExpanded] = useState(false);
   const [pipelineLoading, setPipelineLoading] = useState<"normalizing" | "extracting" | "matching" | "evidence" | "validating" | null>(null);
   const [medMatches, setMedMatches] = useState<import("@shared/schema").MedicationMatch[] | null>(null);
   const [medDetecting, setMedDetecting] = useState(false);
@@ -1077,6 +1090,15 @@ export function EncounterEditor({
       invalidate();
       setActiveTab("soap");
       const juneApplied: string[] = data.junePrefsApplied ?? [];
+      const bundlesApplied: string[] = data.bundlesApplied ?? [];
+      if (bundlesApplied.length > 0 || juneApplied.length > 0) {
+        setPersonalizationSummary({ bundlesApplied, juneTriggersApplied: juneApplied });
+        setGateExpanded(false);
+      }
+      if (data.validationGate) {
+        setSoapValidationGate(data.validationGate);
+        setGateExpanded(data.validationGate.status !== "pass");
+      }
       if (data.medicationMatches?.length) {
         setMedMatches(data.medicationMatches);
         const needsReview = data.medicationMatches.filter((m: any) => m.needsReview).length;
@@ -1087,8 +1109,11 @@ export function EncounterEditor({
       } else {
         toast({ title: "SOAP note generated", description: "Review and edit each section as needed." });
       }
-      if (juneApplied.length > 0) {
-        toast({ title: "June refined this note", description: `Applied: ${juneApplied.join(", ")}` });
+      if (juneApplied.length > 0 || bundlesApplied.length > 0) {
+        const parts: string[] = [];
+        if (bundlesApplied.length > 0) parts.push(`${bundlesApplied.length} diagnosis bundle${bundlesApplied.length !== 1 ? "s" : ""} applied`);
+        if (juneApplied.length > 0) parts.push(`June rules: ${juneApplied.join(", ")}`);
+        toast({ title: "Provider personalization applied", description: parts.join(" · ") });
       }
     },
     onError: (e: any) => toast({ variant: "destructive", title: "Generation failed", description: e.message }),
@@ -1153,8 +1178,20 @@ export function EncounterEditor({
         if (soapResult.value.medicationMatches?.length) setMedMatches(soapResult.value.medicationMatches);
         setActiveTab("soap");
         const juneApplied: string[] = soapResult.value.junePrefsApplied ?? [];
-        if (juneApplied.length > 0) {
-          toast({ title: "June refined this note", description: `Applied: ${juneApplied.join(", ")}` });
+        const bundlesApplied: string[] = soapResult.value.bundlesApplied ?? [];
+        if (bundlesApplied.length > 0 || juneApplied.length > 0) {
+          setPersonalizationSummary({ bundlesApplied, juneTriggersApplied: juneApplied });
+          setGateExpanded(false);
+        }
+        if (soapResult.value.validationGate) {
+          setSoapValidationGate(soapResult.value.validationGate);
+          setGateExpanded(soapResult.value.validationGate.status !== "pass");
+        }
+        if (juneApplied.length > 0 || bundlesApplied.length > 0) {
+          const parts: string[] = [];
+          if (bundlesApplied.length > 0) parts.push(`${bundlesApplied.length} diagnosis bundle${bundlesApplied.length !== 1 ? "s" : ""} applied`);
+          if (juneApplied.length > 0) parts.push(`June rules: ${juneApplied.join(", ")}`);
+          toast({ title: "Provider personalization applied", description: parts.join(" · ") });
         }
       } else {
         toast({ variant: "destructive", title: "SOAP generation failed", description: niceMessage(soapResult.reason) });
@@ -3307,6 +3344,166 @@ export function EncounterEditor({
                 </div>
               );
             })()}
+
+            {/* Provider Personalization Gate — shows what the personalization pass did + validation results */}
+            {(personalizationSummary || soapValidationGate) && hasSoap && (
+              <div className={`rounded-md border text-xs ${
+                soapValidationGate?.status === "flag" ? "border-amber-300 bg-amber-50/50 dark:border-amber-700 dark:bg-amber-950/20" :
+                soapValidationGate?.status === "warn" ? "border-yellow-200 bg-yellow-50/40 dark:border-yellow-800 dark:bg-yellow-950/20" :
+                "border-emerald-200 bg-emerald-50/40 dark:border-emerald-800 dark:bg-emerald-950/20"
+              }`}>
+                {/* Header row — always visible */}
+                <div className="flex items-center justify-between gap-2 px-3 py-2">
+                  <div className="flex items-center gap-2 flex-wrap">
+                    <div className="flex items-center gap-1.5">
+                      {soapValidationGate?.status === "flag" ? (
+                        <TriangleAlert className="w-3.5 h-3.5 text-amber-600 flex-shrink-0" />
+                      ) : soapValidationGate?.status === "warn" ? (
+                        <TriangleAlert className="w-3.5 h-3.5 text-yellow-600 flex-shrink-0" />
+                      ) : (
+                        <ShieldCheck className="w-3.5 h-3.5 text-emerald-600 flex-shrink-0" />
+                      )}
+                      <span className={`font-semibold ${
+                        soapValidationGate?.status === "flag" ? "text-amber-800 dark:text-amber-300" :
+                        soapValidationGate?.status === "warn" ? "text-yellow-800 dark:text-yellow-300" :
+                        "text-emerald-800 dark:text-emerald-300"
+                      }`}>Provider Personalization</span>
+                    </div>
+                    {personalizationSummary && (
+                      <div className="flex items-center gap-1.5 flex-wrap">
+                        {personalizationSummary.bundlesApplied.length > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded bg-primary/10 text-primary px-1.5 py-0.5 font-medium">
+                            <Tag className="w-3 h-3" />
+                            {personalizationSummary.bundlesApplied.length} bundle{personalizationSummary.bundlesApplied.length !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {personalizationSummary.juneTriggersApplied.length > 0 && (
+                          <span className="inline-flex items-center gap-1 rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 font-medium">
+                            <Brain className="w-3 h-3" />
+                            {personalizationSummary.juneTriggersApplied.length} June rule{personalizationSummary.juneTriggersApplied.length !== 1 ? "s" : ""}
+                          </span>
+                        )}
+                        {soapValidationGate?.status === "pass" && (
+                          <span className="text-emerald-700 dark:text-emerald-400">· validated</span>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                  <div className="flex items-center gap-1.5">
+                    <button
+                      onClick={() => setGateExpanded(e => !e)}
+                      className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                      data-testid="button-toggle-personalization-gate"
+                      aria-label="Toggle personalization details"
+                    >
+                      {gateExpanded ? <ChevronDown className="w-3.5 h-3.5" /> : <ChevronRight className="w-3.5 h-3.5" />}
+                    </button>
+                    <button
+                      onClick={() => { setSoapValidationGate(null); setPersonalizationSummary(null); }}
+                      className="text-muted-foreground hover:text-foreground transition-colors p-0.5"
+                      data-testid="button-dismiss-personalization-gate"
+                      aria-label="Dismiss"
+                    >
+                      <X className="w-3.5 h-3.5" />
+                    </button>
+                  </div>
+                </div>
+
+                {/* Expanded detail panel */}
+                {gateExpanded && (
+                  <div className="border-t px-3 pb-3 pt-2 space-y-3">
+                    {/* Personalization detail */}
+                    {personalizationSummary && (
+                      <div className="space-y-2">
+                        {personalizationSummary.bundlesApplied.length > 0 && (
+                          <div>
+                            <p className="font-semibold text-muted-foreground uppercase tracking-wide mb-1" style={{ fontSize: "9px" }}>Diagnosis Bundles Applied</p>
+                            <div className="flex flex-wrap gap-1">
+                              {personalizationSummary.bundlesApplied.map((b, i) => (
+                                <span key={i} className="rounded bg-primary/10 text-primary px-1.5 py-0.5 font-medium">{b}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                        {personalizationSummary.juneTriggersApplied.length > 0 && (
+                          <div>
+                            <p className="font-semibold text-muted-foreground uppercase tracking-wide mb-1" style={{ fontSize: "9px" }}>Teach June Rules Applied</p>
+                            <div className="flex flex-wrap gap-1">
+                              {personalizationSummary.juneTriggersApplied.map((r, i) => (
+                                <span key={i} className="rounded bg-violet-100 dark:bg-violet-900/30 text-violet-700 dark:text-violet-300 px-1.5 py-0.5 font-medium">{r}</span>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Validation gate detail */}
+                    {soapValidationGate && (
+                      <div className="space-y-2">
+                        {soapValidationGate.summary && (
+                          <p className="text-muted-foreground italic">{soapValidationGate.summary}</p>
+                        )}
+
+                        {/* Bundle checks */}
+                        {soapValidationGate.bundle_checks?.length > 0 && (
+                          <div>
+                            <p className="font-semibold text-muted-foreground uppercase tracking-wide mb-1" style={{ fontSize: "9px" }}>Bundle Checks</p>
+                            <div className="space-y-0.5">
+                              {soapValidationGate.bundle_checks.map((c, i) => (
+                                <div key={i} className="flex items-center gap-1.5">
+                                  {c.found
+                                    ? <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                                    : <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0" />}
+                                  <span className={c.found ? "text-foreground/70" : "text-amber-700 dark:text-amber-400 font-medium"}>
+                                    {c.bundle}{c.found && c.location ? ` — ${c.location}` : !c.found ? " — not found in A/P" : ""}
+                                  </span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* June rule checks */}
+                        {soapValidationGate.june_rule_checks?.filter(r => r.triggered).length > 0 && (
+                          <div>
+                            <p className="font-semibold text-muted-foreground uppercase tracking-wide mb-1" style={{ fontSize: "9px" }}>June Rule Checks</p>
+                            <div className="space-y-0.5">
+                              {soapValidationGate.june_rule_checks.filter(r => r.triggered).map((r, i) => (
+                                <div key={i} className="flex items-center gap-1.5">
+                                  {r.reflected_in_note
+                                    ? <CheckCircle2 className="w-3 h-3 text-emerald-600 flex-shrink-0" />
+                                    : <AlertCircle className="w-3 h-3 text-amber-500 flex-shrink-0" />}
+                                  <span className={r.reflected_in_note ? "text-foreground/70" : "text-amber-700 dark:text-amber-400 font-medium"}>
+                                    {r.rule}{!r.reflected_in_note ? " — not reflected in note" : ""}
+                                  </span>
+                                  <span className="text-muted-foreground">({r.category})</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+
+                        {/* Drift flags */}
+                        {soapValidationGate.drift_flags?.length > 0 && (
+                          <div>
+                            <p className="font-semibold text-amber-700 dark:text-amber-400 uppercase tracking-wide mb-1" style={{ fontSize: "9px" }}>Drift Flags</p>
+                            <div className="space-y-0.5">
+                              {soapValidationGate.drift_flags.map((f, i) => (
+                                <div key={i} className="flex items-start gap-1.5">
+                                  <TriangleAlert className="w-3 h-3 text-amber-500 flex-shrink-0 mt-0.5" />
+                                  <span className="text-amber-800 dark:text-amber-300">{f}</span>
+                                </div>
+                              ))}
+                            </div>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                )}
+              </div>
+            )}
 
             {/* Validation results panel */}
             {validationResult && hasSoap && (
