@@ -52,6 +52,7 @@ interface SpruceConversation {
   lastMessageAt: string;
   messageCount: number;
   hasStaffReply: boolean;
+  hasOpenUrgentRequest?: boolean;
   // Archive state (Phase 3)
   isArchived?: boolean;
   archivedAt?: string | null;
@@ -149,6 +150,11 @@ function parseNameParts(name: string | null): { firstName: string; lastName: str
 }
 
 function isUrgent(conv: SpruceConversation): boolean {
+  // Primary: conversation has a pending urgent_safety workflow request — this is
+  // the same data source the dashboard urgent tile uses, so both stay in sync.
+  if (conv.hasOpenUrgentRequest) return true;
+  // Fallback: keyword match on last message text (catches messages before June
+  // processes them or when no workflow request was created).
   const msg = (conv.lastMessage ?? "").toLowerCase();
   return msg.includes("urgent") || msg.includes("emergency") || msg.includes("chest pain") || msg.includes("safety");
 }
@@ -499,7 +505,12 @@ export default function SpruceInboxPage() {
     },
     onSuccess: () => {
       refetchWorkflow();
-      queryClient.invalidateQueries({ queryKey: ["/api/clinician-notifications"] });
+      // Refetch conversations so the completed task is removed from the
+      // "Unreplied" and "Urgent" folders immediately (server also stamps
+      // staffRepliedAt on the conversation when status → complete).
+      refetchConvs();
+      // Correct query key: /api/clinician/notifications (slash, not hyphen)
+      queryClient.invalidateQueries({ queryKey: ["/api/clinician/notifications"] });
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to mark task complete" });

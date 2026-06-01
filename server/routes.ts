@@ -2293,6 +2293,8 @@ Rules:
 
   // PATCH /api/spruce-requests/:id/status — update a Spruce workflow request status.
   // Allowed statuses: complete | needs_more_info | visit_required | pending
+  // When status becomes "complete", the conversation is also marked replied so it
+  // leaves the "Unreplied" folder — the provider has handled the request.
   app.patch("/api/spruce-requests/:id/status", requireAuth, async (req, res) => {
     try {
       const id = parseInt(req.params.id);
@@ -2301,9 +2303,25 @@ Rules:
       if (!allowed.includes(status)) {
         return res.status(400).json({ error: `Invalid status. Allowed: ${allowed.join(", ")}` });
       }
+      const clinicId = getEffectiveClinicId(req);
       const userId = getClinicianId(req);
       const updated = await storage.updateSpruceWorkflowRequestStatus(id, status, userId);
       if (!updated) return res.status(404).json({ error: "Spruce workflow request not found" });
+
+      // When a workflow task is marked complete, stamp the conversation as replied
+      // so it is removed from the "Unreplied" folder in the inbox.
+      if (status === "complete" && clinicId && updated.spruceConversationUrl) {
+        try {
+          const urlKey = updated.spruceConversationUrl.split("/conversations/").pop();
+          if (urlKey) {
+            await (storage as any).markSpruceConversationReplied(clinicId, urlKey);
+          }
+        } catch (markErr) {
+          // Non-fatal — log but don't fail the status update
+          console.error("[Spruce/mark-replied-on-complete] Error:", markErr);
+        }
+      }
+
       res.json(updated);
     } catch (err) {
       console.error("Error updating spruce workflow request:", err);

@@ -5063,6 +5063,10 @@ export interface SpruceConversationSummary {
   lastMessageAt: Date;
   messageCount: number;
   hasStaffReply: boolean;
+  // True when there is a pending urgent_safety workflow request for this conversation.
+  // Used by the inbox to show the "Urgent" folder — keeps it in sync with the
+  // dashboard's urgent tile which reads from the same workflow requests table.
+  hasOpenUrgentRequest: boolean;
   // Archive state (Phase 3)
   isArchived: boolean;
   archivedAt: Date | null;
@@ -5235,6 +5239,47 @@ export interface SpruceConversationMessageRow {
       // carry staff names, not the patient's Spruce contact name).
       if (!existing.spruceContactName && row.spruceContactName && !isOutboundRow(row.messageDirection)) {
         existing.spruceContactName = row.spruceContactName;
+      }
+    }
+  }
+
+  // Initialize hasOpenUrgentRequest to false for all conversations; will be
+  // stamped true below for any conversation with a pending urgent_safety request.
+  for (const conv of map.values()) {
+    conv.hasOpenUrgentRequest = false;
+  }
+
+  // Fetch pending urgent_safety workflow requests and cross-reference them with
+  // conversations so the inbox urgent folder matches the dashboard urgent tile.
+  // Both read from the same spruce_workflow_requests table — this keeps them in sync.
+  const urgentRequests = await db
+    .select({
+      spruceConversationUrl: schema.spruceWorkflowRequests.spruceConversationUrl,
+      spruceMessageId: schema.spruceWorkflowRequests.spruceMessageId,
+    })
+    .from(schema.spruceWorkflowRequests)
+    .where(
+      and(
+        eq(schema.spruceWorkflowRequests.clinicId, clinicId),
+        eq(schema.spruceWorkflowRequests.workflow, "urgent_safety"),
+        eq(schema.spruceWorkflowRequests.status, "pending"),
+      ),
+    );
+
+  for (const req of urgentRequests) {
+    // spruceConversationUrl is in the form https://app.sprucehealth.com/conversations/<key>
+    if (req.spruceConversationUrl) {
+      const urlKey = req.spruceConversationUrl.split("/conversations/").pop();
+      if (urlKey && map.has(urlKey)) {
+        map.get(urlKey)!.hasOpenUrgentRequest = true;
+      }
+    }
+    // Also check by spruceMessageId in case the URL isn't present
+    if (req.spruceMessageId) {
+      for (const conv of map.values()) {
+        if (conv.spruceConversationId === req.spruceMessageId) {
+          conv.hasOpenUrgentRequest = true;
+        }
       }
     }
   }
