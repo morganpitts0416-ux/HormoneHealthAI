@@ -50,6 +50,7 @@ export default function TermsOfService() {
             <p>These Terms of Service ("Terms") constitute a legally binding agreement between you ("Clinician," "Customer," "you," or "your") and ClinIQ ("Company," "we," "us," or "our") governing your access to and use of the ClinIQ clinical intelligence platform ("Platform").</p>
             <p>By creating an account or using the Platform, you represent that you are a licensed healthcare professional authorized to practice in your jurisdiction and that you have read, understood, and agree to be bound by these Terms. If you are registering on behalf of a clinic or healthcare organization, you further represent that you have authority to bind that organization to these Terms.</p>
             <p>By accessing or using the Platform, you acknowledge that you have read, understood, and agree to be bound by these Terms, the Privacy Policy, any applicable Business Associate Agreement, and any additional policies incorporated by reference.</p>
+            <p>To the extent any conflict exists between these Terms and an executed Business Associate Agreement, the Business Associate Agreement shall control with respect to Protected Health Information.</p>
           </Section>
 
           <Section title="2. Eligibility and Authorized Use">

@@ -1,0 +1,85 @@
+CLINIQ BAA FINAL HARDENING UPDATE
+
+1. Remove the "template" legal review banner and replace with:
+
+"This Business Associate Agreement constitutes a legally binding agreement governing the handling of Protected Health Information between ClinIQ and the Covered Entity."
+
+2. Expand Section 3.1 (Permitted Uses) to include:
+
+* clinical documentation
+* encounter transcription
+* encounter summarization
+* workflow automation
+* patient communications
+* patient portal functionality
+* scheduling support
+* telehealth support where enabled
+* AI-assisted documentation and organizational functions
+
+3. Add new section:
+
+"Subprocessors"
+
+ClinIQ may engage subcontractors and service providers to support hosting, infrastructure, artificial intelligence processing, communications delivery, security services, and platform operations.
+
+ClinIQ shall maintain written agreements requiring such subcontractors to comply with applicable HIPAA obligations when PHI is involved.
+
+4. Add new section:
+
+"De-Identified Information"
+
+ClinIQ may create and use de-identified information in accordance with HIPAA.
+
+Such information may be used for analytics, quality improvement, product development, operational monitoring, security, and platform improvement.
+
+ClinIQ shall not attempt to re-identify de-identified information except as permitted by law.
+
+5. Add new section:
+
+"Security Incidents"
+
+ClinIQ shall investigate security incidents involving PHI and take commercially reasonable measures to mitigate known harmful effects.
+
+6. Add new section:
+
+"Data Return and Export"
+
+Covered Entity may request export of available data during active subscription and within applicable post-termination periods.
+
+7. Add new section:
+
+"Non-BAA Vendors"
+
+ClinIQ does not intentionally disclose PHI to service providers that are not operating under appropriate contractual protections when PHI processing is required.
+
+8. Expand No Third-Party Beneficiary language:
+
+Patients, patient representatives, end users, and other third parties are not parties to this BAA and acquire no rights under it.
+
+9. Add:
+
+"Survival"
+
+Confidentiality, security, breach notification, retained PHI obligations, and HIPAA-related protections survive termination.
+
+10. Add:
+
+"Cooperation"
+
+ClinIQ shall reasonably cooperate with Covered Entity investigations involving HIPAA compliance, security incidents, and breach response.
+
+TERMS OF SERVICE FOLLOW-UP CHANGES
+
+1. Add:
+
+"To the extent any conflict exists between these Terms and an executed Business Associate Agreement, the Business Associate Agreement shall control with respect to Protected Health Information."
+
+2. Replace any statement that Customer is solely responsible for PHI with:
+
+"Customer remains responsible for lawful collection, authorization, and permitted disclosure of PHI, while ClinIQ remains responsible for obligations expressly assumed under the applicable Business Associate Agreement."
+
+3. Verify all HIPAA references are consistent between:
+
+* Terms of Service
+* Privacy Policy
+* Business Associate Agreement
