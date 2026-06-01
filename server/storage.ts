@@ -1333,9 +1333,9 @@ export class DbStorage implements IStorage {
   async getReplyContext(patientId: number, clinicId: number): Promise<ReplyContext> {
     // 1. Portal account check
     const portalAccount = await db
-      .select({ id: schema.portalAccounts.id })
-      .from(schema.portalAccounts)
-      .where(eq(schema.portalAccounts.patientId, patientId))
+      .select({ id: schema.patientPortalAccounts.id })
+      .from(schema.patientPortalAccounts)
+      .where(eq(schema.patientPortalAccounts.patientId, patientId))
       .limit(1);
     const hasPortalAccount = portalAccount.length > 0;
 
@@ -6271,21 +6271,23 @@ export interface SpruceConversationMessageRow {
 ): Promise<{ conversationKey: string; spruceConversationId: string | null; fromPhone: string | null; toPhone: string | null } | null> {
   const [row] = await db
     .select({
-      conversationKey: schema.spruceConversations.conversationKey,
-      spruceConversationId: schema.spruceConversations.spruceConversationId,
-      fromPhone: schema.spruceConversations.fromPhone,
-      toPhone: schema.spruceConversations.toPhone,
+      conversationKey: schema.spruceMessages.spruceConversationId,
+      spruceConversationId: schema.spruceMessages.spruceConversationId,
+      fromPhone: schema.spruceMessages.fromPhone,
+      toPhone: schema.spruceMessages.toPhone,
     })
-    .from(schema.spruceConversations)
+    .from(schema.spruceMessages)
     .where(
       and(
-        eq(schema.spruceConversations.clinicId, clinicId),
-        eq(schema.spruceConversations.patientId, patientId),
+        eq(schema.spruceMessages.clinicId, clinicId),
+        eq(schema.spruceMessages.patientId, patientId),
+        isNotNull(schema.spruceMessages.spruceConversationId),
       ),
     )
-    .orderBy(desc(schema.spruceConversations.lastMessageAt))
+    .orderBy(desc(schema.spruceMessages.receivedAt))
     .limit(1);
-  return row ?? null;
+  if (!row || !row.conversationKey) return null;
+  return row as { conversationKey: string; spruceConversationId: string | null; fromPhone: string | null; toPhone: string | null };
 };
 
 (DbStorage.prototype as any).hasPatientRespondedSince = async function(
