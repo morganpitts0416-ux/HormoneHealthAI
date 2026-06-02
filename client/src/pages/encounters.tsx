@@ -37,9 +37,10 @@ import { SlashShortcutsHelp } from "@/components/slash-shortcuts-help";
 import { useRecording } from "@/contexts/recording-context";
 import { useSoapNoteContext } from "@/contexts/soap-note-context";
 import {
-  parseChartSectionItems, BUILTIN_BY_ID,
-  type ChartDomainKey,
+  parseChartSectionItems, BUILTIN_BY_ID, buildVitalSignsText,
+  type ChartDomainKey, type VitalsData,
 } from "@shared/note-builtin-blocks";
+import { VitalsInsertDialog } from "@/components/vitals-insert-dialog";
 
 export type EncounterWithPatient = ClinicalEncounter & { patientName: string };
 
@@ -783,12 +784,20 @@ export function EncounterEditor({
     value: soapNoteValue,
     onChange: (newValue: string) => setSoap({ fullNote: newValue }),
   });
+  // ── Vitals insert dialog (triggered by /vitals slash command) ─────────────
+  const [vitalsDialogOpen, setVitalsDialogOpen] = useState(false);
+  const [vitalsInsertFn, setVitalsInsertFn] = useState<((text: string) => void) | null>(null);
+
   const soapSlashMenu = useSlashMenu({
     textareaRef: soapTextareaRef,
     value: soapNoteValue,
     onChange: (newValue: string) => setSoap({ fullNote: newValue }),
     patientId: encounter?.patientId ?? null,
     noteType: "soap_provider",
+    onVitalsCommand: (insertFn) => {
+      setVitalsInsertFn(() => insertFn);
+      setVitalsDialogOpen(true);
+    },
   });
   // The slash menu deliberately yields to /phrase so the dedicated phrase
   // search keeps owning that trigger here as well.
@@ -3744,6 +3753,32 @@ export function EncounterEditor({
                       {soapPhraseSearch.dropdown}
                       {soapSlashMenu.dropdown}
                     </div>
+
+                    <VitalsInsertDialog
+                      open={vitalsDialogOpen}
+                      onOpenChange={(open) => {
+                        setVitalsDialogOpen(open);
+                        if (!open) setVitalsInsertFn(null);
+                      }}
+                      patientId={encounter?.patientId ?? null}
+                      onInsert={(formattedText, vitalsData) => {
+                        vitalsInsertFn?.(formattedText);
+                        setVitalsInsertFn(null);
+                        if (vitalsData && encounter?.patientId) {
+                          apiRequest("POST", `/api/patients/${encounter.patientId}/vitals`, {
+                            systolicBp: vitalsData.systolicBp ?? undefined,
+                            diastolicBp: vitalsData.diastolicBp ?? undefined,
+                            heartRate: vitalsData.heartRate ?? undefined,
+                            temperature: vitalsData.temperature ?? undefined,
+                            heightInches: vitalsData.heightInches ?? undefined,
+                            weightLbs: vitalsData.weightLbs ?? undefined,
+                            source: "clinic",
+                          }).then(() => {
+                            qc.invalidateQueries({ queryKey: ["/api/patients", encounter.patientId, "vitals"] });
+                          }).catch(() => {});
+                        }
+                      }}
+                    />
                   </div>
                 )}
 

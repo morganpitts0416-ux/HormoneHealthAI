@@ -18,6 +18,13 @@ interface SlashMenuProps {
   patientId?: number | null;
   /** Optional: restrict template suggestions to one note type (default: all). */
   noteType?: "soap_provider" | "nurse" | "phone";
+  /**
+   * Optional: intercept the /vitals command. When provided, the normal plain-text
+   * insertion is suppressed and this callback is called instead with a one-time
+   * `insertFn` the caller should invoke (with formatted text) after collecting
+   * structured vitals input from the provider.
+   */
+  onVitalsCommand?: (insertFn: (text: string) => void) => void;
 }
 
 type SlashItem =
@@ -28,7 +35,7 @@ type SlashItem =
 /** Universal `/` slash menu for note textareas: built-in clinical blocks +
  *  saved templates + saved phrases. Cedes `/dx` and `/phrase` to their
  *  dedicated dropdowns. */
-export function useSlashMenu({ textareaRef, value, onChange, patientId, noteType }: SlashMenuProps) {
+export function useSlashMenu({ textareaRef, value, onChange, patientId, noteType, onVitalsCommand }: SlashMenuProps) {
   const [isOpen, setIsOpen] = useState(false);
   const [searchQuery, setSearchQuery] = useState("");
   const [triggerPosition, setTriggerPosition] = useState<{ top: number; left: number } | null>(null);
@@ -182,6 +189,12 @@ export function useSlashMenu({ textareaRef, value, onChange, patientId, noteType
   const insertItem = useCallback((item: SlashItem) => {
     if (item.kind === "builtin") {
       const b = item.def;
+      // Intercept /vitals: open structured entry dialog instead of plain text
+      if (b.id === "vitals" && onVitalsCommand) {
+        close();
+        onVitalsCommand(insertText);
+        return;
+      }
       if (b.chart) {
         insertText(buildDefaultChartText(b.id as "ros" | "physical_exam", undefined, blockDefaults));
         return;
@@ -240,6 +253,23 @@ export function useSlashMenu({ textareaRef, value, onChange, patientId, noteType
   // insertItem because it relies on cursor/slashStart state that hasn't been
   // committed yet.
   const insertItemAt = useCallback((item: SlashItem, slashIndex: number, endIndex: number) => {
+    // Intercept /vitals direct-insert path (e.g. "/vitals " or "/vs ")
+    if (item.kind === "builtin" && item.def.id === "vitals" && onVitalsCommand) {
+      close();
+      const insertAt = (text: string) => {
+        const before = value.substring(0, slashIndex);
+        const after = value.substring(endIndex);
+        const needsLeadingNewline = before.length > 0 && !before.endsWith("\n");
+        const insert = needsLeadingNewline ? "\n" + text : text;
+        onChange(before + insert + after);
+        requestAnimationFrame(() => {
+          const ta = textareaRef.current;
+          if (ta) { ta.focus(); ta.setSelectionRange(before.length + insert.length, before.length + insert.length); }
+        });
+      };
+      onVitalsCommand(insertAt);
+      return;
+    }
     let payload = "";
     if (item.kind === "builtin") {
       const b = item.def;
