@@ -106,6 +106,31 @@ export const SYSTEM_MEDICATIONS: SeedEntry[] = [
     subclass: "Neurosteroid precursor",
     route: "oral",
   },
+  // ─── Contraceptives (progestin-only) — LASA critical ─────────────────────────
+  // NOTE: drospirenone (Slynd) is a progestin-only contraceptive.
+  // It must NOT be confused with risperidone (Risperdal), an antipsychotic.
+  // The fuzzy matcher could confuse these via phonetic similarity — LASA
+  // detection in rxnorm-dict.ts provides the explicit safeguard.
+  {
+    genericName: "drospirenone",
+    brandNames: ["Slynd"],
+    commonSpokenVariants: ["drospirenone", "slynd", "progestin only pill", "pop"],
+    commonMisspellings: ["drospirone", "drospireonone", "drospironone"],
+    drugClass: "Progestin",
+    subclass: "Progestin-only contraceptive",
+    route: "oral",
+    notes: "LASA risk: do not confuse with risperidone (Risperdal). Slynd is contraceptive; risperidone is antipsychotic.",
+  },
+  {
+    genericName: "risperidone",
+    brandNames: ["Risperdal"],
+    commonSpokenVariants: ["risperidone", "risperdal"],
+    commonMisspellings: ["risperadone", "resperdal", "risparidone"],
+    drugClass: "Antipsychotic",
+    subclass: "Atypical antipsychotic",
+    route: "oral|intramuscular",
+    notes: "LASA risk: do not confuse with drospirenone (Slynd). Risperdal is antipsychotic; drospirenone is contraceptive.",
+  },
   {
     genericName: "spironolactone",
     brandNames: ["Aldactone", "CaroSpir"],

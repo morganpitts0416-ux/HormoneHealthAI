@@ -38,7 +38,7 @@ import {
 } from "./therapy-context";
 import { PHENOTYPE_KEYS, detectedPhenotypeKeys } from "./phenotype-registry";
 import { screenInsulinResistance } from "./insulin-resistance";
-import { normalizeTranscript, parseCSV, parseArrayField } from "./medication-normalizer";
+import { normalizeTranscript, enrichWithRxNorm, parseCSV, parseArrayField } from "./medication-normalizer";
 import {
   forwardMessageToExternalProvider,
   type ExternalProvider,
@@ -10418,27 +10418,60 @@ Return a JSON object:
           const rawMedText = wasNormalized
             ? diarized.map((u: any) => u.normalizedText ?? u.text).join(' ')
             : (encounter.transcription ?? "");
-          autoMedMatches = normalizeTranscript(rawMedText, medEntries);
-          if (autoMedMatches.length) {
-            const confirmed = autoMedMatches.filter(m => !m.needsReview);
-            const uncertain = autoMedMatches.filter(m => m.needsReview);
+
+          // Base fuzzy matching (existing logic — unchanged)
+          const rawMatches = normalizeTranscript(rawMedText, medEntries);
+
+          // RxNorm enrichment pass (additive — never modifies status/intent)
+          const enriched = enrichWithRxNorm(rawMatches);
+          autoMedMatches = enriched;
+
+          if (enriched.length) {
+            // LASA safety alerts — highest priority, surfaced first in context
+            const lasaAlerts = enriched.filter(m => m.possibleMatches?.length > 0);
+
+            // High-confidence confirmed matches (safe to suggest generic name in SOAP)
+            const confirmed = enriched.filter(m => m.confidenceTier === "high" && !m.requiresReview);
+
+            // Medium/low confidence or LASA — must be flagged for provider review
+            const needsReview = enriched.filter(m => m.requiresReview);
+
             const lines: string[] = [];
+
+            // LASA warnings first — patient safety
+            if (lasaAlerts.length) {
+              lines.push("⚠ LOOK-ALIKE/SOUND-ALIKE MEDICATION ALERTS — DO NOT AUTO-NORMALIZE:");
+              for (const m of lasaAlerts) {
+                lines.push(`  ⚠ LASA ALERT: "${m.originalTerm}" matched to ${m.canonicalName}${m.rxcui ? ` (RxCUI ${m.rxcui})` : ""}`);
+                if (m.reviewReason) lines.push(`    ${m.reviewReason}`);
+              }
+            }
+
             if (confirmed.length) {
-              lines.push("Confirmed medications (use these canonical generic names in the SOAP):");
+              lines.push("Confirmed medications (high confidence — use these canonical generic names in the SOAP):");
               for (const m of confirmed) {
-                const meta = [m.drugClass, m.route].filter(Boolean).join(", ");
+                const rxMeta = m.rxcui ? ` [RxCUI:${m.rxcui}]` : "";
+                const classMeta = m.medicationClass ?? m.drugClass ?? null;
                 const spoken = m.originalTerm !== m.canonicalName ? ` (spoken as: "${m.originalTerm}")` : "";
-                lines.push(`  • ${m.canonicalName}${spoken}${meta ? ` — ${meta}` : ""}`);
+                lines.push(`  • ${m.canonicalName}${spoken}${rxMeta}${classMeta ? ` — ${classMeta}` : ""}`);
               }
             }
-            if (uncertain.length) {
+
+            // Non-LASA review items (medium/low confidence)
+            const reviewNonLasa = needsReview.filter(m => !(m.possibleMatches?.length > 0));
+            if (reviewNonLasa.length) {
               lines.push("Uncertain matches — verify before charting (do NOT assume these are correct):");
-              for (const m of uncertain) {
-                lines.push(`  ⚠ "${m.originalTerm}" → possibly ${m.canonicalName} (${Math.round(m.confidence * 100)}% confidence, ${m.matchType} match)`);
+              for (const m of reviewNonLasa) {
+                const tier = m.confidenceTier ?? "low";
+                lines.push(`  ⚠ "${m.originalTerm}" → possibly ${m.canonicalName} (${Math.round(m.confidence * 100)}% confidence, ${tier} confidence tier, ${m.matchType} match)`);
+                if (m.reviewReason && !m.possibleMatches?.length) {
+                  lines.push(`    ${m.reviewReason}`);
+                }
               }
             }
+
             if (lines.length) {
-              medicationContext = `\n\nNORMALIZED MEDICATION LIST (auto-detected from clinician's dictionary):\n${lines.join('\n')}\nIMPORTANT: Use only the canonical names above for confirmed medications. Do not alter the uncertain ones without clinical verification.`;
+              medicationContext = `\n\nNORMALIZED MEDICATION LIST (auto-detected from clinician's dictionary):\n${lines.join('\n')}\nIMPORTANT: Use only the canonical names above for confirmed high-confidence medications. For LASA alerts and uncertain matches, preserve the original text and/or flag for provider review — do NOT auto-normalize. Do not allow this data to override medication status, plan intent, discontinuation status, or provider recommendations.`;
             }
           }
         }

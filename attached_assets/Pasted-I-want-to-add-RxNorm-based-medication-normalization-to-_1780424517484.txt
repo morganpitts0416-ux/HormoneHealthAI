@@ -1,0 +1,88 @@
+I want to add RxNorm-based medication normalization to ClinIQ, but this must be implemented as an additive safety layer only. Do not rewrite, revert, simplify, or restructure any existing SOAP note generation logic, SOAP prompts, diagnosis organization rules, medication-state safety gates, provider-perspective wording, HPI formatting, A&P structure, or post-note passes. Preserve all current settings!
+
+Goal:
+Add a medication normalization service that helps ClinIQ identify medications more accurately before they are used by downstream features like transcription review, SOAP generation, medication reconciliation, future e-prescribing, and future FHIR interoperability.
+
+Important safety requirement:
+This should not change the SOAP note style or behavior unless a medication match is high-confidence and only improves the medication identity. Current SOAP rules must remain intact.
+
+Implementation request:
+
+1. Create a medication normalization layer using RxNorm concepts.
+
+   * Map brand names to generic names.
+   * Map generic names to RxNorm identifiers when available.
+   * Store medication class when available.
+   * Preserve the original spoken/transcribed medication text.
+   * Store the normalized medication separately from the original text.
+
+2. Add confidence scoring.
+
+   * High confidence: exact or near-exact match to medication name/brand/generic.
+   * Medium confidence: possible match but needs review.
+   * Low confidence: do not auto-normalize.
+
+3. Add a medication ambiguity safeguard.
+
+   * If a medication could be confused with a look-alike/sound-alike medication, do not silently choose.
+   * Example: drospirenone/Slynd should not be confused with risperidone.
+   * In ambiguous cases, return a review flag such as:
+     “Medication requires provider review: possible matches include drospirenone vs risperidone.”
+
+4. Preserve current SOAP medication-state logic.
+
+   * Current medications should only be treated as current if there is clear evidence the patient is actively taking them today.
+   * Discussed medications must remain discussed.
+   * Possible future medications must not be upgraded to current.
+   * RxNorm normalization should identify the medication name, not change the medication status.
+
+5. Update SOAP input context carefully.
+
+   * The SOAP writer may receive normalized medication metadata as supplemental context only.
+   * The SOAP writer should prefer normalized generic names only when confidence is high.
+   * If confidence is medium/low, the SOAP writer should preserve the original text and/or flag for review instead of guessing.
+   * Do not allow RxNorm normalization to override medication status, plan intent, discontinuation status, or provider recommendations.
+
+6. Suggested stored fields:
+
+   * original_text
+   * normalized_name
+   * generic_name
+   * brand_name
+   * rxcui
+   * medication_class
+   * confidence_score
+   * match_type
+   * requires_review
+   * possible_matches
+   * source_context
+   * created_at
+   * updated_at
+
+7. Start with a limited high-value medication dictionary before expanding.
+   Include common hormone, weight loss, contraception, thyroid, psychiatric, cardiovascular, and metabolic medications frequently used in ClinIQ.
+
+Examples to test:
+
+* Slynd → drospirenone
+* Ozempic/Wegovy → semaglutide
+* Mounjaro/Zepbound → tirzepatide
+* Prometrium → progesterone
+* Estrace → estradiol
+* Synthroid → levothyroxine
+* Cytomel → liothyronine
+* Wellbutrin → bupropion
+* Aldactone → spironolactone
+* Risperdal → risperidone
+
+8. Testing requirements:
+
+   * Run existing SOAP note regression tests before and after.
+   * Confirm provider-perspective language remains intact.
+   * Confirm discussed medications are not added to the active plan.
+   * Confirm discontinued medications are not listed as current.
+   * Confirm normalized names improve accuracy without changing clinical intent.
+   * Confirm Slynd/drospirenone does not become risperidone.
+   * Confirm future-option medications remain future/discussed only.
+
+This should be implemented as a small additive module first, not a broad rewrite. Please provide the file list and line-level change plan before editing.

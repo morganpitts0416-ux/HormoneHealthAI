@@ -1,4 +1,5 @@
-import type { MedicationEntry, MedicationMatch } from "@shared/schema";
+import type { MedicationEntry, MedicationMatch, RxNormMatch } from "@shared/schema";
+import { lookupRxNorm, checkLASA } from "./rxnorm-dict";
 
 function levenshtein(a: string, b: string): number {
   const m = a.length, n = b.length;
@@ -117,6 +118,63 @@ export function normalizeTranscript(
 
   return matches.sort((a, b) => a.startIndex - b.startIndex);
 }
+
+/**
+ * enrichWithRxNorm — additive RxNorm enrichment pass over an existing
+ * MedicationMatch array. Never modifies medication status, clinical
+ * intent, or any SOAP logic. Returns RxNormMatch[] where every field
+ * from the original MedicationMatch is preserved exactly.
+ *
+ * Confidence tier mapping:
+ *   high   (≥ 0.90) — exact / brand / spoken_variant match; safe to use generic name
+ *   medium (0.70–0.89) — flag for review, preserve original term in SOAP
+ *   low    (< 0.70)  — fuzzy/misspelling; do NOT auto-normalize; always flag
+ *
+ * LASA check: if the matched generic participates in any look-alike/
+ * sound-alike pair, requiresReview is forced true regardless of confidence.
+ */
+export function enrichWithRxNorm(matches: MedicationMatch[]): RxNormMatch[] {
+  return matches.map(match => {
+    const rxEntry = lookupRxNorm(match.canonicalName);
+    const lasaPairs = rxEntry ? checkLASA(rxEntry.genericName) : [];
+
+    const confidenceTier: RxNormMatch["confidenceTier"] =
+      match.confidence >= 0.90 ? "high" :
+      match.confidence >= 0.70 ? "medium" : "low";
+
+    const hasLASA = lasaPairs.length > 0;
+    const requiresReview =
+      match.needsReview ||          // existing flag preserved
+      confidenceTier !== "high" ||  // medium/low → always review
+      hasLASA;                      // LASA conflict → always review
+
+    let reviewReason: string | null = null;
+    if (hasLASA) {
+      reviewReason = lasaPairs.map(p => p.warning).join(" | ");
+    } else if (confidenceTier === "low") {
+      reviewReason = `Low-confidence match (${Math.round(match.confidence * 100)}%): "${match.originalTerm}" → "${match.canonicalName}" via ${match.matchType}. Verify before charting.`;
+    } else if (confidenceTier === "medium") {
+      reviewReason = `Medium-confidence match (${Math.round(match.confidence * 100)}%): "${match.originalTerm}" → "${match.canonicalName}". Confirm correct medication.`;
+    }
+
+    const possibleMatches: string[] = hasLASA
+      ? lasaPairs.flatMap(p => p.names).filter(n => n !== (rxEntry?.genericName ?? ""))
+      : [];
+
+    return {
+      ...match,
+      rxcui: rxEntry?.rxcui ?? null,
+      normalizedGenericName: rxEntry?.genericName ?? null,
+      medicationClass: rxEntry?.medicationClass ?? match.drugClass ?? null,
+      confidenceTier,
+      requiresReview,
+      reviewReason,
+      possibleMatches,
+    };
+  });
+}
+
+export type { RxNormMatch };
 
 export function parseCSV(csvText: string): Record<string, string>[] {
   const lines = csvText.split(/\r?\n/);

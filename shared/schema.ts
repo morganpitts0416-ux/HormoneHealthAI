@@ -1489,6 +1489,21 @@ export type MedicationMatch = {
   endIndex: number;
 };
 
+/**
+ * RxNormMatch — additive enrichment of MedicationMatch with RxNorm metadata.
+ * Produced by server/medication-normalizer.ts enrichWithRxNorm().
+ * Never alters medication status, clinical intent, or SOAP structure.
+ */
+export type RxNormMatch = MedicationMatch & {
+  rxcui: string | null;
+  normalizedGenericName: string | null;
+  medicationClass: string | null;
+  confidenceTier: "high" | "medium" | "low";
+  requiresReview: boolean;
+  reviewReason: string | null;
+  possibleMatches: string[];
+};
+
 // ═══════════════════════════════════════════════════════════════════════════
 // MULTI-CLINIC SUITE FOUNDATION
 // All tables below are ADDITIVE. Existing solo-provider workflows continue
