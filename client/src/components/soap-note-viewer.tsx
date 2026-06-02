@@ -168,6 +168,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
   const nodes: ReactElement[] = [];
   let inAssessmentPlan = false;
   let inNumberedItem = false;
+  let currentItemHasPlanLabel = false;
   const usedIndices = new Set<number>();
 
   function matchEvidence(lineText: string): EvidenceSuggestion[] {
@@ -213,6 +214,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
     if (MAJOR_SECTIONS.test(trimmed)) {
       inAssessmentPlan = ASSESSMENT_SECTION.test(trimmed);
       inNumberedItem = false;
+      currentItemHasPlanLabel = false;
       nodes.push(<span key={i} className="soap-section-major">{trimmed}</span>);
       continue;
     }
@@ -332,6 +334,10 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
       if (/^Physical Exam$/i.test(subMatch[1]) && PE_NOT_PERFORMED.test(subMatch[2].trim())) {
         continue;
       }
+      // Track when the note already contains a Plan: label so we don't inject a duplicate.
+      if (inNumberedItem && /^Plan$/i.test(subMatch[1])) {
+        currentItemHasPlanLabel = true;
+      }
       nodes.push(
         <p key={i} className="soap-body">
           <span className="soap-label">{subMatch[1]}: </span>
@@ -343,6 +349,16 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
 
     if (trimmed.startsWith("-") || trimmed.startsWith("•")) {
       const bulletText = trimmed.slice(1).trim();
+      // If the AI dropped the Plan: label (validation-pass drift), inject it visually
+      // before the first bullet of each numbered Assessment item.
+      if (inAssessmentPlan && inNumberedItem && !currentItemHasPlanLabel) {
+        currentItemHasPlanLabel = true;
+        nodes.push(
+          <p key={`plan-label-${i}`} className="soap-body">
+            <span className="soap-label">Plan: </span>
+          </p>
+        );
+      }
       const evNodes = (inAssessmentPlan && inNumberedItem) ? renderEvidenceFor(bulletText, `b${i}`) : [];
       nodes.push(
         <p key={i} className="soap-body pl-4">
@@ -357,6 +373,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
 
     if (/^\d+\./.test(trimmed)) {
       inNumberedItem = true;
+      currentItemHasPlanLabel = false;
       const evNodes = inAssessmentPlan ? renderEvidenceFor(trimmed, `n${i}`) : [];
       nodes.push(
         <p key={i} className="soap-body font-semibold mt-1">
