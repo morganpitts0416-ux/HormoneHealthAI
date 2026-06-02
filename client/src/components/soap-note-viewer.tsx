@@ -169,6 +169,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
   let inAssessmentPlan = false;
   let inNumberedItem = false;
   let currentItemHasPlanLabel = false;
+  let pendingPlanLabel = false;
   const usedIndices = new Set<number>();
 
   function matchEvidence(lineText: string): EvidenceSuggestion[] {
@@ -215,6 +216,7 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
       inAssessmentPlan = ASSESSMENT_SECTION.test(trimmed);
       inNumberedItem = false;
       currentItemHasPlanLabel = false;
+      pendingPlanLabel = false;
       nodes.push(<span key={i} className="soap-section-major">{trimmed}</span>);
       continue;
     }
@@ -334,9 +336,23 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
       if (/^Physical Exam$/i.test(subMatch[1]) && PE_NOT_PERFORMED.test(subMatch[2].trim())) {
         continue;
       }
-      // Track when the note already contains a Plan: label so we don't inject a duplicate.
-      if (inNumberedItem && /^Plan$/i.test(subMatch[1])) {
+      // "Plan:" label inside a numbered assessment item — if it has no inline content,
+      // defer rendering: bullets that follow will be collected and rendered as prose.
+      if (inAssessmentPlan && inNumberedItem && /^Plan$/i.test(subMatch[1])) {
         currentItemHasPlanLabel = true;
+        if (!subMatch[2].trim()) {
+          pendingPlanLabel = true;
+          continue; // skip the empty label — bullets below will render it
+        }
+        // Has inline content already (e.g. "Plan: Start testosterone...") — render as-is.
+        pendingPlanLabel = false;
+        nodes.push(
+          <p key={i} className="soap-body">
+            <span className="soap-label">Plan: </span>
+            {subMatch[2].trim()}
+          </p>
+        );
+        continue;
       }
       nodes.push(
         <p key={i} className="soap-body">
@@ -348,32 +364,52 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
     }
 
     if (trimmed.startsWith("-") || trimmed.startsWith("•")) {
-      const bulletText = trimmed.slice(1).trim();
-      // If the AI dropped the Plan: label (validation-pass drift), inject it visually
-      // before the first bullet of each numbered Assessment item.
-      if (inAssessmentPlan && inNumberedItem && !currentItemHasPlanLabel) {
-        currentItemHasPlanLabel = true;
+      // Inside a numbered Assessment item: collect ALL consecutive bullets and render
+      // as a single prose line after the "Plan:" label.
+      if (inAssessmentPlan && inNumberedItem) {
+        const items: string[] = [];
+        let j = i;
+        while (j < lines.length) {
+          const next = lines[j].trim();
+          if (next.startsWith("-") || next.startsWith("•")) {
+            items.push(next.slice(1).trim());
+            j++;
+          } else if (!next) {
+            break; // blank line ends the bullet group
+          } else {
+            break;
+          }
+        }
+        const planText = items.join("; ");
+        const evNodes = renderEvidenceFor(planText, `b${i}`);
         nodes.push(
-          <p key={`plan-label-${i}`} className="soap-body">
+          <p key={i} className="soap-body">
             <span className="soap-label">Plan: </span>
+            {planText}
+            {mode === "flags" && evNodes}
           </p>
         );
+        if (mode === "callouts") nodes.push(...evNodes);
+        currentItemHasPlanLabel = true;
+        pendingPlanLabel = false;
+        i = j - 1; // advance past all consumed bullets
+        continue;
       }
-      const evNodes = (inAssessmentPlan && inNumberedItem) ? renderEvidenceFor(bulletText, `b${i}`) : [];
+      // Outside assessment numbered items — regular bullet rendering.
+      const bulletText = trimmed.slice(1).trim();
       nodes.push(
         <p key={i} className="soap-body pl-4">
           <span className="text-primary/60 mr-1 select-none">·</span>
           {bulletText}
-          {mode === "flags" && evNodes}
         </p>
       );
-      if (mode === "callouts") nodes.push(...evNodes);
       continue;
     }
 
     if (/^\d+\./.test(trimmed)) {
       inNumberedItem = true;
       currentItemHasPlanLabel = false;
+      pendingPlanLabel = false;
       const evNodes = inAssessmentPlan ? renderEvidenceFor(trimmed, `n${i}`) : [];
       nodes.push(
         <p key={i} className="soap-body font-semibold mt-1">
@@ -385,10 +421,14 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
       continue;
     }
 
-    const evNodes = (inAssessmentPlan && inNumberedItem) ? renderEvidenceFor(trimmed, `p${i}`) : [];
+    // Strip AI-generated [bracket wrapping] from clinical reasoning paragraphs.
+    const displayText = (inAssessmentPlan && inNumberedItem && trimmed.startsWith("[") && trimmed.endsWith("]"))
+      ? trimmed.slice(1, -1)
+      : trimmed;
+    const evNodes = (inAssessmentPlan && inNumberedItem) ? renderEvidenceFor(displayText, `p${i}`) : [];
     nodes.push(
       <p key={i} className="soap-body">
-        {trimmed}
+        {displayText}
         {mode === "flags" && evNodes}
       </p>
     );
