@@ -662,6 +662,7 @@ ${diarizedInput}`;
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
+    temperature: 0.2,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -1636,6 +1637,7 @@ If any major HPI topic has no Assessment coverage — ADD the Assessment entry b
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
+    temperature: 0.3,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },
@@ -1672,7 +1674,83 @@ function stripLeakedInstructions(note: string): string {
       earliest = m.index;
     }
   }
-  return note.slice(0, earliest).replace(/[\s═]+$/g, "").trimEnd();
+  const trimmed = note.slice(0, earliest).replace(/[\s═]+$/g, "").trimEnd();
+  return stripBracketPlaceholders(trimmed);
+}
+
+// Strip format-template bracket placeholders that the LLM occasionally echoes
+// literally into the note body.
+//
+// Two cases handled:
+//   1. Pure template instruction placeholders (the entire content between the
+//      brackets is a prompt instruction, not clinical text) — line is removed.
+//   2. Clinical content accidentally wrapped in outer brackets — brackets are
+//      stripped but the text is kept.
+//
+// Detection heuristic: a bracket-wrapped block is a template instruction when
+// it contains any of the known placeholder instruction fragments.
+const TEMPLATE_PLACEHOLDER_FRAGMENTS = [
+  /\bclinical reasoning\b/i,
+  /\bopening synthesis paragraph\b/i,
+  /\b2-3 sentences\b/i,
+  /\b3-5 sentences\b/i,
+  /\bwhy this diagnosis\b/i,
+  /\bdrug name,?\s+dose\b/i,
+  /\blabs ordered\b/i,
+  /\breferrals\b.*\bfollow.?up\b/i,
+  /\bcontinue for each diagnosis\b/i,
+  /\bsee ros formatting\b/i,
+  /\bif provided\b.*\bif not\b/i,
+  /\bspecific interval with clinical rationale\b/i,
+  /\bprovider-defined clinical bundle\b/i,
+];
+
+function stripBracketPlaceholders(note: string): string {
+  if (!note) return note;
+  // Process line by line so we can handle multi-paragraph bracket blocks too.
+  // We use a simple state machine: accumulate characters for a potential
+  // bracket block, then decide what to do with it.
+  const lines = note.split("\n");
+  const out: string[] = [];
+
+  for (const line of lines) {
+    const trimmed = line.trim();
+
+    // Line is entirely a bracket-wrapped block (single-line case).
+    if (trimmed.startsWith("[") && trimmed.endsWith("]") && trimmed.length > 2) {
+      const inner = trimmed.slice(1, -1);
+      const isTemplateInstruction = TEMPLATE_PLACEHOLDER_FRAGMENTS.some(re => re.test(inner));
+      if (isTemplateInstruction) {
+        // Drop the line entirely — it is a literal template placeholder.
+        continue;
+      } else {
+        // Strip the brackets but keep the clinical content.
+        out.push(line.replace(/^\s*\[/, "").replace(/\]\s*$/, ""));
+        continue;
+      }
+    }
+
+    // Line starts with "[" but does NOT end with "]" — beginning of a
+    // multi-line bracket block. Collapse the whole block inline since our
+    // line loop only sees one line at a time; just strip the opening bracket.
+    // (Multi-line bracket blocks from the template are rare; single-line is
+    // the common failure mode.)
+    if (trimmed.startsWith("[") && !trimmed.endsWith("]")) {
+      const isTemplateInstruction = TEMPLATE_PLACEHOLDER_FRAGMENTS.some(re => re.test(trimmed));
+      if (!isTemplateInstruction) {
+        out.push(line.replace(/^\s*\[/, ""));
+        continue;
+      }
+      // Template instruction at the start of a multi-line block: drop this
+      // line. Subsequent lines (the remainder of the block) will pass through
+      // as-is since they don't start with "[".
+      continue;
+    }
+
+    out.push(line);
+  }
+
+  return out.join("\n");
 }
 
 async function qaCheck(
@@ -1750,6 +1828,7 @@ If you are writing a revised_fullNote, the following style rules are non-negotia
 - OPENING SYNTHESIS PARAGRAPH REQUIRED: The Assessment must begin with a 3-5 sentence paragraph synthesizing the clinical picture at the pattern level — connecting symptoms, labs, and treatment rationale. This is NOT a table of contents ("This patient has X, Y, Z diagnoses addressed below"). It is an independent clinical impression.
 - CARE PLAN MUST BE A BULLETED LIST: The Care Plan section must be formatted as a dash-prefixed bullet list (- bullet text). Never rewrite it as a paragraph or numbered list. Each bullet is one concrete, patient-facing action item written in plain language. If the Care Plan in the draft is in paragraph or numbered-list form, convert it to dash bullets before returning the revised note.
 - NO "Counseling / Education:" SUB-SECTIONS: Never add a "Counseling / Education:" or "Monitoring / Follow-up:" sub-section header under any numbered Assessment item. Education and counseling belong woven into the clinical reasoning paragraph as integrated clinical sentences.
+- PLAN: SUB-LABEL IS MANDATORY AND MUST BE PRESERVED: Every numbered Assessment item MUST contain a "Plan:" label on its own line immediately before the treatment orders (drug name, dose, route, frequency; labs ordered; referrals; follow-up). "Plan:" is an integrated structural label within the numbered item — it is NOT a sub-section header and must NEVER be removed, merged into prose, or omitted. If any numbered item in your revision is missing its "Plan:" label, add it back before returning the note.
 - NO BOILERPLATE CONSENT PHRASES: Never write "Patient verbalized understanding and consented," "Risks and benefits discussed," "Patient is agreeable," or "Education provided regarding [X]." These phrases must not appear anywhere in the revised note.
 - NUMBERED ITEMS GROUPED BY DOMAIN: Assessment items should follow the same topical grouping as the HPI — hormonal together, metabolic together, etc. Do not scatter related diagnoses randomly. Do NOT split a consolidated multi-code Assessment item into separate numbered items during revision — if the original note grouped "Perimenopausal Hormonal Transition / HSDD (N95.1, F52.0, G47.00)" as one item, keep it as one item.
 - PLAIN TEXT ONLY: No asterisks, no markdown bold, no pound signs, no underscores anywhere in the note.
@@ -1805,6 +1884,7 @@ Review the note for quality issues. If critical/important issues are found, prov
 
   const completion = await retryOnRateLimit(() => openai.chat.completions.create({
     model: "gpt-4o",
+    temperature: 0.1,
     messages: [
       { role: "system", content: systemPrompt },
       { role: "user", content: userPrompt },

@@ -9543,6 +9543,7 @@ RULES:
     try {
       const completion = await openai.chat.completions.create({
         model: "gpt-4o",
+        temperature: 0.1,
         messages: [
           {
             role: "system",
@@ -9573,11 +9574,19 @@ CATEGORY 2 — JUNE PREFERENCE RULES (only if provider rules are provided)
 • Never change medication states (current / new / adjusted / discontinued / discussed).
 
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
-FORMAT RULES
+FORMAT RULES — NON-NEGOTIABLE
 ━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━
 • Preserve all section headers exactly as they appear in the original note.
 • Return the complete note — all sections — not just the modified parts.
-• Output only the note text. No preamble, commentary, or postscript.`,
+• Output only the note text. No preamble, commentary, or postscript.
+• PLAIN TEXT ONLY: No asterisks, markdown bold (**), pound signs (#), or underscores anywhere in the output.
+• PLAN: SUB-LABEL IS MANDATORY: Every numbered Assessment/Plan item contains a "Plan:" label on its own line immediately before the treatment orders. This structural label MUST be preserved in your output exactly as it appears in the original note. Never remove, rename, fold into prose, or omit the "Plan:" label. If the original item has "Plan:" — your output must have "Plan:" in the same position.
+• NUMBERED ITEM STRUCTURE: Each numbered Assessment item follows this exact structure:
+    [number]. [Diagnosis name] ([ICD-10 code])
+    [Clinical reasoning paragraph — plain prose, no brackets]
+    Plan: [treatment orders: drug name, dose, route, frequency; labs; referrals; follow-up]
+  Do not merge the Plan text into the reasoning paragraph. Do not add any other sub-labels.
+• CARE PLAN SECTION: Must remain a dash-prefixed bullet list (- item). Never convert to prose or numbered list.`,
           },
           {
             role: "user",
