@@ -1,4 +1,4 @@
-import { useEffect, useState } from "react";
+import { useEffect, useState, useRef, useCallback } from "react";
 import { useLocation } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -59,6 +59,111 @@ interface TemplateBlock {
 }
 
 function uid() { return Math.random().toString(36).substring(2, 10); }
+
+function insertAtCursor(
+  el: HTMLTextAreaElement | HTMLInputElement,
+  current: string,
+  insertion: string,
+): { next: string; cursor: number } {
+  const start = el.selectionStart ?? current.length;
+  const end = el.selectionEnd ?? current.length;
+  const next = current.slice(0, start) + insertion + current.slice(end);
+  const cursor = start + insertion.length;
+  return { next, cursor };
+}
+
+function FillableTextarea({
+  value,
+  onChange,
+  rows = 3,
+  placeholder,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  rows?: number;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLTextAreaElement>(null);
+  const insertBlank = useCallback(() => {
+    const el = ref.current;
+    const { next, cursor } = el
+      ? insertAtCursor(el, value, "{{blank}}")
+      : { next: value + "{{blank}}", cursor: value.length + 9 };
+    onChange(next);
+    setTimeout(() => {
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(cursor, cursor);
+    }, 0);
+  }, [value, onChange]);
+
+  return (
+    <div className="space-y-1">
+      <Textarea
+        ref={ref}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+        rows={rows}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-6 px-2 text-[10px] gap-1"
+        onClick={insertBlank}
+        title="Insert a fill-in-the-blank field at the cursor position"
+      >
+        <Plus className="w-3 h-3" />Insert Blank
+      </Button>
+    </div>
+  );
+}
+
+function FillableInput({
+  value,
+  onChange,
+  placeholder,
+}: {
+  value: string;
+  onChange: (val: string) => void;
+  placeholder?: string;
+}) {
+  const ref = useRef<HTMLInputElement>(null);
+  const insertBlank = useCallback(() => {
+    const el = ref.current;
+    const { next, cursor } = el
+      ? insertAtCursor(el, value, "{{blank}}")
+      : { next: value + "{{blank}}", cursor: value.length + 9 };
+    onChange(next);
+    setTimeout(() => {
+      if (!el) return;
+      el.focus();
+      el.setSelectionRange(cursor, cursor);
+    }, 0);
+  }, [value, onChange]);
+
+  return (
+    <div className="space-y-1">
+      <Input
+        ref={ref}
+        placeholder={placeholder}
+        value={value}
+        onChange={e => onChange(e.target.value)}
+      />
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-6 px-2 text-[10px] gap-1"
+        onClick={insertBlank}
+        title="Insert a fill-in-the-blank field at the cursor position"
+      >
+        <Plus className="w-3 h-3" />Insert Blank
+      </Button>
+    </div>
+  );
+}
 
 // Reusable content (also rendered embedded inside the Account page).
 export function NoteTemplatesContent({ embedded = false }: { embedded?: boolean }) {
@@ -361,26 +466,26 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
                       />
                     )}
                     {clinicalDef && !clinicalDef.chart && (
-                      <Textarea
+                      <FillableTextarea
                         placeholder={`Default ${clinicalDef.label.toLowerCase()} content (optional)`}
                         value={b.defaultValue ?? ""}
-                        onChange={e => updateBlock(i, { defaultValue: e.target.value })}
+                        onChange={val => updateBlock(i, { defaultValue: val })}
                         rows={3}
                       />
                     )}
                     {(b.type === "free_text" || b.type === "long_text") && (
-                      <Textarea
-                        placeholder="Default content (optional)"
+                      <FillableTextarea
+                        placeholder="Default content (optional) — click Insert Blank to add fill-in-the-blank fields"
                         value={b.defaultValue ?? ""}
-                        onChange={e => updateBlock(i, { defaultValue: e.target.value })}
+                        onChange={val => updateBlock(i, { defaultValue: val })}
                         rows={3}
                       />
                     )}
                     {b.type === "short_text" && (
-                      <Input
+                      <FillableInput
                         placeholder="Default value (optional)"
                         value={b.defaultValue ?? ""}
-                        onChange={e => updateBlock(i, { defaultValue: e.target.value })}
+                        onChange={val => updateBlock(i, { defaultValue: val })}
                       />
                     )}
                     {b.type === "checkbox" && (

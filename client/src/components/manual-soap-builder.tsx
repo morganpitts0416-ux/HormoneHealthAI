@@ -47,6 +47,7 @@ const BLOCK_TYPES = [
   { id: "assessment_plan", label: "Assessment / Plan", icon: ListChecks, category: "assessment" },
   { id: "care_plan", label: "Care Plan", icon: CalendarCheck, category: "plan" },
   { id: "follow_up", label: "Follow-Up", icon: CalendarCheck, category: "plan" },
+  { id: "custom_text", label: "Custom Note", icon: FileText, category: "custom" },
 ] as const;
 
 type BlockTypeId = typeof BLOCK_TYPES[number]["id"];
@@ -69,6 +70,17 @@ interface SoapBlock {
   bulletMode?: boolean;
   /** Structured vitals data for the vitals block type. */
   vitalsData?: VitalsData;
+  /**
+   * For custom_text blocks (non-standard template sections). Shown as the
+   * section header in place of the generic "Custom Note" label.
+   */
+  customLabel?: string;
+  /**
+   * Filled values for {{blank}} markers in the block content. Index matches
+   * the order of {{blank}} markers in `content`. Cleared when the block is
+   * flattened to plain text.
+   */
+  fillValues?: string[];
 }
 
 interface AssessmentItem {
@@ -79,6 +91,41 @@ interface AssessmentItem {
   plan: string;
 }
 
+
+// ── Template blank helpers ─────────────────────────────────────────────────
+function hasTemplateBlanks(content: string): boolean {
+  return /\{\{[^}]+\}\}/.test(content);
+}
+
+type FillSegment =
+  | { type: "text"; text: string }
+  | { type: "blank"; index: number };
+
+function parseFillSegments(content: string): FillSegment[] {
+  const parts = content.split(/(\{\{[^}]*\}\})/g);
+  let blankIndex = 0;
+  const segments: FillSegment[] = [];
+  for (const part of parts) {
+    if (/^\{\{[^}]*\}\}$/.test(part)) {
+      segments.push({ type: "blank", index: blankIndex++ });
+    } else if (part) {
+      segments.push({ type: "text", text: part });
+    }
+  }
+  return segments;
+}
+
+function flattenBlanks(content: string, fillValues: string[]): string {
+  let idx = 0;
+  return content.replace(/\{\{[^}]*\}\}/g, () => fillValues[idx++] ?? "");
+}
+
+function resolveBlockContent(block: SoapBlock): string {
+  if (block.fillValues && hasTemplateBlanks(block.content)) {
+    return flattenBlanks(block.content, block.fillValues);
+  }
+  return block.content;
+}
 
 function uid(): string {
   return Math.random().toString(36).substring(2, 10);
@@ -799,7 +846,9 @@ function BlockEditor({
           onMouseLeave={() => { if (!isDragging) setIsDraggable(false); }}
         />
         <Icon className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
-        <span className="text-xs font-semibold flex-1">{blockDef.label}</span>
+        <span className="text-xs font-semibold flex-1">
+          {block.type === "custom_text" && block.customLabel ? block.customLabel : blockDef.label}
+        </span>
         {canPullFromChart && chartItemsForBlock.length > 0 && (
           <Button
             size="sm"
@@ -918,6 +967,13 @@ function BlockEditor({
               chartData={block.chartData ?? createChartData(resolvedSystems)}
               onChange={chartData => onUpdate({ chartData })}
             />
+          ) : hasTemplateBlanks(block.content) ? (
+            <FillModeEditor
+              content={block.content}
+              fillValues={block.fillValues ?? []}
+              onChange={fillValues => onUpdate({ fillValues })}
+              onFlatten={flattened => onUpdate({ content: flattened, fillValues: undefined })}
+            />
           ) : (
             <div className="relative">
               <Textarea
@@ -946,6 +1002,75 @@ function BlockEditor({
           )}
         </div>
       )}
+    </div>
+  );
+}
+
+function FillModeEditor({
+  content,
+  fillValues,
+  onChange,
+  onFlatten,
+}: {
+  content: string;
+  fillValues: string[];
+  onChange: (vals: string[]) => void;
+  onFlatten: (flattened: string) => void;
+}) {
+  const segments = parseFillSegments(content);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const blankCount = segments.filter(s => s.type === "blank").length;
+
+  const update = (index: number, val: string) => {
+    const next = [...fillValues];
+    next[index] = val;
+    onChange(next);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, blankIndex: number) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const next = inputRefs.current[blankIndex + 1];
+      if (next) next.focus();
+    }
+  };
+
+  return (
+    <div className="space-y-2">
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1 bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] font-medium">
+          {blankCount} fill-in-the-blank field{blankCount !== 1 ? "s" : ""} — Tab to advance
+        </span>
+      </div>
+      <div className="p-3 bg-muted/20 rounded-md text-sm leading-8">
+        {segments.map((seg, i) =>
+          seg.type === "text" ? (
+            <span key={i} className="whitespace-pre-wrap">{seg.text}</span>
+          ) : (
+            <input
+              key={i}
+              ref={el => { inputRefs.current[seg.index] = el; }}
+              type="text"
+              value={fillValues[seg.index] ?? ""}
+              onChange={e => update(seg.index, e.target.value)}
+              onKeyDown={e => handleKeyDown(e, seg.index)}
+              className="inline-block border-0 border-b-2 border-primary bg-primary/5 rounded-none px-1 mx-0.5 text-sm focus:outline-none focus:border-primary focus:bg-primary/10 min-w-[3rem] transition-colors"
+              style={{ width: Math.max(48, ((fillValues[seg.index]?.length ?? 0) + 3) * 8) }}
+              placeholder="___"
+              data-testid={`blank-input-${seg.index}`}
+            />
+          )
+        )}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-7 px-3 text-xs gap-1.5"
+        onClick={() => onFlatten(flattenBlanks(content, fillValues))}
+      >
+        Done — Convert to plain text
+      </Button>
     </div>
   );
 }
@@ -1060,6 +1185,7 @@ function getPlaceholder(type: BlockTypeId): string {
     case "assessment_plan": return "Assessment and plan...";
     case "care_plan": return "Care plan details...";
     case "follow_up": return "Follow-up instructions and timeline...";
+    case "custom_text": return "Enter content...";
     default: return "Enter documentation...";
   }
 }
@@ -1104,7 +1230,7 @@ function blocksToFullNote(
   for (const sectionId of sectionOrder) {
     const block = blocks.find(b => b.type === sectionId);
     if (!block) continue;
-    const content = block.content.trim();
+    const content = resolveBlockContent(block).trim();
     if (!content) continue;
     if (sectionId === "hpi") {
       lines.push(content);
@@ -1149,8 +1275,9 @@ function blocksToFullNote(
   if (rosBlock) {
     if (rosBlock.mode === "chart" && rosBlock.chartData) {
       lines.push(chartDataToText("Review of Systems", rosBlock.chartData, rosFindings));
-    } else if (rosBlock.content.trim()) {
-      lines.push(`Review of Systems: ${rosBlock.content.trim()}`);
+    } else {
+      const c = resolveBlockContent(rosBlock).trim();
+      if (c) lines.push(`Review of Systems: ${c}`);
     }
     lines.push("");
   }
@@ -1159,8 +1286,9 @@ function blocksToFullNote(
   if (peBlock) {
     if (peBlock.mode === "chart" && peBlock.chartData) {
       lines.push(chartDataToText("Physical Examination", peBlock.chartData, peFindings));
-    } else if (peBlock.content.trim()) {
-      lines.push(`Physical Examination: ${peBlock.content.trim()}`);
+    } else {
+      const c = resolveBlockContent(peBlock).trim();
+      if (c) lines.push(`Physical Examination: ${c}`);
     }
     lines.push("");
   }
@@ -1197,18 +1325,36 @@ function blocksToFullNote(
   }
 
   const cpBlock = blocks.find(b => b.type === "care_plan");
-  if (cpBlock?.content.trim()) {
-    lines.push("CARE PLAN");
-    lines.push("");
-    lines.push(cpBlock.content.trim());
-    lines.push("");
+  if (cpBlock) {
+    const c = resolveBlockContent(cpBlock).trim();
+    if (c) {
+      lines.push("CARE PLAN");
+      lines.push("");
+      lines.push(c);
+      lines.push("");
+    }
   }
 
   const fuBlock = blocks.find(b => b.type === "follow_up");
-  if (fuBlock?.content.trim()) {
-    lines.push("FOLLOW-UP");
+  if (fuBlock) {
+    const c = resolveBlockContent(fuBlock).trim();
+    if (c) {
+      lines.push("FOLLOW-UP");
+      lines.push("");
+      lines.push(c);
+      lines.push("");
+    }
+  }
+
+  // Custom text blocks — template-specific sections not in the standard SOAP schema.
+  // Rendered in the order they appear in the blocks array, after all standard sections.
+  for (const cb of blocks.filter(b => b.type === "custom_text")) {
+    const c = resolveBlockContent(cb).trim();
+    if (!c) continue;
+    const header = (cb.customLabel ?? "Notes").toUpperCase();
+    lines.push(header);
     lines.push("");
-    lines.push(fuBlock.content.trim());
+    lines.push(c);
     lines.push("");
   }
 
@@ -1273,15 +1419,17 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     // Map template block labels → SOAP block ids by fuzzy match against BLOCK_TYPES.label
     const mapLabelToType = (label: string): BlockTypeId | null => {
       const norm = label.toLowerCase().trim();
+      // Skip custom_text — it's a fallback type, never a fuzzy-match target
       for (const bt of BLOCK_TYPES) {
+        if (bt.id === "custom_text") continue;
         const btLabel = bt.label.toLowerCase();
         if (norm === btLabel) return bt.id;
         if (norm.includes(btLabel) || btLabel.includes(norm)) return bt.id;
       }
-      // Common abbreviations
-      if (/^hpi\b/.test(norm)) return "hpi";
+      // Common abbreviations + SOAP section vocabulary
+      if (/^hpi\b|^subjective\b/.test(norm)) return "hpi";
       if (/^ros\b/.test(norm)) return "ros";
-      if (/^pe\b|^physical\b|^exam\b/.test(norm)) return "physical_exam";
+      if (/^pe\b|^physical\b|^exam\b|^objective\b/.test(norm)) return "physical_exam";
       if (/^a\/p\b|^assessment\b/.test(norm)) return "assessment_plan";
       if (/^pmh\b|^medical hx\b/.test(norm)) return "medical_history";
       if (/^psh\b|^surgical hx\b/.test(norm)) return "surgical_history";
@@ -1289,7 +1437,8 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
       if (/^sh\b|^social hx\b/.test(norm)) return "social_history";
       if (/^meds?\b|^medications?\b/.test(norm)) return "current_medications";
       if (/^allerg/.test(norm)) return "allergies";
-      if (/^plan\b/.test(norm)) return "care_plan";
+      if (/^plan\b|^care plan\b/.test(norm)) return "care_plan";
+      if (/^procedure\b|^procedures\b/.test(norm)) return "care_plan";
       if (/follow.?up/.test(norm)) return "follow_up";
       return null;
     };
@@ -1300,7 +1449,6 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     }>;
     const newSoapBlocks: SoapBlock[] = [];
     const claimed = new Set<BlockTypeId>();
-    let unmappedHpiBuffer = "";
 
     // Map a built-in block id (HPI, ROS, etc.) directly to a SOAP block id —
     // the two enums share the same vocabulary for clinical sections.
@@ -1324,7 +1472,10 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
       const value = (tb.defaultValue ?? "").trim();
 
       if (mapped && !claimed.has(mapped)) {
-        const block: SoapBlock = { uid: uid(), type: mapped, content: value, mode: "freetext" };
+        const block: SoapBlock = {
+          uid: uid(), type: mapped, content: value, mode: "freetext",
+          ...(hasTemplateBlanks(value) ? { fillValues: [] } : {}),
+        };
         if (mapped === "assessment_plan") {
           // Start with one empty diagnosis item so the provider can fill it in;
           // any default text from the template lives in the summary so it doesn't
@@ -1371,19 +1522,19 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
         newSoapBlocks.push(block);
         claimed.add(mapped);
       } else if (value || tb.label) {
-        // No mapping – append to HPI as labelled free-text
-        const labelLine = tb.label ? `[${tb.label}]\n` : "";
-        unmappedHpiBuffer += `${labelLine}${value}\n\n`;
+        // No SOAP mapping — each unmapped field becomes its own labeled
+        // custom_text block so content stays visually separated (not jammed
+        // into HPI). Multiple custom_text blocks are allowed.
+        newSoapBlocks.push({
+          uid: uid(),
+          type: "custom_text",
+          content: value,
+          mode: "freetext",
+          customLabel: tb.label || "Notes",
+          ...(hasTemplateBlanks(value) ? { fillValues: [] } : {}),
+        });
+        // Note: do NOT add "custom_text" to `claimed` — multiple are allowed
       }
-    }
-
-    // If HPI not in template and we have unmapped content, prepend an HPI block
-    if (unmappedHpiBuffer.trim() && !claimed.has("hpi")) {
-      newSoapBlocks.unshift({ uid: uid(), type: "hpi", content: unmappedHpiBuffer.trim(), mode: "freetext" });
-    } else if (unmappedHpiBuffer.trim()) {
-      // Append unmapped to existing HPI
-      const hpi = newSoapBlocks.find(b => b.type === "hpi");
-      if (hpi) hpi.content = (hpi.content ? hpi.content + "\n\n" : "") + unmappedHpiBuffer.trim();
     }
 
     // Always ensure assessment_plan exists at end
@@ -1549,7 +1700,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   });
 
   const usedBlockTypes = new Set(blocks.map(b => b.type));
-  const availableBlocks = BLOCK_TYPES.filter(bt => !usedBlockTypes.has(bt.id));
+  const availableBlocks = BLOCK_TYPES.filter(bt => bt.id !== "custom_text" && !usedBlockTypes.has(bt.id));
 
   return (
     <div className="flex flex-col h-full min-h-0" data-testid="manual-soap-builder">
