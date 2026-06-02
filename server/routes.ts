@@ -9688,7 +9688,10 @@ DRIFT — flag only concrete, verifiable problems (not stylistic issues):
 • A medication appears in A/P as active/new but is not mentioned in the transcript at all
 • A diagnosis is stated as confirmed but was never discussed in the transcript
 • A clinical finding is stated as fact with no basis in the note or transcript
-• A risk narrative substantially exceeds what the transcript or labs support`,
+• A risk narrative substantially exceeds what the transcript or labs support
+• A hormone or medication is documented as currently active (in Current Medications or A/P) when the transcript establishes the patient is NOT currently taking it (e.g., a prior provider discontinued it, or the patient says they stopped it)
+• Phrases like "continues hormone replacement therapy," "ongoing HRT," "currently on estrogen/testosterone/progesterone," or "aligning with her history of HRT" appear in the note when the transcript does NOT confirm current use
+• Third-person provider phrasing appears: "The provider recommended/discussed/advised/suggested," "[Patient name] agreed to," "[Patient name] expressed understanding" — any phrasing where the writer is positioned as an outside observer rather than the documenting provider`,
           },
           {
             role: "user",

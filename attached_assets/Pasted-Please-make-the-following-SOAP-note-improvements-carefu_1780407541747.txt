@@ -1,0 +1,127 @@
+Please make the following SOAP note improvements carefully and additively. Do NOT revert, rewrite, simplify, or replace the current SOAP generation pipeline. We need to preserve all recent progress, including:
+
+* current SOAP formatting and section structure
+* provider-style Assessment & Plan format
+* anti-fragmentation rules
+* anti-drift rules
+* medication state safety gate
+* structured extraction quality
+* custom diagnosis bundle logic
+* provider-personalization/Teach June behavior
+* concise medico-legal documentation style
+* avoidance of narrative storytelling
+
+The goal is to improve accuracy and provider voice without changing the overall note format.
+
+1. Add/strengthen a global Provider Voice Rule
+
+SOAP notes should be written from the provider’s perspective.
+
+Avoid third-person phrasing such as:
+
+* “The provider recommended…”
+* “The provider discussed…”
+* “The provider advised…”
+* “Amy agreed to…”
+* “Amy expressed understanding…”
+
+Preferred phrasing:
+
+* “Reviewed…”
+* “Discussed…”
+* “Recommended…”
+* “Initiated…”
+* “Continue…”
+* “Plan to…”
+* “Patient verbalized understanding and agrees with plan.”
+
+This should apply throughout HPI, Assessment, and Plan without altering the SOAP note format.
+
+2. Strengthen medication/hormone/treatment state tracking
+
+The SOAP pipeline must not infer that a patient is currently taking a medication, hormone, supplement, or therapy just because it was mentioned.
+
+For every medication/hormone/supplement/treatment discussed, classify state as one of:
+
+* CURRENT: patient is actively taking/using it now
+* NEW: started today
+* ADJUSTED: active treatment changed today
+* DISCONTINUED: stopped today or previously stopped
+* PREVIOUSLY_USED: used in the past but not currently active
+* DISCUSSED_ONLY: discussed as an option but not started
+
+Hard rule:
+Only CURRENT, NEW, or ADJUSTED items may be described as active therapy.
+
+DISCONTINUED, PREVIOUSLY_USED, and DISCUSSED_ONLY items must never be documented as currently active.
+
+Example safety issue:
+If the transcript states that a previous provider took the patient off hormones, the note must not say the patient is currently on hormone replacement therapy. It should say something like:
+“Previously used hormone therapy but reports it was discontinued by prior provider.”
+
+3. Add state consistency protection to HPI and A&P
+
+Do not write phrases like:
+
+* “continues hormone replacement therapy”
+* “ongoing HRT”
+* “currently on estrogen”
+* “aligning with her history of hormone replacement therapy”
+
+unless the extraction clearly confirms the patient is currently taking that therapy.
+
+Prior use does not equal current use.
+
+Discussion of restarting does not equal current use.
+
+4. Preserve custom diagnosis consolidation
+
+Do not break the custom diagnosis/provider-personalization logic.
+
+If a provider-defined custom diagnosis bundle is matched, related symptoms and plans should remain consolidated under that custom diagnosis rather than being separated into fragmented diagnoses.
+
+Example:
+Fatigue + low libido + sleep disturbance + vasomotor symptoms + perimenopausal changes may be consolidated under:
+“Early Hormonal Transition with Symptom Complex”
+
+The related plan should appear once under that diagnosis rather than being repeated separately under fatigue, insomnia, and low libido.
+
+5. Do not add broad rewrite behavior
+
+Do NOT add a generic “rewrite,” “improve,” or “summarize” pass.
+
+If a post-note pass is used, it must be a constrained Provider Personalization / Safety Enforcement Pass only.
+
+Allowed:
+
+* correct provider voice phrasing
+* correct medication/hormone state errors
+* consolidate custom diagnosis bundles
+* merge duplicated plan items
+* apply supported Teach June preferences
+* flag unsupported or ambiguous items
+
+Not allowed:
+
+* rewrite the full note
+* change SOAP formatting
+* remove clinical evidence
+* shorten the note
+* add unsupported rationale
+* change medication states without transcript support
+* convert the note into narrative storytelling
+* undo anti-fragmentation improvements
+
+6. Add validation if possible
+
+After SOAP generation and any provider-personalization pass, add a read-only validation check that flags:
+
+* third-person provider phrasing
+* medications/hormones incorrectly documented as current
+* prior therapies incorrectly treated as active
+* custom diagnosis bundle not applied when criteria are met
+* obvious anti-drift violations
+
+The validator should return structured warnings only. It should not rewrite the note.
+
+Please implement these as additive safety/style improvements only. The priority is to preserve the current SOAP note quality while improving provider voice and treatment-state accuracy.

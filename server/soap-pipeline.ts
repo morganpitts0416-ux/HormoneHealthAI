@@ -262,8 +262,17 @@ These five states are mutually exclusive and strictly defined. When in doubt, de
     Patient is currently on this medication AND the dose, route, or frequency is being changed at this visit.
 
   DISCONTINUED → status: "discontinued"
-    Provider explicitly stops a medication the patient was previously on.
+    Provider explicitly stops a medication the patient was previously on AT THIS VISIT, OR the patient
+    reports they are no longer taking a medication they used in the past (whether stopped by a prior provider,
+    self-discontinued, or lapsed). This covers ALL of the following:
+    - Provider says "we're stopping X" or "let's discontinue X" at this visit
+    - Patient says "my old doctor took me off X" / "I stopped taking X" / "that was discontinued"
+    - Patient reports a therapy they were previously on but are NOT currently using
     A medication the patient mentions they used in the past and stopped → DISCONTINUED, not "current".
+    CRITICAL: A patient who says a prior provider discontinued their hormones (e.g., "my last doctor took
+    me off HRT") is NOT currently on hormone therapy. Classify as DISCONTINUED with a note in the
+    indication field: "previously used; discontinued by prior provider." The note must NEVER document
+    this patient as currently on that therapy.
 
   DISCUSSED_ONLY → status: "discussed"
     The medication was MENTIONED, CONSIDERED, or EXPLORED in conversation but:
@@ -961,7 +970,16 @@ FORBIDDEN NARRATOR PHRASES (never use these):
 - "the patient acknowledged" / "the patient confirmed"
 - "the clinician mentioned" / "the clinician explained" / "the clinician discussed"
 - "the provider reviewed" / "the provider noted" / "the provider counseled"
+- "the provider recommended" / "the provider discussed" / "the provider advised" / "the provider suggested"
+- "[Patient first name] agreed to" / "[Patient first name] expressed understanding" / "[Patient first name] verbalized understanding" (e.g., "Amy agreed to...", "Amy expressed understanding of...")
 - Any phrasing that positions the writer as an outside observer describing what happened
+
+PREFERRED REPLACEMENTS for the above forbidden patterns:
+- "The provider recommended X" → "Recommended X" / "Plan to X"
+- "The provider discussed X" → "Discussed X" / "Reviewed X"
+- "The provider advised X" → "Advised X" / "Recommended X"
+- "[Name] agreed to X" → "Patient verbalized understanding and agrees with plan." (once at end of note if applicable) — or simply omit; agreement is implied by the plan
+- "[Name] expressed understanding" → omit entirely or integrate as: "Patient verbalizes understanding of [specific content]."; never frame as a third-person observation
 
 FORBIDDEN PASSIVE PATIENT-CENTERED CONSTRUCTIONS (never use these):
 These phrases make the patient the grammatical subject of a provider action, producing passive-sounding documentation that reads as if written about the patient rather than by the provider. They are prohibited throughout the entire note — HPI, Assessment, Plan, and Care Plan.
@@ -981,6 +999,43 @@ WRONG: "Patient was educated on the importance of consistent dosing."
 RIGHT: "Reviewed the importance of consistent dosing and expected onset of effect."
 WRONG: "Patient was advised to follow up in 6 weeks."
 RIGHT: "Advised to follow up in 6 weeks for repeat labs and symptom reassessment."
+
+═══════════════════════════════════════
+TREATMENT STATE CONSISTENCY PROTECTION — HORMONE AND MEDICATION ACCURACY
+═══════════════════════════════════════
+This rule governs the entire note — HPI, Current Medications, Assessment/Plan, and Care Plan.
+
+CORE PRINCIPLE: A patient's HISTORY of using a therapy is NOT evidence that they are currently using it.
+These three situations must NEVER be equated with current active use:
+  1. Prior use of a therapy that was subsequently discontinued (by any provider, or by the patient)
+  2. Discussion of restarting or initiating a therapy at this visit (that is NEW or DISCUSSED — not CURRENT)
+  3. History of hormone therapy mentioned in a review-of-systems or past medical history context
+
+SPECIFICALLY FORBIDDEN PHRASES — unless the normalized medication status is explicitly "current":
+- "continues hormone replacement therapy"
+- "ongoing HRT" / "on ongoing HRT"
+- "currently on estrogen" / "currently on testosterone" / "currently on progesterone"
+- "aligning with her history of hormone replacement therapy"
+- "consistent with her HRT regimen"
+- "her current hormone therapy"
+- "she continues her [hormone] regimen"
+- Any phrasing that implies active current use of a therapy when status is "discontinued" or "discussed"
+
+EXAMPLES — apply these principles throughout:
+WRONG: "Patient continues HRT initiated by prior provider." (when transcript says prior provider took them off hormones)
+RIGHT: "Previously used hormone therapy; reports it was discontinued by prior provider. Discussed restarting at this visit."
+
+WRONG: "Currently on estrogen 0.5 mg per discussion at this visit." (when estrogen was discussed as new, not current)
+RIGHT: Estrogen should appear as a NEW prescription in Assessment/Plan — NOT in Current Medications.
+
+WRONG: "Aligning with her history of testosterone therapy." (when she is not currently on testosterone)
+RIGHT: "Reports prior testosterone therapy through previous practice; currently not on any hormonal therapy."
+
+PRIOR-PROVIDER DISCONTINUATION — SPECIFIC RULE:
+If the transcript says a prior provider stopped a therapy (e.g., "my last doctor took me off hormones," "my previous gynecologist discontinued estrogen"), the note MUST reflect:
+- That therapy appears as DISCONTINUED in the note (HPI only — not in Current Medications, not as active A/P)
+- HPI language: "Previously used [hormone/therapy]; reports it was discontinued by prior provider. Patient presents today interested in restarting."
+- If restarting is decided: the NEW prescription goes in A/P and Care Plan only — it does NOT go in Current Medications at this visit.
 
 PREFERRED PROVIDER-AUTHORED PHRASING:
 - "she reports" / "he reports" / "patient reports"
@@ -1675,6 +1730,19 @@ CHECK FOR:
    - The Care Plan as an active medication instruction
    Medications that were mentioned as options to consider, future possibilities, historical trials, contingency alternatives, or patient questions ("have you tried X?") are DISCUSSED_ONLY and must not contaminate active medication lists.
    If a discussed-only medication appears in Current Medications or as an active A/P item, flag as CRITICAL and remove it from those locations. It may remain as a brief HPI clause only: "[Drug] was discussed as [a future option / an alternative / a past consideration]."
+
+24. PRIOR-THERAPY-AS-ACTIVE CONTAMINATION — PATIENT SAFETY: Does the note describe a medication or hormone as currently active when the NORMALIZED MEDICATIONS list shows its status as "discontinued" or "discussed"? Specifically check:
+   - Does the HPI contain phrases like "continues hormone replacement therapy," "ongoing HRT," "currently on estrogen/testosterone/progesterone," "aligning with her history of hormone replacement therapy," or "consistent with her HRT regimen" when the medication status is NOT "current"?
+   - Does the Current Medications section list a hormone or medication that the patient reports having been discontinued (by any provider)?
+   - Does any Assessment/Plan item describe a hormone or medication as an ongoing active treatment when the transcript establishes the patient is NOT currently on it?
+   If any of these are found, flag as CRITICAL and revise: remove the discontinued therapy from Current Medications; change any active-therapy language in HPI to "Previously used [X]; reports it was discontinued by [prior provider/self]. Discussed restarting at this visit." Ensure the A/P item uses deferred or new-start language, not continuation language.
+
+25. THIRD-PERSON PROVIDER PHRASING — PROVIDER VOICE: Does the note contain third-person narrator phrasing that positions the writer as an outside observer rather than the documenting provider? Specifically check for:
+   - "The provider recommended..." / "The provider discussed..." / "The provider advised..." / "The provider suggested..."
+   - "[Patient first name] agreed to..." (e.g., "Amy agreed to follow up") — patient name used as subject of a narrative observation
+   - "[Patient first name] expressed understanding" / "[Patient first name] verbalized understanding" — framed as a third-person observation
+   - "The clinician explained..." / "The visit included discussion of..."
+   If found, flag as important and revise to provider voice: "Recommended..." / "Discussed..." / "Advised..." / "Patient verbalizes understanding and agrees with plan." (only if transcript supports it; use once at end of encounter documentation if applicable).
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
