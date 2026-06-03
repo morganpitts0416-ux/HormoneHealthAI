@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { localDateTimeStr } from "@/lib/date-utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -54,9 +55,7 @@ function uid() { return Math.random().toString(36).substring(2, 10); }
 
 export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) {
   const { toast } = useToast();
-  const now = new Date();
-  const tzOffset = now.getTimezoneOffset() * 60_000;
-  const [visitDate, setVisitDate] = useState(new Date(now.getTime() - tzOffset).toISOString().slice(0, 16));
+  const [visitDate, setVisitDate] = useState(localDateTimeStr());
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [blocks, setBlocks] = useState<NurseBlock[]>([
     { uid: uid(), type: "chief_complaint", label: "Reason for Visit", content: "" },

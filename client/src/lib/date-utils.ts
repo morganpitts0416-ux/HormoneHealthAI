@@ -43,6 +43,23 @@ export function utcDateStr(d: Date): string {
 }
 
 /**
+ * Returns the current local date and time as a YYYY-MM-DDTHH:MM string
+ * suitable for datetime-local input fields.
+ *
+ * Using `new Date().toISOString().slice(0, 16)` returns the UTC datetime,
+ * which is offset from local time for users outside UTC. Use this helper
+ * everywhere a datetime-local input needs to be pre-filled with "now".
+ */
+export function localDateTimeStr(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  const hh = String(d.getHours()).padStart(2, "0");
+  const min = String(d.getMinutes()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}T${hh}:${min}`;
+}
+
+/**
  * Parses a date string in either YYYY-MM-DD or MM/DD/YYYY format and
  * returns a stable YYYY-MM-DD string without going through Date local
  * getters, which would shift the date for users west of UTC.

@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { localDateTimeStr } from "@/lib/date-utils";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
@@ -19,11 +20,7 @@ const CONTACT_OPTIONS = ["Patient", "Family member", "Pharmacy", "Insurance", "O
 
 export function PhoneNoteDialog({ patientId, onClose }: PhoneNoteDialogProps) {
   const { toast } = useToast();
-  const now = new Date();
-  const tzOffset = now.getTimezoneOffset() * 60_000;
-  const localISO = new Date(now.getTime() - tzOffset).toISOString().slice(0, 16);
-
-  const [visitDate, setVisitDate] = useState(localISO);
+  const [visitDate, setVisitDate] = useState(localDateTimeStr());
   const [contactedWith, setContactedWith] = useState("Patient");
   const [direction, setDirection] = useState<"incoming" | "outgoing">("incoming");
   const [chiefComplaint, setChiefComplaint] = useState("");
