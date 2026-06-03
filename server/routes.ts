@@ -4764,7 +4764,10 @@ Return ONLY this JSON structure:
           createdAt: lab.createdAt,
           labValues: lab.labValues || null,
           // Filter hormone-pattern rows out — they appear in the hormone assessment section
-          interpretations: visibleInterps.filter((i: any) => !isHormonePattern(i.category || '')),
+          // Also gate the entire table if the provider hid the labResults section
+          interpretations: hiddenSections.includes('labResults')
+            ? []
+            : visibleInterps.filter((i: any) => !isHormonePattern(i.category || '')),
           // Surface hormone pattern rows separately; apply section & row-level hiding
           hormonePatternRows: hiddenSections.includes('hormonePatterns')
             ? []
