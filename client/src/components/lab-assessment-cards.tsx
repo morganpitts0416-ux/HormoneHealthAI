@@ -2,8 +2,10 @@ import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/com
 import { Badge } from "@/components/ui/badge";
 import { Separator } from "@/components/ui/separator";
 import {
-  Heart, TrendingUp, Activity, Zap, Moon, Dna, AlertTriangle, CheckCircle, AlertCircle, Info, FlaskConical,
+  Heart, TrendingUp, Activity, Zap, Moon, Dna, AlertTriangle, CheckCircle, AlertCircle, Info, FlaskConical, Eye, EyeOff,
 } from "lucide-react";
+import { Button } from "@/components/ui/button";
+import { cn } from "@/lib/utils";
 import type { LabInterpretation } from "@shared/schema";
 import type {
   PREVENTRiskResult, AdjustedRiskAssessment, InsulinResistanceScreening,
@@ -376,7 +378,15 @@ export function StopBangCard({ stopBangRisk }: { stopBangRisk: StopBangResult })
 }
 
 // ─── Male Hormone Assessment Card ─────────────────────────────────────────
-export function MaleHormoneAssessmentCard({ patterns }: { patterns: MaleHormonePattern[] }) {
+export function MaleHormoneAssessmentCard({
+  patterns,
+  hiddenPatternNames = [],
+  onTogglePattern,
+}: {
+  patterns: MaleHormonePattern[];
+  hiddenPatternNames?: string[];
+  onTogglePattern?: (name: string) => void;
+}) {
   const confidenceStyles = {
     high: 'border-blue-300 bg-blue-50/50 dark:bg-blue-950/20 dark:border-blue-800',
     moderate: 'border-indigo-200 bg-indigo-50/30 dark:bg-indigo-950/20 dark:border-indigo-800',
@@ -408,17 +418,27 @@ export function MaleHormoneAssessmentCard({ patterns }: { patterns: MaleHormoneP
             No hormone patterns detected from the submitted lab values. Submit testosterone, LH, SHBG, free testosterone, or estradiol to enable pattern recognition.
           </p>
         ) : (
-          patterns.map((pattern, idx) => (
+          patterns.map((pattern, idx) => {
+            const isHidden = hiddenPatternNames.includes(pattern.name);
+            return (
             <div
               key={idx}
-              className={`p-4 rounded-lg border space-y-3 ${confidenceStyles[pattern.confidence]}`}
+              className={cn(`p-4 rounded-lg border space-y-3 ${confidenceStyles[pattern.confidence]}`, isHidden && 'opacity-50')}
               data-testid={`male-hormone-pattern-${idx}`}
             >
               <div className="flex items-start justify-between gap-3 flex-wrap">
-                <h4 className="font-semibold text-sm">{pattern.name}</h4>
-                <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${confidenceBadgeStyles[pattern.confidence]}`}>
-                  {pattern.confidence} confidence
-                </span>
+                <h4 className={cn("font-semibold text-sm", isHidden && "line-through text-muted-foreground")}>{pattern.name}</h4>
+                <div className="flex items-center gap-2 flex-wrap">
+                  <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${confidenceBadgeStyles[pattern.confidence]}`}>
+                    {pattern.confidence} confidence
+                  </span>
+                  {onTogglePattern && (
+                    <button type="button" onClick={() => onTogglePattern(pattern.name)} title={isHidden ? "Show to patient" : "Hide from patient"}
+                      className={cn("p-1 rounded transition-colors", isHidden ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground hover:text-foreground")}>
+                      {isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+                </div>
               </div>
 
               <div className="grid grid-cols-1 md:grid-cols-2 gap-4 text-sm">
@@ -452,7 +472,8 @@ export function MaleHormoneAssessmentCard({ patterns }: { patterns: MaleHormoneP
                 </div>
               </div>
             </div>
-          ))
+            );
+          })
         )}
 
         <div className="text-xs text-muted-foreground border-t pt-3 mt-2">
@@ -476,11 +497,15 @@ export function FemaleHormoneAssessmentCard({
   title = 'Clinical Phenotype Assessment',
   description = 'Detected clinical patterns driving supplement and treatment recommendations',
   testId = 'card-female-hormone-assessment',
+  hiddenPhenotypeNames = [],
+  onTogglePhenotype,
 }: {
   phenotypes: ClinicalPhenotype[];
   title?: string;
   description?: string;
   testId?: string;
+  hiddenPhenotypeNames?: string[];
+  onTogglePhenotype?: (name: string) => void;
 }) {
   if (phenotypes.length === 0) return null;
 
@@ -502,23 +527,29 @@ export function FemaleHormoneAssessmentCard({
           <Dna className="w-5 h-5 text-purple-600" />
           <CardTitle>{title}</CardTitle>
         </div>
-        <CardDescription>
-          {description}
-        </CardDescription>
+        <CardDescription>{description}</CardDescription>
       </CardHeader>
       <CardContent>
         <div className="space-y-3">
-          {phenotypes.map((phenotype, index) => (
+          {phenotypes.map((phenotype, index) => {
+            const isHidden = hiddenPhenotypeNames.includes(phenotype.name);
+            return (
             <div
               key={index}
-              className={`p-4 rounded-lg border ${confidenceStyles[phenotype.confidence]}`}
+              className={cn(`p-4 rounded-lg border ${confidenceStyles[phenotype.confidence]}`, isHidden && 'opacity-50')}
               data-testid={`clinical-phenotype-${index}`}
             >
               <div className="flex items-center gap-2 mb-2 flex-wrap">
-                <h4 className="font-semibold text-sm">{phenotype.name}</h4>
+                <h4 className={cn("font-semibold text-sm", isHidden && "line-through text-muted-foreground")}>{phenotype.name}</h4>
                 <span className={`px-2 py-0.5 text-xs rounded-full font-medium ${confidenceBadgeStyles[phenotype.confidence]}`}>
                   {phenotype.confidence} confidence
                 </span>
+                {onTogglePhenotype && (
+                  <button type="button" onClick={() => onTogglePhenotype(phenotype.name)} title={isHidden ? "Show to patient" : "Hide from patient"}
+                    className={cn("ml-auto p-1 rounded transition-colors", isHidden ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground hover:text-foreground")}>
+                    {isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                  </button>
+                )}
               </div>
               <p className="text-xs text-muted-foreground mb-2 leading-relaxed">{phenotype.description}</p>
               <div className="flex flex-wrap gap-1">
@@ -529,7 +560,8 @@ export function FemaleHormoneAssessmentCard({
                 ))}
               </div>
             </div>
-          ))}
+            );
+          })}
         </div>
       </CardContent>
     </Card>
@@ -716,7 +748,15 @@ function stripPatternPrefix(category: string): string {
     .replace(/^Hormone Pattern:\s*/i, '');
 }
 
-export function FemaleHormonePatternCard({ interpretations }: { interpretations: LabInterpretation[] }) {
+export function FemaleHormonePatternCard({
+  interpretations,
+  hiddenCategories = [],
+  onToggleCategory,
+}: {
+  interpretations: LabInterpretation[];
+  hiddenCategories?: string[];
+  onToggleCategory?: (cat: string) => void;
+}) {
   const patternRows = interpretations.filter(i =>
     HORMONE_PATTERN_PREFIXES.some(p => i.category.startsWith(p))
   );
@@ -739,24 +779,33 @@ export function FemaleHormonePatternCard({ interpretations }: { interpretations:
           const cfg = patternStatusConfig[row.status] ?? patternStatusConfig.borderline;
           const title = stripPatternPrefix(row.category);
           const providerRec = formatClinicalManagement(row.recommendation || '');
+          const isHidden = hiddenCategories.includes(row.category);
           return (
             <div
               key={idx}
-              className={`p-4 rounded-lg border ${cfg.tile}`}
+              className={cn(`p-4 rounded-lg border ${cfg.tile}`, isHidden && 'opacity-50')}
               data-testid={`hormone-pattern-${idx}`}
             >
               <div className="flex items-start justify-between gap-3 mb-2 flex-wrap">
                 <div className="flex-1 min-w-0">
-                  <h4 className="font-semibold text-sm leading-snug">{title}</h4>
+                  <h4 className={cn("font-semibold text-sm leading-snug", isHidden && "line-through text-muted-foreground")}>{title}</h4>
                   {row.referenceRange && (
                     <p className="text-xs text-muted-foreground mt-0.5">
                       Reference: {row.referenceRange}
                     </p>
                   )}
                 </div>
-                <span className={`text-xs px-2 py-0.5 rounded-full font-medium shrink-0 ${cfg.badge}`}>
-                  {cfg.label}
-                </span>
+                <div className="flex items-center gap-2 shrink-0">
+                  <span className={`text-xs px-2 py-0.5 rounded-full font-medium ${cfg.badge}`}>
+                    {cfg.label}
+                  </span>
+                  {onToggleCategory && (
+                    <button type="button" onClick={() => onToggleCategory(row.category)} title={isHidden ? "Show to patient" : "Hide from patient"}
+                      className={cn("p-1 rounded transition-colors", isHidden ? "text-amber-600 dark:text-amber-400" : "text-muted-foreground hover:text-foreground")}>
+                      {isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                    </button>
+                  )}
+                </div>
               </div>
 
               {row.interpretation && (

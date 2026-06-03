@@ -356,6 +356,17 @@ export const supplementRecommendationSchema = z.object({
 
 export type SupplementRecommendation = z.infer<typeof supplementRecommendationSchema>;
 
+export interface ProviderOverrides {
+  hiddenSections?: string[];
+  hiddenInterpretationCategories?: string[];
+  hiddenPhenotypeNames?: string[];
+  hiddenPatternNames?: string[];
+  hiddenHormonePatternCategories?: string[];
+  hiddenSupplementNames?: string[];
+  addedSupplements?: SupplementRecommendation[];
+  patientSummaryDraft?: string | null;
+}
+
 export const clinicalPhenotypeSchema = z.object({
   name: z.string(),
   confidence: z.enum(['high', 'moderate', 'low']),
@@ -642,6 +653,7 @@ export const labResults = pgTable("lab_results", {
   labDate: timestamp("lab_date").notNull(),
   labValues: jsonb("lab_values").$type<LabValues | FemaleLabValues>().notNull(),
   interpretationResult: jsonb("interpretation_result").$type<InterpretationResult>(),
+  providerOverrides: jsonb("provider_overrides").$type<ProviderOverrides>(),
   notes: text("notes"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),

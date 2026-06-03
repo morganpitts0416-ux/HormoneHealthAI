@@ -132,10 +132,6 @@ function uid(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
-<<<<<<< HEAD
-
-=======
->>>>>>> fc1f163 (Audit & fix manual timezone-offset date patterns (Task #34))
 function ChartModeEditor({
   systems,
   chartData,

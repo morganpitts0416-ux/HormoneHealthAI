@@ -2,8 +2,9 @@ import { useState } from "react";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
-import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Clock, ChevronDown, ChevronRight, Sparkles } from "lucide-react";
+import { CheckCircle, AlertTriangle, AlertCircle, Info, AlertOctagon, Clock, ChevronDown, ChevronRight, Sparkles, Eye, EyeOff } from "lucide-react";
 import type { LabInterpretation, RedFlag } from "@shared/schema";
+import { cn } from "@/lib/utils";
 import { Separator } from "@/components/ui/separator";
 import { Table, TableBody, TableCell, TableHead, TableHeader, TableRow } from "@/components/ui/table";
 
@@ -97,6 +98,8 @@ interface ResultsDisplayProps {
   aiRecommendations: string;
   recheckWindow: string;
   redFlags?: RedFlag[];
+  hiddenCategories?: string[];
+  onToggleCategory?: (category: string) => void;
 }
 
 export function ResultsDisplay({
@@ -104,6 +107,8 @@ export function ResultsDisplay({
   aiRecommendations,
   recheckWindow,
   redFlags = [],
+  hiddenCategories = [],
+  onToggleCategory,
 }: ResultsDisplayProps) {
   const [synthesisOpen, setSynthesisOpen] = useState(false);
 
@@ -160,28 +165,33 @@ export function ResultsDisplay({
                   <TableHead>Assessment</TableHead>
                   <TableHead>Management</TableHead>
                   <TableHead className="w-[60px] text-center">Alert</TableHead>
+                  {onToggleCategory && <TableHead className="w-[36px]" />}
                 </TableRow>
               </TableHeader>
               <TableBody>
                 {tableRows.length === 0 ? (
                   <TableRow>
-                    <TableCell colSpan={7} className="text-center text-muted-foreground py-8">
+                    <TableCell colSpan={onToggleCategory ? 8 : 7} className="text-center text-muted-foreground py-8">
                       No lab results to display
                     </TableCell>
                   </TableRow>
                 ) : (
                   tableRows.map((interp, index) => {
                     const isRedFlag = hasRedFlag(interp.category);
+                    const isHidden = hiddenCategories.includes(interp.category);
                     return (
                       <TableRow
                         key={index}
                         data-testid={`table-row-${index}`}
-                        className={isRedFlag ? 'bg-destructive/5' : ''}
+                        className={cn(
+                          isRedFlag ? 'bg-destructive/5' : '',
+                          isHidden ? 'opacity-40 bg-amber-50/30 dark:bg-amber-950/10' : ''
+                        )}
                       >
                         <TableCell className="font-semibold">
                           <div className="flex items-center gap-2">
                             {getStatusIcon(interp.status)}
-                            {interp.category}
+                            <span className={cn(isHidden && 'line-through text-muted-foreground')}>{interp.category}</span>
                           </div>
                         </TableCell>
                         <TableCell>
@@ -207,6 +217,23 @@ export function ResultsDisplay({
                             <AlertOctagon className="w-5 h-5 text-destructive inline-block" data-testid={`red-flag-${index}`} />
                           )}
                         </TableCell>
+                        {onToggleCategory && (
+                          <TableCell className="text-center p-1">
+                            <button
+                              type="button"
+                              onClick={() => onToggleCategory(interp.category)}
+                              title={isHidden ? 'Show to patient' : 'Hide from patient'}
+                              className={cn(
+                                "p-1 rounded transition-colors",
+                                isHidden
+                                  ? "text-amber-600 hover:text-amber-700 dark:text-amber-400"
+                                  : "text-muted-foreground hover:text-foreground"
+                              )}
+                            >
+                              {isHidden ? <EyeOff className="w-3.5 h-3.5" /> : <Eye className="w-3.5 h-3.5" />}
+                            </button>
+                          </TableCell>
+                        )}
                       </TableRow>
                     );
                   })

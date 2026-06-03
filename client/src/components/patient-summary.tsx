@@ -4,14 +4,17 @@ import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Copy, Check } from "lucide-react";
 import { useToast } from "@/hooks/use-toast";
+import { cn } from "@/lib/utils";
 import type { LabValues } from "@shared/schema";
 
 interface PatientSummaryProps {
   summary: string;
   labValues: LabValues;
+  onSummaryChange?: (val: string) => void;
+  saveStatus?: 'saved' | 'saving' | 'unsaved';
 }
 
-export function PatientSummary({ summary, labValues }: PatientSummaryProps) {
+export function PatientSummary({ summary, labValues, onSummaryChange, saveStatus }: PatientSummaryProps) {
   const [editableSummary, setEditableSummary] = useState(summary);
   const [copied, setCopied] = useState(false);
   const { toast } = useToast();
@@ -45,15 +48,25 @@ export function PatientSummary({ summary, labValues }: PatientSummaryProps) {
       <CardContent className="space-y-4">
         <Textarea
           value={editableSummary}
-          onChange={(e) => setEditableSummary(e.target.value)}
+          onChange={(e) => { setEditableSummary(e.target.value); onSummaryChange?.(e.target.value); }}
           className="min-h-[200px] font-sans text-sm leading-relaxed"
           data-testid="textarea-patient-summary"
         />
         
-        <div className="flex items-center justify-between gap-4">
-          <p className="text-xs text-muted-foreground">
-            {editableSummary.length} characters
-          </p>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-3">
+            <p className="text-xs text-muted-foreground">{editableSummary.length} characters</p>
+            {saveStatus && (
+              <span className={cn(
+                "text-xs",
+                saveStatus === 'saved' ? "text-green-600 dark:text-green-400" :
+                saveStatus === 'saving' ? "text-muted-foreground" :
+                "text-amber-600 dark:text-amber-400"
+              )}>
+                {saveStatus === 'saved' ? "Saved" : saveStatus === 'saving' ? "Saving..." : "Unsaved"}
+              </span>
+            )}
+          </div>
           <Button 
             onClick={handleCopy}
             variant="default"

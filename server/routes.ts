@@ -4736,27 +4736,60 @@ Return ONLY this JSON structure:
 
       const safeLabs = labs.map((lab) => {
         const interp = (lab.interpretationResult as any) || {};
+        const ov = (lab.providerOverrides as any) || {};
+        const hiddenSections: string[] = ov.hiddenSections || [];
+        const hiddenInterpCats: string[] = ov.hiddenInterpretationCategories || [];
+        const hiddenPhenotypeNames: string[] = ov.hiddenPhenotypeNames || [];
+        const hiddenPatternNames: string[] = ov.hiddenPatternNames || [];
+        const hiddenHormonePatternCats: string[] = ov.hiddenHormonePatternCategories || [];
+        const hiddenSuppNames: string[] = ov.hiddenSupplementNames || [];
+        const addedSupplements: any[] = ov.addedSupplements || [];
+
         const allInterpretations: any[] = interp.interpretations || [];
+        // Apply per-row interpretation hiding
+        const visibleInterps = allInterpretations.filter(
+          (i: any) => !hiddenInterpCats.includes(i.category || '')
+        );
+
+        // Build effective supplement list: auto-generated minus hidden, plus provider-added
+        const autoSupps: any[] = interp.supplements || [];
+        const effectiveSupplements = [
+          ...autoSupps.filter((s: any) => !hiddenSuppNames.includes(s.name || '')),
+          ...addedSupplements,
+        ];
+
         return {
           id: lab.id,
           labDate: lab.labDate,
           createdAt: lab.createdAt,
           labValues: lab.labValues || null,
           // Filter hormone-pattern rows out — they appear in the hormone assessment section
-          interpretations: allInterpretations.filter((i: any) => !isHormonePattern(i.category || '')),
-          // Surface hormone pattern rows separately for the portal hormone assessment section
-          hormonePatternRows: allInterpretations.filter((i: any) => isHormonePattern(i.category || '')),
-          supplements: interp.supplements || [],
-          // Health Assessment: use the explicitly published summary (edited/approved by provider
-          // at publish time). Fall back to the AI-generated one in interpretationResult only if
-          // the lab has never been published with a summary.
-          patientSummary: summaryByLabId.get(lab.id) ?? interp.patientSummary ?? null,
-          preventRisk: interp.preventRisk || null,
-          insulinResistance: interp.insulinResistance || null,
-          // Female clinical phenotypes (FemaleHormoneAssessmentCard data)
-          clinicalPhenotypes: interp.clinicalPhenotypes || null,
-          // Male hormone patterns
-          maleHormonePatterns: interp.maleHormonePatterns || null,
+          interpretations: visibleInterps.filter((i: any) => !isHormonePattern(i.category || '')),
+          // Surface hormone pattern rows separately; apply section & row-level hiding
+          hormonePatternRows: hiddenSections.includes('hormonePatterns')
+            ? []
+            : visibleInterps
+                .filter((i: any) => isHormonePattern(i.category || ''))
+                .filter((i: any) => !hiddenHormonePatternCats.includes(i.category || '')),
+          supplements: effectiveSupplements,
+          // Health Assessment: provider draft > published summary > AI-generated fallback
+          patientSummary: (typeof ov.patientSummaryDraft === 'string')
+            ? ov.patientSummaryDraft
+            : (summaryByLabId.get(lab.id) ?? interp.patientSummary ?? null),
+          preventRisk: hiddenSections.includes('preventRisk') ? null : (interp.preventRisk || null),
+          insulinResistance: hiddenSections.includes('insulinResistance') ? null : (interp.insulinResistance || null),
+          // Female clinical phenotypes: section and item-level hiding
+          clinicalPhenotypes: hiddenSections.includes('clinicalPhenotypes')
+            ? null
+            : ((interp.clinicalPhenotypes as any[] | null)
+                ?.filter((p: any) => !hiddenPhenotypeNames.includes(p.name || ''))
+              ?? null),
+          // Male hormone patterns: section and item-level hiding
+          maleHormonePatterns: hiddenSections.includes('maleHormonePatterns')
+            ? null
+            : ((interp.maleHormonePatterns as any[] | null)
+                ?.filter((p: any) => !hiddenPatternNames.includes(p.name || ''))
+              ?? null),
           clinicianNotes: notesByLabId.get(lab.id) ?? null,
           // Per-lab dietary guidance from the matching published protocol
           dietaryGuidance: dietaryByLabId.get(lab.id) ?? null,
@@ -4766,6 +4799,31 @@ Return ONLY this JSON structure:
     } catch (error) {
       console.error("[PORTAL] Error fetching labs:", error);
       res.status(500).json({ message: "Failed to fetch lab history" });
+    }
+  });
+
+  // ── Clinician: Save provider overrides (visibility + supplement customization) ─
+  app.patch("/api/patients/:id/labs/:labId/provider-overrides", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      const labId = parseInt(req.params.labId);
+      const overrides = req.body;
+      if (!overrides || typeof overrides !== 'object' || Array.isArray(overrides)) {
+        return res.status(400).json({ message: "overrides must be an object" });
+      }
+      const patient = await storage.getPatient(patientId, clinicianId, clinicId);
+      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      const labResult = await storage.getLabResult(labId);
+      if (!labResult || labResult.patientId !== patientId) {
+        return res.status(404).json({ message: "Lab result not found" });
+      }
+      const updated = await storage.updateLabResultProviderOverrides(labId, overrides);
+      res.json({ message: "Provider overrides saved", providerOverrides: updated?.providerOverrides ?? null });
+    } catch (error) {
+      console.error("Error updating provider overrides:", error);
+      res.status(500).json({ message: "Failed to update provider overrides" });
     }
   });
 

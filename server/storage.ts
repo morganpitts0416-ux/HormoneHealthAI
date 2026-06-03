@@ -109,6 +109,7 @@ export interface IStorage {
   createLabResult(labResult: InsertLabResult): Promise<LabResult>;
   updateLabResult(id: number, labResult: Partial<InsertLabResult>): Promise<LabResult | undefined>;
   deleteLabResult(id: number): Promise<boolean>;
+  updateLabResultProviderOverrides(id: number, overrides: any): Promise<LabResult | undefined>;
 
   // Simple lab upload operations
   getSimpleLabsByPatient(patientId: number): Promise<SimpleLabUpload[]>;
@@ -979,6 +980,15 @@ export class DbStorage implements IStorage {
       .where(eq(schema.labResults.id, id))
       .returning();
     return result.length > 0;
+  }
+
+  async updateLabResultProviderOverrides(id: number, overrides: any): Promise<LabResult | undefined> {
+    const result = await db
+      .update(schema.labResults)
+      .set({ providerOverrides: overrides, updatedAt: new Date() } as any)
+      .where(eq(schema.labResults.id, id))
+      .returning();
+    return result[0];
   }
 
   // ── Simple lab upload operations ─────────────────────────────────────────────

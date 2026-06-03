@@ -1,4 +1,4 @@
-import { useState, useMemo, useRef, useEffect } from "react";
+import { useState, useMemo, useRef, useEffect, useCallback } from "react";
 import { usePatientContext } from "@/hooks/use-patient-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { utcDateStr } from "@/lib/date-utils";
@@ -19,7 +19,7 @@ import {
   Mail, Globe, Send, Share2, Leaf, MessageSquare, Copy, ExternalLink, RefreshCw,
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
-  Link2, Clock, Building2, Eye, CalendarDays, Phone, Paperclip,
+  Link2, Clock, Building2, Eye, EyeOff, CalendarDays, Phone, Paperclip,
   LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
@@ -37,7 +37,7 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment, SimpleLabUpload } from "@shared/schema";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { LabComparisonDialog } from "@/components/lab-comparison-dialog";
 import {
@@ -481,32 +481,115 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const patientName = `${patient.firstName} ${patient.lastName}`.trim();
   const isFemale = patient.gender === 'female';
 
+  // ── Provider override state ───────────────────────────────────────────────
+  const [overrides, setOverrides] = useState<ProviderOverrides>(() =>
+    (lab.providerOverrides as ProviderOverrides) || {}
+  );
+  const [saveStatus, setSaveStatus] = useState<'saved' | 'saving' | 'unsaved'>('saved');
+  const saveTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const [showAddSuppDialog, setShowAddSuppDialog] = useState(false);
+
+  const { data: suppLibrary = [] } = useQuery<ClinicianSupplement[]>({
+    queryKey: ['/api/clinician/supplements'],
+  });
+
+  const saveOverridesMutation = useMutation({
+    mutationFn: async (data: ProviderOverrides) => {
+      const res = await apiRequest("PATCH", `/api/patients/${patient.id}/labs/${lab.id}/provider-overrides`, data);
+      return res.json();
+    },
+    onSuccess: () => setSaveStatus('saved'),
+    onError: () => setSaveStatus('unsaved'),
+  });
+
+  const updateOverrides = useCallback((updater: (prev: ProviderOverrides) => ProviderOverrides) => {
+    setOverrides(prev => {
+      const next = updater(prev);
+      setSaveStatus('unsaved');
+      if (saveTimerRef.current) clearTimeout(saveTimerRef.current);
+      saveTimerRef.current = setTimeout(() => {
+        setSaveStatus('saving');
+        saveOverridesMutation.mutate(next);
+      }, 900);
+      return next;
+    });
+  }, []);
+
+  useEffect(() => () => { if (saveTimerRef.current) clearTimeout(saveTimerRef.current); }, []);
+
+  // Helpers
+  const isSectionHidden = (key: string) => (overrides.hiddenSections || []).includes(key);
+  const isSuppHidden = (name: string) => (overrides.hiddenSupplementNames || []).includes(name);
+
+  const toggle = <K extends keyof ProviderOverrides>(field: K, val: string) => {
+    updateOverrides(prev => {
+      const arr: string[] = (prev[field] as string[] | undefined) || [];
+      return { ...prev, [field]: arr.includes(val) ? arr.filter(v => v !== val) : [...arr, val] };
+    });
+  };
+
+  const effectiveSupplements = useMemo((): SupplementRecommendation[] => {
+    const autoSupps: SupplementRecommendation[] = interp?.supplements || [];
+    return [
+      ...autoSupps.filter(s => !isSuppHidden(s.name)),
+      ...(overrides.addedSupplements || []),
+    ];
+  }, [interp?.supplements, overrides.hiddenSupplementNames, overrides.addedSupplements]);
+
+  const hiddenCount = useMemo(() => [
+    overrides.hiddenSections,
+    overrides.hiddenInterpretationCategories,
+    overrides.hiddenPhenotypeNames,
+    overrides.hiddenPatternNames,
+    overrides.hiddenHormonePatternCategories,
+    overrides.hiddenSupplementNames,
+  ].reduce((acc, arr) => acc + (arr?.length || 0), 0), [overrides]);
+
+  // Section-level visibility wrapper
+  function HideableSection({ sectionKey, children }: { sectionKey: string; children: React.ReactNode }) {
+    const hidden = isSectionHidden(sectionKey);
+    return (
+      <div className="space-y-1">
+        <div className="flex justify-end">
+          <button
+            type="button"
+            onClick={() => toggle('hiddenSections', sectionKey)}
+            className={cn(
+              "inline-flex items-center gap-1.5 text-xs px-2.5 py-0.5 rounded-full border transition-colors select-none",
+              hidden
+                ? "bg-amber-50 border-amber-300 text-amber-700 dark:bg-amber-950/30 dark:border-amber-700 dark:text-amber-400"
+                : "border-border/40 text-muted-foreground hover:border-border hover:text-foreground"
+            )}
+          >
+            {hidden ? <EyeOff className="w-3 h-3" /> : <Eye className="w-3 h-3" />}
+            <span>{hidden ? "Hidden from patient" : "Visible to patient"}</span>
+          </button>
+        </div>
+        <div className={cn("rounded-lg transition-all", hidden && "opacity-60 ring-1 ring-amber-300 dark:ring-amber-700")}>
+          {children}
+        </div>
+      </div>
+    );
+  }
+
+  // ── Patient Report PDF (respects overrides) ───────────────────────────────
   const wellnessPlanMutation = useMutation({
     mutationFn: async () => {
       if (!interp) throw new Error('No interpretation available');
       if (isFemale) {
-        return femaleLabsApi.generateWellnessPlan(
-          vals as FemaleLabValues,
-          interp.interpretations,
-          interp.supplements,
-          interp.preventRisk
-        );
+        return femaleLabsApi.generateWellnessPlan(vals as FemaleLabValues, interp.interpretations, interp.supplements, interp.preventRisk);
       } else {
-        return labsApi.generateWellnessPlan(
-          vals as LabValues,
-          interp.interpretations,
-          interp.supplements,
-          interp.preventRisk
-        );
+        return labsApi.generateWellnessPlan(vals as LabValues, interp.interpretations, interp.supplements, interp.preventRisk);
       }
     },
     onSuccess: async (wellnessPlan: WellnessPlan) => {
       if (interp) {
         const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
+        const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }));
         if (isFemale) {
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, undefined, user?.clinicName, clinicBranding);
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding);
         } else {
-          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, undefined, user?.clinicName, clinicBranding);
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding);
         }
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }
@@ -540,54 +623,51 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
     }
   };
 
+  const summaryText = typeof overrides.patientSummaryDraft === 'string'
+    ? overrides.patientSummaryDraft
+    : (interp?.patientSummary || '');
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50" data-testid="lab-detail-modal">
       <div className="w-full max-w-5xl max-h-[92vh] flex flex-col m-4 rounded-lg border bg-card shadow-xl overflow-hidden">
         {/* Sticky header */}
         <div className="flex-shrink-0 px-5 py-3 border-b bg-card flex items-start justify-between gap-3 flex-wrap">
           <div>
-            <h2 className="text-base font-semibold">
-              Full Evaluation — {safeDate(lab.labDate)}
-            </h2>
-            <p className="text-xs text-muted-foreground mt-0.5">{patientName}{user?.clinicName ? ` · ${user.clinicName}` : ''}</p>
+            <h2 className="text-base font-semibold">Full Evaluation — {safeDate(lab.labDate)}</h2>
+            <div className="flex items-center gap-2 mt-0.5 flex-wrap">
+              <p className="text-xs text-muted-foreground">{patientName}{user?.clinicName ? ` · ${user.clinicName}` : ''}</p>
+              {hiddenCount > 0 && (
+                <span className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full bg-amber-50 border border-amber-300 text-amber-700 dark:bg-amber-950/30 dark:border-amber-700 dark:text-amber-400">
+                  <EyeOff className="w-2.5 h-2.5" />
+                  {hiddenCount} hidden from patient
+                </span>
+              )}
+              {saveStatus === 'saving' && (
+                <span className="text-xs text-muted-foreground flex items-center gap-1">
+                  <Loader2 className="w-2.5 h-2.5 animate-spin" />
+                  Saving...
+                </span>
+              )}
+            </div>
           </div>
           <div className="flex items-center gap-2 flex-wrap">
             {interp && (
               <>
-                <Button
-                  variant="default"
-                  size="sm"
-                  onClick={() => wellnessPlanMutation.mutate()}
-                  disabled={wellnessPlanMutation.isPending}
-                  data-testid="button-patient-report-modal"
-                >
+                <Button variant="default" size="sm" onClick={() => wellnessPlanMutation.mutate()} disabled={wellnessPlanMutation.isPending} data-testid="button-patient-report-modal">
                   <Heart className="w-3.5 h-3.5 mr-1" />
                   {wellnessPlanMutation.isPending ? 'Generating...' : 'Patient Report'}
                 </Button>
-                <Button
-                  variant="outline"
-                  size="sm"
-                  onClick={handleProviderPDF}
-                  data-testid="button-provider-pdf-modal"
-                >
+                <Button variant="outline" size="sm" onClick={handleProviderPDF} data-testid="button-provider-pdf-modal">
                   <Download className="w-3.5 h-3.5 mr-1" />
                   Provider PDF
                 </Button>
               </>
             )}
-            <Button
-              variant="outline"
-              size="sm"
-              onClick={onDelete}
-              className="text-muted-foreground"
-              data-testid="button-delete-lab-modal"
-            >
+            <Button variant="outline" size="sm" onClick={onDelete} className="text-muted-foreground" data-testid="button-delete-lab-modal">
               <Trash2 className="w-3.5 h-3.5 mr-1" />
               Delete
             </Button>
-            <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">
-              Close
-            </Button>
+            <Button variant="outline" size="sm" onClick={onClose} data-testid="button-close-lab-detail">Close</Button>
           </div>
         </div>
 
@@ -599,104 +679,239 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
             </div>
           ) : (
             <div className="p-5 space-y-6">
-              {/* Red Flags */}
+              {/* Red Flags — never hidden */}
               {interp.redFlags && interp.redFlags.length > 0 && (
                 <RedFlagAlert redFlags={interp.redFlags} />
               )}
 
-              {/* Full Lab Results */}
-              <ResultsDisplay
-                interpretations={interp.interpretations || []}
-                aiRecommendations={interp.aiRecommendations || ''}
-                recheckWindow={interp.recheckWindow || ''}
-                redFlags={interp.redFlags || []}
-              />
+              {/* Full Lab Results — section + row-level toggles */}
+              <HideableSection sectionKey="labResults">
+                <ResultsDisplay
+                  interpretations={interp.interpretations || []}
+                  aiRecommendations={interp.aiRecommendations || ''}
+                  recheckWindow={interp.recheckWindow || ''}
+                  redFlags={interp.redFlags || []}
+                  hiddenCategories={overrides.hiddenInterpretationCategories || []}
+                  onToggleCategory={(cat) => toggle('hiddenInterpretationCategories', cat)}
+                />
+              </HideableSection>
 
-              {/* PREVENT Cardiovascular Risk Assessment */}
-              {interp.preventRisk ? (
-                <PreventAssessmentCard preventAssessment={interp.preventRisk} />
-              ) : (
-                <PreventNotCalculatedCard missingFields={(interp as any).preventMissingFields || []} />
-              )}
+              {/* PREVENT Cardiovascular Risk */}
+              <HideableSection sectionKey="preventRisk">
+                {interp.preventRisk ? (
+                  <PreventAssessmentCard preventAssessment={interp.preventRisk} />
+                ) : (
+                  <PreventNotCalculatedCard missingFields={(interp as any).preventMissingFields || []} />
+                )}
+              </HideableSection>
 
-              {/* Advanced Lipid Marker Risk Adjustment */}
+              {/* Advanced Lipid */}
               {interp.adjustedRisk && (
-                <AdvancedLipidsCard adjustedRiskAssessment={interp.adjustedRisk} />
+                <HideableSection sectionKey="adjustedRisk">
+                  <AdvancedLipidsCard adjustedRiskAssessment={interp.adjustedRisk} />
+                </HideableSection>
               )}
 
-              {/* STOP-BANG Sleep Apnea Screening */}
+              {/* STOP-BANG */}
               {interp.stopBangRisk && (
-                <StopBangCard stopBangRisk={interp.stopBangRisk} />
+                <HideableSection sectionKey="stopBang">
+                  <StopBangCard stopBangRisk={interp.stopBangRisk} />
+                </HideableSection>
               )}
 
-              {/* Insulin Resistance Screening */}
+              {/* Insulin Resistance */}
               {interp.insulinResistance && interp.insulinResistance.likelihood !== 'none' && (
-                <InsulinResistanceCard insulinResistance={interp.insulinResistance} />
+                <HideableSection sectionKey="insulinResistance">
+                  <InsulinResistanceCard insulinResistance={interp.insulinResistance} />
+                </HideableSection>
               )}
 
-              {/* Female Hormone Pattern Assessment (Testosterone Patterns + Perimenopause Assessment rows) */}
+              {/* Female Hormone Pattern Assessment — section + row toggles */}
               {interp.interpretations && (
-                <FemaleHormonePatternCard interpretations={interp.interpretations} />
+                <HideableSection sectionKey="hormonePatterns">
+                  <FemaleHormonePatternCard
+                    interpretations={interp.interpretations}
+                    hiddenCategories={overrides.hiddenHormonePatternCategories || []}
+                    onToggleCategory={(cat) => toggle('hiddenHormonePatternCategories', cat)}
+                  />
+                </HideableSection>
               )}
 
-              {/* Clinical Phenotype Assessment (pattern-level female hormone recognition) */}
+              {/* Clinical Phenotype Assessment — section + item toggles */}
               {interp.clinicalPhenotypes && interp.clinicalPhenotypes.length > 0 && (
-                <FemaleHormoneAssessmentCard phenotypes={interp.clinicalPhenotypes} />
+                <HideableSection sectionKey="clinicalPhenotypes">
+                  <FemaleHormoneAssessmentCard
+                    phenotypes={interp.clinicalPhenotypes}
+                    hiddenPhenotypeNames={overrides.hiddenPhenotypeNames || []}
+                    onTogglePhenotype={(name) => toggle('hiddenPhenotypeNames', name)}
+                  />
+                </HideableSection>
               )}
 
-              {/* Male Hormone Patterns */}
+              {/* Male Hormone Patterns — section + item toggles */}
               {interp.maleHormonePatterns && interp.maleHormonePatterns.length > 0 && (
-                <MaleHormoneAssessmentCard patterns={interp.maleHormonePatterns} />
+                <HideableSection sectionKey="maleHormonePatterns">
+                  <MaleHormoneAssessmentCard
+                    patterns={interp.maleHormonePatterns}
+                    hiddenPatternNames={overrides.hiddenPatternNames || []}
+                    onTogglePattern={(name) => toggle('hiddenPatternNames', name)}
+                  />
+                </HideableSection>
               )}
 
-              {/* Supplement Protocol (read-only historical view) */}
-              {interp.supplements && interp.supplements.length > 0 && (
+              {/* Supplement Protocol — per-item toggle + add from library */}
+              {interp.supplements !== undefined && (
                 <Card>
                   <CardHeader className="pb-3">
-                    <CardTitle className="text-base flex items-center gap-2">
-                      <ClipboardList className="w-4 h-4 text-primary" />
-                      Supplement Protocol ({interp.supplements.length} recommended)
-                    </CardTitle>
+                    <div className="flex items-start justify-between gap-2 flex-wrap">
+                      <CardTitle className="text-base flex items-center gap-2">
+                        <ClipboardList className="w-4 h-4 text-primary" />
+                        Supplement Protocol
+                      </CardTitle>
+                      <div className="flex items-center gap-2 text-sm text-muted-foreground flex-wrap">
+                        <span>{effectiveSupplements.length} shown to patient</span>
+                        {(overrides.hiddenSupplementNames?.length || 0) > 0 && (
+                          <span className="text-amber-600 dark:text-amber-400">
+                            · {overrides.hiddenSupplementNames!.length} hidden
+                          </span>
+                        )}
+                      </div>
+                    </div>
                   </CardHeader>
                   <CardContent>
                     <div className="space-y-2">
-                      {interp.supplements.map((supp, idx) => (
-                        <div key={idx} className={`p-3 rounded-md border ${priorityColor(supp.priority)}`}>
-                          <div className="flex items-start justify-between gap-2 flex-wrap">
+                      {(interp.supplements || []).map((supp, idx) => {
+                        const hidden = isSuppHidden(supp.name);
+                        return (
+                          <div key={idx} className={cn(
+                            `p-3 rounded-md border flex items-start gap-3 ${priorityColor(supp.priority)}`,
+                            hidden && "opacity-50"
+                          )}>
                             <div className="flex-1 min-w-0">
                               <div className="flex items-center gap-2 flex-wrap mb-0.5">
-                                <span className="text-sm font-semibold">{supp.name}</span>
-                                <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(supp.priority)}`}>
-                                  {supp.priority} priority
-                                </span>
+                                <span className={cn("text-sm font-semibold", hidden && "line-through text-muted-foreground")}>{supp.name}</span>
+                                <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(supp.priority)}`}>{supp.priority} priority</span>
+                                {hidden && <span className="text-xs px-2 py-0.5 rounded-full bg-amber-100 text-amber-700 dark:bg-amber-900/50 dark:text-amber-300">Hidden</span>}
                               </div>
                               <p className="text-xs text-muted-foreground font-mono">{supp.dose}</p>
                               <p className="text-xs text-muted-foreground mt-0.5">{supp.indication}</p>
-                              {supp.rationale && (
-                                <p className="text-xs text-muted-foreground mt-0.5 italic">{supp.rationale}</p>
-                              )}
+                              {supp.rationale && !hidden && <p className="text-xs text-muted-foreground mt-0.5 italic">{supp.rationale}</p>}
                             </div>
+                            <button
+                              type="button"
+                              onClick={() => toggle('hiddenSupplementNames', supp.name)}
+                              title={hidden ? "Show to patient" : "Hide from patient"}
+                              className={cn("flex-shrink-0 p-1 rounded transition-colors mt-0.5", hidden ? "text-amber-600 hover:text-amber-700 dark:text-amber-400" : "text-muted-foreground hover:text-foreground")}
+                            >
+                              {hidden ? <EyeOff className="w-4 h-4" /> : <Eye className="w-4 h-4" />}
+                            </button>
                           </div>
+                        );
+                      })}
+
+                      {(overrides.addedSupplements || []).map((supp, idx) => (
+                        <div key={`added-${idx}`} className={`p-3 rounded-md border flex items-start gap-3 ${priorityColor(supp.priority)}`}>
+                          <div className="flex-1 min-w-0">
+                            <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                              <span className="text-sm font-semibold">{supp.name}</span>
+                              <span className={`text-xs px-2 py-0.5 rounded-full ${priorityBadge(supp.priority)}`}>{supp.priority} priority</span>
+                              <span className="text-xs px-2 py-0.5 rounded-full bg-blue-100 text-blue-700 dark:bg-blue-900/50 dark:text-blue-300">Added</span>
+                            </div>
+                            <p className="text-xs text-muted-foreground font-mono">{supp.dose}</p>
+                            <p className="text-xs text-muted-foreground mt-0.5">{supp.indication}</p>
+                          </div>
+                          <button
+                            type="button"
+                            onClick={() => updateOverrides(prev => ({ ...prev, addedSupplements: (prev.addedSupplements || []).filter((_, i) => i !== idx) }))}
+                            title="Remove"
+                            className="flex-shrink-0 p-1 rounded text-muted-foreground hover:text-destructive transition-colors mt-0.5"
+                          >
+                            <X className="w-4 h-4" />
+                          </button>
                         </div>
                       ))}
+
+                      <Button variant="outline" size="sm" onClick={() => setShowAddSuppDialog(true)} className="w-full mt-1" data-testid="button-add-supplement-from-library">
+                        <Plus className="w-3.5 h-3.5 mr-1.5" />
+                        Add supplement from library
+                      </Button>
                     </div>
                   </CardContent>
                 </Card>
               )}
 
-              {/* Patient Summary */}
-              {interp.patientSummary && (
-                <PatientSummary summary={interp.patientSummary} labValues={vals} />
-              )}
+              {/* Patient Communication Summary */}
+              <PatientSummary
+                summary={summaryText}
+                labValues={vals}
+                onSummaryChange={(val) => updateOverrides(prev => ({ ...prev, patientSummaryDraft: val }))}
+                saveStatus={saveStatus}
+              />
 
               {/* SOAP Note */}
-              {interp.soapNote && (
-                <SOAPNote soapNote={interp.soapNote} />
-              )}
+              {interp.soapNote && <SOAPNote soapNote={interp.soapNote} />}
             </div>
           )}
         </div>
       </div>
+
+      {/* Add Supplement from Library Dialog */}
+      {showAddSuppDialog && (
+        <Dialog open onOpenChange={() => setShowAddSuppDialog(false)}>
+          <DialogContent className="max-w-lg">
+            <DialogHeader>
+              <DialogTitle>Add Supplement from Library</DialogTitle>
+            </DialogHeader>
+            <div className="space-y-2 max-h-[50vh] overflow-y-auto py-1 pr-1">
+              {suppLibrary.length === 0 ? (
+                <p className="text-sm text-muted-foreground text-center py-6">
+                  No custom supplements in your library yet. Add supplements in Settings → Supplement Library.
+                </p>
+              ) : (
+                suppLibrary.filter(s => s.isActive).map((s) => {
+                  const alreadyAdded = (overrides.addedSupplements || []).some(a => a.name === s.name);
+                  return (
+                    <div key={s.id} className="flex items-start gap-3 p-3 rounded-md border hover-elevate">
+                      <div className="flex-1 min-w-0">
+                        <div className="flex items-center gap-2 flex-wrap mb-0.5">
+                          <span className="text-sm font-semibold">{s.name}</span>
+                          {s.brand && <span className="text-xs text-muted-foreground">{s.brand}</span>}
+                          {alreadyAdded && <span className="text-xs px-2 py-0.5 rounded-full bg-green-100 text-green-700 dark:bg-green-900/50 dark:text-green-300">Added</span>}
+                        </div>
+                        <p className="text-xs text-muted-foreground font-mono">{s.dose}</p>
+                        {s.description && <p className="text-xs text-muted-foreground mt-0.5">{s.description}</p>}
+                      </div>
+                      <Button
+                        size="sm"
+                        variant={alreadyAdded ? "outline" : "default"}
+                        disabled={alreadyAdded}
+                        onClick={() => {
+                          if (alreadyAdded) return;
+                          const newSupp: SupplementRecommendation = {
+                            name: s.name,
+                            dose: s.dose,
+                            indication: s.description || s.name,
+                            rationale: s.clinicalRationale || '',
+                            priority: 'medium',
+                            category: (s.category as SupplementRecommendation['category']) || 'general',
+                            patientExplanation: s.description || '',
+                          };
+                          updateOverrides(prev => ({ ...prev, addedSupplements: [...(prev.addedSupplements || []), newSupp] }));
+                        }}
+                      >
+                        {alreadyAdded ? 'Added' : 'Add'}
+                      </Button>
+                    </div>
+                  );
+                })
+              )}
+            </div>
+            <div className="flex justify-end pt-2 border-t">
+              <Button variant="outline" size="sm" onClick={() => setShowAddSuppDialog(false)}>Done</Button>
+            </div>
+          </DialogContent>
+        </Dialog>
+      )}
     </div>
   );
 }
@@ -2003,7 +2218,14 @@ export default function PatientProfiles() {
   const publishProtocolMutation = useMutation({
     mutationFn: async ({ lab, notes, dietaryGuidance, patientSummary }: { lab: LabResult; notes: string; dietaryGuidance: string; patientSummary: string }) => {
       const interp = lab.interpretationResult as any;
-      const supplements = interp?.supplements || [];
+      const ov = (lab.providerOverrides as ProviderOverrides) || {};
+      const hiddenSuppNames: string[] = ov.hiddenSupplementNames || [];
+      const addedSupplements: SupplementRecommendation[] = ov.addedSupplements || [];
+      const autoSupps: any[] = interp?.supplements || [];
+      const supplements = [
+        ...autoSupps.filter((s: any) => !hiddenSuppNames.includes(s.name || '')),
+        ...addedSupplements,
+      ];
       const res = await apiRequest("POST", "/api/protocols/publish", {
         patientId: lab.patientId,
         labResultId: lab.id,
@@ -2038,9 +2260,11 @@ export default function PatientProfiles() {
     setPublishNotes("");
     setPublishDietaryGuidance("");
     setIsDietaryError(false);
-    // Pre-populate health assessment with the saved patient summary from this lab
     const interp = (lab.interpretationResult as any) || {};
-    setPublishPatientSummary(interp.patientSummary || "");
+    const ov = (lab.providerOverrides as ProviderOverrides) || {};
+    setPublishPatientSummary(
+      typeof ov.patientSummaryDraft === 'string' ? ov.patientSummaryDraft : (interp.patientSummary || "")
+    );
   };
 
   const filteredPatients = useMemo(() => {
