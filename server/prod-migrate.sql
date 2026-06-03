@@ -861,6 +861,7 @@ CREATE TABLE IF NOT EXISTS lab_results (
   created_at TIMESTAMP NOT NULL DEFAULT NOW(),
   updated_at TIMESTAMP NOT NULL DEFAULT NOW()
 );
+ALTER TABLE lab_results ADD COLUMN IF NOT EXISTS provider_overrides JSONB;
 
 -- ── saved_interpretations ────────────────────────────────────────────────
 CREATE TABLE IF NOT EXISTS saved_interpretations (
