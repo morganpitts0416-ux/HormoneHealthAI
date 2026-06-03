@@ -420,7 +420,10 @@ export async function generatePatientWellnessPDF(
   branding?: PartialBranding | null,
   /** Clinic logo as a base64 data URL. Shown in the PDF header instead of the default logo. */
   clinicLogo?: string | null,
+  /** Section keys hidden by the provider — matching HideableSection sectionKey values. */
+  hiddenSections?: string[],
 ): Promise<void> {
+  const sectionHidden = (key: string) => hiddenSections?.includes(key) ?? false;
   // Load clinic logo — composite over white to avoid jsPDF alpha-channel corruption.
   // Uses the clinic's own logo when provided; shows no image if absent.
   let logoData: string | null = null;
@@ -567,9 +570,9 @@ export async function generatePatientWellnessPDF(
   doc.text(introLines, margin, yPosition);
   yPosition += introLines.length * 4 + 8;
 
-  yPosition = addSectionHeader('YOUR LAB RESULTS AT A GLANCE', yPosition);
+  if (!sectionHidden('labResults')) yPosition = addSectionHeader('YOUR LAB RESULTS AT A GLANCE', yPosition);
 
-  if (interpretation.interpretations && interpretation.interpretations.length > 0) {
+  if (!sectionHidden('labResults') && interpretation.interpretations && interpretation.interpretations.length > 0) {
     const tableData = interpretation.interpretations
       .filter((interp: LabInterpretation) => !isScreeningRow(interp.category))
       .map((interp: LabInterpretation) => {
@@ -680,7 +683,7 @@ export async function generatePatientWellnessPDF(
   }
 
   // PREVENT cardiovascular risk section
-  if (interpretation.preventRisk) {
+  if (!sectionHidden('preventRisk') && interpretation.preventRisk) {
     const preventRisk = interpretation.preventRisk;
     yPosition = ensureSpace(90, yPosition);
     yPosition = addSectionHeader('YOUR HEART HEALTH ASSESSMENT', yPosition);
@@ -844,7 +847,7 @@ export async function generatePatientWellnessPDF(
   }
 
   // STOP-BANG Sleep Health Screening (only when completed)
-  if (interpretation.stopBangRisk) {
+  if (!sectionHidden('stopBang') && interpretation.stopBangRisk) {
     const sb = interpretation.stopBangRisk;
     yPosition = ensureSpace(75, yPosition);
     yPosition = addSectionHeader('SLEEP HEALTH SCREENING', yPosition);
@@ -940,7 +943,7 @@ export async function generatePatientWellnessPDF(
   }
 
   // Adjusted Risk Assessment Section (ApoB and Lp(a))
-  if (interpretation.adjustedRisk) {
+  if (!sectionHidden('adjustedRisk') && interpretation.adjustedRisk) {
     const adjustedRisk = interpretation.adjustedRisk;
     yPosition = ensureSpace(60, yPosition);
     yPosition = addSectionHeader('ADVANCED LIPID MARKERS ASSESSMENT', yPosition);
@@ -1095,7 +1098,7 @@ export async function generatePatientWellnessPDF(
   }
 
   // Female Hormone Health Assessment (clinical phenotypes - patient-friendly)
-  if ((interpretation as any).clinicalPhenotypes && (interpretation as any).clinicalPhenotypes.length > 0) {
+  if (!sectionHidden('clinicalPhenotypes') && (interpretation as any).clinicalPhenotypes && (interpretation as any).clinicalPhenotypes.length > 0) {
     const phenotypes = (interpretation as any).clinicalPhenotypes as Array<{
       name: string;
       confidence: string;

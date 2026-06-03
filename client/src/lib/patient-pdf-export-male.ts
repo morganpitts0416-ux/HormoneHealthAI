@@ -313,7 +313,10 @@ export async function generateMalePatientWellnessPDF(
   branding?: PartialBranding | null,
   /** Clinic logo as a base64 data URL. Shown in the PDF header instead of the default logo. */
   clinicLogo?: string | null,
+  /** Section keys hidden by the provider — matching HideableSection sectionKey values. */
+  hiddenSections?: string[],
 ): Promise<void> {
+  const sectionHidden = (key: string) => hiddenSections?.includes(key) ?? false;
   // Load clinic logo — composite over white to avoid jsPDF alpha-channel corruption.
   // Uses the clinic's own logo when provided; shows no image if absent.
   let logoData: string | null = null;
@@ -460,9 +463,9 @@ export async function generateMalePatientWellnessPDF(
   doc.text(introLines, margin, yPosition);
   yPosition += introLines.length * 4 + 8;
 
-  yPosition = addSectionHeader('YOUR LAB RESULTS AT A GLANCE', yPosition);
+  if (!sectionHidden('labResults')) yPosition = addSectionHeader('YOUR LAB RESULTS AT A GLANCE', yPosition);
 
-  if (interpretation.interpretations && interpretation.interpretations.length > 0) {
+  if (!sectionHidden('labResults') && interpretation.interpretations && interpretation.interpretations.length > 0) {
     const tableData = interpretation.interpretations
       .filter((interp: LabInterpretation) => !isScreeningRow(interp.category))
       .map((interp: LabInterpretation) => {
@@ -566,7 +569,7 @@ export async function generateMalePatientWellnessPDF(
   }
 
   // PREVENT cardiovascular risk section
-  if (interpretation.preventRisk) {
+  if (!sectionHidden('preventRisk') && interpretation.preventRisk) {
     const preventRisk = interpretation.preventRisk;
     yPosition = ensureSpace(90, yPosition);
     yPosition = addSectionHeader('YOUR HEART HEALTH ASSESSMENT', yPosition);
@@ -724,7 +727,7 @@ export async function generateMalePatientWellnessPDF(
   }
 
   // STOP-BANG Sleep Health Screening (only when completed)
-  if (interpretation.stopBangRisk) {
+  if (!sectionHidden('stopBang') && interpretation.stopBangRisk) {
     const sb = interpretation.stopBangRisk;
     yPosition = ensureSpace(75, yPosition);
     yPosition = addSectionHeader('SLEEP HEALTH SCREENING', yPosition);
@@ -819,7 +822,7 @@ export async function generateMalePatientWellnessPDF(
     yPosition += 48;
   }
 
-  if (interpretation.adjustedRisk) {
+  if (!sectionHidden('adjustedRisk') && interpretation.adjustedRisk) {
     const adjustedRisk = interpretation.adjustedRisk;
     yPosition = ensureSpace(60, yPosition);
     yPosition = addSectionHeader('ADVANCED LIPID MARKERS ASSESSMENT', yPosition);
@@ -937,7 +940,7 @@ export async function generateMalePatientWellnessPDF(
   }
 
   // Male Hormone Health Assessment (patient-friendly pattern summary)
-  if (interpretation.maleHormonePatterns && interpretation.maleHormonePatterns.length > 0) {
+  if (!sectionHidden('maleHormonePatterns') && interpretation.maleHormonePatterns && interpretation.maleHormonePatterns.length > 0) {
     yPosition = ensureSpace(60, yPosition);
     yPosition = addSectionHeader('YOUR HORMONE HEALTH ASSESSMENT', yPosition);
 
@@ -1063,7 +1066,7 @@ export async function generateMalePatientWellnessPDF(
     return { goal: sanitizeForPdf(goal), diet: sanitizeForPdf(diet), foods: foods.slice(0, 8).map(f => [sanitizeForPdf(f[0]), sanitizeForPdf(f[1])]) };
   };
 
-  if (interpretation.insulinResistance && interpretation.insulinResistance.likelihood !== 'none') {
+  if (!sectionHidden('insulinResistance') && interpretation.insulinResistance && interpretation.insulinResistance.likelihood !== 'none') {
     const ir = interpretation.insulinResistance;
     yPosition = addSectionHeader('METABOLIC HEALTH ASSESSMENT', yPosition);
     

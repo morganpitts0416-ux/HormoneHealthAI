@@ -498,7 +498,10 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       const res = await apiRequest("PATCH", `/api/patients/${patient.id}/labs/${lab.id}/provider-overrides`, data);
       return res.json();
     },
-    onSuccess: () => setSaveStatus('saved'),
+    onSuccess: () => {
+      setSaveStatus('saved');
+      queryClient.invalidateQueries({ queryKey: ['/api/patients', patient.id, 'labs'] });
+    },
     onError: () => setSaveStatus('unsaved'),
   });
 
@@ -586,10 +589,12 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       if (interp) {
         const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
         const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }));
+        const clinicLogo = (user as any)?.clinicLogo ?? null;
+        const hiddenSections = overrides.hiddenSections || [];
         if (isFemale) {
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding);
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections);
         } else {
-          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding);
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections);
         }
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }
