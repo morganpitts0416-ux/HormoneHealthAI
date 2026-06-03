@@ -12,6 +12,7 @@ import { PatientSearchBar } from "@/components/patient-search-bar";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
 import type { Appointment, AppointmentType, Provider, Patient } from "@shared/schema";
+import { toLocalDateTimeStr } from "@/lib/date-utils";
 
 interface AppointmentDialogProps {
   open: boolean;
@@ -21,11 +22,6 @@ interface AppointmentDialogProps {
   defaultProviderId?: number | null;
   defaultPatientId?: number | null;
   onSaved?: () => void;
-}
-
-function toLocalInputValue(d: Date): string {
-  const pad = (n: number) => String(n).padStart(2, "0");
-  return `${d.getFullYear()}-${pad(d.getMonth() + 1)}-${pad(d.getDate())}T${pad(d.getHours())}:${pad(d.getMinutes())}`;
 }
 
 export function AppointmentDialog({
@@ -65,7 +61,7 @@ export function AppointmentDialog({
       setPatientLabel(appointment.patientName ?? "");
       setProviderId(appointment.providerId ? String(appointment.providerId) : "");
       setAppointmentTypeId(appointment.appointmentTypeId ? String(appointment.appointmentTypeId) : "");
-      setStartsAt(toLocalInputValue(new Date(appointment.appointmentStart)));
+      setStartsAt(toLocalDateTimeStr(new Date(appointment.appointmentStart)));
       setDurationMinutes(appointment.durationMinutes ?? 30);
       setStatus(appointment.status ?? "scheduled");
       setNotes(appointment.notes ?? "");
@@ -74,7 +70,7 @@ export function AppointmentDialog({
       setPatientLabel("");
       setProviderId(defaultProviderId ? String(defaultProviderId) : "");
       setAppointmentTypeId("");
-      setStartsAt(toLocalInputValue(defaultStart ?? new Date()));
+      setStartsAt(toLocalDateTimeStr(defaultStart ?? new Date()));
       setDurationMinutes(30);
       setStatus("scheduled");
       setNotes("");

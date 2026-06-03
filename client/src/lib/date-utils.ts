@@ -51,7 +51,19 @@ export function utcDateStr(d: Date): string {
  * everywhere a datetime-local input needs to be pre-filled with "now".
  */
 export function localDateTimeStr(): string {
-  const d = new Date();
+  return toLocalDateTimeStr(new Date());
+}
+
+/**
+ * Converts any Date object to a local-timezone YYYY-MM-DDTHH:MM string
+ * suitable for datetime-local input fields.
+ *
+ * Use this instead of `date.toISOString().slice(0, 16)` whenever an existing
+ * Date (e.g. a stored appointment time) needs to be displayed in a
+ * datetime-local input. Unlike toISOString(), this uses local clock getters
+ * so the value reflects the user's timezone rather than UTC.
+ */
+export function toLocalDateTimeStr(d: Date): string {
   const mm = String(d.getMonth() + 1).padStart(2, "0");
   const dd = String(d.getDate()).padStart(2, "0");
   const hh = String(d.getHours()).padStart(2, "0");

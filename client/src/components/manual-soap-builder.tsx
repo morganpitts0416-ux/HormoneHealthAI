@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { localDateStr } from "@/lib/date-utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import type { NoteTemplate, PatientChart } from "@shared/schema";
@@ -18,7 +19,6 @@ import {
 } from "lucide-react";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { usePhraseSearch } from "@/components/phrase-search";
-import { localDateStr } from "@/lib/date-utils";
 import { useSlashMenu } from "@/components/slash-menu";
 import { SlashShortcutsHelp } from "@/components/slash-shortcuts-help";
 import {
@@ -132,7 +132,10 @@ function uid(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
+<<<<<<< HEAD
 
+=======
+>>>>>>> fc1f163 (Audit & fix manual timezone-offset date patterns (Task #34))
 function ChartModeEditor({
   systems,
   chartData,
