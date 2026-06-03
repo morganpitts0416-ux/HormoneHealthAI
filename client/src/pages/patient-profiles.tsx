@@ -591,10 +591,13 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
         const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }));
         const clinicLogo = (user as any)?.clinicLogo ?? null;
         const hiddenSections = overrides.hiddenSections || [];
+        const hiddenInterpCats = overrides.hiddenInterpretationCategories || [];
         if (isFemale) {
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections);
+          // hiddenInterpCats covers both regular lab rows and hormone-pattern rows —
+          // the PDF splits them internally using isHormonePatternRowPdf().
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, hiddenInterpCats);
         } else {
-          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections);
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats);
         }
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }

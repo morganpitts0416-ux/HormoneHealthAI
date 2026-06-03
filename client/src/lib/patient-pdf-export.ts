@@ -32,6 +32,18 @@ function isScreeningRow(category: string): boolean {
     category.includes('(PREVENT)') || category.includes('STOP-BANG');
 }
 
+const HORMONE_PATTERN_PREFIXES_PDF = ['Testosterone Pattern', 'Perimenopause Assessment:', 'Hormone Pattern:'];
+function isHormonePatternRowPdf(category: string): boolean {
+  return HORMONE_PATTERN_PREFIXES_PDF.some(p => category.startsWith(p));
+}
+
+// Phenotype names that belong in the Hormone Health section (sex-hormone driven).
+// Everything else goes in the Metabolic Health section.
+const HORMONAL_PHENOTYPE_NAMES = new Set([
+  'Menopausal Transition',
+  'Estrogen Dominance / Impaired Clearance',
+]);
+
 interface WellnessPlan {
   dietPlan: string;
   supplementProtocol: string;
@@ -422,8 +434,14 @@ export async function generatePatientWellnessPDF(
   clinicLogo?: string | null,
   /** Section keys hidden by the provider — matching HideableSection sectionKey values. */
   hiddenSections?: string[],
+  /** Individual interpretation category names hidden from the patient (per-row eye toggle). */
+  hiddenInterpretationCategories?: string[],
+  /** Hormone-pattern row category names hidden from the patient (per-row eye toggle). */
+  hiddenHormonePatternCategories?: string[],
 ): Promise<void> {
   const sectionHidden = (key: string) => hiddenSections?.includes(key) ?? false;
+  const interpHidden = (cat: string) => hiddenInterpretationCategories?.includes(cat) ?? false;
+  const hormonePatternHidden = (cat: string) => hiddenHormonePatternCategories?.includes(cat) ?? false;
   // Load clinic logo — composite over white to avoid jsPDF alpha-channel corruption.
   // Uses the clinic's own logo when provided; shows no image if absent.
   let logoData: string | null = null;
@@ -575,6 +593,8 @@ export async function generatePatientWellnessPDF(
   if (!sectionHidden('labResults') && interpretation.interpretations && interpretation.interpretations.length > 0) {
     const tableData = interpretation.interpretations
       .filter((interp: LabInterpretation) => !isScreeningRow(interp.category))
+      .filter((interp: LabInterpretation) => !isHormonePatternRowPdf(interp.category))
+      .filter((interp: LabInterpretation) => !interpHidden(interp.category))
       .map((interp: LabInterpretation) => {
       let statusText = '';
       
@@ -1097,14 +1117,47 @@ export async function generatePatientWellnessPDF(
     }
   }
 
-  // Female Hormone Health Assessment (clinical phenotypes - patient-friendly)
-  if (!sectionHidden('clinicalPhenotypes') && (interpretation as any).clinicalPhenotypes && (interpretation as any).clinicalPhenotypes.length > 0) {
-    const phenotypes = (interpretation as any).clinicalPhenotypes as Array<{
-      name: string;
-      confidence: string;
-      description: string;
-      supportingFindings: string[];
-    }>;
+  // ── Build phenotype groups ───────────────────────────────────────────────
+  type PhenotypeEntry = { name: string; confidence: string; description: string; supportingFindings: string[] };
+  const allClinicalPhenotypes: PhenotypeEntry[] =
+    !sectionHidden('clinicalPhenotypes') && (interpretation as any).clinicalPhenotypes
+      ? ((interpretation as any).clinicalPhenotypes as PhenotypeEntry[])
+      : [];
+  const hormonalPhenotypes = allClinicalPhenotypes.filter(p => HORMONAL_PHENOTYPE_NAMES.has(p.name));
+  const metabolicPhenotypes = allClinicalPhenotypes.filter(p => !HORMONAL_PHENOTYPE_NAMES.has(p.name));
+
+  // Hormone-pattern rows from interpretations (SHBG Trap, Estrogen Volatility/Spiking, etc.)
+  const hormonalPatternRows: LabInterpretation[] =
+    !sectionHidden('hormonePatterns') && interpretation.interpretations
+      ? interpretation.interpretations.filter(
+          (row: LabInterpretation) =>
+            isHormonePatternRowPdf(row.category) && !hormonePatternHidden(row.category),
+        )
+      : [];
+
+  // Helper: render one phenotype card (name + description) at current yPosition
+  const renderPhenotypeCard = (name: string, description: string) => {
+    const descText = sanitizeForPdf(description || 'Your provider will explain what this pattern means for your care.');
+    const descLines = doc.splitTextToSize(descText, contentWidth - 8);
+    const blockHeight = 14 + descLines.length * 4;
+    yPosition = ensureSpace(blockHeight + 6, yPosition);
+    doc.setFillColor(...lightBg);
+    doc.roundedRect(margin, yPosition, contentWidth, blockHeight, 2, 2, 'F');
+    doc.setTextColor(...brandColor);
+    doc.setFontSize(9);
+    doc.setFont('helvetica', 'bold');
+    doc.text(sanitizeForPdf(name), margin + 4, yPosition + 7);
+    doc.setTextColor(...textColor);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.text(descLines, margin + 4, yPosition + 13);
+    yPosition += blockHeight + 4;
+  };
+
+  // ── YOUR HORMONE HEALTH ASSESSMENT ──────────────────────────────────────
+  // Shows hormone-pattern rows (SHBG Trap, Estrogen Volatility/Spiking, etc.)
+  // plus sex-hormone clinical phenotypes (Menopausal Transition, Estrogen Dominance).
+  if (hormonalPatternRows.length > 0 || hormonalPhenotypes.length > 0) {
     yPosition = ensureSpace(60, yPosition);
     yPosition = addSectionHeader('YOUR HORMONE HEALTH ASSESSMENT', yPosition);
 
@@ -1117,22 +1170,59 @@ export async function generatePatientWellnessPDF(
     doc.text(femHormoneIntroLines, margin, yPosition);
     yPosition += femHormoneIntroLines.length * 4 + 6;
 
-    for (const phenotype of phenotypes) {
-      const descText = sanitizeForPdf(phenotype.description || 'Your provider will explain what this pattern means for your care.');
-      const descLines = doc.splitTextToSize(descText, contentWidth - 8);
-      const femBlockHeight = 14 + (descLines.length * 4);
-      yPosition = ensureSpace(femBlockHeight + 6, yPosition);
+    // Hormone-pattern rows (SHBG Trap, Estrogen Volatility/Spiking, etc.)
+    for (const row of hormonalPatternRows) {
+      const label = row.category.includes(':')
+        ? row.category.split(':').slice(1).join(':').trim()
+        : row.category;
+      // Patient text is everything before the provider-only section
+      const patientText = (row.interpretation || '').split(/PROVIDER RECOMMENDATION:/i)[0].trim();
+      if (!label && !patientText) continue;
+
+      const labelLines = doc.splitTextToSize(sanitizeForPdf(label), contentWidth - 8);
+      const textLines = patientText ? doc.splitTextToSize(sanitizeForPdf(patientText), contentWidth - 8) : [];
+      const blockH = 7 + labelLines.length * 4 + (textLines.length > 0 ? 4 + textLines.length * 4 : 0) + 6;
+      yPosition = ensureSpace(blockH + 6, yPosition);
       doc.setFillColor(...lightBg);
-      doc.roundedRect(margin, yPosition, contentWidth, femBlockHeight, 2, 2, 'F');
+      doc.roundedRect(margin, yPosition, contentWidth, blockH, 2, 2, 'F');
       doc.setTextColor(...brandColor);
       doc.setFontSize(9);
       doc.setFont('helvetica', 'bold');
-      doc.text(sanitizeForPdf(phenotype.name), margin + 4, yPosition + 7);
-      doc.setTextColor(...textColor);
-      doc.setFontSize(8);
-      doc.setFont('helvetica', 'normal');
-      doc.text(descLines, margin + 4, yPosition + 13);
-      yPosition += femBlockHeight + 4;
+      doc.text(labelLines, margin + 4, yPosition + 7);
+      if (patientText) {
+        doc.setTextColor(...textColor);
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'normal');
+        doc.text(textLines, margin + 4, yPosition + 7 + labelLines.length * 4 + 3);
+      }
+      yPosition += blockH + 4;
+    }
+
+    // Sex-hormone clinical phenotypes
+    for (const phenotype of hormonalPhenotypes) {
+      renderPhenotypeCard(phenotype.name, phenotype.description);
+    }
+    yPosition += 4;
+  }
+
+  // ── YOUR METABOLIC HEALTH ASSESSMENT ────────────────────────────────────
+  // Shows metabolic/systemic clinical phenotypes (Inflammatory Burden,
+  // Iron Deficiency, Insulin Resistance, Oxidative Stress, etc.)
+  if (metabolicPhenotypes.length > 0) {
+    yPosition = ensureSpace(60, yPosition);
+    yPosition = addSectionHeader('YOUR METABOLIC HEALTH ASSESSMENT', yPosition);
+
+    const metabolicIntro = 'The following metabolic patterns were identified based on your lab results. These patterns guide your personalized nutrition, supplement, and lifestyle recommendations.';
+    yPosition = ensureSpace(20, yPosition);
+    const metaIntroLines = doc.splitTextToSize(sanitizeForPdf(metabolicIntro), contentWidth);
+    doc.setFontSize(8);
+    doc.setFont('helvetica', 'normal');
+    doc.setTextColor(...textColor);
+    doc.text(metaIntroLines, margin, yPosition);
+    yPosition += metaIntroLines.length * 4 + 6;
+
+    for (const phenotype of metabolicPhenotypes) {
+      renderPhenotypeCard(phenotype.name, phenotype.description);
     }
     yPosition += 4;
   }

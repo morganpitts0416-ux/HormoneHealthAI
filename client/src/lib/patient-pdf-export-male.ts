@@ -315,8 +315,11 @@ export async function generateMalePatientWellnessPDF(
   clinicLogo?: string | null,
   /** Section keys hidden by the provider — matching HideableSection sectionKey values. */
   hiddenSections?: string[],
+  /** Individual interpretation category names hidden from the patient (per-row eye toggle). */
+  hiddenInterpretationCategories?: string[],
 ): Promise<void> {
   const sectionHidden = (key: string) => hiddenSections?.includes(key) ?? false;
+  const interpHidden = (cat: string) => hiddenInterpretationCategories?.includes(cat) ?? false;
   // Load clinic logo — composite over white to avoid jsPDF alpha-channel corruption.
   // Uses the clinic's own logo when provided; shows no image if absent.
   let logoData: string | null = null;
@@ -468,6 +471,7 @@ export async function generateMalePatientWellnessPDF(
   if (!sectionHidden('labResults') && interpretation.interpretations && interpretation.interpretations.length > 0) {
     const tableData = interpretation.interpretations
       .filter((interp: LabInterpretation) => !isScreeningRow(interp.category))
+      .filter((interp: LabInterpretation) => !interpHidden(interp.category))
       .map((interp: LabInterpretation) => {
       let statusText = '';
       
