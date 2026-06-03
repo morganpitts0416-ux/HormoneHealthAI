@@ -389,8 +389,12 @@ export default function SchedulingPage() {
               const isBlock = arg.event.extendedProps?.isBlock;
               if (isBlock) return undefined;
               const source = arg.event.extendedProps?.source;
+              const apptId = (arg.event.extendedProps?.appointment as Appointment | undefined)?.id;
               return (
-                <div className="px-1.5 py-1 text-[11px] leading-tight overflow-hidden h-full">
+                <div
+                  className="px-1.5 py-1 text-[11px] leading-tight overflow-hidden h-full"
+                  data-testid={apptId != null ? `event-appt-${apptId}` : undefined}
+                >
                   <div className="font-semibold truncate opacity-95">{arg.timeText}</div>
                   <div className="truncate">
                     {arg.event.title}
