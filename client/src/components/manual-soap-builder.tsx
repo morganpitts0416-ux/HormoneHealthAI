@@ -131,6 +131,13 @@ function uid(): string {
   return Math.random().toString(36).substring(2, 10);
 }
 
+function localDateStr(): string {
+  const d = new Date();
+  const mm = String(d.getMonth() + 1).padStart(2, "0");
+  const dd = String(d.getDate()).padStart(2, "0");
+  return `${d.getFullYear()}-${mm}-${dd}`;
+}
+
 function ChartModeEditor({
   systems,
   chartData,
@@ -1372,7 +1379,7 @@ interface ManualSoapBuilderProps {
 export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose, onSaved }: ManualSoapBuilderProps) {
   const { toast } = useToast();
   const [chiefComplaint, setChiefComplaint] = useState("");
-  const [visitDate, setVisitDate] = useState(new Date().toISOString().slice(0, 10));
+  const [visitDate, setVisitDate] = useState(localDateStr);
   const [visitType, setVisitType] = useState("follow-up");
   const [blocks, setBlocks] = useState<SoapBlock[]>([
     { uid: uid(), type: "hpi", content: "", mode: "freetext" },

@@ -79,7 +79,8 @@ const PRIORITY_LABELS: Record<string, { label: string; color: string; bg: string
 };
 
 function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
+  const d = dateStr.includes("T") ? new Date(dateStr) : new Date(dateStr + "T12:00:00");
+  return d.toLocaleDateString("en-US", { month: "long", day: "numeric", year: "numeric" });
 }
 
 function daysSince(dateStr: string): number {

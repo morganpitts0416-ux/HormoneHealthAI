@@ -105,7 +105,12 @@ export default function SimpleLabUpload() {
     initialPatientId ? parseInt(initialPatientId) : null
   );
   const [patientComboOpen, setPatientComboOpen] = useState(false);
-  const [labDate, setLabDate] = useState(new Date().toISOString().split("T")[0]);
+  const [labDate, setLabDate] = useState(() => {
+    const d = new Date();
+    const mm = String(d.getMonth() + 1).padStart(2, "0");
+    const dy = String(d.getDate()).padStart(2, "0");
+    return `${d.getFullYear()}-${mm}-${dy}`;
+  });
   const [entries, setEntries] = useState<LabEntry[]>([emptyEntry()]);
   const [notes, setNotes] = useState("");
   const [showCommonLabs, setShowCommonLabs] = useState(false);

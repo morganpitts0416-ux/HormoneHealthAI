@@ -69,14 +69,18 @@ export interface SavedRecipeRow {
 }
 
 // ───── Format helpers ──────────────────────────────────────────────────────
+function parseDateForDisplay(dateStr: string): Date {
+  return dateStr.includes("T") ? new Date(dateStr) : new Date(dateStr + "T12:00:00");
+}
+
 export function formatDate(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  return parseDateForDisplay(dateStr).toLocaleDateString("en-US", {
     month: "long", day: "numeric", year: "numeric",
   });
 }
 
 export function formatDateShort(dateStr: string): string {
-  return new Date(dateStr).toLocaleDateString("en-US", {
+  return parseDateForDisplay(dateStr).toLocaleDateString("en-US", {
     month: "short", day: "numeric", year: "numeric",
   });
 }
@@ -766,7 +770,7 @@ export function PortalVisitSummaryCard({ vs }: { vs: PortalVisitSummary }) {
               {VISIT_TYPE_LABELS[vs.visitType] ?? vs.visitType}
             </span>
             <span className="text-xs" style={{ color: "#a0a880" }}>
-              {formatDate(new Date(vs.visitDate).toISOString().split("T")[0])}
+              {formatDate(vs.visitDate)}
             </span>
           </div>
           {vs.chiefComplaint && (
