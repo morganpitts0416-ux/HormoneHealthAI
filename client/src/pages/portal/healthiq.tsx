@@ -1,6 +1,7 @@
 import { useState } from "react";
 import { Link } from "wouter";
 import { useQuery } from "@tanstack/react-query";
+import { toLocalDateStr } from "@/lib/date-utils";
 import { PortalShell } from "@/components/portal/portal-shell";
 import { Tabs, TabsContent, TabsList, TabsTrigger } from "@/components/ui/tabs";
 import {
@@ -313,8 +314,8 @@ function TrendsPanel() {
   const today = new Date();
   const from = new Date(today);
   from.setDate(from.getDate() - 29);
-  const fromIso = from.toISOString().slice(0, 10);
-  const toIso = today.toISOString().slice(0, 10);
+  const fromIso = toLocalDateStr(from);
+  const toIso = toLocalDateStr(today);
 
   const { data, isLoading } = useQuery<CheckinRow[]>({
     queryKey: [`/api/portal/tracking/checkins?from=${fromIso}&to=${toIso}`],

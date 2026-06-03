@@ -1,6 +1,7 @@
 import { useState, useMemo, useRef, useEffect } from "react";
 import { usePatientContext } from "@/hooks/use-patient-context";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { utcDateStr } from "@/lib/date-utils";
 import { useAuth } from "@/hooks/use-auth";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -2196,7 +2197,7 @@ export default function PatientProfiles() {
   const handleEditPatientOpen = () => {
     if (!selectedPatient) return;
     const dob = selectedPatient.dateOfBirth
-      ? new Date(selectedPatient.dateOfBirth as unknown as string).toISOString().split("T")[0]
+      ? utcDateStr(new Date(selectedPatient.dateOfBirth as unknown as string))
       : "";
     // Default primary provider to clinic owner if not set
     const existingProvider = (selectedPatient as any).primaryProvider ?? "";

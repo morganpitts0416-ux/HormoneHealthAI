@@ -1,5 +1,6 @@
 import { useState, useRef } from "react";
 import { useQuery, useMutation } from "@tanstack/react-query";
+import { parseDateOnlyStr } from "@/lib/date-utils";
 import { queryClient, apiRequest } from "@/lib/queryClient";
 import { useLocation, useSearch } from "wouter";
 import { useAuth } from "@/hooks/use-auth";
@@ -234,11 +235,15 @@ export default function SimpleLabUpload() {
         return;
       }
 
-      // Auto-fill lab date if the PDF contained a collection date
+      // Auto-fill lab date if the PDF contained a collection date.
+      // collectionDate arrives as YYYY-MM-DD or MM/DD/YYYY from the AI.
+      // parseDateOnlyStr handles both formats without going through Date
+      // local getters, which would shift YYYY-MM-DD strings one day back
+      // in US timezones (those strings parse as UTC midnight in JS).
       if (data.collectionDate) {
-        const d = new Date(data.collectionDate);
-        if (!isNaN(d.getTime())) {
-          setLabDate(d.toISOString().split("T")[0]);
+        const parsed = parseDateOnlyStr(String(data.collectionDate));
+        if (parsed) {
+          setLabDate(parsed);
         }
       }
 

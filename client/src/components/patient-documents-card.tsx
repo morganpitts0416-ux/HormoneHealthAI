@@ -1,5 +1,6 @@
 import { useEffect, useMemo, useRef, useState } from "react";
 import { useMutation, useQuery, useQueryClient } from "@tanstack/react-query";
+import { localDateStr } from "@/lib/date-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -477,7 +478,7 @@ function ScanDialog({ open, onClose, isUploading, onSubmit }: ScanDialogProps) {
         pdf.addImage(p.dataUrl, "JPEG", x, y, w, h, undefined, "FAST");
       });
       const blob = pdf.output("blob");
-      const fileName = (docName.trim() || `Scan ${new Date().toISOString().slice(0, 10)}`) + ".pdf";
+      const fileName = (docName.trim() || `Scan ${localDateStr()}`) + ".pdf";
       const file = new File([blob], fileName, { type: "application/pdf" });
       onSubmit(file);
     } finally {

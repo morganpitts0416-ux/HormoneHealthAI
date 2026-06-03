@@ -9,6 +9,7 @@ import { Select, SelectTrigger, SelectContent, SelectItem, SelectValue } from "@
 import { Loader2 } from "lucide-react";
 import { apiRequest, queryClient } from "@/lib/queryClient";
 import { useToast } from "@/hooks/use-toast";
+import { localDateStr, toLocalDateStr } from "@/lib/date-utils";
 
 export function ConfigureVitalsMonitoringDialog({
   open,
@@ -25,7 +26,7 @@ export function ConfigureVitalsMonitoringDialog({
   const [vitalTypes, setVitalTypes] = useState<string[]>(["blood_pressure"]);
   const [duration, setDuration] = useState<string>("7");
   const [frequency, setFrequency] = useState<string>("1");
-  const [startDate, setStartDate] = useState<string>(() => new Date().toISOString().slice(0, 10));
+  const [startDate, setStartDate] = useState<string>(localDateStr);
   const [instructions, setInstructions] = useState<string>(
     "Take your reading each morning before medication, after sitting quietly for 5 minutes."
   );
@@ -35,7 +36,7 @@ export function ConfigureVitalsMonitoringDialog({
       const start = new Date(startDate + "T00:00:00");
       const end = new Date(start);
       end.setDate(end.getDate() + Math.max(1, Number(duration)) - 1);
-      const endStr = end.toISOString().slice(0, 10);
+      const endStr = toLocalDateStr(end);
       return apiRequest("POST", `/api/patients/${patientId}/vitals-monitoring`, {
         vitalTypes,
         startDate,

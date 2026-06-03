@@ -2,6 +2,7 @@ import jsPDF from 'jspdf';
 import autoTable from 'jspdf-autotable';
 import type { FemaleLabValues, InterpretationResult, LabInterpretation, LabResult } from '@shared/schema';
 import { addTrendChartsToWellnessPDF } from '@/lib/pdf-trend-charts';
+import { toLocalDateStr } from '@/lib/date-utils';
 
 function sanitizeForPdf(text: string): string {
   return text
@@ -1999,7 +2000,7 @@ export async function generatePatientWellnessPDF(
     addFooter(i, totalPages);
   }
 
-  const dateStr = new Date().toISOString().split('T')[0];
+  const dateStr = toLocalDateStr(new Date());
   const fileName = patientName
     ? `Patient_Wellness_Report_${sanitizeForPdf(patientName).replace(/\s+/g, '_')}_${dateStr}.pdf`
     : `Patient_Wellness_Report_${dateStr}.pdf`;

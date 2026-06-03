@@ -3,6 +3,7 @@ import autoTable from 'jspdf-autotable';
 import type { LabValues, InterpretationResult, LabResult } from '@shared/schema';
 import { generateTrendInsights } from '@/lib/clinical-trend-insights';
 import { hexToRgb, resolveBranding, type PartialBranding } from "@/lib/branding";
+import { toLocalDateStr } from '@/lib/date-utils';
 
 // Sanitize text to replace Unicode characters that cause PDF spacing issues
 // Converts to ASCII-safe equivalents while preserving medical meaning
@@ -514,7 +515,7 @@ export async function generateLabReportPDF(
     doc.text(`Recommended Recheck Window: ${sanitizeForPdf(interpretation.recheckWindow)}`, 14, yPosition);
   }
 
-  const timestamp = new Date().toISOString().split('T')[0];
+  const timestamp = toLocalDateStr(new Date());
   const filename = patientName
     ? `lab-report-${patientName.replace(/\s+/g, '-')}-${timestamp}.pdf`
     : `lab-report-${timestamp}.pdf`;
