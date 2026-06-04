@@ -20,8 +20,9 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, EyeOff, CalendarDays, Phone, Paperclip,
-  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap,
+  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap, Upload,
 } from "lucide-react";
+import { PatientCsvImport } from "@/components/patient-csv-import";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
 import { Link, useLocation, useSearch } from "wouter";
@@ -2027,6 +2028,7 @@ export default function PatientProfiles() {
   const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", gender: "female" as "male" | "female", primaryProvider: "", ssn: "", driversLicense: "", insuranceCarrier: "", insuranceMemberId: "" });
   const [editPatientPharmacy, setEditPatientPharmacy] = useState<PharmacyLookupValue>({ text: "", details: null });
   const [showNewPatientDialog, setShowNewPatientDialog] = useState(false);
+  const [showCsvImport, setShowCsvImport] = useState(false);
   const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", gender: "female" as "male" | "female", email: "", phone: "" });
   const [showFullDemographics, setShowFullDemographics] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
@@ -3057,6 +3059,16 @@ export default function PatientProfiles() {
                   data-testid="input-patient-profile-search"
                 />
               </div>
+              <Button
+                size="sm"
+                variant="outline"
+                className="h-8 px-2 shrink-0 text-xs font-medium"
+                onClick={() => setShowCsvImport(true)}
+                data-testid="button-import-csv"
+                title="Import patients from CSV"
+              >
+                <Upload className="h-3.5 w-3.5 mr-1" />Import
+              </Button>
               <Button
                 size="sm"
                 className="h-8 px-2 shrink-0 text-xs font-medium"
@@ -5651,6 +5663,9 @@ export default function PatientProfiles() {
           </Card>
         </div>
       )}
+
+      {/* CSV Import dialog */}
+      <PatientCsvImport open={showCsvImport} onClose={() => setShowCsvImport(false)} />
 
       {/* New Patient dialog */}
       <Dialog open={showNewPatientDialog} onOpenChange={setShowNewPatientDialog}>

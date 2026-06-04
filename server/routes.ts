@@ -3017,6 +3017,121 @@ Rules:
     }
   });
 
+  // ── CSV Bulk Import ────────────────────────────────────────────────────────
+  // Accepts pre-parsed rows + a column mapping from the client.
+  // Only INSERTs new patients — never touches existing profiles.
+  // Duplicate detection: same clinic + (firstName+lastName+DOB) OR same MRN.
+  app.post("/api/patients/import", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId    = getEffectiveClinicId(req);
+
+      const { rows, mapping } = req.body as {
+        rows:    Record<string, string>[];
+        mapping: Record<string, string>; // csvHeader → patientField | "__skip__"
+      };
+
+      if (!Array.isArray(rows) || !mapping || typeof mapping !== "object") {
+        return res.status(400).json({ error: "Invalid payload" });
+      }
+
+      // Build reverse lookup: patientField → value (from the row)
+      function mapRow(row: Record<string, string>): Record<string, string> {
+        const out: Record<string, string> = {};
+        for (const [hdr, field] of Object.entries(mapping)) {
+          if (field && field !== "__skip__" && row[hdr] !== undefined) {
+            out[field] = (row[hdr] ?? "").trim();
+          }
+        }
+        return out;
+      }
+
+      let imported = 0;
+      let skipped  = 0;
+      const errors: { row: number; reason: string }[] = [];
+
+      for (let i = 0; i < rows.length; i++) {
+        const rowNum = i + 2; // 1-based, +1 for header row
+        try {
+          const mapped = mapRow(rows[i]);
+
+          const firstName = mapped.firstName?.trim();
+          const lastName  = mapped.lastName?.trim();
+
+          if (!firstName || !lastName) {
+            errors.push({ row: rowNum, reason: "Missing first or last name" });
+            continue;
+          }
+
+          // Parse optional date of birth
+          let dateOfBirth: Date | null = null;
+          if (mapped.dateOfBirth) {
+            try {
+              dateOfBirth = parseDateOnly(mapped.dateOfBirth);
+              if (isNaN(dateOfBirth.getTime())) dateOfBirth = null;
+            } catch { dateOfBirth = null; }
+          }
+
+          // Normalize gender
+          let gender: "male" | "female" = "male";
+          if (mapped.gender) {
+            const g = mapped.gender.toLowerCase().trim();
+            if (g.startsWith("f")) gender = "female";
+          }
+
+          // Duplicate detection within this clinic
+          const existingPatients = await storage.getAllPatients(clinicianId, clinicId);
+          const isDuplicate = existingPatients.some(p => {
+            // MRN match (if both have MRN)
+            if (mapped.mrn && p.mrn && p.mrn.trim() === mapped.mrn.trim()) return true;
+            // Name + DOB match
+            const nameMatch =
+              p.firstName.trim().toLowerCase() === firstName.toLowerCase() &&
+              p.lastName.trim().toLowerCase()  === lastName.toLowerCase();
+            if (!nameMatch) return false;
+            if (!dateOfBirth || !p.dateOfBirth) return nameMatch;
+            return new Date(p.dateOfBirth).toDateString() === dateOfBirth.toDateString();
+          });
+
+          if (isDuplicate) { skipped++; continue; }
+
+          const patientData: Record<string, unknown> = {
+            firstName,
+            lastName,
+            gender,
+            userId:    clinicianId,
+            ...(clinicId         ? { clinicId }                         : {}),
+            ...(dateOfBirth      ? { dateOfBirth }                      : {}),
+            ...(mapped.mrn       ? { mrn: mapped.mrn }                  : {}),
+            ...(mapped.email     ? { email: mapped.email }              : {}),
+            ...(mapped.phone     ? { phone: mapped.phone }              : {}),
+            ...(mapped.ssn       ? { ssn: mapped.ssn }                  : {}),
+            ...(mapped.insuranceCarrier  ? { insuranceCarrier:  mapped.insuranceCarrier }  : {}),
+            ...(mapped.insuranceMemberId ? { insuranceMemberId: mapped.insuranceMemberId } : {}),
+            ...(mapped.driversLicense    ? { driversLicense:    mapped.driversLicense }    : {}),
+            ...(mapped.primaryProvider   ? { primaryProvider:   mapped.primaryProvider }   : {}),
+          };
+
+          const parseResult = insertPatientSchema.safeParse(patientData);
+          if (!parseResult.success) {
+            errors.push({ row: rowNum, reason: parseResult.error.errors.map(e => e.message).join("; ") });
+            continue;
+          }
+
+          await storage.createPatient(parseResult.data);
+          imported++;
+        } catch (rowErr) {
+          errors.push({ row: rowNum, reason: "Unexpected error: " + String(rowErr) });
+        }
+      }
+
+      res.json({ imported, skipped, errors });
+    } catch (error) {
+      console.error("[/api/patients/import] Error:", error);
+      res.status(500).json({ error: "Import failed" });
+    }
+  });
+
   app.post("/api/patients", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
