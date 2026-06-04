@@ -19,6 +19,7 @@ import {
 } from "lucide-react";
 import { usePhraseSearch } from "@/components/phrase-search";
 import type { NoteTemplate } from "@shared/schema";
+import { nurseBlocksToText } from "@/lib/soap-pdf-export";
 
 interface NurseNoteBuilderProps {
   patientId: number;
@@ -183,13 +184,14 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
 
   const saveMut = useMutation({
     mutationFn: async () => {
+      const fullNote = nurseBlocksToText(blocks);
       const body = {
         patientId,
         visitDate: new Date(visitDate).toISOString(),
         visitType: "nurse-visit",
         noteType: "nurse",
         chiefComplaint: chiefComplaint || blocks.find(b => b.type === "chief_complaint")?.content || "Nurse visit",
-        soapNote: { blocks } as any,
+        soapNote: { fullNote, blocks } as any,
       };
       const res = await apiRequest("POST", "/api/encounters", body);
       const encounter = await res.json();

@@ -28,14 +28,27 @@ export function PhoneNoteDialog({ patientId, onClose }: PhoneNoteDialogProps) {
 
   const saveMut = useMutation({
     mutationFn: async () => {
+      const cc = chiefComplaint || `Phone call (${direction === "incoming" ? "incoming" : "outgoing"} - ${contactedWith.toLowerCase()})`;
+      const header = [
+        `NON-VISIT CONTACT NOTE`,
+        ``,
+        `Contact type: ${direction === "incoming" ? "Incoming" : "Outgoing"} call`,
+        `Spoke with: ${contactedWith}`,
+        `Reason: ${cc}`,
+        ``,
+        `NOTES`,
+        ``,
+        content.trim(),
+      ].join("\n");
       const body = {
         patientId,
         visitDate: new Date(visitDate).toISOString(),
         visitType: "phone-call",
         noteType: "phone",
-        chiefComplaint: chiefComplaint || `Phone call (${direction === "incoming" ? "incoming" : "outgoing"} - ${contactedWith.toLowerCase()})`,
+        chiefComplaint: cc,
         clinicianNotes: content,
         phoneContact: { contactedWith, direction },
+        soapNote: { fullNote: header },
       };
       return apiRequest("POST", "/api/encounters", body);
     },

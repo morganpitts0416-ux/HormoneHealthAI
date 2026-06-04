@@ -32,8 +32,10 @@ export function nurseBlocksToText(blocks: any[]): string {
   const lines: string[] = [];
   for (const block of blocks) {
     const label = (block.label || block.type || "").toUpperCase();
-    if (block.type === "vitals" && block.vitals) {
-      const v = block.vitals;
+
+    if (block.type === "vitals") {
+      lines.push("VITAL SIGNS");
+      const v = block.vitals ?? {};
       const parts: string[] = [];
       if (v.systolicBp && v.diastolicBp) parts.push(`BP: ${v.systolicBp}/${v.diastolicBp} mmHg`);
       else if (v.systolicBp) parts.push(`BP: ${v.systolicBp}/— mmHg`);
@@ -45,38 +47,32 @@ export function nurseBlocksToText(blocks: any[]): string {
       if (v.heightInches) parts.push(`Ht: ${v.heightInches} in`);
       if (v.weightLbs) parts.push(`Wt: ${v.weightLbs} lbs`);
       if (v.bmi) parts.push(`BMI: ${v.bmi}`);
-      if (parts.length > 0) {
-        lines.push("VITAL SIGNS");
-        lines.push(parts.join("  |  "));
-        lines.push("");
-      }
+      lines.push(parts.length > 0 ? parts.join("  |  ") : "");
+      lines.push("");
     } else if (block.type === "dropdown" || block.type === "radio") {
-      if (block.selected) {
-        lines.push(`${label}: ${block.selected}`);
-        lines.push("");
-      }
+      lines.push(block.selected ? `${label}: ${block.selected}` : label);
+      lines.push("");
     } else if (block.type === "checkbox") {
-      if (block.checkedValues?.length) {
-        lines.push(`${label}: ${block.checkedValues.join(", ")}`);
-        lines.push("");
-      }
+      lines.push(block.checkedValues?.length
+        ? `${label}: ${block.checkedValues.join(", ")}`
+        : label);
+      lines.push("");
     } else if (block.type === "short_text") {
-      if (block.content?.trim()) {
-        lines.push(`${label}: ${block.content.trim()}`);
-        lines.push("");
-      }
-    } else if (block.content) {
-      let text: string = block.content;
+      lines.push(block.content?.trim()
+        ? `${label}: ${block.content.trim()}`
+        : label);
+      lines.push("");
+    } else {
+      // free_text, long_text, chief_complaint, assessment, intervention, etc.
+      let text: string = block.content ?? "";
       if (block.fillValues?.length && text.includes("{{blank}}")) {
         let idx = 0;
         text = text.replace(/\{\{[^}]*\}\}/g, () => block.fillValues[idx++] ?? "");
       }
-      if (text.trim()) {
-        lines.push(label);
-        lines.push("");
-        lines.push(text.trim());
-        lines.push("");
-      }
+      lines.push(label);
+      lines.push("");
+      if (text.trim()) lines.push(text.trim());
+      lines.push("");
     }
   }
   return lines.join("\n");
