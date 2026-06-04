@@ -125,6 +125,7 @@ interface OpenEncounterRow {
   patientId: number;
   visitDate: string;
   visitType: string;
+  noteType: string | null;
   chiefComplaint: string | null;
   soapGeneratedAt: string | null;
   updatedAt: string;
@@ -649,7 +650,17 @@ export default function Dashboard() {
                     <button
                       key={`enc-${enc.id}`}
                       type="button"
-                      onClick={() => setLocation(`/encounters?encounterId=${enc.id}`)}
+                      onClick={() => {
+                        // AI-generated encounters (have a soapGeneratedAt timestamp) open in
+                        // the AI SOAP editor. Manual notes (nurse, phone, manual SOAP — no AI
+                        // generation step) open in the patient profile encounters tab.
+                        const isAiGenerated = !!enc.soapGeneratedAt;
+                        if (isAiGenerated) {
+                          setLocation(`/encounters?encounterId=${enc.id}`);
+                        } else {
+                          setLocation(`/patients?patient=${enc.patientId}&tab=encounters`);
+                        }
+                      }}
                       className="w-full text-left px-4 py-3 flex items-center gap-3 hover-elevate active-elevate-2"
                       data-testid={`item-open-encounter-${enc.id}`}
                     >
@@ -663,6 +674,12 @@ export default function Dashboard() {
                           <Badge variant="outline" className="text-[10px] py-0 px-1.5 capitalize" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>{enc.visitType}</Badge>
                           {enc.soapGeneratedAt ? (
                             <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>SOAP drafted · unsigned</Badge>
+                          ) : enc.noteType === "nurse" ? (
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#f5cba4", color: "#7a4a14", backgroundColor: "#fef3e8" }}>Nurse note · unsigned</Badge>
+                          ) : enc.noteType === "phone" ? (
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#aac4e8", color: "#1d3a66", backgroundColor: "#edf3fc" }}>Phone note · unsigned</Badge>
+                          ) : enc.noteType === "soap_provider" ? (
+                            <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#d4c9b5", color: "#5a7040" }}>Manual note · unsigned</Badge>
                           ) : (
                             <Badge variant="outline" className="text-[10px] py-0 px-1.5" style={{ borderColor: "#e0c990", color: "#7a5c20", backgroundColor: "#fef0c7" }}>Awaiting SOAP</Badge>
                           )}

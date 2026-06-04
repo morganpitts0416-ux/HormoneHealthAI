@@ -7884,6 +7884,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
           patientId: clinicalEncounters.patientId,
           visitDate: clinicalEncounters.visitDate,
           visitType: clinicalEncounters.visitType,
+          noteType: clinicalEncounters.noteType,
           chiefComplaint: clinicalEncounters.chiefComplaint,
           soapGeneratedAt: clinicalEncounters.soapGeneratedAt,
           updatedAt: clinicalEncounters.updatedAt,
