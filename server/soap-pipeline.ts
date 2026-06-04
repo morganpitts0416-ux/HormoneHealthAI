@@ -1309,6 +1309,34 @@ THE FORMAT FOR EACH NUMBERED ITEM:
   [Clinical reasoning: 2-3 sentences connecting symptoms, labs, pattern — WHY this diagnosis and why this treatment approach. If specific counseling occurred — titration plan reviewed, risks named, alternatives discussed, patient preference stated — integrate it here naturally as part of the clinical narrative. If a monitoring target was discussed, include it: "goal free testosterone 1.5–2.5 pg/mL." If patient education was specific and meaningful, integrate it: "instructed to take on empty stomach," "aware that symptom improvement may lag 6-8 weeks."]
   Plan: [drug name, dose, route, frequency — precise and complete. Labs ordered. Follow-up interval with rationale. Conditional plans: "if no response in 6 weeks, will advance dose."]
 
+CLINICAL REASONING PARAGRAPH — CRITICAL CONTENT RULE:
+The clinical reasoning paragraph MUST establish WHY the diagnosis exists before describing what is being done about it. It must be grounded in clinical evidence — symptoms reported, exam findings, lab values, or history that support the diagnosis. Treatment actions belong exclusively in the Plan line.
+
+NEVER open or populate the clinical reasoning paragraph with:
+- What was prescribed or initiated ("Adderall 20 mg initiated for ADHD management.")
+- What was started, ordered, or changed ("Amlodipine 5 mg daily initiated to achieve goal BP.")
+- Restatements of the Plan line in any form
+
+WRONG (restating the plan in the clinical reasoning):
+  1. ADHD (F90.9)
+  Adderall 20 mg oral twice daily initiated for ADHD management. Patient previously responded well to this regimen.
+  Plan: Start Adderall 20 mg oral twice daily. Monitor ADHD symptoms. Follow up in 4 weeks.
+
+RIGHT (clinical evidence first, then plan):
+  1. ADHD (F90.9)
+  Patient carries a longstanding ADHD diagnosis with documented prior response to stimulant therapy. Reports ongoing difficulty with task completion, sustained attention, and impulse control. Adderall is being restarted given established efficacy and tolerance with this regimen.
+  Plan: Adderall 20 mg PO BID initiated. Monitor symptom response. Follow up 4 weeks.
+
+WRONG (clinical reasoning = treatment action):
+  3. Hypertension (I10)
+  Amlodipine 5 mg oral daily initiated to achieve goal blood pressure of <120/80.
+  Plan: Start amlodipine 5 mg oral daily. Monitor blood pressure regularly. Reassess in 4 weeks.
+
+RIGHT (clinical evidence first):
+  3. Hypertension (I10)
+  BP measured at 148/92 mmHg today; patient reports no compliance barriers with prior antihypertensive attempts. Pattern consistent with uncontrolled primary hypertension; amlodipine selected given its tolerability profile and evidence base for systolic reduction.
+  Plan: Amlodipine 5 mg PO daily initiated. BP recheck in 4 weeks; target <120/80.
+
 INTEGRATION RULES:
 - Education that is specific and patient-relevant belongs in the clinical reasoning paragraph — not in a separate sub-section
 - Generic statements ("risks and benefits discussed," "patient verbalized understanding") must not appear anywhere — they are legally weak and clinically empty
@@ -1526,11 +1554,11 @@ ASSESSMENT/PLAN
 [Opening synthesis paragraph — 3-5 sentences connecting the patient's symptom pattern, key lab findings, and overall treatment rationale. This is NOT an introduction to the list below — it is an independent clinical impression that stands on its own.]
 
 1. Diagnosis Name (ICD-10 code)
-[Clinical reasoning — 2-3 sentences: WHY this diagnosis, what evidence (symptoms, labs, pattern) supports it, and why this treatment approach. Weave in any specific counseling, titration plan, or patient education naturally as part of this reasoning — do NOT create separate "Counseling" or "Monitoring" sub-lines.]
+[Clinical reasoning — 2-3 sentences: WHY this diagnosis, grounded in clinical evidence (symptoms reported, exam findings, lab values, history). NEVER open with a treatment action or prescription. Establish the clinical basis for the diagnosis first, then connect it to the treatment rationale. Weave in any specific counseling, titration plan, or patient education naturally — do NOT create separate "Counseling" or "Monitoring" sub-lines.]
 Plan: [drug name, dose, route, frequency; labs ordered; referrals; follow-up interval and trigger; conditional next steps]
 
 2. Diagnosis Name (ICD-10 code)
-[Clinical reasoning and integrated education/counseling as above]
+[Clinical reasoning grounded in evidence as above — diagnosis justified before treatment described]
 Plan: [...]
 
 [Continue for each diagnosis, grouped by clinical domain — hormonal together, metabolic together, etc.]
