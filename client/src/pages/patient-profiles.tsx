@@ -1627,7 +1627,115 @@ function PatientChartPanel({
 }
 
 // ── Patient context rail (right panel) ──────────────────────────────────────
-type ContextRailTab = "labs" | "vitals" | "documents";
+type ContextRailTab = "labs" | "vitals";
+
+// ── helpers ────────────────────────────────────────────────────────────────
+const RAIL_NAME_W = 86;   // px — sticky label column
+const RAIL_VAL_W  = 50;   // px — each date-value column
+
+function railStatusColor(status: string): string {
+  if (status === "normal")   return "#15803d";
+  if (status === "borderline") return "#b45309";
+  if (status === "abnormal" || status === "critical") return "#b91c1c";
+  return "#1c2414";
+}
+
+function RailRow({
+  label,
+  cells,
+  rowIndex,
+  colCount,
+}: {
+  label: string;
+  cells: React.ReactNode[];
+  rowIndex: number;
+  colCount: number;
+}) {
+  const evenBg  = "#ffffff";
+  const oddBg   = "#faf8f5";
+  const bg      = rowIndex % 2 === 0 ? evenBg : oddBg;
+  const totalW  = RAIL_NAME_W + RAIL_VAL_W * colCount;
+  return (
+    <div className="flex items-center" style={{ minWidth: totalW, backgroundColor: bg }}>
+      <div
+        className="shrink-0 px-2 py-1 text-[10px] text-muted-foreground overflow-hidden"
+        style={{
+          width: RAIL_NAME_W,
+          backgroundColor: bg,
+          position: "sticky",
+          left: 0,
+          zIndex: 2,
+          borderRight: "1px solid #e8ddd0",
+          whiteSpace: "nowrap",
+          textOverflow: "ellipsis",
+        }}
+        title={label}
+      >
+        {label}
+      </div>
+      {cells.map((cell, ci) => (
+        <div
+          key={ci}
+          className="shrink-0 text-right px-1 py-1 text-[10px] tabular-nums font-medium"
+          style={{ width: RAIL_VAL_W }}
+        >
+          {cell}
+        </div>
+      ))}
+    </div>
+  );
+}
+
+function RailHeaderRow({
+  cols,
+  colCount,
+  onClickCol,
+}: {
+  cols: { label: string; clickable?: boolean; colIndex: number }[];
+  colCount: number;
+  onClickCol?: (i: number) => void;
+}) {
+  const totalW = RAIL_NAME_W + RAIL_VAL_W * colCount;
+  return (
+    <div
+      className="flex items-center flex-shrink-0"
+      style={{ minWidth: totalW, backgroundColor: "#f5f2ed", borderBottom: "1px solid #e8ddd0" }}
+    >
+      <div
+        className="shrink-0 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground"
+        style={{
+          width: RAIL_NAME_W,
+          position: "sticky",
+          left: 0,
+          zIndex: 2,
+          backgroundColor: "#f5f2ed",
+          borderRight: "1px solid #e8ddd0",
+        }}
+      >
+        Biomarker
+      </div>
+      {cols.map(({ label, clickable, colIndex }) => (
+        <div
+          key={colIndex}
+          className="shrink-0 text-right px-1 py-1.5 text-[10px] font-semibold"
+          style={{ width: RAIL_VAL_W, color: "#5a7040" }}
+        >
+          {clickable && onClickCol ? (
+            <button
+              className="hover:underline"
+              onClick={() => onClickCol(colIndex)}
+              data-testid={`context-rail-date-col-${colIndex}`}
+            >
+              {label}
+            </button>
+          ) : (
+            label
+          )}
+        </div>
+      ))}
+    </div>
+  );
+}
 
 function PatientContextRail({
   labs,
@@ -1644,47 +1752,79 @@ function PatientContextRail({
   onCollapse: () => void;
   onOpenLab?: (lab: LabResult) => void;
 }) {
-  const [expandedLabIds, setExpandedLabIds] = useState<Set<number>>(new Set());
-
+  // Sort labs newest-first, take up to 5 for comparison columns
   const sortedLabs = useMemo(() => [...labs].sort((a, b) => {
     const dateA = new Date((a as any).evaluatedAt || (a as any).createdAt || 0).getTime();
     const dateB = new Date((b as any).evaluatedAt || (b as any).createdAt || 0).getTime();
     return dateB - dateA;
   }), [labs]);
 
-  const recentVitals = useMemo(() => {
-    for (const lab of sortedLabs) {
-      const interp = (lab as any).interpretationResult;
-      const found: { systolicBp?: number; bmi?: number; labName?: string; labDate?: string } = {};
-      if (interp?.vitals?.systolicBp) found.systolicBp = interp.vitals.systolicBp;
-      if (interp?.vitals?.bmi) found.bmi = interp.vitals.bmi;
-      if (found.systolicBp || found.bmi) {
-        found.labName = (lab as any).panelType || "Lab";
-        found.labDate = (lab as any).evaluatedAt;
-        return found;
-      }
-    }
-    return null;
-  }, [sortedLabs]);
+  const recentLabs = sortedLabs.slice(0, 5);
 
-  const toggleLab = (id: number) => {
-    setExpandedLabIds(prev => {
-      const next = new Set(prev);
-      if (next.has(id)) next.delete(id); else next.add(id);
-      return next;
+  // ── Labs comparison matrix ────────────────────────────────────────────────
+  const { allBiomarkers, labCols } = useMemo(() => {
+    const cols = recentLabs.map(lab => ({
+      lab,
+      dateLabel: (lab as any).evaluatedAt
+        ? new Date((lab as any).evaluatedAt).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
+        : "—",
+      values: new Map<string, { value: string; unit: string; status: string }>(),
+    }));
+
+    const biomarkerOrder: string[] = [];
+    const biomarkerSeen = new Set<string>();
+
+    cols.forEach(col => {
+      const interp = (col.lab as any).interpretationResult;
+      if (Array.isArray(interp?.interpretations)) {
+        interp.interpretations.forEach((item: any) => {
+          if (!biomarkerSeen.has(item.biomarker)) {
+            biomarkerOrder.push(item.biomarker);
+            biomarkerSeen.add(item.biomarker);
+          }
+          col.values.set(item.biomarker, {
+            value: String(item.value ?? ""),
+            unit: item.unit ?? "",
+            status: item.status ?? "normal",
+          });
+        });
+      }
     });
-  };
+
+    return { allBiomarkers: biomarkerOrder, labCols: cols };
+  }, [recentLabs]);
+
+  // ── Vitals comparison matrix ──────────────────────────────────────────────
+  type VitalRowDef = { key: string; label: string; unit: string; warnHigh: number; critHigh: number };
+  const VITAL_ROWS: VitalRowDef[] = [
+    { key: "systolicBp", label: "Systolic BP",  unit: "mmHg", warnHigh: 120, critHigh: 130 },
+    { key: "bmi",        label: "BMI",           unit: "",     warnHigh: 25,  critHigh: 30  },
+  ];
+
+  const vitalCols = useMemo(() => recentLabs.map(lab => ({
+    lab,
+    dateLabel: (lab as any).evaluatedAt
+      ? new Date((lab as any).evaluatedAt).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
+      : "—",
+    values: new Map<string, number | null>(
+      VITAL_ROWS.map(r => [r.key, (lab as any).interpretationResult?.vitals?.[r.key] ?? null])
+    ),
+  })), [recentLabs]);
+
+  const hasAnyVitals = vitalCols.some(c => Array.from(c.values.values()).some(v => v !== null));
 
   const tabs = [
-    { id: "labs" as ContextRailTab, label: "Labs", Icon: FlaskConical },
+    { id: "labs"   as ContextRailTab, label: "Labs",   Icon: FlaskConical },
     { id: "vitals" as ContextRailTab, label: "Vitals", Icon: Heart },
-    { id: "documents" as ContextRailTab, label: "Docs", Icon: FolderOpen },
   ];
 
   return (
     <div className="flex flex-col h-full overflow-hidden">
       {/* Header */}
-      <div className="flex items-center justify-between px-3 py-2.5 border-b flex-shrink-0" style={{ borderColor: "#e8ddd0", backgroundColor: "#fdfaf7" }}>
+      <div
+        className="flex items-center justify-between px-3 py-2.5 border-b flex-shrink-0"
+        style={{ borderColor: "#e8ddd0", backgroundColor: "#fdfaf7" }}
+      >
         <span className="text-xs font-semibold" style={{ color: "#5a7040" }}>Clinical Context</span>
         <button
           onClick={onCollapse}
@@ -1717,114 +1857,75 @@ function PatientContextRail({
         ))}
       </div>
 
-      {/* Tab content */}
-      <div className="flex-1 overflow-y-auto">
-        {rightPanelTab === "labs" && (
-          <div className="divide-y" style={{ borderColor: "#ede8e0" }}>
-            {sortedLabs.length === 0 && (
-              <p className="p-4 text-xs text-muted-foreground text-center italic">No lab results yet</p>
-            )}
-            {sortedLabs.map(lab => {
-              const isExpanded = expandedLabIds.has(lab.id);
-              const interp = (lab as any).interpretationResult;
-              const redFlagCount = Array.isArray(interp?.redFlags) ? interp.redFlags.length : 0;
-              const date = (lab as any).evaluatedAt
-                ? new Date((lab as any).evaluatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })
-                : "—";
-              const panelName = (lab as any).panelType || "Lab Panel";
-              return (
-                <div key={lab.id}>
-                  <button
-                    type="button"
-                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover-elevate"
-                    onClick={() => toggleLab(lab.id)}
-                    data-testid={`context-lab-toggle-${lab.id}`}
-                  >
-                    <div className="flex-1 min-w-0">
-                      <p className="text-xs font-medium truncate" style={{ color: "#1c2414" }}>{panelName}</p>
-                      <p className="text-[10px] text-muted-foreground">{date}</p>
-                    </div>
-                    <div className="flex items-center gap-1.5 flex-shrink-0">
-                      {redFlagCount > 0 && (
-                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "#fde8e8", color: "#c0392b" }}>
-                          {redFlagCount}
-                        </span>
-                      )}
-                      <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
-                    </div>
-                  </button>
-                  {isExpanded && (
-                    <div className="px-3 pb-3 space-y-1">
-                      {Array.isArray(interp?.interpretations) && interp.interpretations.slice(0, 6).map((item: any, i: number) => (
-                        <div key={i} className="flex items-center justify-between gap-2">
-                          <span className="text-[10px] text-muted-foreground truncate">{item.biomarker}</span>
-                          <span className={cn("text-[10px] font-medium flex-shrink-0", {
-                            "text-green-700 dark:text-green-400": item.status === "normal",
-                            "text-amber-600 dark:text-amber-400": item.status === "borderline",
-                            "text-red-600 dark:text-red-400": item.status === "abnormal" || item.status === "critical",
-                          })}>
-                            {item.value} {item.unit}
-                          </span>
-                        </div>
-                      ))}
-                      {onOpenLab && (
-                        <button
-                          className="text-[10px] underline mt-1"
-                          style={{ color: "#5a7040" }}
-                          onClick={e => { e.stopPropagation(); onOpenLab(lab); }}
-                        >
-                          View full report →
-                        </button>
-                      )}
-                    </div>
-                  )}
-                </div>
-              );
-            })}
-          </div>
-        )}
+      {/* ── Labs comparison grid ─────────────────────────────────────────── */}
+      {rightPanelTab === "labs" && (
+        <div className="flex-1 overflow-auto flex flex-col">
+          {labCols.length === 0 ? (
+            <p className="p-4 text-xs text-muted-foreground text-center italic">No lab results yet</p>
+          ) : (
+            <>
+              <RailHeaderRow
+                colCount={labCols.length}
+                cols={labCols.map((col, i) => ({ label: col.dateLabel, clickable: true, colIndex: i }))}
+                onClickCol={i => onOpenLab && onOpenLab(labCols[i].lab)}
+              />
+              <div className="flex-1 overflow-auto">
+                {allBiomarkers.map((bio, ri) => (
+                  <RailRow
+                    key={bio}
+                    label={bio}
+                    rowIndex={ri}
+                    colCount={labCols.length}
+                    cells={labCols.map(col => {
+                      const entry = col.values.get(bio);
+                      return entry ? (
+                        <span style={{ color: railStatusColor(entry.status) }}>{entry.value}</span>
+                      ) : (
+                        <span style={{ color: "#c8c0b4" }}>—</span>
+                      );
+                    })}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
 
-        {rightPanelTab === "vitals" && (
-          <div className="p-3 space-y-3">
-            {!recentVitals ? (
-              <p className="text-xs text-muted-foreground text-center italic py-4">
-                No vitals data extracted from labs yet
-              </p>
-            ) : (
-              <>
-                <p className="text-[10px] text-muted-foreground pb-1">
-                  From {recentVitals.labName}
-                  {recentVitals.labDate ? ` · ${new Date(recentVitals.labDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
-                </p>
-                {recentVitals.systolicBp && (
-                  <div className="flex items-center justify-between py-2.5 px-3 rounded-md" style={{ backgroundColor: "#f5f2ed", border: "1px solid #e8ddd0" }}>
-                    <span className="text-xs text-muted-foreground">Systolic BP</span>
-                    <span className="text-sm font-semibold tabular-nums" style={{ color: "#1c2414" }}>
-                      {recentVitals.systolicBp} mmHg
-                    </span>
-                  </div>
-                )}
-                {recentVitals.bmi && (
-                  <div className="flex items-center justify-between py-2.5 px-3 rounded-md" style={{ backgroundColor: "#f5f2ed", border: "1px solid #e8ddd0" }}>
-                    <span className="text-xs text-muted-foreground">BMI</span>
-                    <span className="text-sm font-semibold tabular-nums" style={{ color: "#1c2414" }}>
-                      {recentVitals.bmi.toFixed(1)}
-                    </span>
-                  </div>
-                )}
-              </>
-            )}
-          </div>
-        )}
-
-        {rightPanelTab === "documents" && (
-          <div className="p-4">
-            <p className="text-xs text-muted-foreground text-center italic">
-              Switch to the Documents tab to manage patient documents
+      {/* ── Vitals comparison grid ───────────────────────────────────────── */}
+      {rightPanelTab === "vitals" && (
+        <div className="flex-1 overflow-auto flex flex-col">
+          {!hasAnyVitals ? (
+            <p className="p-4 text-xs text-muted-foreground text-center italic">
+              No vitals data extracted from labs yet
             </p>
-          </div>
-        )}
-      </div>
+          ) : (
+            <>
+              <RailHeaderRow
+                colCount={vitalCols.length}
+                cols={vitalCols.map((col, i) => ({ label: col.dateLabel, clickable: false, colIndex: i }))}
+              />
+              <div className="flex-1 overflow-auto">
+                {VITAL_ROWS.map((row, ri) => (
+                  <RailRow
+                    key={row.key}
+                    label={row.label}
+                    rowIndex={ri}
+                    colCount={vitalCols.length}
+                    cells={vitalCols.map(col => {
+                      const val = col.values.get(row.key);
+                      if (val === null || val === undefined) return <span style={{ color: "#c8c0b4" }}>—</span>;
+                      const color = val >= row.critHigh ? "#b91c1c" : val >= row.warnHigh ? "#b45309" : "#15803d";
+                      const display = row.key === "bmi" ? Number(val).toFixed(1) : val;
+                      return <span style={{ color }}>{display}</span>;
+                    })}
+                  />
+                ))}
+              </div>
+            </>
+          )}
+        </div>
+      )}
     </div>
   );
 }
