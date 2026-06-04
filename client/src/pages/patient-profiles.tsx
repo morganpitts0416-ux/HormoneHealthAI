@@ -1036,11 +1036,13 @@ function PatientChartPanel({
   chart,
   encounters,
   onSaved,
+  accordionMode = false,
 }: {
   patientId: number;
   chart: PatientChart | null;
   encounters: ClinicalEncounter[];
   onSaved: () => void;
+  accordionMode?: boolean;
 }) {
   const { toast } = useToast();
   const [editMode, setEditMode] = useState(false);
@@ -1048,6 +1050,9 @@ function PatientChartPanel({
   const [reviewOpen, setReviewOpen] = useState(false);
   const [selectedEncounterId, setSelectedEncounterId] = useState<string>("");
   const [extracting, setExtracting] = useState(false);
+  const [openSections, setOpenSections] = useState<Set<ChartSectionKey>>(
+    new Set(["currentMedications", "allergies"] as ChartSectionKey[])
+  );
 
   const toList = (v: unknown): string[] => (Array.isArray(v) ? (v as string[]) : []);
 
@@ -1170,14 +1175,179 @@ function PatientChartPanel({
 
   const hasAnyData = CHART_SECTIONS_META.some(s => (local[s.key]?.length ?? 0) > 0);
 
+  const toggleSection = (key: ChartSectionKey) => {
+    setOpenSections(prev => {
+      const next = new Set(prev);
+      if (next.has(key)) next.delete(key); else next.add(key);
+      return next;
+    });
+  };
+
   return (
     <>
-      <div className="rounded-xl border" style={{ borderColor: "#d4c9b5", backgroundColor: "#fdfaf7" }}>
-        {/* Header */}
-        <div className="flex items-center justify-between px-4 py-3 border-b flex-wrap gap-2" style={{ borderColor: "#e8ddd0" }}>
-          <div className="flex items-center gap-2 flex-wrap">
-            <ClipboardList className="w-4 h-4 flex-shrink-0" style={{ color: "#5a7040" }} />
-            <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Patient Chart</span>
+      {accordionMode ? (
+        <div className="flex flex-col h-full">
+          {/* Compact accordion header */}
+          <div className="flex items-center justify-between px-3 py-2.5 border-b flex-wrap gap-2 flex-shrink-0" style={{ borderColor: "#e8ddd0", backgroundColor: "#fdfaf7" }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <ClipboardList className="w-3.5 h-3.5 flex-shrink-0" style={{ color: "#5a7040" }} />
+              <span className="text-xs font-semibold" style={{ color: "#1c2414" }}>Patient Chart</span>
+              {chart?.lastReviewedAt && (
+                <span className="text-[10px] text-muted-foreground">
+                  · Reviewed {new Date(chart.lastReviewedAt).toLocaleDateString("en-US", { month: "short", day: "numeric" })}
+                </span>
+              )}
+            </div>
+            <div className="flex items-center gap-1">
+              <Button
+                size="sm"
+                variant="ghost"
+                className="h-7 w-7 p-0"
+                style={{ color: "#5a7040" }}
+                title="Extract chart data from encounter"
+                onClick={() => {
+                  if (encounters.length === 0) {
+                    toast({ title: "No encounters", description: "This patient has no clinical encounters yet." });
+                    return;
+                  }
+                  setSelectedEncounterId(String(encounters[0].id));
+                  setExtractOpen(true);
+                }}
+                data-testid="button-chart-extract-accordion"
+              >
+                <Sparkles className="w-3.5 h-3.5" />
+              </Button>
+              {!editMode ? (
+                <Button
+                  size="sm"
+                  variant="ghost"
+                  className="h-7 w-7 p-0"
+                  onClick={() => setEditMode(true)}
+                  title="Edit chart"
+                  data-testid="button-chart-edit-accordion"
+                >
+                  <Pencil className="w-3.5 h-3.5" />
+                </Button>
+              ) : (
+                <div className="flex gap-1">
+                  <Button size="sm" variant="ghost" className="text-xs h-7 px-2" onClick={() => setEditMode(false)}>
+                    Cancel
+                  </Button>
+                  <Button
+                    size="sm"
+                    className="text-xs h-7 px-2"
+                    style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                    onClick={handleSaveEdit}
+                    disabled={saveMutation.isPending}
+                    data-testid="button-chart-save-accordion"
+                  >
+                    {saveMutation.isPending ? <RefreshCw className="w-3 h-3 animate-spin" /> : "Save"}
+                  </Button>
+                </div>
+              )}
+            </div>
+          </div>
+
+          {/* Draft banner */}
+          {draft && !reviewOpen && (
+            <div className="px-3 py-2 flex items-center justify-between gap-2 flex-wrap border-b flex-shrink-0" style={{ backgroundColor: "#f0f5ea", borderColor: "#c8dbb8" }}>
+              <div className="flex items-center gap-1.5 min-w-0">
+                <Sparkles className="w-3 h-3 flex-shrink-0" style={{ color: "#5a7040" }} />
+                <span className="text-xs truncate" style={{ color: "#3d5228" }}>AI draft ready</span>
+              </div>
+              <Button
+                size="sm"
+                className="text-xs h-6 px-2 shrink-0"
+                style={{ backgroundColor: "#5a7040", color: "#fff", border: "none" }}
+                onClick={() => setReviewOpen(true)}
+                data-testid="button-chart-review-draft-accordion"
+              >
+                Review
+              </Button>
+            </div>
+          )}
+
+          {/* Accordion sections */}
+          <div className="divide-y overflow-y-auto flex-1" style={{ borderColor: "#ede8e0" }}>
+            {CHART_SECTIONS_META.map(({ key, label, icon: Icon }) => {
+              const items = local[key];
+              const isOpen = openSections.has(key);
+              const isAllergies = key === "allergies";
+              return (
+                <div key={key}>
+                  <button
+                    type="button"
+                    className="w-full flex items-center justify-between px-3 py-2.5 text-left hover-elevate"
+                    onClick={() => toggleSection(key)}
+                    data-testid={`chart-section-toggle-${key}`}
+                  >
+                    <div className="flex items-center gap-2 min-w-0">
+                      <Icon className="w-3.5 h-3.5 flex-shrink-0" style={{ color: isAllergies ? "#b91c1c" : "#5a7040" }} />
+                      <span className="text-xs font-medium truncate" style={{ color: "#1c2414" }}>{label}</span>
+                      {items.length > 0 && (
+                        <span className="text-[10px] text-muted-foreground flex-shrink-0">({items.length})</span>
+                      )}
+                    </div>
+                    <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform flex-shrink-0 ${isOpen ? "rotate-180" : ""}`} />
+                  </button>
+                  {isOpen && (
+                    <div className="px-3 pb-3">
+                      <div className="flex flex-wrap gap-1.5">
+                        {items.map((item: string, idx: number) => (
+                          <span
+                            key={idx}
+                            className="inline-flex items-center gap-1 text-xs px-2 py-0.5 rounded-full"
+                            style={{
+                              backgroundColor: isAllergies ? "#fde8e8" : "#edf2e6",
+                              color: isAllergies ? "#c0392b" : "#2e3a20",
+                              border: `1px solid ${isAllergies ? "#f5c6c6" : "#c4d4a8"}`,
+                            }}
+                          >
+                            {item}
+                            {editMode && (
+                              <button
+                                onClick={() => removeItem(key, idx)}
+                                className="ml-0.5 opacity-50 hover:opacity-100"
+                                aria-label="Remove"
+                              >
+                                <X className="w-2.5 h-2.5" />
+                              </button>
+                            )}
+                          </span>
+                        ))}
+                        {items.length === 0 && !editMode && (
+                          <span className="text-xs text-muted-foreground italic">None recorded</span>
+                        )}
+                        {editMode && (
+                          <div className="flex items-center gap-1 w-full mt-1.5">
+                            <Input
+                              className="h-6 text-xs flex-1"
+                              placeholder={`Add ${label.toLowerCase()}…`}
+                              value={addInputs[key]}
+                              onChange={e => setAddInputs(prev => ({ ...prev, [key]: e.target.value }))}
+                              onKeyDown={e => { if (e.key === "Enter") { e.preventDefault(); addItem(key); } }}
+                              data-testid={`input-chart-add-${key}`}
+                            />
+                            <Button size="sm" variant="ghost" className="h-6 px-2" onClick={() => addItem(key)}>
+                              <Plus className="w-3 h-3" />
+                            </Button>
+                          </div>
+                        )}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        </div>
+      ) : (
+        <div className="rounded-xl border" style={{ borderColor: "#d4c9b5", backgroundColor: "#fdfaf7" }}>
+          {/* Header */}
+          <div className="flex items-center justify-between px-4 py-3 border-b flex-wrap gap-2" style={{ borderColor: "#e8ddd0" }}>
+            <div className="flex items-center gap-2 flex-wrap">
+              <ClipboardList className="w-4 h-4 flex-shrink-0" style={{ color: "#5a7040" }} />
+              <span className="text-sm font-semibold" style={{ color: "#1c2414" }}>Patient Chart</span>
             {chart?.lastReviewedAt && (
               <span className="text-xs text-muted-foreground">
                 · Reviewed {new Date(chart.lastReviewedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })}
@@ -1323,6 +1493,7 @@ function PatientChartPanel({
           </div>
         )}
       </div>
+      )}
 
       {/* Extract Dialog */}
       <Dialog open={extractOpen} onOpenChange={setExtractOpen}>
@@ -1452,6 +1623,209 @@ function PatientChartPanel({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// ── Patient context rail (right panel) ──────────────────────────────────────
+type ContextRailTab = "labs" | "vitals" | "documents";
+
+function PatientContextRail({
+  labs,
+  simpleLabs,
+  rightPanelTab,
+  setRightPanelTab,
+  onCollapse,
+  onOpenLab,
+}: {
+  labs: LabResult[];
+  simpleLabs: SimpleLabUpload[];
+  rightPanelTab: ContextRailTab;
+  setRightPanelTab: (tab: ContextRailTab) => void;
+  onCollapse: () => void;
+  onOpenLab?: (lab: LabResult) => void;
+}) {
+  const [expandedLabIds, setExpandedLabIds] = useState<Set<number>>(new Set());
+
+  const sortedLabs = useMemo(() => [...labs].sort((a, b) => {
+    const dateA = new Date((a as any).evaluatedAt || (a as any).createdAt || 0).getTime();
+    const dateB = new Date((b as any).evaluatedAt || (b as any).createdAt || 0).getTime();
+    return dateB - dateA;
+  }), [labs]);
+
+  const recentVitals = useMemo(() => {
+    for (const lab of sortedLabs) {
+      const interp = (lab as any).interpretationResult;
+      const found: { systolicBp?: number; bmi?: number; labName?: string; labDate?: string } = {};
+      if (interp?.vitals?.systolicBp) found.systolicBp = interp.vitals.systolicBp;
+      if (interp?.vitals?.bmi) found.bmi = interp.vitals.bmi;
+      if (found.systolicBp || found.bmi) {
+        found.labName = (lab as any).panelType || "Lab";
+        found.labDate = (lab as any).evaluatedAt;
+        return found;
+      }
+    }
+    return null;
+  }, [sortedLabs]);
+
+  const toggleLab = (id: number) => {
+    setExpandedLabIds(prev => {
+      const next = new Set(prev);
+      if (next.has(id)) next.delete(id); else next.add(id);
+      return next;
+    });
+  };
+
+  const tabs = [
+    { id: "labs" as ContextRailTab, label: "Labs", Icon: FlaskConical },
+    { id: "vitals" as ContextRailTab, label: "Vitals", Icon: Heart },
+    { id: "documents" as ContextRailTab, label: "Docs", Icon: FolderOpen },
+  ];
+
+  return (
+    <div className="flex flex-col h-full overflow-hidden">
+      {/* Header */}
+      <div className="flex items-center justify-between px-3 py-2.5 border-b flex-shrink-0" style={{ borderColor: "#e8ddd0", backgroundColor: "#fdfaf7" }}>
+        <span className="text-xs font-semibold" style={{ color: "#5a7040" }}>Clinical Context</span>
+        <button
+          onClick={onCollapse}
+          className="rounded p-0.5 hover-elevate"
+          title="Collapse context panel"
+          data-testid="button-collapse-context-rail"
+        >
+          <ChevronRight className="w-3.5 h-3.5 text-muted-foreground" />
+        </button>
+      </div>
+
+      {/* Mini tab bar */}
+      <div className="flex border-b flex-shrink-0" style={{ borderColor: "#e8ddd0" }}>
+        {tabs.map(({ id, label, Icon }) => (
+          <button
+            key={id}
+            type="button"
+            className={cn(
+              "flex-1 flex items-center justify-center gap-1 py-2 text-xs font-medium border-b-2 transition-colors",
+              rightPanelTab === id
+                ? "border-[#2e3a20] text-[#2e3a20]"
+                : "border-transparent text-muted-foreground hover:text-foreground"
+            )}
+            onClick={() => setRightPanelTab(id)}
+            data-testid={`button-context-rail-tab-${id}`}
+          >
+            <Icon className="w-3 h-3" />
+            {label}
+          </button>
+        ))}
+      </div>
+
+      {/* Tab content */}
+      <div className="flex-1 overflow-y-auto">
+        {rightPanelTab === "labs" && (
+          <div className="divide-y" style={{ borderColor: "#ede8e0" }}>
+            {sortedLabs.length === 0 && (
+              <p className="p-4 text-xs text-muted-foreground text-center italic">No lab results yet</p>
+            )}
+            {sortedLabs.map(lab => {
+              const isExpanded = expandedLabIds.has(lab.id);
+              const interp = (lab as any).interpretationResult;
+              const redFlagCount = Array.isArray(interp?.redFlags) ? interp.redFlags.length : 0;
+              const date = (lab as any).evaluatedAt
+                ? new Date((lab as any).evaluatedAt).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "2-digit" })
+                : "—";
+              const panelName = (lab as any).panelType || "Lab Panel";
+              return (
+                <div key={lab.id}>
+                  <button
+                    type="button"
+                    className="w-full flex items-center gap-2 px-3 py-2.5 text-left hover-elevate"
+                    onClick={() => toggleLab(lab.id)}
+                    data-testid={`context-lab-toggle-${lab.id}`}
+                  >
+                    <div className="flex-1 min-w-0">
+                      <p className="text-xs font-medium truncate" style={{ color: "#1c2414" }}>{panelName}</p>
+                      <p className="text-[10px] text-muted-foreground">{date}</p>
+                    </div>
+                    <div className="flex items-center gap-1.5 flex-shrink-0">
+                      {redFlagCount > 0 && (
+                        <span className="text-[10px] font-bold px-1.5 py-0.5 rounded-full" style={{ backgroundColor: "#fde8e8", color: "#c0392b" }}>
+                          {redFlagCount}
+                        </span>
+                      )}
+                      <ChevronDown className={`w-3 h-3 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
+                    </div>
+                  </button>
+                  {isExpanded && (
+                    <div className="px-3 pb-3 space-y-1">
+                      {Array.isArray(interp?.interpretations) && interp.interpretations.slice(0, 6).map((item: any, i: number) => (
+                        <div key={i} className="flex items-center justify-between gap-2">
+                          <span className="text-[10px] text-muted-foreground truncate">{item.biomarker}</span>
+                          <span className={cn("text-[10px] font-medium flex-shrink-0", {
+                            "text-green-700 dark:text-green-400": item.status === "normal",
+                            "text-amber-600 dark:text-amber-400": item.status === "borderline",
+                            "text-red-600 dark:text-red-400": item.status === "abnormal" || item.status === "critical",
+                          })}>
+                            {item.value} {item.unit}
+                          </span>
+                        </div>
+                      ))}
+                      {onOpenLab && (
+                        <button
+                          className="text-[10px] underline mt-1"
+                          style={{ color: "#5a7040" }}
+                          onClick={e => { e.stopPropagation(); onOpenLab(lab); }}
+                        >
+                          View full report →
+                        </button>
+                      )}
+                    </div>
+                  )}
+                </div>
+              );
+            })}
+          </div>
+        )}
+
+        {rightPanelTab === "vitals" && (
+          <div className="p-3 space-y-3">
+            {!recentVitals ? (
+              <p className="text-xs text-muted-foreground text-center italic py-4">
+                No vitals data extracted from labs yet
+              </p>
+            ) : (
+              <>
+                <p className="text-[10px] text-muted-foreground pb-1">
+                  From {recentVitals.labName}
+                  {recentVitals.labDate ? ` · ${new Date(recentVitals.labDate).toLocaleDateString("en-US", { month: "short", day: "numeric" })}` : ""}
+                </p>
+                {recentVitals.systolicBp && (
+                  <div className="flex items-center justify-between py-2.5 px-3 rounded-md" style={{ backgroundColor: "#f5f2ed", border: "1px solid #e8ddd0" }}>
+                    <span className="text-xs text-muted-foreground">Systolic BP</span>
+                    <span className="text-sm font-semibold tabular-nums" style={{ color: "#1c2414" }}>
+                      {recentVitals.systolicBp} mmHg
+                    </span>
+                  </div>
+                )}
+                {recentVitals.bmi && (
+                  <div className="flex items-center justify-between py-2.5 px-3 rounded-md" style={{ backgroundColor: "#f5f2ed", border: "1px solid #e8ddd0" }}>
+                    <span className="text-xs text-muted-foreground">BMI</span>
+                    <span className="text-sm font-semibold tabular-nums" style={{ color: "#1c2414" }}>
+                      {recentVitals.bmi.toFixed(1)}
+                    </span>
+                  </div>
+                )}
+              </>
+            )}
+          </div>
+        )}
+
+        {rightPanelTab === "documents" && (
+          <div className="p-4">
+            <p className="text-xs text-muted-foreground text-center italic">
+              Switch to the Documents tab to manage patient documents
+            </p>
+          </div>
+        )}
+      </div>
+    </div>
   );
 }
 
@@ -1596,6 +1970,8 @@ export default function PatientProfiles() {
     | "prevent"
     | "documents";
   const [profileSection, setProfileSection] = useState<ProfileSection>("overview");
+  const [rightPanelOpen, setRightPanelOpen] = useState(true);
+  const [rightPanelTab, setRightPanelTab] = useState<ContextRailTab>("labs");
   const [showMergeDialog, setShowMergeDialog] = useState(false);
   const [mergeKeepId, setMergeKeepId] = useState<number | null>(null);
   const [mergeDiscardId, setMergeDiscardId] = useState<number | null>(null);
@@ -2660,7 +3036,7 @@ export default function PatientProfiles() {
 
         {/* Right panel: patient detail — hidden on mobile when no patient selected */}
         <div className={selectedPatient
-          ? "flex flex-col flex-1 overflow-y-auto min-w-0"
+          ? "flex flex-col flex-1 overflow-hidden min-w-0"
           : "hidden md:flex md:flex-col md:flex-1 md:overflow-y-auto md:min-w-0"
         }>
           {/* Mobile back button */}
@@ -2694,7 +3070,9 @@ export default function PatientProfiles() {
           ) : (
             // pb-32 leaves room for the fixed "Ask ClinIQ" floating button so
             // it never covers the bottom of the last clinical card.
-            <div className="p-6 pb-32 space-y-6">
+            <div className="flex flex-col flex-1 overflow-hidden">
+              {/* ── Fixed header: patient name, demographics, actions ── */}
+              <div className="flex-shrink-0 px-5 pt-4 pb-3 space-y-3 border-b" style={{ borderColor: "#e8ddd0" }}>
               {/* Mobile-only back to patient list */}
               <div className="md:hidden -mt-2 -mx-2 mb-0">
                 <button
@@ -2974,91 +3352,83 @@ export default function PatientProfiles() {
                 </div>
               )}
 
-              {/* ── Patient Chart (always at top) ─────────────────────── */}
-              <PatientChartPanel
-                patientId={selectedPatient.id}
-                chart={patientChart ?? null}
-                encounters={patientEncounters as unknown as ClinicalEncounter[]}
-                onSaved={() => {
-                  queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient.id, 'chart'] });
-                  refetchChart();
-                }}
-              />
+              </div>{/* /header section */}
 
-              {/* ── Sub-section navigation (account-style) + content area ──
-                  Below the always-visible Patient Chart, everything is
-                  organized into a left-rail nav + right content pane, just
-                  like the Account page. The nav controls `profileSection`. */}
-              <div className="flex flex-col md:flex-row gap-4 md:gap-6">
-                <aside className="md:w-52 md:flex-shrink-0">
-                  <nav
-                    className="rounded-lg border bg-background overflow-hidden md:sticky md:top-4"
-                    style={{ borderColor: "#d4c9b5" }}
-                    data-testid="nav-profile-sections"
-                  >
-                    {([
-                      { id: "overview" as ProfileSection, label: "Overview", Icon: LayoutDashboard, badge: null as number | null },
-                      { id: "portal" as ProfileSection, label: "Portal & Messages", Icon: MessageSquare,
-                        badge: ((unreadData?.count ?? 0) > 0 ? (unreadData?.count ?? 0) : null) as number | null },
-                      { id: "monitoring" as ProfileSection, label: "Active Monitoring", Icon: TrendingUp, badge: null as number | null },
-                      { id: "encounters" as ProfileSection, label: "Encounters", Icon: Stethoscope,
-                        badge: (patientEncounters.length > 0 ? patientEncounters.length : null) as number | null },
-                      { id: "labs" as ProfileSection, label: "Labs", Icon: FlaskConical,
-                        badge: (labs.length > 0 ? labs.length : null) as number | null },
-                      { id: "prevent" as ProfileSection, label: "PREVENT Calc", Icon: Activity, badge: null as number | null },
-                      { id: "documents" as ProfileSection, label: "Documents", Icon: FolderOpen,
-                        badge: ((
-                          patientFormAssignments.filter((a: any) => a.status === "pending").length +
-                          patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length +
-                          patientOrders.filter(o => o.status === 'pending').length
-                        ) || null) as number | null },
-                    ]).map(({ id, label, Icon, badge }) => {
-                      const active = profileSection === id;
-                      return (
-                        <button
-                          key={id}
-                          type="button"
-                          onClick={() => {
-                            setProfileSection(id as ProfileSection);
-                            // Portal section auto-expands the inline portal panel +
-                            // message thread (preserving the legacy one-click promise).
-                            if (id === "portal") {
-                              setShowPortalSection(true);
-                              if (portalStatus?.hasPortalAccount) setShowMessages(true);
-                            }
-                          }}
-                          className={cn(
-                            "w-full flex items-center gap-2.5 px-3 py-2 text-left text-sm transition-colors hover-elevate active-elevate-2",
-                            active ? "font-semibold" : "text-foreground/80"
-                          )}
-                          style={
-                            active
-                              ? { backgroundColor: "#edf4e4", color: "#2e3a20", borderLeft: "3px solid #2e3a20", paddingLeft: "calc(0.75rem - 3px)" }
-                              : undefined
+              {/* ── Horizontal tab nav ─────────────────────────────────── */}
+              <div className="flex-shrink-0 border-b overflow-x-auto" style={{ borderColor: "#e8ddd0" }}>
+                <div className="flex min-w-max px-1">
+                  {([
+                    { id: "overview" as ProfileSection, label: "Overview", Icon: LayoutDashboard, badge: null as number | null },
+                    { id: "portal" as ProfileSection, label: "Portal", Icon: MessageSquare,
+                      badge: ((unreadData?.count ?? 0) > 0 ? (unreadData?.count ?? 0) : null) as number | null },
+                    { id: "monitoring" as ProfileSection, label: "Monitoring", Icon: TrendingUp, badge: null as number | null },
+                    { id: "encounters" as ProfileSection, label: "Encounters", Icon: Stethoscope,
+                      badge: (patientEncounters.length > 0 ? patientEncounters.length : null) as number | null },
+                    { id: "labs" as ProfileSection, label: "Labs", Icon: FlaskConical,
+                      badge: (labs.length > 0 ? labs.length : null) as number | null },
+                    { id: "prevent" as ProfileSection, label: "PREVENT", Icon: Activity, badge: null as number | null },
+                    { id: "documents" as ProfileSection, label: "Documents", Icon: FolderOpen,
+                      badge: ((
+                        patientFormAssignments.filter((a: any) => a.status === "pending").length +
+                        patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length +
+                        patientOrders.filter(o => o.status === 'pending').length
+                      ) || null) as number | null },
+                  ]).map(({ id, label, Icon, badge }) => {
+                    const active = profileSection === id;
+                    return (
+                      <button
+                        key={id}
+                        type="button"
+                        onClick={() => {
+                          setProfileSection(id as ProfileSection);
+                          if (id === "portal") {
+                            setShowPortalSection(true);
+                            if (portalStatus?.hasPortalAccount) setShowMessages(true);
                           }
-                          data-testid={`nav-section-${id}`}
-                        >
-                          <Icon className="w-4 h-4 flex-shrink-0" />
-                          <span className="flex-1 truncate">{label}</span>
-                          {badge != null && (
-                            <span
-                              className="inline-flex items-center justify-center rounded-full px-1.5 min-w-[18px] h-[18px] text-[10px] font-bold"
-                              style={
-                                active
-                                  ? { backgroundColor: "#2e3a20", color: "#f5f2ed" }
-                                  : { backgroundColor: "#7a5c20", color: "#fdf8ee" }
-                              }
-                            >
-                              {badge}
-                            </span>
-                          )}
-                        </button>
-                      );
-                    })}
-                  </nav>
-                </aside>
+                        }}
+                        className={cn(
+                          "flex items-center gap-1.5 px-3 py-2.5 text-xs font-medium border-b-2 transition-colors whitespace-nowrap",
+                          active
+                            ? "border-[#2e3a20] text-[#2e3a20]"
+                            : "border-transparent text-muted-foreground hover:text-foreground"
+                        )}
+                        data-testid={`nav-section-${id}`}
+                      >
+                        <Icon className="w-3.5 h-3.5 flex-shrink-0" />
+                        {label}
+                        {badge != null && (
+                          <span
+                            className="inline-flex items-center justify-center rounded-full px-1.5 min-w-[16px] h-4 text-[9px] font-bold"
+                            style={active ? { backgroundColor: "#2e3a20", color: "#f5f2ed" } : { backgroundColor: "#7a5c20", color: "#fdf8ee" }}
+                          >
+                            {badge}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
 
-                <div className="flex-1 min-w-0 space-y-6">
+              {/* ── Three-column body ───────────────────────────────────── */}
+              <div className="flex flex-1 overflow-hidden">
+
+                {/* Left col: Patient Chart (accordion) */}
+                <div className="hidden md:flex md:flex-col w-64 xl:w-72 flex-shrink-0 border-r overflow-y-auto" style={{ borderColor: "#e8ddd0" }}>
+                  <PatientChartPanel
+                    patientId={selectedPatient.id}
+                    chart={patientChart ?? null}
+                    encounters={patientEncounters as unknown as ClinicalEncounter[]}
+                    onSaved={() => {
+                      queryClient.invalidateQueries({ queryKey: ['/api/patients', selectedPatient.id, 'chart'] });
+                      refetchChart();
+                    }}
+                    accordionMode
+                  />
+                </div>{/* /left col */}
+
+                {/* Middle col: section content */}
+                <div className="flex-1 overflow-y-auto min-w-0 p-4 sm:p-6 pb-32 space-y-6">
 
               {/* ── Portal & Messages inline panel (sub-section) ─── */}
               {profileSection === "portal" && showPortalSection && portalStatus && (
@@ -4589,8 +4959,33 @@ export default function PatientProfiles() {
                 </>
               )}
 
-                </div>{/* /section content area */}
-              </div>{/* /sub-section nav + content wrapper */}
+                </div>{/* /middle col */}
+
+                {/* Right col: context rail */}
+                {rightPanelOpen ? (
+                  <div className="hidden md:flex md:flex-col w-64 xl:w-72 flex-shrink-0 border-l overflow-hidden" style={{ borderColor: "#e8ddd0" }}>
+                    <PatientContextRail
+                      labs={labs}
+                      simpleLabs={simpleLabs}
+                      rightPanelTab={rightPanelTab}
+                      setRightPanelTab={setRightPanelTab}
+                      onCollapse={() => setRightPanelOpen(false)}
+                      onOpenLab={(lab) => setViewingLab(lab)}
+                    />
+                  </div>
+                ) : (
+                  <div className="hidden md:flex flex-col flex-shrink-0 border-l" style={{ borderColor: "#e8ddd0" }}>
+                    <button
+                      onClick={() => setRightPanelOpen(true)}
+                      className="flex-1 flex items-start pt-3 justify-center px-1.5 hover-elevate active-elevate-2"
+                      title="Expand context rail"
+                      data-testid="button-expand-context-rail"
+                    >
+                      <ChevronLeft className="w-3.5 h-3.5 text-muted-foreground" />
+                    </button>
+                  </div>
+                )}
+              </div>{/* /three-column body */}
 
               {/* Assign Form Dialog */}
               <Dialog open={showAssignFormDialog} onOpenChange={setShowAssignFormDialog}>
