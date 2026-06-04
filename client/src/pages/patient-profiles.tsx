@@ -37,7 +37,7 @@ import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
 import { apiRequest } from "@/lib/queryClient";
-import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement } from "@shared/schema";
+import type { Patient, LabResult, InterpretationResult, LabValues, FemaleLabValues, ClinicalEncounter, PatientChart, PatientChartDraft, Appointment, SimpleLabUpload, ProviderOverrides, SupplementRecommendation, ClinicianSupplement, PatientVital } from "@shared/schema";
 import { ResultsDisplay } from "@/components/results-display";
 import { LabComparisonDialog } from "@/components/lab-comparison-dialog";
 import {
@@ -1690,10 +1690,12 @@ function RailHeaderRow({
   cols,
   colCount,
   onClickCol,
+  headerLabel = "Biomarker",
 }: {
   cols: { label: string; clickable?: boolean; colIndex: number }[];
   colCount: number;
   onClickCol?: (i: number) => void;
+  headerLabel?: string;
 }) {
   const totalW = RAIL_NAME_W + RAIL_VAL_W * colCount;
   return (
@@ -1712,7 +1714,7 @@ function RailHeaderRow({
           borderRight: "1px solid #e8ddd0",
         }}
       >
-        Biomarker
+        {headerLabel}
       </div>
       {cols.map(({ label, clickable, colIndex }) => (
         <div
@@ -1740,6 +1742,7 @@ function RailHeaderRow({
 function PatientContextRail({
   labs,
   simpleLabs,
+  patientId,
   rightPanelTab,
   setRightPanelTab,
   onCollapse,
@@ -1747,26 +1750,39 @@ function PatientContextRail({
 }: {
   labs: LabResult[];
   simpleLabs: SimpleLabUpload[];
+  patientId: number;
   rightPanelTab: ContextRailTab;
   setRightPanelTab: (tab: ContextRailTab) => void;
   onCollapse: () => void;
   onOpenLab?: (lab: LabResult) => void;
 }) {
+  // Fetch patient vitals (separate table)
+  const { data: rawVitals = [] } = useQuery<PatientVital[]>({
+    queryKey: ["/api/patients", patientId, "vitals"],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/vitals`, { credentials: "include" });
+      if (!res.ok) return [];
+      return res.json();
+    },
+    enabled: !!patientId,
+    staleTime: 60_000,
+  });
+
   // Sort labs newest-first, take up to 5 for comparison columns
   const sortedLabs = useMemo(() => [...labs].sort((a, b) => {
-    const dateA = new Date((a as any).evaluatedAt || (a as any).createdAt || 0).getTime();
-    const dateB = new Date((b as any).evaluatedAt || (b as any).createdAt || 0).getTime();
+    const dateA = new Date((a as any).labDate || (a as any).createdAt || 0).getTime();
+    const dateB = new Date((b as any).labDate || (b as any).createdAt || 0).getTime();
     return dateB - dateA;
   }), [labs]);
 
-  const recentLabs = sortedLabs.slice(0, 5);
+  const recentLabs = useMemo(() => sortedLabs.slice(0, 5), [sortedLabs]);
 
   // ── Labs comparison matrix ────────────────────────────────────────────────
   const { allBiomarkers, labCols } = useMemo(() => {
     const cols = recentLabs.map(lab => ({
       lab,
-      dateLabel: (lab as any).evaluatedAt
-        ? new Date((lab as any).evaluatedAt).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
+      dateLabel: (lab as any).labDate
+        ? new Date((lab as any).labDate).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
         : "—",
       values: new Map<string, { value: string; unit: string; status: string }>(),
     }));
@@ -1778,12 +1794,15 @@ function PatientContextRail({
       const interp = (col.lab as any).interpretationResult;
       if (Array.isArray(interp?.interpretations)) {
         interp.interpretations.forEach((item: any) => {
-          if (!biomarkerSeen.has(item.biomarker)) {
-            biomarkerOrder.push(item.biomarker);
-            biomarkerSeen.add(item.biomarker);
+          // LabInterpretation uses `category` as the biomarker name
+          const name: string = item.category ?? item.biomarker ?? "";
+          if (!name) return;
+          if (!biomarkerSeen.has(name)) {
+            biomarkerOrder.push(name);
+            biomarkerSeen.add(name);
           }
-          col.values.set(item.biomarker, {
-            value: String(item.value ?? ""),
+          col.values.set(name, {
+            value: item.value != null ? String(item.value) : "",
             unit: item.unit ?? "",
             status: item.status ?? "normal",
           });
@@ -1795,23 +1814,35 @@ function PatientContextRail({
   }, [recentLabs]);
 
   // ── Vitals comparison matrix ──────────────────────────────────────────────
-  type VitalRowDef = { key: string; label: string; unit: string; warnHigh: number; critHigh: number };
+  type VitalRowDef = { key: keyof PatientVital; label: string; warnHigh: number; critHigh: number; decimals?: number };
   const VITAL_ROWS: VitalRowDef[] = [
-    { key: "systolicBp", label: "Systolic BP",  unit: "mmHg", warnHigh: 120, critHigh: 130 },
-    { key: "bmi",        label: "BMI",           unit: "",     warnHigh: 25,  critHigh: 30  },
+    { key: "systolicBp",  label: "Systolic BP",   warnHigh: 120, critHigh: 130 },
+    { key: "diastolicBp", label: "Diastolic BP",  warnHigh: 80,  critHigh: 90  },
+    { key: "heartRate",   label: "Heart Rate",    warnHigh: 100, critHigh: 110 },
+    { key: "weightLbs",   label: "Weight (lbs)",  warnHigh: 9999, critHigh: 9999, decimals: 1 },
+    { key: "bmi",         label: "BMI",           warnHigh: 25,  critHigh: 30,  decimals: 1 },
   ];
 
-  const vitalCols = useMemo(() => recentLabs.map(lab => ({
-    lab,
-    dateLabel: (lab as any).evaluatedAt
-      ? new Date((lab as any).evaluatedAt).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
-      : "—",
-    values: new Map<string, number | null>(
-      VITAL_ROWS.map(r => [r.key, (lab as any).interpretationResult?.vitals?.[r.key] ?? null])
-    ),
-  })), [recentLabs]);
+  // Take 5 most recent vitals entries as columns
+  const recentVitals = useMemo(() =>
+    [...rawVitals]
+      .filter(v => v.source === "clinic" || !v.source)
+      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())
+      .slice(0, 5),
+    [rawVitals]
+  );
 
-  const hasAnyVitals = vitalCols.some(c => Array.from(c.values.values()).some(v => v !== null));
+  const vitalCols = useMemo(() => recentVitals.map(v => ({
+    vital: v,
+    dateLabel: new Date(v.recordedAt).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
+    values: new Map<string, number | null>(
+      VITAL_ROWS.map(r => [r.key as string, (v[r.key] as number | null | undefined) ?? null])
+    ),
+  })), [recentVitals]);
+
+  const hasAnyVitals = vitalCols.length > 0 && VITAL_ROWS.some(row =>
+    vitalCols.some(col => col.values.get(row.key as string) !== null)
+  );
 
   const tabs = [
     { id: "labs"   as ContextRailTab, label: "Labs",   Icon: FlaskConical },
@@ -1897,26 +1928,29 @@ function PatientContextRail({
         <div className="flex-1 overflow-auto flex flex-col">
           {!hasAnyVitals ? (
             <p className="p-4 text-xs text-muted-foreground text-center italic">
-              No vitals data extracted from labs yet
+              No vitals recorded yet
             </p>
           ) : (
             <>
               <RailHeaderRow
+                headerLabel="Vital"
                 colCount={vitalCols.length}
                 cols={vitalCols.map((col, i) => ({ label: col.dateLabel, clickable: false, colIndex: i }))}
               />
               <div className="flex-1 overflow-auto">
-                {VITAL_ROWS.map((row, ri) => (
+                {VITAL_ROWS.filter(row =>
+                  vitalCols.some(col => col.values.get(row.key as string) !== null)
+                ).map((row, ri) => (
                   <RailRow
-                    key={row.key}
+                    key={row.key as string}
                     label={row.label}
                     rowIndex={ri}
                     colCount={vitalCols.length}
                     cells={vitalCols.map(col => {
-                      const val = col.values.get(row.key);
+                      const val = col.values.get(row.key as string);
                       if (val === null || val === undefined) return <span style={{ color: "#c8c0b4" }}>—</span>;
                       const color = val >= row.critHigh ? "#b91c1c" : val >= row.warnHigh ? "#b45309" : "#15803d";
-                      const display = row.key === "bmi" ? Number(val).toFixed(1) : val;
+                      const display = row.decimals != null ? Number(val).toFixed(row.decimals) : val;
                       return <span style={{ color }}>{display}</span>;
                     })}
                   />
@@ -5068,6 +5102,7 @@ export default function PatientProfiles() {
                     <PatientContextRail
                       labs={labs}
                       simpleLabs={simpleLabs}
+                      patientId={selectedPatient.id}
                       rightPanelTab={rightPanelTab}
                       setRightPanelTab={setRightPanelTab}
                       onCollapse={() => setRightPanelOpen(false)}
