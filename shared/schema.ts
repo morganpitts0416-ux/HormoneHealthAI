@@ -1393,6 +1393,9 @@ export const patientVitals = pgTable("patient_vitals", {
   heightInches: real("height_inches"),
   bmi: real("bmi"),
   temperature: real("temperature"),
+  respiratoryRate: integer("respiratory_rate"),
+  oxygenSaturation: real("oxygen_saturation"),
+  painScore: integer("pain_score"),
   notes: text("notes"),
   // 'clinic' | 'patient_logged' — defaults to 'clinic' so all existing rows are
   // backfilled correctly. Patient-logged vitals are color-coded distinctly.

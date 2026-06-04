@@ -174,7 +174,10 @@ export interface VitalsData {
   systolicBp?: number | null;
   diastolicBp?: number | null;
   heartRate?: number | null;
+  respiratoryRate?: number | null;
   temperature?: number | null;
+  oxygenSaturation?: number | null;
+  painScore?: number | null;
   heightInches?: number | null;
   weightLbs?: number | null;
   bmi?: number | null;
@@ -186,7 +189,10 @@ export function buildVitalSignsText(v: VitalsData): string {
   if (v.systolicBp != null && v.diastolicBp != null) parts.push(`BP: ${v.systolicBp}/${v.diastolicBp} mmHg`);
   else if (v.systolicBp != null) parts.push(`BP: ${v.systolicBp}/— mmHg`);
   if (v.heartRate != null) parts.push(`HR: ${v.heartRate} bpm`);
+  if (v.respiratoryRate != null) parts.push(`RR: ${v.respiratoryRate} rpm`);
   if (v.temperature != null) parts.push(`Temp: ${v.temperature}°F`);
+  if (v.oxygenSaturation != null) parts.push(`SpO2: ${v.oxygenSaturation}%`);
+  if (v.painScore != null) parts.push(`Pain: ${v.painScore}/10`);
   if (v.heightInches != null) parts.push(`Ht: ${v.heightInches} in`);
   if (v.weightLbs != null) parts.push(`Wt: ${v.weightLbs} lbs`);
   if (v.bmi != null) parts.push(`BMI: ${v.bmi}`);

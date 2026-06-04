@@ -18,7 +18,7 @@ import {
   CalendarCheck, FileText, ChevronDown, ChevronUp, Heart, ListChecks,
 } from "lucide-react";
 import { usePhraseSearch } from "@/components/phrase-search";
-import type { NoteTemplate, PatientVital } from "@shared/schema";
+import type { NoteTemplate } from "@shared/schema";
 
 interface NurseNoteBuilderProps {
   patientId: number;
@@ -39,17 +39,65 @@ const NURSE_BLOCK_TYPES = [
   { id: "radio", label: "Radio Buttons", icon: ListChecks },
 ] as const;
 
+interface NurseVitals {
+  systolicBp?: string;
+  diastolicBp?: string;
+  heartRate?: string;
+  respiratoryRate?: string;
+  temperature?: string;
+  oxygenSaturation?: string;
+  painScore?: string;
+  heightInches?: string;
+  weightLbs?: string;
+  bmi?: string;
+}
+
 interface NurseBlock {
   uid: string;
   type: string;
   label?: string;
   content?: string;
+  fillValues?: string[];
   options?: string[];
   selected?: string;
   checked?: boolean;
   checkedValues?: string[];
-  vitals?: { systolicBp?: string; diastolicBp?: string; heartRate?: string; temp?: string; rr?: string; spo2?: string; weightLbs?: string };
+  vitals?: NurseVitals;
   collapsed?: boolean;
+}
+
+interface FillSegment {
+  type: "text" | "blank";
+  text: string;
+  index: number;
+}
+
+function hasTemplateBlanks(content?: string): boolean {
+  return typeof content === "string" && /\{\{[^}]*\}\}/.test(content);
+}
+
+function parseFillSegments(content: string): FillSegment[] {
+  const segments: FillSegment[] = [];
+  const re = /\{\{[^}]*\}\}/g;
+  let last = 0;
+  let blankIdx = 0;
+  let match;
+  while ((match = re.exec(content)) !== null) {
+    if (match.index > last) {
+      segments.push({ type: "text", text: content.slice(last, match.index), index: -1 });
+    }
+    segments.push({ type: "blank", text: match[0], index: blankIdx++ });
+    last = match.index + match[0].length;
+  }
+  if (last < content.length) {
+    segments.push({ type: "text", text: content.slice(last), index: -1 });
+  }
+  return segments;
+}
+
+function flattenBlanks(content: string, fillValues: string[]): string {
+  let idx = 0;
+  return content.replace(/\{\{[^}]*\}\}/g, () => fillValues[idx++] ?? "");
 }
 
 function uid() { return Math.random().toString(36).substring(2, 10); }
@@ -75,11 +123,6 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
     },
   });
 
-  const { data: latestVitals = [] } = useQuery<PatientVital[]>({
-    queryKey: [`/api/patients/${patientId}/vitals`],
-  });
-  const lastVital = latestVitals[0];
-
   const applyTemplate = (id: string) => {
     setSelectedTemplateId(id);
     const tpl = templates.find(t => String(t.id) === id);
@@ -89,6 +132,7 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
       type: b.type,
       label: b.label,
       content: b.defaultValue ?? "",
+      fillValues: [],
       options: b.options,
       vitals: b.type === "vitals" ? {} : undefined,
     }));
@@ -116,7 +160,6 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
 
   const saveMut = useMutation({
     mutationFn: async () => {
-      // serialize blocks to soapNote jsonb shape (.blocks array)
       const body = {
         patientId,
         visitDate: new Date(visitDate).toISOString(),
@@ -125,7 +168,37 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
         chiefComplaint: chiefComplaint || blocks.find(b => b.type === "chief_complaint")?.content || "Nurse visit",
         soapNote: { blocks } as any,
       };
-      return apiRequest("POST", "/api/encounters", body);
+      const res = await apiRequest("POST", "/api/encounters", body);
+      const encounter = await res.json();
+
+      const vitalsBlk = blocks.find(b => b.type === "vitals");
+      if (vitalsBlk?.vitals) {
+        const v = vitalsBlk.vitals;
+        const hasAny = [
+          v.systolicBp, v.diastolicBp, v.heartRate, v.temperature,
+          v.heightInches, v.weightLbs, v.respiratoryRate, v.oxygenSaturation, v.painScore,
+        ].some(x => x != null && x !== "");
+        if (hasAny) {
+          try {
+            const payload: Record<string, any> = { source: "clinic" };
+            if (v.systolicBp) payload.systolicBp = parseInt(v.systolicBp);
+            if (v.diastolicBp) payload.diastolicBp = parseInt(v.diastolicBp);
+            if (v.heartRate) payload.heartRate = parseInt(v.heartRate);
+            if (v.respiratoryRate) payload.respiratoryRate = parseInt(v.respiratoryRate);
+            if (v.temperature) payload.temperature = parseFloat(v.temperature);
+            if (v.oxygenSaturation) payload.oxygenSaturation = parseFloat(v.oxygenSaturation);
+            if (v.painScore) payload.painScore = parseInt(v.painScore);
+            if (v.heightInches) payload.heightInches = parseFloat(v.heightInches);
+            if (v.weightLbs) payload.weightLbs = parseFloat(v.weightLbs);
+            await apiRequest("POST", `/api/patients/${patientId}/vitals`, payload);
+            queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/vitals`] });
+          } catch (ve) {
+            console.warn("[Nurse Note] Vitals save failed (non-fatal):", ve);
+          }
+        }
+      }
+
+      return encounter.id;
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: [`/api/patients/${patientId}/encounters`] });
@@ -188,7 +261,7 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
                 block={b}
                 isFirst={i === 0}
                 isLast={i === blocks.length - 1}
-                lastVital={lastVital}
+                patientId={patientId}
                 onChange={(patch) => updateBlock(i, patch)}
                 onRemove={() => removeBlock(i)}
                 onMove={(dir) => moveBlock(i, dir)}
@@ -209,11 +282,11 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
 }
 
 function NurseBlockEditor({
-  block, isFirst, isLast, lastVital, onChange, onRemove, onMove,
+  block, isFirst, isLast, patientId, onChange, onRemove, onMove,
 }: {
   block: NurseBlock;
   isFirst: boolean; isLast: boolean;
-  lastVital?: PatientVital;
+  patientId: number;
   onChange: (p: Partial<NurseBlock>) => void;
   onRemove: () => void;
   onMove: (dir: -1 | 1) => void;
@@ -226,6 +299,13 @@ function NurseBlockEditor({
     value: block.content ?? "",
     onChange: (v) => onChange({ content: v }),
   });
+
+  const showFillMode = block.type !== "vitals" &&
+    block.type !== "dropdown" &&
+    block.type !== "radio" &&
+    block.type !== "checkbox" &&
+    block.type !== "short_text" &&
+    hasTemplateBlanks(block.content);
 
   return (
     <Card data-testid={`nurse-block-${block.type}-${block.uid}`}>
@@ -246,7 +326,7 @@ function NurseBlockEditor({
             {block.type === "vitals" ? (
               <VitalsBlockEditor
                 vitals={block.vitals ?? {}}
-                lastVital={lastVital}
+                patientId={patientId}
                 onChange={(v) => onChange({ vitals: v })}
               />
             ) : block.type === "dropdown" ? (
@@ -290,6 +370,13 @@ function NurseBlockEditor({
               </div>
             ) : block.type === "short_text" ? (
               <Input value={block.content ?? ""} onChange={e => onChange({ content: e.target.value })} />
+            ) : showFillMode ? (
+              <FillModeEditor
+                content={block.content ?? ""}
+                fillValues={block.fillValues ?? []}
+                onChange={(fillValues) => onChange({ fillValues })}
+                onFlatten={(flattened) => onChange({ content: flattened, fillValues: undefined })}
+              />
             ) : (
               <>
                 <Textarea
@@ -312,25 +399,248 @@ function NurseBlockEditor({
 }
 
 function VitalsBlockEditor({
-  vitals, lastVital, onChange,
-}: { vitals: any; lastVital?: PatientVital; onChange: (v: any) => void }) {
-  const set = (k: string, v: string) => onChange({ ...vitals, [k]: v });
+  vitals, patientId, onChange,
+}: { vitals: NurseVitals; patientId: number; onChange: (v: NurseVitals) => void }) {
+  const { data: latestHeightData } = useQuery<{ heightInches: number | null }>({
+    queryKey: ["/api/patients", patientId, "vitals", "latest-height"],
+    queryFn: async () => {
+      const res = await fetch(`/api/patients/${patientId}/vitals/latest-height`);
+      if (!res.ok) return { heightInches: null };
+      return res.json();
+    },
+    enabled: !!patientId,
+    staleTime: 300_000,
+  });
+
+  useEffect(() => {
+    if (latestHeightData?.heightInches != null && !vitals.heightInches) {
+      const h = String(latestHeightData.heightInches);
+      const w = vitals.weightLbs ? parseFloat(vitals.weightLbs) : null;
+      const bmiVal = (w && latestHeightData.heightInches > 0)
+        ? String(Math.round(((w / (latestHeightData.heightInches * latestHeightData.heightInches)) * 703) * 10) / 10)
+        : "";
+      onChange({ ...vitals, heightInches: h, ...(bmiVal ? { bmi: bmiVal } : {}) });
+    }
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [latestHeightData?.heightInches]);
+
+  const set = (k: keyof NurseVitals, v: string) => {
+    const updated: NurseVitals = { ...vitals, [k]: v };
+    if (k === "heightInches" || k === "weightLbs") {
+      const h = parseFloat(k === "heightInches" ? v : vitals.heightInches ?? "");
+      const w = parseFloat(k === "weightLbs" ? v : vitals.weightLbs ?? "");
+      if (!isNaN(h) && !isNaN(w) && h > 0) {
+        updated.bmi = String(Math.round(((w / (h * h)) * 703) * 10) / 10);
+      } else if (v === "") {
+        updated.bmi = "";
+      }
+    }
+    onChange(updated);
+  };
+
+  return (
+    <div className="space-y-3">
+      <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+        <div className="space-y-1 col-span-2 sm:col-span-1">
+          <Label className="text-xs font-medium">
+            Blood Pressure <span className="text-muted-foreground font-normal">(mmHg)</span>
+          </Label>
+          <div className="flex items-center gap-1">
+            <Input
+              type="number" step="1"
+              value={vitals.systolicBp ?? ""}
+              onChange={e => set("systolicBp", e.target.value)}
+              placeholder="Sys" className="h-8 text-sm"
+              data-testid="input-vitals-nurse-systolicBp"
+            />
+            <span className="text-muted-foreground text-sm font-medium shrink-0">/</span>
+            <Input
+              type="number" step="1"
+              value={vitals.diastolicBp ?? ""}
+              onChange={e => set("diastolicBp", e.target.value)}
+              placeholder="Dia" className="h-8 text-sm"
+              data-testid="input-vitals-nurse-diastolicBp"
+            />
+          </div>
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Heart Rate <span className="text-muted-foreground font-normal">(bpm)</span>
+          </Label>
+          <Input
+            type="number" step="1"
+            value={vitals.heartRate ?? ""}
+            onChange={e => set("heartRate", e.target.value)}
+            placeholder="72" className="h-8 text-sm"
+            data-testid="input-vitals-nurse-heartRate"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Resp Rate <span className="text-muted-foreground font-normal">(rpm)</span>
+          </Label>
+          <Input
+            type="number" step="1"
+            value={vitals.respiratoryRate ?? ""}
+            onChange={e => set("respiratoryRate", e.target.value)}
+            placeholder="16" className="h-8 text-sm"
+            data-testid="input-vitals-nurse-respiratoryRate"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Temp <span className="text-muted-foreground font-normal">(°F)</span>
+          </Label>
+          <Input
+            type="number" step="0.1"
+            value={vitals.temperature ?? ""}
+            onChange={e => set("temperature", e.target.value)}
+            placeholder="98.6" className="h-8 text-sm"
+            data-testid="input-vitals-nurse-temperature"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            SpO2 <span className="text-muted-foreground font-normal">(%)</span>
+          </Label>
+          <Input
+            type="number" step="0.1"
+            value={vitals.oxygenSaturation ?? ""}
+            onChange={e => set("oxygenSaturation", e.target.value)}
+            placeholder="98" className="h-8 text-sm"
+            data-testid="input-vitals-nurse-oxygenSaturation"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Pain <span className="text-muted-foreground font-normal">(0–10)</span>
+          </Label>
+          <Input
+            type="number" min="0" max="10" step="1"
+            value={vitals.painScore ?? ""}
+            onChange={e => set("painScore", e.target.value)}
+            placeholder="0" className="h-8 text-sm"
+            data-testid="input-vitals-nurse-painScore"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Height <span className="text-muted-foreground font-normal">(in)</span>
+          </Label>
+          <Input
+            type="number" step="0.5"
+            value={vitals.heightInches ?? ""}
+            onChange={e => set("heightInches", e.target.value)}
+            placeholder="66" className="h-8 text-sm"
+            data-testid="input-vitals-nurse-heightInches"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Weight <span className="text-muted-foreground font-normal">(lbs)</span>
+          </Label>
+          <Input
+            type="number" step="0.1"
+            value={vitals.weightLbs ?? ""}
+            onChange={e => set("weightLbs", e.target.value)}
+            placeholder="165" className="h-8 text-sm"
+            data-testid="input-vitals-nurse-weightLbs"
+          />
+        </div>
+
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            BMI <span className="text-muted-foreground font-normal">(auto)</span>
+          </Label>
+          <Input
+            type="text"
+            value={vitals.bmi ?? ""}
+            readOnly
+            placeholder="Auto-calculated"
+            className="h-8 text-sm bg-muted/50 cursor-not-allowed"
+            data-testid="input-vitals-nurse-bmi"
+          />
+        </div>
+      </div>
+      <p className="text-xs text-muted-foreground">
+        Height pre-fills from last documented visit. BMI auto-calculates from height + weight. All values save to the patient&apos;s vitals record when the note is saved.
+      </p>
+    </div>
+  );
+}
+
+function FillModeEditor({
+  content,
+  fillValues,
+  onChange,
+  onFlatten,
+}: {
+  content: string;
+  fillValues: string[];
+  onChange: (vals: string[]) => void;
+  onFlatten: (flattened: string) => void;
+}) {
+  const segments = parseFillSegments(content);
+  const inputRefs = useRef<(HTMLInputElement | null)[]>([]);
+  const blankCount = segments.filter(s => s.type === "blank").length;
+
+  const update = (index: number, val: string) => {
+    const next = [...fillValues];
+    next[index] = val;
+    onChange(next);
+  };
+
+  const handleKeyDown = (e: React.KeyboardEvent<HTMLInputElement>, blankIndex: number) => {
+    if (e.key === "Tab") {
+      e.preventDefault();
+      const next = inputRefs.current[blankIndex + 1];
+      if (next) next.focus();
+    }
+  };
+
   return (
     <div className="space-y-2">
-      <div className="grid grid-cols-2 md:grid-cols-4 gap-2">
-        <div><Label className="text-xs">Systolic</Label><Input value={vitals.systolicBp ?? ""} onChange={e => set("systolicBp", e.target.value)} placeholder="120" /></div>
-        <div><Label className="text-xs">Diastolic</Label><Input value={vitals.diastolicBp ?? ""} onChange={e => set("diastolicBp", e.target.value)} placeholder="80" /></div>
-        <div><Label className="text-xs">Heart Rate</Label><Input value={vitals.heartRate ?? ""} onChange={e => set("heartRate", e.target.value)} placeholder="bpm" /></div>
-        <div><Label className="text-xs">SpO2 %</Label><Input value={vitals.spo2 ?? ""} onChange={e => set("spo2", e.target.value)} placeholder="98" /></div>
-        <div><Label className="text-xs">Temp °F</Label><Input value={vitals.temp ?? ""} onChange={e => set("temp", e.target.value)} placeholder="98.6" /></div>
-        <div><Label className="text-xs">Resp Rate</Label><Input value={vitals.rr ?? ""} onChange={e => set("rr", e.target.value)} placeholder="16" /></div>
-        <div><Label className="text-xs">Weight (lb)</Label><Input value={vitals.weightLbs ?? ""} onChange={e => set("weightLbs", e.target.value)} placeholder="180" /></div>
+      <div className="flex items-center gap-2">
+        <span className="inline-flex items-center gap-1 bg-primary/10 text-primary px-1.5 py-0.5 rounded text-[10px] font-medium">
+          {blankCount} fill-in-the-blank field{blankCount !== 1 ? "s" : ""} — Tab to advance
+        </span>
       </div>
-      {lastVital && (
-        <p className="text-[11px] text-muted-foreground">
-          Most recent on file: BP {lastVital.systolicBp ?? "—"}/{lastVital.diastolicBp ?? "—"} · HR {lastVital.heartRate ?? "—"} · Wt {lastVital.weightLbs ?? "—"} lb
-        </p>
-      )}
+      <div className="p-3 bg-muted/20 rounded-md text-sm leading-8">
+        {segments.map((seg, i) =>
+          seg.type === "text" ? (
+            <span key={i} className="whitespace-pre-wrap">{seg.text}</span>
+          ) : (
+            <input
+              key={i}
+              ref={el => { inputRefs.current[seg.index] = el; }}
+              type="text"
+              value={fillValues[seg.index] ?? ""}
+              onChange={e => update(seg.index, e.target.value)}
+              onKeyDown={e => handleKeyDown(e, seg.index)}
+              className="inline-block border-0 border-b-2 border-primary bg-primary/5 rounded-none px-1 mx-0.5 text-sm focus:outline-none focus:border-primary focus:bg-primary/10 min-w-[3rem] transition-colors"
+              style={{ width: Math.max(48, ((fillValues[seg.index]?.length ?? 0) + 3) * 8) }}
+              placeholder="___"
+              data-testid={`blank-input-nurse-${seg.index}`}
+            />
+          )
+        )}
+      </div>
+      <Button
+        type="button"
+        size="sm"
+        variant="outline"
+        className="h-7 px-3 text-xs gap-1.5"
+        onClick={() => onFlatten(flattenBlanks(content, fillValues))}
+      >
+        Done — Convert to plain text
+      </Button>
     </div>
   );
 }

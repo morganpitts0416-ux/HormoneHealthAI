@@ -18,6 +18,68 @@ interface SoapPdfOptions {
   isAmended?: boolean;
   /** Clinic-level brand colors. Falls back to ClinIQ default green if null. */
   branding?: PartialBranding | null;
+  /** Document title rendered on the PDF. Defaults to "CLINICAL ENCOUNTER — SOAP NOTE". */
+  noteTypeLabel?: string;
+  /** Filename prefix (no extension). Defaults to "SOAP". */
+  noteFilenamePrefix?: string;
+}
+
+/**
+ * Serialize nurse-note blocks (from NurseNoteBuilder) into plain text for PDF rendering.
+ * Handles all block types: vitals, text, dropdown, radio, checkbox, short_text.
+ */
+export function nurseBlocksToText(blocks: any[]): string {
+  const lines: string[] = [];
+  for (const block of blocks) {
+    const label = (block.label || block.type || "").toUpperCase();
+    if (block.type === "vitals" && block.vitals) {
+      const v = block.vitals;
+      const parts: string[] = [];
+      if (v.systolicBp && v.diastolicBp) parts.push(`BP: ${v.systolicBp}/${v.diastolicBp} mmHg`);
+      else if (v.systolicBp) parts.push(`BP: ${v.systolicBp}/— mmHg`);
+      if (v.heartRate) parts.push(`HR: ${v.heartRate} bpm`);
+      if (v.respiratoryRate) parts.push(`RR: ${v.respiratoryRate} rpm`);
+      if (v.temperature) parts.push(`Temp: ${v.temperature}°F`);
+      if (v.oxygenSaturation) parts.push(`SpO2: ${v.oxygenSaturation}%`);
+      if (v.painScore !== undefined && v.painScore !== "") parts.push(`Pain: ${v.painScore}/10`);
+      if (v.heightInches) parts.push(`Ht: ${v.heightInches} in`);
+      if (v.weightLbs) parts.push(`Wt: ${v.weightLbs} lbs`);
+      if (v.bmi) parts.push(`BMI: ${v.bmi}`);
+      if (parts.length > 0) {
+        lines.push("VITAL SIGNS");
+        lines.push(parts.join("  |  "));
+        lines.push("");
+      }
+    } else if (block.type === "dropdown" || block.type === "radio") {
+      if (block.selected) {
+        lines.push(`${label}: ${block.selected}`);
+        lines.push("");
+      }
+    } else if (block.type === "checkbox") {
+      if (block.checkedValues?.length) {
+        lines.push(`${label}: ${block.checkedValues.join(", ")}`);
+        lines.push("");
+      }
+    } else if (block.type === "short_text") {
+      if (block.content?.trim()) {
+        lines.push(`${label}: ${block.content.trim()}`);
+        lines.push("");
+      }
+    } else if (block.content) {
+      let text: string = block.content;
+      if (block.fillValues?.length && text.includes("{{blank}}")) {
+        let idx = 0;
+        text = text.replace(/\{\{[^}]*\}\}/g, () => block.fillValues[idx++] ?? "");
+      }
+      if (text.trim()) {
+        lines.push(label);
+        lines.push("");
+        lines.push(text.trim());
+        lines.push("");
+      }
+    }
+  }
+  return lines.join("\n");
 }
 
 const PAGE_W = 215.9; // Letter width mm
@@ -136,7 +198,7 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(11);
   doc.setTextColor('#111111');
-  doc.text('CLINICAL ENCOUNTER — SOAP NOTE', MARGIN, y);
+  doc.text(opts.noteTypeLabel ?? 'CLINICAL ENCOUNTER — SOAP NOTE', MARGIN, y);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
@@ -327,5 +389,6 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   // ── Save ─────────────────────────────────────────────────────────────────────
   const safeName = opts.patientName.replace(/[^a-z0-9]/gi, '_');
   const safeDate = opts.visitDate.replace(/\//g, '-');
-  doc.save(`SOAP_${safeName}_${safeDate}.pdf`);
+  const prefix = opts.noteFilenamePrefix ?? 'SOAP';
+  doc.save(`${prefix}_${safeName}_${safeDate}.pdf`);
 }

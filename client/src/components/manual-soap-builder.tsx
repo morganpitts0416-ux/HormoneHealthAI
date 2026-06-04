@@ -590,6 +590,20 @@ function VitalsBlockEditor({
         </div>
         <div className="space-y-1">
           <Label className="text-xs font-medium">
+            Resp Rate <span className="text-muted-foreground font-normal">(rpm)</span>
+          </Label>
+          <Input
+            type="number"
+            step="1"
+            value={v.respiratoryRate ?? ""}
+            onChange={e => setField("respiratoryRate", e.target.value)}
+            placeholder="e.g. 16"
+            className="h-8 text-sm"
+            data-testid="input-vitals-respiratoryRate"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
             Temp <span className="text-muted-foreground font-normal">(°F)</span>
           </Label>
           <Input
@@ -600,6 +614,34 @@ function VitalsBlockEditor({
             placeholder="e.g. 98.6"
             className="h-8 text-sm"
             data-testid="input-vitals-temperature"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            SpO2 <span className="text-muted-foreground font-normal">(%)</span>
+          </Label>
+          <Input
+            type="number"
+            step="0.1"
+            value={v.oxygenSaturation ?? ""}
+            onChange={e => setField("oxygenSaturation", e.target.value)}
+            placeholder="e.g. 98"
+            className="h-8 text-sm"
+            data-testid="input-vitals-oxygenSaturation"
+          />
+        </div>
+        <div className="space-y-1">
+          <Label className="text-xs font-medium">
+            Pain <span className="text-muted-foreground font-normal">(0–10)</span>
+          </Label>
+          <Input
+            type="number"
+            min="0" max="10" step="1"
+            value={v.painScore ?? ""}
+            onChange={e => setField("painScore", e.target.value)}
+            placeholder="0"
+            className="h-8 text-sm"
+            data-testid="input-vitals-painScore"
           />
         </div>
         <div className="space-y-1">
@@ -1262,7 +1304,10 @@ function blocksToFullNote(
     if (vd.systolicBp != null && vd.diastolicBp != null) parts.push(`BP: ${vd.systolicBp}/${vd.diastolicBp} mmHg`);
     else if (vd.systolicBp != null) parts.push(`BP: ${vd.systolicBp}/— mmHg`);
     if (vd.heartRate != null) parts.push(`HR: ${vd.heartRate} bpm`);
+    if (vd.respiratoryRate != null) parts.push(`RR: ${vd.respiratoryRate} rpm`);
     if (vd.temperature != null) parts.push(`Temp: ${vd.temperature}°F`);
+    if (vd.oxygenSaturation != null) parts.push(`SpO2: ${vd.oxygenSaturation}%`);
+    if (vd.painScore != null) parts.push(`Pain: ${vd.painScore}/10`);
     if (vd.heightInches != null) parts.push(`Ht: ${vd.heightInches} in`);
     if (vd.weightLbs != null) parts.push(`Wt: ${vd.weightLbs} lbs`);
     if (vd.bmi != null) parts.push(`BMI: ${vd.bmi}`);
@@ -1668,14 +1713,17 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
       const vitalsBlk = blocks.find(b => b.type === "vitals");
       if (vitalsBlk?.vitalsData) {
         const vd = vitalsBlk.vitalsData;
-        const hasAny = [vd.systolicBp, vd.diastolicBp, vd.heartRate, vd.temperature, vd.heightInches, vd.weightLbs].some(x => x != null);
+        const hasAny = [vd.systolicBp, vd.diastolicBp, vd.heartRate, vd.temperature, vd.heightInches, vd.weightLbs, vd.respiratoryRate, vd.oxygenSaturation, vd.painScore].some(x => x != null);
         if (hasAny) {
           try {
             await apiRequest("POST", `/api/patients/${patientId}/vitals`, {
               systolicBp: vd.systolicBp ?? null,
               diastolicBp: vd.diastolicBp ?? null,
               heartRate: vd.heartRate ?? null,
+              respiratoryRate: vd.respiratoryRate ?? null,
               temperature: vd.temperature ?? null,
+              oxygenSaturation: vd.oxygenSaturation ?? null,
+              painScore: vd.painScore ?? null,
               heightInches: vd.heightInches ?? null,
               weightLbs: vd.weightLbs ?? null,
               source: "clinic",

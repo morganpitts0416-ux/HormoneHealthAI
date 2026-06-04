@@ -31,7 +31,7 @@ import { generateTrendInsights, generateClinicalSnapshot, type TrendInsight } fr
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generateMalePatientWellnessPDF, type MaleWellnessPlan } from "@/lib/patient-pdf-export-male";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
-import { exportSoapPdf } from "@/lib/soap-pdf-export";
+import { exportSoapPdf, nurseBlocksToText } from "@/lib/soap-pdf-export";
 import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
 import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
@@ -4255,7 +4255,21 @@ export default function PatientProfiles() {
                       const isEvidenceOpen = evidenceOpenId === enc.id;
                       const isSummaryOpen = summaryOpenId === enc.id;
                       const evidenceSuggestions = (enc as any).evidenceSuggestions?.suggestions ?? [];
-                      const soapText = typeof enc.soapNote === 'string' ? enc.soapNote : ((enc.soapNote as any)?.fullNote ?? '');
+                      const soapNote = enc.soapNote as any;
+                      let soapText: string;
+                      if (noteType === "nurse" && Array.isArray(soapNote?.blocks)) {
+                        soapText = nurseBlocksToText(soapNote.blocks);
+                      } else {
+                        soapText = typeof enc.soapNote === 'string' ? enc.soapNote : (soapNote?.fullNote ?? '');
+                      }
+                      const noteTypeLabel = noteType === "nurse"
+                        ? "NURSING ENCOUNTER NOTE"
+                        : noteType === "phone"
+                          ? "NON-VISIT CONTACT NOTE"
+                          : undefined;
+                      const noteFilenamePrefix = noteType === "nurse" ? "NURSE"
+                        : noteType === "phone" ? "PHONE"
+                        : "SOAP";
 
                       const handleClick = () => {
                         if (isExpanded) {
