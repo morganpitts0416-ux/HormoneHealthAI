@@ -28,6 +28,7 @@ const NOTE_TYPES = [
 
 const FIELD_BLOCK_TYPES = [
   { id: "section_header", label: "Section Header" },
+  { id: "vitals", label: "Vital Signs Block" },
   { id: "free_text", label: "Free Text Block" },
   { id: "short_text", label: "Short Text Field" },
   { id: "long_text", label: "Long Text Field" },
@@ -296,6 +297,7 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
   const addBlock = (type: string) => {
     const b: TemplateBlock = { uid: uid(), type, label: "" };
     if (type === "dropdown" || type === "radio" || type === "checkbox") b.options = ["Option 1", "Option 2"];
+    if (type === "vitals") b.label = "Vital Signs";
     setBlocks([...blocks, b]);
   };
 
@@ -472,6 +474,11 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
                         onChange={val => updateBlock(i, { defaultValue: val })}
                         rows={3}
                       />
+                    )}
+                    {b.type === "vitals" && (
+                      <p className="text-xs text-muted-foreground italic px-1">
+                        Inserts the full structured Vital Signs form (BP, HR, Resp Rate, Temp, SpO2, Pain, Height, Weight, BMI) — no configuration needed.
+                      </p>
                     )}
                     {(b.type === "free_text" || b.type === "long_text") && (
                       <FillableTextarea

@@ -1506,6 +1506,15 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     for (const tb of tplBlocks) {
       if (tb.type === "section_header") continue; // headers are visual-only in templates
 
+      // Vitals block maps directly to the structured vitals editor
+      if (tb.type === "vitals") {
+        if (!claimed.has("vitals")) {
+          newSoapBlocks.push({ uid: uid(), type: "vitals", label: "Vital Signs", content: "", mode: "freetext", collapsed: false });
+          claimed.add("vitals");
+        }
+        continue;
+      }
+
       // Clinical block coming straight from the template builder's clinical
       // group. Use its builtinId for an exact mapping rather than fuzzy label.
       let mapped: BlockTypeId | null = null;
