@@ -18,7 +18,7 @@ import {
   CalendarCheck, FileText, ChevronDown, ChevronUp, Heart, ListChecks,
 } from "lucide-react";
 import { usePhraseSearch } from "@/components/phrase-search";
-import type { NoteTemplate } from "@shared/schema";
+import type { EncounterTemplate } from "@shared/schema";
 
 interface NurseNoteBuilderProps {
   patientId: number;
@@ -114,29 +114,46 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
   ]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
 
-  const { data: templates = [] } = useQuery<NoteTemplate[]>({
-    queryKey: ["/api/note-templates", { noteType: "nurse" }],
-    queryFn: async () => {
-      const res = await fetch("/api/note-templates?noteType=nurse");
-      if (!res.ok) return [];
-      return res.json();
-    },
+  const { data: templates = [] } = useQuery<EncounterTemplate[]>({
+    queryKey: ["/api/encounter-templates"],
   });
+
+  // Only show nurses_note templates in the picker
+  const nurseTemplates = templates.filter(t => t.noteType === "nurses_note");
 
   const applyTemplate = (id: string) => {
     setSelectedTemplateId(id);
-    const tpl = templates.find(t => String(t.id) === id);
+    const tpl = nurseTemplates.find(t => String(t.id) === id);
     if (!tpl) return;
-    const newBlocks: NurseBlock[] = (tpl.blocks ?? []).map((b: any) => ({
-      uid: uid(),
-      type: b.type,
-      label: b.label,
-      content: b.defaultValue ?? "",
-      fillValues: [],
-      options: b.options,
-      vitals: b.type === "vitals" ? {} : undefined,
-    }));
-    setBlocks(newBlocks);
+
+    // Encounter templates store `fields` (not `blocks`) where each field has `fieldType`
+    const fields: any[] = (tpl as any).fields ?? [];
+    const newBlocks: NurseBlock[] = fields.map((f: any) => {
+      const ft: string = f.fieldType ?? f.type ?? "free_text";
+      const block: NurseBlock = {
+        uid: uid(),
+        type: ft === "vitals"      ? "vitals"
+            : ft === "checklist"   ? "checkbox"
+            : ft === "heading"     ? "free_text"
+            : ft === "instruction" ? "free_text"
+            : "free_text",
+        label: f.label || (ft === "vitals" ? "Vital Signs" : ""),
+        content: ft === "heading"
+          ? `— ${f.label} —`
+          : (f.description ?? ""),
+        fillValues: [],
+      };
+      if (block.type === "vitals")   block.vitals = {};
+      if (block.type === "checkbox") block.options = f.checklistItems?.filter(Boolean) ?? [];
+      return block;
+    });
+
+    // Always ensure there is at least a vitals block if template had one
+    setBlocks(newBlocks.length > 0 ? newBlocks : [
+      { uid: uid(), type: "chief_complaint", label: "Reason for Visit", content: "" },
+      { uid: uid(), type: "vitals",          label: "Vital Signs",       vitals: {} },
+      { uid: uid(), type: "assessment",      label: "Nursing Assessment", content: "" },
+    ]);
     toast({ title: `Template "${tpl.name}" applied` });
   };
 
@@ -229,10 +246,10 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
               <Label>Apply Template (optional)</Label>
               <Select value={selectedTemplateId} onValueChange={applyTemplate}>
                 <SelectTrigger data-testid="select-nurse-template">
-                  <SelectValue placeholder={templates.length ? "Choose a template…" : "No nurse templates yet"} />
+                  <SelectValue placeholder={nurseTemplates.length ? "Choose a template…" : "No nurse templates yet"} />
                 </SelectTrigger>
                 <SelectContent>
-                  {templates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
+                  {nurseTemplates.map(t => <SelectItem key={t.id} value={String(t.id)}>{t.name}</SelectItem>)}
                 </SelectContent>
               </Select>
             </div>
