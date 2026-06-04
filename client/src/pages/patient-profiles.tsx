@@ -1700,8 +1700,15 @@ function RailHeaderRow({
   const totalW = RAIL_NAME_W + RAIL_VAL_W * colCount;
   return (
     <div
-      className="flex items-center flex-shrink-0"
-      style={{ minWidth: totalW, backgroundColor: "#f5f2ed", borderBottom: "1px solid #e8ddd0" }}
+      className="flex items-center"
+      style={{
+        minWidth: totalW,
+        backgroundColor: "#f5f2ed",
+        borderBottom: "1px solid #e8ddd0",
+        position: "sticky",
+        top: 0,
+        zIndex: 5,
+      }}
     >
       <div
         className="shrink-0 px-2 py-1.5 text-[10px] font-semibold text-muted-foreground"
@@ -1890,73 +1897,69 @@ function PatientContextRail({
 
       {/* ── Labs comparison grid ─────────────────────────────────────────── */}
       {rightPanelTab === "labs" && (
-        <div className="flex-1 overflow-auto flex flex-col">
+        <div className="flex-1 overflow-auto">
           {labCols.length === 0 ? (
             <p className="p-4 text-xs text-muted-foreground text-center italic">No lab results yet</p>
           ) : (
-            <>
+            <div style={{ minWidth: RAIL_NAME_W + RAIL_VAL_W * labCols.length + 12, paddingBottom: 20 }}>
               <RailHeaderRow
                 colCount={labCols.length}
                 cols={labCols.map((col, i) => ({ label: col.dateLabel, clickable: true, colIndex: i }))}
                 onClickCol={i => onOpenLab && onOpenLab(labCols[i].lab)}
               />
-              <div className="flex-1 overflow-auto">
-                {allBiomarkers.map((bio, ri) => (
-                  <RailRow
-                    key={bio}
-                    label={bio}
-                    rowIndex={ri}
-                    colCount={labCols.length}
-                    cells={labCols.map(col => {
-                      const entry = col.values.get(bio);
-                      return entry ? (
-                        <span style={{ color: railStatusColor(entry.status) }}>{entry.value}</span>
-                      ) : (
-                        <span style={{ color: "#c8c0b4" }}>—</span>
-                      );
-                    })}
-                  />
-                ))}
-              </div>
-            </>
+              {allBiomarkers.map((bio, ri) => (
+                <RailRow
+                  key={bio}
+                  label={bio}
+                  rowIndex={ri}
+                  colCount={labCols.length}
+                  cells={labCols.map(col => {
+                    const entry = col.values.get(bio);
+                    return entry ? (
+                      <span style={{ color: railStatusColor(entry.status) }}>{entry.value}</span>
+                    ) : (
+                      <span style={{ color: "#c8c0b4" }}>—</span>
+                    );
+                  })}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}
 
       {/* ── Vitals comparison grid ───────────────────────────────────────── */}
       {rightPanelTab === "vitals" && (
-        <div className="flex-1 overflow-auto flex flex-col">
+        <div className="flex-1 overflow-auto">
           {!hasAnyVitals ? (
             <p className="p-4 text-xs text-muted-foreground text-center italic">
               No vitals recorded yet
             </p>
           ) : (
-            <>
+            <div style={{ minWidth: RAIL_NAME_W + RAIL_VAL_W * vitalCols.length + 12, paddingBottom: 20 }}>
               <RailHeaderRow
                 headerLabel="Vital"
                 colCount={vitalCols.length}
                 cols={vitalCols.map((col, i) => ({ label: col.dateLabel, clickable: false, colIndex: i }))}
               />
-              <div className="flex-1 overflow-auto">
-                {VITAL_ROWS.filter(row =>
-                  vitalCols.some(col => col.values.get(row.key as string) !== null)
-                ).map((row, ri) => (
-                  <RailRow
-                    key={row.key as string}
-                    label={row.label}
-                    rowIndex={ri}
-                    colCount={vitalCols.length}
-                    cells={vitalCols.map(col => {
-                      const val = col.values.get(row.key as string);
-                      if (val === null || val === undefined) return <span style={{ color: "#c8c0b4" }}>—</span>;
-                      const color = val >= row.critHigh ? "#b91c1c" : val >= row.warnHigh ? "#b45309" : "#15803d";
-                      const display = row.decimals != null ? Number(val).toFixed(row.decimals) : val;
-                      return <span style={{ color }}>{display}</span>;
-                    })}
-                  />
-                ))}
-              </div>
-            </>
+              {VITAL_ROWS.filter(row =>
+                vitalCols.some(col => col.values.get(row.key as string) !== null)
+              ).map((row, ri) => (
+                <RailRow
+                  key={row.key as string}
+                  label={row.label}
+                  rowIndex={ri}
+                  colCount={vitalCols.length}
+                  cells={vitalCols.map(col => {
+                    const val = col.values.get(row.key as string);
+                    if (val === null || val === undefined) return <span style={{ color: "#c8c0b4" }}>—</span>;
+                    const color = val >= row.critHigh ? "#b91c1c" : val >= row.warnHigh ? "#b45309" : "#15803d";
+                    const display = row.decimals != null ? Number(val).toFixed(row.decimals) : val;
+                    return <span style={{ color }}>{display}</span>;
+                  })}
+                />
+              ))}
+            </div>
           )}
         </div>
       )}
