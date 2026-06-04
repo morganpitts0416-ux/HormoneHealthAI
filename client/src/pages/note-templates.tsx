@@ -295,7 +295,7 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
 
   const addBlock = (type: string) => {
     const b: TemplateBlock = { uid: uid(), type, label: "" };
-    if (type === "dropdown" || type === "radio") b.options = ["Option 1", "Option 2"];
+    if (type === "dropdown" || type === "radio" || type === "checkbox") b.options = ["Option 1", "Option 2"];
     setBlocks([...blocks, b]);
   };
 
@@ -488,10 +488,7 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
                         onChange={val => updateBlock(i, { defaultValue: val })}
                       />
                     )}
-                    {b.type === "checkbox" && (
-                      <p className="text-xs text-muted-foreground">Single checkbox (yes/no). Label above.</p>
-                    )}
-                    {(b.type === "dropdown" || b.type === "radio") && (
+                    {(b.type === "dropdown" || b.type === "radio" || b.type === "checkbox") && (
                       <div className="space-y-1">
                         <Label className="text-xs">Options (one per line)</Label>
                         <Textarea
@@ -501,6 +498,9 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
                           onBlur={e => updateBlock(i, { options: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })}
                           placeholder={"Option 1\nOption 2\nOption 3"}
                         />
+                        {b.type === "checkbox" && (
+                          <p className="text-xs text-muted-foreground">All options shown as checkboxes — users can select more than one.</p>
+                        )}
                       </div>
                     )}
                   </CardContent>

@@ -47,6 +47,7 @@ interface NurseBlock {
   options?: string[];
   selected?: string;
   checked?: boolean;
+  checkedValues?: string[];
   vitals?: { systolicBp?: string; diastolicBp?: string; heartRate?: string; temp?: string; rr?: string; spo2?: string; weightLbs?: string };
   collapsed?: boolean;
 }
@@ -265,9 +266,27 @@ function NurseBlockEditor({
                 ))}
               </RadioGroup>
             ) : block.type === "checkbox" ? (
-              <div className="flex items-center gap-2">
-                <Checkbox checked={!!block.checked} onCheckedChange={(c) => onChange({ checked: !!c })} id={block.uid} />
-                <Label htmlFor={block.uid} className="cursor-pointer">{block.label || "Yes"}</Label>
+              <div className="space-y-1.5">
+                {(block.options && block.options.length > 0 ? block.options : ["Yes"]).map(opt => {
+                  const isChecked = (block.checkedValues ?? []).includes(opt);
+                  return (
+                    <div key={opt} className="flex items-center gap-2">
+                      <Checkbox
+                        id={`${block.uid}-${opt}`}
+                        checked={isChecked}
+                        onCheckedChange={(c) => {
+                          const prev = block.checkedValues ?? [];
+                          onChange({
+                            checkedValues: c
+                              ? [...prev, opt]
+                              : prev.filter(v => v !== opt),
+                          });
+                        }}
+                      />
+                      <Label htmlFor={`${block.uid}-${opt}`} className="cursor-pointer text-sm">{opt}</Label>
+                    </div>
+                  );
+                })}
               </div>
             ) : block.type === "short_text" ? (
               <Input value={block.content ?? ""} onChange={e => onChange({ content: e.target.value })} />
