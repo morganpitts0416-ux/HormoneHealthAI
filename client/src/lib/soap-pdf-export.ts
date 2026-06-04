@@ -31,7 +31,14 @@ interface SoapPdfOptions {
 export function nurseBlocksToText(blocks: any[]): string {
   const lines: string[] = [];
   for (const block of blocks) {
-    const label = (block.label || block.type || "").toUpperCase();
+    // Strip trailing colons/spaces so templates whose labels end with ":"
+    // (e.g. "PATIENT'S LABS ARE:") don't produce double-colon artifacts like
+    // "PATIENT'S LABS ARE:: Up to date" when the renderer appends ": value".
+    const rawLabel = (block.label ?? "").trim().replace(/:+\s*$/, "").trim();
+    // Only use the user-supplied label — never fall back to the type name.
+    // This prevents the raw type key (e.g. "free_text") from appearing as
+    // "FREE_TEXT" in the rendered note when no custom label was set.
+    const label = rawLabel ? rawLabel.toUpperCase() : "";
 
     if (block.type === "vitals") {
       lines.push("VITAL SIGNS");
@@ -50,17 +57,27 @@ export function nurseBlocksToText(blocks: any[]): string {
       lines.push(parts.length > 0 ? parts.join("  |  ") : "");
       lines.push("");
     } else if (block.type === "dropdown" || block.type === "radio") {
-      lines.push(block.selected ? `${label}: ${block.selected}` : label);
+      if (block.selected) {
+        lines.push(label ? `${label}: ${block.selected}` : block.selected);
+      } else if (label) {
+        lines.push(label);
+      }
       lines.push("");
     } else if (block.type === "checkbox") {
-      lines.push(block.checkedValues?.length
-        ? `${label}: ${block.checkedValues.join(", ")}`
-        : label);
+      const vals = block.checkedValues?.length ? block.checkedValues.join(", ") : "";
+      if (vals) {
+        lines.push(label ? `${label}: ${vals}` : vals);
+      } else if (label) {
+        lines.push(label);
+      }
       lines.push("");
     } else if (block.type === "short_text") {
-      lines.push(block.content?.trim()
-        ? `${label}: ${block.content.trim()}`
-        : label);
+      const content = (block.content ?? "").trim();
+      if (content) {
+        lines.push(label ? `${label}: ${content}` : content);
+      } else if (label) {
+        lines.push(label);
+      }
       lines.push("");
     } else {
       // free_text, long_text, chief_complaint, assessment, intervention, etc.
@@ -69,8 +86,12 @@ export function nurseBlocksToText(blocks: any[]): string {
         let idx = 0;
         text = text.replace(/\{\{[^}]*\}\}/g, () => block.fillValues[idx++] ?? "");
       }
-      lines.push(label);
-      lines.push("");
+      // Only emit a heading line when the user explicitly set a label.
+      // Free-text blocks without a label render content directly with no heading.
+      if (label) {
+        lines.push(label);
+        lines.push("");
+      }
       if (text.trim()) lines.push(text.trim());
       lines.push("");
     }
