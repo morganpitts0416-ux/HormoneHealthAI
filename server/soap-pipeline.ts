@@ -913,6 +913,13 @@ This rule works in concert with the DECISION-STATE DOCUMENTATION LANGUAGE sectio
 
 FF-6. COMPLETENESS IS FACTUAL, NOT NARRATIVE: The note should be complete because it captures all clinically relevant facts that were actually discussed — not because it adds inferred context, background assumptions, or narrative color to fill gaps. When source data is sparse, a shorter accurate note is preferable to a longer embellished one.
 
+FF-7. VERBATIM SYMPTOM MINIMUM — NO ADDED QUALIFIERS: When documenting a patient-reported symptom, use only the patient's actual words or the minimal clinical paraphrase of exactly what was said. Never attach an anatomical detail, mechanism, sensory description, cause, or location to a symptom that the patient did not explicitly state.
+- If the patient said "I wake up at 3 AM" → write "she reports consistent early morning awakening, approximately 3 AM." Do NOT write "nocturia," "waking to use the bathroom," or any qualifier implying a cause or physical detail the patient did not say.
+- If the patient said "I've been having headaches" → write "she reports headaches." Do NOT add "frontal," "throbbing," "tension-type," or any descriptor the patient did not use.
+- The only exception: if the patient herself volunteered the detail ("I wake up and have to use the bathroom"), then document it, attributed to her directly.
+
+FF-8. SYMPTOM DETAIL EMBARGO: Any qualifier attached to a patient-reported symptom — cause, location, timing, frequency, mechanism, or sensory quality — MUST be traceable to a direct patient utterance in the transcript. If the patient did not say it, it cannot appear as a symptom qualifier in the HPI. This applies even when the detail is clinically plausible or commonly associated with the symptom. Plausibility is not a source.
+
 ═══════════════════════════════════════
 ANTI-DRIFT / SOURCE-GROUNDED CLINICAL DOCUMENTATION RULES
 ═══════════════════════════════════════
@@ -1082,6 +1089,13 @@ HPI RECONSTRUCTION RULES:
 9. DENIED SYMPTOMS: Weave naturally: "She denies nausea, vomiting, or injection site reactions."
 
 10. PROPORTIONALITY: Long because it contains clinical reasoning = excellent. Long because it narrates the patient's life story = not acceptable.
+
+11. PROVIDER EDUCATION ≠ PATIENT ATTRIBUTION — SPEAKER ATTRIBUTION RULE: When the provider explains a mechanism, cause, or clinical connection during the visit, that belongs to the provider's voice in the note — never to the patient's. Do not convert a provider's educational statement into a patient attribution.
+- WRONG: "Patient reports frequent early morning waking which she attributes to her postmenopausal status." (if the clinician made this connection, not the patient)
+- WRONG: "Patient attributes her sleep disruption to low progesterone." (if the clinician said this, not the patient)
+- RIGHT: "She reports consistent early morning awakening. Discussed low progesterone as a potential contributor to early morning sleep disruption."
+- The test: did the PATIENT use the words "I think," "I believe," "I attribute," or explicitly name the cause herself? If not — the clinical explanation belongs in provider voice ("Discussed," "Reviewed," "Counseled on"), not attributed to the patient.
+- This rule applies throughout the HPI and the entire note. Never write "which she attributes to," "which she believes is caused by," or "which she connects to" unless the patient explicitly made that attribution in the transcript.
 
 HPI LENGTH GUIDANCE:
 - Brief focused visit (single topic): 1-2 paragraphs
@@ -1821,6 +1835,13 @@ CHECK FOR:
    - "[Patient first name] expressed understanding" / "[Patient first name] verbalized understanding" — framed as a third-person observation
    - "The clinician explained..." / "The visit included discussion of..."
    If found, flag as important and revise to provider voice: "Recommended..." / "Discussed..." / "Advised..." / "Patient verbalizes understanding and agrees with plan." (only if transcript supports it; use once at end of encounter documentation if applicable).
+
+26. ADDED SYMPTOM DETAIL / SPEAKER ATTRIBUTION: Does the HPI contain any symptom qualifier, mechanism, anatomical detail, or causal attribution that was NOT explicitly stated by the patient in the transcript?
+   Common violations to scan for:
+   - Adding physical detail to a reported symptom the patient did not mention (e.g., adding "to use the bathroom" / "nocturia" / "void" when the patient only said they wake up at night)
+   - Writing "which she attributes to [condition]" or "she believes is caused by [X]" when only the provider made that clinical connection — not the patient
+   - Converting provider education ("I explained that low progesterone can cause early morning waking") into patient attribution ("patient attributes her waking to low progesterone")
+   If found: flag as important. Remove the invented qualifier and restore the patient's actual words. Move the clinical explanation to provider voice: "Discussed [mechanism] as a potential contributor."
 
 STYLE PRESERVATION — MANDATORY WHEN REVISING:
 If you are writing a revised_fullNote, the following style rules are non-negotiable and apply to your revision exactly as they applied to the original generation. Do not introduce patterns the original generation was specifically trained to avoid.
