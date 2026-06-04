@@ -3566,7 +3566,7 @@ export default function PatientProfiles() {
                 </div>{/* /left col */}
 
                 {/* Middle col: section content */}
-                <div className="flex-1 overflow-y-auto min-w-0 p-4 sm:p-6 pb-32 space-y-6">
+                <div className="flex-1 overflow-y-auto min-w-0 p-4 sm:p-6 pb-44 space-y-6">
 
               {/* ── Portal & Messages inline panel (sub-section) ─── */}
               {profileSection === "portal" && showPortalSection && portalStatus && (
