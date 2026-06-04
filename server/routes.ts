@@ -3035,6 +3035,12 @@ Rules:
         return res.status(400).json({ error: "Invalid payload" });
       }
 
+      // Hard cap — protects against accidental mega-uploads and runaway loops
+      const MAX_ROWS = 5000;
+      if (rows.length > MAX_ROWS) {
+        return res.status(400).json({ error: `Import limited to ${MAX_ROWS} rows per batch. Split your CSV and import in multiple passes.` });
+      }
+
       // Build reverse lookup: patientField → value (from the row)
       function mapRow(row: Record<string, string>): Record<string, string> {
         const out: Record<string, string> = {};
@@ -3045,6 +3051,23 @@ Rules:
         }
         return out;
       }
+
+      // Fetch the existing patient list ONCE before the loop so duplicate
+      // detection doesn't fire a DB query for every single row.
+      const existingPatients = await storage.getAllPatients(clinicianId, clinicId);
+      // Build fast-lookup sets to avoid O(n²) scanning
+      const existingNames = new Set(
+        existingPatients.map(p => `${p.firstName.trim().toLowerCase()}|${p.lastName.trim().toLowerCase()}`)
+      );
+      const existingMrns = new Set(
+        existingPatients.map(p => p.mrn?.trim()).filter(Boolean) as string[]
+      );
+      // Name+DOB pairs for tighter duplicate matching
+      const existingNameDob = new Set(
+        existingPatients
+          .filter(p => p.dateOfBirth)
+          .map(p => `${p.firstName.trim().toLowerCase()}|${p.lastName.trim().toLowerCase()}|${new Date(p.dateOfBirth!).toDateString()}`)
+      );
 
       let imported = 0;
       let skipped  = 0;
@@ -3079,20 +3102,15 @@ Rules:
             if (g.startsWith("f")) gender = "female";
           }
 
-          // Duplicate detection within this clinic
-          const existingPatients = await storage.getAllPatients(clinicianId, clinicId);
-          const isDuplicate = existingPatients.some(p => {
-            // MRN match (if both have MRN)
-            if (mapped.mrn && p.mrn && p.mrn.trim() === mapped.mrn.trim()) return true;
-            // Name + DOB match
-            const nameMatch =
-              p.firstName.trim().toLowerCase() === firstName.toLowerCase() &&
-              p.lastName.trim().toLowerCase()  === lastName.toLowerCase();
-            if (!nameMatch) return false;
-            if (!dateOfBirth || !p.dateOfBirth) return nameMatch;
-            return new Date(p.dateOfBirth).toDateString() === dateOfBirth.toDateString();
-          });
-
+          // Duplicate detection using pre-fetched sets — O(1) per row
+          const nameKey = `${firstName.toLowerCase()}|${lastName.toLowerCase()}`;
+          const isDuplicate = (() => {
+            if (mapped.mrn && existingMrns.has(mapped.mrn.trim())) return true;
+            if (!existingNames.has(nameKey)) return false;
+            // Name matches — tighten with DOB if available
+            if (dateOfBirth) return existingNameDob.has(`${nameKey}|${dateOfBirth.toDateString()}`);
+            return true; // Same name, no DOB to disambiguate → treat as duplicate
+          })();
           if (isDuplicate) { skipped++; continue; }
 
           const patientData: Record<string, unknown> = {
