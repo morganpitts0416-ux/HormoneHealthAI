@@ -11,6 +11,7 @@ import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from "@/components/ui/dialog";
+import { AlertDialog, AlertDialogAction, AlertDialogCancel, AlertDialogContent, AlertDialogDescription, AlertDialogFooter, AlertDialogHeader, AlertDialogTitle } from "@/components/ui/alert-dialog";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import {
   Search, User, Calendar, TrendingUp, TrendingDown, Minus,
@@ -2002,6 +2003,28 @@ function JuneMemoCompleteButton({ requestId, patientId }: { requestId: number; p
   );
 }
 
+// Serialize a NoteTemplate's blocks[] into plain text for insertion into the
+// plain-text amend editor. Works for both SOAP sections and nurse field blocks.
+function templateBlocksToText(blocks: any[]): string {
+  if (!blocks?.length) return "";
+  const SOAP_LABELS: Record<string, string> = {
+    subjective: "SUBJECTIVE",
+    objective: "OBJECTIVE",
+    assessment: "ASSESSMENT",
+    plan: "PLAN",
+  };
+  const lines: string[] = [];
+  for (const b of blocks) {
+    const label = SOAP_LABELS[b.type] ?? (b.label || b.type || "").toUpperCase();
+    const value = (b.defaultValue ?? "").trim();
+    lines.push(label);
+    lines.push("");
+    if (value) lines.push(value);
+    lines.push("");
+  }
+  return lines.join("\n");
+}
+
 export default function PatientProfiles() {
   const { toast } = useToast();
   const [, setLocation] = useLocation();
@@ -2087,6 +2110,10 @@ export default function PatientProfiles() {
   const [amendText, setAmendText] = useState("");
   const [savingAmend, setSavingAmend] = useState(false);
   const [signingEncounterId, setSigningEncounterId] = useState<number | null>(null);
+  const [deletingEncounterId, setDeletingEncounterId] = useState<number | null>(null);
+  const [isDeletingEncounter, setIsDeletingEncounter] = useState(false);
+  const [templatePickerEncounterId, setTemplatePickerEncounterId] = useState<number | null>(null);
+  const [templatePickerNoteType, setTemplatePickerNoteType] = useState<string>("");
   const [evidenceOpenId, setEvidenceOpenId] = useState<number | null>(null);
   const [summaryOpenId, setSummaryOpenId] = useState<number | null>(null);
   const [summaryTextMap, setSummaryTextMap] = useState<Record<number, string>>({});
@@ -2498,6 +2525,13 @@ export default function PatientProfiles() {
       return res.json();
     },
     enabled: !!selectedPatient,
+  });
+
+  // Note templates — fetched on-demand when the template picker is open
+  const { data: amendNoteTemplates = [] } = useQuery<any[]>({
+    queryKey: ["/api/note-templates"],
+    enabled: !!templatePickerEncounterId,
+    staleTime: 60_000,
   });
 
   const { data: formBundles = [] } = useQuery<any[]>({
@@ -4107,6 +4141,7 @@ export default function PatientProfiles() {
 
               {/* ── Clinical Encounters ─────────────────────────────────── */}
               {profileSection === "encounters" && (
+              <>
               <Card data-testid="card-encounters">
                 <CardHeader className="pb-3">
                   <div className="flex items-center gap-3 flex-wrap">
@@ -4536,6 +4571,38 @@ export default function PatientProfiles() {
                                         ? <Loader2 className="w-3.5 h-3.5 text-muted-foreground animate-spin" />
                                         : <FileDown className="w-3.5 h-3.5 text-muted-foreground" />}
                                     </Button>
+                                    <Button
+                                      size="icon"
+                                      variant="ghost"
+                                      className="h-7 w-7"
+                                      onClick={async (e) => {
+                                        e.stopPropagation();
+                                        if (!hasSoap && !isSigned) {
+                                          try {
+                                            await apiRequest("DELETE", `/api/encounters/${enc.id}`);
+                                            await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
+                                            toast({ title: "Encounter deleted" });
+                                          } catch {
+                                            toast({ variant: "destructive", title: "Delete failed" });
+                                          }
+                                        } else if (!isSigned) {
+                                          if (!confirm("Delete this unsigned note? This cannot be undone.")) return;
+                                          try {
+                                            await apiRequest("DELETE", `/api/encounters/${enc.id}`);
+                                            await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
+                                            toast({ title: "Encounter deleted" });
+                                          } catch {
+                                            toast({ variant: "destructive", title: "Delete failed" });
+                                          }
+                                        } else {
+                                          setDeletingEncounterId(enc.id);
+                                        }
+                                      }}
+                                      title="Delete encounter"
+                                      data-testid={`button-delete-encounter-${enc.id}`}
+                                    >
+                                      <Trash2 className="w-3.5 h-3.5 text-muted-foreground" />
+                                    </Button>
                                   </>
                                 )}
                                 <ChevronDown className={`w-3.5 h-3.5 text-muted-foreground transition-transform ${isExpanded ? "rotate-180" : ""}`} />
@@ -4666,7 +4733,22 @@ export default function PatientProfiles() {
                               {/* SOAP note body — editable when amending, read-only otherwise */}
                               {isAmending ? (
                                 <div className="px-4 py-3 space-y-3">
-                                  <p className="text-[11px] text-amber-700 font-medium">{isSigned ? "Amendment in progress — edit the note below, then re-sign to lock." : "Edit the note below, then sign to lock."}</p>
+                                  <div className="flex items-center justify-between gap-2">
+                                    <p className="text-[11px] text-amber-700 font-medium">{isSigned ? "Amendment in progress — edit the note below, then re-sign to lock." : "Edit the note below, then sign to lock."}</p>
+                                    <Button
+                                      size="sm"
+                                      variant="outline"
+                                      className="h-7 text-[10px] gap-1 flex-shrink-0"
+                                      onClick={(e) => {
+                                        e.stopPropagation();
+                                        setTemplatePickerEncounterId(enc.id);
+                                        setTemplatePickerNoteType(enc.noteType ?? "");
+                                      }}
+                                      data-testid={`button-insert-template-${enc.id}`}
+                                    >
+                                      <FileText className="w-3 h-3" />Insert template
+                                    </Button>
+                                  </div>
                                   <AmendTextarea
                                     value={amendText}
                                     onChange={setAmendText}
@@ -4729,6 +4811,101 @@ export default function PatientProfiles() {
                   </CardContent>
                 )}
               </Card>
+
+              {/* ── Template picker dialog (insert template into edit/amend) ── */}
+              {templatePickerEncounterId && (
+                <Dialog open onOpenChange={(o) => { if (!o) setTemplatePickerEncounterId(null); }}>
+                  <DialogContent className="max-w-lg">
+                    <DialogHeader>
+                      <DialogTitle className="flex items-center gap-2">
+                        <FileText className="w-4 h-4" />Insert template into note
+                      </DialogTitle>
+                    </DialogHeader>
+                    <p className="text-sm text-muted-foreground -mt-1">
+                      Select a template to append its structure to the note you're editing. Existing content is preserved.
+                    </p>
+                    <div className="space-y-1.5 max-h-80 overflow-y-auto pr-1">
+                      {amendNoteTemplates
+                        .filter((t: any) => {
+                          if (!templatePickerNoteType) return true;
+                          const nt = t.noteType ?? "";
+                          if (templatePickerNoteType === "nurse") return nt === "nurse";
+                          if (templatePickerNoteType === "phone") return nt === "phone";
+                          return nt === "soap_provider" || nt === "soap" || nt === "";
+                        })
+                        .map((t: any) => (
+                          <button
+                            key={t.id}
+                            className="w-full text-left px-3 py-2.5 rounded-md border hover-elevate"
+                            onClick={() => {
+                              const text = templateBlocksToText(t.blocks ?? []);
+                              if (!text.trim()) return;
+                              setAmendText(prev => prev ? `${prev}\n\n${text}` : text);
+                              setTemplatePickerEncounterId(null);
+                              toast({ title: "Template inserted", description: t.name });
+                            }}
+                            data-testid={`template-option-${t.id}`}
+                          >
+                            <p className="text-sm font-medium">{t.name}</p>
+                            {t.description && <p className="text-[11px] text-muted-foreground mt-0.5">{t.description}</p>}
+                          </button>
+                        ))}
+                      {amendNoteTemplates.filter((t: any) => {
+                        if (!templatePickerNoteType) return true;
+                        const nt = t.noteType ?? "";
+                        if (templatePickerNoteType === "nurse") return nt === "nurse";
+                        if (templatePickerNoteType === "phone") return nt === "phone";
+                        return nt === "soap_provider" || nt === "soap" || nt === "";
+                      }).length === 0 && (
+                        <p className="text-sm text-muted-foreground py-4 text-center">No templates found for this note type.</p>
+                      )}
+                    </div>
+                    <DialogFooter>
+                      <Button variant="outline" onClick={() => setTemplatePickerEncounterId(null)}>Cancel</Button>
+                    </DialogFooter>
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {/* ── Delete signed encounter confirmation ── */}
+              <AlertDialog
+                open={!!deletingEncounterId}
+                onOpenChange={(o) => { if (!o) setDeletingEncounterId(null); }}
+              >
+                <AlertDialogContent>
+                  <AlertDialogHeader>
+                    <AlertDialogTitle>Delete signed encounter?</AlertDialogTitle>
+                    <AlertDialogDescription>
+                      This encounter note has been signed and is part of the clinical record. Deleting it will remove it from the patient's chart. This action is permanent and will be recorded in the audit log.
+                    </AlertDialogDescription>
+                  </AlertDialogHeader>
+                  <AlertDialogFooter>
+                    <AlertDialogCancel onClick={() => setDeletingEncounterId(null)}>Keep note</AlertDialogCancel>
+                    <AlertDialogAction
+                      className="bg-destructive text-destructive-foreground"
+                      disabled={isDeletingEncounter}
+                      onClick={async () => {
+                        if (!deletingEncounterId) return;
+                        setIsDeletingEncounter(true);
+                        try {
+                          await apiRequest("DELETE", `/api/encounters/${deletingEncounterId}`);
+                          await queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient?.id] });
+                          toast({ title: "Encounter deleted", description: "The signed encounter has been removed from the record." });
+                          setDeletingEncounterId(null);
+                        } catch {
+                          toast({ variant: "destructive", title: "Delete failed" });
+                        } finally {
+                          setIsDeletingEncounter(false);
+                        }
+                      }}
+                      data-testid="button-confirm-delete-signed-encounter"
+                    >
+                      {isDeletingEncounter ? <><Loader2 className="w-3.5 h-3.5 mr-1.5 animate-spin" />Deleting…</> : "Delete encounter"}
+                    </AlertDialogAction>
+                  </AlertDialogFooter>
+                </AlertDialogContent>
+              </AlertDialog>
+              </>
               )}
 
               {/* ── Lab History ──────────────────────────────────────────── */}
