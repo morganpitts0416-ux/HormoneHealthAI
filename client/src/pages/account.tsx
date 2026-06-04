@@ -20,7 +20,7 @@ import {
   CreditCard, Clock, AlertTriangle, AlertCircle, XCircle,
   ImagePlus, PenLine, X, Search,
   Building2, User, SlidersHorizontal, FileText, ClipboardList, Shield, ShieldCheck,
-  Bell, Inbox, Stethoscope, BrainCircuit, Bot, Workflow,
+  Bell, Inbox, Stethoscope, BrainCircuit, Bot, Workflow, Upload,
 } from "lucide-react";
 import { Label } from "@/components/ui/label";
 import { Switch } from "@/components/ui/switch";
@@ -33,6 +33,7 @@ import { ClinicalBlockDefaultsSection } from "@/components/clinical-block-defaul
 import { JuneSettingsSection } from "@/components/june-settings-section";
 import { SpruceJunePlaybookSection } from "@/components/spruce-june-playbook-section";
 import { FormWorkflowBuilderSection } from "@/components/form-workflow-builder";
+import { PatientCsvImport } from "@/components/patient-csv-import";
 import { EncounterTemplatesSection } from "@/components/encounter-templates-section";
 import { IntegrationsSection } from "@/components/integrations-section";
 import { useClinicBranding } from "@/hooks/use-clinic-branding";
@@ -135,7 +136,7 @@ interface MessagingSettings {
   externalMessagingChannelId: string | null;
 }
 
-type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "formWorkflows" | "integrations" | "sprucePlaybook" | "baa" | "billing";
+type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "formWorkflows" | "integrations" | "sprucePlaybook" | "baa" | "billing" | "dataImport";
 
 const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
@@ -155,6 +156,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "formWorkflows", label: "Form Workflows", icon: Workflow, clinicianOnly: true, ownerOnly: true },
   { id: "integrations", label: "Integrations", icon: Zap, clinicianOnly: true, ownerOnly: true },
   { id: "sprucePlaybook", label: "June Playbook (Spruce)", icon: Bot, clinicianOnly: true, ownerOnly: true },
+  { id: "dataImport", label: "Data Import", icon: Upload, clinicianOnly: true, ownerOnly: true },
   { id: "baa", label: "BAA / HIPAA", icon: Shield, clinicianOnly: true, ownerOnly: true },
   { id: "billing", label: "Billing & Plan", icon: CreditCard, clinicianOnly: true, ownerOnly: true },
 ];
@@ -173,6 +175,51 @@ interface BaaStatus {
   signedAt: string | null;
   signatureName: string | null;
   baaVersion: string | null;
+}
+
+function DataImportSection() {
+  const [showImport, setShowImport] = useState(false);
+  return (
+    <div className="space-y-6">
+      <div>
+        <h2 className="text-lg font-semibold">Data Import</h2>
+        <p className="text-sm text-muted-foreground mt-1">
+          Import existing patient demographics from another system during clinic setup.
+        </p>
+      </div>
+      <Card>
+        <CardHeader>
+          <CardTitle className="text-base flex items-center gap-2">
+            <Upload className="w-4 h-4" />
+            Import Patients from CSV
+          </CardTitle>
+          <CardDescription>
+            Export your current patient list as a .csv file from your existing EHR or practice
+            management system, then upload it here. ClinIQ will walk you through mapping each
+            column before anything is written — only new patients are added, and existing
+            profiles are never modified.
+          </CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="rounded-md bg-muted/60 px-4 py-3 text-sm space-y-2">
+            <p className="font-medium">What this tool does:</p>
+            <ul className="text-muted-foreground space-y-1 list-disc list-inside text-xs">
+              <li>Reads any .csv export — compatible with Athena, eClinicalWorks, Jane App, Excel, and more</li>
+              <li>Auto-detects common column names (First Name, DOB, MRN, Insurance, etc.)</li>
+              <li>Shows a preview before importing so you can confirm everything looks right</li>
+              <li>Skips duplicates automatically — patients already in your list won't be double-imported</li>
+              <li>Any column you don't want imported can be marked "Skip"</li>
+            </ul>
+          </div>
+          <Button onClick={() => setShowImport(true)} data-testid="button-open-csv-import">
+            <Upload className="w-4 h-4 mr-2" />
+            Import Patients from CSV
+          </Button>
+        </CardContent>
+      </Card>
+      <PatientCsvImport open={showImport} onClose={() => setShowImport(false)} />
+    </div>
+  );
 }
 
 function BaaSection() {
@@ -1948,6 +1995,9 @@ export default function Account() {
 
       case "sprucePlaybook":
         return <SpruceJunePlaybookSection />;
+
+      case "dataImport":
+        return <DataImportSection />;
 
       case "baa":
         return <BaaSection />;
