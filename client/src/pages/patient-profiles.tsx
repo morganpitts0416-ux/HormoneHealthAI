@@ -1901,7 +1901,7 @@ function PatientContextRail({
           {labCols.length === 0 ? (
             <p className="p-4 text-xs text-muted-foreground text-center italic">No lab results yet</p>
           ) : (
-            <div style={{ minWidth: RAIL_NAME_W + RAIL_VAL_W * labCols.length + 12, paddingBottom: 20 }}>
+            <div style={{ minWidth: RAIL_NAME_W + RAIL_VAL_W * labCols.length + 12, paddingBottom: 72 }}>
               <RailHeaderRow
                 colCount={labCols.length}
                 cols={labCols.map((col, i) => ({ label: col.dateLabel, clickable: true, colIndex: i }))}
@@ -1936,7 +1936,7 @@ function PatientContextRail({
               No vitals recorded yet
             </p>
           ) : (
-            <div style={{ minWidth: RAIL_NAME_W + RAIL_VAL_W * vitalCols.length + 12, paddingBottom: 20 }}>
+            <div style={{ minWidth: RAIL_NAME_W + RAIL_VAL_W * vitalCols.length + 12, paddingBottom: 72 }}>
               <RailHeaderRow
                 headerLabel="Vital"
                 colCount={vitalCols.length}
