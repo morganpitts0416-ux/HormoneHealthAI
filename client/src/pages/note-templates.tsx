@@ -495,9 +495,11 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
                       <div className="space-y-1">
                         <Label className="text-xs">Options (one per line)</Label>
                         <Textarea
-                          rows={3}
+                          rows={4}
                           value={(b.options ?? []).join("\n")}
-                          onChange={e => updateBlock(i, { options: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })}
+                          onChange={e => updateBlock(i, { options: e.target.value.split("\n") })}
+                          onBlur={e => updateBlock(i, { options: e.target.value.split("\n").map(s => s.trim()).filter(Boolean) })}
+                          placeholder={"Option 1\nOption 2\nOption 3"}
                         />
                       </div>
                     )}
