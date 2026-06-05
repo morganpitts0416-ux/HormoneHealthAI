@@ -3769,12 +3769,16 @@ export function EncounterEditor({
                             systolicBp: vitalsData.systolicBp ?? undefined,
                             diastolicBp: vitalsData.diastolicBp ?? undefined,
                             heartRate: vitalsData.heartRate ?? undefined,
+                            respiratoryRate: vitalsData.respiratoryRate ?? undefined,
                             temperature: vitalsData.temperature ?? undefined,
+                            oxygenSaturation: vitalsData.oxygenSaturation ?? undefined,
+                            painScore: vitalsData.painScore ?? undefined,
                             heightInches: vitalsData.heightInches ?? undefined,
                             weightLbs: vitalsData.weightLbs ?? undefined,
                             source: "clinic",
                           }).then(() => {
                             qc.invalidateQueries({ queryKey: ["/api/patients", encounter.patientId, "vitals"] });
+                            qc.invalidateQueries({ queryKey: ["/api/patients", encounter.patientId, "vitals", "latest-height"] });
                           }).catch(() => {});
                         }
                       }}

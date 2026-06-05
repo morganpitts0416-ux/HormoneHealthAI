@@ -88,15 +88,36 @@ export function PreventCalculatorPanel({ patient, defaults }: PreventCalculatorP
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [patient?.id]);
 
-  // ── Latest labs + vitals (lazy — only fetched once the user clicks Import) ──
+  // ── Latest labs + vitals ────────────────────────────────────────────────────
+  // Labs remain lazy (user clicks Import). Vitals are always fetched so
+  // systolic BP and BMI can be auto-populated from the most recent clinic visit.
   const labsQuery = useQuery<LabResult[]>({
     queryKey: ['/api/patients', patient?.id, 'labs'],
     enabled: false,
   });
   const vitalsQuery = useQuery<PatientVital[]>({
     queryKey: ['/api/patients', patient?.id, 'vitals'],
-    enabled: false,
+    enabled: !!patient?.id,
+    staleTime: 60_000,
   });
+
+  // Auto-populate systolicBP and BMI once per patient session as soon as
+  // the vitals query resolves (uses cache when available — no extra request).
+  // The ref prevents re-overwriting after the user edits the fields.
+  const autoFillDoneRef = useRef(false);
+  useEffect(() => {
+    autoFillDoneRef.current = false;
+  }, [patient?.id]);
+  useEffect(() => {
+    if (!vitalsQuery.data || autoFillDoneRef.current) return;
+    const latestVital = vitalsQuery.data
+      .filter((v) => v.source === "clinic")
+      .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())[0];
+    if (!latestVital) return;
+    autoFillDoneRef.current = true;
+    if (latestVital.systolicBp != null) setSystolicBP(String(latestVital.systolicBp));
+    if (latestVital.bmi != null) setBmi(String(latestVital.bmi));
+  }, [vitalsQuery.data, patient?.id]);
 
   // Track patient context so an in-flight import for an old patient can't
   // poison the form when the user switches patients mid-fetch.
