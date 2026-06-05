@@ -17369,7 +17369,15 @@ IMPORTANT:
       const sess = req.session as any;
       const patientId: number = sess.portalPatientId;
       const episode = await (storage as any).getActiveVitalsMonitoringEpisodeForPatient(patientId);
-      if (!episode) return res.json({ episode: null });
+      if (!episode) {
+        // No active episode — return the patient's most recent self-logged
+        // vitals so the portal card can show a history view rather than going blank.
+        const allVitals = await storage.getPatientVitals(patientId, null);
+        const recentHistory = allVitals
+          .filter((v: any) => v.source === "patient_logged")
+          .slice(0, 10);
+        return res.json({ episode: null, recentHistory });
+      }
       // Today's progress
       const today = (() => {
         const d = new Date();

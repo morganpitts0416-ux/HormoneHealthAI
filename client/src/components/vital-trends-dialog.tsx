@@ -67,7 +67,12 @@ export function VitalTrendsDialog({ open, onOpenChange, patientId, patientName }
     enabled: open,
   });
 
-  const vitals: PatientVital[] = Array.isArray(vitalsRaw) ? vitalsRaw : [];
+  // Defensive normalisation: accept both a raw PatientVital[] and the legacy
+  // wrapped shape { vitals: PatientVital[] } so a stale cache entry from the
+  // monitoring panel never renders the dialog blank.
+  const vitals: PatientVital[] = Array.isArray(vitalsRaw)
+    ? vitalsRaw
+    : ((vitalsRaw as any)?.vitals ?? []);
 
   // One row per reading. Both clinic + patient_logged readings live on the SAME
   // series — source is conveyed via dot shape (filled vs hollow), not by

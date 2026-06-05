@@ -10,7 +10,7 @@ import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter,
 } from "@/components/ui/dialog";
 import { useToast } from "@/hooks/use-toast";
-import { Activity, AlertTriangle, CheckCircle2, Clock, Heart, Loader2, Scale } from "lucide-react";
+import { Activity, AlertTriangle, CheckCircle2, Clock, Heart, History, Loader2, Scale } from "lucide-react";
 
 type Episode = {
   id: number;
@@ -38,6 +38,8 @@ type ActiveResponse = {
   todayCount?: number;
   todayRequired?: number;
   recent?: RecentVital[];
+  /** Patient-logged vitals returned when there is no active episode (history view). */
+  recentHistory?: RecentVital[];
 };
 
 const SYMPTOMS: Array<{ value: string; label: string }> = [
@@ -82,7 +84,12 @@ export function ActiveVitalsMonitoringCard(props: ActiveVitalsMonitoringCardProp
   });
 
   if (isLoading) return null;
-  if (!data?.episode) return null;
+  if (!data?.episode) {
+    if (data?.recentHistory && data.recentHistory.length > 0) {
+      return <PastReadingsCard readings={data.recentHistory} />;
+    }
+    return null;
+  }
 
   return <ActiveCard data={data} {...props} />;
 }
@@ -406,5 +413,61 @@ function ActiveCard({ data, controlledOpen, onControlledOpenChange }: { data: Ac
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+// Shown when no active episode exists but the patient has past self-logged readings.
+function PastReadingsCard({ readings }: { readings: RecentVital[] }) {
+  function fmtReading(v: RecentVital): string {
+    const parts: string[] = [];
+    if (v.systolicBp != null && v.diastolicBp != null) {
+      parts.push(`BP ${v.systolicBp}/${v.diastolicBp}`);
+    }
+    if (v.heartRate != null) parts.push(`HR ${v.heartRate}`);
+    if (v.weightLbs != null) parts.push(`Wt ${Number(v.weightLbs).toFixed(1)} lbs`);
+    return parts.join(" · ") || "—";
+  }
+
+  function fmtDate(ts: string): string {
+    return new Date(ts).toLocaleDateString("en-US", {
+      month: "short", day: "numeric", year: "numeric",
+    });
+  }
+
+  return (
+    <div
+      className="rounded-xl px-4 py-4"
+      data-testid="card-past-vitals-history"
+      style={{ backgroundColor: "#f4f6f1", border: "1px solid #d4dcc8" }}
+    >
+      <div className="flex items-start gap-3">
+        <div
+          className="w-9 h-9 rounded-full flex items-center justify-center flex-shrink-0"
+          style={{ backgroundColor: "#5a7040" }}
+        >
+          <History className="w-4 h-4" style={{ color: "#f4f6f1" }} />
+        </div>
+        <div className="flex-1 min-w-0">
+          <p className="text-[11px] font-semibold uppercase tracking-wider mb-0.5" style={{ color: "#5a7040" }}>
+            Past Monitoring Readings
+          </p>
+          <p className="text-xs leading-snug mb-3" style={{ color: "#4a5c34" }}>
+            Your monitoring program has ended. Here are your most recent self-reported readings.
+          </p>
+          <div className="space-y-1.5">
+            {readings.slice(0, 7).map((v) => (
+              <div
+                key={v.id}
+                className="flex items-center justify-between gap-2 text-xs"
+                style={{ color: "#3a4a2a" }}
+              >
+                <span className="text-muted-foreground shrink-0">{fmtDate(v.recordedAt)}</span>
+                <span className="font-mono">{fmtReading(v)}</span>
+              </div>
+            ))}
+          </div>
+        </div>
+      </div>
+    </div>
   );
 }

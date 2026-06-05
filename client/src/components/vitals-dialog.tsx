@@ -323,6 +323,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals", "all"] });
       setShowForm(false);
       setForm({ systolicBp: "", diastolicBp: "", heartRate: "", respiratoryRate: "", temperature: "", oxygenSaturation: "", painScore: "", weightLbs: "", heightInches: "", notes: "" });
       toast({ title: "Vitals recorded" });
@@ -336,6 +337,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
+      queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals", "all"] });
       toast({ title: "Entry removed" });
     },
   });

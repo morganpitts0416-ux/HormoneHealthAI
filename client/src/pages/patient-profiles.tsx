@@ -6675,13 +6675,16 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
 
   // Patient-logged vitals for the same calendar (so a small heart appears on
   // days the patient self-reported BP/HR/weight from the portal).
-  const { data: patientVitalsData } = useQuery<{ vitals: Array<{ id: number; recordedAt: string; source: string }> }>({
-    queryKey: ['/api/patients', patientId, 'vitals'],
+  // Uses a distinct query key segment ('vitals', 'all') to avoid cache-shape
+  // conflicts with the context-rail and VitalTrendsDialog queries that return
+  // a raw PatientVital[] array.
+  const { data: patientVitalsData } = useQuery<Array<{ id: number; recordedAt: string; source: string }>>({
+    queryKey: ['/api/patients', patientId, 'vitals', 'all'],
     queryFn: async () => {
       const res = await fetch(`/api/patients/${patientId}/vitals`, { credentials: 'include' });
-      if (!res.ok) return { vitals: [] };
+      if (!res.ok) return [];
       const j = await res.json();
-      return Array.isArray(j) ? { vitals: j } : j;
+      return Array.isArray(j) ? j : (j?.vitals ?? []);
     },
   });
 
@@ -6778,7 +6781,7 @@ function MonitoringPanel({ patientId }: { patientId: number }) {
     adherenceByDay.get(a.date)!.push(a);
   }
   const patientVitalDays = new Set<string>();
-  for (const v of patientVitalsData?.vitals ?? []) {
+  for (const v of patientVitalsData ?? []) {
     if (v.source !== "patient_logged") continue;
     patientVitalDays.add(_formatDateYmd(new Date(v.recordedAt)));
   }
