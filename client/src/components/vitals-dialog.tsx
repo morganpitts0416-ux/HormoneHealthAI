@@ -308,16 +308,18 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
   const createMut = useMutation({
     mutationFn: async () => {
       const payload: any = { source: "clinic" };
-      if (form.systolicBp) payload.systolicBp = parseInt(form.systolicBp);
-      if (form.diastolicBp) payload.diastolicBp = parseInt(form.diastolicBp);
-      if (form.heartRate) payload.heartRate = parseInt(form.heartRate);
-      if (form.respiratoryRate) payload.respiratoryRate = parseInt(form.respiratoryRate);
-      if (form.temperature) payload.temperature = parseFloat(form.temperature);
-      if (form.oxygenSaturation) payload.oxygenSaturation = parseFloat(form.oxygenSaturation);
-      if (form.painScore) payload.painScore = parseInt(form.painScore);
-      if (form.weightLbs) payload.weightLbs = parseFloat(form.weightLbs);
-      if (form.heightInches) payload.heightInches = parseFloat(form.heightInches);
-      if (form.notes) payload.notes = form.notes;
+      const intField = (s: string) => { const n = parseInt(s, 10); return Number.isFinite(n) ? n : undefined; };
+      const floatField = (s: string) => { const n = parseFloat(s); return Number.isFinite(n) ? n : undefined; };
+      if (form.systolicBp.trim())     { const v = intField(form.systolicBp);     if (v !== undefined) payload.systolicBp = v; }
+      if (form.diastolicBp.trim())    { const v = intField(form.diastolicBp);    if (v !== undefined) payload.diastolicBp = v; }
+      if (form.heartRate.trim())      { const v = intField(form.heartRate);      if (v !== undefined) payload.heartRate = v; }
+      if (form.respiratoryRate.trim()){ const v = intField(form.respiratoryRate);if (v !== undefined) payload.respiratoryRate = v; }
+      if (form.temperature.trim())    { const v = floatField(form.temperature);  if (v !== undefined) payload.temperature = v; }
+      if (form.oxygenSaturation.trim()){ const v = floatField(form.oxygenSaturation); if (v !== undefined) payload.oxygenSaturation = v; }
+      if (form.painScore.trim())      { const v = intField(form.painScore);      if (v !== undefined) payload.painScore = v; }
+      if (form.weightLbs.trim())      { const v = floatField(form.weightLbs);    if (v !== undefined) payload.weightLbs = v; }
+      if (form.heightInches.trim())   { const v = floatField(form.heightInches); if (v !== undefined) payload.heightInches = v; }
+      if (form.notes.trim()) payload.notes = form.notes.trim();
       const res = await apiRequest("POST", `/api/patients/${patientId}/vitals`, payload);
       return res.json();
     },

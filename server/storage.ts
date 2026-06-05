@@ -2337,6 +2337,9 @@ export class DbStorage implements IStorage {
         bmi: data.bmi ?? null,
         notes: data.notes ?? null,
         source: data.source ?? "clinic",
+        timeOfDay: data.timeOfDay ?? null,
+        symptoms: data.symptoms ?? [],
+        monitoringEpisodeId: data.monitoringEpisodeId ?? null,
       })
       .returning();
     return row;

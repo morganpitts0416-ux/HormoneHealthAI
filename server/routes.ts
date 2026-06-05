@@ -13379,8 +13379,8 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       });
       res.status(201).json(vital);
     } catch (err: any) {
-      console.error("[Vitals] create error:", err);
-      res.status(500).json({ message: err.message || "Failed to save vitals" });
+      console.error("[Vitals] create error:", err?.message, err?.stack ?? err);
+      res.status(500).json({ message: err?.message || "Failed to save vitals" });
     }
   });
 
