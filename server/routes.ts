@@ -11,7 +11,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema } from "@shared/schema";
-import { eq, and, sql, desc, isNull, or, ilike } from "drizzle-orm";
+import { eq, and, sql, desc, isNull, isNotNull, or, ilike } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
@@ -2703,6 +2703,53 @@ Rules:
     } catch (err) {
       console.error("[Spruce/archive] Error:", err);
       res.status(500).json({ error: "Failed to archive conversation" });
+    }
+  });
+
+  // POST /api/spruce/conversations/:key/unarchive
+  // Restores a single archived conversation back to the active inbox.
+  app.post("/api/spruce/conversations/:key/unarchive", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const key = decodeURIComponent(req.params.key);
+      await storageDb
+        .update(schema.spruceConversationState)
+        .set({ archivedAt: null, archivedByUserId: null, archiveSource: null })
+        .where(and(
+          eq(schema.spruceConversationState.clinicId, clinicId),
+          eq(schema.spruceConversationState.conversationKey, key),
+        ));
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[Spruce/unarchive] Error:", err);
+      res.status(500).json({ error: "Failed to unarchive conversation" });
+    }
+  });
+
+  // POST /api/spruce/conversations/bulk-unarchive
+  // Restores ALL archived conversations for a clinic back to the active inbox.
+  // Useful for recovering from incorrect bulk-archiving (e.g. the over-broad
+  // archive-sync bug that matched any message containing the word "archived").
+  // MUST be registered before /:key routes so Express doesn't treat
+  // "bulk-unarchive" as a conversation key.
+  app.post("/api/spruce/conversations/bulk-unarchive", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const result = await storageDb
+        .update(schema.spruceConversationState)
+        .set({ archivedAt: null, archivedByUserId: null, archiveSource: null })
+        .where(and(
+          eq(schema.spruceConversationState.clinicId, clinicId),
+          isNotNull(schema.spruceConversationState.archivedAt),
+        ))
+        .returning({ conversationKey: schema.spruceConversationState.conversationKey });
+      console.log(`[Spruce/bulk-unarchive] Restored ${result.length} conversations for clinic ${clinicId}`);
+      res.json({ ok: true, restoredCount: result.length });
+    } catch (err) {
+      console.error("[Spruce/bulk-unarchive] Error:", err);
+      res.status(500).json({ error: "Failed to bulk-unarchive conversations" });
     }
   });
 
@@ -19607,7 +19654,18 @@ IMPORTANT:
         // ── Archive sync: if Spruce reports this conversation was archived,
         // mirror that state into ClinIQ so the conversation moves to the
         // Archived folder without the clinician having to archive it manually.
-        if (/archived/i.test(msgBody)) {
+        //
+        // IMPORTANT: only match the specific Spruce system-event phrase that
+        // signals a true archive action.  A broad /archived/i match would fire
+        // on any patient message or note that merely *mentions* the word
+        // "archived" (e.g. "I archived my old insurance card"), silently hiding
+        // those conversations from the inbox.
+        const isSpruceArchiveEvent = (
+          /\barchived (and unassigned )?this conversation\b/i.test(msgBody) ||
+          /\bconversation (was )?archived\b/i.test(msgBody) ||
+          eventType === 'conversation.archived'
+        );
+        if (isSpruceArchiveEvent) {
           const archiveKey = spruceConversationId || fromPhone;
           if (archiveKey && matchedClinicId) {
             try {

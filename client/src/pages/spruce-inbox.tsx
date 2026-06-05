@@ -22,6 +22,7 @@ import {
   UserX,
   ShieldAlert,
   Archive,
+  ArchiveRestore,
   Users,
   ClipboardList,
   MailCheck,
@@ -633,6 +634,52 @@ export default function SpruceInboxPage() {
     },
   });
 
+  // ── Unarchive single conversation ─────────────────────────────────────
+  const unarchiveMutation = useMutation({
+    mutationFn: async (key: string) => {
+      const res = await apiRequest(
+        "POST",
+        `/api/spruce/conversations/${encodeURIComponent(key)}/unarchive`,
+        {},
+      );
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to unarchive");
+      }
+      return res.json() as Promise<{ ok: boolean }>;
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["/api/spruce/conversations"] });
+      toast({ title: "Restored", description: "Conversation moved back to inbox." });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Restore failed", description: err.message });
+    },
+  });
+
+  // ── Bulk unarchive (restore all) ──────────────────────────────────────
+  const bulkUnarchiveMutation = useMutation({
+    mutationFn: async () => {
+      const res = await apiRequest("POST", "/api/spruce/conversations/bulk-unarchive", {});
+      if (!res.ok) {
+        const err = await res.json().catch(() => ({}));
+        throw new Error((err as any).error || "Failed to restore conversations");
+      }
+      return res.json() as Promise<{ ok: boolean; restoredCount: number }>;
+    },
+    onSuccess: (data) => {
+      qc.invalidateQueries({ queryKey: ["/api/spruce/conversations"] });
+      setSelectedKey(null);
+      toast({
+        title: "All conversations restored",
+        description: `${data.restoredCount} conversation${data.restoredCount !== 1 ? "s" : ""} moved back to inbox.`,
+      });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Restore failed", description: err.message });
+    },
+  });
+
   // ── View filtering ──────────────────────────────────────────────────────
   // Non-archived views exclude archived conversations; archived view shows only archived.
   const activeConvs = conversations.filter((c) => !c.isArchived);
@@ -904,6 +951,24 @@ export default function SpruceInboxPage() {
             {activeView === "all" && (
               <Users className="w-3.5 h-3.5 text-[#a0a880]" />
             )}
+            {activeView === "archived" && archivedConvs.length > 0 && (
+              <Button
+                size="sm"
+                variant="outline"
+                disabled={bulkUnarchiveMutation.isPending}
+                onClick={() => bulkUnarchiveMutation.mutate()}
+                data-testid="button-restore-all-archived"
+                className="h-6 text-[10px] px-2 text-[#2e7d52] border-[#b6d9c3]"
+                title="Restore all archived conversations to inbox"
+              >
+                {bulkUnarchiveMutation.isPending ? (
+                  <RefreshCw className="w-3 h-3 mr-1 animate-spin" />
+                ) : (
+                  <ArchiveRestore className="w-3 h-3 mr-1" />
+                )}
+                Restore all
+              </Button>
+            )}
           </div>
           <div className="relative">
             <Search className="w-3.5 h-3.5 absolute left-2.5 top-1/2 -translate-y-1/2 text-[#9a9a8a]" />
@@ -951,6 +1016,32 @@ export default function SpruceInboxPage() {
                   ? "Archived conversations will appear here"
                   : ""}
               </p>
+              {/* Recovery hint: if All view is empty but archived conversations exist */}
+              {activeView === "all" && !search && archivedConvs.length > 0 && (
+                <div className="mt-4 p-3 rounded-md bg-[#fef9f0] border border-[#f6e4b8] max-w-[220px]">
+                  <p className="text-xs text-[#92700a] font-medium mb-1.5">
+                    {archivedConvs.length} conversation{archivedConvs.length !== 1 ? "s" : ""} in archive
+                  </p>
+                  <p className="text-[10px] text-[#9a8060] mb-2">
+                    Conversations may have been auto-archived. Restore them to see them here.
+                  </p>
+                  <Button
+                    size="sm"
+                    variant="outline"
+                    disabled={bulkUnarchiveMutation.isPending}
+                    onClick={() => bulkUnarchiveMutation.mutate()}
+                    data-testid="button-restore-all-empty-state"
+                    className="h-7 text-[11px] w-full text-[#2e7d52] border-[#b6d9c3]"
+                  >
+                    {bulkUnarchiveMutation.isPending ? (
+                      <RefreshCw className="w-3 h-3 mr-1.5 animate-spin" />
+                    ) : (
+                      <ArchiveRestore className="w-3 h-3 mr-1.5" />
+                    )}
+                    Restore all conversations
+                  </Button>
+                </div>
+              )}
             </div>
           ) : (
             filtered.map((conv) => (
@@ -1058,7 +1149,24 @@ export default function SpruceInboxPage() {
                   <span className="hidden md:inline">Mark replied</span>
                 </Button>
               )}
-              {!selectedConv.isArchived && (
+              {selectedConv.isArchived ? (
+                <Button
+                  size="sm"
+                  variant="outline"
+                  disabled={unarchiveMutation.isPending}
+                  onClick={() => unarchiveMutation.mutate(selectedConv.conversationKey)}
+                  data-testid="button-unarchive-conversation"
+                  className="text-[#2e7d52] border-[#b6d9c3]"
+                  title="Restore conversation to inbox"
+                >
+                  {unarchiveMutation.isPending ? (
+                    <RefreshCw className="w-3.5 h-3.5 md:mr-1.5 animate-spin" />
+                  ) : (
+                    <ArchiveRestore className="w-3.5 h-3.5 md:mr-1.5" />
+                  )}
+                  <span className="hidden md:inline">{unarchiveMutation.isPending ? "Restoring…" : "Restore"}</span>
+                </Button>
+              ) : (
                 <Button
                   size="sm"
                   variant="outline"

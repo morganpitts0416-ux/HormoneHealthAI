@@ -1,4 +1,5 @@
 - [Storage prototype pattern](storage-prototype-pattern.md) — all DbStorage methods must use module-level `db` export, never `this.db`; prototype-patched at file bottom
+- [Spruce archive-sync trigger specificity](spruce-archive-sync-fix.md) — use narrow Spruce phrase patterns, NOT /archived/i; bulk-unarchive recovery endpoint exists
 - [Form Workflow Builder L1](form-workflow-builder-l1.md) — Schema+storage+routes+1745-line builder UI all done; Layer 2 execution engine not yet built
 - [Missing schema exports fix](missing-schema-exports-fix.md) — esbuild "[WARNING] Import X will always be undefined" = runtime TypeError; always run `npm run build` after storage edits and verify zero such warnings
 - [Speaker normalization heuristics](speaker-norm-heuristics.md) — normalizeSpeakerRoles() signal tuning gotchas; test suite at server/test-speaker-norm.ts (run: npx tsx server/test-speaker-norm.ts)
