@@ -6892,18 +6892,34 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       if (!clinicId) {
         return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null });
       }
-      const rows = await storageDb
-        .select({
-          primaryColor: clinics.primaryColor,
-          accentColor: clinics.accentColor,
-          formBackgroundColor: clinics.formBackgroundColor,
-          clinicLogo: clinics.clinicLogo,
-        })
-        .from(clinics)
-        .where(eq(clinics.id, clinicId))
-        .limit(1);
-      const c = rows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null };
-      res.json(c);
+      const [colorRows, logoRows] = await Promise.all([
+        storageDb
+          .select({
+            primaryColor: clinics.primaryColor,
+            accentColor: clinics.accentColor,
+            formBackgroundColor: clinics.formBackgroundColor,
+          })
+          .from(clinics)
+          .where(eq(clinics.id, clinicId))
+          .limit(1),
+        // clinicLogo lives on the owner/admin user record, not the clinics table.
+        storageDb
+          .select({ clinicLogo: usersTable.clinicLogo })
+          .from(usersTable)
+          .where(
+            and(
+              eq(usersTable.defaultClinicId, clinicId),
+              or(
+                eq(usersTable.userType, "clinic_admin"),
+                eq(usersTable.userType, "solo_admin"),
+              ),
+            ),
+          )
+          .limit(1),
+      ]);
+      const c = colorRows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null };
+      const clinicLogo = logoRows[0]?.clinicLogo ?? null;
+      res.json({ ...c, clinicLogo });
     } catch (err) {
       console.error('[API] Error fetching clinic branding:', err);
       res.status(500).json({ message: "Failed to fetch branding" });

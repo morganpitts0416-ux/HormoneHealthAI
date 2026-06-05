@@ -385,6 +385,9 @@ ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS temperature REAL;
 ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS source VARCHAR(20) NOT NULL DEFAULT 'clinic';
 ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS time_of_day VARCHAR(5);
 ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS symptoms TEXT[] DEFAULT ARRAY[]::TEXT[];
+ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS respiratory_rate INTEGER;
+ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS oxygen_saturation REAL;
+ALTER TABLE patient_vitals ADD COLUMN IF NOT EXISTS pain_score INTEGER;
 
 -- ── Note typing on clinical_encounters ──────────────────────────────
 ALTER TABLE clinical_encounters ADD COLUMN IF NOT EXISTS note_type VARCHAR(30) NOT NULL DEFAULT 'soap_provider';
