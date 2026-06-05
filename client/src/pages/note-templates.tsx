@@ -269,7 +269,7 @@ function TemplateEditorDialog({ template, onClose }: { template: NoteTemplate | 
   const [description, setDescription] = useState(template?.description ?? "");
   const [shortcut, setShortcut] = useState(template?.shortcut ?? "");
   const [noteType, setNoteType] = useState<string>(template?.noteType ?? "soap_provider");
-  const [isShared, setIsShared] = useState(template?.isShared ?? false);
+  const [isShared, setIsShared] = useState(template?.isShared ?? true);
   const [blocks, setBlocks] = useState<TemplateBlock[]>(
     (template?.blocks as TemplateBlock[] | undefined) ?? [],
   );
@@ -671,7 +671,7 @@ function PhraseEditorDialog({ phrase, onClose }: { phrase: NotePhrase | null; on
   const [title, setTitle] = useState(phrase?.title ?? "");
   const [shortcut, setShortcut] = useState(phrase?.shortcut ?? "");
   const [content, setContent] = useState(phrase?.content ?? "");
-  const [isShared, setIsShared] = useState(phrase?.isShared ?? false);
+  const [isShared, setIsShared] = useState(phrase?.isShared ?? true);
   const saveMut = useMutation({
     mutationFn: async () => {
       const body = { title, shortcut: shortcut || undefined, content, isShared };
