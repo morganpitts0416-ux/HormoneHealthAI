@@ -243,10 +243,20 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   y += 7;
 
   // ── SOAP note body ───────────────────────────────────────────────────────────
+  // Primary SOAP section headers (SUBJECTIVE, OBJECTIVE, etc.)
   const MAJOR_RE = /^(SUBJECTIVE|OBJECTIVE|ASSESSMENT\/PLAN|ASSESSMENT|PLAN|CARE PLAN|FOLLOW-UP|FOLLOW UP)$/i;
-  const SUB_LABEL_RE = /^([A-Z][A-Za-z\s\/\-]+):(\s*.+)$/;
+
+  // All-caps section labels emitted by nurse/phone note blocks (no lowercase letters at all).
+  // These are structural headings like "PATIENT PRESENTS TO CLINIC TODAY FOR:" or "VITAL SIGNS".
+  const ALL_CAPS_LABEL_RE = /^[^a-z]+$/;
+
+  // Inline "Label: value" — label starts with uppercase and is at most ~120 chars,
+  // followed by ": " + value.  Apostrophes, commas, numbers, parens all allowed in label.
+  const INLINE_KV_RE = /^([A-Z][^:]{0,119}):\s+(.+)$/;
+
   const LINE_H_BODY = 5;
   const LINE_H_MAJOR = 6;
+  const LINE_H_LABEL = 5.5;
 
   const lines = sanitizeForPdf(opts.soapText || '').split('\n');
   const PAGE_H = 279.4;
@@ -261,54 +271,71 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
 
   for (const raw of lines) {
     const line = raw.trimEnd();
+    const trimmed = line.trim();
 
-    if (MAJOR_RE.test(line.trim())) {
+    // ── Empty line → vertical whitespace ────────────────────────────────────
+    if (trimmed === '') {
+      y += 2.5;
+      continue;
+    }
+
+    // ── Primary SOAP section (SUBJECTIVE / OBJECTIVE / ASSESSMENT / PLAN) ───
+    if (MAJOR_RE.test(trimmed)) {
       checkNewPage(y + LINE_H_MAJOR + 2);
-      if (line.trim() !== lines[0]?.trimEnd().trim()) y += 2;
+      y += 2;
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(10);
       doc.setTextColor(HEADER_PRIMARY);
-      doc.text(line.trim().toUpperCase(), MARGIN, y);
+      doc.text(trimmed.toUpperCase(), MARGIN, y);
       y += LINE_H_MAJOR;
-      // thin underline
       doc.setDrawColor('#aaaaaa');
       doc.setLineWidth(0.2);
       doc.line(MARGIN, y - 1, MARGIN + 60, y - 1);
       continue;
     }
 
-    if (line.trim() === '') {
-      y += 2.5;
+    // ── All-caps section header (nurse/phone note block labels) ─────────────
+    // Must have no lowercase letters (pure ALL-CAPS content).
+    // Rendered bold dark — visually distinct from plain body text but lighter
+    // than the primary-colored SOAP headers above.
+    if (ALL_CAPS_LABEL_RE.test(trimmed) && trimmed.length > 1) {
+      checkNewPage(y + LINE_H_LABEL + 2);
+      y += 1.5; // small top gap before each section label
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9);
+      doc.setTextColor('#1a1a1a');
+      // Strip a lone trailing colon so it doesn't look like "VITAL SIGNS:"
+      const displayLabel = trimmed.replace(/:$/, '');
+      doc.text(displayLabel, MARGIN, y);
+      y += LINE_H_LABEL;
       continue;
     }
 
-    const subMatch = SUB_LABEL_RE.exec(line.trim());
-    if (subMatch) {
+    // ── Inline key: value pair ───────────────────────────────────────────────
+    // E.g. "PATIENT'S LABS ARE: Up to date" or "Start weight: 155".
+    // Bold label + normal value, both on the same line when it fits.
+    const kvMatch = INLINE_KV_RE.exec(trimmed);
+    if (kvMatch) {
       checkNewPage(y + LINE_H_BODY + 2);
-      const labelText = subMatch[1] + ': ';
-      const restText = subMatch[2].trim();
+      const labelText = kvMatch[1].trim() + ': ';
+      const restText = kvMatch[2].trim();
 
       doc.setFont('helvetica', 'bold');
       doc.setFontSize(8.5);
-      doc.setTextColor('#333333');
+      doc.setTextColor('#1a1a1a');
       const labelWidth = doc.getTextWidth(labelText);
-
       doc.text(labelText, MARGIN, y);
+
       doc.setFont('helvetica', 'normal');
       doc.setFontSize(8.5);
-      doc.setTextColor('#111111');
+      doc.setTextColor('#222222');
 
-      // Use splitTextToSize to let jsPDF decide if restText fits inline —
-      // more reliable than comparing getTextWidth against a fixed threshold.
-      const availableForRest = CONTENT_W - labelWidth;
-      const inlineLines = doc.splitTextToSize(restText, availableForRest);
-
+      const inlineLines = doc.splitTextToSize(restText, CONTENT_W - labelWidth);
       if (inlineLines.length === 1) {
-        // Fits on same line as label
         doc.text(inlineLines[0], MARGIN + labelWidth, y);
         y += LINE_H_BODY;
       } else {
-        // Wraps — render on next line(s) with a small indent
+        // Value is too long — wrap it on the next line(s) with slight indent
         y += LINE_H_BODY;
         const wrappedLines = doc.splitTextToSize(restText, CONTENT_W - 4);
         for (const wl of wrappedLines) {
@@ -320,14 +347,11 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
       continue;
     }
 
-    // Regular line (body / list items)
+    // ── Regular body text ────────────────────────────────────────────────────
     const indent = line.startsWith('   ') || line.startsWith('\t') ? 6 : 0;
-    const trimmed = line.trim();
-
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(8.5);
-    doc.setTextColor('#111111');
-
+    doc.setTextColor('#222222');
     const wrappedLines = doc.splitTextToSize(trimmed, CONTENT_W - indent);
     for (const wl of wrappedLines) {
       checkNewPage(y + LINE_H_BODY);
