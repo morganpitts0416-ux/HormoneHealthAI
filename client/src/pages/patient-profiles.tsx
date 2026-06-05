@@ -1693,7 +1693,7 @@ function RailHeaderRow({
   onClickCol,
   headerLabel = "Biomarker",
 }: {
-  cols: { label: string; clickable?: boolean; colIndex: number }[];
+  cols: { label: string; clickable?: boolean; colIndex: number; src?: "clinic" | "patient_logged" }[];
   colCount: number;
   onClickCol?: (i: number) => void;
   headerLabel?: string;
@@ -1724,7 +1724,7 @@ function RailHeaderRow({
       >
         {headerLabel}
       </div>
-      {cols.map(({ label, clickable, colIndex }) => (
+      {cols.map(({ label, clickable, colIndex, src }) => (
         <div
           key={colIndex}
           className="shrink-0 text-right px-1 py-1.5 text-[10px] font-semibold"
@@ -1739,7 +1739,12 @@ function RailHeaderRow({
               {label}
             </button>
           ) : (
-            label
+            <span className="flex flex-col items-end gap-0.5">
+              {src === "patient_logged" && (
+                <Home className="w-2.5 h-2.5 text-amber-500" title="Home reading" />
+              )}
+              {label}
+            </span>
           )}
         </div>
       ))}
@@ -1834,7 +1839,6 @@ function PatientContextRail({
   // Take 5 most recent vitals entries as columns
   const recentVitals = useMemo(() =>
     [...rawVitals]
-      .filter(v => v.source === "clinic" || !v.source)
       .sort((a, b) => new Date(b.recordedAt).getTime() - new Date(a.recordedAt).getTime())
       .slice(0, 5),
     [rawVitals]
@@ -1842,6 +1846,7 @@ function PatientContextRail({
 
   const vitalCols = useMemo(() => recentVitals.map(v => ({
     vital: v,
+    src: (v.source === "patient_logged" ? "patient_logged" : "clinic") as "clinic" | "patient_logged",
     dateLabel: new Date(v.recordedAt).toLocaleDateString("en-US", { month: "numeric", day: "numeric" }),
     values: new Map<string, number | null>(
       VITAL_ROWS.map(r => [r.key as string, (v[r.key] as number | null | undefined) ?? null])
@@ -1941,7 +1946,7 @@ function PatientContextRail({
               <RailHeaderRow
                 headerLabel="Vital"
                 colCount={vitalCols.length}
-                cols={vitalCols.map((col, i) => ({ label: col.dateLabel, clickable: false, colIndex: i }))}
+                cols={vitalCols.map((col, i) => ({ label: col.dateLabel, clickable: false, colIndex: i, src: col.src }))}
               />
               {VITAL_ROWS.filter(row =>
                 vitalCols.some(col => col.values.get(row.key as string) !== null)

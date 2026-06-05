@@ -363,6 +363,7 @@ function persistVitalsFromNoteText(
   patientId: number,
   clinicianId: number,
   noteText: string,
+  encounterId?: number,
 ): void {
   const v = extractVitalsFromNoteText(noteText);
   const hasAny = Object.values(v).some(val => val != null && Number.isFinite(val as number));
@@ -371,15 +372,34 @@ function persistVitalsFromNoteText(
   const bmi = (weightLbs && heightInches && heightInches > 0)
     ? Math.round(((weightLbs / (heightInches * heightInches)) * 703) * 10) / 10
     : null;
+  // Tag note-extracted vitals with the encounter ID so dedup can skip re-runs
+  // when a note is signed multiple times (initial sign + amendments).
+  const noteTag = encounterId
+    ? `Auto-recorded from note (enc:${encounterId})`
+    : 'Auto-recorded from AI-generated note';
   Promise.resolve()
-    .then(() => storage.createPatientVital({
-      patientId,
-      clinicianId,
-      ...(v as any),
-      bmi,
-      notes: 'Auto-recorded from AI-generated note',
-      source: 'clinic',
-    } as any))
+    .then(async () => {
+      // Dedup: skip if we already auto-recorded vitals for this specific encounter
+      if (encounterId) {
+        const existing = await storageDb
+          .select({ id: schema.patientVitals.id })
+          .from(schema.patientVitals)
+          .where(and(
+            eq(schema.patientVitals.patientId, patientId),
+            eq(schema.patientVitals.notes, noteTag),
+          ))
+          .limit(1);
+        if (existing.length > 0) return;
+      }
+      await storage.createPatientVital({
+        patientId,
+        clinicianId,
+        ...(v as any),
+        bmi,
+        notes: noteTag,
+        source: 'clinic',
+      } as any);
+    })
     .catch((err) => {
       console.warn('[note vitals] persist failed (non-fatal):', err?.message ?? err);
     });
@@ -8446,6 +8466,13 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         pendingCollabReview: false,
         lockedAt: now,
       } as any, clinicId);
+
+      // Fire-and-forget: extract any vitals from the note text and save as
+      // clinic-sourced vitals. Dedup (via enc-tagged notes field) prevents
+      // duplicate entries when the same note is signed multiple times.
+      if (encounter.soapNote) {
+        persistVitalsFromNoteText(encounter.patientId, clinicianId, encounter.soapNote, id);
+      }
 
       // Collaborating-physician chart review hook. Provider SOAPs only;
       // skip for nurse/phone notes signed by staff. Never blocks the response.
