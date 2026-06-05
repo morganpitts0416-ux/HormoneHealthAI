@@ -274,6 +274,10 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
     systolicBp: "",
     diastolicBp: "",
     heartRate: "",
+    respiratoryRate: "",
+    temperature: "",
+    oxygenSaturation: "",
+    painScore: "",
     weightLbs: "",
     heightInches: "",
     notes: "",
@@ -307,6 +311,10 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
       if (form.systolicBp) payload.systolicBp = parseInt(form.systolicBp);
       if (form.diastolicBp) payload.diastolicBp = parseInt(form.diastolicBp);
       if (form.heartRate) payload.heartRate = parseInt(form.heartRate);
+      if (form.respiratoryRate) payload.respiratoryRate = parseInt(form.respiratoryRate);
+      if (form.temperature) payload.temperature = parseFloat(form.temperature);
+      if (form.oxygenSaturation) payload.oxygenSaturation = parseFloat(form.oxygenSaturation);
+      if (form.painScore) payload.painScore = parseInt(form.painScore);
       if (form.weightLbs) payload.weightLbs = parseFloat(form.weightLbs);
       if (form.heightInches) payload.heightInches = parseFloat(form.heightInches);
       if (form.notes) payload.notes = form.notes;
@@ -316,7 +324,7 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
       setShowForm(false);
-      setForm({ systolicBp: "", diastolicBp: "", heartRate: "", weightLbs: "", heightInches: "", notes: "" });
+      setForm({ systolicBp: "", diastolicBp: "", heartRate: "", respiratoryRate: "", temperature: "", oxygenSaturation: "", painScore: "", weightLbs: "", heightInches: "", notes: "" });
       toast({ title: "Vitals recorded" });
     },
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
@@ -599,6 +607,52 @@ export function VitalsDialog({ open, onOpenChange, patientId, patientName, onSho
                       value={form.heartRate}
                       onChange={(e) => setForm((f) => ({ ...f, heartRate: e.target.value }))}
                       data-testid="input-heart-rate"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Resp. Rate (rpm)</Label>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="16"
+                      value={form.respiratoryRate}
+                      onChange={(e) => setForm((f) => ({ ...f, respiratoryRate: e.target.value }))}
+                      data-testid="input-respiratory-rate"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Temperature (°F)</Label>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="98.6"
+                      value={form.temperature}
+                      onChange={(e) => setForm((f) => ({ ...f, temperature: e.target.value }))}
+                      data-testid="input-temperature"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">SpO₂ (%)</Label>
+                    <Input
+                      type="number"
+                      inputMode="decimal"
+                      placeholder="98"
+                      value={form.oxygenSaturation}
+                      onChange={(e) => setForm((f) => ({ ...f, oxygenSaturation: e.target.value }))}
+                      data-testid="input-oxygen-saturation"
+                    />
+                  </div>
+                  <div>
+                    <Label className="text-xs">Pain Score (0–10)</Label>
+                    <Input
+                      type="number"
+                      inputMode="numeric"
+                      placeholder="0"
+                      min={0}
+                      max={10}
+                      value={form.painScore}
+                      onChange={(e) => setForm((f) => ({ ...f, painScore: e.target.value }))}
+                      data-testid="input-pain-score"
                     />
                   </div>
                   <div>
