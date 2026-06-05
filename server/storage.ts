@@ -277,7 +277,7 @@ export interface IStorage {
   upsertPatientChart(patientId: number, clinicianId: number, data: Partial<Omit<schema.PatientChart, 'id' | 'patientId' | 'clinicianId' | 'updatedAt'>>): Promise<schema.PatientChart>;
 
   // Patient Vitals
-  getPatientVitals(patientId: number, clinicianId: number): Promise<schema.PatientVital[]>;
+  getPatientVitals(patientId: number, clinicianId?: number | null): Promise<schema.PatientVital[]>;
   createPatientVital(data: { patientId: number; clinicianId: number } & schema.InsertPatientVital & { bmi?: number | null }): Promise<schema.PatientVital>;
   deletePatientVital(id: number, clinicianId: number): Promise<boolean>;
 
@@ -2289,14 +2289,14 @@ export class DbStorage implements IStorage {
   }
 
   // ── Patient Vitals ───────────────────────────────────────────────────────────
-  async getPatientVitals(patientId: number, clinicianId: number): Promise<schema.PatientVital[]> {
+  async getPatientVitals(patientId: number, _clinicianId?: number | null): Promise<schema.PatientVital[]> {
+    // Scope by patientId only — the caller already verified clinic access via
+    // getPatient(). Filtering by clinicianId would hide vitals saved by other
+    // staff (e.g. a nurse saving under their own userId) from the provider.
     return db
       .select()
       .from(schema.patientVitals)
-      .where(and(
-        eq(schema.patientVitals.patientId, patientId),
-        eq(schema.patientVitals.clinicianId, clinicianId),
-      ))
+      .where(eq(schema.patientVitals.patientId, patientId))
       .orderBy(desc(schema.patientVitals.recordedAt));
   }
 
@@ -2313,11 +2313,15 @@ export class DbStorage implements IStorage {
         systolicBp: data.systolicBp ?? null,
         diastolicBp: data.diastolicBp ?? null,
         heartRate: data.heartRate ?? null,
+        respiratoryRate: data.respiratoryRate ?? null,
+        temperature: data.temperature ?? null,
+        oxygenSaturation: data.oxygenSaturation ?? null,
+        painScore: data.painScore ?? null,
         weightLbs: data.weightLbs ?? null,
         heightInches: data.heightInches ?? null,
         bmi: data.bmi ?? null,
-        temperature: (data as any).temperature ?? null,
         notes: data.notes ?? null,
+        source: data.source ?? "clinic",
       })
       .returning();
     return row;

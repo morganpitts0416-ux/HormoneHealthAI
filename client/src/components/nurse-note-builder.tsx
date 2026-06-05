@@ -227,6 +227,7 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
             if (v.weightLbs) payload.weightLbs = parseFloat(v.weightLbs);
             await apiRequest("POST", `/api/patients/${patientId}/vitals`, payload);
             queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
+            queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals", "latest-height"] });
           } catch (ve: any) {
             console.warn("[Nurse Note] Vitals save failed:", ve);
             toast({
