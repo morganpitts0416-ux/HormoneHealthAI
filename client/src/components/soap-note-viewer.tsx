@@ -5,6 +5,8 @@ import type { EvidenceSuggestion } from "@shared/schema";
 
 const MAJOR_SECTIONS = /^(SUBJECTIVE|OBJECTIVE|ASSESSMENT\/PLAN|CARE PLAN|FOLLOW-UP|FOLLOW UP)$/i;
 const ASSESSMENT_SECTION = /^(ASSESSMENT\/PLAN|ASSESSMENT)$/i;
+// Matches template custom section headers like "— HEADING —" or "── HEADING ──"
+const TEMPLATE_SECTION = /^[—─]{1,2}\s+(.+?)\s+[—─]{1,2}$/;
 const CC_LINE = /^CC\/Reason:\s*(.*)/i;
 const SUB_LABEL = /^([A-Z][A-Za-z\s\/\-]+):(\s*.*)$/;
 const ROS_HEADER = /^(ROS|REVIEW OF SYSTEMS)\s*:?\s*$/i;
@@ -218,6 +220,17 @@ export function SoapNoteViewer({ text, evidence, mode = "flags" }: {
       currentItemHasPlanLabel = false;
       pendingPlanLabel = false;
       nodes.push(<span key={i} className="soap-section-major">{trimmed}</span>);
+      continue;
+    }
+
+    // Template custom section headings — strip surrounding dash decorators and render cleanly
+    const templateSectionMatch = trimmed.match(TEMPLATE_SECTION);
+    if (templateSectionMatch) {
+      inAssessmentPlan = false;
+      inNumberedItem = false;
+      currentItemHasPlanLabel = false;
+      pendingPlanLabel = false;
+      nodes.push(<span key={i} className="soap-section-major">{templateSectionMatch[1]}</span>);
       continue;
     }
 

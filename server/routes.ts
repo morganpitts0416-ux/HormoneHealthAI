@@ -11103,7 +11103,7 @@ Return JSON: { "fields": { "<field_id>": "<value or comma-separated checklist it
       for (const f of allFields) {
         const ft = f.fieldType ?? "extract";
         if (ft === "heading") {
-          fieldLines.push(`\n── ${f.label.toUpperCase()} ──`);
+          fieldLines.push(`\n${f.label.toUpperCase()}`);
         } else if (ft === "extract") {
           const val = extractedFields[f.id];
           if (val || f.required) {
