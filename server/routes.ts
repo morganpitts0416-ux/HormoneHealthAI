@@ -320,6 +320,71 @@ function persistVitalsFromLabEval(
     });
 }
 
+// ── Note-text → vital-trends bridge ─────────────────────────────────────
+// Parses a generated SOAP/template note's VITAL SIGNS section and persists
+// the values to patient_vitals. Fire-and-forget: never blocks the response.
+function extractVitalsFromNoteText(text: string): {
+  systolicBp?: number | null;
+  diastolicBp?: number | null;
+  heartRate?: number | null;
+  temperature?: number | null;
+  respiratoryRate?: number | null;
+  oxygenSaturation?: number | null;
+  painScore?: number | null;
+  heightInches?: number | null;
+  weightLbs?: number | null;
+} {
+  const r: Record<string, number | null> = {};
+  const bp = text.match(/(?:Blood\s*Pressure|BP)[:\s]+(\d{2,3})\s*\/\s*(\d{2,3})/i);
+  if (bp) { r.systolicBp = parseInt(bp[1]); r.diastolicBp = parseInt(bp[2]); }
+  const hr = text.match(/(?:Heart\s*Rate|HR)[:\s]+(\d{2,3})/i);
+  if (hr) r.heartRate = parseInt(hr[1]);
+  const temp = text.match(/(?:Temperature|Temp)[:\s]+([\d.]+)\s*°?[FC]/i) ?? text.match(/(?:Temperature|Temp)[:\s]+(9\d\.?\d*)/i);
+  if (temp) r.temperature = parseFloat(temp[1]);
+  const rr = text.match(/(?:Respiratory\s*Rate|Resp(?:iratory)?\s*Rate|RR)[:\s]+(\d{1,3})/i);
+  if (rr) r.respiratoryRate = parseInt(rr[1]);
+  const spo2 = text.match(/(?:Oxygen\s*Sat(?:uration)?|O2\s*Sat|SpO2)[:\s]+([\d.]+)/i);
+  if (spo2) r.oxygenSaturation = parseFloat(spo2[1]);
+  const pain = text.match(/Pain\s*(?:Score|Level)?[:\s]+(\d{1,2})(?:\s*\/\s*10)?/i);
+  if (pain) r.painScore = Math.min(10, parseInt(pain[1]));
+  const ht = text.match(/(?:Height|Ht)[:\s]+([\d.]+)\s*(?:in|inches?)?/i);
+  if (ht) {
+    r.heightInches = parseFloat(ht[1]);
+  } else {
+    const ftIn = text.match(/(?:Height|Ht)[:\s]+(\d)\s*['']\s*(\d{1,2})/i);
+    if (ftIn) r.heightInches = parseInt(ftIn[1]) * 12 + parseInt(ftIn[2]);
+  }
+  const wt = text.match(/(?:Weight|Wt)[:\s]+([\d.]+)\s*(?:lbs?|pounds?)?/i);
+  if (wt) r.weightLbs = parseFloat(wt[1]);
+  return r as any;
+}
+
+function persistVitalsFromNoteText(
+  patientId: number,
+  clinicianId: number,
+  noteText: string,
+): void {
+  const v = extractVitalsFromNoteText(noteText);
+  const hasAny = Object.values(v).some(val => val != null && Number.isFinite(val as number));
+  if (!hasAny) return;
+  const { weightLbs, heightInches } = v as any;
+  const bmi = (weightLbs && heightInches && heightInches > 0)
+    ? Math.round(((weightLbs / (heightInches * heightInches)) * 703) * 10) / 10
+    : null;
+  Promise.resolve()
+    .then(() => storage.createPatientVital({
+      patientId,
+      clinicianId,
+      ...(v as any),
+      bmi,
+      notes: 'Auto-recorded from AI-generated note',
+      source: 'clinic',
+    } as any))
+    .catch((err) => {
+      console.warn('[note vitals] persist failed (non-fatal):', err?.message ?? err);
+    });
+}
+
 // Allows both clinicians (passport) and staff (session.staffId) through.
 function requireAuth(req: Request, res: Response, next: NextFunction) {
   const sess = req.session as any;
@@ -10839,6 +10904,11 @@ Return a JSON object:
         ),
       ]);
 
+      // Fire-and-forget: persist any vital signs found in the generated note
+      if (encounter.patientId && soapNote.fullNote) {
+        persistVitalsFromNoteText(encounter.patientId, clinicianId, soapNote.fullNote);
+      }
+
       res.json({
         soapNote,
         encounter: updated,
@@ -11279,6 +11349,11 @@ HOW TO USE THE TEMPLATE:
       // Store in soapNote.fullNote — the existing viewer renders this format
       const soapNote = { fullNote: finalNote };
       await storage.updateEncounter(id, clinicianId, { soapNote, soapGeneratedAt: new Date() }, clinicId);
+
+      // Fire-and-forget: persist any vital signs found in the generated note
+      if (encounter.patientId && finalNote) {
+        persistVitalsFromNoteText(encounter.patientId, clinicianId, finalNote);
+      }
 
       const updated = await storage.getEncounter(id, clinicianId, clinicId);
       res.json({ soapNote, diarizedTranscript: updated?.diarizedTranscript ?? null, templateUsed: template.name, junePrefsApplied });

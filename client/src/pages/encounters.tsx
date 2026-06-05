@@ -3778,6 +3778,7 @@ export function EncounterEditor({
                             source: "clinic",
                           }).then(() => {
                             qc.invalidateQueries({ queryKey: ["/api/patients", encounter.patientId, "vitals"] });
+                            qc.invalidateQueries({ queryKey: ["/api/patients", encounter.patientId, "vitals", "all"] });
                             qc.invalidateQueries({ queryKey: ["/api/patients", encounter.patientId, "vitals", "latest-height"] });
                           }).catch(() => {});
                         }

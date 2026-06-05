@@ -4,4 +4,5 @@
 - [Missing schema exports fix](missing-schema-exports-fix.md) — esbuild "[WARNING] Import X will always be undefined" = runtime TypeError; always run `npm run build` after storage edits and verify zero such warnings
 - [Speaker normalization heuristics](speaker-norm-heuristics.md) — normalizeSpeakerRoles() signal tuning gotchas; test suite at server/test-speaker-norm.ts (run: npx tsx server/test-speaker-norm.ts)
 - [HIPAA Phase 1 hardening](hipaa-phase1.md) — helmet, rate limiters, PHI log cleanup, phi_access_log audit table all added; what's still pending for later phases
+- [Vitals persist from note text](vitals-note-persist.md) — AI SOAP/template notes need explicit regex extraction + fire-and-forget save; cache key split vitals vs vitals/all must be invalidated together
 - [Lab eval provider overrides](lab-eval-overrides.md) — providerOverrides JSONB on lab_results; LabDetailModal owns override state + 900ms debounce auto-save; portal GET applies all overrides server-side
