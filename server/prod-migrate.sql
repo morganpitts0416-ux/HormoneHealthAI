@@ -1511,6 +1511,13 @@ ALTER TABLE spruce_conversation_state
   ADD COLUMN IF NOT EXISTS after_hours_notice_sent_at TIMESTAMP,
   ADD COLUMN IF NOT EXISTS active_workflow_enrollment_id INTEGER;
 
+-- spruce_conversation_state: read-tracking and staff-assignment columns
+-- added for viewed-state and Spruce assignment sync. Nullable; safe to add
+-- to any existing deployment.
+ALTER TABLE spruce_conversation_state
+  ADD COLUMN IF NOT EXISTS staff_last_viewed_at TIMESTAMP,
+  ADD COLUMN IF NOT EXISTS tagged_clinician_id INTEGER REFERENCES users(id) ON DELETE SET NULL;
+
 -- ── Form Workflow Builder (Layer 1) ─────────────────────────────────────────
 -- Schema-only. No execution engine is wired in Layer 1.
 -- All four tables are idempotent (IF NOT EXISTS / ADD COLUMN IF NOT EXISTS).
