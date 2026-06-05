@@ -2640,6 +2640,14 @@ export const spruceConversationState = pgTable("spruce_conversation_state", {
   // stores the enrollment ID so the webhook handler can advance/stop it.
   // Plain integer (no FK) to avoid circular dependency with enrollments table.
   activeWorkflowEnrollmentId: integer("active_workflow_enrollment_id"),
+  // ── Read/Viewed tracking ─────────────────────────────────────────────────
+  // Stamped when any staff member opens this conversation in ClinIQ.
+  // Used to distinguish "seen but not yet replied" from "never opened".
+  staffLastViewedAt: timestamp("staff_last_viewed_at"),
+  // ── Staff assignment / @mention tracking ─────────────────────────────────
+  // Set when a Spruce webhook event indicates a specific ClinIQ clinician
+  // was assigned or tagged in this conversation (e.g. "assigned this to Morgan Pitts").
+  taggedClinicianId: integer("tagged_clinician_id").references(() => users.id, { onDelete: "set null" }),
 }, (t) => ({ uniqConvKey: uniqueIndex("spruce_conv_state_clinic_key").on(t.clinicId, t.conversationKey) }));
 export type SpruceConversationStateRow = typeof spruceConversationState.$inferSelect;
 

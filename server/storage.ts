@@ -415,6 +415,10 @@ export interface IStorage {
   linkSpruceConversationToPatient(clinicId: number, conversationKey: string, patientId: number): Promise<{ updatedMessages: number }>;
   // Archive a conversation (Phase 3)
   archiveSpruceConversation(clinicId: number, conversationKey: string, archivedByUserId: number | null, source: 'cliniq' | 'spruce' | 'sync', spruceArchiveSyncedAt?: Date | null, spruceArchiveError?: string | null): Promise<schema.SpruceConversationStateRow>;
+  // Stamp staffLastViewedAt on the conversation state when a clinician opens it
+  markSpruceConversationViewed(clinicId: number, conversationKey: string): Promise<void>;
+  // Set the tagged clinician (assigned-to) on a conversation state row
+  setSpruceConversationTaggedClinician(clinicId: number, conversationKey: string, userId: number | null): Promise<void>;
   // Outbound message audit log
   createSpruceOutboundMessage(data: schema.InsertSpruceOutboundMessage): Promise<schema.SpruceOutboundMessage>;
   updateSpruceOutboundDeliveryId(id: number, spruceDeliveryId: string): Promise<void>;
@@ -5084,6 +5088,9 @@ export interface SpruceConversationSummary {
   // Archive state (Phase 3)
   isArchived: boolean;
   archivedAt: Date | null;
+  // Viewed / assigned tracking (Phase 4)
+  staffLastViewedAt: Date | null;
+  taggedClinicianId: number | null;
 }
 
 // ── ReplyContext ──────────────────────────────────────────────────────────
@@ -5177,11 +5184,13 @@ export interface SpruceConversationMessageRow {
     .where(eq(schema.spruceMessages.clinicId, clinicId))
     .orderBy(desc(schema.spruceMessages.receivedAt));
 
-  // Fetch all conversation state rows for this clinic (for archive state)
+  // Fetch all conversation state rows for this clinic (archive + viewed + assignment)
   const stateRows = await db
     .select({
       conversationKey: schema.spruceConversationState.conversationKey,
       archivedAt: schema.spruceConversationState.archivedAt,
+      staffLastViewedAt: schema.spruceConversationState.staffLastViewedAt,
+      taggedClinicianId: schema.spruceConversationState.taggedClinicianId,
     })
     .from(schema.spruceConversationState)
     .where(eq(schema.spruceConversationState.clinicId, clinicId));
@@ -5228,6 +5237,8 @@ export interface SpruceConversationMessageRow {
         hasStaffReply: row.staffRepliedAt !== null,
         isArchived: stateRow?.archivedAt != null,
         archivedAt: stateRow?.archivedAt ?? null,
+        staffLastViewedAt: stateRow?.staffLastViewedAt ?? null,
+        taggedClinicianId: stateRow?.taggedClinicianId ?? null,
       });
     } else {
       const existing = map.get(key)!;
@@ -5461,6 +5472,58 @@ export interface SpruceConversationMessageRow {
     })
     .returning();
   return rows[0];
+};
+
+// ── markSpruceConversationViewed ──────────────────────────────────────────
+// Stamps staffLastViewedAt when a staff member opens a conversation in ClinIQ.
+// Uses upsert so it works even if no state row exists yet.
+(DbStorage.prototype as any).markSpruceConversationViewed = async function(
+  clinicId: number,
+  conversationKey: string,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(schema.spruceConversationState)
+    .values({
+      clinicId,
+      conversationKey,
+      state: "open",
+      lastActivityAt: now,
+      staffLastViewedAt: now,
+    })
+    .onConflictDoUpdate({
+      target: [schema.spruceConversationState.clinicId, schema.spruceConversationState.conversationKey],
+      set: {
+        staffLastViewedAt: now,
+        lastActivityAt: now,
+      },
+    });
+};
+
+// ── setSpruceConversationTaggedClinician ──────────────────────────────────
+// Sets (or clears) the taggedClinicianId when Spruce reports an assignment.
+(DbStorage.prototype as any).setSpruceConversationTaggedClinician = async function(
+  clinicId: number,
+  conversationKey: string,
+  userId: number | null,
+): Promise<void> {
+  const now = new Date();
+  await db
+    .insert(schema.spruceConversationState)
+    .values({
+      clinicId,
+      conversationKey,
+      state: "open",
+      lastActivityAt: now,
+      taggedClinicianId: userId,
+    })
+    .onConflictDoUpdate({
+      target: [schema.spruceConversationState.clinicId, schema.spruceConversationState.conversationKey],
+      set: {
+        taggedClinicianId: userId,
+        lastActivityAt: now,
+      },
+    });
 };
 
 // ── getSpruceConversationState ────────────────────────────────────────────

@@ -11,7 +11,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema } from "@shared/schema";
-import { eq, and, sql, desc, isNull, or } from "drizzle-orm";
+import { eq, and, sql, desc, isNull, or, ilike } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
@@ -2389,6 +2389,20 @@ Rules:
     } catch (err) {
       console.error("[Spruce/messages] Error:", err);
       res.status(500).json({ error: "Failed to fetch messages" });
+    }
+  });
+
+  // POST /api/spruce/conversations/:key/mark-viewed — stamp staffLastViewedAt when clinician opens conversation
+  app.post("/api/spruce/conversations/:key/mark-viewed", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      if (!clinicId) return res.status(400).json({ error: "No clinic context" });
+      const key = decodeURIComponent(req.params.key);
+      await (storage as any).markSpruceConversationViewed(clinicId, key);
+      res.json({ ok: true });
+    } catch (err) {
+      console.error("[Spruce/mark-viewed] Error:", err);
+      res.status(500).json({ error: "Failed to mark as viewed" });
     }
   });
 
@@ -19589,6 +19603,70 @@ IMPORTANT:
           `${tag} SYSTEM EVENT — skipping classification, workflow request, ` +
           `staff_takeover, and June. Stored as audit record id=${storedMsg?.id ?? "n/a"}.`,
         );
+
+        // ── Archive sync: if Spruce reports this conversation was archived,
+        // mirror that state into ClinIQ so the conversation moves to the
+        // Archived folder without the clinician having to archive it manually.
+        if (/archived/i.test(msgBody)) {
+          const archiveKey = spruceConversationId || fromPhone;
+          if (archiveKey && matchedClinicId) {
+            try {
+              await (storage as any).archiveSpruceConversation(
+                matchedClinicId,
+                archiveKey,
+                null,      // archivedByUserId — unknown for Spruce-initiated archives
+                'spruce',  // archiveSource
+                null,      // spruceArchiveSyncedAt
+                null,      // spruceArchiveError
+              );
+              console.log(`${tag} ARCHIVE SYNC: conversation "${archiveKey}" archived locally from Spruce event.`);
+            } catch (archErr) {
+              console.warn(`${tag} ARCHIVE SYNC failed (non-fatal):`, archErr);
+            }
+          }
+        }
+
+        // ── Assignment sync: if Spruce reports this conversation was assigned
+        // to a specific staff member, look them up by name and tag the conv.
+        // Pattern: "X assigned this conversation to [Name]" or "assigned this to [Name]"
+        const assignMatch = msgBody.match(
+          /assigned this(?: conversation)? to\s+([A-Z][a-z]+(?:\s+[A-Z][a-z]+)+)/i,
+        );
+        if (assignMatch && matchedClinicId) {
+          const assigneeName = assignMatch[1].trim();
+          const convKey = spruceConversationId || fromPhone;
+          if (convKey) {
+            try {
+              // Look up user in this clinic by first+last name (case-insensitive)
+              const nameParts = assigneeName.split(/\s+/);
+              const firstName = nameParts[0];
+              const lastName = nameParts.slice(1).join(" ");
+              const matchedUsers = await storageDb
+                .select({ id: usersTable.id })
+                .from(usersTable)
+                .innerJoin(clinicMemberships, eq(clinicMemberships.userId, usersTable.id))
+                .where(and(
+                  eq(clinicMemberships.clinicId, matchedClinicId),
+                  ilike(usersTable.firstName, firstName),
+                  ilike(usersTable.lastName, lastName),
+                ))
+                .limit(1);
+              if (matchedUsers.length > 0) {
+                await (storage as any).setSpruceConversationTaggedClinician(
+                  matchedClinicId,
+                  convKey,
+                  matchedUsers[0].id,
+                );
+                console.log(`${tag} ASSIGNMENT SYNC: "${convKey}" tagged to userId=${matchedUsers[0].id} ("${assigneeName}").`);
+              } else {
+                console.log(`${tag} ASSIGNMENT SYNC: no ClinIQ user found for name "${assigneeName}" in clinic ${matchedClinicId}.`);
+              }
+            } catch (assignErr) {
+              console.warn(`${tag} ASSIGNMENT SYNC failed (non-fatal):`, assignErr);
+            }
+          }
+        }
+
         return; // nothing further for this event
       }
 

@@ -15,7 +15,6 @@ import {
   ChevronRight,
   ChevronDown,
   Settings,
-  MessageSquare,
   ShoppingBag,
   CheckCircle2,
   Bell,
@@ -81,17 +80,6 @@ interface PendingSubmissionRow {
   syncStatus: string;
   submittedAt: string;
   formName?: string;
-}
-
-interface SpruceUnrepliedConv {
-  conversationKey: string;
-  patientId: number | null;
-  patientFirstName: string | null;
-  patientLastName: string | null;
-  fromPhone: string | null;
-  spruceContactName: string | null;
-  lastMessage: string | null;
-  lastMessageAt: string;
 }
 
 interface SpruceWorkflowRequestRow {
@@ -375,15 +363,6 @@ export default function Dashboard() {
     refetchInterval: 30 * 1000,
   });
 
-  // ── Spruce unreplied conversations (Phase 2 dashboard widget) ─────────────
-  // Read-only fetch of conversations waiting for a staff reply.
-  // Isolated query — touches no other data, no mutations.
-  const { data: spruceUnreplied = [], isLoading: spruceUnrepliedLoading } =
-    useQuery<SpruceUnrepliedConv[]>({
-      queryKey: ["/api/spruce/conversations/unreplied-summary"],
-      refetchInterval: 30 * 1000,
-    });
-
   const markReviewedMutation = useMutation({
     mutationFn: async (submissionId: number) => {
       const res = await apiRequest("PATCH", `/api/intake-forms/submissions/${submissionId}/review`);
@@ -395,7 +374,6 @@ export default function Dashboard() {
     },
   });
 
-  const unreadMessages = notifications?.unreadMessages ?? [];
   const pendingOrders = notifications?.pendingOrders ?? [];
   const pendingRefillRequests = notifications?.pendingRefillRequests ?? [];
   const pendingSpruceRequests = notifications?.pendingSpruceRequests ?? [];
@@ -404,10 +382,6 @@ export default function Dashboard() {
   const medicationSpruceRequests = pendingSpruceRequests.filter(r => r.workflow === "medication_refill");
   const appointmentSpruceRequests = pendingSpruceRequests.filter(r => r.workflow === "appointment");
   const urgentSpruceRequests = pendingSpruceRequests.filter(r => r.workflow === "urgent_safety");
-  const generalSpruceRequests = pendingSpruceRequests.filter(r =>
-    !["urgent_safety", "medication_refill", "appointment"].includes(r.workflow)
-  );
-
   // Medication & Supplement tile: orders + portal refills + Spruce medication_refill only.
   type CombinedRequestRow =
     | { kind: "order"; sortAt: number; row: PendingOrderRow }
@@ -431,31 +405,8 @@ export default function Dashboard() {
     })),
   ].sort((a, b) => b.sortAt - a.sortAt);
 
-  // Messages tile: portal unread + general Spruce + awaiting-reply conversations
-  type CombinedMessageEntry =
-    | { kind: "portal"; sortAt: number; row: typeof unreadMessages[0] }
-    | { kind: "spruce"; sortAt: number; row: SpruceWorkflowRequestRow }
-    | { kind: "awaiting"; sortAt: number; row: SpruceUnrepliedConv };
-  const combinedMessages: CombinedMessageEntry[] = [
-    ...unreadMessages.map(m => ({
-      kind: "portal" as const,
-      sortAt: new Date(m.lastAt).getTime() || 0,
-      row: m,
-    })),
-    ...generalSpruceRequests.map(r => ({
-      kind: "spruce" as const,
-      sortAt: new Date(r.createdAt).getTime() || 0,
-      row: r,
-    })),
-    ...spruceUnreplied.map(c => ({
-      kind: "awaiting" as const,
-      sortAt: new Date(c.lastMessageAt).getTime() || 0,
-      row: c,
-    })),
-  ].sort((a, b) => b.sortAt - a.sortAt);
-
   const totalNotifications =
-    combinedMessages.length + combinedRequests.length +
+    combinedRequests.length +
     appointmentSpruceRequests.length + urgentSpruceRequests.length +
     pendingSubmissions.length;
 
@@ -773,125 +724,10 @@ export default function Dashboard() {
             </div>
           )}
 
-          {/* ── 2×2 collapsible queue tiles ──────────────────────────────── */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+          {/* ── 3-column collapsible queue tiles ────────────────────────── */}
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-3">
 
-            {/* ① Messages: unread portal + general Spruce + awaiting-reply (merged) */}
-            {(() => {
-              const awaitingCount = spruceUnreplied.length;
-              const inboundCount = unreadMessages.length + generalSpruceRequests.length;
-              const countLabel = [
-                inboundCount > 0 ? `${inboundCount} unread` : "",
-                awaitingCount > 0 ? `${awaitingCount} awaiting reply` : "",
-              ].filter(Boolean).join(", ");
-
-              const looksLikePhone = (s: string) => /^\+?[\d\s\-().]{7,}$/.test(s.trim());
-              const getAwaitingName = (c: SpruceUnrepliedConv) => {
-                if (c.patientFirstName && c.patientLastName) return `${c.patientFirstName} ${c.patientLastName}`;
-                if (c.patientFirstName) return c.patientFirstName;
-                if (c.spruceContactName && !looksLikePhone(c.spruceContactName)) return c.spruceContactName;
-                return c.fromPhone ?? "Unknown contact";
-              };
-
-              return (
-                <CollapsibleQueueTile
-                  icon={<MessageSquare className="w-4 h-4" />}
-                  label="Messages"
-                  count={combinedMessages.length}
-                  countLabel={countLabel}
-                  accentColor="#2e3a20"
-                  accentBg="#edf4e4"
-                  viewAllLabel="Open Inbox"
-                  onViewAll={() => setLocation("/spruce-inbox")}
-                  isLoading={notifLoading || spruceUnrepliedLoading}
-                  testId="tile-messages"
-                  isEmpty={combinedMessages.length === 0}
-                  emptyLabel="No unread or pending messages"
-                >
-                  {combinedMessages.slice(0, 5).map((entry) => {
-                    if (entry.kind === "portal") {
-                      const row = entry.row;
-                      return (
-                        <button
-                          key={`msg-${row.patientId}`}
-                          data-testid={`notification-message-${row.patientId}`}
-                          className="w-full text-left px-4 py-2 flex items-center gap-2.5 hover-elevate"
-                          onClick={() => goToPatient(row.patientId, "messages")}
-                        >
-                          <PatientInitials first={row.patientFirstName} last={row.patientLastName} />
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{row.patientFirstName} {row.patientLastName}</p>
-                            <p className="text-xs" style={{ color: "#7a8a64" }}>{row.count} unread · Portal</p>
-                          </div>
-                          <span className="text-xs flex-shrink-0" style={{ color: "#a0a880" }}>{timeAgo(row.lastAt)}</span>
-                          <div className="w-2 h-2 rounded-full flex-shrink-0" style={{ backgroundColor: "#2e3a20" }} />
-                        </button>
-                      );
-                    }
-                    if (entry.kind === "spruce") {
-                      const req = entry.row;
-                      const name = req.patientFirstName && req.patientLastName
-                        ? `${req.patientFirstName} ${req.patientLastName}`
-                        : req.patientNameExtracted ?? req.patientPhone ?? "Unknown";
-                      return (
-                        <button
-                          key={`spruce-msg-${req.id}`}
-                          data-testid={`notification-spruce-msg-${req.id}`}
-                          className="w-full text-left px-4 py-2 flex items-center gap-2.5 hover-elevate"
-                          onClick={() => setSelectedSpruceRequest(req)}
-                        >
-                          <div className="w-9 h-9 rounded-full flex items-center justify-center text-white text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#4a3a6e" }}>
-                            {name[0]}
-                          </div>
-                          <div className="flex-1 min-w-0">
-                            <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{name}</p>
-                            <p className="text-xs truncate" style={{ color: "#7a8a64" }}>{SPRUCE_WORKFLOW_LABELS[req.workflow] ?? req.workflow} · Spruce</p>
-                          </div>
-                          <span className="text-[10px] flex-shrink-0" style={{ color: "#a0a880" }}>{timeAgo(req.createdAt)}</span>
-                        </button>
-                      );
-                    }
-                    const conv = entry.row;
-                    const name = getAwaitingName(conv);
-                    const initials = conv.patientFirstName && conv.patientLastName
-                      ? `${conv.patientFirstName[0]}${conv.patientLastName[0]}`
-                      : name.slice(0, 2).toUpperCase();
-                    const preview = conv.lastMessage
-                      ? conv.lastMessage.replace(/\s+/g, " ").trim().slice(0, 60)
-                      : null;
-                    return (
-                      <button
-                        key={`awaiting-${conv.conversationKey}`}
-                        data-testid={`notification-awaiting-${conv.conversationKey}`}
-                        className="w-full text-left px-4 py-2 flex items-center gap-2.5 hover-elevate"
-                        onClick={() => setLocation("/spruce-inbox")}
-                      >
-                        <div className="w-9 h-9 rounded-full flex items-center justify-center text-xs font-semibold flex-shrink-0" style={{ backgroundColor: "#e0d8f5", color: "#3d2e6b" }}>
-                          {initials}
-                        </div>
-                        <div className="flex-1 min-w-0">
-                          <p className="text-sm font-semibold truncate" style={{ color: "#1c2414" }}>{name}</p>
-                          <p className="text-xs truncate" style={{ color: "#7a8a64" }}>
-                            {preview ? `${preview}${conv.lastMessage && conv.lastMessage.length > 60 ? "…" : ""}` : "Awaiting reply · Spruce"}
-                          </p>
-                        </div>
-                        <div className="flex flex-col items-end gap-1 flex-shrink-0">
-                          <span className="text-[10px]" style={{ color: "#a0a880" }}>{timeAgo(conv.lastMessageAt)}</span>
-                          <div className="w-2 h-2 rounded-full" style={{ backgroundColor: "#3d2e6b" }} />
-                        </div>
-                      </button>
-                    );
-                  })}
-                  {combinedMessages.length > 5 && (
-                    <p className="text-xs px-4 py-2" style={{ color: "#7a8a64" }}>
-                      +{combinedMessages.length - 5} more — <button className="underline" onClick={() => setLocation("/spruce-inbox")}>view all</button>
-                    </p>
-                  )}
-                </CollapsibleQueueTile>
-              );
-            })()}
-
-            {/* ② Medication & Supplement Requests */}
+            {/* ① Medication & Supplement Requests */}
             <CollapsibleQueueTile
               icon={<ShoppingBag className="w-4 h-4" />}
               label="Medication & Supplement Requests"

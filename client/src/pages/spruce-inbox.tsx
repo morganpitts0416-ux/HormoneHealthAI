@@ -56,6 +56,9 @@ interface SpruceConversation {
   // Archive state (Phase 3)
   isArchived?: boolean;
   archivedAt?: string | null;
+  // Viewed / assigned tracking (Phase 4)
+  staffLastViewedAt?: string | null;
+  taggedClinicianId?: number | null;
 }
 
 interface SpruceMessage {
@@ -296,6 +299,11 @@ function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: b
     return (
       <div className={`flex justify-end mb-3 px-4 ${optimistic ? "opacity-60" : ""}`} data-testid={`msg-${msg.id}`}>
         <div className="max-w-[72%]">
+          {senderName && (
+            <p className="text-[11px] font-semibold text-[#2e7d52] mb-1 text-right mr-1">
+              {senderName}
+            </p>
+          )}
           <div
             className="rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white leading-relaxed"
             style={{ backgroundColor: "#2e7d52" }}
@@ -304,10 +312,6 @@ function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: b
           </div>
           <p className="text-[10px] text-[#8a8a7a] mt-1 text-right flex items-center justify-end gap-1.5">
             {optimistic && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
-            {senderName && (
-              <span className="text-[#5a7a5a] font-medium">{senderName}</span>
-            )}
-            {senderName && <span className="text-[#ccc8c0]">·</span>}
             {formatMessageTime(msg.receivedAt)}
           </p>
         </div>
@@ -509,8 +513,8 @@ export default function SpruceInboxPage() {
       // "Unreplied" and "Urgent" folders immediately (server also stamps
       // staffRepliedAt on the conversation when status → complete).
       refetchConvs();
-      // Correct query key: /api/clinician/notifications (slash, not hyphen)
-      queryClient.invalidateQueries({ queryKey: ["/api/clinician/notifications"] });
+      qc.invalidateQueries({ queryKey: ["/api/clinician/notifications"] });
+      qc.invalidateQueries({ queryKey: ["/api/spruce/conversations/unreplied-summary"] });
     },
     onError: () => {
       toast({ variant: "destructive", title: "Failed to mark task complete" });
@@ -523,6 +527,13 @@ export default function SpruceInboxPage() {
       setTimeout(() => threadBottomRef.current?.scrollIntoView({ behavior: "smooth" }), 80);
     }
   }, [selectedKey, msgsLoading, messages.length, optimisticMsgs.length]);
+
+  // Mark conversation as viewed when a clinician opens it
+  useEffect(() => {
+    if (!selectedKey) return;
+    apiRequest("POST", `/api/spruce/conversations/${encodeURIComponent(selectedKey)}/mark-viewed`)
+      .catch(() => { /* non-fatal — silently ignore */ });
+  }, [selectedKey]);
 
   // Clear optimistic messages when selectedKey changes
   useEffect(() => {
@@ -627,7 +638,8 @@ export default function SpruceInboxPage() {
   const activeConvs = conversations.filter((c) => !c.isArchived);
   const urgentConvs = activeConvs.filter(isUrgent);
   const unmatchedConvs = activeConvs.filter((c) => !c.patientId);
-  const repliedConvs = activeConvs.filter((c) => c.hasStaffReply);
+  // "Assigned to Me" = conversations where Spruce assigned this specific clinician
+  const assignedToMeConvs = activeConvs.filter((c) => c.taggedClinicianId != null && c.taggedClinicianId === user?.id);
   const archivedConvs = conversations.filter((c) => c.isArchived);
 
   const filtered = conversations
@@ -638,7 +650,8 @@ export default function SpruceInboxPage() {
       if (c.isArchived) return false;
       if (activeView === "unmatched" && c.patientId) return false;
       if (activeView === "urgent" && !isUrgent(c)) return false;
-      if (activeView === "assigned" && !c.patientId) return false;
+      // "assigned" = tagged to the current clinician in Spruce
+      if (activeView === "assigned" && (c.taggedClinicianId == null || c.taggedClinicianId !== user?.id)) return false;
       // "unread" = no staff reply yet (inbound, not yet responded)
       if (activeView === "unread" && c.hasStaffReply) return false;
       const name = getDisplayName(c).toLowerCase();
@@ -647,6 +660,10 @@ export default function SpruceInboxPage() {
       return !q || name.includes(q) || phone.includes(q);
     })
     .sort((a, b) => {
+      // Unread (no staff reply) conversations always float above replied ones
+      const aUnread = !a.hasStaffReply ? 0 : 1;
+      const bUnread = !b.hasStaffReply ? 0 : 1;
+      if (aUnread !== bUnread) return aUnread - bUnread;
       const diff = new Date(a.lastMessageAt).getTime() - new Date(b.lastMessageAt).getTime();
       return sort === "newest" ? -diff : diff;
     });
@@ -781,7 +798,7 @@ export default function SpruceInboxPage() {
           <NavItem
             icon={BookUser}
             label="Assigned to Me"
-            count={repliedConvs.length}
+            count={assignedToMeConvs.length}
             active={activeView === "assigned"}
             onClick={() => { setActiveView("assigned"); setSelectedKey(null); }}
             testId="nav-assigned"
@@ -850,7 +867,7 @@ export default function SpruceInboxPage() {
               all: activeConvs.length,
               unread: activeConvs.filter((c) => !c.hasStaffReply).length,
               urgent: urgentConvs.length,
-              assigned: repliedConvs.length,
+              assigned: assignedToMeConvs.length || undefined,
               unmatched: unmatchedConvs.length,
               archived: archivedConvs.length || undefined,
             };
