@@ -28,7 +28,10 @@ export function VitalsInsertDialog({
   const [systolicBp, setSystolicBp] = useState("");
   const [diastolicBp, setDiastolicBp] = useState("");
   const [heartRate, setHeartRate] = useState("");
+  const [respiratoryRate, setRespiratoryRate] = useState("");
   const [temperature, setTemperature] = useState("");
+  const [oxygenSaturation, setOxygenSaturation] = useState("");
+  const [painScore, setPainScore] = useState("");
   const [heightInches, setHeightInches] = useState("");
   const [weightLbs, setWeightLbs] = useState("");
 
@@ -54,7 +57,10 @@ export function VitalsInsertDialog({
     setSystolicBp("");
     setDiastolicBp("");
     setHeartRate("");
+    setRespiratoryRate("");
     setTemperature("");
+    setOxygenSaturation("");
+    setPainScore("");
     setWeightLbs("");
   }, [open]);
 
@@ -64,15 +70,20 @@ export function VitalsInsertDialog({
     }
   }, [latestHeightData?.heightInches, open]);
 
-  const hasAnyValue = systolicBp || diastolicBp || heartRate || temperature || heightInches || weightLbs;
+  const hasAnyValue = systolicBp || diastolicBp || heartRate || respiratoryRate ||
+    temperature || oxygenSaturation || painScore || heightInches || weightLbs;
 
   function buildVitalsData(): VitalsData {
     const n = (s: string) => s === "" ? null : parseFloat(s);
+    const ni = (s: string) => s === "" ? null : Math.round(parseFloat(s));
     return {
-      systolicBp: n(systolicBp) ? Math.round(n(systolicBp)!) : null,
-      diastolicBp: n(diastolicBp) ? Math.round(n(diastolicBp)!) : null,
-      heartRate: n(heartRate) ? Math.round(n(heartRate)!) : null,
+      systolicBp: ni(systolicBp),
+      diastolicBp: ni(diastolicBp),
+      heartRate: ni(heartRate),
+      respiratoryRate: ni(respiratoryRate),
       temperature: n(temperature),
+      oxygenSaturation: n(oxygenSaturation),
+      painScore: ni(painScore),
       heightInches: n(heightInches),
       weightLbs: n(weightLbs),
       bmi,
@@ -93,7 +104,7 @@ export function VitalsInsertDialog({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="max-w-md" data-testid="vitals-insert-dialog">
+      <DialogContent className="max-w-lg" data-testid="vitals-insert-dialog">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2 text-base">
             <Activity className="w-4 h-4 text-muted-foreground" />
@@ -102,8 +113,8 @@ export function VitalsInsertDialog({
         </DialogHeader>
 
         <div className="space-y-4 py-1">
-          <div className="grid grid-cols-2 gap-3">
-            <div className="col-span-2 space-y-1">
+          <div className="grid grid-cols-2 sm:grid-cols-3 gap-3">
+            <div className="col-span-2 sm:col-span-1 space-y-1">
               <Label className="text-xs font-medium">
                 Blood Pressure <span className="text-muted-foreground font-normal">(mmHg)</span>
               </Label>
@@ -113,7 +124,7 @@ export function VitalsInsertDialog({
                   step="1"
                   value={systolicBp}
                   onChange={e => setSystolicBp(e.target.value)}
-                  placeholder="Systolic"
+                  placeholder="Sys"
                   className="text-sm"
                   data-testid="input-vitals-insert-systolicBp"
                   autoFocus
@@ -124,7 +135,7 @@ export function VitalsInsertDialog({
                   step="1"
                   value={diastolicBp}
                   onChange={e => setDiastolicBp(e.target.value)}
-                  placeholder="Diastolic"
+                  placeholder="Dia"
                   className="text-sm"
                   data-testid="input-vitals-insert-diastolicBp"
                 />
@@ -140,7 +151,7 @@ export function VitalsInsertDialog({
                 step="1"
                 value={heartRate}
                 onChange={e => setHeartRate(e.target.value)}
-                placeholder="e.g. 72"
+                placeholder="72"
                 className="text-sm"
                 data-testid="input-vitals-insert-heartRate"
               />
@@ -148,14 +159,29 @@ export function VitalsInsertDialog({
 
             <div className="space-y-1">
               <Label className="text-xs font-medium">
-                Temperature <span className="text-muted-foreground font-normal">(°F)</span>
+                Resp Rate <span className="text-muted-foreground font-normal">(rpm)</span>
+              </Label>
+              <Input
+                type="number"
+                step="1"
+                value={respiratoryRate}
+                onChange={e => setRespiratoryRate(e.target.value)}
+                placeholder="16"
+                className="text-sm"
+                data-testid="input-vitals-insert-respiratoryRate"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">
+                Temp <span className="text-muted-foreground font-normal">(°F)</span>
               </Label>
               <Input
                 type="number"
                 step="0.1"
                 value={temperature}
                 onChange={e => setTemperature(e.target.value)}
-                placeholder="e.g. 98.6"
+                placeholder="98.6"
                 className="text-sm"
                 data-testid="input-vitals-insert-temperature"
               />
@@ -163,7 +189,39 @@ export function VitalsInsertDialog({
 
             <div className="space-y-1">
               <Label className="text-xs font-medium">
-                Height <span className="text-muted-foreground font-normal">(inches)</span>
+                SpO2 <span className="text-muted-foreground font-normal">(%)</span>
+              </Label>
+              <Input
+                type="number"
+                step="0.1"
+                value={oxygenSaturation}
+                onChange={e => setOxygenSaturation(e.target.value)}
+                placeholder="98"
+                className="text-sm"
+                data-testid="input-vitals-insert-oxygenSaturation"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">
+                Pain <span className="text-muted-foreground font-normal">(0–10)</span>
+              </Label>
+              <Input
+                type="number"
+                min="0"
+                max="10"
+                step="1"
+                value={painScore}
+                onChange={e => setPainScore(e.target.value)}
+                placeholder="0"
+                className="text-sm"
+                data-testid="input-vitals-insert-painScore"
+              />
+            </div>
+
+            <div className="space-y-1">
+              <Label className="text-xs font-medium">
+                Height <span className="text-muted-foreground font-normal">(in)</span>
               </Label>
               <div className="relative">
                 <Input
@@ -171,7 +229,7 @@ export function VitalsInsertDialog({
                   step="0.5"
                   value={heightInches}
                   onChange={e => setHeightInches(e.target.value)}
-                  placeholder="e.g. 66"
+                  placeholder="66"
                   className="text-sm"
                   data-testid="input-vitals-insert-heightInches"
                 />
@@ -190,7 +248,7 @@ export function VitalsInsertDialog({
                 step="0.1"
                 value={weightLbs}
                 onChange={e => setWeightLbs(e.target.value)}
-                placeholder="e.g. 165"
+                placeholder="165"
                 className="text-sm"
                 data-testid="input-vitals-insert-weightLbs"
               />
@@ -213,7 +271,7 @@ export function VitalsInsertDialog({
 
           <p className="text-xs text-muted-foreground">
             Height pre-fills from this patient's most recent visit record.
-            Values are inserted into the note and saved to the patient's vitals trends.
+            All values are inserted into the note and saved to the patient's vitals trends.
           </p>
         </div>
 

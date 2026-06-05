@@ -156,11 +156,21 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
         return block;
       });
 
-    setBlocks(newBlocks.length > 0 ? newBlocks : [
+    const finalBlocks: NurseBlock[] = newBlocks.length > 0 ? newBlocks : [
       { uid: uid(), type: "chief_complaint", label: "Reason for Visit", content: "" },
       { uid: uid(), type: "vitals",          label: "Vital Signs",       vitals: {} },
       { uid: uid(), type: "assessment",      label: "Nursing Assessment", content: "" },
-    ]);
+    ];
+
+    // Always ensure a structured vitals block exists so the nurse can enter
+    // vitals that auto-save to the patient's trends. Templates built with a
+    // free-text "VITAL SIGNS" section don't provide one, so we inject a blank
+    // vitals block at the top.
+    if (!finalBlocks.some(b => b.type === "vitals")) {
+      finalBlocks.unshift({ uid: uid(), type: "vitals", label: "Vital Signs", vitals: {} });
+    }
+
+    setBlocks(finalBlocks);
     toast({ title: `Template "${tpl.name}" applied` });
   };
 
@@ -217,8 +227,13 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
             if (v.weightLbs) payload.weightLbs = parseFloat(v.weightLbs);
             await apiRequest("POST", `/api/patients/${patientId}/vitals`, payload);
             queryClient.invalidateQueries({ queryKey: ["/api/patients", patientId, "vitals"] });
-          } catch (ve) {
-            console.warn("[Nurse Note] Vitals save failed (non-fatal):", ve);
+          } catch (ve: any) {
+            console.warn("[Nurse Note] Vitals save failed:", ve);
+            toast({
+              title: "Vitals not saved to trends",
+              description: ve?.message ?? "The note was saved but vitals could not be recorded. Add them via the Vitals button.",
+              variant: "destructive",
+            });
           }
         }
       }
