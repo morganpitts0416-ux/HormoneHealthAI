@@ -3071,7 +3071,7 @@ export class DbStorage implements IStorage {
   }
 }
 
-export const storage = new DbStorage();
+export const storage = new DbStorage() as unknown as IStorage;
 
 // ─── Typed accessor for chart-review storage methods ──────────────────────
 // The chart-review methods are attached to DbStorage.prototype dynamically

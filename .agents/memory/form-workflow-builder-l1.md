@@ -13,6 +13,13 @@ Layer 1 (schema + CRUD + builder UI) is fully implemented and wired up.
 - `client/src/components/form-workflow-builder.tsx` — 1745-line builder with WorkflowList, WorkflowEditor, StepConfigPanel (all 10 step types), IfThenBranch (recursive sub-steps), FormWorkflowBuilderSection export
 - `client/src/pages/account.tsx` — `formWorkflows` section registered as ownerOnly
 
+## Storage type fix (important)
+`server/storage.ts` exports `storage` as:
+```ts
+export const storage = new DbStorage() as unknown as IStorage;
+```
+**Why:** All 127+ methods beyond the class body are prototype-patched via `(DbStorage.prototype as any).method = ...`. TypeScript only sees the class body for type inference. Using `as unknown as IStorage` surfaces all IStorage-declared methods through the type system so routes compile cleanly. Do NOT revert to `new DbStorage()` (infers `DbStorage` — routes TS errors) or `: IStorage = new DbStorage()` (TS2740 — class body incompatible).
+
 ## Layer 2 stub tables
 `form_workflow_runs` and `form_workflow_step_states` exist in schema already — Layer 2 can add execution engine without a schema migration.
 
