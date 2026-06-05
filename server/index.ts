@@ -55,6 +55,203 @@ async function cleanupObjectObjectChartEntries(): Promise<void> {
   }
 }
 
+// ── Schema drift validator ────────────────────────────────────────────────────
+// Runs after ensureSchema() to confirm that every table and column that
+// shared/schema.ts depends on is actually present in the live database.
+// Logs a clear ERROR for each missing piece — never silently continues.
+// Does NOT block startup; the goal is to surface drift early in logs rather
+// than letting it cause cryptic 500 errors at request time.
+//
+// HOW TO ADD A NEW CHECK:
+//   • New table  → push its name into REQUIRED_TABLES
+//   • New column → add it to the array in REQUIRED_COLUMNS[table]
+// ─────────────────────────────────────────────────────────────────────────────
+const DRIFT_REQUIRED_TABLES = [
+  "form_bundles",
+  "form_bundle_items",
+  "patient_packet_assignments",
+  "vitals_monitoring_episodes",
+  "vitals_monitoring_alerts",
+  "chart_review_agreements",
+  "chart_review_collaborators",
+  "chart_review_items",
+  "chart_review_comments",
+  "form_workflows",
+  "form_workflow_steps",
+  "form_workflow_runs",
+  "form_workflow_step_states",
+  "platform_admins",
+  "ops_sessions",
+  "ops_audit_log",
+  "phi_access_log",
+  "spruce_conversation_state",
+  "spruce_outbound_messages",
+  "june_preferences",
+  "clinical_block_defaults",
+  "encounter_templates",
+  "diagnosis_presets",
+];
+
+const DRIFT_REQUIRED_COLUMNS: Record<string, string[]> = {
+  // ── patient_vitals: incident columns + all post-launch additions ──────────
+  patient_vitals: [
+    "temperature",
+    "source",
+    "time_of_day",
+    "symptoms",
+    "respiratory_rate",    // incident — was missing from production
+    "oxygen_saturation",   // incident — was missing from production
+    "pain_score",          // incident — was missing from production
+  ],
+  // ── clinic_memberships: two-layer permission model columns ───────────────
+  clinic_memberships: [
+    "clinical_role",
+    "admin_role",
+    "access_scope",
+    "acceptance_status",
+    "is_primary_clinic",
+    "updated_at",
+    "created_at",          // schema.ts uses created_at; original table had joined_at
+  ],
+  // ── clinical_encounters: chart-review + note-type additions ──────────────
+  clinical_encounters: [
+    "locked_at",
+    "pending_collab_review",
+    "note_type",
+    "phone_contact",
+    "encounter_versions",
+    "signed_at",
+    "signed_by",
+    "is_amended",
+    "clinic_id",
+    "provider_id",
+  ],
+  // ── patients: messaging + insurance columns added post-launch ────────────
+  patients: [
+    "primary_communication_channel",
+    "ssn",
+    "drivers_license",
+    "insurance_carrier",
+    "insurance_member_id",
+    "pharmacy_name",
+    "clinic_id",
+    "primary_provider_id",
+  ],
+  // ── users: stripe + messaging + branding columns ─────────────────────────
+  users: [
+    "npi",
+    "stripe_customer_id",
+    "stripe_subscription_id",
+    "messaging_preference",
+    "clinic_logo",
+    "signature_image",
+    "default_clinic_id",
+    "user_type",
+  ],
+  // ── lab_results ───────────────────────────────────────────────────────────
+  lab_results: ["provider_overrides"],
+  // ── portal_messages: communication-timeline columns ───────────────────────
+  portal_messages: ["message_type", "visibility", "delivery_channel", "external_delivery_id"],
+  // ── intake_forms: GHL webhook columns ────────────────────────────────────
+  intake_forms: ["ghl_webhook_url", "ghl_webhook_enabled"],
+  // ── note_templates: shortcut column ─────────────────────────────────────
+  note_templates: ["shortcut"],
+  // ── published_protocols: patient_summary column ──────────────────────────
+  published_protocols: ["patient_summary"],
+  // ── spruce tables: post-launch additions ─────────────────────────────────
+  clinic_spruce_settings: [
+    "spruce_receiving_phone",
+    "spruce_june_acknowledgments_enabled",
+    "general_message_acknowledgment_enabled",
+  ],
+  spruce_messages: [
+    "spruce_event_dedupe_key",
+    "message_direction",
+    "patient_id",
+    "spruce_contact_name",
+  ],
+  spruce_conversation_state: [
+    "archived_at",
+    "after_hours_notice_sent_at",
+    "active_workflow_enrollment_id",
+    "staff_last_viewed_at",
+    "tagged_clinician_id",
+  ],
+  spruce_workflow_requests: [
+    "june_ack_sent_at",
+    "june_memo_text",
+    "june_turn_count",
+    "resolved_at",
+    "resolved_by_user_id",
+  ],
+  // ── chart_review: quota_kind backfill column ─────────────────────────────
+  chart_review_agreements: ["quota_kind"],
+  // ── form_workflow_runs: Layer 2 additions ────────────────────────────────
+  form_workflow_runs: ["patient_id", "context_json", "paused_at"],
+  // ── form_workflow_step_states: Layer 2 additions ─────────────────────────
+  form_workflow_step_states: ["due_at", "locked_at"],
+  // ── form_workflow_steps: branch columns ──────────────────────────────────
+  form_workflow_steps: ["branch_true_steps", "branch_false_steps"],
+};
+
+async function validateSchemaDrift(): Promise<void> {
+  const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+  let missing = 0;
+  try {
+    // ── 1. Table existence ─────────────────────────────────────────────────
+    const tableRes = await pool.query<{ table_name: string }>(
+      `SELECT table_name
+         FROM information_schema.tables
+        WHERE table_schema = 'public'
+          AND table_name = ANY($1::text[])`,
+      [DRIFT_REQUIRED_TABLES],
+    );
+    const existingTables = new Set(tableRes.rows.map(r => r.table_name));
+    for (const t of DRIFT_REQUIRED_TABLES) {
+      if (!existingTables.has(t)) {
+        console.error(`[schema-drift] MISSING TABLE: ${t}`);
+        missing++;
+      }
+    }
+
+    // ── 2. Column existence ────────────────────────────────────────────────
+    const colRes = await pool.query<{ table_name: string; column_name: string }>(
+      `SELECT table_name, column_name
+         FROM information_schema.columns
+        WHERE table_schema = 'public'
+          AND table_name = ANY($1::text[])`,
+      [Object.keys(DRIFT_REQUIRED_COLUMNS)],
+    );
+    const existingCols = new Map<string, Set<string>>();
+    for (const { table_name, column_name } of colRes.rows) {
+      if (!existingCols.has(table_name)) existingCols.set(table_name, new Set());
+      existingCols.get(table_name)!.add(column_name);
+    }
+    for (const [table, cols] of Object.entries(DRIFT_REQUIRED_COLUMNS)) {
+      const have = existingCols.get(table) ?? new Set();
+      for (const col of cols) {
+        if (!have.has(col)) {
+          console.error(`[schema-drift] MISSING COLUMN: ${table}.${col}`);
+          missing++;
+        }
+      }
+    }
+
+    if (missing === 0) {
+      console.log("[schema-drift] OK — all required tables and columns present");
+    } else {
+      console.error(
+        `[schema-drift] ${missing} issue(s) detected — apply server/prod-migrate.sql ` +
+        "or run 'npm run db:push' to resolve",
+      );
+    }
+  } catch (err: any) {
+    console.warn("[schema-drift] Validation query failed (non-fatal):", err?.message ?? err);
+  } finally {
+    await pool.end().catch(() => {});
+  }
+}
+
 async function ensureSchema(): Promise<void> {
   const candidates = [
     path.resolve(import.meta.dirname ?? __dirname, "prod-migrate.sql"),
@@ -231,6 +428,8 @@ app.use((req, res, next) => {
   try {
     console.log("[startup] running ensureSchema…");
     await ensureSchema();
+    console.log("[startup] validating schema drift…");
+    await validateSchemaDrift();
     console.log("[startup] cleaning up bad chart entries…");
     await cleanupObjectObjectChartEntries();
     // ── OpenAI / AI integration key check ────────────────────────────────────

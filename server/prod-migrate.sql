@@ -1672,3 +1672,62 @@ CREATE TABLE IF NOT EXISTS phi_access_log (
 CREATE INDEX IF NOT EXISTS phi_access_log_actor_idx       ON phi_access_log (actor_type, actor_id);
 CREATE INDEX IF NOT EXISTS phi_access_log_patient_idx     ON phi_access_log (patient_id);
 CREATE INDEX IF NOT EXISTS phi_access_log_accessed_at_idx ON phi_access_log (accessed_at);
+
+-- ─────────────────────────────────────────────────────────────────────────────
+-- Schema Drift Patch — 2026-06
+-- Root cause: patient_vitals.respiratory_rate / oxygen_saturation / pain_score
+-- were missing from production, causing 500 errors on vitals endpoints.
+-- This section covers all tables/columns identified during the post-incident
+-- audit that existed in shared/schema.ts but were absent from prod-migrate.sql.
+-- ─────────────────────────────────────────────────────────────────────────────
+
+-- ── clinic_memberships.created_at ───────────────────────────────────────────
+-- The original CREATE TABLE above used 'joined_at' as the timestamp column.
+-- shared/schema.ts maps 'created_at' (Drizzle camelCase: createdAt) which is
+-- the column name used by all ORM queries.  Add it safely for existing rows.
+ALTER TABLE clinic_memberships ADD COLUMN IF NOT EXISTS created_at TIMESTAMP DEFAULT NOW();
+
+-- ── form_bundles ─────────────────────────────────────────────────────────────
+-- Packet / bundle feature: groups multiple intake forms into a single
+-- patient-facing packet.  Added to schema.ts but never in prod-migrate.sql.
+CREATE TABLE IF NOT EXISTS form_bundles (
+  id           SERIAL PRIMARY KEY,
+  clinic_id    INTEGER REFERENCES clinics(id) ON DELETE CASCADE,
+  clinician_id INTEGER NOT NULL REFERENCES users(id) ON DELETE CASCADE,
+  name         VARCHAR(200) NOT NULL,
+  description  TEXT,
+  created_at   TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS form_bundles_clinic_idx ON form_bundles (clinic_id);
+
+-- ── form_bundle_items ────────────────────────────────────────────────────────
+-- Junction table: which intake forms belong to which bundle, and in what order.
+CREATE TABLE IF NOT EXISTS form_bundle_items (
+  id          SERIAL PRIMARY KEY,
+  bundle_id   INTEGER NOT NULL REFERENCES form_bundles(id) ON DELETE CASCADE,
+  form_id     INTEGER NOT NULL REFERENCES intake_forms(id) ON DELETE CASCADE,
+  order_index INTEGER NOT NULL DEFAULT 0
+);
+CREATE INDEX IF NOT EXISTS form_bundle_items_bundle_idx ON form_bundle_items (bundle_id);
+
+-- ── patient_packet_assignments ───────────────────────────────────────────────
+-- One row per patient per bundle assignment.  Tracks completion state and
+-- stores the secure token used by the patient-portal packet URL.
+CREATE TABLE IF NOT EXISTS patient_packet_assignments (
+  id               SERIAL PRIMARY KEY,
+  patient_id       INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  bundle_id        INTEGER NOT NULL REFERENCES form_bundles(id),
+  clinician_id     INTEGER NOT NULL REFERENCES users(id),
+  clinic_id        INTEGER REFERENCES clinics(id) ON DELETE CASCADE,
+  packet_token     VARCHAR(80) NOT NULL UNIQUE,
+  status           VARCHAR(20) NOT NULL DEFAULT 'pending',
+  form_order_json  JSONB,
+  prefill_json     JSONB,
+  return_url       TEXT,
+  created_at       TIMESTAMP NOT NULL DEFAULT NOW(),
+  completed_at     TIMESTAMP
+);
+CREATE INDEX IF NOT EXISTS patient_packet_assignments_patient_idx
+  ON patient_packet_assignments (patient_id, status);
+CREATE INDEX IF NOT EXISTS patient_packet_assignments_token_idx
+  ON patient_packet_assignments (packet_token);
