@@ -134,7 +134,7 @@ export interface IStorage {
   deleteClinicianStaff(id: number): Promise<boolean>;
 
   // Encounter Templates
-  getEncounterTemplates(clinicianId: number, clinicId?: number | null): Promise<schema.EncounterTemplate[]>;
+  getEncounterTemplates(clinicianId: number, clinicId?: number | null, callerRole?: string | null): Promise<schema.EncounterTemplate[]>;
   getEncounterTemplateById(id: number): Promise<schema.EncounterTemplate | undefined>;
   createEncounterTemplate(data: schema.InsertEncounterTemplate & { clinicianId: number }): Promise<schema.EncounterTemplate>;
   updateEncounterTemplate(id: number, data: Partial<schema.EncounterTemplate>): Promise<schema.EncounterTemplate | undefined>;
@@ -1526,15 +1526,26 @@ export class DbStorage implements IStorage {
   // ── Encounter Templates ───────────────────────────────────────────────────
   // Returns templates visible to this actor: own personal templates + any
   // clinic-wide templates from the same clinic.
-  async getEncounterTemplates(clinicianId: number, clinicId?: number | null): Promise<schema.EncounterTemplate[]> {
-    const conditions = [eq(schema.encounterTemplates.clinicianId, clinicianId)];
+  async getEncounterTemplates(clinicianId: number, clinicId?: number | null, callerRole?: string | null): Promise<schema.EncounterTemplate[]> {
+    const conditions: any[] = [eq(schema.encounterTemplates.clinicianId, clinicianId)];
     if (clinicId) {
+      // Clinic-wide templates are visible to everyone in the clinic
       conditions.push(
         and(
           eq(schema.encounterTemplates.clinicId, clinicId),
           eq(schema.encounterTemplates.isClinicWide, true)
-        ) as any
+        )
       );
+      // Role-targeted templates: any same-clinic template restricted to the caller's role
+      // is automatically visible to that role even if not marked clinic-wide.
+      if (callerRole && callerRole !== "provider") {
+        conditions.push(
+          and(
+            eq(schema.encounterTemplates.clinicId, clinicId),
+            eq(schema.encounterTemplates.roleRestriction, callerRole)
+          )
+        );
+      }
     }
     return db.select().from(schema.encounterTemplates)
       .where(or(...conditions))

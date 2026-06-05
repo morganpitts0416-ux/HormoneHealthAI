@@ -6743,7 +6743,18 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
-      const templates = await storage.getEncounterTemplates(clinicianId, clinicId);
+      // Look up caller's clinical role so role-targeted templates are visible
+      // (e.g. a template with roleRestriction="nurse" is visible to all nurses
+      // in the clinic, even if not explicitly marked isClinicWide).
+      let callerRole: string | null = null;
+      if (clinicId) {
+        const [membership] = await storageDb
+          .select({ clinicalRole: clinicMemberships.clinicalRole })
+          .from(clinicMemberships)
+          .where(and(eq(clinicMemberships.userId, clinicianId), eq(clinicMemberships.clinicId, clinicId)));
+        callerRole = (membership as any)?.clinicalRole ?? null;
+      }
+      const templates = await storage.getEncounterTemplates(clinicianId, clinicId, callerRole);
       res.json(templates);
     } catch (err) {
       console.error("[EncounterTemplates] GET error:", err);
