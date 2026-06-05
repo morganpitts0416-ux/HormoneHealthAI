@@ -610,9 +610,22 @@ function VitalsBlockEditor({
           />
         </div>
       </div>
-      <p className="text-xs text-muted-foreground">
-        Height pre-fills from last documented visit. BMI auto-calculates from height + weight. All values save to the patient&apos;s vitals record when the note is saved.
-      </p>
+      {(() => {
+        const filled = [
+          vitals.systolicBp, vitals.diastolicBp, vitals.heartRate, vitals.respiratoryRate,
+          vitals.temperature, vitals.oxygenSaturation, vitals.painScore,
+          vitals.heightInches, vitals.weightLbs,
+        ].filter(x => x != null && x !== "").length;
+        return filled > 0 ? (
+          <p className="text-xs text-green-700 dark:text-green-400 font-medium">
+            {filled} of 9 vital field{filled !== 1 ? "s" : ""} filled — will save to trends on note save.
+          </p>
+        ) : (
+          <p className="text-xs text-muted-foreground">
+            Fill in any measurements you have — partial entries are fine. Values save to the patient&apos;s vitals trends when the note is saved.
+          </p>
+        );
+      })()}
     </div>
   );
 }
