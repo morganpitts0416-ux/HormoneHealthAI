@@ -1,4 +1,5 @@
 import type { jsPDF } from 'jspdf';
+import { formatLabDate } from '@/lib/date-utils';
 import type { LabResult } from '@shared/schema';
 import { generateTrendInsights, type TrendInsight } from '@/lib/clinical-trend-insights';
 
@@ -53,7 +54,7 @@ function getChartableMarkers(labs: LabResult[]): Array<{ marker: ChartMarker; da
         const numVal = Number(val);
         if (Number.isFinite(numVal)) {
           points.push({
-            dateLabel: new Date(lab.labDate).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+            dateLabel: formatLabDate(lab.labDate as string | Date, 'short'),
             value: numVal,
           });
         }

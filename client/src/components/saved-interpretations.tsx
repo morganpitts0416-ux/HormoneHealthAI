@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { formatLabDate } from "@/lib/date-utils";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
@@ -122,7 +123,7 @@ export function SavedInterpretations({ gender, onLoadInterpretation }: SavedInte
                         <div className="flex items-center gap-2 text-sm text-muted-foreground">
                           <Calendar className="w-3 h-3" />
                           <span data-testid={`text-lab-date-${saved.id}`}>
-                            {format(new Date(saved.labDate), 'MMM d, yyyy')} at {format(new Date(saved.createdAt), 'h:mm a')}
+                            {formatLabDate(saved.labDate, 'long')} at {format(new Date(saved.createdAt), 'h:mm a')}
                           </span>
                         </div>
                       </div>

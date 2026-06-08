@@ -1797,7 +1797,10 @@ function PatientContextRail({
     const cols = recentLabs.map(lab => ({
       lab,
       dateLabel: (lab as any).labDate
-        ? new Date((lab as any).labDate).toLocaleDateString("en-US", { month: "numeric", day: "numeric" })
+        ? (() => {
+            const parts = String((lab as any).labDate).split("T")[0].split("-");
+            return `${parseInt(parts[1], 10)}/${parseInt(parts[2], 10)}`;
+          })()
         : "—",
       values: new Map<string, { value: string; unit: string; status: string }>(),
     }));

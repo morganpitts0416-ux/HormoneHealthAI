@@ -1,4 +1,5 @@
 import { useQuery } from "@tanstack/react-query";
+import { formatLabDate } from "@/lib/date-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
@@ -138,7 +139,7 @@ export function PatientHistory({ patient, onLoadResult }: PatientHistoryProps) {
           <div className="space-y-2">
             {labs.map((lab, idx) => {
               const summary = getResultSummary(lab.interpretationResult as InterpretationResult | null);
-              const date = new Date(lab.labDate).toLocaleDateString('en-US', { year: 'numeric', month: 'short', day: 'numeric' });
+              const date = formatLabDate(lab.labDate, 'long');
               return (
                 <div key={lab.id} className="flex items-center gap-2 p-2 rounded border" data-testid={`lab-history-${lab.id}`}>
                   <FileText className="h-4 w-4 text-muted-foreground flex-shrink-0" />

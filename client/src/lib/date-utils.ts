@@ -72,6 +72,32 @@ export function toLocalDateTimeStr(d: Date): string {
 }
 
 /**
+ * Formats a lab date for display using UTC calendar components.
+ *
+ * Lab dates are stored as UTC-midnight timestamps (e.g. "2026-06-01T00:00:00.000Z").
+ * Using local-timezone getters (toLocaleDateString, date-fns format) shifts that to
+ * the previous evening for users west of UTC, causing an off-by-one-day bug. Reading
+ * UTC components directly recovers the correct calendar date.
+ *
+ * @param labDate  ISO string or Date returned from the server
+ * @param style    "M/d" (default) → "6/1"  |  "short" → "Jun '26"  |  "long" → "Jun 1, 2026"
+ */
+export function formatLabDate(
+  labDate: string | Date,
+  style: "M/d" | "short" | "long" = "M/d"
+): string {
+  const d = typeof labDate === "string" ? new Date(labDate) : labDate;
+  if (isNaN(d.getTime())) return "—";
+  const m = d.getUTCMonth();
+  const day = d.getUTCDate();
+  const year = d.getUTCFullYear();
+  const MONTHS = ["Jan","Feb","Mar","Apr","May","Jun","Jul","Aug","Sep","Oct","Nov","Dec"];
+  if (style === "M/d")  return `${m + 1}/${day}`;
+  if (style === "short") return `${MONTHS[m]} '${String(year).slice(2)}`;
+  return `${MONTHS[m]} ${day}, ${year}`;
+}
+
+/**
  * Parses a date string in either YYYY-MM-DD or MM/DD/YYYY format and
  * returns a stable YYYY-MM-DD string without going through Date local
  * getters, which would shift the date for users west of UTC.

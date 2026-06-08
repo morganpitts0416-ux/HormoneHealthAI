@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { formatLabDate } from "@/lib/date-utils";
 import { Card, CardContent, CardHeader, CardTitle } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
 import { BarChart3, Sparkles, ChevronDown, ChevronUp } from "lucide-react";
@@ -89,7 +90,7 @@ function buildChartData(labs: LabResult[], markerKey: string): ChartDataPoint[] 
       if (Number.isFinite(numVal)) {
         points.push({
           date: new Date(lab.labDate).toISOString(),
-          dateLabel: new Date(lab.labDate).toLocaleDateString('en-US', { month: 'short', year: '2-digit' }),
+          dateLabel: formatLabDate(lab.labDate, 'short'),
           value: numVal,
         });
       }
