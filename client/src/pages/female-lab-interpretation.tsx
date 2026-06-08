@@ -28,7 +28,7 @@ import { SupplementSelector, type CustomSupplement } from "@/components/suppleme
 import { femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
-import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
+import { useClinicBrandingPartial, useClinicBranding } from "@/hooks/use-clinic-branding";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useGlobalLoading } from "@/hooks/use-global-loading";
@@ -76,6 +76,7 @@ export default function FemaleLabInterpretation() {
   const { toast } = useToast();
   const { user } = useAuth();
   const clinicBranding = useClinicBrandingPartial();
+  const { data: clinicBrandingFull } = useClinicBranding();
   const { setLoading: setGlobalLoading, clearLoading: clearGlobalLoading } = useGlobalLoading();
 
   const { data: patientLabs } = useQuery<LabResult[]>({
@@ -320,7 +321,7 @@ export default function FemaleLabInterpretation() {
           })),
           ...customSupplements.map(c => ({ name: c.name, dose: c.dose, indication: c.indication })),
         ];
-        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, clinicBranding, (user as any)?.clinicLogo ?? null);
+        await generatePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, clinicBranding, clinicBrandingFull?.clinicLogo ?? null, undefined, undefined, undefined, clinicBrandingFull?.footerText ?? null);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",
@@ -355,7 +356,7 @@ export default function FemaleLabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding, (user as any)?.clinicLogo ?? null);
+      generateLabReportPDF(labValues as unknown as LabValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding, clinicBrandingFull?.clinicLogo ?? null);
     }
   };
 

@@ -309,19 +309,33 @@ export async function generateMalePatientWellnessPDF(
   patientLabs?: LabResult[],
   selectedSupplements?: PdfSupplement[],
   clinicName?: string,
-  /** Clinic-level brand colors. Falls back to historic male-clinic navy if null. */
+  /** Clinic-level brand colors. Falls back to platform navy when null. */
   branding?: PartialBranding | null,
-  /** Clinic logo as a base64 data URL. Shown in the PDF header instead of the default logo. */
+  /** Clinic logo as a base64 data URL. Shown in the PDF header when provided. */
   clinicLogo?: string | null,
-  /** Section keys hidden by the provider — matching HideableSection sectionKey values. */
+  /** Section keys hidden by the provider. */
   hiddenSections?: string[],
-  /** Individual interpretation category names hidden from the patient (per-row eye toggle). */
+  /** Interpretation category names hidden from the patient. */
   hiddenInterpretationCategories?: string[],
+  /** Optional custom footer text. Replaces "Powered by ClinIQ" when set. */
+  footerText?: string | null,
 ): Promise<void> {
   const sectionHidden = (key: string) => hiddenSections?.includes(key) ?? false;
   const interpHidden = (cat: string) => hiddenInterpretationCategories?.includes(cat) ?? false;
-  // Load clinic logo — composite over white to avoid jsPDF alpha-channel corruption.
-  // Uses the clinic's own logo when provided; shows no image if absent.
+
+  // Resolve brand colors up-front so we can use the primary hex for canvas
+  // compositing (transparent PNGs blend into the colored header background).
+  const MALE_DEFAULT = { primaryColor: "#1f4e79", accentColor: "#3b82f6", formBackgroundColor: "#f8fafc" };
+  const effectiveBranding = resolveBranding(null, branding ?? null);
+  const brandPrimaryHex: string = effectiveBranding.primaryColor;
+  const brandColor: [number, number, number] = hexToRgb(brandPrimaryHex);
+  const accentColor: [number, number, number] = hexToRgb(effectiveBranding.accentColor);
+  const textColor: [number, number, number] = [51, 51, 51];
+  const lightBg: [number, number, number] = hexToRgb(effectiveBranding.formBackgroundColor);
+  const displayClinic = clinicName || "Your Health Clinic";
+
+  // Load clinic logo — composite over the brand primary color so transparent
+  // PNGs render correctly on the colored header (no white-box artifact).
   let logoData: string | null = null;
   if (clinicLogo) {
     try {
@@ -332,7 +346,7 @@ export async function generateMalePatientWellnessPDF(
           canvas.width = img.naturalWidth || 400;
           canvas.height = img.naturalHeight || 200;
           const ctx = canvas.getContext('2d')!;
-          ctx.fillStyle = '#ffffff';
+          ctx.fillStyle = brandPrimaryHex;
           ctx.fillRect(0, 0, canvas.width, canvas.height);
           ctx.drawImage(img, 0, 0);
           resolve(canvas.toDataURL('image/jpeg', 0.95));
@@ -356,29 +370,12 @@ export async function generateMalePatientWellnessPDF(
   const contentWidth = pageWidth - (margin * 2);
   let yPosition = 15;
 
-  // Effective brand colors: clinic override → historic male-clinic navy default.
-  const MALE_DEFAULT = { primaryColor: "#1f4e79", accentColor: "#4682b4", formBackgroundColor: "#f0f8ff" };
-  const effectiveBranding = resolveBranding(null, branding ?? null);
-  const brandColor: [number, number, number] = branding?.primaryColor
-    ? hexToRgb(effectiveBranding.primaryColor)
-    : hexToRgb(MALE_DEFAULT.primaryColor);
-  const accentColor: [number, number, number] = branding?.accentColor
-    ? hexToRgb(effectiveBranding.accentColor)
-    : hexToRgb(MALE_DEFAULT.accentColor);
-  const textColor: [number, number, number] = [51, 51, 51];
-  const lightBg: [number, number, number] = branding?.formBackgroundColor
-    ? hexToRgb(effectiveBranding.formBackgroundColor)
-    : hexToRgb(MALE_DEFAULT.formBackgroundColor);
-  const displayClinic = clinicName || "Your Health Clinic";
-
   const addHeader = () => {
     doc.setFillColor(...brandColor);
     doc.rect(0, 0, pageWidth, 38, 'F');
 
-    // Left side: clinic logo on white inset when available, else clinic name text
+    // Left side: clinic logo (composited on brand primary, no separate white box)
     if (logoData) {
-      doc.setFillColor(255, 255, 255);
-      doc.rect(margin - 2, 4, 58, 28, 'F');
       doc.addImage(logoData, 'JPEG', margin, 6, 54, 24);
     } else {
       doc.setTextColor(255, 255, 255);
@@ -404,7 +401,10 @@ export async function generateMalePatientWellnessPDF(
     doc.setTextColor(...brandColor);
     doc.setFontSize(8);
     doc.setFont('helvetica', 'normal');
-    doc.text(`${sanitizeForPdf(displayClinic)} | Powered by ClinIQ`, pageWidth / 2, pageHeight - 8, { align: 'center' });
+    const centerText = footerText
+      ? sanitizeForPdf(footerText)
+      : `${sanitizeForPdf(displayClinic)} | Powered by ClinIQ`;
+    doc.text(centerText, pageWidth / 2, pageHeight - 8, { align: 'center' });
     doc.text(`Page ${pageNum} of ${totalPages}`, pageWidth - margin, pageHeight - 8, { align: 'right' });
   };
 

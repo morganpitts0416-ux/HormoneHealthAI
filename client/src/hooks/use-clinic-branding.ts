@@ -7,6 +7,8 @@ export interface ClinicBrandingResponse {
   formBackgroundColor: string | null;
   /** Clinic-uploaded logo as a data URL. Used in patient PDFs when set. */
   clinicLogo: string | null;
+  /** Optional custom footer text for patient-facing PDFs. */
+  footerText: string | null;
 }
 
 /**

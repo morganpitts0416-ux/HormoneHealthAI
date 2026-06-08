@@ -27,7 +27,7 @@ import { SupplementSelector, type CustomSupplement } from "@/components/suppleme
 import { labsApi, type WellnessPlan } from "@/lib/api";
 import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generateMalePatientWellnessPDF } from "@/lib/patient-pdf-export-male";
-import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
+import { useClinicBrandingPartial, useClinicBranding } from "@/hooks/use-clinic-branding";
 import { useToast } from "@/hooks/use-toast";
 import { useAuth } from "@/hooks/use-auth";
 import { useGlobalLoading } from "@/hooks/use-global-loading";
@@ -75,6 +75,7 @@ export default function LabInterpretation() {
   const { toast } = useToast();
   const { user } = useAuth();
   const clinicBranding = useClinicBrandingPartial();
+  const { data: clinicBrandingFull } = useClinicBranding();
   const { setLoading: setGlobalLoading, clearLoading: clearGlobalLoading } = useGlobalLoading();
 
   const { data: patientLabs } = useQuery<LabResult[]>({
@@ -271,7 +272,7 @@ export default function LabInterpretation() {
 
   const handleExportPDF = () => {
     if (interpretationResult) {
-      generateLabReportPDF(labValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding, (user as any)?.clinicLogo ?? null);
+      generateLabReportPDF(labValues, interpretationResult, selectedPatient ? `${selectedPatient.firstName} ${selectedPatient.lastName}` : undefined, user?.clinicName, patientLabs, clinicBranding, clinicBrandingFull?.clinicLogo ?? null);
     }
   };
 
@@ -412,7 +413,7 @@ export default function LabInterpretation() {
           })),
           ...customSupplements.map(c => ({ name: c.name, dose: c.dose, indication: c.indication })),
         ];
-        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, undefined, (user as any)?.clinicLogo ?? null);
+        await generateMalePatientWellnessPDF(labValues, interpretationResult, wellnessPlan, patientName, patientLabs, curatedSupplements, user?.clinicName, undefined, clinicBrandingFull?.clinicLogo ?? null, undefined, undefined, clinicBrandingFull?.footerText ?? null);
         toast({
           title: "Patient Report Generated",
           description: "The personalized wellness report has been downloaded.",

@@ -604,33 +604,48 @@ export default function Account() {
   const [showApiKey, setShowApiKey] = useState(false);
   const [search, setSearch] = useState("");
 
+  // clinicLogoPreview: initialized from legacy user object for immediate display;
+  // updated from clinic-level branding API once it loads (useEffect below).
   const [clinicLogoPreview, setClinicLogoPreview] = useState<string | null>((user as any)?.clinicLogo ?? null);
-  // Clinic-wide brand colors (apply to patient-facing PDFs and form pages).
+  // Clinic-wide brand colors + logo + footer (apply to patient-facing PDFs and form pages).
   // Empty string === "use platform default" (clears the saved value).
   const { data: clinicBrandingData } = useClinicBranding();
   const [primaryColorInput, setPrimaryColorInput] = useState<string>("");
   const [accentColorInput, setAccentColorInput] = useState<string>("");
   const [formBgColorInput, setFormBgColorInput] = useState<string>("");
+  const [footerTextInput, setFooterTextInput] = useState<string>("");
   const [brandColorsSaved, setBrandColorsSaved] = useState(false);
   useEffect(() => {
     if (clinicBrandingData) {
       setPrimaryColorInput(clinicBrandingData.primaryColor ?? "");
       setAccentColorInput(clinicBrandingData.accentColor ?? "");
       setFormBgColorInput(clinicBrandingData.formBackgroundColor ?? "");
+      setFooterTextInput(clinicBrandingData.footerText ?? "");
+      // Prefer the clinic-level logo over the legacy user-level one. Only
+      // update if not already showing a freshly-uploaded (unsaved) image.
+      if (clinicBrandingData.clinicLogo && clinicBrandingData.clinicLogo !== clinicLogoPreview) {
+        setClinicLogoPreview((prev) => prev ?? clinicBrandingData.clinicLogo);
+      }
     }
-  }, [clinicBrandingData]);
+  }, [clinicBrandingData]); // eslint-disable-line react-hooks/exhaustive-deps
   const brandColorsMutation = useMutation({
-    mutationFn: async (payload: { primaryColor: string | null; accentColor: string | null; formBackgroundColor: string | null }) => {
+    mutationFn: async (payload: {
+      primaryColor: string | null;
+      accentColor: string | null;
+      formBackgroundColor: string | null;
+      clinicLogo?: string | null;
+      footerText?: string | null;
+    }) => {
       return apiRequest("PATCH", "/api/clinic/branding", payload);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/clinic/branding"] });
       setBrandColorsSaved(true);
       setTimeout(() => setBrandColorsSaved(false), 2500);
-      toast({ title: "Brand colors saved", description: "Patient-facing reports and forms will use the new colors." });
+      toast({ title: "Branding saved", description: "Logo, colors, and footer applied to patient-facing reports." });
     },
     onError: (err: any) => {
-      toast({ title: "Could not save brand colors", description: err?.message ?? "Please try again.", variant: "destructive" });
+      toast({ title: "Could not save branding", description: err?.message ?? "Please try again.", variant: "destructive" });
     },
   });
   const effectiveBrandPreview = resolveBranding(null, {
@@ -979,7 +994,7 @@ export default function Account() {
   };
 
   const brandingMutation = useMutation({
-    mutationFn: async (payload: { clinicLogo?: string | null; signatureImage?: string | null }) => {
+    mutationFn: async (payload: { signatureImage?: string | null }) => {
       const res = await apiRequest("PATCH", "/api/auth/profile", payload);
       if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Save failed"); }
       return res.json();
@@ -987,7 +1002,7 @@ export default function Account() {
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
       setBrandingSaved(true);
-      toast({ title: "Branding saved", description: "Your clinic logo and signature have been updated." });
+      toast({ title: "Signature saved", description: "Your electronic signature has been updated." });
       setTimeout(() => setBrandingSaved(false), 3000);
     },
     onError: (e: Error) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
@@ -1203,6 +1218,7 @@ export default function Account() {
                             </Button>
                           )}
                           <p className="text-xs text-muted-foreground">PNG or JPEG, max 2MB</p>
+                          <p className="text-xs text-muted-foreground">Transparent PNGs blend into the PDF header color.</p>
                         </div>
                       </div>
                       <input
@@ -1273,27 +1289,60 @@ export default function Account() {
                         ))}
                       </div>
 
-                      {/* Preview */}
+                      {/* Footer text field */}
+                      <div className="mt-5 space-y-1.5">
+                        <label className="text-xs font-medium text-foreground">PDF Footer Text</label>
+                        <Input
+                          value={footerTextInput}
+                          onChange={(e) => setFooterTextInput(e.target.value.slice(0, 500))}
+                          placeholder={`${(user as any)?.clinicName ?? "Your Clinic"}  ·  CONFIDENTIAL — FOR AUTHORIZED USE ONLY`}
+                          className="text-sm"
+                          data-testid="input-footer-text"
+                          maxLength={500}
+                        />
+                        <p className="text-xs text-muted-foreground">
+                          Appears at the bottom of every SOAP note and patient wellness PDF. Leave blank for the default.
+                          {footerTextInput.length > 400 && <span className="ml-1 text-amber-600">{500 - footerTextInput.length} chars remaining</span>}
+                        </p>
+                      </div>
+
+                      {/* Letterhead preview */}
                       <div className="mt-5 rounded-md border overflow-hidden" data-testid="preview-branding">
+                        {/* Header bar — mirrors the PDF letterhead */}
                         <div
-                          className="px-4 py-3 text-white text-sm font-semibold flex items-center justify-between"
+                          className="flex items-center justify-between px-4 py-3 gap-3"
                           style={{ backgroundColor: effectiveBrandPreview.primaryColor }}
                         >
-                          <span>Patient Wellness Report — Preview</span>
-                          <span
-                            className="text-xs font-medium px-2 py-0.5 rounded"
-                            style={{ backgroundColor: effectiveBrandPreview.accentColor, color: "#fff" }}
-                          >
-                            Sample Badge
-                          </span>
+                          <div className="flex items-center gap-3 flex-1 min-w-0">
+                            {clinicLogoPreview
+                              ? <img src={clinicLogoPreview} alt="Clinic logo" className="h-8 max-w-[80px] object-contain" />
+                              : <div className="h-8 px-3 rounded text-white text-xs font-bold flex items-center" style={{ backgroundColor: effectiveBrandPreview.accentColor }}>
+                                  {(user as any)?.clinicName ?? "Clinic Name"}
+                                </div>
+                            }
+                          </div>
+                          <div className="text-right">
+                            <p className="text-white text-xs font-semibold">Patient Wellness Report</p>
+                            <p className="text-xs" style={{ color: "rgba(255,255,255,0.7)" }}>Preview</p>
+                          </div>
                         </div>
+                        {/* Accent rule */}
+                        <div className="h-0.5" style={{ backgroundColor: effectiveBrandPreview.accentColor }} />
+                        {/* Body content */}
                         <div className="px-4 py-4 space-y-2" style={{ backgroundColor: effectiveBrandPreview.formBackgroundColor }}>
                           <div className="text-xs uppercase tracking-wide font-semibold" style={{ color: effectiveBrandPreview.primaryColor }}>
                             Section Heading
                           </div>
                           <div className="h-px" style={{ backgroundColor: effectiveBrandPreview.accentColor }} />
                           <p className="text-sm text-slate-700">
-                            Patient body text appears here. Background tint shown is what patients see on portal form pages.
+                            Patient body text and lab values appear here.
+                          </p>
+                        </div>
+                        {/* Footer */}
+                        <div className="px-4 py-2 text-center" style={{ backgroundColor: effectiveBrandPreview.formBackgroundColor }}>
+                          <p className="text-xs" style={{ color: effectiveBrandPreview.primaryColor }}>
+                            {footerTextInput.trim() || `${(user as any)?.clinicName ?? "Your Clinic"}  ·  CONFIDENTIAL — FOR AUTHORIZED USE ONLY`}
+                            {" · "}Page 1 of 3
                           </p>
                         </div>
                       </div>
@@ -1316,11 +1365,12 @@ export default function Account() {
                               setPrimaryColorInput("");
                               setAccentColorInput("");
                               setFormBgColorInput("");
-                              brandColorsMutation.mutate({ primaryColor: null, accentColor: null, formBackgroundColor: null });
+                              setFooterTextInput("");
+                              brandColorsMutation.mutate({ primaryColor: null, accentColor: null, formBackgroundColor: null, footerText: null });
                             }}
                             data-testid="button-reset-brand-colors"
                           >
-                            Reset to platform defaults
+                            Reset colors to platform defaults
                           </Button>
                           <Button
                             type="button"
@@ -1329,11 +1379,13 @@ export default function Account() {
                               primaryColor: primaryColorInput.trim() || null,
                               accentColor: accentColorInput.trim() || null,
                               formBackgroundColor: formBgColorInput.trim() || null,
+                              clinicLogo: clinicLogoPreview,
+                              footerText: footerTextInput.trim() || null,
                             })}
                             data-testid="button-save-brand-colors"
                           >
                             <Save className="w-4 h-4 mr-2" />
-                            {brandColorsMutation.isPending ? "Saving..." : "Save Brand Colors"}
+                            {brandColorsMutation.isPending ? "Saving..." : "Save Logo, Colors & Footer"}
                           </Button>
                         </div>
                       </div>
@@ -1394,10 +1446,10 @@ export default function Account() {
                   <Button
                     data-testid="button-save-branding"
                     disabled={brandingMutation.isPending}
-                    onClick={() => brandingMutation.mutate(!isOwner ? { signatureImage: signaturePreview } : { clinicLogo: clinicLogoPreview, signatureImage: signaturePreview })}
+                    onClick={() => brandingMutation.mutate({ signatureImage: signaturePreview })}
                   >
                     <Save className="w-4 h-4 mr-2" />
-                    {brandingMutation.isPending ? "Saving..." : !isOwner ? "Save Signature" : "Save Branding"}
+                    {brandingMutation.isPending ? "Saving..." : "Save Signature"}
                   </Button>
                 </div>
               </CardContent>

@@ -6922,19 +6922,24 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const user = req.user as any;
       const clinicId = user.defaultClinicId;
       if (!clinicId) {
-        return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null });
+        return res.json({ primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null });
       }
-      const [colorRows, logoRows] = await Promise.all([
+      // Fetch all branding fields from clinics table. Fall back to the legacy
+      // logo stored on the owner user record if clinics.clinicLogo is not yet
+      // populated (backward-compat for clinics that saved a logo before the
+      // column moved to the clinics table).
+      const [clinicRows, legacyLogoRows] = await Promise.all([
         storageDb
           .select({
             primaryColor: clinics.primaryColor,
             accentColor: clinics.accentColor,
             formBackgroundColor: clinics.formBackgroundColor,
+            clinicLogo: clinics.clinicLogo,
+            footerText: clinics.footerText,
           })
           .from(clinics)
           .where(eq(clinics.id, clinicId))
           .limit(1),
-        // clinicLogo lives on the owner/admin user record, not the clinics table.
         storageDb
           .select({ clinicLogo: usersTable.clinicLogo })
           .from(usersTable)
@@ -6949,9 +6954,16 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           )
           .limit(1),
       ]);
-      const c = colorRows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null };
-      const clinicLogo = logoRows[0]?.clinicLogo ?? null;
-      res.json({ ...c, clinicLogo });
+      const c = clinicRows[0] ?? { primaryColor: null, accentColor: null, formBackgroundColor: null, clinicLogo: null, footerText: null };
+      // Use clinic-level logo first; fall back to legacy user-level logo
+      const clinicLogo = c.clinicLogo ?? legacyLogoRows[0]?.clinicLogo ?? null;
+      res.json({
+        primaryColor: c.primaryColor,
+        accentColor: c.accentColor,
+        formBackgroundColor: c.formBackgroundColor,
+        clinicLogo,
+        footerText: c.footerText ?? null,
+      });
     } catch (err) {
       console.error('[API] Error fetching clinic branding:', err);
       res.status(500).json({ message: "Failed to fetch branding" });
@@ -6970,24 +6982,47 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       }
 
       const HEX_RE = /^#[0-9A-Fa-f]{6}$/;
-      const normalize = (v: unknown): string | null => {
+      const normalizeHex = (v: unknown): string | null => {
         if (v === null || v === undefined || v === "") return null;
         if (typeof v !== "string") return null;
         return HEX_RE.test(v) ? v.toLowerCase() : null;
       };
       const incoming = req.body ?? {};
       const updates: Record<string, string | null> = {};
-      if ("primaryColor" in incoming) updates.primaryColor = normalize(incoming.primaryColor);
-      if ("accentColor" in incoming) updates.accentColor = normalize(incoming.accentColor);
-      if ("formBackgroundColor" in incoming) updates.formBackgroundColor = normalize(incoming.formBackgroundColor);
-      // Reject any field that was provided but failed validation (we
-      // intentionally don't silently strip — clinicians need to know the
-      // value didn't take).
-      for (const k of Object.keys(updates)) {
-        if (incoming[k] && updates[k] === null && incoming[k] !== "") {
+
+      // Color fields
+      if ("primaryColor" in incoming) updates.primaryColor = normalizeHex(incoming.primaryColor);
+      if ("accentColor" in incoming) updates.accentColor = normalizeHex(incoming.accentColor);
+      if ("formBackgroundColor" in incoming) updates.formBackgroundColor = normalizeHex(incoming.formBackgroundColor);
+      // Reject a color that was provided but failed validation
+      for (const k of ["primaryColor", "accentColor", "formBackgroundColor"]) {
+        if (k in incoming && incoming[k] && updates[k] === null && incoming[k] !== "") {
           return res.status(400).json({ message: `${k} must be a 6-digit hex color (e.g. #1f4e79).` });
         }
       }
+
+      // Clinic logo — base64 data URL or null to clear
+      if ("clinicLogo" in incoming) {
+        const logo = incoming.clinicLogo;
+        if (logo === null || logo === undefined || logo === "") {
+          updates.clinicLogo = null;
+        } else if (typeof logo === "string" && logo.startsWith("data:image/")) {
+          updates.clinicLogo = logo;
+        } else {
+          return res.status(400).json({ message: "clinicLogo must be a base64 image data URL or null." });
+        }
+      }
+
+      // Footer text — free text, max 500 chars
+      if ("footerText" in incoming) {
+        const ft = incoming.footerText;
+        if (ft === null || ft === undefined || ft === "") {
+          updates.footerText = null;
+        } else if (typeof ft === "string") {
+          updates.footerText = ft.slice(0, 500);
+        }
+      }
+
       if (Object.keys(updates).length === 0) {
         return res.status(400).json({ message: "No branding fields provided." });
       }
@@ -6997,11 +7032,13 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
           primaryColor: clinics.primaryColor,
           accentColor: clinics.accentColor,
           formBackgroundColor: clinics.formBackgroundColor,
+          clinicLogo: clinics.clinicLogo,
+          footerText: clinics.footerText,
         })
         .from(clinics)
         .where(eq(clinics.id, clinicId))
         .limit(1);
-      res.json(rows[0]);
+      res.json(rows[0] ?? {});
     } catch (err) {
       console.error('[API] Error updating clinic branding:', err);
       res.status(500).json({ message: "Failed to update branding" });

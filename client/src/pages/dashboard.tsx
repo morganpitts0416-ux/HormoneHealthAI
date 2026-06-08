@@ -2,6 +2,7 @@ import { useState } from "react";
 import { useLocation, Link } from "wouter";
 import { useQuery, useMutation } from "@tanstack/react-query";
 import { useAuth } from "@/hooks/use-auth";
+import { useClinicBranding } from "@/hooks/use-clinic-branding";
 import { Button } from "@/components/ui/button";
 import { Card, CardContent } from "@/components/ui/card";
 import { Badge } from "@/components/ui/badge";
@@ -299,6 +300,7 @@ function PatientInitials({ first, last, gender }: { first: string; last: string;
 
 export default function Dashboard() {
   const { user } = useAuth();
+  const { data: clinicBrandingFull } = useClinicBranding();
   const [, setLocation] = useLocation();
   const [previewSubId, setPreviewSubId] = useState<number | null>(null);
   const [showAddPatient, setShowAddPatient] = useState(false);
@@ -965,7 +967,7 @@ export default function Dashboard() {
         onClose={() => setPreviewSubId(null)}
         clinic={{
           clinicName: (user as any)?.clinicName ?? "ClinIQ",
-          clinicLogo: (user as any)?.clinicLogo ?? null,
+          clinicLogo: clinicBrandingFull?.clinicLogo ?? (user as any)?.clinicLogo ?? null,
           phone: (user as any)?.phone ?? null,
           address: (user as any)?.address ?? null,
           email: (user as any)?.email ?? null,

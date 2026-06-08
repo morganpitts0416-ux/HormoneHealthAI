@@ -1,5 +1,5 @@
 import jsPDF from 'jspdf';
-import { resolveBranding, type PartialBranding } from "@/lib/branding";
+import { resolveBranding, PLATFORM_DEFAULT_BRANDING, type PartialBranding } from "@/lib/branding";
 
 interface SoapPdfOptions {
   soapText: string;
@@ -16,12 +16,14 @@ interface SoapPdfOptions {
   signedBy?: string | null;
   signatureImage?: string | null;
   isAmended?: boolean;
-  /** Clinic-level brand colors. Falls back to ClinIQ default green if null. */
+  /** Clinic-level brand colors. Falls back to platform navy if null. */
   branding?: PartialBranding | null;
   /** Document title rendered on the PDF. Defaults to "CLINICAL ENCOUNTER — SOAP NOTE". */
   noteTypeLabel?: string;
   /** Filename prefix (no extension). Defaults to "SOAP". */
   noteFilenamePrefix?: string;
+  /** Optional custom footer text. When set, replaces the default clinic footer line. */
+  footerText?: string | null;
 }
 
 /**
@@ -102,7 +104,38 @@ export function nurseBlocksToText(blocks: any[]): string {
 const PAGE_W = 215.9; // Letter width mm
 const MARGIN = 20;
 const CONTENT_W = PAGE_W - MARGIN * 2;
-const SOAP_DEFAULT_PRIMARY = '#2e3a20'; // ClinIQ default letterhead green
+// Use the platform default navy so all PDF types share the same fallback color
+// when no clinic branding is configured (eliminates the old per-PDF-type defaults).
+const SOAP_DEFAULT_PRIMARY = PLATFORM_DEFAULT_BRANDING.primaryColor; // #1f4e79
+
+/**
+ * Strip Markdown formatting syntax so it does not appear as literal characters
+ * in the rendered PDF. Targets only multi-character formatting markers
+ * (** __ ## ---) that AI-generated SOAP notes sometimes produce.
+ * Single asterisks adjacent to numbers are left untouched (medical notation
+ * like "*10^3/uL").
+ */
+function stripMarkdown(text: string): string {
+  return text
+    // Horizontal rules: line of 3+ dashes / underscores / asterisks
+    .replace(/^[ \t]*[-*_]{3,}[ \t]*$/gm, '')
+    // ATX headings: # ## ### etc. at start of line
+    .replace(/^#{1,6}\s+/gm, '')
+    // Bold + italic: ***text*** or ___text___
+    .replace(/\*{3}([^*\n]+)\*{3}/g, '$1')
+    .replace(/_{3}([^_\n]+)_{3}/g, '$1')
+    // Bold: **text** or __text__
+    .replace(/\*{2}([^*\n]+)\*{2}/g, '$1')
+    .replace(/_{2}([^_\n]+)_{2}/g, '$1')
+    // Italic with underscores: _word_ (not adjacent to word chars, preserves identifiers)
+    .replace(/(?<!\w)_([^_\n]+)_(?!\w)/g, '$1')
+    // Blockquote markers at line start
+    .replace(/^>\s?/gm, '')
+    // Trailing double-space hard line breaks → single newline
+    .replace(/ {2,}$/gm, '')
+    // Collapse 3+ consecutive blank lines to 2
+    .replace(/\n{3,}/g, '\n\n');
+}
 
 // Parse a date string safely — treats date-only strings (YYYY-MM-DD) as local
 // noon so no timezone shift pushes them into the previous day.
@@ -156,10 +189,10 @@ function drawHRule(doc: jsPDF, y: number, color = '#cccccc'): void {
 export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
 
-  // Effective brand color: clinic primary if set, else ClinIQ default green.
-  const HEADER_PRIMARY = opts.branding?.primaryColor
-    ? resolveBranding(null, opts.branding).primaryColor
-    : SOAP_DEFAULT_PRIMARY;
+  // Effective brand colors: use clinic values when set, else platform defaults.
+  const resolved = resolveBranding(null, opts.branding ?? null);
+  const HEADER_PRIMARY = resolved.primaryColor;
+  const HEADER_ACCENT = resolved.accentColor;
 
   let y = MARGIN;
 
@@ -208,7 +241,7 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   doc.text(providerLine, logoEndX, y + 22);
 
   y += 28;
-  drawHRule(doc, y, HEADER_PRIMARY);
+  drawHRule(doc, y, HEADER_ACCENT);
   y += 6;
 
   // ── Document title row ───────────────────────────────────────────────────────
@@ -258,7 +291,7 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
   const LINE_H_MAJOR = 6;
   const LINE_H_LABEL = 5.5;
 
-  const lines = sanitizeForPdf(opts.soapText || '').split('\n');
+  const lines = sanitizeForPdf(stripMarkdown(opts.soapText || '')).split('\n');
   const PAGE_H = 279.4;
   const FOOTER_RESERVE = opts.signedAt ? 40 : 20;
 
@@ -419,8 +452,11 @@ export async function exportSoapPdf(opts: SoapPdfOptions): Promise<void> {
     doc.setFont('helvetica', 'normal');
     doc.setFontSize(7);
     doc.setTextColor('#aaaaaa');
+    const footerCenter = opts.footerText
+      ? sanitizeForPdf(opts.footerText)
+      : `${opts.clinicName}  ·  CONFIDENTIAL — FOR AUTHORIZED USE ONLY`;
     doc.text(
-      `${opts.clinicName}  ·  CONFIDENTIAL — FOR AUTHORIZED USE ONLY  ·  Page ${i} of ${pageCount}`,
+      `${footerCenter}  ·  Page ${i} of ${pageCount}`,
       PAGE_W / 2,
       PAGE_H - 8,
       { align: 'center' },

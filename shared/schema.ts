@@ -1556,6 +1556,13 @@ export const clinics = pgTable("clinics", {
   primaryColor: varchar("primary_color", { length: 7 }),
   accentColor: varchar("accent_color", { length: 7 }),
   formBackgroundColor: varchar("form_background_color", { length: 7 }),
+  // Clinic logo stored as a base64 data URL. Shown as letterhead on all
+  // patient-facing PDFs. Moved here from users table so multi-admin clinics
+  // always share one logo, regardless of which admin last saved their profile.
+  clinicLogo: text("clinic_logo"),
+  // Optional custom footer text printed at the bottom of patient-facing PDFs.
+  // When null the default ClinIQ footer is used.
+  footerText: text("footer_text"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
   updatedAt: timestamp("updated_at").defaultNow().notNull(),
 });

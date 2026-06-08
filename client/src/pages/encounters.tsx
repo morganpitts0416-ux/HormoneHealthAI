@@ -28,7 +28,7 @@ import { apiRequest, queryClient as qc } from "@/lib/queryClient";
 import type { Patient, LabResult, ClinicalEncounter, DiarizedUtterance, ClinicalExtraction, EvidenceOverlay, EvidenceSuggestion, ValidationResult, PatternMatchResult, PatternMatch, EncounterDraft } from "@shared/schema";
 import { useGlobalLoading } from "@/hooks/use-global-loading";
 import { exportSoapPdf } from "@/lib/soap-pdf-export";
-import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
+import { useClinicBrandingPartial, useClinicBranding } from "@/hooks/use-clinic-branding";
 import { SoapNoteViewer, EvidenceCard } from "@/components/soap-note-viewer";
 import { useDiagnosisSearch } from "@/components/diagnosis-search";
 import { usePhraseSearch } from "@/components/phrase-search";
@@ -673,6 +673,7 @@ export function EncounterEditor({
   const { toast } = useToast();
   const { user } = useAuth();
   const clinicBranding = useClinicBrandingPartial();
+  const { data: clinicBrandingFull } = useClinicBranding();
   const queryClient = useQueryClient();
   const [, setLocation] = useLocation();
   const [isPdfExporting, setIsPdfExporting] = useState(false);
@@ -3016,12 +3017,13 @@ export function EncounterEditor({
                             clinicName: user?.clinicName ?? "Clinic",
                             clinicAddress: (user as any)?.address ?? null,
                             clinicPhone: (user as any)?.phone ?? null,
-                            clinicLogo: (user as any)?.clinicLogo ?? null,
+                            clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
                             signedAt: signedAtLocal as string,
                             signedBy: signedByLocal,
                             signatureImage: (user as any)?.signatureImage ?? null,
                             isAmended: isAmendedLocal,
                             branding: clinicBranding,
+                            footerText: clinicBrandingFull?.footerText ?? null,
                           });
                         } catch (e: any) {
                           toast({ variant: "destructive", title: "PDF export failed", description: e?.message });
@@ -3664,12 +3666,13 @@ export function EncounterEditor({
                             clinicName: user?.clinicName ?? "Clinic",
                             clinicAddress: (user as any)?.address ?? null,
                             clinicPhone: (user as any)?.phone ?? null,
-                            clinicLogo: (user as any)?.clinicLogo ?? null,
+                            clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
                             signedAt: null,
                             signedBy: null,
                             signatureImage: null,
                             isAmended: false,
                             branding: clinicBranding,
+                            footerText: clinicBrandingFull?.footerText ?? null,
                           });
                         } catch (e: any) {
                           toast({ variant: "destructive", title: "PDF export failed", description: e?.message });

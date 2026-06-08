@@ -33,7 +33,7 @@ import { generateLabReportPDF } from "@/lib/pdf-export";
 import { generateMalePatientWellnessPDF, type MaleWellnessPlan } from "@/lib/patient-pdf-export-male";
 import { generatePatientWellnessPDF } from "@/lib/patient-pdf-export";
 import { exportSoapPdf, nurseBlocksToText } from "@/lib/soap-pdf-export";
-import { useClinicBrandingPartial } from "@/hooks/use-clinic-branding";
+import { useClinicBrandingPartial, useClinicBranding } from "@/hooks/use-clinic-branding";
 import { labsApi, femaleLabsApi, type WellnessPlan } from "@/lib/api";
 import { useToast } from "@/hooks/use-toast";
 import { queryClient } from "@/lib/queryClient";
@@ -477,6 +477,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const { toast } = useToast();
   const { user } = useAuth();
   const clinicBranding = useClinicBrandingPartial();
+  const { data: clinicBrandingFull } = useClinicBranding();
   const interp = lab.interpretationResult as InterpretationResult | null;
   const vals = lab.labValues as any;
   const patientName = `${patient.firstName} ${patient.lastName}`.trim();
@@ -590,15 +591,16 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
       if (interp) {
         const patientLabs = allLabs.length >= 2 ? allLabs : undefined;
         const pdfSupps = effectiveSupplements.map(s => ({ name: s.name, dose: s.dose, indication: s.indication }));
-        const clinicLogo = (user as any)?.clinicLogo ?? null;
+        const clinicLogo = clinicBrandingFull?.clinicLogo ?? null;
+        const footerText = clinicBrandingFull?.footerText ?? null;
         const hiddenSections = overrides.hiddenSections || [];
         const hiddenInterpCats = overrides.hiddenInterpretationCategories || [];
         if (isFemale) {
           // hiddenInterpCats covers both regular lab rows and hormone-pattern rows —
           // the PDF splits them internally using isHormonePatternRowPdf().
-          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, hiddenInterpCats);
+          await generatePatientWellnessPDF(vals as FemaleLabValues, interp, wellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, hiddenInterpCats, footerText);
         } else {
-          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats);
+          await generateMalePatientWellnessPDF(vals as LabValues, interp, wellnessPlan as MaleWellnessPlan, patientName, patientLabs, pdfSupps, user?.clinicName, clinicBranding, clinicLogo, hiddenSections, hiddenInterpCats, footerText);
         }
         toast({ title: "Patient Report Generated", description: "The personalized wellness report has been downloaded." });
       }
@@ -611,7 +613,7 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
   const handleProviderPDF = () => {
     if (interp) {
       const historyForPdf = allLabs.length >= 2 ? allLabs : undefined;
-      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf, clinicBranding, (user as any)?.clinicLogo ?? null);
+      generateLabReportPDF(vals as LabValues, interp, patientName, user?.clinicName, historyForPdf, clinicBranding, clinicBrandingFull?.clinicLogo ?? null);
       toast({ title: "Provider Report Generated", description: "The provider report has been downloaded." });
     }
   };
@@ -2328,6 +2330,7 @@ export default function PatientProfiles() {
 
   const { user } = useAuth();
   const clinicBranding = useClinicBrandingPartial();
+  const { data: clinicBrandingFull } = useClinicBranding();
 
   interface PortalMessage {
     id: number;
@@ -4336,12 +4339,13 @@ export default function PatientProfiles() {
                             clinicName: (user as any)?.clinicName ?? 'Clinic',
                             clinicAddress: (user as any)?.address ?? null,
                             clinicPhone: (user as any)?.phone ?? null,
-                            clinicLogo: (user as any)?.clinicLogo ?? null,
+                            clinicLogo: clinicBrandingFull?.clinicLogo ?? null,
                             signedAt: isSigned ? (enc.signedAt as unknown as string) : null,
                             signedBy: enc.signedBy ?? null,
                             signatureImage: isSigned ? ((user as any)?.signatureImage ?? null) : null,
                             isAmended: !!enc.isAmended,
                             branding: clinicBranding,
+                            footerText: clinicBrandingFull?.footerText ?? null,
                           });
                         } catch { } finally {
                           setPdfExportingEncounterId(null);
@@ -5617,7 +5621,7 @@ export default function PatientProfiles() {
                 onClose={() => setPreviewSubId(null)}
                 clinic={{
                   clinicName: (user as any)?.clinicName ?? "ClinIQ",
-                  clinicLogo: (user as any)?.clinicLogo ?? null,
+                  clinicLogo: clinicBrandingFull?.clinicLogo ?? (user as any)?.clinicLogo ?? null,
                   phone: (user as any)?.phone ?? null,
                   address: (user as any)?.address ?? null,
                   email: (user as any)?.email ?? null,
