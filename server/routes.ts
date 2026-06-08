@@ -323,7 +323,7 @@ function persistVitalsFromLabEval(
 // ── Note-text → vital-trends bridge ─────────────────────────────────────
 // Parses a generated SOAP/template note's VITAL SIGNS section and persists
 // the values to patient_vitals. Fire-and-forget: never blocks the response.
-function extractVitalsFromNoteText(text: string): {
+function extractVitalsFromNoteText(text: string | any): {
   systolicBp?: number | null;
   diastolicBp?: number | null;
   heartRate?: number | null;
@@ -334,6 +334,12 @@ function extractVitalsFromNoteText(text: string): {
   heightInches?: number | null;
   weightLbs?: number | null;
 } {
+  // soapNote is a JSONB field — for nurse/phone notes it is a plain string, but
+  // for full SOAP notes it may be a SoapNote blocks object. Coerce to string so
+  // the regex matching below never throws "text.match is not a function".
+  if (typeof text !== 'string') {
+    try { text = JSON.stringify(text); } catch { return {}; }
+  }
   const r: Record<string, number | null> = {};
   const bp = text.match(/(?:Blood\s*Pressure|BP)[:\s]+(\d{2,3})\s*\/\s*(\d{2,3})/i);
   if (bp) { r.systolicBp = parseInt(bp[1]); r.diastolicBp = parseInt(bp[2]); }
@@ -723,6 +729,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sess.staffClinicianId = staff.clinicianId;
             sess.staffAdminRole = staff.adminRole ?? "standard";
             sess.staffClinicalRole = staff.role ?? "staff";
+            // Store name now so sign-route can build "Signed by Jane Doe, RN" without
+            // a second DB lookup. These are also returned by /api/auth/me but that
+            // response is NOT persisted back to the session, so the session would
+            // otherwise have no names and the signedBy field would show just the role.
+            sess.staffFirstName = staff.firstName ?? "";
+            sess.staffLastName  = staff.lastName  ?? "";
             // Stamp the owning clinician's clinic so getEffectiveClinicId works for staff
             try {
               const clinician = await storage.getUserById(staff.clinicianId);
@@ -8470,8 +8482,15 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       // Fire-and-forget: extract any vitals from the note text and save as
       // clinic-sourced vitals. Dedup (via enc-tagged notes field) prevents
       // duplicate entries when the same note is signed multiple times.
+      // Wrapped in try/catch because the outer sync portion (regex extraction)
+      // must never throw after the DB commit — the note is already signed and
+      // a 500 here would confuse the user (sign succeeded but response failed).
       if (encounter.soapNote) {
-        persistVitalsFromNoteText(encounter.patientId, clinicianId, encounter.soapNote, id);
+        try {
+          persistVitalsFromNoteText(encounter.patientId, clinicianId, encounter.soapNote, id);
+        } catch (vitalsErr) {
+          console.warn('[Sign] vitals extraction failed (non-fatal, note is signed):', (vitalsErr as any)?.message ?? vitalsErr);
+        }
       }
 
       // Collaborating-physician chart review hook. Provider SOAPs only;
