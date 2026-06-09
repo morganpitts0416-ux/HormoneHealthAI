@@ -493,10 +493,10 @@ export interface IStorage {
   upsertClinicalBlockDefaults(clinicId: number, providerId: number, data: schema.UpdateClinicalBlockDefaults): Promise<schema.ClinicalBlockDefaultsRow>;
 
   // ── June AI Preference Memory ────────────────────────────────────────────
-  getJunePreferences(clinicianId: number): Promise<schema.JunePreference[]>;
+  getJunePreferences(clinicianId: number, staffId?: number | null): Promise<schema.JunePreference[]>;
   createJunePreference(data: schema.InsertJunePreference): Promise<schema.JunePreference>;
-  updateJunePreference(id: number, clinicianId: number, data: Partial<Pick<schema.JunePreference, 'label' | 'instruction' | 'triggerPhrases' | 'isActive' | 'category'>>): Promise<schema.JunePreference | undefined>;
-  deleteJunePreference(id: number, clinicianId: number): Promise<boolean>;
+  updateJunePreference(id: number, clinicianId: number, data: Partial<Pick<schema.JunePreference, 'label' | 'instruction' | 'triggerPhrases' | 'isActive' | 'category'>>, staffId?: number | null): Promise<schema.JunePreference | undefined>;
+  deleteJunePreference(id: number, clinicianId: number, staffId?: number | null): Promise<boolean>;
   getClinicById(id: number): Promise<schema.Clinic | undefined>;
 
   // ── Collaborating Physician Chart Review ─────────────────────────────────
@@ -2458,9 +2458,19 @@ export class DbStorage implements IStorage {
   }
 
   // ── June AI Preference Memory ────────────────────────────────────────────
-  async getJunePreferences(clinicianId: number): Promise<schema.JunePreference[]> {
+  async getJunePreferences(clinicianId: number, staffId?: number | null): Promise<schema.JunePreference[]> {
+    if (staffId) {
+      // Staff member — return only their own preferences
+      return db.select().from(schema.junePreferences)
+        .where(eq(schema.junePreferences.staffId, staffId))
+        .orderBy(schema.junePreferences.createdAt);
+    }
+    // Clinician account owner — return preferences with no staffId
     return db.select().from(schema.junePreferences)
-      .where(eq(schema.junePreferences.clinicianId, clinicianId))
+      .where(and(
+        eq(schema.junePreferences.clinicianId, clinicianId),
+        isNull(schema.junePreferences.staffId),
+      ))
       .orderBy(schema.junePreferences.createdAt);
   }
   async createJunePreference(data: schema.InsertJunePreference): Promise<schema.JunePreference> {
@@ -2471,16 +2481,23 @@ export class DbStorage implements IStorage {
     id: number,
     clinicianId: number,
     data: Partial<Pick<schema.JunePreference, 'label' | 'instruction' | 'triggerPhrases' | 'isActive' | 'category'>>,
+    staffId?: number | null,
   ): Promise<schema.JunePreference | undefined> {
+    const ownershipClause = staffId
+      ? eq(schema.junePreferences.staffId, staffId)
+      : and(eq(schema.junePreferences.clinicianId, clinicianId), isNull(schema.junePreferences.staffId));
     const [row] = await db.update(schema.junePreferences)
       .set({ ...data, updatedAt: new Date() })
-      .where(and(eq(schema.junePreferences.id, id), eq(schema.junePreferences.clinicianId, clinicianId)))
+      .where(and(eq(schema.junePreferences.id, id), ownershipClause))
       .returning();
     return row;
   }
-  async deleteJunePreference(id: number, clinicianId: number): Promise<boolean> {
+  async deleteJunePreference(id: number, clinicianId: number, staffId?: number | null): Promise<boolean> {
+    const ownershipClause = staffId
+      ? eq(schema.junePreferences.staffId, staffId)
+      : and(eq(schema.junePreferences.clinicianId, clinicianId), isNull(schema.junePreferences.staffId));
     const result = await db.delete(schema.junePreferences)
-      .where(and(eq(schema.junePreferences.id, id), eq(schema.junePreferences.clinicianId, clinicianId)));
+      .where(and(eq(schema.junePreferences.id, id), ownershipClause));
     return (result.rowCount ?? 0) > 0;
   }
 

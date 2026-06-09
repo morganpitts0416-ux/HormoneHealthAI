@@ -453,13 +453,9 @@ function canEditForms(adminRole: string | null): boolean {
   return adminRole === "owner" || adminRole === "admin" || adminRole === "limited_admin";
 }
 
-// Form-builder access: any provider/clinician (non-staff session) OR any staff with admin-level role.
-async function canManageForms(req: Request): Promise<boolean> {
-  const sess = req.session as any;
-  const isStaff = !!sess?.staffId;
-  if (!isStaff) return true; // Providers/clinicians always have form-builder access
-  const adminRole = await getSessionAdminRole(req);
-  return canEditForms(adminRole);
+// Form-builder access: all authenticated users (staff and clinicians) can build forms.
+async function canManageForms(_req: Request): Promise<boolean> {
+  return true;
 }
 
 async function resolveClinicOwnerSubscription(clinicId: number): Promise<{
@@ -729,12 +725,13 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sess.staffClinicianId = staff.clinicianId;
             sess.staffAdminRole = staff.adminRole ?? "standard";
             sess.staffClinicalRole = staff.role ?? "staff";
-            // Store name now so sign-route can build "Signed by Jane Doe, RN" without
-            // a second DB lookup. These are also returned by /api/auth/me but that
-            // response is NOT persisted back to the session, so the session would
-            // otherwise have no names and the signedBy field would show just the role.
+            // Store name/credentials now so sign-route can build "Signed by Jane Doe, RN"
+            // without a second DB lookup. These are also returned by /api/auth/me but
+            // that response is NOT persisted back to the session.
             sess.staffFirstName = staff.firstName ?? "";
             sess.staffLastName  = staff.lastName  ?? "";
+            sess.staffCredentials = (staff as any).credentials ?? null;
+            sess.staffTitle = (staff as any).title ?? null;
             // Stamp the owning clinician's clinic so getEffectiveClinicId works for staff
             try {
               const clinician = await storage.getUserById(staff.clinicianId);
@@ -823,6 +820,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
           staffFirstName: staff.firstName,
           staffLastName: staff.lastName,
           staffRole: staff.role,
+          credentials: (staff as any).credentials ?? null,
+          title: (staff as any).title ?? null,
           adminRole: (staff as any).adminRole ?? "standard",
           clinicalRole: (staff as any).role ?? "staff",
         });
@@ -6802,6 +6801,47 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
+  // PATCH /api/staff/me/profile — staff member updates their own profile info
+  app.patch("/api/staff/me/profile", requireAuth, async (req, res) => {
+    try {
+      const sess = req.session as any;
+      if (!sess.staffId) return res.status(403).json({ message: "Only staff members can use this endpoint" });
+      const staffId = sess.staffId as number;
+      const { firstName, lastName, credentials, title, currentPassword, password } = req.body;
+      const updates: Record<string, any> = {};
+      if (firstName?.trim()) updates.firstName = firstName.trim();
+      if (lastName?.trim()) updates.lastName = lastName.trim();
+      if (credentials !== undefined) updates.credentials = credentials?.trim() || null;
+      if (title !== undefined) updates.title = title?.trim() || null;
+
+      if (password) {
+        if (!currentPassword) return res.status(400).json({ message: "Current password is required to change password" });
+        const staffRecord = await storage.getClinicianStaffById(staffId);
+        if (!staffRecord?.passwordHash) return res.status(400).json({ message: "No password set for this account" });
+        const valid = await bcrypt.compare(currentPassword, staffRecord.passwordHash);
+        if (!valid) return res.status(400).json({ message: "Current password is incorrect" });
+        if (password.length < 8) return res.status(400).json({ message: "New password must be at least 8 characters" });
+        updates.passwordHash = await bcrypt.hash(password, 10);
+      }
+
+      if (Object.keys(updates).length === 0) return res.status(400).json({ message: "No valid fields to update" });
+      const updated = await storage.updateClinicianStaff(staffId, updates);
+      if (!updated) return res.status(404).json({ message: "Staff member not found" });
+
+      // Keep session in sync so signed notes immediately use the new name/credentials
+      if (updates.firstName) sess.staffFirstName = updates.firstName;
+      if (updates.lastName) sess.staffLastName = updates.lastName;
+      if (updates.credentials !== undefined) sess.staffCredentials = updates.credentials;
+      if (updates.title !== undefined) sess.staffTitle = updates.title;
+
+      const { passwordHash: _ph, inviteToken: _it, ...safe } = updated as any;
+      res.json(safe);
+    } catch (err) {
+      console.error("[API] Error updating staff profile:", err);
+      res.status(500).json({ message: "Failed to update profile" });
+    }
+  });
+
   // PATCH /api/staff/:id — update staff clinical or admin role
   app.patch("/api/staff/:id", requireClinicianOnly, async (req, res) => {
     try {
@@ -7669,7 +7709,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  app.post("/api/preferences/supplements", requireClinicianOnly, async (req, res) => {
+  app.post("/api/preferences/supplements", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7694,7 +7734,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  app.put("/api/preferences/supplements/:id", requireClinicianOnly, async (req, res) => {
+  app.put("/api/preferences/supplements/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7710,7 +7750,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  app.delete("/api/preferences/supplements/:id", requireClinicianOnly, async (req, res) => {
+  app.delete("/api/preferences/supplements/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7736,7 +7776,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  app.post("/api/preferences/supplements/:id/rules", requireClinicianOnly, async (req, res) => {
+  app.post("/api/preferences/supplements/:id/rules", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7763,7 +7803,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  app.put("/api/preferences/supplements/rules/:ruleId", requireClinicianOnly, async (req, res) => {
+  app.put("/api/preferences/supplements/rules/:ruleId", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7779,7 +7819,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
     }
   });
 
-  app.delete("/api/preferences/supplements/rules/:ruleId", requireClinicianOnly, async (req, res) => {
+  app.delete("/api/preferences/supplements/rules/:ruleId", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7793,7 +7833,7 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
   });
 
   // ── Clinician Preferences: AI Description Generation ─────────────────────
-  app.post("/api/preferences/supplements/generate-description", requireClinicianOnly, async (req, res) => {
+  app.post("/api/preferences/supplements/generate-description", requireAuth, async (req, res) => {
     try {
       const { name, brand, dose, category, clinicalRationale } = req.body;
       if (!name || !dose) return res.status(400).json({ message: "Name and dose are required" });
@@ -7838,7 +7878,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     }
   });
 
-  app.put("/api/preferences/lab-ranges", requireClinicianOnly, async (req, res) => {
+  app.put("/api/preferences/lab-ranges", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -7862,7 +7902,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
     }
   });
 
-  app.delete("/api/preferences/lab-ranges/:id", requireClinicianOnly, async (req, res) => {
+  app.delete("/api/preferences/lab-ranges/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
@@ -8430,8 +8470,19 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         const staffFirst = sess.staffFirstName ?? "";
         const staffLast = sess.staffLastName ?? "";
         nameParts = `${staffFirst} ${staffLast}`.trim();
-        if (staffRole === "rn") credential = "RN";
-        else if (staffRole) credential = staffRole.toUpperCase();
+        // Use the credential the staff member has set on their own profile.
+        // Fall back to a sensible label derived from their clinical role if unset.
+        if (sess.staffCredentials) {
+          credential = sess.staffCredentials;
+        } else if (staffRole === "nurse" || staffRole === "rn") {
+          credential = "RN";
+        } else if (staffRole === "assistant") {
+          credential = "MA";
+        } else if (staffRole === "provider") {
+          credential = null; // provider-role staff carry no extra suffix
+        } else if (staffRole) {
+          credential = staffRole.charAt(0).toUpperCase() + staffRole.slice(1);
+        }
       } else {
         nameParts = [clinician.title, clinician.firstName, clinician.lastName].filter(Boolean).join(" ");
       }
@@ -15576,8 +15627,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
   // ── June Preference Memory — CRUD ────────────────────────────────────────
   app.get("/api/june-preferences", requireAuth, async (req, res) => {
     try {
-      const actorId = getActorId(req);
-      const prefs = await storage.getJunePreferences(actorId);
+      const sess = req.session as any;
+      const isStaffSess = !!sess?.staffId;
+      const clinicianId = isStaffSess ? (sess.staffClinicianId as number) : (req.user as any).id;
+      const staffId = isStaffSess ? (sess.staffId as number) : null;
+      const prefs = await storage.getJunePreferences(clinicianId, staffId);
       res.json(prefs);
     } catch (err: any) {
       console.error("[June Prefs] GET error:", err);
@@ -15587,7 +15641,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   app.post("/api/june-preferences", requireAuth, async (req, res) => {
     try {
-      const actorId = getActorId(req);
+      const sess = req.session as any;
+      const isStaffSess = !!sess?.staffId;
+      const clinicianId = isStaffSess ? (sess.staffClinicianId as number) : (req.user as any).id;
+      const staffId: number | null = isStaffSess ? (sess.staffId as number) : null;
       const clinicId = getEffectiveClinicId(req);
       const schema_z = (await import("zod")).z;
       const body = schema_z.object({
@@ -15599,8 +15656,9 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       }).safeParse(req.body);
       if (!body.success) return res.status(400).json({ message: "Invalid preference data", errors: body.error.flatten() });
       const pref = await storage.createJunePreference({
-        clinicianId: actorId,
+        clinicianId,
         clinicId: clinicId ?? null,
+        staffId,
         ...body.data,
         triggerPhrases: body.data.triggerPhrases ?? null,
       });
@@ -15613,7 +15671,10 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   app.patch("/api/june-preferences/:id", requireAuth, async (req, res) => {
     try {
-      const actorId = getActorId(req);
+      const sess = req.session as any;
+      const isStaffSess = !!sess?.staffId;
+      const clinicianId = isStaffSess ? (sess.staffClinicianId as number) : (req.user as any).id;
+      const staffId: number | null = isStaffSess ? (sess.staffId as number) : null;
       const id = Number(req.params.id);
       if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
       const schema_z = (await import("zod")).z;
@@ -15625,7 +15686,7 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
         isActive: schema_z.boolean().optional(),
       }).safeParse(req.body);
       if (!body.success) return res.status(400).json({ message: "Invalid update data", errors: body.error.flatten() });
-      const updated = await storage.updateJunePreference(id, actorId, body.data);
+      const updated = await storage.updateJunePreference(id, clinicianId, body.data, staffId);
       if (!updated) return res.status(404).json({ message: "Preference not found" });
       res.json(updated);
     } catch (err: any) {
@@ -15636,10 +15697,13 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
 
   app.delete("/api/june-preferences/:id", requireAuth, async (req, res) => {
     try {
-      const actorId = getActorId(req);
+      const sess = req.session as any;
+      const isStaffSess = !!sess?.staffId;
+      const clinicianId = isStaffSess ? (sess.staffClinicianId as number) : (req.user as any).id;
+      const staffId: number | null = isStaffSess ? (sess.staffId as number) : null;
       const id = Number(req.params.id);
       if (!Number.isFinite(id)) return res.status(400).json({ message: "Invalid id" });
-      const ok = await storage.deleteJunePreference(id, actorId);
+      const ok = await storage.deleteJunePreference(id, clinicianId, staffId);
       if (!ok) return res.status(404).json({ message: "Preference not found" });
       res.json({ success: true });
     } catch (err: any) {
@@ -16070,7 +16134,11 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
       let junePrefsBlock = "";
       let clinicalProtocolsBlock = "";
       try {
-        const junePrefs = await storage.getJunePreferences(getActorId(req));
+        const juneSess = req.session as any;
+        const juneIsStaff = !!juneSess?.staffId;
+        const juneClinId = juneIsStaff ? (juneSess.staffClinicianId as number) : getClinicianId(req);
+        const juneStaffId: number | null = juneIsStaff ? (juneSess.staffId as number) : null;
+        const junePrefs = await storage.getJunePreferences(juneClinId, juneStaffId);
         const activePrefs = junePrefs.filter(p => p.isActive);
         if (activePrefs.length > 0) {
           const instructions = activePrefs.filter(p => p.category === "instruction");

@@ -672,6 +672,7 @@ export function EncounterEditor({
 }) {
   const { toast } = useToast();
   const { user } = useAuth();
+  const isStaff = !!(user as any)?.isStaff;
   const clinicBranding = useClinicBrandingPartial();
   const { data: clinicBrandingFull } = useClinicBranding();
   const queryClient = useQueryClient();
@@ -1942,6 +1943,49 @@ export function EncounterEditor({
                 );
               })()}
 
+              {/* G-F: Staff must pick a non-SOAP template before recording starts */}
+              {isStaff && encounterTemplates.length > 0 && (
+                <div className={`rounded-md border p-3 space-y-2 ${
+                  selectedTemplateId && encounterTemplates.find(t => String(t.id) === selectedTemplateId)?.noteType !== "soap"
+                    ? "border-green-300/60 bg-green-50/40 dark:bg-green-950/20"
+                    : "border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/25"
+                }`}>
+                  <div className="flex items-center gap-2">
+                    <FileText className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0" />
+                    <span className="text-xs font-medium text-amber-800 dark:text-amber-200">
+                      Select a note template before recording
+                    </span>
+                  </div>
+                  <Select value={selectedTemplateId} onValueChange={setSelectedTemplateId}>
+                    <SelectTrigger className="h-8 text-xs" data-testid="select-staff-encounter-template">
+                      <SelectValue placeholder="Choose a Nurses Note or Non-Visit template…" />
+                    </SelectTrigger>
+                    <SelectContent>
+                      {encounterTemplates
+                        .filter(t => t.noteType !== "soap")
+                        .map(t => (
+                          <SelectItem key={t.id} value={String(t.id)} data-testid={`option-staff-template-${t.id}`}>
+                            {t.name}
+                            <span className="ml-1.5 text-muted-foreground text-xs">
+                              {t.noteType === "nurses_note" ? "· Nurses" : "· Non-Visit"}
+                            </span>
+                          </SelectItem>
+                        ))}
+                    </SelectContent>
+                  </Select>
+                </div>
+              )}
+              {isStaff && encounterTemplates.length === 0 && (
+                <div className="rounded-md border border-amber-300/60 bg-amber-50/50 dark:bg-amber-950/25 p-3">
+                  <div className="flex items-start gap-2">
+                    <TriangleAlert className="w-3.5 h-3.5 text-amber-600 dark:text-amber-400 shrink-0 mt-0.5" />
+                    <p className="text-xs text-amber-800 dark:text-amber-200">
+                      No templates available. Ask your clinic owner to create a Nurses Note or Non-Visit encounter template before you can record.
+                    </p>
+                  </div>
+                </div>
+              )}
+
               <AudioCapture
                 visitType={visitType}
                 currentEncounterId={savedId}
@@ -1957,6 +2001,20 @@ export function EncounterEditor({
                       description: "Recording is bound to a specific encounter. Choose a patient before starting.",
                     });
                     return null;
+                  }
+                  // G-F: Staff must select a non-SOAP encounter template before recording.
+                  // This ensures the AI pipeline generates an appropriate note type (Nurses
+                  // Note or Non-Visit) rather than a provider SOAP note.
+                  if (isStaff) {
+                    const tmpl = encounterTemplates.find(t => String(t.id) === selectedTemplateId);
+                    if (!tmpl || tmpl.noteType === "soap") {
+                      toast({
+                        variant: "destructive",
+                        title: "Choose a note template first",
+                        description: "Select a Nurses Note or Non-Visit template before starting the recording.",
+                      });
+                      return null;
+                    }
                   }
                   let encounterId = savedId;
                   if (!encounterId && !isAutoSavingRef.current) {

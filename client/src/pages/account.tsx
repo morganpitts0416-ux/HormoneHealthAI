@@ -138,21 +138,21 @@ interface MessagingSettings {
 
 type SectionId = "clinic" | "provider" | "branding" | "messaging" | "team" | "preferences" | "diagnoses" | "forms" | "submissions" | "notes" | "blockDefaults" | "chartReview" | "juneSettings" | "encounterTemplates" | "formWorkflows" | "integrations" | "sprucePlaybook" | "baa" | "billing" | "dataImport";
 
-const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; badge?: string }[] = [
+const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ className?: string }>; clinicianOnly?: boolean; providerVisible?: boolean; ownerOnly?: boolean; staffVisible?: boolean; badge?: string }[] = [
   { id: "clinic", label: "Clinic Information", icon: Building2, clinicianOnly: true, ownerOnly: true },
-  { id: "provider", label: "Provider Details", icon: User, clinicianOnly: true, providerVisible: true },
-  { id: "branding", label: "Branding & Signature", icon: ImagePlus, clinicianOnly: true, providerVisible: true },
+  { id: "provider", label: "My Profile", icon: User, clinicianOnly: true, providerVisible: true, staffVisible: true },
+  { id: "branding", label: "Branding & Signature", icon: ImagePlus, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "team", label: "Staff & Team", icon: Users, clinicianOnly: true, ownerOnly: true },
   { id: "messaging", label: "Messaging Settings", icon: MessageSquare, clinicianOnly: true, ownerOnly: true },
-  { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, ownerOnly: true },
-  { id: "diagnoses", label: "Diagnosis Presets", icon: ClipboardList, clinicianOnly: true, providerVisible: true },
-  { id: "notes", label: "Note Templates", icon: FileText, clinicianOnly: true, providerVisible: true },
-  { id: "blockDefaults", label: "Clinical Block Defaults", icon: Stethoscope, clinicianOnly: true, providerVisible: true },
+  { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, providerVisible: true },
+  { id: "diagnoses", label: "Diagnosis Presets", icon: ClipboardList, clinicianOnly: true, providerVisible: true, staffVisible: true },
+  { id: "notes", label: "Note Templates", icon: FileText, clinicianOnly: true, providerVisible: true, staffVisible: true },
+  { id: "blockDefaults", label: "Clinical Block Defaults", icon: Stethoscope, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "chartReview", label: "Chart Review", icon: ShieldCheck, clinicianOnly: true, providerVisible: true },
-  { id: "juneSettings", label: "Teach June", icon: BrainCircuit, clinicianOnly: true, providerVisible: true },
-  { id: "encounterTemplates", label: "Encounter Templates", icon: FileText, clinicianOnly: true, providerVisible: true },
-  { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true, ownerOnly: true },
-  { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true, ownerOnly: true },
+  { id: "juneSettings", label: "Teach June", icon: BrainCircuit, clinicianOnly: true, providerVisible: true, staffVisible: true },
+  { id: "encounterTemplates", label: "Encounter Templates", icon: FileText, clinicianOnly: true, providerVisible: true, staffVisible: true },
+  { id: "forms", label: "Form Builder", icon: FileText, clinicianOnly: true, staffVisible: true },
+  { id: "submissions", label: "Form Submissions", icon: Inbox, clinicianOnly: true, staffVisible: true },
   { id: "formWorkflows", label: "Form Workflows", icon: Workflow, clinicianOnly: true, ownerOnly: true },
   { id: "integrations", label: "Integrations", icon: Zap, clinicianOnly: true, ownerOnly: true },
   { id: "sprucePlaybook", label: "June Playbook (Spruce)", icon: Bot, clinicianOnly: true, ownerOnly: true },
@@ -575,15 +575,18 @@ export default function Account() {
   const queryClient = useQueryClient();
   const { toast } = useToast();
 
+  const isStaffEarly = !!(user as any)?.isStaff;
+
   // Allow deep-linking to a specific section via `?section=...` (e.g. from the
-  // Settings dropdown's "Note Templates" entry). Falls back to "clinic".
+  // Settings dropdown's "Note Templates" entry). Staff default to "provider";
+  // clinicians default to "clinic".
   const initialSection = (() => {
     try {
       const params = new URLSearchParams(searchStr);
       const s = params.get("section");
       if (s && SECTIONS.some(sec => sec.id === s)) return s as SectionId;
     } catch {}
-    return "clinic" as SectionId;
+    return (isStaffEarly ? "provider" : "clinic") as SectionId;
   })();
   const [activeSection, setActiveSection] = useState<SectionId>(initialSection);
 
@@ -669,14 +672,18 @@ export default function Account() {
     // Suite providers (non-admin clinicians on a paid suite plan) can only see
     // the provider-visible sections. Keep this list in sync with
     // `providerVisible: true` entries in SECTIONS above.
-    const providerAllowed: SectionId[] = ["provider", "branding", "diagnoses", "notes", "blockDefaults", "chartReview", "juneSettings"];
+    const providerAllowed: SectionId[] = ["provider", "branding", "diagnoses", "notes", "blockDefaults", "chartReview", "juneSettings", "encounterTemplates", "preferences"];
+    const staffAllowed = SECTIONS.filter(s => s.staffVisible).map(s => s.id);
+    if (isStaff && !staffAllowed.includes(activeSection)) {
+      setActiveSection("provider");
+    }
     if (isSuiteProvider && !providerAllowed.includes(activeSection)) {
       setActiveSection("provider");
     }
     if (isAdmin && SECTIONS.find(s => s.id === activeSection)?.ownerOnly) {
       setActiveSection("provider");
     }
-  }, [isSuiteProvider, isAdmin, activeSection]);
+  }, [isStaff, isSuiteProvider, isAdmin, activeSection]);
 
   const [inviteEmail, setInviteEmail] = useState("");
   const [inviteFirstName, setInviteFirstName] = useState("");
@@ -952,6 +959,42 @@ export default function Account() {
     },
   });
 
+  // ── Staff profile form ────────────────────────────────────────────────────
+  const [staffFirstName, setStaffFirstName] = useState((user as any)?.staffFirstName ?? "");
+  const [staffLastName, setStaffLastName] = useState((user as any)?.staffLastName ?? "");
+  const [staffCredentials, setStaffCredentials] = useState((user as any)?.credentials ?? "");
+  const [staffTitle, setStaffTitle] = useState((user as any)?.title ?? "");
+  const [staffCurrentPw, setStaffCurrentPw] = useState("");
+  const [staffNewPw, setStaffNewPw] = useState("");
+  const [staffProfileSaved, setStaffProfileSaved] = useState(false);
+  useEffect(() => {
+    if (user && isStaff) {
+      setStaffFirstName((user as any).staffFirstName ?? "");
+      setStaffLastName((user as any).staffLastName ?? "");
+      setStaffCredentials((user as any).credentials ?? "");
+      setStaffTitle((user as any).title ?? "");
+    }
+  }, [(user as any)?.staffId]); // eslint-disable-line react-hooks/exhaustive-deps
+
+  const staffProfileMutation = useMutation({
+    mutationFn: async (payload: Record<string, string | undefined>) => {
+      const res = await apiRequest("PATCH", "/api/staff/me/profile", payload);
+      if (!res.ok) { const e = await res.json(); throw new Error(e.message || "Failed to save"); }
+      return res.json();
+    },
+    onSuccess: () => {
+      queryClient.invalidateQueries({ queryKey: ["/api/auth/me"] });
+      setStaffCurrentPw("");
+      setStaffNewPw("");
+      setStaffProfileSaved(true);
+      toast({ title: "Profile updated", description: "Your information has been saved." });
+      setTimeout(() => setStaffProfileSaved(false), 3000);
+    },
+    onError: (err: Error) => {
+      toast({ title: "Update failed", description: err.message, variant: "destructive" });
+    },
+  });
+
   const messagingMutation = useMutation({
     mutationFn: async () => {
       const payload: Record<string, unknown> = { messagingPreference };
@@ -1022,7 +1065,7 @@ export default function Account() {
       externalProvider !== 'custom');
 
   const visibleSections = isStaff
-    ? []
+    ? SECTIONS.filter(s => s.staffVisible)
     : isSuiteProvider
       ? SECTIONS.filter(s => s.providerVisible)
       : isAdmin
@@ -1103,6 +1146,131 @@ export default function Account() {
         );
 
       case "provider":
+        if (isStaff) {
+          return (
+            <div className="space-y-4">
+              <div>
+                <h3 className="text-base font-semibold" style={{ color: "#1c2414" }}>My Profile</h3>
+                <p className="text-sm text-muted-foreground mt-1">Your name and credentials appear on any clinical notes you sign</p>
+              </div>
+              <Card>
+                <CardContent className="pt-5">
+                  <form
+                    onSubmit={(e) => {
+                      e.preventDefault();
+                      const payload: Record<string, string | undefined> = {
+                        firstName: staffFirstName.trim(),
+                        lastName: staffLastName.trim(),
+                        credentials: staffCredentials.trim() || undefined,
+                        title: staffTitle.trim() || undefined,
+                      };
+                      if (staffNewPw) {
+                        payload.currentPassword = staffCurrentPw;
+                        payload.password = staffNewPw;
+                      }
+                      staffProfileMutation.mutate(payload);
+                    }}
+                    className="space-y-5"
+                  >
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="staff-firstName">First Name</Label>
+                        <Input
+                          id="staff-firstName"
+                          data-testid="input-staff-firstName"
+                          value={staffFirstName}
+                          onChange={e => setStaffFirstName(e.target.value)}
+                          required
+                        />
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="staff-lastName">Last Name</Label>
+                        <Input
+                          id="staff-lastName"
+                          data-testid="input-staff-lastName"
+                          value={staffLastName}
+                          onChange={e => setStaffLastName(e.target.value)}
+                          required
+                        />
+                      </div>
+                    </div>
+                    <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                      <div className="space-y-1.5">
+                        <Label htmlFor="staff-credentials">
+                          Credentials
+                          <span className="ml-1 text-muted-foreground text-xs font-normal">(optional)</span>
+                        </Label>
+                        <Input
+                          id="staff-credentials"
+                          data-testid="input-staff-credentials"
+                          placeholder="e.g. RN, LPN, MA, CNA"
+                          value={staffCredentials}
+                          onChange={e => setStaffCredentials(e.target.value)}
+                        />
+                        <p className="text-xs text-muted-foreground">Appears after your name on signed notes (e.g. Jane Doe, RN)</p>
+                      </div>
+                      <div className="space-y-1.5">
+                        <Label htmlFor="staff-title">
+                          Title
+                          <span className="ml-1 text-muted-foreground text-xs font-normal">(optional)</span>
+                        </Label>
+                        <Input
+                          id="staff-title"
+                          data-testid="input-staff-title"
+                          placeholder="e.g. Registered Nurse"
+                          value={staffTitle}
+                          onChange={e => setStaffTitle(e.target.value)}
+                        />
+                      </div>
+                    </div>
+                    <Separator />
+                    <div>
+                      <p className="text-sm font-medium mb-3">Change Password</p>
+                      <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                        <div className="space-y-1.5">
+                          <Label htmlFor="staff-current-pw">Current Password</Label>
+                          <Input
+                            id="staff-current-pw"
+                            data-testid="input-staff-current-password"
+                            type="password"
+                            value={staffCurrentPw}
+                            onChange={e => setStaffCurrentPw(e.target.value)}
+                            autoComplete="current-password"
+                          />
+                        </div>
+                        <div className="space-y-1.5">
+                          <Label htmlFor="staff-new-pw">New Password</Label>
+                          <Input
+                            id="staff-new-pw"
+                            data-testid="input-staff-new-password"
+                            type="password"
+                            value={staffNewPw}
+                            onChange={e => setStaffNewPw(e.target.value)}
+                            autoComplete="new-password"
+                            minLength={8}
+                          />
+                        </div>
+                      </div>
+                    </div>
+                    <div className="flex items-center justify-between pt-2 flex-wrap gap-3">
+                      <div className="h-5">
+                        {staffProfileSaved && (
+                          <span className="flex items-center gap-1.5 text-green-600 text-sm font-medium">
+                            <CheckCircle className="w-4 h-4" />Saved
+                          </span>
+                        )}
+                      </div>
+                      <Button data-testid="button-save-staff-profile" type="submit" disabled={staffProfileMutation.isPending}>
+                        <Save className="w-4 h-4 mr-2" />
+                        {staffProfileMutation.isPending ? "Saving..." : "Save Changes"}
+                      </Button>
+                    </div>
+                  </form>
+                </CardContent>
+              </Card>
+            </div>
+          );
+        }
         return (
           <div className="space-y-4">
             <div>

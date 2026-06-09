@@ -757,6 +757,11 @@ export const clinicianStaff = pgTable("clinician_staff", {
   passwordResetToken: varchar("password_reset_token", { length: 255 }),
   passwordResetExpires: timestamp("password_reset_expires"),
   isActive: boolean("is_active").notNull().default(true),
+  // Professional credentials — what this person puts after their name on signed notes
+  // e.g. 'RN', 'LPN', 'CNA', 'MA', 'NP', 'PA'. Free-text; set by the staff member.
+  credentials: varchar("credentials", { length: 50 }),
+  // Display title for their role (e.g. 'Registered Nurse', 'Medical Assistant')
+  title: varchar("title", { length: 100 }),
   // HIPAA: login lockout tracking
   loginAttempts: integer("login_attempts").notNull().default(0),
   lockedUntil: timestamp("locked_until"),
@@ -2308,6 +2313,9 @@ export const junePreferences = pgTable("june_preferences", {
   id: serial("id").primaryKey(),
   clinicianId: integer("clinician_id").notNull().references(() => users.id, { onDelete: "cascade" }),
   clinicId: integer("clinic_id"),
+  // When set, this preference belongs to a specific staff member (not the clinician account owner).
+  // Null = preference belongs to the clinician themselves.
+  staffId: integer("staff_id").references(() => clinicianStaff.id, { onDelete: "cascade" }),
   category: text("category").notNull().default("instruction"),
   label: text("label").notNull(),
   instruction: text("instruction").notNull(),
