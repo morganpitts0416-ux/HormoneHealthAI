@@ -4482,6 +4482,22 @@ export default function PatientProfiles() {
                                 )}
                               </div>
                               <div className="flex items-center gap-1 flex-shrink-0">
+                                {!hasSoap && !isSigned && noteType === "soap_provider" && (
+                                  <Button
+                                    size="sm"
+                                    variant="outline"
+                                    className="h-7 text-[10px] gap-1"
+                                    onClick={(e) => {
+                                      e.stopPropagation();
+                                      setLocation(`/encounters?encounterId=${enc.id}`);
+                                    }}
+                                    data-testid={`button-generate-soap-${enc.id}`}
+                                    title="Open encounter editor to generate SOAP note"
+                                  >
+                                    <FileText className="w-3 h-3" />
+                                    Generate SOAP
+                                  </Button>
+                                )}
                                 {hasSoap && !isSigned && (
                                   <Button
                                     size="sm"

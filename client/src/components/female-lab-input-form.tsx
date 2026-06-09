@@ -137,10 +137,29 @@ export function FemaleLabInputForm({ onSubmit, isLoading = false, initialValues 
   const handlePatientSuggestionSelect = (patient: any) => {
     const fullName = `${patient.firstName} ${patient.lastName}`;
     form.setValue("patientName", fullName);
+    // Auto-fill age from DOB
     if (patient.dateOfBirth) {
       const dob = new Date(patient.dateOfBirth);
       const age = Math.floor((Date.now() - dob.getTime()) / (365.25 * 24 * 60 * 60 * 1000));
       form.setValue("demographics.age" as any, age);
+    }
+    // Auto-fill systolic BP and BMI from most recent vitals within last 90 days
+    if (patient.id) {
+      fetch(`/api/patients/${patient.id}/vitals`, { credentials: "include" })
+        .then(r => r.ok ? r.json() : [])
+        .then((vitals: any[]) => {
+          const cutoff = Date.now() - 90 * 24 * 60 * 60 * 1000;
+          const recent = vitals.filter((v: any) => new Date(v.recordedAt).getTime() >= cutoff);
+          const bpEntry = recent.find((v: any) => v.systolicBp != null);
+          const bmiEntry = recent.find((v: any) => v.bmi != null);
+          if (bpEntry && !form.getValues("demographics.systolicBP" as any)) {
+            form.setValue("demographics.systolicBP" as any, bpEntry.systolicBp);
+          }
+          if (bmiEntry && !form.getValues("demographics.bmi" as any)) {
+            form.setValue("demographics.bmi" as any, parseFloat(bmiEntry.bmi));
+          }
+        })
+        .catch(() => {});
     }
     setPatientSelectedFlag(true);
     setShowPatientDropdown(false);

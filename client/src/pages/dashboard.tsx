@@ -604,14 +604,15 @@ export default function Dashboard() {
                       key={`enc-${enc.id}`}
                       type="button"
                       onClick={() => {
-                        // AI-generated encounters (have a soapGeneratedAt timestamp) open in
-                        // the AI SOAP editor. Manual notes (nurse, phone, manual SOAP — no AI
-                        // generation step) open in the patient profile encounters tab.
-                        const isAiGenerated = !!enc.soapGeneratedAt;
-                        if (isAiGenerated) {
-                          setLocation(`/encounters?encounterId=${enc.id}`);
-                        } else {
+                        // Nurse and phone notes are written inline in the patient profile
+                        // encounters tab. All other encounters (including recordings that
+                        // need SOAP generation — soapGeneratedAt may still be null) open
+                        // in the encounter editor where SOAP can be generated/reviewed.
+                        const isInlineNote = enc.noteType === "nurse" || enc.noteType === "phone";
+                        if (isInlineNote) {
                           setLocation(`/patients?patient=${enc.patientId}&tab=encounters`);
+                        } else {
+                          setLocation(`/encounters?encounterId=${enc.id}`);
                         }
                       }}
                       className="w-full text-left px-4 py-3 flex items-center gap-3 hover-elevate active-elevate-2"
