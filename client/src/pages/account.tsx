@@ -2339,37 +2339,16 @@ export default function Account() {
         </div>
 
         {/* Main Content */}
-        <main className="flex-1 min-w-0">
-          {isStaff ? (
-            <div className="space-y-6">
-              <div className="flex items-center gap-3 mb-2">
-                <div className="w-14 h-14 rounded-full flex items-center justify-center text-lg font-bold" style={{ backgroundColor: "#2e3a20", color: "#f9f6f0" }}>
-                  {`${(user as any)?.staffFirstName?.[0] ?? ""}${(user as any)?.staffLastName?.[0] ?? ""}`}
-                </div>
-                <div>
-                  <h1 className="text-xl font-semibold" style={{ color: "#1c2414" }}>
-                    {(user as any)?.staffFirstName} {(user as any)?.staffLastName}
-                  </h1>
-                  <p className="text-sm text-muted-foreground">{user?.clinicName}</p>
-                  <p className="text-xs text-muted-foreground mt-0.5">
-                    Staff · {(user as any)?.staffRole || "staff"} · logged into {user?.firstName} {user?.lastName}'s workspace
-                  </p>
-                </div>
-              </div>
-              <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 p-4">
-                <ShieldAlert className="w-5 h-5 text-amber-600 mt-0.5 shrink-0" />
-                <div className="space-y-1">
-                  <p className="text-sm font-medium text-amber-900">Staff account</p>
-                  <p className="text-sm text-amber-800">
-                    You are logged in as a staff member. Clinic settings, messaging preferences, and account details are managed by {user?.firstName} {user?.lastName}.
-                    You have full access to patient records, lab interpretations, and protocols.
-                  </p>
-                </div>
-              </div>
+        <main className="flex-1 min-w-0 space-y-4">
+          {isStaff && (
+            <div className="flex items-start gap-3 rounded-md border border-amber-200 bg-amber-50 dark:bg-amber-950/30 dark:border-amber-800 px-4 py-3">
+              <ShieldAlert className="w-4 h-4 text-amber-600 mt-0.5 shrink-0" />
+              <p className="text-xs text-amber-800 dark:text-amber-200">
+                Staff account · Clinic-wide settings are managed by {user?.firstName} {user?.lastName}. Your profile, templates, and June preferences below are yours alone.
+              </p>
             </div>
-          ) : (
-            renderSection()
           )}
+          {renderSection()}
         </main>
       </div>
 
