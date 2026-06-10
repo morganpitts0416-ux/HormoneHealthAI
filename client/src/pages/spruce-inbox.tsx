@@ -356,11 +356,15 @@ function DateDivider({ label }: { label: string }) {
 // ── Main page ──────────────────────────────────────────────────────────────────
 
 export default function SpruceInboxPage() {
-  const [, setLocation] = useLocation();
+  const [location, setLocation] = useLocation();
   const { toast } = useToast();
   const { user } = useAuth();
   const qc = useQueryClient();
-  const [selectedKey, setSelectedKey] = useState<string | null>(null);
+  const [selectedKey, setSelectedKey] = useState<string | null>(() => {
+    // Pre-seed from ?key= so the conversation is selected on first render
+    const qs = typeof window !== "undefined" ? window.location.search : location.split("?")[1] ?? "";
+    return new URLSearchParams(qs).get("key") ?? null;
+  });
   const [search, setSearch] = useState("");
   const [activeView, setActiveView] = useState<SidebarView>("all");
   const [sort] = useState<"newest" | "oldest">("newest");

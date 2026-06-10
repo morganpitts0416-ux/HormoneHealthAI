@@ -19756,6 +19756,12 @@ IMPORTANT:
         /archived and unassigned this conversation/i.test(msgBody) ||
         /assigned this conversation to\b/i.test(msgBody) ||
         /\bunassigned this conversation\b/i.test(msgBody) ||
+        // Spruce "like" / emoji reaction events echo the original message text
+        // inside a 'Liked "…"' wrapper.  The echoed text may contain words like
+        // "911" or "emergency" that would otherwise trigger urgent_safety.
+        // Treat all reaction events as system events so they are stored only.
+        /^Liked\s+["""'']/i.test(msgBody) ||
+        /^Reacted\s+.+?\s+to\s+["""'']/i.test(msgBody) ||
         // Answered calls — call was handled live, June must stay silent.
         // Missed calls are NOT system events; they fall through to inbound_patient
         // so June can follow up.
@@ -20057,11 +20063,15 @@ IMPORTANT:
             ? await storage.getOpenSpruceWorkflowRequestByConversation(matchedClinicId, convKey).catch(() => null)
             : null;
 
-          if (existingWr && existingWr.workflow === classification.workflow) {
-            // Reuse the existing workflow request — this is a follow-up turn
+          if (existingWr) {
+            // Reuse the existing workflow request for ANY follow-up message in
+            // this conversation — even if the new message classifies differently
+            // (e.g. patient replies "Thanks, when will it be ready?" which might
+            // keyword-match as appointment).  Creating a new request on every
+            // patient response floods the dashboard with duplicate items.
             createdWorkflowRequestId = existingWr.id;
             existingJuneTurnCount = existingWr.juneTurnCount ?? 0;
-            console.log(`${tag} reusing spruce_workflow_requests id=${existingWr.id} (turn=${existingJuneTurnCount}) for workflow="${classification.workflow}"`);
+            console.log(`${tag} reusing spruce_workflow_requests id=${existingWr.id} (turn=${existingJuneTurnCount}) orig_workflow="${existingWr.workflow}" new_workflow="${classification.workflow}"`);
           } else {
             try {
               const convUrl = spruceConversationId
@@ -20198,8 +20208,23 @@ IMPORTANT:
     // Text-based missed call detection as fallback (e.g. "Missed call" in body)
     if (/\bmissed\s+call\b/i.test(t)) return { workflow: "missed_call", confidence: "high" };
 
+    // Spruce "like" / reaction events: the body echoes the original message
+    // inside a 'Liked "…"' wrapper (e.g. clinic auto-reply containing "call 911").
+    // The isSystemEvent gate above should catch these first, but this is a
+    // second layer of defence in case the direction field is ambiguous.
+    if (/^liked\s+["""'']/i.test(t) || /^reacted\s+.+?\s+to\s+["""'']/i.test(t)) {
+      return { workflow: "unclassified", confidence: "low" };
+    }
+
     // Urgent safety — always checked first regardless of other matches.
-    if (/chest\s*pain|suicid|heart\s*attack|stroke|emergency|911|bleeding severely|severe\s*pain/.test(t)) {
+    // Guard: only flag as urgent when the patient is describing their OWN
+    // symptoms/emergency, not when the text merely quotes safety boilerplate
+    // (e.g. "If this is an emergency, call 911") from an outbound template.
+    // We look for first-person signals alongside the emergency keywords.
+    const hasEmergencyKeyword = /chest\s*pain|suicid|heart\s*attack|stroke|bleeding severely|severe\s*pain/.test(t);
+    // "911" alone is not enough — require it alongside a first-person distress signal
+    const has911WithDistress = /\b911\b/.test(t) && /\b(i('m| am)|my|i have|i feel|i can't|i can not|help\s*me|hurting)\b/.test(t);
+    if (hasEmergencyKeyword || has911WithDistress) {
       return { workflow: "urgent_safety", confidence: "high" };
     }
     // Medication refill
