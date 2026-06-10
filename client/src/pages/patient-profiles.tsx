@@ -21,7 +21,7 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, EyeOff, CalendarDays, Phone, Paperclip,
-  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap,
+  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap, ListChecks,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
@@ -2064,6 +2064,9 @@ export default function PatientProfiles() {
   const [showFullDemographics, setShowFullDemographics] = useState(false);
   const [searchTerm, setSearchTerm] = useState("");
   const [genderFilter, setGenderFilter] = useState<"all" | "male" | "female">("all");
+  const [bulkEditMode, setBulkEditMode] = useState(false);
+  const [selectedIds, setSelectedIds] = useState<Set<number>>(new Set());
+  const [bulkGender, setBulkGender] = useState<"male" | "female">("female");
   const [showInviteModal, setShowInviteModal] = useState(false);
   const [showAppointmentDialog, setShowAppointmentDialog] = useState(false);
   const [showUpcomingApptsDialog, setShowUpcomingApptsDialog] = useState(false);
@@ -2985,6 +2988,23 @@ export default function PatientProfiles() {
     },
   });
 
+  const bulkGenderMutation = useMutation({
+    mutationFn: async ({ patientIds, gender }: { patientIds: number[]; gender: "male" | "female" }) => {
+      const res = await apiRequest("PATCH", "/api/patients/bulk-gender", { patientIds, gender });
+      if (!res.ok) { const e = await res.json().catch(() => ({})); throw new Error(e.error || "Failed to update"); }
+      return res.json() as Promise<{ updated: number }>;
+    },
+    onSuccess: (result) => {
+      queryClient.invalidateQueries({ queryKey: ["/api/patients/search", ""] });
+      setBulkEditMode(false);
+      setSelectedIds(new Set());
+      toast({ title: "Gender updated", description: `${result.updated} patient${result.updated !== 1 ? "s" : ""} updated successfully.` });
+    },
+    onError: (err: Error) => {
+      toast({ variant: "destructive", title: "Update failed", description: err.message });
+    },
+  });
+
   const handleEditPatientOpen = () => {
     if (!selectedPatient) return;
     const dob = selectedPatient.dateOfBirth
@@ -3152,6 +3172,70 @@ export default function PatientProfiles() {
                 <ArrowRightLeft className="h-3.5 w-3.5 mr-1.5" /> Merge Duplicate Patients
               </Button>
             )}
+            {allPatients.length > 0 && (
+              <Button
+                size="sm"
+                variant={bulkEditMode ? "default" : "outline"}
+                className="w-full text-xs"
+                onClick={() => { setBulkEditMode(v => !v); setSelectedIds(new Set()); }}
+                data-testid="button-bulk-edit-toggle"
+              >
+                <ListChecks className="h-3.5 w-3.5 mr-1.5" />
+                {bulkEditMode ? "Exit Bulk Edit" : "Bulk Edit Gender"}
+              </Button>
+            )}
+            {bulkEditMode && (
+              <div className="rounded-md border border-amber-300/70 bg-amber-50/60 dark:bg-amber-950/20 p-2.5 space-y-2">
+                <div className="flex items-center justify-between gap-1">
+                  <span className="text-xs font-medium text-amber-900 dark:text-amber-200">
+                    {selectedIds.size} patient{selectedIds.size !== 1 ? "s" : ""} selected
+                  </span>
+                  <div className="flex gap-1">
+                    <button
+                      className="text-[11px] text-amber-700 dark:text-amber-300 underline underline-offset-2"
+                      onClick={() => setSelectedIds(new Set(filteredPatients.map(p => p.id)))}
+                      data-testid="button-bulk-select-all"
+                    >
+                      Select all ({filteredPatients.length})
+                    </button>
+                    {selectedIds.size > 0 && (
+                      <>
+                        <span className="text-amber-400">·</span>
+                        <button
+                          className="text-[11px] text-amber-700 dark:text-amber-300 underline underline-offset-2"
+                          onClick={() => setSelectedIds(new Set())}
+                          data-testid="button-bulk-deselect-all"
+                        >
+                          Clear
+                        </button>
+                      </>
+                    )}
+                  </div>
+                </div>
+                <div className="flex gap-1.5">
+                  <Select value={bulkGender} onValueChange={(v) => setBulkGender(v as "male" | "female")}>
+                    <SelectTrigger className="h-7 text-xs flex-1" data-testid="select-bulk-gender">
+                      <SelectValue />
+                    </SelectTrigger>
+                    <SelectContent>
+                      <SelectItem value="female">Women's</SelectItem>
+                      <SelectItem value="male">Men's</SelectItem>
+                    </SelectContent>
+                  </Select>
+                  <Button
+                    size="sm"
+                    className="h-7 text-xs px-2.5 shrink-0"
+                    disabled={selectedIds.size === 0 || bulkGenderMutation.isPending}
+                    onClick={() => bulkGenderMutation.mutate({ patientIds: Array.from(selectedIds), gender: bulkGender })}
+                    data-testid="button-bulk-apply-gender"
+                    style={{ backgroundColor: "#2e3a20", color: "#fff", border: "none" }}
+                  >
+                    {bulkGenderMutation.isPending ? <Loader2 className="h-3 w-3 animate-spin" /> : <Check className="h-3 w-3 mr-1" />}
+                    Apply
+                  </Button>
+                </div>
+              </div>
+            )}
           </div>
 
           {/* Patient list */}
@@ -3180,23 +3264,52 @@ export default function PatientProfiles() {
                 </div>
                 {group.patients.map(patient => {
                   const isSelected = selectedPatient?.id === patient.id;
+                  const isBulkChecked = selectedIds.has(patient.id);
                   return (
                     <button
                       key={patient.id}
-                      onClick={() => { setSelectedPatient(patient); setViewingLab(null); setShowMessages(false); setMessageDraft(""); setProfileSection("overview"); setListCollapsed(true); }}
+                      onClick={() => {
+                        if (bulkEditMode) {
+                          setSelectedIds(prev => {
+                            const next = new Set(prev);
+                            if (next.has(patient.id)) next.delete(patient.id);
+                            else next.add(patient.id);
+                            return next;
+                          });
+                        } else {
+                          setSelectedPatient(patient); setViewingLab(null); setShowMessages(false); setMessageDraft(""); setProfileSection("overview"); setListCollapsed(true);
+                        }
+                      }}
                       className={cn(
                         "w-full px-3 py-2.5 flex items-center gap-3 text-left transition-colors",
-                        isSelected
-                          ? "bg-primary/10 border-r-2 border-primary"
-                          : "hover:bg-muted/50"
+                        bulkEditMode
+                          ? isBulkChecked
+                            ? "bg-amber-50/70 dark:bg-amber-950/25"
+                            : "hover:bg-muted/50"
+                          : isSelected
+                            ? "bg-primary/10 border-r-2 border-primary"
+                            : "hover:bg-muted/50"
                       )}
                       data-testid={`button-select-patient-${patient.id}`}
                     >
-                      <PatientAvatar patient={patient} size="sm" />
+                      {bulkEditMode ? (
+                        <span className={cn(
+                          "flex-shrink-0 w-4 h-4 rounded border flex items-center justify-center transition-colors",
+                          isBulkChecked
+                            ? "bg-amber-600 border-amber-600"
+                            : "border-muted-foreground/40 bg-background"
+                        )}>
+                          {isBulkChecked && <Check className="h-2.5 w-2.5 text-white" />}
+                        </span>
+                      ) : (
+                        <PatientAvatar patient={patient} size="sm" />
+                      )}
                       <div className="min-w-0 flex-1">
                         <p className={cn(
                           "text-sm font-medium truncate",
-                          isSelected ? "text-primary" : "text-foreground"
+                          bulkEditMode
+                            ? isBulkChecked ? "text-amber-900 dark:text-amber-100" : "text-foreground"
+                            : isSelected ? "text-primary" : "text-foreground"
                         )}>
                           {patient.firstName} {patient.lastName}
                         </p>

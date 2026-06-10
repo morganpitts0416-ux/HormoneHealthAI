@@ -11,7 +11,7 @@ import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
 import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema } from "@shared/schema";
-import { eq, and, sql, desc, isNull, isNotNull, or, ilike } from "drizzle-orm";
+import { eq, and, sql, desc, isNull, isNotNull, or, ilike, inArray } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
 import { AIService } from "./ai-service";
@@ -3371,6 +3371,36 @@ Rules:
   });
 
   // Delete a patient profile (and all their lab results, portal data, etc. via cascade)
+  // PATCH /api/patients/bulk-gender — update gender for a list of patient IDs in one shot
+  app.patch("/api/patients/bulk-gender", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const schema = z.object({
+        patientIds: z.array(z.number().int().positive()).min(1).max(2000),
+        gender: z.enum(["male", "female"]),
+      });
+      const parsed = schema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
+      const { patientIds, gender } = parsed.data;
+
+      // Scope guard: only update patients that belong to this clinician/clinic
+      const scopeCondition = clinicId
+        ? or(eq(patientsTable.clinicId, clinicId), and(eq(patientsTable.userId, clinicianId), isNull(patientsTable.clinicId)))
+        : and(eq(patientsTable.userId, clinicianId), isNull(patientsTable.clinicId));
+
+      const result = await storageDb
+        .update(patientsTable)
+        .set({ gender })
+        .where(and(inArray(patientsTable.id, patientIds), scopeCondition!));
+
+      res.json({ updated: patientIds.length });
+    } catch (error) {
+      console.error("[bulk-gender] Error:", error);
+      res.status(500).json({ error: "Failed to update patients" });
+    }
+  });
+
   app.delete("/api/patients/:id", requireAuth, async (req, res) => {
     try {
       const clinicianId = getClinicianId(req);
