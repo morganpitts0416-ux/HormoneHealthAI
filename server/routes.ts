@@ -15599,6 +15599,19 @@ Generate the warm, plain-language patient visit summary now. Follow the formatti
     }
   });
 
+  // ── CPT Code Search ───────────────────────────────────────────────────────────
+  app.get("/api/cpt/search", requireAuth, async (req, res) => {
+    try {
+      const { searchCPT } = await import("./cpt-codes");
+      const q = ((req.query.q as string) || "").trim();
+      const results = searchCPT(q, 15);
+      res.json(results);
+    } catch (err: any) {
+      console.error("[CPT Search] Error:", err);
+      res.status(500).json({ message: "Failed to search CPT codes" });
+    }
+  });
+
   // ── Diagnosis Presets CRUD (clinic-wide; any provider can create/edit/delete) ──
   const diagnosisPresetInput = z.object({
     title: z.string().trim().min(1, "Title is required").max(300),

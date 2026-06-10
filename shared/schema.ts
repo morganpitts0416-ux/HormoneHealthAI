@@ -3181,6 +3181,12 @@ export const clinicalOrders = pgTable("clinical_orders", {
   facilityFax: varchar("facility_fax", { length: 30 }),
   reason: text("reason"),
   icd10Codes: text("icd10_codes").array(),
+  // Single selected ICD-10 code + label (from the lookup combobox)
+  diagnosisCode: text("diagnosis_code"),
+  diagnosisName: text("diagnosis_name"),
+  // Single selected CPT code + description
+  cptCode: text("cpt_code"),
+  cptDescription: text("cpt_description"),
   // 'routine' | 'urgent' | 'stat'
   priority: varchar("priority", { length: 20 }).notNull().default("routine"),
   targetDate: text("target_date"),
