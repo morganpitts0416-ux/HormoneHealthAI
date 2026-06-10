@@ -5189,6 +5189,11 @@ export interface SpruceConversationMessageRow {
   patientId: number | null;
   patientFirstName: string | null;
   patientLastName: string | null;
+  spruceContactName: string | null;
+  // 'spruce' = came from spruce_messages; 'portal' = came from portal_messages
+  source: 'spruce' | 'portal';
+  // messageType from portal_messages; null for spruce-source rows
+  portalMessageType: string | null;
 }
 
 (DbStorage.prototype as any).listSpruceConversations = async function(
@@ -5350,8 +5355,9 @@ export interface SpruceConversationMessageRow {
   clinicId: number,
   conversationKey: string,
 ): Promise<SpruceConversationMessageRow[]> {
+  // ── 1. Spruce messages for this conversation ─────────────────────────────
   // conversationKey is either a spruceConversationId or a phone number
-  return db
+  const spruceRows = await db
     .select({
       id: schema.spruceMessages.id,
       spruceConversationId: schema.spruceMessages.spruceConversationId,
@@ -5365,6 +5371,7 @@ export interface SpruceConversationMessageRow {
       patientId: schema.spruceMessages.patientId,
       patientFirstName: schema.patients.firstName,
       patientLastName: schema.patients.lastName,
+      spruceContactName: schema.spruceMessages.spruceContactName,
     })
     .from(schema.spruceMessages)
     .leftJoin(schema.patients, eq(schema.spruceMessages.patientId, schema.patients.id))
@@ -5381,6 +5388,59 @@ export interface SpruceConversationMessageRow {
       ),
     )
     .orderBy(asc(schema.spruceMessages.receivedAt));
+
+  const tagged: SpruceConversationMessageRow[] = spruceRows.map(r => ({
+    ...r,
+    source: 'spruce' as const,
+    portalMessageType: null,
+  }));
+
+  // ── 2. Portal messages for the matched patient ───────────────────────────
+  // Use a negative-ID offset for portal rows so React keys never collide with
+  // spruce message IDs (both come from separate auto-increment sequences).
+  const patientId = spruceRows.find(r => r.patientId != null)?.patientId ?? null;
+  if (!patientId) return tagged;
+
+  const portalRows = await db
+    .select()
+    .from(schema.portalMessages)
+    .where(eq(schema.portalMessages.patientId, patientId))
+    .orderBy(asc(schema.portalMessages.createdAt));
+
+  const portalTagged: SpruceConversationMessageRow[] = portalRows.map(p => {
+    const messageType = (p as any).messageType ?? 'message';
+    const senderType = p.senderType;
+    // Map portal senderType + messageType → Spruce-compatible messageDirection
+    let messageDirection: string;
+    if (messageType !== 'message') {
+      // internal_note, june_memo, workflow_note, system_event — render as system
+      messageDirection = 'spruce_system_event';
+    } else {
+      messageDirection = senderType === 'patient' ? 'inbound_patient' : 'outbound_staff';
+    }
+    return {
+      id: -(p.id),                  // negative = portal; guarantees no collision
+      spruceConversationId: null,
+      fromPhone: null,
+      toPhone: null,
+      messageBody: p.content,
+      messageDirection,
+      eventType: messageType !== 'message' ? messageType : null,
+      staffRepliedAt: null,
+      receivedAt: p.createdAt,
+      patientId,
+      patientFirstName: null,
+      patientLastName: null,
+      spruceContactName: senderType === 'clinician' ? 'Staff (Portal)' : null,
+      source: 'portal' as const,
+      portalMessageType: messageType,
+    };
+  });
+
+  // ── 3. Merge and sort chronologically ───────────────────────────────────
+  const all = [...tagged, ...portalTagged];
+  all.sort((a, b) => new Date(a.receivedAt).getTime() - new Date(b.receivedAt).getTime());
+  return all;
 };
 
 (DbStorage.prototype as any).updateSpruceWorkflowRequestStatus = async function(

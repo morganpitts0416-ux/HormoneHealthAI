@@ -17429,6 +17429,26 @@ IMPORTANT:
         severity: "normal",
       } as any);
 
+      // Mirror into portal_messages so the refill request appears in the
+      // chronological message thread (Spruce inbox + patient profile timeline).
+      // This is additive — the inbox notification above is still created and
+      // drives the dashboard tile unchanged.
+      try {
+        await storage.createPortalMessage({
+          patientId,
+          clinicianId: null,
+          senderType: "patient",
+          content: `[Portal Refill Request]\n\n${lines.join("\n")}`,
+          readAt: null,
+          messageType: "message",
+          visibility: "patient_visible",
+          deliveryChannel: null,
+        } as any);
+      } catch (mirrorErr) {
+        // Non-fatal — dashboard notification was already saved successfully
+        console.warn("[portal] refill-request portal_messages mirror failed:", mirrorErr);
+      }
+
       res.json({ ok: true, notificationId: notif.id });
     } catch (err) {
       console.error("[portal] refill-request POST error:", err);

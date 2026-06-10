@@ -76,6 +76,10 @@ interface SpruceMessage {
   patientFirstName: string | null;
   patientLastName: string | null;
   spruceContactName: string | null;
+  /** 'spruce' for native Spruce messages; 'portal' for ClinIQ portal messages merged in */
+  source?: 'spruce' | 'portal';
+  /** messageType from portal_messages; null for spruce-source rows */
+  portalMessageType?: string | null;
 }
 
 interface ConvState {
@@ -282,6 +286,16 @@ function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: b
     msg.messageDirection === "unknown" ||
     !msg.messageDirection;
 
+  const isPortal = msg.source === "portal";
+  const isRefillRequest =
+    isPortal && typeof msg.messageBody === "string" &&
+    msg.messageBody.startsWith("[Portal Refill Request]");
+
+  // Strip the label prefix for display — keep only the medication list
+  const displayBody = isRefillRequest
+    ? msg.messageBody?.replace(/^\[Portal Refill Request\]\n\n/, "") ?? null
+    : msg.messageBody;
+
   if (isSystem) {
     return (
       <div className="flex justify-center my-1 px-4" data-testid={`msg-${msg.id}`}>
@@ -300,16 +314,24 @@ function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: b
     return (
       <div className={`flex justify-end mb-3 px-4 ${optimistic ? "opacity-60" : ""}`} data-testid={`msg-${msg.id}`}>
         <div className="max-w-[72%]">
-          {senderName && (
-            <p className="text-[11px] font-semibold text-[#2e7d52] mb-1 text-right mr-1">
-              {senderName}
-            </p>
-          )}
+          <div className="flex items-center justify-end gap-1.5 mb-1">
+            {senderName && (
+              <p className="text-[11px] font-semibold text-[#2e7d52]">{senderName}</p>
+            )}
+            {isPortal && (
+              <span
+                className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none"
+                style={{ backgroundColor: "#dbeafe", color: "#1d4ed8" }}
+              >
+                Portal
+              </span>
+            )}
+          </div>
           <div
             className="rounded-2xl rounded-tr-sm px-4 py-2.5 text-sm text-white leading-relaxed"
             style={{ backgroundColor: "#2e7d52" }}
           >
-            {msg.messageBody}
+            {displayBody}
           </div>
           <p className="text-[10px] text-[#8a8a7a] mt-1 text-right flex items-center justify-end gap-1.5">
             {optimistic && <RefreshCw className="w-2.5 h-2.5 animate-spin" />}
@@ -320,18 +342,45 @@ function MessageBubble({ msg, optimistic }: { msg: SpruceMessage; optimistic?: b
     );
   }
 
+  // Inbound patient message
   return (
     <div className="flex justify-start mb-3 px-4" data-testid={`msg-${msg.id}`}>
       <div className="max-w-[72%]">
-        {(msg.patientFirstName || msg.fromPhone) && (
-          <p className="text-[10px] text-[#6a6a5a] font-medium mb-1 ml-1">
-            {msg.patientFirstName && msg.patientLastName
-              ? `${msg.patientFirstName} ${msg.patientLastName}`
-              : msg.fromPhone ?? "Contact"}
-          </p>
-        )}
-        <div className="rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed bg-white border border-[#e5e2dc] text-[#1c2414]">
-          {msg.messageBody ?? <span className="italic text-[#9a9a8a]">— non-text event —</span>}
+        <div className="flex items-center gap-1.5 mb-1 ml-1">
+          {(msg.patientFirstName || msg.fromPhone) && (
+            <p className="text-[10px] text-[#6a6a5a] font-medium">
+              {msg.patientFirstName && msg.patientLastName
+                ? `${msg.patientFirstName} ${msg.patientLastName}`
+                : msg.fromPhone ?? "Contact"}
+            </p>
+          )}
+          {isPortal && (
+            <span
+              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none"
+              style={{ backgroundColor: "#dbeafe", color: "#1d4ed8" }}
+            >
+              Portal
+            </span>
+          )}
+          {isRefillRequest && (
+            <span
+              className="text-[9px] font-semibold px-1.5 py-0.5 rounded-full leading-none"
+              style={{ backgroundColor: "#fef3c7", color: "#92400e" }}
+            >
+              Refill Request
+            </span>
+          )}
+        </div>
+        <div
+          className="rounded-2xl rounded-tl-sm px-4 py-2.5 text-sm leading-relaxed text-[#1c2414]"
+          style={{
+            backgroundColor: isRefillRequest ? "#fefce8" : "#ffffff",
+            border: isRefillRequest ? "1px solid #fde68a" : "1px solid #e5e2dc",
+          }}
+        >
+          {displayBody
+            ? <span style={{ whiteSpace: "pre-line" }}>{displayBody}</span>
+            : <span className="italic text-[#9a9a8a]">— non-text event —</span>}
         </div>
         <p className="text-[10px] text-[#8a8a7a] mt-1 ml-1">{formatMessageTime(msg.receivedAt)}</p>
       </div>
