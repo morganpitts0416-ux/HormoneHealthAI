@@ -979,6 +979,7 @@ FORBIDDEN NARRATOR PHRASES (never use these):
 - "the clinician mentioned" / "the clinician explained" / "the clinician discussed"
 - "the provider reviewed" / "the provider noted" / "the provider counseled"
 - "the provider recommended" / "the provider discussed" / "the provider advised" / "the provider suggested"
+- "the provider educated..." / "provider educated patient on..." / "provider educated her on..." / "provider educated him on..."
 - "[Patient first name] agreed to" / "[Patient first name] expressed understanding" / "[Patient first name] verbalized understanding" (e.g., "Amy agreed to...", "Amy expressed understanding of...")
 - Any phrasing that positions the writer as an outside observer describing what happened
 
@@ -1093,9 +1094,17 @@ HPI RECONSTRUCTION RULES:
 11. PROVIDER EDUCATION ≠ PATIENT ATTRIBUTION — SPEAKER ATTRIBUTION RULE: When the provider explains a mechanism, cause, or clinical connection during the visit, that belongs to the provider's voice in the note — never to the patient's. Do not convert a provider's educational statement into a patient attribution.
 - WRONG: "Patient reports frequent early morning waking which she attributes to her postmenopausal status." (if the clinician made this connection, not the patient)
 - WRONG: "Patient attributes her sleep disruption to low progesterone." (if the clinician said this, not the patient)
+- WRONG: "She reports elbow pain which she associates with low estrogen." (if the provider introduced this connection during the visit — not the patient independently)
 - RIGHT: "She reports consistent early morning awakening. Discussed low progesterone as a potential contributor to early morning sleep disruption."
-- The test: did the PATIENT use the words "I think," "I believe," "I attribute," or explicitly name the cause herself? If not — the clinical explanation belongs in provider voice ("Discussed," "Reviewed," "Counseled on"), not attributed to the patient.
-- This rule applies throughout the HPI and the entire note. Never write "which she attributes to," "which she believes is caused by," or "which she connects to" unless the patient explicitly made that attribution in the transcript.
+- RIGHT: "She reports bilateral elbow pain for two months. Reviewed the role of estrogen in musculoskeletal health and its likely contribution to her joint symptoms given low estrogen level; patient was not previously aware of this connection and was receptive to the explanation."
+
+TWO-PART TEST — apply both before writing any causal or associative phrase attributed to the patient:
+Test 1 — SOURCE: Who introduced the clinical connection? If the provider named the mechanism, cause, or relationship during the visit, it belongs in provider voice. Full stop. Patient agreement afterward does not transfer ownership of the reasoning to the patient.
+Test 2 — LANGUAGE: Did the patient independently use words like "I think," "I believe," "I attribute," "I associate," or "I connect" BEFORE any provider explanation on that topic? If not, it is not patient attribution.
+
+CRITICAL — AGREEMENT ≠ ATTRIBUTION: When a patient says "that makes sense," "I didn't know that," "you're right," "oh wow," or "I never thought of that" — she is responding to provider education, not expressing an independent belief she arrived with. Never write "she associates," "she attributes," "she connects," "she believes is caused by," or "she links" when the patient's statement was a reception or agreement response to something the provider first explained.
+
+This rule applies throughout the HPI and the entire note. Never write "which she attributes to," "which she associates with," "which she believes is caused by," "which she connects to," or "which she links to" unless the patient explicitly stated that belief independently — before and without provider prompting on that topic.
 
 HPI LENGTH GUIDANCE:
 - Brief focused visit (single topic): 1-2 paragraphs
@@ -1113,6 +1122,23 @@ MEDICATION TENSE — CRITICAL:
 ═══════════════════════════════════════
 SECTION 2 — ASSESSMENT WITH CLINICAL SYNTHESIS
 ═══════════════════════════════════════
+
+PROVIDER VOICE — APPLIES TO ENTIRE ASSESSMENT, PLAN, AND CARE PLAN:
+The same voice rules that govern the HPI apply without exception throughout Assessment, Plan, and Care Plan. The model frequently reverts to passive or observer language when writing A/P content — do not do this.
+Never write:
+- "Patient was educated on..." / "Patient was advised to..." / "Patient was counseled on..." / "Patient was instructed to..." → write "Reviewed..." / "Counseled on..." / "Discussed..." / "Instructed to..." / "Recommended..."
+- "Provider educated patient on..." / "The provider educated..." → write "Reviewed..." / "Discussed..."
+- "The provider recommended..." / "The provider discussed..." / "The provider advised..." / "The provider suggested..." → drop "The provider" and write the action directly: "Recommended..." / "Discussed..." / "Advised..."
+- "she associates with / she attributes to / she connects to / she believes is caused by / she links to" → only valid if the patient stated this belief independently before provider education on that topic; patient agreement or receptivity after a provider explanation is NOT patient attribution — it stays in provider voice
+
+WRONG: "Patient was educated on the application method and potential side effects of estradiol."
+RIGHT: "Reviewed application technique and anticipated side effects of estradiol."
+
+WRONG: "Provider educated patient on the role of estrogen in joint health."
+RIGHT: "Reviewed the role of estrogen in musculoskeletal health and its contribution to her joint symptoms."
+
+WRONG: "She reports joint pain which she associates with low estrogen." (when the provider introduced this connection)
+RIGHT: "She reports joint pain. Reviewed low estrogen as a likely contributor to her musculoskeletal symptoms."
 
 OPENING SYNTHESIS PARAGRAPH — REQUIRED, BEFORE ALL NUMBERED ITEMS:
 Write one concise paragraph (3-5 sentences) that captures the overall clinical picture and rationale for the visit's treatment decisions. This is the most important paragraph in the note — it tells the story of why this patient is being managed this way.
@@ -1859,6 +1885,7 @@ CHECK FOR:
 
 25. THIRD-PERSON PROVIDER PHRASING — PROVIDER VOICE: Does the note contain third-person narrator phrasing that positions the writer as an outside observer rather than the documenting provider? Specifically check for:
    - "The provider recommended..." / "The provider discussed..." / "The provider advised..." / "The provider suggested..."
+   - "The provider educated patient on..." / "Provider educated patient on..." / "Provider educated her on..." / "Provider educated him on..."
    - "[Patient first name] agreed to..." (e.g., "Amy agreed to follow up") — patient name used as subject of a narrative observation
    - "[Patient first name] expressed understanding" / "[Patient first name] verbalized understanding" — framed as a third-person observation
    - "The clinician explained..." / "The visit included discussion of..."
