@@ -41,6 +41,7 @@ import type { Patient } from "@shared/schema";
 import { FormSubmissionPreviewDialog } from "@/components/form-submission-preview";
 import { PatientSearchBar } from "@/components/patient-search-bar";
 import { AddPatientDialog } from "@/components/add-patient-dialog";
+import { ActiveOrdersWidget } from "@/components/clinical-orders-panel";
 
 interface UnreadMessageRow {
   patientId: number;
@@ -899,6 +900,9 @@ export default function Dashboard() {
 
           </div>
         </div>
+
+        {/* ── Active Orders & Referrals ────────────────────────────── */}
+        <ActiveOrdersWidget />
 
         {/* ── Quick Actions ────────────────────────────────────────── */}
         <div>

@@ -67,6 +67,7 @@ import { usePhraseSearch } from "@/components/phrase-search";
 import { EncounterEditor, EncounterErrorBoundary, type EncounterWithPatient } from "@/pages/encounters";
 import { PharmacyLookup, pharmacyValueFromRecord, pharmacyValueToPatch, type PharmacyLookupValue } from "@/components/pharmacy-lookup";
 import { PharmacyDisplay } from "@/components/pharmacy-display";
+import { PatientOrdersTab } from "@/components/clinical-orders-panel";
 
 // ── Safe date display utility ─────────────────────────────────────────────────
 // Dates from the DB are stored as UTC midnight. Using { timeZone: 'UTC' } prevents
@@ -2146,7 +2147,8 @@ export default function PatientProfiles() {
     | "encounters"
     | "labs"
     | "prevent"
-    | "documents";
+    | "documents"
+    | "orders";
   const [profileSection, setProfileSection] = useState<ProfileSection>("overview");
   const [rightPanelOpen, setRightPanelOpen] = useState(true);
   const [rightPanelTab, setRightPanelTab] = useState<ContextRailTab>("labs");
@@ -3669,6 +3671,7 @@ export default function PatientProfiles() {
                         patientFormSubmissions.filter((s: any) => s.reviewStatus === "pending").length +
                         patientOrders.filter(o => o.status === 'pending').length
                       ) || null) as number | null },
+                    { id: "orders" as ProfileSection, label: "Orders", Icon: ClipboardList, badge: null as number | null },
                   ]).map(({ id, label, Icon, badge }) => {
                     const active = profileSection === id;
                     return (
@@ -5076,6 +5079,14 @@ export default function PatientProfiles() {
                   )}
                   {insights.length > 0 && <EnrichedTrendInsights insights={insights} />}
                 </>
+              )}
+
+              {/* ── Clinical Orders & Referrals ──────────────────────── */}
+              {profileSection === "orders" && selectedPatient && (
+                <PatientOrdersTab
+                  patientId={selectedPatient.id}
+                  patientName={`${selectedPatient.firstName ?? ""} ${selectedPatient.lastName ?? ""}`.trim()}
+                />
               )}
 
               {/* ── Documents: supplement orders + forms & consents ────── */}

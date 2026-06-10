@@ -6634,3 +6634,125 @@ export interface SpruceConversationMessageRow {
     externalMessageId: null,
   });
 };
+
+// ─── Clinical Orders ──────────────────────────────────────────────────────────
+
+(DbStorage.prototype as any).getClinicalOrdersByPatient = async function(
+  patientId: number,
+  clinicId: number,
+): Promise<any[]> {
+  const orders = await db
+    .select()
+    .from(schema.clinicalOrders)
+    .where(and(eq(schema.clinicalOrders.patientId, patientId), eq(schema.clinicalOrders.clinicId, clinicId)))
+    .orderBy(desc(schema.clinicalOrders.createdAt));
+  if (!orders.length) return [];
+  const orderIds = orders.map(o => o.id);
+  const completions = await db.select().from(schema.orderTaskCompletions)
+    .where(inArray(schema.orderTaskCompletions.orderId, orderIds));
+  const byOrder = completions.reduce((acc, c) => {
+    (acc[c.orderId] ??= []).push(c); return acc;
+  }, {} as Record<number, typeof completions>);
+  return orders.map(o => ({ ...o, taskCompletions: byOrder[o.id] ?? [] }));
+};
+
+(DbStorage.prototype as any).getActiveClinicalOrders = async function(
+  clinicId: number,
+): Promise<any[]> {
+  const orders = await db
+    .select()
+    .from(schema.clinicalOrders)
+    .where(and(eq(schema.clinicalOrders.clinicId, clinicId), eq(schema.clinicalOrders.status, 'active')))
+    .orderBy(desc(schema.clinicalOrders.createdAt));
+  if (!orders.length) return [];
+  const orderIds = orders.map(o => o.id);
+  const completions = await db.select().from(schema.orderTaskCompletions)
+    .where(inArray(schema.orderTaskCompletions.orderId, orderIds));
+  const patientIds = [...new Set(orders.map(o => o.patientId))];
+  const patients = await db
+    .select({ id: schema.patients.id, firstName: schema.patients.firstName, lastName: schema.patients.lastName })
+    .from(schema.patients).where(inArray(schema.patients.id, patientIds));
+  const patientMap = Object.fromEntries(patients.map(p => [p.id, p]));
+  const byOrder = completions.reduce((acc, c) => {
+    (acc[c.orderId] ??= []).push(c); return acc;
+  }, {} as Record<number, typeof completions>);
+  return orders.map(o => ({
+    ...o,
+    taskCompletions: byOrder[o.id] ?? [],
+    patientFirstName: patientMap[o.patientId]?.firstName ?? '',
+    patientLastName: patientMap[o.patientId]?.lastName ?? '',
+  }));
+};
+
+(DbStorage.prototype as any).createClinicalOrder = async function(
+  data: schema.InsertClinicalOrder,
+): Promise<schema.ClinicalOrder> {
+  const [order] = await db
+    .insert(schema.clinicalOrders)
+    .values({ ...data, icd10Codes: data.icd10Codes ?? [] })
+    .returning();
+  return order;
+};
+
+(DbStorage.prototype as any).updateClinicalOrder = async function(
+  id: number,
+  data: Partial<schema.InsertClinicalOrder>,
+  clinicId: number,
+): Promise<schema.ClinicalOrder | undefined> {
+  const [order] = await db
+    .update(schema.clinicalOrders).set(data)
+    .where(and(eq(schema.clinicalOrders.id, id), eq(schema.clinicalOrders.clinicId, clinicId)))
+    .returning();
+  return order;
+};
+
+(DbStorage.prototype as any).completeClinicalOrderTask = async function(
+  orderId: number,
+  taskKey: string,
+  completedByUserId: number | null,
+  completedByStaffId: number | null,
+  note: string | null,
+  clinicId: number,
+  allTaskKeys: string[],
+): Promise<{ completion: schema.OrderTaskCompletion | null; orderCompleted: boolean }> {
+  const rows = await db
+    .insert(schema.orderTaskCompletions)
+    .values({ orderId, taskKey, completedByUserId, completedByStaffId, note })
+    .onConflictDoNothing()
+    .returning();
+  const completion = rows[0] ?? null;
+  const existing = await db.select({ taskKey: schema.orderTaskCompletions.taskKey })
+    .from(schema.orderTaskCompletions).where(eq(schema.orderTaskCompletions.orderId, orderId));
+  const doneKeys = new Set(existing.map(c => c.taskKey));
+  const allDone = allTaskKeys.every(k => doneKeys.has(k));
+  if (allDone) {
+    await db.update(schema.clinicalOrders)
+      .set({ status: 'completed', completedAt: new Date() })
+      .where(and(eq(schema.clinicalOrders.id, orderId), eq(schema.clinicalOrders.clinicId, clinicId)));
+  }
+  return { completion, orderCompleted: allDone };
+};
+
+(DbStorage.prototype as any).uncompleteClinicalOrderTask = async function(
+  orderId: number,
+  taskKey: string,
+  clinicId: number,
+): Promise<void> {
+  await db.delete(schema.orderTaskCompletions)
+    .where(and(eq(schema.orderTaskCompletions.orderId, orderId), eq(schema.orderTaskCompletions.taskKey, taskKey)));
+  await db.update(schema.clinicalOrders)
+    .set({ status: 'active', completedAt: null })
+    .where(and(eq(schema.clinicalOrders.id, orderId), eq(schema.clinicalOrders.clinicId, clinicId), eq(schema.clinicalOrders.status, 'completed')));
+};
+
+(DbStorage.prototype as any).cancelClinicalOrder = async function(
+  id: number,
+  clinicId: number,
+  reason: string | null,
+): Promise<schema.ClinicalOrder | undefined> {
+  const [order] = await db.update(schema.clinicalOrders)
+    .set({ status: 'cancelled', cancelledAt: new Date(), cancelReason: reason })
+    .where(and(eq(schema.clinicalOrders.id, id), eq(schema.clinicalOrders.clinicId, clinicId)))
+    .returning();
+  return order;
+};

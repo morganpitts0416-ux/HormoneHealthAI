@@ -3161,6 +3161,76 @@ export const insertFormWorkflowStepStateSchema = createInsertSchema(formWorkflow
 export type InsertFormWorkflowStepState = z.infer<typeof insertFormWorkflowStepStateSchema>;
 
 // ─────────────────────────────────────────────────────────────────────────────
+// Clinical Orders & Referrals
+// Tracks referrals, imaging orders, health-maintenance orders, and lab orders
+// with per-task completion audit trails. Additive-only; no existing tables altered.
+// ─────────────────────────────────────────────────────────────────────────────
+
+export const clinicalOrders = pgTable("clinical_orders", {
+  id: serial("id").primaryKey(),
+  clinicId: integer("clinic_id").notNull(),
+  patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
+  createdByUserId: integer("created_by_user_id").notNull(),
+  createdByStaffId: integer("created_by_staff_id").references(() => clinicianStaff.id, { onDelete: "set null" }),
+  // 'referral' | 'imaging' | 'health_maintenance' | 'lab'
+  orderType: varchar("order_type", { length: 30 }).notNull(),
+  // Human label: "Physical Therapy", "MRI - Lumbar Spine", "Mammogram"
+  subtype: varchar("subtype", { length: 150 }).notNull(),
+  referringTo: varchar("referring_to", { length: 200 }),
+  facilityAddress: text("facility_address"),
+  facilityFax: varchar("facility_fax", { length: 30 }),
+  reason: text("reason"),
+  icd10Codes: text("icd10_codes").array(),
+  // 'routine' | 'urgent' | 'stat'
+  priority: varchar("priority", { length: 20 }).notNull().default("routine"),
+  targetDate: text("target_date"),
+  // Lab-specific: draw date and when to flip from scheduled → active on dashboard
+  drawDate: text("draw_date"),
+  activateOn: text("activate_on"),
+  // Health maintenance: auto-create next order after N months
+  recurrenceMonths: integer("recurrence_months"),
+  // Staff member responsible for working the order
+  assignedToUserId: integer("assigned_to_user_id"),
+  assignedToStaffId: integer("assigned_to_staff_id").references(() => clinicianStaff.id, { onDelete: "set null" }),
+  // 'scheduled' = dormant (hidden from dashboard), 'active', 'completed', 'cancelled'
+  status: varchar("status", { length: 20 }).notNull().default("active"),
+  notes: text("notes"),
+  completedAt: timestamp("completed_at"),
+  cancelledAt: timestamp("cancelled_at"),
+  cancelReason: text("cancel_reason"),
+  createdAt: timestamp("created_at").defaultNow().notNull(),
+}, (t) => ({
+  clinicPatientIdx: index("clinical_orders_clinic_patient_idx").on(t.clinicId, t.patientId),
+  statusIdx: index("clinical_orders_status_idx").on(t.clinicId, t.status),
+}));
+
+export type ClinicalOrder = typeof clinicalOrders.$inferSelect;
+export const insertClinicalOrderSchema = createInsertSchema(clinicalOrders).omit({
+  id: true, createdAt: true, completedAt: true, cancelledAt: true,
+});
+export type InsertClinicalOrder = z.infer<typeof insertClinicalOrderSchema>;
+
+// One row per completed task per order.  taskKey is one of the predefined
+// task identifiers for the order type (e.g. 'order_sent', 'appointment_scheduled').
+export const orderTaskCompletions = pgTable("order_task_completions", {
+  id: serial("id").primaryKey(),
+  orderId: integer("order_id").notNull().references(() => clinicalOrders.id, { onDelete: "cascade" }),
+  taskKey: varchar("task_key", { length: 50 }).notNull(),
+  completedByUserId: integer("completed_by_user_id"),
+  completedByStaffId: integer("completed_by_staff_id").references(() => clinicianStaff.id, { onDelete: "set null" }),
+  completedAt: timestamp("completed_at").defaultNow().notNull(),
+  note: text("note"),
+}, (t) => ({
+  uniqueOrderTask: uniqueIndex("order_task_completions_order_task_idx").on(t.orderId, t.taskKey),
+}));
+
+export type OrderTaskCompletion = typeof orderTaskCompletions.$inferSelect;
+export const insertOrderTaskCompletionSchema = createInsertSchema(orderTaskCompletions).omit({
+  id: true, completedAt: true,
+});
+export type InsertOrderTaskCompletion = z.infer<typeof insertOrderTaskCompletionSchema>;
+
+// ─────────────────────────────────────────────────────────────────────────────
 // Platform Admin / Ops Portal
 // Additive-only — does not alter any existing table.
 // ─────────────────────────────────────────────────────────────────────────────

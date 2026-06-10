@@ -20732,6 +20732,250 @@ IMPORTANT:
     );
   }, 60_000);
 
+  // ─── Clinical Orders & Referrals ────────────────────────────────────────────
+
+  const ORDER_TASK_WORKFLOWS: Record<string, string[]> = {
+    referral: ['order_sent', 'appointment_scheduled', 'patient_notified'],
+    imaging: ['order_sent', 'appointment_scheduled', 'patient_notified', 'results_received', 'provider_notified'],
+    health_maintenance: ['order_sent', 'appointment_scheduled', 'patient_notified', 'results_received', 'provider_notified'],
+    lab: ['labs_drawn', 'results_received', 'provider_notified'],
+  };
+
+  // GET /api/clinical-orders/team — combined list of providers + staff for the assign-to dropdown
+  app.get("/api/clinical-orders/team", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const clinicianId = getClinicianId(req);
+      const sess = req.session as any;
+      const out: { id: string; label: string; kind: "provider" | "staff" }[] = [];
+
+      if (clinicId) {
+        const providerRows = await storageDb
+          .select({ userId: clinicMemberships.userId, firstName: usersTable.firstName, lastName: usersTable.lastName, title: usersTable.title })
+          .from(clinicMemberships)
+          .innerJoin(usersTable, eq(clinicMemberships.userId, usersTable.id))
+          .where(and(eq(clinicMemberships.clinicId, clinicId), eq(clinicMemberships.isActive, true)));
+        for (const p of providerRows) {
+          out.push({ id: `user:${p.userId}`, label: [p.title, p.firstName, p.lastName].filter(Boolean).join(" "), kind: "provider" });
+        }
+        // Staff members
+        const staffRows = await storageDb
+          .select({ id: schema.clinicianStaff.id, firstName: schema.clinicianStaff.firstName, lastName: schema.clinicianStaff.lastName, credentials: schema.clinicianStaff.credentials })
+          .from(schema.clinicianStaff)
+          .where(and(eq(schema.clinicianStaff.clinicianId, clinicianId), eq(schema.clinicianStaff.isActive, true)));
+        for (const s of staffRows) {
+          const label = [s.firstName, s.lastName].filter(Boolean).join(" ") + (s.credentials ? `, ${s.credentials}` : "");
+          out.push({ id: `staff:${s.id}`, label, kind: "staff" });
+        }
+      } else {
+        const me = await storage.getUserById(clinicianId);
+        if (me) out.push({ id: `user:${me.id}`, label: [me.title, me.firstName, me.lastName].filter(Boolean).join(" "), kind: "provider" });
+      }
+      res.json(out);
+    } catch (err) {
+      console.error("[clinical-orders/team]", err);
+      res.status(500).json({ error: "Failed to fetch team" });
+    }
+  });
+
+  // GET /api/clinical-orders/active — active orders for dashboard widget
+  app.get("/api/clinical-orders/active", requireAuth, async (req, res) => {
+    try {
+      const clinicId = getEffectiveClinicId(req);
+      const clinicianId = getClinicianId(req);
+      const effectiveClinicId = clinicId ?? clinicianId;
+      const orders = await (storage as any).getActiveClinicalOrders(effectiveClinicId);
+      res.json(orders);
+    } catch (err) {
+      console.error("[clinical-orders/active]", err);
+      res.status(500).json({ error: "Failed to fetch active orders" });
+    }
+  });
+
+  // GET /api/patients/:id/clinical-orders
+  app.get("/api/patients/:id/clinical-orders", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
+      const effectiveClinicId = clinicId ?? clinicianId;
+      const orders = await (storage as any).getClinicalOrdersByPatient(patientId, effectiveClinicId);
+      res.json(orders);
+    } catch (err) {
+      console.error("[clinical-orders GET patient]", err);
+      res.status(500).json({ error: "Failed to fetch orders" });
+    }
+  });
+
+  // POST /api/patients/:id/clinical-orders
+  app.post("/api/patients/:id/clinical-orders", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const sess = req.session as any;
+      const patientId = parseInt(req.params.id);
+      if (isNaN(patientId)) return res.status(400).json({ error: "Invalid patient ID" });
+      const effectiveClinicId = clinicId ?? clinicianId;
+      const schema2 = z.object({
+        orderType: z.enum(["referral", "imaging", "health_maintenance", "lab"]),
+        subtype: z.string().min(1).max(150),
+        referringTo: z.string().max(200).optional().nullable(),
+        facilityAddress: z.string().optional().nullable(),
+        facilityFax: z.string().max(30).optional().nullable(),
+        reason: z.string().optional().nullable(),
+        priority: z.enum(["routine", "urgent", "stat"]).default("routine"),
+        targetDate: z.string().optional().nullable(),
+        recurrenceMonths: z.number().int().positive().optional().nullable(),
+        assignedToUserId: z.number().int().positive().optional().nullable(),
+        assignedToStaffId: z.number().int().positive().optional().nullable(),
+        notes: z.string().optional().nullable(),
+      });
+      const parsed = schema2.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
+      const { data } = parsed;
+      const staffId = sess.staffId ? Number(sess.staffId) : null;
+      const order = await (storage as any).createClinicalOrder({
+        ...data,
+        clinicId: effectiveClinicId,
+        patientId,
+        createdByUserId: clinicianId,
+        createdByStaffId: staffId,
+        status: "active",
+        icd10Codes: [],
+      });
+      res.status(201).json(order);
+    } catch (err) {
+      console.error("[clinical-orders POST]", err);
+      res.status(500).json({ error: "Failed to create order" });
+    }
+  });
+
+  // PATCH /api/clinical-orders/:id — update notes, reassign
+  app.patch("/api/clinical-orders/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const effectiveClinicId = clinicId ?? clinicianId;
+      const patchSchema = z.object({
+        notes: z.string().optional().nullable(),
+        assignedToUserId: z.number().int().positive().optional().nullable(),
+        assignedToStaffId: z.number().int().positive().optional().nullable(),
+        referringTo: z.string().max(200).optional().nullable(),
+        facilityFax: z.string().max(30).optional().nullable(),
+        facilityAddress: z.string().optional().nullable(),
+      });
+      const parsed = patchSchema.safeParse(req.body);
+      if (!parsed.success) return res.status(400).json({ error: "Invalid input" });
+      const order = await (storage as any).updateClinicalOrder(id, parsed.data, effectiveClinicId);
+      if (!order) return res.status(404).json({ error: "Order not found" });
+      res.json(order);
+    } catch (err) {
+      console.error("[clinical-orders PATCH]", err);
+      res.status(500).json({ error: "Failed to update order" });
+    }
+  });
+
+  // POST /api/clinical-orders/:id/tasks/:taskKey/complete
+  app.post("/api/clinical-orders/:id/tasks/:taskKey/complete", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const sess = req.session as any;
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const { taskKey } = req.params;
+      const note = req.body?.note ?? null;
+      const effectiveClinicId = clinicId ?? clinicianId;
+      const staffId = sess.staffId ? Number(sess.staffId) : null;
+      // Fetch order to get its type
+      const [orderRow] = await storageDb.select({ orderType: schema.clinicalOrders.orderType })
+        .from(schema.clinicalOrders)
+        .where(and(eq(schema.clinicalOrders.id, id), eq(schema.clinicalOrders.clinicId, effectiveClinicId)))
+        .limit(1);
+      if (!orderRow) return res.status(404).json({ error: "Order not found" });
+      const allTaskKeys = ORDER_TASK_WORKFLOWS[orderRow.orderType] ?? [];
+      if (!allTaskKeys.includes(taskKey)) return res.status(400).json({ error: "Invalid task key" });
+      const result = await (storage as any).completeClinicalOrderTask(
+        id, taskKey, clinicianId, staffId, note, effectiveClinicId, allTaskKeys,
+      );
+      // If order auto-completed + has recurrence → schedule next order
+      if (result.orderCompleted) {
+        const [fullOrder] = await storageDb.select().from(schema.clinicalOrders).where(eq(schema.clinicalOrders.id, id)).limit(1);
+        if (fullOrder?.recurrenceMonths) {
+          const next = new Date();
+          next.setMonth(next.getMonth() + fullOrder.recurrenceMonths);
+          const nextStr = next.toISOString().split('T')[0];
+          // Activate 30 days before due
+          const activateDate = new Date(next);
+          activateDate.setDate(activateDate.getDate() - 30);
+          const activateStr = activateDate.toISOString().split('T')[0];
+          await (storage as any).createClinicalOrder({
+            clinicId: fullOrder.clinicId,
+            patientId: fullOrder.patientId,
+            createdByUserId: fullOrder.createdByUserId,
+            createdByStaffId: null,
+            orderType: fullOrder.orderType,
+            subtype: fullOrder.subtype,
+            referringTo: fullOrder.referringTo,
+            facilityAddress: fullOrder.facilityAddress,
+            facilityFax: fullOrder.facilityFax,
+            reason: fullOrder.reason,
+            icd10Codes: fullOrder.icd10Codes ?? [],
+            priority: fullOrder.priority,
+            targetDate: nextStr,
+            recurrenceMonths: fullOrder.recurrenceMonths,
+            assignedToUserId: fullOrder.assignedToUserId,
+            assignedToStaffId: fullOrder.assignedToStaffId,
+            status: "scheduled",
+            notes: null,
+          });
+        }
+      }
+      res.json({ ...result, orderCompleted: result.orderCompleted });
+    } catch (err) {
+      console.error("[clinical-orders task complete]", err);
+      res.status(500).json({ error: "Failed to complete task" });
+    }
+  });
+
+  // DELETE /api/clinical-orders/:id/tasks/:taskKey/complete
+  app.delete("/api/clinical-orders/:id/tasks/:taskKey/complete", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const { taskKey } = req.params;
+      const effectiveClinicId = clinicId ?? clinicianId;
+      await (storage as any).uncompleteClinicalOrderTask(id, taskKey, effectiveClinicId);
+      res.json({ success: true });
+    } catch (err) {
+      console.error("[clinical-orders task uncomplete]", err);
+      res.status(500).json({ error: "Failed to undo task" });
+    }
+  });
+
+  // DELETE /api/clinical-orders/:id — cancel order
+  app.delete("/api/clinical-orders/:id", requireAuth, async (req, res) => {
+    try {
+      const clinicianId = getClinicianId(req);
+      const clinicId = getEffectiveClinicId(req);
+      const id = parseInt(req.params.id);
+      if (isNaN(id)) return res.status(400).json({ error: "Invalid ID" });
+      const effectiveClinicId = clinicId ?? clinicianId;
+      const reason = req.body?.reason ?? null;
+      const order = await (storage as any).cancelClinicalOrder(id, effectiveClinicId, reason);
+      if (!order) return res.status(404).json({ error: "Order not found" });
+      res.json(order);
+    } catch (err) {
+      console.error("[clinical-orders DELETE]", err);
+      res.status(500).json({ error: "Failed to cancel order" });
+    }
+  });
+
   // ── Ops Portal (isolated — feature-flagged by OPS_PORTAL_ENABLED) ──────────
   registerOpsRoutes(app);
 
