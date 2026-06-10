@@ -746,7 +746,7 @@ export default function Dashboard() {
               accentColor="#7a5c20"
               accentBg="#fef8ed"
               viewAllLabel="View all"
-              onViewAll={() => setLocation("/patients")}
+              onViewAll={() => setLocation("/spruce-inbox")}
               isLoading={notifLoading}
               testId="tile-med-requests"
               isEmpty={combinedRequests.length === 0}
