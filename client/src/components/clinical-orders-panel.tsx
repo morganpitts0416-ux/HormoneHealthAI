@@ -600,7 +600,7 @@ function NewOrderDialog({
     onError: () => toast({ variant: "destructive", title: "Failed to create order" }),
   });
 
-  const showFacility = ["referral", "imaging", "health_maintenance"].includes(orderType);
+  const showFacility = ["referral", "imaging", "health_maintenance", "lab"].includes(orderType);
   const showRecurrence = orderType === "health_maintenance";
 
   return (
@@ -621,6 +621,7 @@ function NewOrderDialog({
                 <SelectContent>
                   <SelectItem value="referral">Referral</SelectItem>
                   <SelectItem value="imaging">Imaging</SelectItem>
+                  <SelectItem value="lab">Lab Order</SelectItem>
                   <SelectItem value="health_maintenance">Health Maintenance</SelectItem>
                 </SelectContent>
               </Select>
@@ -642,10 +643,10 @@ function NewOrderDialog({
 
           <div className="space-y-1.5">
             <Label className="text-xs">
-              {orderType === "referral" ? "Specialty / Service *" : orderType === "imaging" ? "Imaging Study *" : "Screening / Service *"}
+              {orderType === "referral" ? "Specialty / Service *" : orderType === "imaging" ? "Imaging Study *" : orderType === "lab" ? "Panel / Test *" : "Screening / Service *"}
             </Label>
             <Input
-              placeholder={orderType === "referral" ? "e.g. Physical Therapy" : orderType === "imaging" ? "e.g. MRI — Lumbar Spine" : "e.g. Mammogram"}
+              placeholder={orderType === "referral" ? "e.g. Physical Therapy" : orderType === "imaging" ? "e.g. MRI — Lumbar Spine" : orderType === "lab" ? "e.g. CBC with Differential, CMP, Lipid Panel" : "e.g. Mammogram"}
               value={subtype}
               onChange={(e) => setSubtype(e.target.value)}
               className="h-8 text-xs"
@@ -656,9 +657,9 @@ function NewOrderDialog({
           {showFacility && (
             <>
               <div className="space-y-1.5">
-                <Label className="text-xs">{orderType === "referral" ? "Referring To (Provider / Facility)" : "Facility / Imaging Center"}</Label>
+                <Label className="text-xs">{orderType === "referral" ? "Referring To (Provider / Facility)" : orderType === "lab" ? "Lab / Draw Location" : "Facility / Imaging Center"}</Label>
                 <Input
-                  placeholder={orderType === "referral" ? "e.g. Dr. Jane Smith, PT" : "e.g. Memorial Radiology Center"}
+                  placeholder={orderType === "referral" ? "e.g. Dr. Jane Smith, PT" : orderType === "lab" ? "e.g. Quest Diagnostics, LabCorp, In-house" : "e.g. Memorial Radiology Center"}
                   value={referringTo}
                   onChange={(e) => setReferringTo(e.target.value)}
                   className="h-8 text-xs"
