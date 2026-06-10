@@ -10,7 +10,7 @@ import { execFile } from "child_process";
 import multer from "multer";
 import OpenAI from "openai";
 import { z } from "zod";
-import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema } from "@shared/schema";
+import { interpretLabsRequestSchema, femaleLabValuesSchema, type InterpretationResult, type LabValues, type FemaleLabValues, type InsertLabResult, insertSavedInterpretationSchema, insertPatientSchema, clinicMemberships, providers as providersTable, clinics, users as usersTable, clinicProviderInvites, patientFormAssignments, clinicalEncounters, patients as patientsTable, insertAppointmentTypeSchema, insertProviderAvailabilitySchema, insertCalendarBlockSchema, insertPatientVitalSchema, insertVitalsMonitoringEpisodeSchema, PATIENT_DOCUMENT_CATEGORIES, type PatientDocumentCategory, chartReviewCollaborators, chartReviewAgreements, type InsertNoteTemplate, updateClinicalBlockDefaultsSchema, insertEncounterTemplateSchema, clinicianStaff } from "@shared/schema";
 import { eq, and, sql, desc, isNull, isNotNull, or, ilike, inArray } from "drizzle-orm";
 import { ClinicalLogicEngine } from "./clinical-logic";
 import { FemaleClinicalLogicEngine } from "./clinical-logic-female";
@@ -20760,9 +20760,9 @@ IMPORTANT:
         }
         // Staff members
         const staffRows = await storageDb
-          .select({ id: schema.clinicianStaff.id, firstName: schema.clinicianStaff.firstName, lastName: schema.clinicianStaff.lastName, credentials: schema.clinicianStaff.credentials })
-          .from(schema.clinicianStaff)
-          .where(and(eq(schema.clinicianStaff.clinicianId, clinicianId), eq(schema.clinicianStaff.isActive, true)));
+          .select({ id: clinicianStaff.id, firstName: clinicianStaff.firstName, lastName: clinicianStaff.lastName, credentials: clinicianStaff.credentials })
+          .from(clinicianStaff)
+          .where(and(eq(clinicianStaff.clinicianId, clinicianId), eq(clinicianStaff.isActive, true)));
         for (const s of staffRows) {
           const label = [s.firstName, s.lastName].filter(Boolean).join(" ") + (s.credentials ? `, ${s.credentials}` : "");
           out.push({ id: `staff:${s.id}`, label, kind: "staff" });
