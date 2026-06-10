@@ -7736,6 +7736,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
   app.put("/api/preferences/supplements/:id", requireAuth, async (req, res) => {
     try {
+      const sess = req.session as any;
+      if (sess.staffId && (sess.staffAdminRole ?? "standard") === "standard") {
+        return res.status(403).json({ message: "Admin access required to modify clinic preferences." });
+      }
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
@@ -7752,6 +7756,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
   app.delete("/api/preferences/supplements/:id", requireAuth, async (req, res) => {
     try {
+      const sess = req.session as any;
+      if (sess.staffId && (sess.staffAdminRole ?? "standard") === "standard") {
+        return res.status(403).json({ message: "Admin access required to modify clinic preferences." });
+      }
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
@@ -7805,6 +7813,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
   app.put("/api/preferences/supplements/rules/:ruleId", requireAuth, async (req, res) => {
     try {
+      const sess = req.session as any;
+      if (sess.staffId && (sess.staffAdminRole ?? "standard") === "standard") {
+        return res.status(403).json({ message: "Admin access required to modify clinic preferences." });
+      }
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const ruleId = parseInt(req.params.ruleId);
@@ -7821,6 +7833,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
 
   app.delete("/api/preferences/supplements/rules/:ruleId", requireAuth, async (req, res) => {
     try {
+      const sess = req.session as any;
+      if (sess.staffId && (sess.staffAdminRole ?? "standard") === "standard") {
+        return res.status(403).json({ message: "Admin access required to modify clinic preferences." });
+      }
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const ruleId = parseInt(req.params.ruleId);
@@ -7880,6 +7896,10 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
   app.put("/api/preferences/lab-ranges", requireAuth, async (req, res) => {
     try {
+      const sess = req.session as any;
+      if (sess.staffId && (sess.staffAdminRole ?? "standard") === "standard") {
+        return res.status(403).json({ message: "Admin access required to modify clinic preferences." });
+      }
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const { markerKey, gender, displayName, unit, optimalMin, optimalMax, normalMin, normalMax, notes } = req.body;
@@ -7904,6 +7924,10 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
 
   app.delete("/api/preferences/lab-ranges/:id", requireAuth, async (req, res) => {
     try {
+      const sess = req.session as any;
+      if (sess.staffId && (sess.staffAdminRole ?? "standard") === "standard") {
+        return res.status(403).json({ message: "Admin access required to modify clinic preferences." });
+      }
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);

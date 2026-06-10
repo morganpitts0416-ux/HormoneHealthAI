@@ -144,7 +144,7 @@ const SECTIONS: { id: SectionId; label: string; icon: React.ComponentType<{ clas
   { id: "branding", label: "Branding & Signature", icon: ImagePlus, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "team", label: "Staff & Team", icon: Users, clinicianOnly: true, ownerOnly: true },
   { id: "messaging", label: "Messaging Settings", icon: MessageSquare, clinicianOnly: true, ownerOnly: true },
-  { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, providerVisible: true },
+  { id: "preferences", label: "Lab & Clinical Settings", icon: SlidersHorizontal, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "diagnoses", label: "Diagnosis Presets", icon: ClipboardList, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "notes", label: "Note Templates", icon: FileText, clinicianOnly: true, providerVisible: true, staffVisible: true },
   { id: "blockDefaults", label: "Clinical Block Defaults", icon: Stethoscope, clinicianOnly: true, providerVisible: true, staffVisible: true },

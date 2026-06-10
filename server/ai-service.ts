@@ -148,80 +148,30 @@ ${ascvdRisk.statinRecommendation ? `Statin Recommendation: ${ascvdRisk.statinRec
       }
     }
 
-    const prompt = `Write a patient communication summary for these lab results. Use SPECIFIC values and ACTIONABLE recommendations.
+    const prompt = `Write a direct, patient-friendly summary of these lab results. You are the provider — write TO your patient, FROM yourself. Use specific values and concrete next steps.
 
-CRITICAL FINDINGS:
+CRITICAL FINDINGS (abnormal or out of range):
 ${abnormalFindings.length > 0 ? buildFindingsList(abnormalFindings) : 'None'}
 
-BORDERLINE FINDINGS:
+BORDERLINE FINDINGS (approaching out of range):
 ${borderlineFindings.length > 0 ? buildFindingsList(borderlineFindings) : 'None'}
 
-NORMAL FINDINGS:
+NORMAL FINDINGS (within range):
 ${normalFindings.length > 0 ? buildFindingsList(normalFindings) : 'None'}
 ${cvRiskSection}
-${hasRedFlags ? 'NOTE: Critical values require physician review before changes.\n' : ''}
 
-MANDATORY REQUIREMENTS:
-1. ALWAYS mention specific numeric values (e.g., "Your LDL cholesterol is 160 mg/dL" NOT "Your cholesterol is high")
-2. Give CONCRETE lifestyle actions based on actual results:
-   
-   FOR CHOLESTEROL (if LDL >130 or HDL <40 or TG >150):
-   - "Add 25-30g fiber daily: oatmeal for breakfast, beans with lunch, vegetables at dinner"
-   - "Include 2-3 servings fatty fish weekly (salmon, mackerel, sardines) for omega-3s"
-   - "Reduce saturated fat: choose lean meats, limit butter and cheese"
-   - "Daily exercise: 30 minutes brisk walking or equivalent"
-   
-   FOR BLOOD SUGAR (if A1c >5.6):
-   - "Reduce refined carbs: swap white bread for whole grain, limit sugary drinks"
-   - "Include protein with each meal to stabilize blood sugar"
-   - "Walk 10-15 minutes after meals"
-   
-   FOR LIVER MARKERS (if AST/ALT elevated):
-   - "Limit alcohol to <2 drinks per week"
-   - "Review supplements/medications that may stress liver"
-   - "Maintain healthy weight through balanced diet"
-   
-   FOR TESTOSTERONE (if suboptimal):
-   - "Prioritize 7-8 hours quality sleep"
-   - "Include strength training 2-3x weekly"
-   - "Manage stress through exercise, meditation, or hobbies"
-   
-   FOR CARDIOVASCULAR RISK (if ASCVD risk is present):
-   
-   IF BORDERLINE RISK (5-7.4%):
-   - "Aim for 150 minutes moderate aerobic activity weekly: brisk walking, cycling, or swimming"
-   - "Mediterranean diet: emphasize vegetables, whole grains, olive oil, fish, nuts"
-   - "Limit processed foods and added sugars"
-   - "Target LDL based on your specific goal mentioned above"
-   
-   IF INTERMEDIATE RISK (7.5-19.9%):
-   - "Increase to 200-300 minutes aerobic exercise weekly plus strength training 2x/week"
-   - "Focus on heart-healthy fats: avocados, nuts, olive oil, fatty fish 3x weekly"
-   - "Reduce sodium to <2,300mg daily: avoid processed foods, choose fresh ingredients"
-   - "Strongly consider quitting smoking if applicable - reduces risk by 50% within 1 year"
-   - "Work toward LDL goal through diet changes and discuss statin therapy with your provider"
-   
-   IF HIGH RISK (≥20%):
-   - "Daily exercise is critical: 30-60 minutes moderate activity most days of the week"
-   - "Strict Mediterranean or DASH diet - consult with provider about nutrition counseling"
-   - "If smoking: Quit immediately - single most important action to reduce heart attack risk"
-   - "Achieve and maintain healthy weight (BMI <25)"
-   - "Stress management: proven techniques like meditation, yoga, or cardiac rehab programs"
-   - "Medication adherence is essential - discuss statin therapy and blood pressure control with provider"
-
-3. If ASCVD risk is included, ALWAYS incorporate the cardiovascular lifestyle modifications above based on risk category. Be specific about the risk percentage and explain what it means in plain English.
-
-4. Start with: "Here is a copy of your recent lab results, along with the recommendations."
-
-4. Structure (300-400 words):
-   - Opening sentence (required): "Here is a copy of your recent lab results, along with the recommendations."
-   - Overall assessment in plain language
-   - Positive findings (be specific about normal values)
-   - Areas to improve (cite exact values + concrete actions)
-   - Next steps and timeline
-   
-4. Use encouraging, empowering tone
-5. Avoid medical jargon - explain in plain English
+REQUIREMENTS:
+1. Always use specific numeric values — say "Your LDL is 160 mg/dL" not "your cholesterol is elevated."
+2. When two or more findings point in the same direction, group them as a pattern rather than listing each marker separately.
+3. Give 3–5 concrete, actionable next steps tied directly to the findings above:
+   - Cholesterol (elevated LDL, low HDL, or high triglycerides): fiber intake, omega-3 rich foods, reducing saturated fat, daily movement
+   - Blood sugar (A1c or fasting glucose elevated): protein with each meal, reducing refined carbs, post-meal walks
+   - Liver markers (elevated AST/ALT): limit alcohol, review medications/supplements, weight management
+   - Testosterone (suboptimal): sleep quality, resistance training, stress management
+   - Cardiovascular risk: tailor the intensity of lifestyle recommendations to the risk category and explain the percentage in plain terms
+4. If all or most findings are normal, say so clearly and specifically — mention key values that look good and what that means for the patient.
+5. Keep it 250–350 words. No fluff, no filler sentences.
+6. Do not close with a generic sign-off or "thank you for trusting us" — end on the next steps.
 
 Write the summary now:`;
 
@@ -239,26 +189,24 @@ Write the summary now:`;
         messages: [
           {
             role: "system",
-            content: `You are the patient's warm, knowledgeable health coach at a ${clinicType}. You write like a trusted clinician-friend who's read every page of their chart — never robotic, never alarmist, never a pile of single-marker observations.
+            content: `You are a clinician at a ${clinicType} writing a direct summary of lab results for your patient. This note goes straight to the patient — write as yourself, to them.
 
 VOICE
-- Warm, second-person, encouraging. Confidence-building, not scary.
-- Sound human. Say "you" and "your" — not "the patient."
-- Acknowledge effort and progress when the labs show it.
+- Direct, warm, human. First-person plural ("we reviewed," "we want to focus on") or second-person ("your results show").
+- Never say "ask your provider," "your provider will," "your care team will," "consult a physician," or anything that sounds like you're a third party — you ARE their provider.
+- No AI-bot language. No over-explanation. No filler phrases like "Great news!" or "Thank you for trusting us with your care."
+- Sound like a clinician talking to a patient after reviewing their chart — clear, confident, and caring.
 
-PATTERN RECOGNITION (CRITICAL)
-- Whenever two or more findings point in the same direction, connect them in one sentence as a pattern. Examples of the voice we want:
-  • "Your LDL of 162 paired with a triglyceride of 198 suggests your body is leaning toward storing rather than using fats — a pattern we can shift with consistent fiber, omega-3s, and daily movement."
-  • "Your fasting glucose, A1c, and waist trend are nudging in the same direction, which usually means insulin signaling needs more support — strength training and a protein-forward breakfast are the highest-yield first moves."
-- Avoid stacking isolated marker-by-marker bullets. Synthesize.
-- Always include specific numeric values inside the pattern sentences — never vague phrases like "high cholesterol."
-
-ACTIONS
-- Give 3–5 concrete, doable lifestyle actions tied to the patterns you named, not generic advice.${gender === 'female' ? ' If a hormone marker is involved, briefly consider menstrual cycle phase context. Cover female-specific themes (iron status, thyroid, bone health) when relevant.' : ''}`
+CONTENT
+- Lead with the most important finding, not a generic opener.
+- Name specific values. Connect related findings as patterns when they point in the same direction.
+- Be honest about what needs attention without being alarming.
+- If something looks good, say it plainly: "Your kidney function is solid — creatinine and GFR are both in a healthy range."
+- Give next steps that are specific to these results, not generic wellness advice.${gender === 'female' ? '\n- Consider cycle phase context when interpreting hormone markers. Address female-specific markers (iron, thyroid, bone density) when present.' : ''}`
           },
           {
             role: "user",
-            content: prompt
+            content: finalPrompt
           }
         ],
         max_completion_tokens: 2500,
@@ -638,19 +586,13 @@ Format your response in clear sections with bullet points where appropriate.`;
   }
 
   private static getDefaultPatientSummary(): string {
-    return `Dear Patient,
-
-We have reviewed your recent lab results from your men's health panel. Your labs help us keep your testosterone therapy safe and effective while monitoring your overall health.
+    return `We've reviewed your recent lab results.
 
 Your Results:
-We've carefully reviewed all your lab values including blood counts, hormone levels, cholesterol, liver and kidney function, and other important markers.
+We went through each of your values — hormone levels, blood counts, metabolic markers, and organ function. We'll highlight anything that needs attention and let you know where things stand.
 
 Next Steps:
-Your healthcare provider will review these results and contact you if any changes to your treatment plan are needed. We monitor these labs to ensure optimal testosterone levels while keeping your blood counts, cholesterol, liver, kidney, and prostate health in the safest range possible.
-
-If you have any questions about your results, please don't hesitate to contact our clinic.
-
-Thank you for trusting us with your care.`;
+We'll go over the specifics at your follow-up, or reach out if anything needs to be addressed sooner. In the meantime, keep up with any lifestyle or medication recommendations we've discussed.`;
   }
 
   /**
