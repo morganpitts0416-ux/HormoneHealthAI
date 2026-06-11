@@ -317,7 +317,9 @@ export default function Dashboard() {
       if (!res.ok) throw new Error("Failed to load patients");
       return res.json();
     },
-    staleTime: 30 * 1000,
+    staleTime: 30_000,
+    retry: 2,
+    refetchOnWindowFocus: true,
   });
 
   const { data: notifications, isLoading: notifLoading } = useQuery<NotificationsData>({

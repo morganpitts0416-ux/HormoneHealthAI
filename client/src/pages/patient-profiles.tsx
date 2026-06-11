@@ -2200,6 +2200,9 @@ export default function PatientProfiles() {
       if (!res.ok) throw new Error('Failed to load patients');
       return res.json();
     },
+    staleTime: 30_000,
+    retry: 2,
+    refetchOnWindowFocus: true,
   });
 
   // Auto-select patient from URL param (e.g. ?patient=123&tab=encounters&lab=456)
