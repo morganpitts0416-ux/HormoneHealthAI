@@ -1731,3 +1731,61 @@ CREATE INDEX IF NOT EXISTS patient_packet_assignments_patient_idx
   ON patient_packet_assignments (patient_id, status);
 CREATE INDEX IF NOT EXISTS patient_packet_assignments_token_idx
   ON patient_packet_assignments (packet_token);
+
+-- ── clinical_orders ───────────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS clinical_orders (
+  id                    SERIAL PRIMARY KEY,
+  clinic_id             INTEGER NOT NULL,
+  patient_id            INTEGER NOT NULL REFERENCES patients(id) ON DELETE CASCADE,
+  created_by_user_id    INTEGER NOT NULL,
+  created_by_staff_id   INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL,
+  order_type            VARCHAR(30) NOT NULL,
+  subtype               VARCHAR(150) NOT NULL,
+  referring_to          VARCHAR(200),
+  facility_address      TEXT,
+  facility_fax          VARCHAR(30),
+  reason                TEXT,
+  icd10_codes           TEXT[],
+  diagnosis_code        TEXT,
+  diagnosis_name        TEXT,
+  cpt_code              TEXT,
+  cpt_description       TEXT,
+  priority              VARCHAR(20) NOT NULL DEFAULT 'routine',
+  target_date           TEXT,
+  draw_date             TEXT,
+  activate_on           TEXT,
+  recurrence_months     INTEGER,
+  assigned_to_user_id   INTEGER,
+  assigned_to_staff_id  INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL,
+  status                VARCHAR(20) NOT NULL DEFAULT 'active',
+  notes                 TEXT,
+  completed_at          TIMESTAMP,
+  cancelled_at          TIMESTAMP,
+  cancel_reason         TEXT,
+  created_at            TIMESTAMP NOT NULL DEFAULT NOW()
+);
+CREATE INDEX IF NOT EXISTS clinical_orders_clinic_patient_idx
+  ON clinical_orders (clinic_id, patient_id);
+CREATE INDEX IF NOT EXISTS clinical_orders_status_idx
+  ON clinical_orders (clinic_id, status);
+
+-- Add new columns to clinical_orders if table already existed without them
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS diagnosis_code   TEXT;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS diagnosis_name   TEXT;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS cpt_code         TEXT;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS cpt_description  TEXT;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS draw_date        TEXT;
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS activate_on      TEXT;
+
+-- ── order_task_completions ────────────────────────────────────────────────────
+CREATE TABLE IF NOT EXISTS order_task_completions (
+  id                    SERIAL PRIMARY KEY,
+  order_id              INTEGER NOT NULL REFERENCES clinical_orders(id) ON DELETE CASCADE,
+  task_key              VARCHAR(50) NOT NULL,
+  completed_by_user_id  INTEGER,
+  completed_by_staff_id INTEGER REFERENCES clinician_staff(id) ON DELETE SET NULL,
+  completed_at          TIMESTAMP NOT NULL DEFAULT NOW(),
+  note                  TEXT
+);
+CREATE UNIQUE INDEX IF NOT EXISTS order_task_completions_order_task_idx
+  ON order_task_completions (order_id, task_key);
