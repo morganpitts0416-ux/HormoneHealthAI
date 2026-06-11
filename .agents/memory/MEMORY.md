@@ -8,3 +8,4 @@
 - [Lab eval provider overrides](lab-eval-overrides.md) — providerOverrides JSONB on lab_results; LabDetailModal owns override state + 900ms debounce auto-save; portal GET applies all overrides server-side
 - [Drizzle array column insert](drizzle-array-insert.md) — Drizzle .returning() may misdeserialize DB-default array columns omitted from .values(); always pass array columns explicitly (e.g. symptoms: data.symptoms ?? [])
 - [Clinic branding architecture](clinic-branding.md) — logo + footerText now on clinics table (authoritative); user.clinicLogo kept as fallback in GET only; all PDF callers use useClinicBranding().data, not user object
+- [prod-migrate column gap](prod-migrate-column-gap.md) — every new schema.ts column needs ALTER TABLE … ADD COLUMN IF NOT EXISTS in prod-migrate.sql or prod gets "column does not exist" 500s
