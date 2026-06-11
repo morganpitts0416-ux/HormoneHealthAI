@@ -3352,9 +3352,11 @@ Rules:
       logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_patient_list", ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
       if (!q || q.length < 1) {
         const allPatients = await storage.getAllPatients(clinicianId, clinicId);
+        console.log(`[patient-search] userId=${clinicianId} clinicId=${clinicId} q="" → ${allPatients.length} patients`);
         return res.json(allPatients);
       }
       const patients = await storage.searchPatients(q, clinicianId, gender, clinicId);
+      console.log(`[patient-search] userId=${clinicianId} clinicId=${clinicId} q="${q}" → ${patients.length} patients`);
       res.json(patients);
     } catch (error) {
       console.error("Error searching patients:", error);
