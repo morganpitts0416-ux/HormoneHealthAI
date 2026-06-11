@@ -35,6 +35,7 @@ ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS login_attempts INTEGER NOT 
 ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS locked_until TIMESTAMP;
 ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS password_reset_token VARCHAR(255);
 ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS password_reset_expires TIMESTAMP;
+ALTER TABLE clinician_staff ADD COLUMN IF NOT EXISTS signature_image TEXT;
 
 -- ── providers ───────────────────────────────────────────────
 -- Allow staff (nurses, MAs, aestheticians) to appear on the scheduling

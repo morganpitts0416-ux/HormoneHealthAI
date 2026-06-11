@@ -824,6 +824,12 @@ export async function registerRoutes(app: Express): Promise<Server> {
           title: (staff as any).title ?? null,
           adminRole: (staff as any).adminRole ?? "standard",
           clinicalRole: (staff as any).role ?? "staff",
+          // Staff identity overrides — must come last so they win over the
+          // safeClinician spread. Staff see their own name and signature,
+          // not the provider's.
+          firstName: staff.firstName,
+          lastName: staff.lastName,
+          signatureImage: (staff as any).signatureImage ?? null,
         });
       } catch {
         return res.status(500).json({ message: "Error fetching session" });
@@ -6837,12 +6843,13 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const sess = req.session as any;
       if (!sess.staffId) return res.status(403).json({ message: "Only staff members can use this endpoint" });
       const staffId = sess.staffId as number;
-      const { firstName, lastName, credentials, title, currentPassword, password } = req.body;
+      const { firstName, lastName, credentials, title, currentPassword, password, signatureImage } = req.body;
       const updates: Record<string, any> = {};
       if (firstName?.trim()) updates.firstName = firstName.trim();
       if (lastName?.trim()) updates.lastName = lastName.trim();
       if (credentials !== undefined) updates.credentials = credentials?.trim() || null;
       if (title !== undefined) updates.title = title?.trim() || null;
+      if (signatureImage !== undefined) updates.signatureImage = signatureImage || null;
 
       if (password) {
         if (!currentPassword) return res.status(400).json({ message: "Current password is required to change password" });
