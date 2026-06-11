@@ -732,11 +732,15 @@ export async function registerRoutes(app: Express): Promise<Server> {
             sess.staffLastName  = staff.lastName  ?? "";
             sess.staffCredentials = (staff as any).credentials ?? null;
             sess.staffTitle = (staff as any).title ?? null;
-            // Stamp the owning clinician's clinic so getEffectiveClinicId works for staff
-            try {
-              const clinician = await storage.getUserById(staff.clinicianId);
-              sess.staffClinicianClinicId = clinician?.defaultClinicId ?? null;
-            } catch { sess.staffClinicianClinicId = null; }
+            // Stamp clinic ID directly from staff.clinicId (no extra DB lookup).
+            // Falls back to the clinician lookup for any row not yet backfilled.
+            sess.staffClinicianClinicId = (staff as any).clinicId ?? null;
+            if (!sess.staffClinicianClinicId) {
+              try {
+                const clinician = await storage.getUserById(staff.clinicianId);
+                sess.staffClinicianClinicId = clinician?.defaultClinicId ?? null;
+              } catch { sess.staffClinicianClinicId = null; }
+            }
             return req.session.save((saveErr) => {
               if (saveErr) return next(saveErr);
               logAudit(req, { action: "LOGIN", clinicianId: staff.clinicianId, staffId: staff.id });
@@ -6722,8 +6726,10 @@ Keep recipes simple enough for a home cook. Ingredients list should be 6-10 item
       const inviteExpires = new Date(Date.now() + 72 * 60 * 60 * 1000); // 72 hours
 
       const validAdminRoles = ["standard", "limited_admin", "admin"];
+      const clinicId = (req.user as any).defaultClinicId ?? null;
       const staffMember = await storage.createClinicianStaff({
         clinicianId,
+        clinicId,
         email: email.trim().toLowerCase(),
         firstName: firstName.trim(),
         lastName: lastName.trim(),
@@ -20782,7 +20788,7 @@ IMPORTANT:
         const staffRows = await storageDb
           .select({ id: clinicianStaff.id, firstName: clinicianStaff.firstName, lastName: clinicianStaff.lastName, credentials: clinicianStaff.credentials })
           .from(clinicianStaff)
-          .where(and(eq(clinicianStaff.clinicianId, clinicianId), eq(clinicianStaff.isActive, true)));
+          .where(and(eq(clinicianStaff.clinicId, clinicId), eq(clinicianStaff.isActive, true)));
         for (const s of staffRows) {
           const label = [s.firstName, s.lastName].filter(Boolean).join(" ") + (s.credentials ? `, ${s.credentials}` : "");
           out.push({ id: `staff:${s.id}`, label, kind: "staff" });

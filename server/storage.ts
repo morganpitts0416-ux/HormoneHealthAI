@@ -1477,8 +1477,16 @@ export class DbStorage implements IStorage {
 
   // Returns all staff across every provider in a clinic — used by clinic admins
   // so any provider with admin rights can see and manage the full team.
+  // Primary path: query directly on clinic_id (populated by backfill and new invites).
+  // Fallback: JOIN through users.default_clinic_id for any rows not yet backfilled.
   async getAllStaffForClinic(clinicId: number): Promise<ClinicianStaff[]> {
-    // Join clinician_staff → users → check users.defaultClinicId = clinicId
+    const direct = await db.select()
+      .from(schema.clinicianStaff)
+      .where(eq(schema.clinicianStaff.clinicId, clinicId))
+      .orderBy(schema.clinicianStaff.createdAt);
+    if (direct.length > 0) return direct;
+
+    // Fallback — should only fire if a row was not backfilled
     const rows = await db.select({
       id: schema.clinicianStaff.id,
       clinicianId: schema.clinicianStaff.clinicianId,
