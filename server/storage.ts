@@ -31,6 +31,9 @@ const pool = new Pool({
   idleTimeoutMillis: 30000,
   connectionTimeoutMillis: 5000,
 });
+pool.on('error', (err) => {
+  console.error('[pg-pool] idle client error (main pool):', err.message);
+});
 
 function snakeToCamel(key: string): string {
   return key.replace(/_([a-z])/g, (_, c) => c.toUpperCase());

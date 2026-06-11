@@ -339,6 +339,9 @@ const readinessPool = new Pool({
   idleTimeoutMillis: 10_000,
   connectionTimeoutMillis: 3_000,
 });
+readinessPool.on('error', (err) => {
+  console.error('[pg-pool] idle client error (readiness pool):', err.message);
+});
 app.get("/api/ready", async (_req, res) => {
   try {
     const result = await Promise.race([

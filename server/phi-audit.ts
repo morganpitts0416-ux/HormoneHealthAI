@@ -8,6 +8,9 @@
 import { Pool } from "pg";
 
 const pool = new Pool({ connectionString: process.env.DATABASE_URL });
+pool.on('error', (err) => {
+  console.error('[pg-pool] idle client error (phi-audit pool):', err.message);
+});
 
 export type PhiActorType = "clinician" | "patient_portal" | "ops_admin";
 
