@@ -794,7 +794,8 @@ export class DbStorage implements IStorage {
     const searchPattern = `%${searchTerm}%`;
     const nameCondition = or(
       ilike(schema.patients.firstName, searchPattern),
-      ilike(schema.patients.lastName, searchPattern)
+      ilike(schema.patients.lastName, searchPattern),
+      sql`(${schema.patients.firstName} || ' ' || ${schema.patients.lastName}) ILIKE ${searchPattern}`,
     );
     const scopeCondition = patientScopeCondition(userId, clinicId ?? null);
     if (gender) {
