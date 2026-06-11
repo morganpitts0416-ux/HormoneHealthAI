@@ -765,6 +765,7 @@ export const clinicianStaff = pgTable("clinician_staff", {
   // HIPAA: login lockout tracking
   loginAttempts: integer("login_attempts").notNull().default(0),
   lockedUntil: timestamp("locked_until"),
+  clinicId: integer("clinic_id"),
   signatureImage: text("signature_image"),
   createdAt: timestamp("created_at").defaultNow().notNull(),
 });
