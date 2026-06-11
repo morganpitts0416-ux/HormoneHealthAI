@@ -400,11 +400,6 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
     labeledRow('Requested By:', tDate);
   }
 
-  // Notes
-  if (order.notes) {
-    labeledRow('Additional Notes:', order.notes);
-  }
-
   // ── ICD-10 box (right column) ──────────────────────────────────────────────
   if (hasIcd) {
     const icdBoxX = rightX;
