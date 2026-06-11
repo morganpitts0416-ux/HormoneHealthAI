@@ -1793,3 +1793,6 @@ CREATE TABLE IF NOT EXISTS order_task_completions (
 );
 CREATE UNIQUE INDEX IF NOT EXISTS order_task_completions_order_task_idx
   ON order_task_completions (order_id, task_key);
+
+-- ── ordering provider on clinical_orders ──────────────────────────────────────
+ALTER TABLE clinical_orders ADD COLUMN IF NOT EXISTS ordering_provider_user_id INTEGER REFERENCES users(id) ON DELETE SET NULL;

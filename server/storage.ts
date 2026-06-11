@@ -6665,7 +6665,20 @@ export interface SpruceConversationMessageRow {
   const byOrder = completions.reduce((acc, c) => {
     (acc[c.orderId] ??= []).push(c); return acc;
   }, {} as Record<number, typeof completions>);
-  return orders.map(o => ({ ...o, taskCompletions: byOrder[o.id] ?? [] }));
+  const providerIds = [...new Set(orders.map(o => o.orderingProviderUserId).filter((id): id is number => id != null))];
+  const providerMap: Record<number, { firstName: string; lastName: string; title: string | null; npi: string | null; signatureImage: string | null }> = {};
+  if (providerIds.length) {
+    const providers = await db.select({
+      id: schema.users.id, firstName: schema.users.firstName, lastName: schema.users.lastName,
+      title: schema.users.title, npi: schema.users.npi, signatureImage: schema.users.signatureImage,
+    }).from(schema.users).where(inArray(schema.users.id, providerIds));
+    for (const p of providers) providerMap[p.id] = p;
+  }
+  return orders.map(o => ({
+    ...o,
+    taskCompletions: byOrder[o.id] ?? [],
+    orderingProvider: o.orderingProviderUserId ? (providerMap[o.orderingProviderUserId] ?? null) : null,
+  }));
 };
 
 (DbStorage.prototype as any).getActiveClinicalOrders = async function(
@@ -6688,11 +6701,21 @@ export interface SpruceConversationMessageRow {
   const byOrder = completions.reduce((acc, c) => {
     (acc[c.orderId] ??= []).push(c); return acc;
   }, {} as Record<number, typeof completions>);
+  const providerIds = [...new Set(orders.map(o => o.orderingProviderUserId).filter((id): id is number => id != null))];
+  const providerMap: Record<number, { firstName: string; lastName: string; title: string | null; npi: string | null; signatureImage: string | null }> = {};
+  if (providerIds.length) {
+    const providers = await db.select({
+      id: schema.users.id, firstName: schema.users.firstName, lastName: schema.users.lastName,
+      title: schema.users.title, npi: schema.users.npi, signatureImage: schema.users.signatureImage,
+    }).from(schema.users).where(inArray(schema.users.id, providerIds));
+    for (const p of providers) providerMap[p.id] = p;
+  }
   return orders.map(o => ({
     ...o,
     taskCompletions: byOrder[o.id] ?? [],
     patientFirstName: patientMap[o.patientId]?.firstName ?? '',
     patientLastName: patientMap[o.patientId]?.lastName ?? '',
+    orderingProvider: o.orderingProviderUserId ? (providerMap[o.orderingProviderUserId] ?? null) : null,
   }));
 };
 

@@ -3175,6 +3175,8 @@ export const clinicalOrders = pgTable("clinical_orders", {
   patientId: integer("patient_id").notNull().references(() => patients.id, { onDelete: "cascade" }),
   createdByUserId: integer("created_by_user_id").notNull(),
   createdByStaffId: integer("created_by_staff_id").references(() => clinicianStaff.id, { onDelete: "set null" }),
+  // The provider whose name/credentials/signature appear on the printed order
+  orderingProviderUserId: integer("ordering_provider_user_id").references(() => users.id, { onDelete: "set null" }),
   // 'referral' | 'imaging' | 'health_maintenance' | 'lab'
   orderType: varchar("order_type", { length: 30 }).notNull(),
   // Human label: "Physical Therapy", "MRI - Lumbar Spine", "Mammogram"

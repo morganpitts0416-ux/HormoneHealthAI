@@ -33,6 +33,14 @@ interface TaskCompletion {
   note: string | null;
 }
 
+interface OrderingProvider {
+  firstName: string;
+  lastName: string;
+  title: string | null;
+  npi: string | null;
+  signatureImage: string | null;
+}
+
 interface ClinicalOrderData {
   id: number;
   clinicId: number;
@@ -40,6 +48,8 @@ interface ClinicalOrderData {
   patientFirstName?: string;
   patientLastName?: string;
   createdByUserId: number;
+  orderingProviderUserId: number | null;
+  orderingProvider: OrderingProvider | null;
   orderType: string;
   subtype: string;
   referringTo: string | null;
@@ -189,10 +199,12 @@ function OrderDetailDrawer({
           insuranceCarrier: patientData?.patient?.insuranceCarrier ?? null,
           insuranceMemberId: patientData?.patient?.insuranceMemberId ?? null,
         },
-        providerName: (user as any)?.name ?? (user as any)?.username ?? "",
-        providerTitle: (user as any)?.title ?? null,
-        providerNpi: (user as any)?.npi ?? null,
-        signatureImage: (user as any)?.signatureImage ?? null,
+        providerName: order.orderingProvider
+          ? `${order.orderingProvider.firstName} ${order.orderingProvider.lastName}`.trim()
+          : ((user as any)?.name ?? (user as any)?.username ?? ""),
+        providerTitle: order.orderingProvider?.title ?? (user as any)?.title ?? null,
+        providerNpi: order.orderingProvider?.npi ?? (user as any)?.npi ?? null,
+        signatureImage: order.orderingProvider?.signatureImage ?? (user as any)?.signatureImage ?? null,
         clinicName: (user as any)?.clinicName ?? "Clinic",
         clinicAddress: (user as any)?.address ?? null,
         clinicPhone: (user as any)?.phone ?? null,
@@ -326,6 +338,15 @@ function OrderDetailDrawer({
               <div className="flex items-start gap-2 text-sm">
                 <FileText className="w-3.5 h-3.5 text-muted-foreground mt-0.5 flex-shrink-0" />
                 <span className="text-muted-foreground">{order.reason}</span>
+              </div>
+            )}
+            {order.orderingProvider && (
+              <div className="flex items-center gap-2 text-sm">
+                <User className="w-3.5 h-3.5 text-muted-foreground flex-shrink-0" />
+                <span className="text-muted-foreground">Ordering provider:</span>
+                <span className="font-medium">
+                  {[order.orderingProvider.title, order.orderingProvider.firstName, order.orderingProvider.lastName].filter(Boolean).join(" ")}
+                </span>
               </div>
             )}
             {(order.diagnosisCode || order.cptCode) && (
@@ -620,6 +641,7 @@ function NewOrderDialog({
   onCreated: () => void;
 }) {
   const { toast } = useToast();
+  const { user } = useAuth();
   const [orderType, setOrderType] = useState("referral");
   const [subtype, setSubtype] = useState("");
   const [priority, setPriority] = useState("routine");
@@ -629,6 +651,7 @@ function NewOrderDialog({
   const [reason, setReason] = useState("");
   const [targetDate, setTargetDate] = useState("");
   const [assignedTo, setAssignedTo] = useState("");
+  const [orderingProviderId, setOrderingProviderId] = useState<string>("");
   const [recurring, setRecurring] = useState(false);
   const [recurrenceMonths, setRecurrenceMonths] = useState("12");
   const [notes, setNotes] = useState("");
@@ -640,12 +663,21 @@ function NewOrderDialog({
     enabled: open,
   });
 
+  // Default ordering provider to current user (if they appear as a provider in the team list)
+  const providers = team.filter((m) => m.kind === "provider");
+  const selfKey = `user:${user?.id}`;
+  const effectiveOrderingProvider = orderingProviderId || (providers.some((p) => p.id === selfKey) ? selfKey : "");
+
   const createMutation = useMutation({
     mutationFn: async () => {
       let assignedToUserId: number | null = null;
       let assignedToStaffId: number | null = null;
       if (assignedTo.startsWith("user:")) assignedToUserId = parseInt(assignedTo.slice(5));
       else if (assignedTo.startsWith("staff:")) assignedToStaffId = parseInt(assignedTo.slice(6));
+
+      const orderingProviderUserId = effectiveOrderingProvider.startsWith("user:")
+        ? parseInt(effectiveOrderingProvider.slice(5))
+        : null;
 
       const res = await apiRequest("POST", `/api/patients/${patientId}/clinical-orders`, {
         orderType,
@@ -659,6 +691,7 @@ function NewOrderDialog({
         recurrenceMonths: recurring ? parseInt(recurrenceMonths) : null,
         assignedToUserId,
         assignedToStaffId,
+        orderingProviderUserId,
         notes: notes.trim() || null,
         diagnosisCode: diagnosis?.code ?? null,
         diagnosisName: diagnosis?.label ?? null,
@@ -675,7 +708,7 @@ function NewOrderDialog({
       // Reset
       setOrderType("referral"); setSubtype(""); setPriority("routine");
       setReferringTo(""); setFacilityFax(""); setFacilityAddress("");
-      setReason(""); setTargetDate(""); setAssignedTo("");
+      setReason(""); setTargetDate(""); setAssignedTo(""); setOrderingProviderId("");
       setRecurring(false); setRecurrenceMonths("12"); setNotes("");
       setDiagnosis(null); setCpt(null);
     },
@@ -847,6 +880,23 @@ function NewOrderDialog({
               )}
             </div>
           )}
+
+          <div className="space-y-1.5">
+            <Label className="text-xs">Ordering Provider *</Label>
+            <Select value={effectiveOrderingProvider} onValueChange={setOrderingProviderId}>
+              <SelectTrigger className="h-8 text-xs" data-testid="select-ordering-provider">
+                <SelectValue placeholder="Select ordering provider…" />
+              </SelectTrigger>
+              <SelectContent>
+                {providers.map((m) => (
+                  <SelectItem key={m.id} value={m.id} data-testid={`option-ordering-provider-${m.id}`}>
+                    {m.label}
+                  </SelectItem>
+                ))}
+              </SelectContent>
+            </Select>
+            <p className="text-xs text-muted-foreground">Name and signature that will appear on the printed order.</p>
+          </div>
 
           <div className="space-y-1.5">
             <Label className="text-xs">Assign To</Label>

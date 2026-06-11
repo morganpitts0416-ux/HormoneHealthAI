@@ -20863,6 +20863,7 @@ IMPORTANT:
         assignedToUserId: z.number().int().positive().optional().nullable(),
         assignedToStaffId: z.number().int().positive().optional().nullable(),
         notes: z.string().optional().nullable(),
+        orderingProviderUserId: z.number().int().positive().optional().nullable(),
       });
       const parsed = schema2.safeParse(req.body);
       if (!parsed.success) return res.status(400).json({ error: "Invalid input", details: parsed.error.format() });
@@ -20874,6 +20875,8 @@ IMPORTANT:
         patientId,
         createdByUserId: clinicianId,
         createdByStaffId: staffId,
+        // Default ordering provider to the creating clinician if not explicitly set
+        orderingProviderUserId: data.orderingProviderUserId ?? clinicianId,
         status: "active",
         icd10Codes: [],
       });
