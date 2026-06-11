@@ -2058,7 +2058,7 @@ export default function PatientProfiles() {
   const [confirmDelete, setConfirmDelete] = useState<LabResult | null>(null);
   const [confirmDeletePatient, setConfirmDeletePatient] = useState(false);
   const [showEditPatient, setShowEditPatient] = useState(false);
-  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", gender: "female" as "male" | "female", primaryProvider: "", ssn: "", driversLicense: "", insuranceCarrier: "", insuranceMemberId: "" });
+  const [editPatientForm, setEditPatientForm] = useState({ firstName: "", lastName: "", email: "", dateOfBirth: "", phone: "", address: "", gender: "female" as "male" | "female", primaryProvider: "", ssn: "", driversLicense: "", insuranceCarrier: "", insuranceMemberId: "" });
   const [editPatientPharmacy, setEditPatientPharmacy] = useState<PharmacyLookupValue>({ text: "", details: null });
   const [showNewPatientDialog, setShowNewPatientDialog] = useState(false);
   const [newPatientForm, setNewPatientForm] = useState({ firstName: "", lastName: "", dateOfBirth: "", gender: "female" as "male" | "female", email: "", phone: "" });
@@ -2904,13 +2904,14 @@ export default function PatientProfiles() {
   });
 
   const updatePatientMutation = useMutation({
-    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; gender: string; primaryProvider: string; ssn: string; driversLicense: string; insuranceCarrier: string; insuranceMemberId: string; pharmacy: PharmacyLookupValue }) => {
+    mutationFn: async (data: { id: number; firstName: string; lastName: string; email: string; dateOfBirth: string; phone: string; address: string; gender: string; primaryProvider: string; ssn: string; driversLicense: string; insuranceCarrier: string; insuranceMemberId: string; pharmacy: PharmacyLookupValue }) => {
       const { id, pharmacy, ...fields } = data;
       const body: Record<string, string | null> = {
         firstName: fields.firstName,
         lastName: fields.lastName,
         email: fields.email || null,
         phone: fields.phone || null,
+        address: fields.address || null,
         dateOfBirth: fields.dateOfBirth || null,
         gender: fields.gender,
         primaryProvider: fields.primaryProvider || null,
@@ -3022,6 +3023,7 @@ export default function PatientProfiles() {
       email: (selectedPatient as any).email ?? "",
       dateOfBirth: dob,
       phone: (selectedPatient as any).phone ?? "",
+      address: (selectedPatient as any).address ?? "",
       gender: (selectedPatient.gender === "male" ? "male" : "female") as "male" | "female",
       primaryProvider: defaultProvider,
       ssn: (selectedPatient as any).ssn ?? "",
@@ -6146,6 +6148,16 @@ export default function PatientProfiles() {
                   data-testid="input-edit-patient-phone"
                 />
               </div>
+            </div>
+            <div className="space-y-1.5">
+              <Label htmlFor="edit-address">Address</Label>
+              <Input
+                id="edit-address"
+                placeholder="123 Main St, City, ST 12345"
+                value={editPatientForm.address}
+                onChange={e => setEditPatientForm(f => ({ ...f, address: e.target.value }))}
+                data-testid="input-edit-patient-address"
+              />
             </div>
             <div className="space-y-1.5">
               <Label htmlFor="edit-gender">Sex</Label>

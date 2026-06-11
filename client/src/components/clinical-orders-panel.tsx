@@ -143,13 +143,19 @@ function OrderDetailDrawer({
   const [printing, setPrinting] = useState(false);
 
   const { data: clinicBranding } = useClinicBranding();
+  const printEnabled = ["referral", "imaging", "health_maintenance"].includes(order.orderType);
   const { data: patientData } = useQuery<any>({
     queryKey: ["/api/patients", order.patientId],
-    enabled: ["referral", "imaging", "health_maintenance"].includes(order.orderType),
+    enabled: printEnabled,
+    staleTime: 5 * 60 * 1000,
+  });
+  const { data: chartData } = useQuery<any>({
+    queryKey: ["/api/patients", order.patientId, "chart"],
+    enabled: printEnabled,
     staleTime: 5 * 60 * 1000,
   });
 
-  const canPrint = ["referral", "imaging", "health_maintenance"].includes(order.orderType);
+  const canPrint = printEnabled;
 
   async function handlePrint() {
     setPrinting(true);
@@ -179,6 +185,7 @@ function OrderDetailDrawer({
           mrn: patientData?.mrn ?? null,
           phone: patientData?.phone ?? null,
           email: patientData?.email ?? null,
+          address: patientData?.address ?? null,
           insuranceCarrier: patientData?.insuranceCarrier ?? null,
           insuranceMemberId: patientData?.insuranceMemberId ?? null,
         },
@@ -192,6 +199,8 @@ function OrderDetailDrawer({
         clinicLogo: clinicBranding?.clinicLogo ?? null,
         footerText: clinicBranding?.footerText ?? null,
         branding: clinicBranding ?? null,
+        medications: chartData?.currentMedications ?? null,
+        medicalHistory: chartData?.medicalHistory ?? null,
       });
     } catch (e) {
       toast({ variant: "destructive", title: "Failed to generate PDF" });

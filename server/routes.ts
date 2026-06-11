@@ -3455,6 +3455,7 @@ Rules:
         driversLicense: z.string().trim().max(50).optional().nullable(),
         insuranceCarrier: z.string().trim().max(150).optional().nullable(),
         insuranceMemberId: z.string().trim().max(100).optional().nullable(),
+        address: z.string().trim().max(500).optional().nullable(),
       });
       const parsedPatch = patchSchema.safeParse(req.body);
       if (!parsedPatch.success) {
@@ -3464,7 +3465,7 @@ Rules:
         firstName, lastName, email, dateOfBirth, phone, gender,
         primaryProvider, preferredPharmacy,
         pharmacyName, pharmacyAddress, pharmacyPhone, pharmacyFax, pharmacyNcpdpId, pharmacyPlaceId,
-        ssn, driversLicense, insuranceCarrier, insuranceMemberId,
+        ssn, driversLicense, insuranceCarrier, insuranceMemberId, address,
       } = parsedPatch.data;
       const updates: Record<string, unknown> = {};
       if (firstName !== undefined) updates.firstName = (firstName ?? "").trim();
@@ -3477,6 +3478,7 @@ Rules:
       if (driversLicense !== undefined) updates.driversLicense = driversLicense?.trim() || null;
       if (insuranceCarrier !== undefined) updates.insuranceCarrier = insuranceCarrier?.trim() || null;
       if (insuranceMemberId !== undefined) updates.insuranceMemberId = insuranceMemberId?.trim() || null;
+      if (address !== undefined) updates.address = address?.trim() || null;
       if (primaryProvider !== undefined) {
         const providerName = typeof primaryProvider === "string" ? primaryProvider.trim() : "";
         updates.primaryProvider = providerName || null;

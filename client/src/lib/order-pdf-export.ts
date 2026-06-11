@@ -16,6 +16,7 @@ export interface OrderPdfPatient {
   mrn?: string | null;
   phone?: string | null;
   email?: string | null;
+  address?: string | null;
   insuranceCarrier?: string | null;
   insuranceMemberId?: string | null;
 }
@@ -50,6 +51,8 @@ export interface OrderPdfOptions {
   clinicLogo?: string | null;
   footerText?: string | null;
   branding?: PartialBranding | null;
+  medications?: string[] | null;
+  medicalHistory?: string[] | null;
 }
 
 // ── Helpers ───────────────────────────────────────────────────────────────────
@@ -123,6 +126,14 @@ function labelFor(type: string, field: 'facility' | 'test'): string {
   }
 }
 
+function facilityLabel(type: string): string {
+  switch (type) {
+    case 'referral': return 'REFERRING TO';
+    case 'imaging': return 'IMAGING CENTER';
+    default: return 'FACILITY';
+  }
+}
+
 // ── Letterhead ─────────────────────────────────────────────────────────────────
 async function drawLetterhead(
   doc: jsPDF,
@@ -183,6 +194,31 @@ function stampFooters(doc: jsPDF, opts: OrderPdfOptions): void {
   }
 }
 
+// ── Bullet list helper (used on page 2) ───────────────────────────────────────
+async function drawBulletList(
+  doc: jsPDF,
+  items: string[],
+  opts: OrderPdfOptions,
+  resolved: ReturnType<typeof resolveBranding>,
+  dy: number,
+): Promise<number> {
+  for (const item of items) {
+    if (dy > PAGE_H - 30) {
+      doc.addPage();
+      dy = MARGIN;
+      dy = await drawLetterhead(doc, opts, resolved, dy);
+    }
+    const lines = doc.splitTextToSize(sanitize(item), CONTENT_W - 10);
+    doc.setFont('helvetica', 'normal');
+    doc.setFontSize(8.5);
+    doc.setTextColor('#111827');
+    doc.text('\u2022', MARGIN + 2, dy);
+    doc.text(lines, MARGIN + 7, dy);
+    dy += lines.length * 4.8 + 1.5;
+  }
+  return dy;
+}
+
 // ── Main export ───────────────────────────────────────────────────────────────
 export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
   const doc = new jsPDF({ unit: 'mm', format: 'letter' });
@@ -224,78 +260,132 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
   y += 8;
 
   // ── Patient info block ────────────────────────────────────────────────────
-  // Light shaded box
+  // Calculate how many info lines we have so the box sizes correctly
+  const dobStr = formatDob(patient.dateOfBirth);
+  const genderStr = patient.gender ? (patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)) : '';
+  const ageStr = calcAge(patient.dateOfBirth);
+  const hasLine2 = !!(dobStr || genderStr);
+  const phoneMrnParts = [
+    patient.mrn   ? `MRN: ${patient.mrn}`           : null,
+    patient.phone ? `Tel: ${sanitize(patient.phone)}` : null,
+    patient.email ? sanitize(patient.email)            : null,
+  ].filter(Boolean);
+  const hasLine3 = phoneMrnParts.length > 0;
+  const hasLine4 = !!(patient.address);
+  const infoLineCount = (hasLine2 ? 1 : 0) + (hasLine3 ? 1 : 0) + (hasLine4 ? 1 : 0);
+  const patBoxH = 12 + infoLineCount * 5.5;
+
   doc.setFillColor(247, 248, 250);
   doc.setDrawColor('#e2e8f0');
   doc.setLineWidth(0.3);
-  const patBoxH = 28;
   doc.roundedRect(MARGIN, y, CONTENT_W, patBoxH, 2, 2, 'FD');
 
   doc.setFont('helvetica', 'bold');
-  doc.setFontSize(9);
+  doc.setFontSize(8.5);
   doc.setTextColor('#111827');
-  doc.text('For:', MARGIN + 4, y + 7);
+  doc.text('Patient:', MARGIN + 4, y + 7);
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(10);
-  doc.text(patientFullName, MARGIN + 14, y + 7);
+  doc.text(patientFullName, MARGIN + 22, y + 7);
 
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor('#374151');
 
-  const dobStr = formatDob(patient.dateOfBirth);
-  const gender = patient.gender ? (patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)) : '';
-  const ageStr = calcAge(patient.dateOfBirth);
-
   let infoY = y + 13;
-  if (dobStr || gender) {
-    const dobLine = ['D.O.B.:', dobStr, ageStr ? `(${ageStr})` : '', gender ? `— ${gender}` : ''].filter(Boolean).join(' ');
+  if (hasLine2) {
+    const dobLine = ['D.O.B.:', dobStr, ageStr ? `(${ageStr})` : '', genderStr ? `\u2014 ${genderStr}` : ''].filter(Boolean).join(' ');
     doc.text(dobLine, MARGIN + 4, infoY);
-    infoY += 5;
+    infoY += 5.5;
   }
-  const phoneEmail = [patient.mrn ? `MRN: ${patient.mrn}` : null, patient.phone ? `Tel: ${sanitize(patient.phone)}` : null, patient.email ? sanitize(patient.email) : null].filter(Boolean).join('   ');
-  if (phoneEmail) doc.text(phoneEmail, MARGIN + 4, infoY);
+  if (hasLine3) {
+    doc.text(phoneMrnParts.join('   '), MARGIN + 4, infoY);
+    infoY += 5.5;
+  }
+  if (hasLine4) {
+    doc.text(sanitize(patient.address!), MARGIN + 4, infoY);
+  }
 
   y += patBoxH + 8;
 
-  // ── Order content ──────────────────────────────────────────────────────────
-  // Two-column layout: left = order details, right = ICD-10 box (Elation-style)
+  // ── Facility / Referring-to box ──────────────────────────────────────────
+  // Shown when any facility info is present — blue-tinted, distinct from patient box
+  const hasFacility = !!(order.referringTo || order.facilityAddress || order.facilityFax);
+  if (hasFacility) {
+    // Pre-calculate address line count for box height
+    const addrLines = order.facilityAddress
+      ? doc.splitTextToSize(sanitize(order.facilityAddress), CONTENT_W - 10)
+      : [];
+    const facilityLineCount =
+      (order.referringTo ? 1 : 0) +
+      (addrLines.length > 0 ? addrLines.length : 0) +
+      (order.facilityFax ? 1 : 0);
+    const facBoxH = 10 + facilityLineCount * 5.5 + 2;
+
+    doc.setFillColor(239, 246, 255);
+    doc.setDrawColor('#bfdbfe');
+    doc.setLineWidth(0.3);
+    doc.roundedRect(MARGIN, y, CONTENT_W, facBoxH, 2, 2, 'FD');
+
+    let fy = y + 6;
+
+    // Section header label
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(7.5);
+    doc.setTextColor('#1d4ed8');
+    doc.text(facilityLabel(order.orderType), MARGIN + 4, fy);
+    fy += 5.5;
+
+    if (order.referringTo) {
+      doc.setFont('helvetica', 'bold');
+      doc.setFontSize(9.5);
+      doc.setTextColor('#1e3a8a');
+      doc.text(sanitize(order.referringTo), MARGIN + 4, fy);
+      fy += 5.5;
+    }
+    if (addrLines.length > 0) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor('#374151');
+      doc.text(addrLines, MARGIN + 4, fy);
+      fy += addrLines.length * 5 + 0.5;
+    }
+    if (order.facilityFax) {
+      doc.setFont('helvetica', 'normal');
+      doc.setFontSize(8.5);
+      doc.setTextColor('#374151');
+      doc.text(`Fax: ${sanitize(order.facilityFax)}`, MARGIN + 4, fy);
+    }
+
+    y += facBoxH + 6;
+  }
+
+  // ── Order content (test, CPT, reason, target date, notes) ─────────────────
   const hasIcd = !!(order.diagnosisCode);
   const leftW = hasIcd ? CONTENT_W * 0.62 : CONTENT_W;
   const rightX = MARGIN + leftW + 4;
   const rightW = CONTENT_W - leftW - 4;
 
-  function labeledRow(label: string, value: string, xOffset = 0) {
+  function labeledRow(label: string, value: string) {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor('#1f2937');
-    doc.text(sanitize(label), MARGIN + xOffset, y);
+    doc.text(sanitize(label), MARGIN, y);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor('#374151');
-    const wrapped = doc.splitTextToSize(sanitize(value), leftW - xOffset - 2);
-    doc.text(wrapped, MARGIN + xOffset, y + 4.5);
+    const wrapped = doc.splitTextToSize(sanitize(value), leftW - 2);
+    doc.text(wrapped, MARGIN, y + 4.5);
     y += 4.5 + wrapped.length * 4.5 + 3;
   }
 
   const startY = y;
-
-  // Facility / Referring To
-  if (order.referringTo) {
-    labeledRow(labelFor(order.orderType, 'facility'), order.referringTo);
-  }
-  if (order.facilityAddress) {
-    labeledRow('Address:', order.facilityAddress);
-  }
-  if (order.facilityFax) {
-    labeledRow('Fax:', order.facilityFax);
-  }
 
   // Test / Study
   labeledRow(labelFor(order.orderType, 'test'), order.subtype);
 
   // CPT
   if (order.cptCode) {
-    const cptLine = order.cptDescription ? `${order.cptCode} — ${order.cptDescription}` : order.cptCode;
+    const cptLine = order.cptDescription ? `${order.cptCode} \u2014 ${order.cptDescription}` : order.cptCode;
     labeledRow('CPT Code:', cptLine);
   }
 
@@ -321,7 +411,6 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
     const icdBoxY = startY - 2;
     const icdBoxW = rightW;
 
-    // Header
     doc.setFillColor(239, 246, 255);
     doc.setDrawColor('#bfdbfe');
     doc.setLineWidth(0.4);
@@ -332,7 +421,6 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
     doc.setTextColor('#1d4ed8');
     doc.text('ICD-10 Diagnosis', icdBoxX + icdBoxW / 2, icdBoxY + 5, { align: 'center' });
 
-    // Code row
     const codeBoxY = icdBoxY + 10;
     doc.setFillColor(255, 255, 255);
     doc.setDrawColor('#dbeafe');
@@ -352,7 +440,7 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
     }
   }
 
-  // ── Copy To / Ordering Provider ────────────────────────────────────────────
+  // ── Ordering Provider / Signature ──────────────────────────────────────────
   y += 4;
   drawHRule(doc, y, '#e5e7eb');
   y += 6;
@@ -364,7 +452,6 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
   doc.text(`Ordered by: ${sanitize(provLine)}`, MARGIN, y);
   y += 5;
 
-  // ── Signature block ────────────────────────────────────────────────────────
   y += 4;
   drawHRule(doc, y, '#4ade80');
   y += 6;
@@ -423,23 +510,23 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
     doc.setFont('helvetica', 'bold');
     doc.setFontSize(8.5);
     doc.setTextColor('#374151');
-    doc.text(sanitize(label), MARGIN, dy);
+    doc.text(sanitize(label), MARGIN + 4, dy);
     doc.setFont('helvetica', 'normal');
     doc.setTextColor('#111827');
-    const wrapped = doc.splitTextToSize(sanitize(value), CONTENT_W - 45);
-    doc.text(wrapped, MARGIN + 44, dy);
+    const wrapped = doc.splitTextToSize(sanitize(value), CONTENT_W - 50);
+    doc.text(wrapped, MARGIN + 46, dy);
     dy += wrapped.length * 4.8 + 1;
   }
 
-  // Background box for demographics
   const demoRows: [string, string][] = [
-    ['Patient Name:', patientFullName],
+    ['Patient Name:',  patientFullName],
     ['Date of Birth:', formatDob(patient.dateOfBirth)],
-    ['Age:', calcAge(patient.dateOfBirth)],
-    ['Gender:', patient.gender ? (patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)) : ''],
-    ['MRN:', patient.mrn ?? ''],
-    ['Phone:', patient.phone ?? ''],
-    ['Email:', patient.email ?? ''],
+    ['Age:',           calcAge(patient.dateOfBirth)],
+    ['Sex:',           patient.gender ? (patient.gender.charAt(0).toUpperCase() + patient.gender.slice(1)) : ''],
+    ['MRN:',           patient.mrn ?? ''],
+    ['Phone:',         patient.phone ?? ''],
+    ['Email:',         patient.email ?? ''],
+    ['Address:',       patient.address ?? ''],
   ].filter(([, v]) => v.trim() !== '') as [string, string][];
 
   const demoBoxH = demoRows.length * 6 + 8;
@@ -466,7 +553,7 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
 
     const insRows: [string, string][] = [
       ['Insurance Carrier:', patient.insuranceCarrier ?? ''],
-      ['Member ID:', patient.insuranceMemberId ?? ''],
+      ['Member ID:',         patient.insuranceMemberId ?? ''],
     ].filter(([, v]) => v.trim() !== '') as [string, string][];
 
     const insBoxH = insRows.length * 6 + 8;
@@ -482,7 +569,50 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
     dy += 8;
   }
 
+  // ── Current Medications ────────────────────────────────────────────────────
+  const meds = (opts.medications ?? []).filter(Boolean);
+  if (meds.length > 0) {
+    if (dy > PAGE_H - 35) {
+      doc.addPage();
+      dy = MARGIN;
+      dy = await drawLetterhead(doc, opts, resolved, dy);
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(PRIMARY);
+    doc.text('CURRENT MEDICATIONS', MARGIN, dy);
+    dy += 2;
+    drawHRule(doc, dy + 2, '#e5e7eb');
+    dy += 9;
+    dy = await drawBulletList(doc, meds, opts, resolved, dy);
+    dy += 6;
+  }
+
+  // ── Medical History ────────────────────────────────────────────────────────
+  const history = (opts.medicalHistory ?? []).filter(Boolean);
+  if (history.length > 0) {
+    if (dy > PAGE_H - 35) {
+      doc.addPage();
+      dy = MARGIN;
+      dy = await drawLetterhead(doc, opts, resolved, dy);
+    }
+    doc.setFont('helvetica', 'bold');
+    doc.setFontSize(9);
+    doc.setTextColor(PRIMARY);
+    doc.text('MEDICAL HISTORY', MARGIN, dy);
+    dy += 2;
+    drawHRule(doc, dy + 2, '#e5e7eb');
+    dy += 9;
+    dy = await drawBulletList(doc, history, opts, resolved, dy);
+    dy += 6;
+  }
+
   // ── Ordering provider summary ──────────────────────────────────────────────
+  if (dy > PAGE_H - 40) {
+    doc.addPage();
+    dy = MARGIN;
+    dy = await drawLetterhead(doc, opts, resolved, dy);
+  }
   dy += 4;
   doc.setFont('helvetica', 'bold');
   doc.setFontSize(9);
@@ -495,7 +625,7 @@ export async function generateOrderPDF(opts: OrderPdfOptions): Promise<void> {
   doc.setFont('helvetica', 'normal');
   doc.setFontSize(8.5);
   doc.setTextColor('#374151');
-  const orderingLine = [opts.providerTitle, opts.providerName, opts.providerNpi ? `NPI: ${opts.providerNpi}` : null].filter(Boolean).join('  ·  ');
+  const orderingLine = [opts.providerTitle, opts.providerName, opts.providerNpi ? `NPI: ${opts.providerNpi}` : null].filter(Boolean).join('  \u00b7  ');
   doc.text(sanitize(orderingLine), MARGIN, dy);
   dy += 5;
   doc.setFontSize(8);

@@ -616,6 +616,7 @@ export const patients = pgTable("patients", {
   mrn: varchar("mrn", { length: 50 }),
   email: varchar("email", { length: 255 }),
   phone: varchar("phone", { length: 30 }),
+  address: text("address"),
   preferredPharmacy: text("preferred_pharmacy"),
   // ── Structured pharmacy details (populated when clinician/patient picks
   // one from the Google Places lookup). The legacy `preferredPharmacy` column
