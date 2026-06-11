@@ -94,10 +94,10 @@ export const CPT_CODES: CPTCode[] = [
   { code: "85730", description: "Partial thromboplastin time (PTT/aPTT)", aliases: ["PTT", "aPTT"] },
 
   // ── Imaging ────────────────────────────────────────────────────────────
-  { code: "77057", description: "Screening mammography, bilateral", aliases: ["mammogram", "mammography screening", "breast screening"] },
-  { code: "77065", description: "Diagnostic mammography, unilateral", aliases: ["diagnostic mammogram"] },
-  { code: "77066", description: "Diagnostic mammography, bilateral" },
-  { code: "76092", description: "Screening mammography, bilateral (digital)", aliases: ["digital mammogram"] },
+  { code: "77067", description: "Screening mammography, bilateral (2-view)", aliases: ["mammogram", "mammography screening", "breast screening", "screening mammogram"] },
+  { code: "77065", description: "Diagnostic mammography, unilateral", aliases: ["diagnostic mammogram unilateral"] },
+  { code: "77066", description: "Diagnostic mammography, bilateral", aliases: ["diagnostic mammogram bilateral", "diagnostic mammography"] },
+  { code: "77063", description: "Screening digital breast tomosynthesis (3D mammogram), bilateral", aliases: ["3D mammogram", "tomosynthesis", "DBT"] },
   { code: "76536", description: "Ultrasound, soft tissue of head and neck", aliases: ["neck ultrasound", "thyroid ultrasound"] },
   { code: "76700", description: "Ultrasound, abdominal — complete", aliases: ["abdominal ultrasound", "abd US"] },
   { code: "76856", description: "Ultrasound, pelvic — complete (transabdominal)", aliases: ["pelvic ultrasound", "tranabdominal pelvic US"] },
