@@ -2322,18 +2322,16 @@ export default function PatientProfiles() {
   }>({
     queryKey: ['/api/portal/status', selectedPatient?.id],
     queryFn: async () => {
-      const res = await fetch(`/api/portal/status/${selectedPatient!.id}`, { credentials: 'include' });
+      if (!selectedPatient?.id) throw new Error('No patient selected');
+      const res = await fetch(`/api/portal/status/${selectedPatient.id}`, { credentials: 'include' });
       if (!res.ok) throw new Error(`${res.status}: Failed to fetch portal status`);
       return res.json();
     },
-    enabled: !!selectedPatient,
-    staleTime: 0,
-    retry: 2,
-    retryDelay: 2000,
-    refetchOnWindowFocus: true,
-    // When errored (e.g. server restart), poll every 5 s until the endpoint
-    // responds successfully so the status heals without user action.
-    refetchInterval: (query) => query.state.status === 'error' ? 5000 : false,
+    enabled: !!(selectedPatient?.id),
+    staleTime: 60_000,
+    retry: 0,
+    refetchOnWindowFocus: false,
+    refetchInterval: false,
   });
 
   const { user } = useAuth();

@@ -5296,8 +5296,12 @@ Return ONLY this JSON structure:
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const patientId = parseInt(req.params.patientId);
+      if (isNaN(patientId)) return res.status(400).json({ message: "Invalid patient ID" });
       const patient = await storage.getPatient(patientId, clinicianId, clinicId);
-      if (!patient) return res.status(404).json({ message: "Patient not found" });
+      if (!patient) {
+        console.warn(`[PORTAL STATUS] 404: patientId=${patientId} clinicianId=${clinicianId} clinicId=${clinicId}`);
+        return res.status(404).json({ message: "Patient not found" });
+      }
       // Primary lookup: by patient_id (fast, authoritative).
       // Fallback: by patient email — handles cases where the portal account's
       // patient_id hasn't been backfilled to match the current patient record.

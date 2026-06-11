@@ -26,6 +26,7 @@ export function PatientSearchBar({
   const { data: results = [], isFetching } = useQuery<Patient[]>({
     queryKey: [`/api/patients/search?q=${encodeURIComponent(trimmed)}`],
     enabled: trimmed.length >= 2,
+    staleTime: 0,
   });
 
   useEffect(() => {
