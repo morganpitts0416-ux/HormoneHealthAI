@@ -850,17 +850,6 @@ export async function registerRoutes(app: Express): Promise<Server> {
     const _sess = req.session as any;
     const _effectiveClinicId = getEffectiveClinicId(req);
     const activeClinicId = _effectiveClinicId ?? safeUser.defaultClinicId ?? null;
-    // ── DIAGNOSTIC: always log, even when activeClinicId is null ──────────
-    console.log(
-      `[AUTH/me] id=${safeUser.id} email=${safeUser.email}` +
-      ` defaultClinicId=${safeUser.defaultClinicId ?? 'null'}` +
-      ` effectiveClinicId=${_effectiveClinicId ?? 'null'}` +
-      ` activeClinicId=${activeClinicId ?? 'null'}` +
-      ` isStaff=${!!_sess.staffId}` +
-      ` sess.staffId=${_sess.staffId ?? 'null'}` +
-      ` sess.staffClinicianClinicId=${_sess.staffClinicianClinicId ?? 'null'}` +
-      ` sess.activeClinicId=${_sess.activeClinicId ?? 'null'}`
-    );
     let membershipInfo: {
       clinicalRole?: string;
       adminRole?: string;
@@ -3361,24 +3350,12 @@ Rules:
       const clinicId = getEffectiveClinicId(req);
       const q = (req.query.q as string) || '';
       const gender = req.query.gender as string | undefined;
-      // ── DIAGNOSTIC: show every value that drives patient scoping ──────────
-      const _ds = req.session as any;
-      console.log(
-        `[patient-search] clinicianId=${clinicianId} clinicId=${clinicId ?? 'null'}` +
-        ` q="${q}"` +
-        ` sess.staffId=${_ds.staffId ?? 'null'}` +
-        ` sess.staffClinicianClinicId=${_ds.staffClinicianClinicId ?? 'null'}` +
-        ` sess.activeClinicId=${_ds.activeClinicId ?? 'null'}` +
-        ` user.defaultClinicId=${(_ds as any).passport ? (req.user as any)?.defaultClinicId ?? 'null' : 'no-passport'}`
-      );
       logPhiAccess({ actorType: "clinician", actorId: clinicianId, clinicId, action: "view_patient_list", ipAddress: ipFromReq(req), userAgent: uaFromReq(req) });
       if (!q || q.length < 1) {
         const allPatients = await storage.getAllPatients(clinicianId, clinicId);
-        console.log(`[patient-search] userId=${clinicianId} clinicId=${clinicId ?? 'null'} q="" resultCount=${allPatients.length}`);
         return res.json(allPatients);
       }
       const patients = await storage.searchPatients(q, clinicianId, gender, clinicId);
-      console.log(`[patient-search] userId=${clinicianId} clinicId=${clinicId ?? 'null'} q="${q}" resultCount=${patients.length}`);
       res.json(patients);
     } catch (error) {
       console.error("Error searching patients:", error);
