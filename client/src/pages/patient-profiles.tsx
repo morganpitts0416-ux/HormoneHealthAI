@@ -21,7 +21,7 @@ import {
   Loader2, Sparkles, ShoppingBag, CheckCircle, XCircle, Stethoscope, ChevronRight, Plus,
   ChevronLeft, Pill, Shield, Scissors, X, Pencil, Lock, ChevronDown, FileDown, Check, BookOpen, PenLine, ArrowRightLeft,
   Link2, Clock, Building2, Eye, EyeOff, CalendarDays, Phone, Paperclip,
-  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap, ListChecks,
+  LayoutDashboard, FolderOpen, FlaskConical, Home, Archive, Save, Zap, ListChecks, MapPin,
 } from "lucide-react";
 import { Popover, PopoverContent, PopoverTrigger } from "@/components/ui/popover";
 import { AppointmentDialog } from "@/components/appointment-dialog";
@@ -3447,12 +3447,17 @@ export default function PatientProfiles() {
                       </button>
                     </div>
 
-                    {/* Collapsible: email, MRN, pharmacy, portal status, lab count */}
+                    {/* Collapsible: email, address, MRN, pharmacy, portal status, lab count */}
                     {showFullDemographics && (
                       <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1.5 pl-0">
                         {(selectedPatient as any).email && (
                           <span className="text-xs text-muted-foreground flex items-center gap-1">
                             <Mail className="w-3 h-3" /> {(selectedPatient as any).email}
+                          </span>
+                        )}
+                        {(selectedPatient as any).address && (
+                          <span className="text-xs text-muted-foreground flex items-center gap-1 basis-full">
+                            <MapPin className="w-3 h-3 flex-shrink-0" /> {(selectedPatient as any).address}
                           </span>
                         )}
                         {selectedPatient.mrn && (
