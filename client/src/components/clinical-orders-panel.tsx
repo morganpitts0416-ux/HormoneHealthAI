@@ -12,13 +12,15 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { cn } from "@/lib/utils";
-import { Search } from "lucide-react";
+import { Search, Printer } from "lucide-react";
 import {
   ClipboardList, Plus, X, Clock, AlertCircle,
   Activity, Heart, FlaskConical, Loader2, Check,
   ChevronDown, ChevronRight, RotateCcw, User, Phone,
   CalendarDays, MapPin, FileText, CheckCircle2, Circle,
 } from "lucide-react";
+import { useClinicBranding } from "@/hooks/use-clinic-branding";
+import { generateOrderPDF } from "@/lib/order-pdf-export";
 
 // ── Types ─────────────────────────────────────────────────────────────────────
 interface TaskCompletion {
@@ -138,6 +140,65 @@ function OrderDetailDrawer({
   const [cancelReason, setCancelReason] = useState("");
   const [editNotes, setEditNotes] = useState(order.notes ?? "");
   const [savingNotes, setSavingNotes] = useState(false);
+  const [printing, setPrinting] = useState(false);
+
+  const { data: clinicBranding } = useClinicBranding();
+  const { data: patientData } = useQuery<any>({
+    queryKey: ["/api/patients", order.patientId],
+    enabled: ["referral", "imaging", "health_maintenance"].includes(order.orderType),
+    staleTime: 5 * 60 * 1000,
+  });
+
+  const canPrint = ["referral", "imaging", "health_maintenance"].includes(order.orderType);
+
+  async function handlePrint() {
+    setPrinting(true);
+    try {
+      await generateOrderPDF({
+        order: {
+          orderType: order.orderType,
+          subtype: order.subtype,
+          referringTo: order.referringTo,
+          facilityAddress: order.facilityAddress,
+          facilityFax: order.facilityFax,
+          reason: order.reason,
+          priority: order.priority,
+          targetDate: order.targetDate,
+          diagnosisCode: order.diagnosisCode,
+          diagnosisName: order.diagnosisName,
+          cptCode: order.cptCode,
+          cptDescription: order.cptDescription,
+          notes: order.notes,
+          createdAt: order.createdAt,
+        },
+        patient: {
+          firstName: patientData?.firstName ?? order.patientFirstName ?? "Patient",
+          lastName: patientData?.lastName ?? order.patientLastName ?? "",
+          dateOfBirth: patientData?.dateOfBirth ?? null,
+          gender: patientData?.gender ?? null,
+          mrn: patientData?.mrn ?? null,
+          phone: patientData?.phone ?? null,
+          email: patientData?.email ?? null,
+          insuranceCarrier: patientData?.insuranceCarrier ?? null,
+          insuranceMemberId: patientData?.insuranceMemberId ?? null,
+        },
+        providerName: (user as any)?.name ?? (user as any)?.username ?? "",
+        providerTitle: (user as any)?.title ?? null,
+        providerNpi: (user as any)?.npi ?? null,
+        signatureImage: (user as any)?.signatureImage ?? null,
+        clinicName: (user as any)?.clinicName ?? "Clinic",
+        clinicAddress: (user as any)?.address ?? null,
+        clinicPhone: (user as any)?.phone ?? null,
+        clinicLogo: clinicBranding?.clinicLogo ?? null,
+        footerText: clinicBranding?.footerText ?? null,
+        branding: clinicBranding ?? null,
+      });
+    } catch (e) {
+      toast({ variant: "destructive", title: "Failed to generate PDF" });
+    } finally {
+      setPrinting(false);
+    }
+  }
 
   const tasks = ORDER_TASK_WORKFLOWS[order.orderType] ?? [];
   const completionMap = Object.fromEntries(order.taskCompletions.map((c) => [c.taskKey, c]));
@@ -211,6 +272,18 @@ function OrderDetailDrawer({
           <div className="flex items-center gap-2 flex-shrink-0">
             <Badge className={cn("text-xs", typeConfig.color)}>{typeConfig.shortLabel}</Badge>
             <Badge className={cn("text-xs", priorityCfg.color)}>{priorityCfg.label}</Badge>
+            {canPrint && (
+              <Button
+                size="icon"
+                variant="ghost"
+                onClick={handlePrint}
+                disabled={printing}
+                title="Print / Download PDF"
+                data-testid="button-print-order"
+              >
+                {printing ? <Loader2 className="w-4 h-4 animate-spin" /> : <Printer className="w-4 h-4" />}
+              </Button>
+            )}
             <button onClick={onClose} className="text-muted-foreground hover:text-foreground ml-1" data-testid="button-close-order-drawer">
               <X className="w-4 h-4" />
             </button>
