@@ -8390,7 +8390,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
       const clinicianId = getClinicianId(req);
       const clinicId = getEffectiveClinicId(req);
       const id = parseInt(req.params.id);
-      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, diarizedTranscript, clinicalExtraction, evidenceSuggestions, expectedPatientId } = req.body;
+      const { visitDate, visitType, chiefComplaint, transcription, audioProcessed, linkedLabResultId, clinicianNotes, phoneContact, diarizedTranscript, clinicalExtraction, evidenceSuggestions, expectedPatientId } = req.body;
 
       // PATIENT-SAFETY: stale-context tripwire. If the client tells us which
       // patient the UI thinks this encounter belongs to and it doesn't match,
@@ -8429,6 +8429,7 @@ Keep it simple, warm, 2-3 sentences. Focus on what it does and why it may help.`
         ...(audioProcessed !== undefined && { audioProcessed }),
         ...(linkedLabResultId !== undefined && { linkedLabResultId: linkedLabResultId ? parseInt(linkedLabResultId) : null }),
         ...(clinicianNotes !== undefined && { clinicianNotes }),
+        ...(phoneContact !== undefined && { phoneContact }),
         ...(diarizedTranscript !== undefined && { diarizedTranscript }),
         ...(clinicalExtraction !== undefined && { clinicalExtraction }),
         ...(evidenceSuggestions !== undefined && { evidenceSuggestions }),

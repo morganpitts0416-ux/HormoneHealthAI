@@ -2107,6 +2107,10 @@ export default function PatientProfiles() {
   const [showManualSoap, setShowManualSoap] = useState(false);
   const [showNurseNote, setShowNurseNote] = useState(false);
   const [showPhoneNote, setShowPhoneNote] = useState(false);
+  // Edit-existing modes: reopen a saved block-based note in its original builder.
+  const [editingManualSoapId, setEditingManualSoapId] = useState<number | null>(null);
+  const [editingNurseNoteId, setEditingNurseNoteId] = useState<number | null>(null);
+  const [editingPhoneNoteId, setEditingPhoneNoteId] = useState<number | null>(null);
   const [previewSubId, setPreviewSubId] = useState<number | null>(null);
   const [expandedEncounterId, setExpandedEncounterId] = useState<number | null>(null);
   // INLINE ENCOUNTER EDITOR — when set, the Encounters sub-section renders the
@@ -4654,8 +4658,24 @@ export default function PatientProfiles() {
                                         if (isAmending) {
                                           setAmendingEncounterId(null);
                                           setAmendText("");
+                                        } else if (!isSigned) {
+                                          // For unsigned block-based notes, reopen in the original builder
+                                          // so the template structure is preserved.
+                                          const sn = enc.soapNote as any;
+                                          const hasBlocks = Array.isArray(sn?.blocks);
+                                          if (noteType === "nurse" && hasBlocks) {
+                                            setEditingNurseNoteId(enc.id);
+                                          } else if (noteType === "soap_provider" && hasBlocks) {
+                                            setEditingManualSoapId(enc.id);
+                                          } else if (noteType === "phone") {
+                                            setEditingPhoneNoteId(enc.id);
+                                          } else {
+                                            setAmendText(soapText);
+                                            setAmendingEncounterId(enc.id);
+                                            setExpandedEncounterId(enc.id);
+                                          }
                                         } else {
-                                          if (isSigned && !confirm("Open this note for amendment? A copy of the current signed version will be preserved in the audit trail.")) return;
+                                          if (!confirm("Open this note for amendment? A copy of the current signed version will be preserved in the audit trail.")) return;
                                           setAmendText(soapText);
                                           setAmendingEncounterId(enc.id);
                                           setExpandedEncounterId(enc.id);
@@ -5733,6 +5753,17 @@ export default function PatientProfiles() {
                 />
               )}
 
+              {editingNurseNoteId !== null && selectedPatient && (
+                <NurseNoteBuilder
+                  patientId={selectedPatient.id}
+                  initialEncounterId={editingNurseNoteId}
+                  onClose={() => {
+                    setEditingNurseNoteId(null);
+                    queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                  }}
+                />
+              )}
+
               {showPhoneNote && selectedPatient && (
                 <PhoneNoteDialog
                   patientId={selectedPatient.id}
@@ -5740,6 +5771,17 @@ export default function PatientProfiles() {
                     setShowPhoneNote(false);
                     queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
                     setShowEncounters(true);
+                  }}
+                />
+              )}
+
+              {editingPhoneNoteId !== null && selectedPatient && (
+                <PhoneNoteDialog
+                  patientId={selectedPatient.id}
+                  initialEncounterId={editingPhoneNoteId}
+                  onClose={() => {
+                    setEditingPhoneNoteId(null);
+                    queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
                   }}
                 />
               )}
@@ -5756,6 +5798,24 @@ export default function PatientProfiles() {
                         queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
                         setShowManualSoap(false);
                         setShowEncounters(true);
+                      }}
+                    />
+                  </DialogContent>
+                </Dialog>
+              )}
+
+              {editingManualSoapId !== null && selectedPatient && (
+                <Dialog open onOpenChange={(o) => { if (!o) setEditingManualSoapId(null); }}>
+                  <DialogContent className="max-w-3xl h-[85vh] p-0 overflow-hidden !flex flex-col [&>button:last-child]:hidden" data-testid="dialog-edit-manual-soap">
+                    <ManualSoapBuilder
+                      patientId={selectedPatient.id}
+                      patientName={`${selectedPatient.firstName} ${selectedPatient.lastName}`}
+                      clinicianId={(user as any)?.id ?? 0}
+                      initialEncounterId={editingManualSoapId}
+                      onClose={() => setEditingManualSoapId(null)}
+                      onSaved={() => {
+                        queryClient.invalidateQueries({ queryKey: ['/api/encounters', selectedPatient.id] });
+                        setEditingManualSoapId(null);
                       }}
                     />
                   </DialogContent>

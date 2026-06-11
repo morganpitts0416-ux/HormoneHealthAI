@@ -1,4 +1,4 @@
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { localDateTimeStr } from "@/lib/date-utils";
 import { useMutation } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -9,22 +9,46 @@ import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
 import { Textarea } from "@/components/ui/textarea";
 import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from "@/components/ui/select";
-import { Phone, Save } from "lucide-react";
+import { Phone, Save, Loader2 } from "lucide-react";
 
 interface PhoneNoteDialogProps {
   patientId: number;
   onClose: () => void;
+  /** When set, re-opens this existing encounter for editing instead of creating a new one. */
+  initialEncounterId?: number;
 }
 
 const CONTACT_OPTIONS = ["Patient", "Family member", "Pharmacy", "Insurance", "Other provider", "Other"];
 
-export function PhoneNoteDialog({ patientId, onClose }: PhoneNoteDialogProps) {
+export function PhoneNoteDialog({ patientId, onClose, initialEncounterId }: PhoneNoteDialogProps) {
   const { toast } = useToast();
   const [visitDate, setVisitDate] = useState(localDateTimeStr());
   const [contactedWith, setContactedWith] = useState("Patient");
   const [direction, setDirection] = useState<"incoming" | "outgoing">("incoming");
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [content, setContent] = useState("");
+  const [loading, setLoading] = useState(!!initialEncounterId);
+
+  // Load existing encounter data when re-opening for editing.
+  useEffect(() => {
+    if (!initialEncounterId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/encounters/${initialEncounterId}`);
+        if (!res.ok) return;
+        const enc = await res.json();
+        if (enc.visitDate) setVisitDate(new Date(enc.visitDate).toISOString().slice(0, 16));
+        const pc = enc.phoneContact ?? {};
+        if (pc.contactedWith) setContactedWith(pc.contactedWith);
+        if (pc.direction) setDirection(pc.direction);
+        if (enc.chiefComplaint) setChiefComplaint(enc.chiefComplaint);
+        if (enc.clinicianNotes) setContent(enc.clinicianNotes);
+      } finally {
+        setLoading(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEncounterId]);
 
   const saveMut = useMutation({
     mutationFn: async () => {
@@ -50,6 +74,18 @@ export function PhoneNoteDialog({ patientId, onClose }: PhoneNoteDialogProps) {
         phoneContact: { contactedWith, direction },
         soapNote: { fullNote: header },
       };
+      if (initialEncounterId) {
+        await apiRequest("PUT", `/api/encounters/${initialEncounterId}`, {
+          visitDate: body.visitDate,
+          visitType: body.visitType,
+          chiefComplaint: body.chiefComplaint,
+          clinicianNotes: body.clinicianNotes,
+          phoneContact: body.phoneContact,
+        });
+        return apiRequest("PUT", `/api/encounters/${initialEncounterId}/soap`, {
+          soapNote: body.soapNote,
+        });
+      }
       return apiRequest("POST", "/api/encounters", body);
     },
     onSuccess: () => {
@@ -62,11 +98,24 @@ export function PhoneNoteDialog({ patientId, onClose }: PhoneNoteDialogProps) {
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
+  if (loading) {
+    return (
+      <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+        <DialogContent className="max-w-xl">
+          <div className="flex items-center justify-center gap-2 py-10 text-muted-foreground">
+            <Loader2 className="w-4 h-4 animate-spin" />
+            <span className="text-sm">Loading note…</span>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-xl">
         <DialogHeader>
-          <DialogTitle className="flex items-center gap-2"><Phone className="w-4 h-4" />Quick Phone Note</DialogTitle>
+          <DialogTitle className="flex items-center gap-2"><Phone className="w-4 h-4" />{initialEncounterId ? "Edit Phone Note" : "Quick Phone Note"}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="grid grid-cols-2 gap-3">

@@ -1,4 +1,4 @@
-import { useState, useRef, useEffect } from "react";
+import { useState, useRef, useEffect, useCallback } from "react";
 import { localDateTimeStr } from "@/lib/date-utils";
 import { useMutation, useQuery } from "@tanstack/react-query";
 import { apiRequest, queryClient } from "@/lib/queryClient";
@@ -15,7 +15,7 @@ import { Checkbox } from "@/components/ui/checkbox";
 import { RadioGroup, RadioGroupItem } from "@/components/ui/radio-group";
 import {
   Plus, X, Save, Stethoscope, Activity, GraduationCap,
-  CalendarCheck, FileText, ChevronDown, ChevronUp, Heart, ListChecks,
+  CalendarCheck, FileText, ChevronDown, ChevronUp, Heart, ListChecks, Loader2,
 } from "lucide-react";
 import { usePhraseSearch } from "@/components/phrase-search";
 import type { NoteTemplate } from "@shared/schema";
@@ -24,6 +24,8 @@ import { nurseBlocksToText } from "@/lib/soap-pdf-export";
 interface NurseNoteBuilderProps {
   patientId: number;
   onClose: () => void;
+  /** When set, re-opens this existing encounter for editing instead of creating a new one. */
+  initialEncounterId?: number;
 }
 
 const NURSE_BLOCK_TYPES = [
@@ -103,7 +105,7 @@ function flattenBlanks(content: string, fillValues: string[]): string {
 
 function uid() { return Math.random().toString(36).substring(2, 10); }
 
-export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) {
+export function NurseNoteBuilder({ patientId, onClose, initialEncounterId }: NurseNoteBuilderProps) {
   const { toast } = useToast();
   const [visitDate, setVisitDate] = useState(localDateTimeStr());
   const [chiefComplaint, setChiefComplaint] = useState("");
@@ -114,6 +116,8 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
     { uid: uid(), type: "intervention", label: "Intervention", content: "" },
   ]);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
+  const [savedEncounterId, setSavedEncounterId] = useState<number | null>(initialEncounterId ?? null);
+  const [loadingExisting, setLoadingExisting] = useState(!!initialEncounterId);
 
   const { data: templates = [] } = useQuery<NoteTemplate[]>({
     queryKey: ["/api/note-templates", { noteType: "nurse" }],
@@ -124,7 +128,28 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
     },
   });
 
-  const applyTemplate = (id: string) => {
+  // When re-opening an existing encounter, load its saved blocks and metadata.
+  useEffect(() => {
+    if (!initialEncounterId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/encounters/${initialEncounterId}`);
+        if (!res.ok) return;
+        const enc = await res.json();
+        const sn = enc.soapNote as any;
+        if (Array.isArray(sn?.blocks) && sn.blocks.length > 0) {
+          setBlocks(sn.blocks);
+        }
+        if (enc.chiefComplaint) setChiefComplaint(enc.chiefComplaint);
+        if (enc.visitDate) setVisitDate(new Date(enc.visitDate).toISOString().slice(0, 16));
+      } finally {
+        setLoadingExisting(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEncounterId]);
+
+  const applyTemplate = useCallback((id: string) => {
     setSelectedTemplateId(id);
     const tpl = templates.find(t => String(t.id) === id);
     if (!tpl) return;
@@ -172,7 +197,7 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
 
     setBlocks(finalBlocks);
     toast({ title: `Template "${tpl.name}" applied` });
-  };
+  }, [templates, toast]);
 
   const addBlock = (type: string) => {
     const meta = NURSE_BLOCK_TYPES.find(t => t.id === type);
@@ -195,16 +220,38 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
   const saveMut = useMutation({
     mutationFn: async () => {
       const fullNote = nurseBlocksToText(blocks);
-      const body = {
-        patientId,
-        visitDate: new Date(visitDate).toISOString(),
-        visitType: "nurse-visit",
-        noteType: "nurse",
-        chiefComplaint: chiefComplaint || blocks.find(b => b.type === "chief_complaint")?.content || "Nurse visit",
-        soapNote: { fullNote, blocks } as any,
-      };
-      const res = await apiRequest("POST", "/api/encounters", body);
-      const encounter = await res.json();
+      const cc = chiefComplaint || blocks.find(b => b.type === "chief_complaint")?.content || "Nurse visit";
+      const isoDate = new Date(visitDate).toISOString();
+      const existingId = savedEncounterId;
+      let encounterId: number;
+
+      if (existingId) {
+        // Update existing encounter
+        await apiRequest("PUT", `/api/encounters/${existingId}`, {
+          visitDate: isoDate,
+          visitType: "nurse-visit",
+          chiefComplaint: cc,
+        });
+        await apiRequest("PUT", `/api/encounters/${existingId}/soap`, {
+          soapNote: { fullNote, blocks } as any,
+        });
+        encounterId = existingId;
+      } else {
+        const body = {
+          patientId,
+          visitDate: isoDate,
+          visitType: "nurse-visit",
+          noteType: "nurse",
+          chiefComplaint: cc,
+          soapNote: { fullNote, blocks } as any,
+        };
+        const res = await apiRequest("POST", "/api/encounters", body);
+        const encounter = await res.json();
+        encounterId = encounter.id;
+        setSavedEncounterId(encounterId);
+      }
+
+      const encounter = { id: encounterId };
 
       const vitalsBlk = blocks.find(b => b.type === "vitals");
       if (vitalsBlk?.vitals) {
@@ -251,12 +298,25 @@ export function NurseNoteBuilder({ patientId, onClose }: NurseNoteBuilderProps) 
     onError: (e: any) => toast({ title: "Save failed", description: e.message, variant: "destructive" }),
   });
 
+  if (loadingExisting) {
+    return (
+      <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
+        <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
+          <div className="flex items-center justify-center gap-2 py-12 text-muted-foreground">
+            <Loader2 className="w-5 h-5 animate-spin" />
+            <span className="text-sm">Loading note…</span>
+          </div>
+        </DialogContent>
+      </Dialog>
+    );
+  }
+
   return (
     <Dialog open onOpenChange={(o) => { if (!o) onClose(); }}>
       <DialogContent className="max-w-4xl max-h-[92vh] overflow-y-auto">
         <DialogHeader>
           <DialogTitle className="flex items-center gap-2">
-            <Stethoscope className="w-5 h-5" />Nurse Note
+            <Stethoscope className="w-5 h-5" />{initialEncounterId ? "Edit Nurse Note" : "Nurse Note"}
             <Badge style={{ backgroundColor: "#7a8a64", color: "#fff" }}>Nursing visit</Badge>
           </DialogTitle>
         </DialogHeader>

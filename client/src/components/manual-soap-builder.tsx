@@ -1413,9 +1413,11 @@ interface ManualSoapBuilderProps {
   clinicianId: number;
   onClose: () => void;
   onSaved: () => void;
+  /** When set, re-opens this existing encounter for editing instead of creating a new one. */
+  initialEncounterId?: number;
 }
 
-export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose, onSaved }: ManualSoapBuilderProps) {
+export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose, onSaved, initialEncounterId }: ManualSoapBuilderProps) {
   const { toast } = useToast();
   const [chiefComplaint, setChiefComplaint] = useState("");
   const [visitDate, setVisitDate] = useState(localDateStr);
@@ -1425,7 +1427,8 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     { uid: uid(), type: "assessment_plan", content: "", mode: "freetext", assessmentItems: [{ uid: uid(), diagnosis: "", icd10: "", supportingFactors: "", plan: "" }], assessmentSummary: "" },
   ]);
   const [showAddMenu, setShowAddMenu] = useState(false);
-  const [savedEncounterId, setSavedEncounterId] = useState<number | null>(null);
+  const [savedEncounterId, setSavedEncounterId] = useState<number | null>(initialEncounterId ?? null);
+  const [loadingExisting, setLoadingExisting] = useState(!!initialEncounterId);
   const [selectedTemplateId, setSelectedTemplateId] = useState<string>("");
   const addMenuRef = useRef<HTMLDivElement>(null);
 
@@ -1455,6 +1458,31 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
     queryKey: ["/api/clinical-block-defaults"],
     staleTime: 60_000,
   });
+
+  // When re-opening an existing encounter, load its saved blocks and metadata.
+  useEffect(() => {
+    if (!initialEncounterId) return;
+    (async () => {
+      try {
+        const res = await fetch(`/api/encounters/${initialEncounterId}`);
+        if (!res.ok) return;
+        const enc = await res.json();
+        const sn = enc.soapNote as any;
+        if (Array.isArray(sn?.blocks) && sn.blocks.length > 0) {
+          setBlocks(sn.blocks);
+        }
+        const cc = sn?.chiefComplaint ?? enc.chiefComplaint ?? "";
+        if (cc) setChiefComplaint(cc);
+        const vd = sn?.visitDate ?? enc.visitDate;
+        if (vd) setVisitDate(typeof vd === "string" ? vd.slice(0, 10) : new Date(vd).toISOString().slice(0, 10));
+        const vt = sn?.visitType ?? enc.visitType;
+        if (vt) setVisitType(vt);
+      } finally {
+        setLoadingExisting(false);
+      }
+    })();
+  // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [initialEncounterId]);
 
   const applyTemplate = useCallback((templateId: string) => {
     setSelectedTemplateId(templateId);
@@ -1715,7 +1743,7 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
       }
 
       await apiRequest("PUT", `/api/encounters/${encId}/soap`, {
-        soapNote: { fullNote },
+        soapNote: { fullNote, blocks, chiefComplaint, visitDate, visitType },
       });
 
       // Save vitals block data to the patient's vitals record (non-fatal)
@@ -1760,13 +1788,22 @@ export function ManualSoapBuilder({ patientId, patientName, clinicianId, onClose
   const usedBlockTypes = new Set(blocks.map(b => b.type));
   const availableBlocks = BLOCK_TYPES.filter(bt => bt.id !== "custom_text" && !usedBlockTypes.has(bt.id));
 
+  if (loadingExisting) {
+    return (
+      <div className="flex flex-col h-full min-h-0 items-center justify-center gap-2 text-muted-foreground" data-testid="manual-soap-builder-loading">
+        <Loader2 className="w-5 h-5 animate-spin" />
+        <span className="text-sm">Loading note…</span>
+      </div>
+    );
+  }
+
   return (
     <div className="flex flex-col h-full min-h-0" data-testid="manual-soap-builder">
       <div className="flex items-center justify-between gap-2 px-4 py-3 border-b bg-muted/30 flex-shrink-0">
         <div className="flex items-center gap-2 min-w-0">
           <FileText className="w-4 h-4 flex-shrink-0" style={{ color: "#2e3a20" }} />
           <div className="min-w-0">
-            <h2 className="text-sm font-semibold truncate">Manual SOAP Note</h2>
+            <h2 className="text-sm font-semibold truncate">{initialEncounterId ? "Edit SOAP Note" : "Manual SOAP Note"}</h2>
             <p className="text-[10px] text-muted-foreground truncate">{patientName}</p>
           </div>
         </div>
