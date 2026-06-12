@@ -69,6 +69,7 @@ const EXTRACTED_FIELD_MAP: Record<string, { name: string; unit: string }> = {
   lpa:                 { name: "Lp(a)",               unit: "nmol/L" },
   testosterone:        { name: "Testosterone Total",  unit: "ng/dL" },
   freeTestosterone:    { name: "Testosterone Free",   unit: "pg/mL" },
+  bioavailableTestosterone: { name: "Testosterone Bioavailable", unit: "ng/dL" },
   estradiol:           { name: "Estradiol",           unit: "pg/mL" },
   progesterone:        { name: "Progesterone",        unit: "ng/mL" },
   lh:                  { name: "LH",                  unit: "mIU/mL" },

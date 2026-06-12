@@ -55,6 +55,7 @@ export interface ExtractedLabValues {
   // Hormones
   testosterone?: number;
   freeTestosterone?: number;
+  bioavailableTestosterone?: number;
   estradiol?: number;
   progesterone?: number;
   lh?: number;
@@ -140,6 +141,7 @@ EXTRACTION RULES:
      IMPORTANT for Lp(a): Many labs report this as "< 14 mg/dL" or "< 75 nmol/L" (a less-than result indicating below the detection limit). This is a RESULT, not a reference range — extract the number (e.g. "< 14" → lpa: 14). Also capture the unit from the unit column: if the unit column shows "mg/dL" set lpaUnit to "mg/dL"; if it shows "nmol/L" set lpaUnit to "nmol/L".
    - Testosterone: Total Testosterone, Testosterone Total, Serum Testosterone
    - Free Testosterone: Free T, Free Testosterone (Direct), Free Testosterone (Calc)
+   - Bioavailable Testosterone (→ field "bioavailableTestosterone"): Testosterone Bioavailable, Bioavailable Testosterone, Bioavailable T, Testosterone, Bioavailable, Bio-Available Testosterone, Testosterone Bio Available, Bioavailable Testosterone (Calc), Testosterone Bioavailable (Calc)
    - SHBG: Sex Hormone Binding Globulin
    - Estradiol: E2, Oestradiol
    - Progesterone: Prog, P4
@@ -155,10 +157,11 @@ EXTRACTION RULES:
    - Total T3: T3 Total, Triiodothyronine Total, Total Triiodothyronine
    - Anti-Thyroglobulin: Anti-TG, Anti-Tg Ab, Thyroglobulin Antibodies, TgAb
    - Homocysteine: HOMOCYSTEINE, Homocyst, HCY, Plasma Homocysteine
-   - Iron (→ field "iron"): Serum Iron, Iron Serum, Iron Total, Iron, Total, Iron (Fe), Fe, Iron, Serum, Iron Total Serum, Fe Serum, Iron-Serum, Serum Fe, Iron (Total), Iron (Serum), IRON, FE, Iron Level, Iron Studies Iron
-   - TIBC (→ field "tibc"): Total Iron Binding Capacity, TIBC, Iron Binding Capacity, Iron Binding Cap, Iron Binding Cap., Iron Bind. Cap., Iron Bind Cap, Iron Binding Capacity Total, Iron Binding Capacity, Total, Total Iron Binding Cap, Iron Binding, Total Iron Binding, Iron Binding Capacity (TIBC), TIBC (Iron Binding Capacity), Iron Binding Cap Total
-   - Iron Saturation (→ field "ironSaturation"): % Saturation, Percent Saturation, Iron Saturation, Iron Sat, Iron Sat., Iron % Saturation, Iron, % Saturation, % Iron Saturation, Transferrin Saturation, Transferrin Sat, Transferrin Sat., TSAT, T-Sat, Iron %, Sat %, % Sat, % Sat., Sat. %, Percent Sat, Iron Percent Saturation, % Iron Sat, Saturation (Iron), Iron Saturation %
-   NOTE — Iron Saturation is always a RESULT percentage (the patient's actual measured saturation, typically 10–60%). The number after "% Saturation" on the same line is the RESULT. Extract it as a plain number (e.g. "28%" → 28). Do NOT confuse this with reference range percentages printed separately.
+   - Iron (→ field "iron"): Iron, Serum Iron, Iron Serum, Iron Total, Iron (Fe), Fe Iron, Iron-Serum, Serum Fe, Iron (Total), Iron (Serum), IRON, Iron Level, Iron Studies Iron, Iron (ug/dL), Iron (µg/dL)
+     IMPORTANT for Iron: When the label column says simply "Iron" (with unit ug/dL or µg/dL), that is the serum iron result — extract it as "iron". Do NOT confuse it with TIBC or Iron Saturation rows on adjacent lines.
+   - TIBC (→ field "tibc"): Total Iron Binding Capacity, TIBC, Iron Binding Capacity, Iron Binding Cap, Iron Binding Cap., Iron binding Cap, Iron Bind. Cap., Iron Bind Cap, Iron Binding Capacity Total, Total Iron Binding Cap, Iron Binding, Total Iron Binding, Iron Binding Capacity (TIBC), TIBC (Iron Binding Capacity), Iron Binding Cap Total, Iron Binding Cap (ug/dL), Iron Binding Cap (µg/dL)
+   - Iron Saturation (→ field "ironSaturation"): Percent Saturation, % Saturation, Iron Saturation, Iron Sat, Iron % Saturation, % Iron Saturation, Transferrin Saturation, Transferrin Sat, TSAT, T-Sat, Iron %, Sat %, % Sat, Sat. %, Percent Sat, Iron Percent Saturation, % Iron Sat, Saturation (Iron), Iron Saturation %
+   NOTE — Iron Saturation is always a RESULT percentage (the patient's actual measured saturation, typically 10–60%). When the label says "Percent Saturation" with unit "%" the result on that line is the iron saturation — extract it as "ironSaturation". Extract as a plain number (e.g. "28%" → 28). Do NOT confuse this with reference range percentages printed separately.
    - Ferritin: Serum Ferritin
    - Vitamin D: 25-OH Vitamin D, 25-Hydroxyvitamin D, Vitamin D 25-Hydroxy, Calcidiol
    - Vitamin B12: B12, Cobalamin, Cyanocobalamin
@@ -207,6 +210,7 @@ Return this JSON structure (include ONLY fields you found):
   "lpaUnit": "mg/dL or nmol/L",
   "testosterone": number,
   "freeTestosterone": number,
+  "bioavailableTestosterone": number,
   "estradiol": number,
   "progesterone": number,
   "lh": number,
