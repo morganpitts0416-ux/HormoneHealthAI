@@ -170,6 +170,15 @@ function OrderDetailDrawer({
   async function handlePrint() {
     setPrinting(true);
     try {
+      // Always fetch chart data fresh at print time so medications/history are current
+      let freshChart: any = null;
+      try {
+        const chartRes = await apiRequest("GET", `/api/patients/${order.patientId}/chart`);
+        if (chartRes.ok) freshChart = await chartRes.json();
+      } catch {
+        freshChart = chartData ?? null;
+      }
+
       await generateOrderPDF({
         order: {
           orderType: order.orderType,
@@ -211,8 +220,8 @@ function OrderDetailDrawer({
         clinicLogo: clinicBranding?.clinicLogo ?? null,
         footerText: clinicBranding?.footerText ?? null,
         branding: clinicBranding ?? null,
-        medications: chartData?.currentMedications ?? null,
-        medicalHistory: chartData?.medicalHistory ?? null,
+        medications: freshChart?.currentMedications ?? null,
+        medicalHistory: freshChart?.medicalHistory ?? null,
       });
     } catch (e) {
       toast({ variant: "destructive", title: "Failed to generate PDF" });
