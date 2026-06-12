@@ -47,6 +47,7 @@ import {
   AdvancedLipidsCard,
   StopBangCard,
   InsulinResistanceCard,
+  MitoScoreCard,
   FemaleHormonePatternCard,
   FemaleHormoneAssessmentCard,
   MaleHormoneAssessmentCard,
@@ -735,6 +736,13 @@ function LabDetailModal({ lab, onClose, patient, allLabs, onDelete }: { lab: Lab
               {interp.insulinResistance && interp.insulinResistance.likelihood !== 'none' && (
                 <HideableSection sectionKey="insulinResistance">
                   <InsulinResistanceCard insulinResistance={interp.insulinResistance} />
+                </HideableSection>
+              )}
+
+              {/* Cellular Energy / Mito Score */}
+              {(interp as any).mitoScore && (
+                <HideableSection sectionKey="insulinResistance">
+                  <MitoScoreCard mitoScore={(interp as any).mitoScore} />
                 </HideableSection>
               )}
 

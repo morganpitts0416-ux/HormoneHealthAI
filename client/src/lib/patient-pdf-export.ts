@@ -1214,10 +1214,12 @@ export async function generatePatientWellnessPDF(
     yPosition += 4;
   }
 
-  // ── YOUR METABOLIC HEALTH ASSESSMENT ────────────────────────────────────
-  // Shows metabolic/systemic clinical phenotypes (Inflammatory Burden,
-  // Iron Deficiency, Insulin Resistance, Oxidative Stress, etc.)
-  if (metabolicPhenotypes.length > 0) {
+  // ── YOUR METABOLIC HEALTH ASSESSMENT (unified) ───────────────────────────
+  // Combines: clinical metabolic phenotypes, insulin resistance screening,
+  // and Cellular Energy / Mito Score — all under one section header.
+  const hasIR = !!(interpretation.insulinResistance && interpretation.insulinResistance.likelihood !== 'none');
+  const hasMitoScore = !!(interpretation as any).mitoScore;
+  if (metabolicPhenotypes.length > 0 || hasIR || hasMitoScore) {
     yPosition = ensureSpace(60, yPosition);
     yPosition = addSectionHeader('YOUR METABOLIC HEALTH ASSESSMENT', yPosition);
 
@@ -1230,9 +1232,137 @@ export async function generatePatientWellnessPDF(
     doc.text(metaIntroLines, margin, yPosition);
     yPosition += metaIntroLines.length * 4 + 6;
 
+    // Clinical metabolic phenotypes (Iron Deficiency, Inflammatory Burden, etc.)
     for (const phenotype of metabolicPhenotypes) {
       renderPhenotypeCard(phenotype.name, phenotype.description);
     }
+
+    // Insulin Resistance Screening
+    if (hasIR) {
+      const ir = interpretation.insulinResistance!;
+      yPosition = ensureSpace(20, yPosition);
+      doc.setFillColor(...lightBg);
+      doc.roundedRect(margin, yPosition, contentWidth, 14, 2, 2, 'F');
+      doc.setTextColor(...brandColor);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      const likelihoodText = ir.likelihood === 'high'
+        ? 'High Likelihood of Insulin Resistance'
+        : ir.likelihood === 'early'
+          ? 'Early Insulin Resistance / Emerging Metabolic Dysfunction'
+          : 'Moderate Likelihood of Insulin Resistance';
+      doc.text(likelihoodText, margin + 4, yPosition + 6);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      const scoreDisplay = (ir as any).score !== undefined
+        ? `${(ir as any).score} / ${(ir as any).maxScore} points`
+        : `${ir.positiveCount} screening markers positive`;
+      doc.text(scoreDisplay, margin + 4, yPosition + 11);
+      yPosition += 18;
+
+      if (ir.phenotypes.length > 0) {
+        for (const phenotype of ir.phenotypes) {
+          const explanationText = sanitizeForPdf(phenotype.patientExplanation);
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'normal');
+          const expLines = doc.splitTextToSize(explanationText, contentWidth - 10);
+          const blockHeight = 10 + (expLines.length * 4);
+          yPosition = ensureSpace(blockHeight, yPosition);
+          doc.setTextColor(...brandColor);
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'bold');
+          doc.text(phenotype.name, margin, yPosition);
+          yPosition += 5;
+          doc.setTextColor(...textColor);
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'normal');
+          for (let i = 0; i < expLines.length; i++) {
+            yPosition = ensureSpace(4, yPosition);
+            doc.text(expLines[i], margin + 2, yPosition);
+            yPosition += 4;
+          }
+          yPosition += 4;
+        }
+      } else {
+        const defaultText = sanitizeForPdf('Some of your metabolic markers suggest your body may not be processing insulin as efficiently as it should. We recommend confirmation testing with fasting insulin and fasting glucose to guide next steps.');
+        doc.setFontSize(9);
+        doc.setFont('helvetica', 'normal');
+        const defaultLines = doc.splitTextToSize(defaultText, contentWidth - 10);
+        for (let i = 0; i < defaultLines.length; i++) {
+          yPosition = ensureSpace(4, yPosition);
+          doc.setTextColor(...textColor);
+          doc.setFontSize(9);
+          doc.setFont('helvetica', 'normal');
+          doc.text(defaultLines[i], margin + 2, yPosition);
+          yPosition += 4;
+        }
+        yPosition += 4;
+      }
+      yPosition += 4;
+    }
+
+    // Cellular Energy / Mito Score
+    if (hasMitoScore) {
+      const mito = (interpretation as any).mitoScore as {
+        score: number; maxScore: number; percentage: number; interpretationLabel: string;
+        primaryPattern: string; secondaryPatterns: string[]; recommendations: string[];
+        missingMarkers: string[];
+      };
+      yPosition = ensureSpace(24, yPosition);
+      doc.setFillColor(...lightBg);
+      doc.roundedRect(margin, yPosition, contentWidth, 14, 2, 2, 'F');
+      doc.setTextColor(...brandColor);
+      doc.setFontSize(10);
+      doc.setFont('helvetica', 'bold');
+      doc.text(`Cellular Energy / Mito Score: ${mito.score} / ${mito.maxScore} (${mito.percentage}%)`, margin + 4, yPosition + 6);
+      doc.setFontSize(8);
+      doc.setFont('helvetica', 'normal');
+      doc.setTextColor(...textColor);
+      doc.text(sanitizeForPdf(mito.interpretationLabel), margin + 4, yPosition + 11);
+      yPosition += 18;
+
+      // Primary pattern
+      const patternText = sanitizeForPdf(`Primary Pattern: ${mito.primaryPattern}${mito.secondaryPatterns.length > 0 ? ` | Secondary: ${mito.secondaryPatterns.join(', ')}` : ''}`);
+      const patternLines = doc.splitTextToSize(patternText, contentWidth - 8);
+      yPosition = ensureSpace(patternLines.length * 4 + 4, yPosition);
+      doc.setFontSize(9);
+      doc.setFont('helvetica', 'bold');
+      doc.setTextColor(...brandColor);
+      doc.text(patternLines, margin + 2, yPosition);
+      yPosition += patternLines.length * 4 + 4;
+
+      // Key recommendations (first 4)
+      if (mito.recommendations.length > 0) {
+        doc.setFontSize(8);
+        doc.setFont('helvetica', 'bold');
+        doc.setTextColor(...textColor);
+        doc.text('Key Recommendations:', margin, yPosition);
+        yPosition += 5;
+        for (const rec of mito.recommendations.slice(0, 4)) {
+          const recLines = doc.splitTextToSize(`• ${sanitizeForPdf(rec)}`, contentWidth - 6);
+          yPosition = ensureSpace(recLines.length * 4, yPosition);
+          doc.setFontSize(8);
+          doc.setFont('helvetica', 'normal');
+          doc.setTextColor(...textColor);
+          doc.text(recLines, margin + 4, yPosition);
+          yPosition += recLines.length * 4 + 1;
+        }
+      }
+
+      if (mito.missingMarkers.length > 0) {
+        yPosition += 2;
+        const missingText = sanitizeForPdf(`Not scored (missing): ${mito.missingMarkers.join(', ')}`);
+        const missingLines = doc.splitTextToSize(missingText, contentWidth);
+        yPosition = ensureSpace(missingLines.length * 4 + 2, yPosition);
+        doc.setFontSize(7);
+        doc.setFont('helvetica', 'italic');
+        doc.setTextColor(150, 150, 150);
+        doc.text(missingLines, margin, yPosition);
+        yPosition += missingLines.length * 4 + 2;
+      }
+      yPosition += 4;
+    }
+
     yPosition += 4;
   }
 
@@ -1355,73 +1485,6 @@ export async function generatePatientWellnessPDF(
     
     return { goal: sanitizeForPdf(goal), diet: sanitizeForPdf(diet), foods: foods.slice(0, 8).map(f => [sanitizeForPdf(f[0]), sanitizeForPdf(f[1])]) };
   };
-
-  if (interpretation.insulinResistance && interpretation.insulinResistance.likelihood !== 'none') {
-    const ir = interpretation.insulinResistance;
-    yPosition = addSectionHeader('METABOLIC HEALTH ASSESSMENT', yPosition);
-    
-    yPosition = ensureSpace(20, yPosition);
-    doc.setFillColor(...lightBg);
-    doc.roundedRect(margin, yPosition, contentWidth, 14, 2, 2, 'F');
-    doc.setTextColor(...brandColor);
-    doc.setFontSize(10);
-    doc.setFont('helvetica', 'bold');
-    const likelihoodText = ir.likelihood === 'high'
-      ? 'High Likelihood of Insulin Resistance'
-      : ir.likelihood === 'early'
-        ? 'Early Insulin Resistance / Emerging Metabolic Dysfunction'
-        : 'Moderate Likelihood of Insulin Resistance';
-    doc.text(likelihoodText, margin + 4, yPosition + 6);
-    doc.setFontSize(8);
-    doc.setFont('helvetica', 'normal');
-    const scoreDisplay = (ir as any).score !== undefined
-      ? `${(ir as any).score} / ${(ir as any).maxScore} points`
-      : `${ir.positiveCount} screening markers positive`;
-    doc.text(scoreDisplay, margin + 4, yPosition + 11);
-    yPosition += 18;
-
-    if (ir.phenotypes.length > 0) {
-      for (const phenotype of ir.phenotypes) {
-        const explanationText = sanitizeForPdf(phenotype.patientExplanation);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        const expLines = doc.splitTextToSize(explanationText, contentWidth - 10);
-        const blockHeight = 10 + (expLines.length * 4);
-        yPosition = ensureSpace(blockHeight, yPosition);
-        
-        doc.setTextColor(...brandColor);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'bold');
-        doc.text(phenotype.name, margin, yPosition);
-        yPosition += 5;
-        
-        doc.setTextColor(...textColor);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        for (let i = 0; i < expLines.length; i++) {
-          yPosition = ensureSpace(4, yPosition);
-          doc.text(expLines[i], margin + 2, yPosition);
-          yPosition += 4;
-        }
-        yPosition += 4;
-      }
-    } else {
-      const defaultText = sanitizeForPdf('Some of your metabolic markers suggest your body may not be processing insulin as efficiently as it should. We recommend confirmation testing with fasting insulin and fasting glucose to guide next steps.');
-      doc.setFontSize(9);
-      doc.setFont('helvetica', 'normal');
-      const defaultLines = doc.splitTextToSize(defaultText, contentWidth - 10);
-      for (let i = 0; i < defaultLines.length; i++) {
-        yPosition = ensureSpace(4, yPosition);
-        doc.setTextColor(...textColor);
-        doc.setFontSize(9);
-        doc.setFont('helvetica', 'normal');
-        doc.text(defaultLines[i], margin + 2, yPosition);
-        yPosition += 4;
-      }
-      yPosition += 4;
-    }
-    yPosition += 4;
-  }
 
   yPosition = addSectionHeader('YOUR PERSONALIZED NUTRITION PLAN', yPosition);
   

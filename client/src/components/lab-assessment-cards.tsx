@@ -9,7 +9,7 @@ import { cn } from "@/lib/utils";
 import type { LabInterpretation } from "@shared/schema";
 import type {
   PREVENTRiskResult, AdjustedRiskAssessment, InsulinResistanceScreening,
-  StopBangResult, MaleHormonePattern,
+  StopBangResult, MaleHormonePattern, MitoScoreResult, MitoScoreDomain,
 } from "@shared/schema";
 
 function formatClinicalManagement(text: string): string {
@@ -821,6 +821,124 @@ export function FemaleHormonePatternCard({
             </div>
           );
         })}
+      </CardContent>
+    </Card>
+  );
+}
+
+// ─── Cellular Energy / Mito Score Card ────────────────────────────────────
+export function MitoScoreCard({ mitoScore }: { mitoScore: MitoScoreResult }) {
+  const pct = mitoScore.percentage;
+  const pctColor =
+    pct <= 20 ? 'text-green-600 dark:text-green-400' :
+    pct <= 40 ? 'text-yellow-600 dark:text-yellow-400' :
+    pct <= 60 ? 'text-orange-600 dark:text-orange-400' :
+               'text-red-600 dark:text-red-400';
+
+  const badgeVariant = pct <= 20 ? 'outline' : pct <= 40 ? 'outline' : pct <= 60 ? 'outline' : 'destructive';
+  const badgeClass =
+    pct <= 20 ? 'bg-green-50 text-green-700 border-green-200 dark:bg-green-950/30 dark:text-green-400 dark:border-green-800' :
+    pct <= 40 ? 'bg-yellow-50 text-yellow-700 border-yellow-200 dark:bg-yellow-950/30 dark:text-yellow-400 dark:border-yellow-800' :
+    pct <= 60 ? 'bg-orange-50 text-orange-700 border-orange-200 dark:bg-orange-950/30 dark:text-orange-400 dark:border-orange-800' :
+               '';
+
+  const availableDomains = mitoScore.domains.filter((d: MitoScoreDomain) => d.available);
+  const unavailableDomains = mitoScore.domains.filter((d: MitoScoreDomain) => !d.available);
+
+  return (
+    <Card data-testid="card-mito-score">
+      <CardHeader>
+        <div className="flex items-center justify-between gap-4 flex-wrap">
+          <div className="flex items-center gap-2">
+            <Activity className="w-5 h-5 text-primary" />
+            <CardTitle>Cellular Energy / Mito Score</CardTitle>
+          </div>
+          <Badge variant={badgeVariant} className={badgeClass} data-testid="badge-mito-label">
+            {mitoScore.interpretationLabel}
+          </Badge>
+        </div>
+        <CardDescription>
+          <span className={`font-mono font-bold text-2xl ${pctColor}`} data-testid="text-mito-score">
+            {mitoScore.score} / {mitoScore.maxScore}
+          </span>
+          <span className="text-muted-foreground ml-2 text-sm">available points ({pct}%)</span>
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-6">
+
+        {/* Primary Pattern */}
+        <div className="p-3 rounded-lg bg-primary/5 border border-primary/20">
+          <p className="text-xs font-semibold uppercase text-muted-foreground mb-1">Primary Cellular Energy Pattern</p>
+          <p className="text-sm font-semibold" data-testid="text-mito-primary-pattern">{mitoScore.primaryPattern}</p>
+          {mitoScore.secondaryPatterns.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-1">
+              Secondary contributors: {mitoScore.secondaryPatterns.join(' · ')}
+            </p>
+          )}
+        </div>
+
+        {/* Domain breakdown */}
+        <div>
+          <h4 className="text-sm font-semibold mb-3">Domain Scoring</h4>
+          <div className="grid grid-cols-1 md:grid-cols-2 gap-2">
+            {availableDomains.map((d: MitoScoreDomain, idx: number) => {
+              const domainPct = d.maxPoints > 0 ? d.points / d.maxPoints : 0;
+              const dotColor =
+                domainPct === 0 ? 'bg-green-500' :
+                domainPct < 1 ? 'bg-amber-500' :
+                'bg-red-500';
+              return (
+                <div
+                  key={idx}
+                  className={`p-3 rounded-lg border text-xs ${d.points > 0 ? 'bg-orange-50/40 dark:bg-orange-950/15 border-orange-200 dark:border-orange-800' : 'bg-muted/20'}`}
+                  data-testid={`mito-domain-${idx}`}
+                >
+                  <div className="flex items-start justify-between gap-2 mb-1">
+                    <p className="font-medium text-muted-foreground uppercase leading-tight">{d.name}</p>
+                    <div className="flex items-center gap-1 shrink-0">
+                      <span className={`inline-block w-2 h-2 rounded-full ${dotColor}`} />
+                      <span className="font-mono font-bold text-foreground">{d.points}/{d.maxPoints}</span>
+                    </div>
+                  </div>
+                  <p className="text-muted-foreground leading-snug">{d.detail}</p>
+                </div>
+              );
+            })}
+          </div>
+          {unavailableDomains.length > 0 && (
+            <p className="text-xs text-muted-foreground mt-2" data-testid="text-mito-missing">
+              Not scored (missing): {unavailableDomains.map((d: MitoScoreDomain) => d.name.replace(/\s*\(.*\)$/, '')).join(' · ')}
+            </p>
+          )}
+        </div>
+
+        {/* Recommendations */}
+        {mitoScore.recommendations.length > 0 && (
+          <>
+            <Separator />
+            <div>
+              <h4 className="text-sm font-semibold mb-2">Recommendations</h4>
+              <ul className="space-y-1">
+                {mitoScore.recommendations.map((rec: string, i: number) => (
+                  <li key={i} className="flex items-start gap-1.5 text-sm">
+                    <span className="text-primary mt-0.5 shrink-0">–</span>
+                    {rec}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          </>
+        )}
+
+        {/* Provider summary */}
+        <div className="p-3 rounded-lg bg-muted/40 text-xs text-muted-foreground" data-testid="text-mito-summary">
+          <span className="font-semibold text-foreground">Provider Note: </span>
+          {mitoScore.providerSummary}
+        </div>
+
+        <p className="text-xs text-muted-foreground italic">
+          This assessment identifies modifiable contributors to impaired cellular energy production. It does not diagnose primary mitochondrial disease.
+        </p>
       </CardContent>
     </Card>
   );

@@ -1,0 +1,617 @@
+Build a new “Cellular Energy / Mito Score” inside the existing Metabolic Health Assessment.
+
+IMPORTANT PLACEMENT
+
+Do NOT create a separate mitochondrial disease module.
+
+Add this assessment inside the same Metabolic Health Assessment section that currently contains:
+
+* Insulin Resistance Score
+* Metabolic Phenotype Classification
+* Metabolic Recommendations
+
+The Cellular Energy / Mito Score should be displayed directly below the insulin resistance assessment.
+
+CLINICAL INTENT
+
+This assessment is designed to identify patterns associated with impaired cellular energy production, poor recovery, exercise intolerance, fatigue, brain fog, and metabolic dysfunction.
+
+This assessment DOES NOT diagnose primary mitochondrial disease.
+
+The purpose is to identify modifiable contributors to impaired cellular energy production using conventional laboratory markers already collected in ClinIQ.
+
+SCORING METHODOLOGY
+
+Only score available markers.
+
+Do not require all markers to be present.
+
+Display:
+
+* Score achieved
+* Maximum possible score based on available labs
+* Percentage score
+* Missing markers
+
+CALCULATE:
+
+Mito Score = Patient Points ÷ Maximum Available Points × 100
+
+─────────────────────────────
+DOMAIN 1: INFLAMMATION
+─────────────────────────────
+
+hs-CRP
+
+* <1.0 = 0 points
+* 1.0–2.9 = 1 point
+* ≥3.0 = 2 points
+
+─────────────────────────────
+DOMAIN 2: IRON AVAILABILITY
+─────────────────────────────
+
+Ferritin
+
+* 75–150 = 0 points
+* 50–74 = 1 point
+* <50 = 2 points
+
+Special Rule:
+
+If ferritin >150 and hs-CRP is elevated:
+
+* assign 1 point
+
+Reason:
+Ferritin may represent inflammation rather than optimal iron availability.
+
+─────────────────────────────
+DOMAIN 3: B12
+─────────────────────────────
+
+Vitamin B12
+
+* > 600 = 0 points
+* 450–600 = 1 point
+* <450 = 2 points
+
+─────────────────────────────
+DOMAIN 4: FOLATE
+─────────────────────────────
+
+Folate
+
+* > 10 = 0 points
+* 6–10 = 1 point
+* <6 = 2 points
+
+─────────────────────────────
+DOMAIN 5: VITAMIN D
+─────────────────────────────
+
+Vitamin D
+
+* > 50 = 0 points
+* 30–50 = 1 point
+* <30 = 2 points
+
+─────────────────────────────
+DOMAIN 6: MAGNESIUM
+─────────────────────────────
+
+If RBC magnesium available:
+
+* optimal = 0 points
+* low-normal = 1 point
+* low = 2 points
+
+If serum magnesium only:
+
+* ≥2.0 = 0 points
+* 1.8–1.9 = 1 point
+* <1.8 = 2 points
+
+─────────────────────────────
+DOMAIN 7: THYROID SUPPORT
+─────────────────────────────
+
+Use TSH, Free T4, and Free T3 when available.
+
+* TSH 0.5–2.5 with normal FT4/FT3 = 0 points
+* TSH 2.6–4.0 OR low-normal FT3 = 1 point
+* TSH >4.0 OR low FT4 OR low FT3 = 2 points
+
+─────────────────────────────
+DOMAIN 8: INSULIN RESISTANCE BURDEN
+─────────────────────────────
+
+Use the existing ClinIQ Insulin Resistance Score.
+
+* Low IR = 0 points
+* Early/Emerging IR = 1 point
+* Moderate or High IR = 2 points
+
+Reason:
+Insulin resistance is a major driver of impaired mitochondrial function.
+
+─────────────────────────────
+DOMAIN 9: LIPID / APOB BURDEN
+─────────────────────────────
+
+* ApoB <80 AND TG <2 = 0 points
+* ApoB 80–89 OR TG 2–2.9 = 1 point
+* ApoB ≥90 OR TG ≥3 = 2 points
+
+─────────────────────────────
+DOMAIN 10: CBC / OXYGEN DELIVERY
+─────────────────────────────
+
+Evaluate:
+
+* Hemoglobin
+* Hematocrit
+* MCV
+* RDW
+
+Scoring:
+
+Normal values = 0 points
+
+Borderline:
+
+* mild anemia
+* elevated RDW
+* mild macrocytosis
+* mild microcytosis
+
+= 1 point
+
+Significant abnormalities:
+
+* anemia
+* marked macrocytosis
+* marked microcytosis
+
+= 2 points
+
+─────────────────────────────
+DOMAIN 11: HORMONAL SUPPORT (FEMALES)
+─────────────────────────────
+
+Clinical Rationale
+
+Hormonal status influences:
+
+* mitochondrial biogenesis
+* muscle maintenance
+* recovery
+* cognition
+* metabolic flexibility
+* cellular energy production
+
+TESTOSTERONE HIERARCHY
+
+Use:
+
+1. Free Testosterone (preferred)
+2. Calculated Free Testosterone
+3. Bioavailable Testosterone
+4. Total Testosterone interpreted with SHBG
+
+Never interpret Total Testosterone alone.
+
+─────────────────────────────
+ESTRADIOL
+─────────────────────────────
+
+Postmenopausal Women
+
+* Estradiol >50 = 0 points
+* Estradiol 20–50 = 1 point
+* Estradiol <20 = 2 points
+
+Perimenopausal Women
+
+Do not score based on a single estradiol level.
+
+Instead evaluate:
+
+* vasomotor symptoms
+* sleep disruption
+* anxiety
+* cycle irregularity
+* fatigue
+* poor recovery
+
+Mild symptoms = 1 point
+
+Moderate/Severe symptoms = 2 points
+
+─────────────────────────────
+FREE TESTOSTERONE
+─────────────────────────────
+
+Use clinic-defined optimal range.
+
+* Optimal Free Testosterone = 0 points
+* Borderline Low Free Testosterone = 1 point
+* Clearly Low Free Testosterone = 2 points
+
+Only assign testosterone-related points if symptoms are present:
+
+* fatigue
+* poor recovery
+* reduced strength
+* muscle loss
+* exercise intolerance
+* low motivation
+
+─────────────────────────────
+SHBG MODIFIER
+─────────────────────────────
+
+DO NOT allow SHBG to independently determine the Mito Score.
+
+Use SHBG as a phenotype confidence modifier only.
+
+Female SHBG:
+
+* 40–80 = neutral
+* <40 = increases metabolic confidence
+* > 100 = increases hormonal confidence
+
+Interpretation:
+
+Low SHBG may reflect:
+
+* insulin resistance
+* hyperinsulinemia
+* fatty liver
+* visceral adiposity
+* androgen excess
+
+High SHBG may reflect:
+
+* oral estrogen use
+* hyperthyroidism
+* reduced androgen availability
+
+Adjustment Rules:
+
+If:
+
+* Free Testosterone low
+  AND
+* SHBG >100
+
+Add +1 confidence point to Thyroid/Hormonal Pattern.
+
+If:
+
+* Free Testosterone low
+  AND
+* SHBG <40
+  AND
+* insulin resistance phenotype present
+
+Do NOT increase Hormonal Pattern.
+
+Increase Metabolic Pattern confidence instead.
+
+If:
+
+* Free Testosterone normal
+  AND
+* SHBG abnormal
+
+Assign no testosterone deficiency points.
+
+─────────────────────────────
+OPTIONAL SYMPTOM DOMAIN
+─────────────────────────────
+
+If symptom tracking available:
+
+Assign up to 4 points.
+
+Symptoms:
+
+* unrefreshing sleep
+* brain fog
+* post-exertional fatigue
+* afternoon crash
+* exercise intolerance
+* muscle weakness
+* poor recovery
+
+─────────────────────────────
+FINAL SCORE INTERPRETATION
+─────────────────────────────
+
+0–20%
+
+Low evidence of cellular energy dysfunction
+
+21–40%
+
+Mild cellular energy support need
+
+41–60%
+
+Moderate cellular energy dysfunction pattern
+
+> 60%
+
+High cellular energy dysfunction pattern
+
+Display:
+
+Cellular Energy / Mito Score:
+[X] / [Max Available Points]
+([Percentage]%)
+
+─────────────────────────────
+PRIMARY CELLULAR ENERGY PATTERN
+─────────────────────────────
+
+Select ONE winning pattern only.
+
+Never display:
+
+"Mixed Pattern"
+
+Available Patterns:
+
+1. Nutrient Depletion Pattern
+2. Inflammatory Pattern
+3. Metabolic Pattern
+4. Thyroid/Hormonal Pattern
+5. Oxygen Delivery Pattern
+
+─────────────────────────────
+PATTERN CONFIDENCE SCORING
+─────────────────────────────
+
+Nutrient Depletion Pattern
+
+Increase confidence for:
+
+* Ferritin <75
+* B12 <600
+* Folate <10
+* Vitamin D <50
+* Magnesium suboptimal
+
+Inflammatory Pattern
+
+Increase confidence for:
+
+* hs-CRP ≥2
+* Ferritin >150 with elevated hs-CRP
+* known inflammatory disease
+
+Metabolic Pattern
+
+Increase confidence for:
+
+* Moderate/High IR
+* ApoB ≥90
+* TG ≥3
+* Elevated ALT
+* Central obesity
+* Low SHBG
+
+Thyroid/Hormonal Pattern
+
+Increase confidence for:
+
+* TSH >2.5
+* Low FT3
+* Low FT4
+* Low Estradiol
+* Symptomatic perimenopause
+* Low Free Testosterone with elevated SHBG
+
+Oxygen Delivery Pattern
+
+Increase confidence for:
+
+* anemia
+* elevated RDW
+* macrocytosis
+* microcytosis
+* low ferritin with CBC changes
+
+─────────────────────────────
+TIE BREAKER HIERARCHY
+─────────────────────────────
+
+If tie exists:
+
+1. Oxygen Delivery wins if anemia present
+2. Metabolic wins if moderate/high IR present
+3. Inflammatory wins if hs-CRP ≥3
+4. Nutrient Depletion wins if 3+ nutrient abnormalities present
+5. Thyroid/Hormonal wins if thyroid or hormone abnormalities dominate
+
+Display:
+
+Primary Cellular Energy Pattern:
+[Winning Pattern]
+
+Secondary contributors may be listed, but only one primary pattern should be displayed.
+
+─────────────────────────────
+RECOMMENDATIONS ENGINE
+─────────────────────────────
+
+Global Recommendations
+
+* prioritize protein intake
+* resistance training 2–4x/week
+* zone 2 activity as tolerated
+* optimize sleep quality
+* reduce alcohol
+* reduce ultra-processed foods
+* improve insulin sensitivity
+* correct nutrient deficiencies
+* optimize thyroid function
+* optimize hormone status when appropriate
+
+─────────────────────────────
+NUTRIENT DEPLETION PATTERN
+─────────────────────────────
+
+Recommendations:
+
+* optimize ferritin
+* optimize B12
+* optimize folate
+* optimize vitamin D
+* optimize magnesium
+
+Consider:
+
+* magnesium glycinate
+* methylated B-complex
+* CoQ10
+* creatine monohydrate 3–5 g/day if appropriate
+* protein optimization
+
+─────────────────────────────
+INFLAMMATORY PATTERN
+─────────────────────────────
+
+Recommendations:
+
+* investigate inflammation source
+* repeat hs-CRP if illness possible
+* Mediterranean-style nutrition
+* optimize sleep
+* optimize stress recovery
+* avoid overtraining
+
+Consider:
+
+* omega-3 support
+* inflammation-focused support products
+
+─────────────────────────────
+METABOLIC PATTERN
+─────────────────────────────
+
+Recommendations:
+
+* follow insulin resistance protocol
+* increase protein and fiber
+* resistance training
+* walking after meals
+* weight reduction if indicated
+* improve ApoB/TG profile
+
+Consider:
+
+* Metagenics Berberine GT
+* MitoVive
+* Ultra Glucose Control
+* GLP-1/GIP therapy when clinically appropriate
+
+─────────────────────────────
+THYROID/HORMONAL PATTERN
+─────────────────────────────
+
+Recommendations:
+
+* optimize thyroid function
+* evaluate low FT3 contributors
+* evaluate estradiol/progesterone status
+* evaluate testosterone status
+* support muscle maintenance
+* address symptomatic menopause/perimenopause
+
+Consider:
+
+* MitoVive
+* CoQ10
+* creatine
+* hormone optimization when clinically appropriate
+
+─────────────────────────────
+OXYGEN DELIVERY PATTERN
+─────────────────────────────
+
+Recommendations:
+
+* evaluate iron deficiency
+* evaluate B12/folate deficiency
+* evaluate blood loss
+* evaluate malabsorption
+* repeat CBC and iron studies after treatment
+
+Consider:
+
+* Hemagenics or clinic-approved iron support
+* B12 support
+* folate support
+
+─────────────────────────────
+SUPPLEMENT ENGINE
+─────────────────────────────
+
+Create an editable supplement database.
+
+Fields:
+
+* Product Name
+* Category
+* Intended Support Area
+* Pattern Tags
+* Contraindications
+* Priority Level
+* Active/Inactive Status
+* Admin Notes
+
+Do NOT hard-code products permanently.
+
+─────────────────────────────
+SAFETY RULES
+─────────────────────────────
+
+Suppress recommendations if:
+
+* pregnancy
+* breastfeeding
+* significant kidney disease
+* significant liver disease
+* anticoagulant therapy
+* hypoglycemia risk
+* diabetes medication interaction risk
+* upcoming surgery
+* allergy/intolerance
+* hemochromatosis/iron overload
+* active cancer treatment unless approved
+
+─────────────────────────────
+COMPLIANT LANGUAGE
+─────────────────────────────
+
+Never say:
+
+* treats mitochondrial disease
+* cures mitochondrial dysfunction
+* reverses disease
+
+Use:
+
+* supports cellular energy production
+* supports mitochondrial function
+* supports healthy glucose metabolism
+* supports cardiometabolic health
+* consider based on clinician judgment
+
+─────────────────────────────
+DISCLAIMER
+─────────────────────────────
+
+"This assessment is a clinical decision-support tool and does not diagnose primary mitochondrial disease. Consider neurology, genetics, or specialty referral when red flag features are present, including progressive neuromuscular weakness, seizures, cardiomyopathy, ophthalmoplegia, recurrent lactic acidosis, severe exercise intolerance, or strong family history suggestive of inherited mitochondrial disease."

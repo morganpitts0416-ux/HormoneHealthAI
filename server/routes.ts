@@ -38,6 +38,7 @@ import {
 } from "./therapy-context";
 import { PHENOTYPE_KEYS, detectedPhenotypeKeys } from "./phenotype-registry";
 import { screenInsulinResistance } from "./insulin-resistance";
+import { calculateMitoScore } from "./mito-score";
 import { normalizeTranscript, enrichWithRxNorm, parseCSV, parseArrayField } from "./medication-normalizer";
 import {
   forwardMessageToExternalProvider,
@@ -1612,6 +1613,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
       const maleHormonePatterns = detectMaleHormonePatterns(labs);
       console.log('[API] Male hormone patterns detected:', maleHormonePatterns.map(p => p.name).join(', ') || 'None');
 
+      const mitoScore = calculateMitoScore(labs, 'male', insulinResistance) || undefined;
+
       const result: InterpretationResult = {
         redFlags,
         interpretations,
@@ -1623,6 +1626,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         adjustedRisk,
         supplements,
         insulinResistance,
+        mitoScore,
         maleHormonePatterns: maleHormonePatterns.length > 0 ? maleHormonePatterns : undefined,
         stopBangRisk: stopBangRisk ?? undefined,
         soapNote,
@@ -2007,6 +2011,8 @@ export async function registerRoutes(app: Express): Promise<Server> {
         therapyContext,
       );
 
+      const mitoScore = calculateMitoScore(labs, 'female', insulinResistance) || undefined;
+
       const result: InterpretationResult = {
         redFlags,
         interpretations,
@@ -2020,6 +2026,7 @@ export async function registerRoutes(app: Express): Promise<Server> {
         cvRiskFlags,
         cacStatinRec,
         insulinResistance,
+        mitoScore,
         clinicalPhenotypes,
         stopBangRisk: stopBangRisk ?? undefined,
         soapNote,
@@ -5114,6 +5121,7 @@ Return ONLY this JSON structure:
             : (summaryByLabId.get(lab.id) ?? interp.patientSummary ?? null),
           preventRisk: hiddenSections.includes('preventRisk') ? null : (interp.preventRisk || null),
           insulinResistance: hiddenSections.includes('insulinResistance') ? null : (interp.insulinResistance || null),
+          mitoScore: hiddenSections.includes('insulinResistance') ? null : ((interp as any).mitoScore || null),
           // Female clinical phenotypes: section and item-level hiding
           clinicalPhenotypes: hiddenSections.includes('clinicalPhenotypes')
             ? null

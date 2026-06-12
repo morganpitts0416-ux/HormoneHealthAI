@@ -17,6 +17,7 @@ import {
   FemaleHormoneAssessmentCard,
   FemaleHormonePatternCard,
   InsulinResistanceCard,
+  MitoScoreCard,
 } from "@/components/lab-assessment-cards";
 import { PatientSummary } from "@/components/patient-summary";
 import { SOAPNote } from "@/components/soap-note";
@@ -723,6 +724,11 @@ export default function FemaleLabInterpretation() {
                 {/* 8. Phenotype Assessment — Insulin Resistance Screening */}
                 {interpretationResult.insulinResistance && interpretationResult.insulinResistance.likelihood !== 'none' && (
                   <InsulinResistanceCard insulinResistance={interpretationResult.insulinResistance} />
+                )}
+
+                {/* 8b. Cellular Energy / Mito Score */}
+                {interpretationResult.mitoScore && (
+                  <MitoScoreCard mitoScore={interpretationResult.mitoScore} />
                 )}
 
                 {/* 8. Supplement Protocol */}

@@ -506,6 +506,31 @@ export const stopBangResultSchema = z.object({
 });
 export type StopBangResult = z.infer<typeof stopBangResultSchema>;
 
+// Cellular Energy / Mito Score
+export const mitoScoreDomainSchema = z.object({
+  name: z.string(),
+  points: z.number(),
+  maxPoints: z.number(),
+  detail: z.string(),
+  available: z.boolean(),
+});
+
+export const mitoScoreResultSchema = z.object({
+  score: z.number(),
+  maxScore: z.number(),
+  percentage: z.number(),
+  interpretationLabel: z.string(),
+  domains: z.array(mitoScoreDomainSchema),
+  missingMarkers: z.array(z.string()),
+  primaryPattern: z.string(),
+  secondaryPatterns: z.array(z.string()),
+  recommendations: z.array(z.string()),
+  providerSummary: z.string(),
+});
+
+export type MitoScoreDomain = z.infer<typeof mitoScoreDomainSchema>;
+export type MitoScoreResult = z.infer<typeof mitoScoreResultSchema>;
+
 // Complete Interpretation Result
 export const interpretationResultSchema = z.object({
   redFlags: z.array(redFlagSchema),
@@ -520,6 +545,7 @@ export const interpretationResultSchema = z.object({
   cvRiskFlags: cardiovascularRiskFlagsSchema.optional(),
   cacStatinRec: cacStatinRecommendationSchema.optional(),
   insulinResistance: insulinResistanceScreeningSchema.optional(),
+  mitoScore: mitoScoreResultSchema.optional(),
   clinicalPhenotypes: z.array(clinicalPhenotypeSchema).optional(),
   maleHormonePatterns: z.array(maleHormonePatternSchema).optional(),
   stopBangRisk: stopBangResultSchema.optional(),
